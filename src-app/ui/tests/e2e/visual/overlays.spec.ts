@@ -29,6 +29,11 @@ interface OverlayCase {
   content?: string
   /** a role to wait on when there's no content testid (e.g. select listbox). */
   waitRole?: string
+  /** ms between pointer down + up on the trigger click. The base-ui Combobox
+   *  opens on pointerdown and toggles closed on a same-spot pointerup, so a
+   *  0-gap synthetic click double-toggles it shut (a real user's click has a
+   *  natural gap and opens fine). A small delay mirrors real usage. */
+  openDelay?: number
 }
 
 const OVERLAYS: OverlayCase[] = [
@@ -38,7 +43,9 @@ const OVERLAYS: OverlayCase[] = [
   { name: 'dropdown', trigger: 'g-dropdown-open', content: 'g-dropdown' },
   // Select opens a Radix listbox (no content testid) — wait on role, shoot full page.
   { name: 'select', trigger: 'g-sel-filled', waitRole: 'listbox' },
-  { name: 'combobox', trigger: 'g-cmb-default', waitRole: 'dialog' },
+  // Combobox's trigger is the bare <input>; its popup is a role=presentation
+  // container wrapping a listbox (NOT a dialog). Open with a real-cadence click.
+  { name: 'combobox', trigger: 'g-cmb-default', waitRole: 'listbox', openDelay: 100 },
   { name: 'multiselect', trigger: 'g-ms-empty', waitRole: 'dialog' },
   { name: 'popover', trigger: 'g-popover-open', waitRole: 'dialog' },
 ]
@@ -53,7 +60,7 @@ for (const theme of ['light', 'dark'] as const) {
         const trigger = page.getByTestId(o.trigger)
         await trigger.scrollIntoViewIfNeeded()
         if (o.kind === 'hover') await trigger.hover()
-        else await trigger.click()
+        else await trigger.click(o.openDelay ? { delay: o.openDelay } : {})
 
         // Resolve a handle to the open content: the kit's forwarded content
         // testid when available, else the portal's ARIA role (listbox/dialog).

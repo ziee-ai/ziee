@@ -31,6 +31,7 @@ export function AuditLogSection() {
         <Text className="whitespace-nowrap">Show last</Text>
         <InputNumber
           data-testid="memory-audit-limit-input"
+          aria-label="Number of audit-log entries to show"
           min={1}
           max={500}
           value={pendingLimit}

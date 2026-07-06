@@ -161,6 +161,7 @@ export function MyMemoriesSection() {
         />
         <Select
           placeholder="Kind"
+          aria-label="Filter by kind"
           value={kindFilter ?? undefined}
           onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
           className="flex-[0_1_160px] min-w-[120px]"
@@ -175,6 +176,7 @@ export function MyMemoriesSection() {
         />
         <Select
           placeholder="Source"
+          aria-label="Filter by source"
           value={sourceFilter ?? undefined}
           onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
           allowClear

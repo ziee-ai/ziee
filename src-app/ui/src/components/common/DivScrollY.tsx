@@ -24,7 +24,11 @@ export const DivScrollY = forwardRef<
   OverlayScrollbarsComponentRef,
   DivScrollYProps
 >(({ options, className, children, nativeFlow, ...restProps }, ref) => {
-  const { nativeScroll } = Stores.AppLayout
+  // AppLayout is a module store; in a store-less context (the dev gallery, or
+  // any consumer that mounts this before the app-layout module registers) it's
+  // undefined. nativeScroll is an opt-in mobile flag (off by default), so fall
+  // back to an empty object rather than crashing the whole subtree.
+  const { nativeScroll } = Stores.AppLayout ?? {}
 
   if (nativeFlow && nativeScroll) {
     // Same flex wrapper as the scroller path (below) minus overflow-y-auto, so
