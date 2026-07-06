@@ -40,36 +40,6 @@ console.log(
 // 2. Capture each (cell, theme) + collect crashes.
 const findings = []
 let shots = 0
-<<<<<<< HEAD
-for (const slug of slugs) {
-  for (const state of STATES) {
-    for (const theme of THEMES) {
-      const p = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-      const url = `${BASE}?surface=${slug}&state=${state}&theme=${theme}`
-      try {
-        await p.goto(url, { waitUntil: 'networkidle' })
-        await p.waitForTimeout(state === 'error' ? 1500 : 1200)
-        const sec = p.locator(`[data-testid="gallery-page-${slug}"]`)
-        const dir = path.join(OUT, theme)
-        fs.mkdirSync(dir, { recursive: true })
-        await sec.screenshot({ path: path.join(dir, `${slug}__${state}.png`) })
-        shots++
-        // Only count a REAL ErrorBoundary render: after the DOM has settled the
-        // per-surface boundary's fallback (`data-testid="gallery-crash"`) is
-        // still present. This is deliberately NOT keyed off `console.error` — a
-        // store logging a failed fetch in error-mode is expected, not a crash;
-        // only a boundary that CAUGHT a render throw and is still showing its
-        // fallback at settle is a genuine crash.
-        if (theme === 'light') {
-          const crash = sec.locator('[data-testid="gallery-crash"]')
-          if (await crash.count()) {
-            const label = await crash.first().getAttribute('data-crash-label')
-            findings.push({ slug, state, crashes: ['CRASH: ' + (label || slug)] })
-          }
-        }
-      } catch (e) {
-        findings.push({ slug, state, crashes: ['NAV: ' + e.message.slice(0, 80)] })
-=======
 for (const cell of cells) {
   const { slug, cls, state } = cell
   for (const theme of THEMES) {
@@ -95,7 +65,6 @@ for (const cell of cells) {
       if (theme === 'light') {
         const crashes = [...errs].filter(e => e.startsWith('CRASH'))
         if (crashes.length) findings.push({ slug, cls, state, crashes })
->>>>>>> origin/fix/gallery-priority-surfaces
       }
     } catch (e) {
       findings.push({ slug, cls, state, crashes: ['NAV: ' + e.message.slice(0, 80)] })
