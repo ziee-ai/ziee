@@ -5,6 +5,7 @@ import {
   Descriptions,
   Separator,
   Empty,
+  ErrorState,
   Flex,
   Confirm,
   Tag,
@@ -35,12 +36,15 @@ export function UserAssistantsSettings() {
   const canEdit = usePermission(Permissions.AssistantsEdit)
   const canDelete = usePermission(Permissions.AssistantsDelete)
 
-  // Show errors
+  // A mutation failure while the list is populated → toast + clear. A cold
+  // load failure (no data) persists as the in-place ErrorState below rather
+  // than being cleared away into a silent empty state.
   useEffect(() => {
-    if (error) {
+    if (error && assistants.length > 0) {
+      message.error(error)
       Stores.UserAssistants.clearUserAssistantsStoreError()
     }
-  }, [error])
+  }, [error, assistants.length])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
@@ -126,6 +130,14 @@ export function UserAssistantsSettings() {
         >
           {loading ? (
             <Loading />
+          ) : error && assistants.length === 0 ? (
+            <ErrorState
+              resource="assistants"
+              description="Your assistants couldn't be loaded."
+              details={error}
+              onRetry={() => Stores.UserAssistants.loadUserAssistants(storePage, storePageSize)}
+              data-testid="user-assistants-error"
+            />
           ) : assistants.length === 0 ? (
             <div>
               <Empty data-testid="user-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />

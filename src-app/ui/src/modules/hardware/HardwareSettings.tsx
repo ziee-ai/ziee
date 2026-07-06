@@ -1,7 +1,7 @@
 import {
-  Alert,
   Button,
   Card,
+  ErrorState,
   Progress,
   Spin,
   Statistic,
@@ -25,9 +25,7 @@ export default function HardwareSettings() {
     hardwareError,
     currentUsage,
     usageLoading,
-    usageError,
     sseConnected,
-    sseError,
   } = Stores.Hardware
 
   const canMonitor = usePermission(Permissions.HardwareMonitor)
@@ -47,18 +45,11 @@ export default function HardwareSettings() {
     }
   }, [canMonitor])
 
-  // Show errors – using message.error from the kit barrel – no App.useApp
-  useEffect(() => {
-    if (hardwareError) {
-      message.error(`Hardware Error: ${hardwareError}`)
-    }
-    if (usageError) {
-      message.error(`Usage Monitoring Error: ${usageError}`)
-    }
-    if (sseError) {
-      message.error(`Connection Error: ${sseError}`)
-    }
-  }, [hardwareError, usageError, sseError])
+  // Live-monitoring transport state (usage/SSE) is surfaced persistently by
+  // the connection-status card below — NOT by raw-string toasts. A cold
+  // hardware-info load failure is shown as the in-place ErrorState below.
+  // (The previous effect toasted all three raw error strings, double-signalling
+  // the load failure and leaking transport state as user copy.)
 
   if (hardwareLoading) {
     return (
@@ -71,11 +62,12 @@ export default function HardwareSettings() {
   if (hardwareError && !hardwareInfo) {
     return (
       <SettingsPageContainer title="Hardware">
-        <Alert
+        <ErrorState
           data-testid="hardware-settings-unavailable-alert"
-          title="Hardware Information Unavailable"
-          description={hardwareError}
-          tone="error"
+          resource="hardware information"
+          description="This machine's hardware details couldn't be loaded."
+          details={hardwareError}
+          onRetry={() => Stores.Hardware.loadHardwareInfo()}
         />
       </SettingsPageContainer>
     )

@@ -93,6 +93,7 @@ export const GALLERY_COVERAGE = {
   "components/ui/kit/dialog-host": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/dropdown": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/empty": { kind: 'via', reason: 'kit-stories' },
+  "components/ui/kit/error-state": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/flex": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/form": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/image": { kind: 'via', reason: 'kit-stories' },

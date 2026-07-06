@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Progress, Spin, Tag, Text, message } from '@/components/ui'
+import { Button, Card, ErrorState, Progress, Spin, Tag, Text, message } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
@@ -13,9 +13,7 @@ export function HardwareMonitor() {
     hardwareError,
     currentUsage,
     usageLoading,
-    usageError,
     sseConnected,
-    sseError,
   } = Stores.Hardware
 
   // Initialize hardware monitoring on component mount
@@ -29,18 +27,9 @@ export function HardwareMonitor() {
     }
   }, [])
 
-  // Show errors
-  useEffect(() => {
-    if (hardwareError) {
-      message.error(`Hardware Error: ${hardwareError}`)
-    }
-    if (usageError) {
-      message.error(`Usage Monitoring Error: ${usageError}`)
-    }
-    if (sseError) {
-      message.error(`Connection Error: ${sseError}`)
-    }
-  }, [hardwareError, usageError, sseError])
+  // Live-monitoring transport state is surfaced persistently by the
+  // connection-status card below — NOT by raw-string toasts. A cold
+  // hardware-info load failure is shown as the in-place ErrorState below.
 
   const handleManualConnect = async () => {
     try {
@@ -143,11 +132,12 @@ export function HardwareMonitor() {
   if (hardwareError && !hardwareInfo) {
     return (
       <div className="p-3">
-        <Alert
+        <ErrorState
           data-testid="hardware-unavailable-alert"
-          title="Hardware Monitor Unavailable"
-          description={hardwareError}
-          tone="error"
+          resource="hardware monitor"
+          description="Live hardware monitoring couldn't be loaded for this machine."
+          details={hardwareError}
+          onRetry={() => Stores.Hardware.loadHardwareInfo()}
         />
       </div>
     )

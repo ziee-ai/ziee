@@ -302,8 +302,13 @@ export function installMockApi(cassette?: Cassette): void {
     const exempt = ERROR_MODE_EXEMPT.some(rx => rx.test(parsed.pathname))
     if (isRead && !exempt) {
       if (activeMode === 'error') {
+        // A realistic backend-shaped 500 body (NOT a "Gallery error state"
+        // dev placeholder). Well-behaved surfaces render a human ErrorState
+        // and only ever expose this string behind a "Details" disclosure, so
+        // when it does surface it reads like a genuine server error. The
+        // `error_code` keeps the gallery tooling's error-mode detection.
         return jsonResponse(
-          { error: 'Gallery error state', error_code: 'GALLERY_ERROR' },
+          { error: 'Internal server error', error_code: 'GALLERY_ERROR' },
           500,
         )
       }
