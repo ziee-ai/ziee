@@ -11,120 +11,16 @@
 ## Summary
 
 - 626 instrumented surface files rendered.
-- **26** STATE gaps not allow-listed — the actionable queue.
-- 8607 generic branch forks not allow-listed (informational).
+- **2** STATE gaps not allow-listed — the actionable queue.
+- 8596 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
-
-### `components/ui/kit/dialog-host.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 94 | overlay | `<AlertDialog key={it.id} open onOpenChange={(o) => { if (!o) close(it, false) }}>` |
-
-### `components/ui/kit/sheet.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
-
-### `modules/assistant/chat-extension/components/AssistantMenuItem.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 37 | empty | `<div className="px-3 py-1.5 text-sm text-muted-foreground">` |
-
-### `modules/chat/pages/ChatHistoryPage.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 143 | error | `<div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>` |
-
-### `modules/citations/project-extension/components/ProjectBibliographyManagePanel.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 74 | loading | `<Spin label="Loading" />` |
-
-### `modules/file-rag/components/sections/ChunkingSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 128 | error | `<Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error \|\| validationError} />` |
-
-### `modules/file/project-extension/components/ProjectFilesManagePanel.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 257 | empty | `<div className="flex flex-col mb-3 gap-2">` |
-
-### `modules/hardware/HardwareMonitor.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 183 | empty | `{!currentUsage?.gpu_devices \|\|` |
-| 184 | empty | `currentUsage.gpu_devices.length === 0 ? (` |
-
-### `modules/hub/modules/llm-models/components/ModelHubCard.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 111 | empty | `if (localProviders.length === 0) {` |
-| 693 | overlay | `model={showDetails ? model : null}` |
-
-### `modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 159 | empty | `if (res.files.length === 0) {` |
-| 359 | overlay | `title={viewMode ? 'View Download Details' : 'Download from Repository'}` |
-
-### `modules/llm-provider/components/llm-models/AddLocalLlmModelUploadDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 230 | empty | `if (selectedFiles.length === 0) {` |
-
-### `modules/llm-provider/components/llm-models/EditLlmModelDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 94 | overlay | `title={isLocalModel ? 'Edit Local Model' : 'Edit Remote Model'}` |
-
-### `modules/llm-provider/components/LlmModelsSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 301 | loading | `<Loading />` |
 
 ### `modules/llm-provider/components/LocalProviderSettings.tsx`
 
 | line | state | condition |
 |---|---|---|
 | 35 | loading | `if (!currentProvider && (loading \|\| !isInitialized)) {` |
-
-### `modules/mcp/chat-extension/extension.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 69 | error | `{(toolCall.status === 'completed' \|\| toolCall.status === 'error') && (` |
-| 69 | error | `{(toolCall.status === 'completed' \|\| toolCall.status === 'error') && (` |
-| 70 | error | `<span` |
-| 132 | error | `{toolCall.error && (` |
-| 133 | error | `<Alert` |
-| 294 | error | `<CircleX className="text-destructive" />` |
-
-### `modules/projects/chat-extension/extension.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 413 | loading | `if (state.kind === 'loading') {` |
-
-### `modules/projects/components/ProjectFormDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 168 | overlay | `title={isEdit ? 'Edit Project' : 'New Project'}` |
 
 ### `modules/user-profile/UserProfileWidget.tsx`
 
@@ -163,6 +59,6 @@
 | `modules/llm-provider/components/LlmModelsSection.tsx` | 74 |
 | `modules/file/project-extension/components/ProjectFilesManagePanel.tsx` | 73 |
 | `modules/projects/chat-extension/extension.tsx` | 72 |
-| `modules/hardware/HardwareMonitor.tsx` | 61 |
 | `modules/settings/SettingsPage.tsx` | 61 |
 | `modules/layouts/app-layout/components/Drawer.tsx` | 60 |
+| `modules/layouts/app-layout/components/ResizeHandle.tsx` | 60 |
