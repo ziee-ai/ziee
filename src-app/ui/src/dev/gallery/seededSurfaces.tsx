@@ -588,6 +588,31 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       { runId: 'run-1', stepId: 'step-1', artifacts: [] },
     ),
   },
+  // ── ChatHistoryPage: the list-shown arm (conversations>0 || loading || error). ─
+  {
+    slug: 'seeded-chat-history-list',
+    title: 'Chat history — list shown (loading)',
+    note: 'conversations.length>0 || loading || error → the ConversationList container',
+    path: '/chat-history',
+    initialPath: '/chat-history',
+    component: lazyNamed(
+      () => import('@/modules/chat/pages/ChatHistoryPage'),
+      'ChatHistoryPage',
+    ),
+    setup: async () => {
+      const { ChatHistory } = await import(
+        '@/modules/chat/stores/ChatHistory.store'
+      )
+      await holdPatch(() =>
+        ChatHistory.store.setState({
+          loading: true,
+          isInitialized: false,
+          conversations: [],
+          error: null,
+        } as any),
+      )
+    },
+  },
 ]
 
 export const SEEDED_SURFACE_ENTRIES: SeededSurfaceEntry[] = [

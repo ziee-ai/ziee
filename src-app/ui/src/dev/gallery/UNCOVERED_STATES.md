@@ -11,7 +11,7 @@
 ## Summary
 
 - 626 instrumented surface files rendered.
-- **138** STATE gaps not allow-listed — the actionable queue.
+- **135** STATE gaps not allow-listed — the actionable queue.
 - 9044 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
@@ -79,12 +79,6 @@
 | line | state | condition |
 |---|---|---|
 | 19 | loading | `if (!loading && messagesArray.length === 0) {` |
-
-### `modules/chat/core/utils/useStreamdownComponents.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 144 | empty | `if (src.startsWith('/')) return <img {...props} />` |
 
 ### `modules/chat/pages/ChatHistoryPage.tsx`
 
@@ -218,12 +212,6 @@
 |---|---|---|
 | 21 | empty | `if (providerDownloads.length === 0) {` |
 
-### `modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 73 | overlay | `title={`Assign LLM Providers - ${selectedGroup?.name \|\| ''}`}` |
-
 ### `modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx`
 
 | line | state | condition |
@@ -283,12 +271,6 @@
 |---|---|---|
 | 172 | empty | `{fields.length === 0 && (` |
 | 173 | empty | `<Text type="secondary" className="text-xs">` |
-
-### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 76 | overlay | `title={`Assign System MCP Servers - ${selectedGroup?.name \|\| ''}`}` |
 
 ### `modules/mcp/components/system/McpUserPolicyCard.tsx`
 
