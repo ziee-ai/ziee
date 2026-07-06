@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Alert, Button, dialog, Flex, Spin, Tag, Text, message } from '@/components/ui'
+import { Alert, Button, dialog, ErrorState, Flex, Spin, Tag, Text, message } from '@/components/ui'
 import { RotateCw, Star } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -28,6 +28,7 @@ export function SandboxRootfsVersionsSection() {
     lastSwap,
     loading,
     error,
+    sseError,
     actions,
     installTasks,
     conversationCount,
@@ -256,12 +257,39 @@ export function SandboxRootfsVersionsSection() {
         />
       )}
 
-      {error && <Alert tone="error" title={error} data-testid="sandbox-rootfs-error-alert" />}
+      {/* SSE transport state is a non-fatal, self-healing background reconnect
+          — a warning, never the raw attempt-counter string as a destructive
+          title. Downloads keep running; the list refreshes on completion. */}
+      {sseError && (
+        <Alert
+          tone="warning"
+          title="Live download progress may be delayed"
+          description="Lost the live connection to the server. Downloads continue in the background and the list refreshes when they finish."
+          data-testid="sandbox-rootfs-sse-warning"
+        />
+      )}
 
       {loading && groups.length === 0 ? (
         <Spin label="Loading rootfs versions" />
+      ) : error && groups.length === 0 ? (
+        <ErrorState
+          resource="rootfs versions"
+          description="The rootfs environment list couldn't be loaded."
+          details={error}
+          onRetry={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
+          data-testid="sandbox-rootfs-error"
+        />
       ) : (
         <>
+          {error && (
+            <ErrorState
+              resource="rootfs versions"
+              description="Couldn't refresh the list — showing the last-loaded state."
+              details={error}
+              onRetry={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
+              data-testid="sandbox-rootfs-refresh-error"
+            />
+          )}
           <DownloadedRootfsCard
             groups={downloadedGroups}
             canManage={canManage}

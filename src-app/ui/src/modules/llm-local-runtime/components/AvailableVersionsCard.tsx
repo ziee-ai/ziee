@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Separator,
+  ErrorState,
   Flex,
   Progress,
   Space,
@@ -48,7 +49,7 @@ const BACKEND_LABEL: Record<string, string> = {
  */
 export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const { gpu, loadingGpu } = Stores.RuntimeConfig
-  const { updateChecks, checking } = Stores.RuntimeUpdate
+  const { updateChecks, checking, error: updateError } = Stores.RuntimeUpdate
   const { activeByKey } = Stores.RuntimeDownloadProgress
 
   const updateCheck = updateChecks.get(engine)
@@ -155,6 +156,16 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
 
         {isChecking && !updateCheck ? (
           <Spin label="Checking for updates" />
+        ) : updateError && !updateCheck ? (
+          <ErrorState
+            resource="available versions"
+            description="Couldn't reach the upstream release feed."
+            details={updateError}
+            onRetry={() => {
+              void Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {})
+            }}
+            data-testid="llmrt-available-error"
+          />
         ) : !updateCheck ? (
           <Text type="secondary">
             Could not reach the upstream release feed.
