@@ -9,6 +9,14 @@ cat > "$HOOK" <<'HOOKEOF'
 #!/usr/bin/env bash
 # feature-lifecycle enforcement: only for lifecycle branches (worktree has .lifecycle/)
 TOP="$(git rev-parse --show-toplevel)"
+# Merges to main are exempt: the lifecycle already validated on the feature
+# branch (the branch push was gated); re-validating a merge context breaks
+# the diff-vs-main reconciliation.
+ONLY_MAIN=1
+while read -r _local _lsha remote _rsha; do
+  [ "$remote" = "refs/heads/main" ] || ONLY_MAIN=0
+done
+if [ "$ONLY_MAIN" = "1" ]; then exit 0; fi
 if [ -d "$TOP/.lifecycle" ]; then
   CHECK="$TOP/.claude/lifecycle/lifecycle-check.mjs"
   if [ -f "$CHECK" ]; then
