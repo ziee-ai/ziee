@@ -153,6 +153,11 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
   // Using getToolCall() method doesn't trigger re-renders when store updates
   const { toolCalls } = Stores.McpComposer
   const { servers } = Stores.McpServer
+  // Hoisted above the early returns below: `Stores.Chat.messages` is a reactive
+  // store-proxy access that calls a hook on every render, so it MUST run on every
+  // render path — otherwise a re-render that early-returns (e.g. once `toolCall`
+  // is tracked) calls fewer hooks → "Rendered fewer hooks than expected" crash.
+  const { messages } = Stores.Chat
   const toolUseData = data.content as MessageContentDataToolUse
 
   if (!toolUseData.id) {
@@ -170,7 +175,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
   const server = servers.find(s => s.id === toolUseData.server_id)
 
   // Look up matching tool_result for historical display
-  const message = Stores.Chat.messages.get(data.message_id)
+  const message = messages.get(data.message_id)
   const toolResultData = message?.contents.find(
     c =>
       c.content_type === 'tool_result' &&
