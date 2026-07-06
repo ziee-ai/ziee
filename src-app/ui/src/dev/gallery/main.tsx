@@ -38,6 +38,15 @@ import '@/index.css'
 ;(window as unknown as { __GALLERY_SEEDED__?: string[] }).__GALLERY_SEEDED__ =
   SEEDED_SURFACE_SLUGS
 
+// Surfaces whose CONTENT only renders under a specific auth seed, so a capture
+// that drives `?surface=<slug>` without an explicit `&auth=` still gets the
+// reviewable state. `/auth` (the login form) returns null when authenticated —
+// it needs a logged-out seed or it renders blank. An explicit `?auth=` in the
+// URL always wins over this default.
+const SURFACE_AUTH_SEED: Record<string, AuthSeed> = {
+  auth: 'none',
+}
+
 // URL-driven multi-state rendering. The DEFAULT (no params) browses every page
 // in its loaded state. A single-combo URL renders ONE surface in ONE state for
 // per-state screenshots + bug-finding:
@@ -45,13 +54,18 @@ import '@/index.css'
 const q = new URLSearchParams(window.location.search)
 const surface = q.get('surface') ?? undefined
 const state = (q.get('state') as MockMode | null) ?? 'loaded'
-const auth = (q.get('auth') as AuthSeed | null) ?? (surface ? undefined : 'admin')
+// Auth precedence: explicit `?auth=` → per-surface default → admin (browse view
+// and any surface without a special need).
+const auth =
+  (q.get('auth') as AuthSeed | null) ??
+  (surface ? SURFACE_AUTH_SEED[surface] : undefined) ??
+  'admin'
 
 // Set the data-state mode BEFORE any store loads (loads are lazy on first read).
 setMockMode(state)
 // A single-surface render defaults its auth from the surface's needs (login
 // flows want `none`); the browse view is always admin.
-seedGallery(auth ?? 'admin')
+seedGallery(auth)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

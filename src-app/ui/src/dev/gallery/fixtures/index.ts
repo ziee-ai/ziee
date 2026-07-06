@@ -6,6 +6,7 @@
 import type { Cassette } from '../mockApi'
 import { authCassette } from './auth'
 import { chatCassette } from './chat'
+import { citationsCassette } from './citations'
 import { crawlCassette } from './crawl.generated'
 import { llmProvidersCassette } from './llm-providers'
 
@@ -19,4 +20,5 @@ export const GALLERY_CASSETTE: Cassette = {
   ...authCassette,
   ...llmProvidersCassette,
   ...chatCassette,
+  ...citationsCassette,
 }
