@@ -1,0 +1,4 @@
+{
+  "__doc__": "Grandfather allow-list for lint-native-scroll.mjs (J8). Entry: { file: substring, reason }. Advisory lint; add entries as raw-scroll sites are triaged as genuine exceptions.",
+  "entries": []
+}

@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **307** surfaces carry at least one renderable-state signal.
-- **1707** signals total: 1325 branch, 109 empty, 94 error, 93 loading, 84 overlay, 2 panel.
+- **308** surfaces carry at least one renderable-state signal.
+- **1708** signals total: 1327 branch, 108 empty, 94 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -108,7 +108,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `hideBubble` | 87 |
 | branch | `dot` | 88 |
 | branch | `!(hideBubble)` | 108 |
-| branch | `icon != null` | 143 |
+| branch | `icon != null` | 144 |
 
 ### `components/ui/kit/button`
 
@@ -129,8 +129,8 @@ Required states: `delayed`
 |---|---|---|
 | branch | `(title != null \|\| extra != null)` | 39 |
 | branch | `title != null` | 41 |
-| loading | `skeleton` | 56 |
-| branch | `footer != null` | 66 |
+| loading | `skeleton` | 50 |
+| branch | `footer != null` | 60 |
 
 ### `components/ui/kit/checkbox`
 
@@ -374,6 +374,15 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `subtitle != null` | 34 |
 | branch | `extra != null` | 35 |
 
+### `components/ui/kit/section-header`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `description != null` | 49 |
+| branch | `actions != null` | 55 |
+
 ### `components/ui/kit/segmented`
 
 Required states: `delayed`
@@ -465,9 +474,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `scrollX` | 103 |
-| branch | `showClose` | 146 |
-| branch | `editable && !hideAdd` | 162 |
+| branch | `scrollX` | 108 |
+| branch | `showClose` | 151 |
+| branch | `editable && !hideAdd` | 167 |
 
 ### `components/ui/kit/tag`
 
@@ -475,8 +484,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `icon != null` | 84 |
-| branch | `onClose != null` | 86 |
+| branch | `icon != null` | 85 |
+| branch | `onClose != null` | 87 |
 
 ### `components/ui/kit/textarea`
 
@@ -695,14 +704,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 130 |
-| error | `error && assistants.length === 0` | 132 |
-| empty | `assistants.length === 0` | 140 |
-| error | `error` | 141 |
-| branch | `assistant.is_default` | 175 |
-| branch | `!assistant.enabled` | 178 |
-| branch | `index < assistants.length - 1` | 201 |
-| branch | `assistants.length > 0` | 209 |
+| loading | `loading` | 136 |
+| error | `error && assistants.length === 0` | 138 |
+| empty | `assistants.length === 0` | 146 |
+| error | `error` | 147 |
+| branch | `assistant.is_default` | 181 |
+| branch | `!assistant.enabled` | 184 |
+| branch | `index < assistants.length - 1` | 207 |
+| branch | `assistants.length > 0` | 215 |
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
@@ -710,14 +719,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error && assistants.length === 0` | 131 |
-| loading | `loading` | 141 |
-| error | `error && assistants.length === 0` | 143 |
-| empty | `assistants.length === 0` | 151 |
-| branch | `assistant.is_default` | 169 |
-| branch | `!assistant.enabled` | 172 |
-| branch | `index < assistants.length - 1` | 200 |
-| branch | `assistants.length > 0` | 208 |
+| error | `error && assistants.length === 0` | 137 |
+| loading | `loading` | 147 |
+| error | `error && assistants.length === 0` | 149 |
+| empty | `assistants.length === 0` | 157 |
+| branch | `assistant.is_default` | 175 |
+| branch | `!assistant.enabled` | 178 |
+| branch | `index < assistants.length - 1` | 206 |
+| branch | `assistants.length > 0` | 214 |
 
 ### `modules/auth-providers/components/AuthProviderEditDrawer`
 
@@ -749,15 +758,15 @@ Required states: `delayed`, `empty`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `row.last_test_ok === null \|\| row.last_test_ok === undefined` | 84 |
-| branch | `!row.last_test_ok` | 94 |
-| loading | `loading && providers.length === 0` | 166 |
-| empty | `providers.length === 0` | 170 |
-| error | `error` | 171 |
-| branch | `!row.enabled` | 205 |
-| branch | `row.last_test_ok === false` | 228 |
-| branch | `index < providers.length - 1` | 247 |
-| overlay | `<AuthProviderEditDrawer open>` | 257 |
+| branch | `row.last_test_ok === null \|\| row.last_test_ok === undefined` | 85 |
+| branch | `!row.last_test_ok` | 95 |
+| loading | `loading && providers.length === 0` | 172 |
+| empty | `providers.length === 0` | 176 |
+| error | `error` | 177 |
+| branch | `!row.enabled` | 211 |
+| branch | `row.last_test_ok === false` | 234 |
+| branch | `index < providers.length - 1` | 253 |
+| overlay | `<AuthProviderEditDrawer open>` | 263 |
 
 ### `modules/auth/AuthCallbackPage`
 
@@ -1355,19 +1364,19 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `inView` | 64 |
-| branch | `typeof IntersectionObserver === 'undefined'` | 65 |
-| branch | `!el` | 70 |
-| branch | `!file` | 104 |
-| branch | `!file` | 118 |
-| branch | `canInline && Body` | 142 |
-| branch | `collapsed` | 148 |
-| branch | `label` | 167 |
-| branch | `displaySize !== undefined` | 168 |
-| branch | `HeaderActions` | 171 |
-| branch | `file` | 174 |
-| branch | `file` | 187 |
-| branch | `showBody && Body` | 224 |
+| branch | `inView` | 62 |
+| branch | `typeof IntersectionObserver === 'undefined'` | 63 |
+| branch | `!el` | 68 |
+| branch | `!file` | 102 |
+| branch | `!file` | 116 |
+| branch | `canInline && Body` | 140 |
+| branch | `collapsed` | 146 |
+| branch | `label` | 165 |
+| branch | `displaySize !== undefined` | 166 |
+| branch | `HeaderActions` | 169 |
+| branch | `file` | 172 |
+| branch | `file` | 185 |
+| branch | `showBody && Body` | 222 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
@@ -1396,27 +1405,27 @@ Required states: `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!file \|\| uploadProgress` | 116 |
-| branch | `onClick` | 117 |
-| branch | `uploadProgress && variant === 'row'` | 124 |
-| error | `isError` | 138 |
-| error | `isError && onRetry` | 163 |
-| branch | `onRemove` | 176 |
-| branch | `uploadProgress` | 195 |
-| error | `isError` | 207 |
-| branch | `onRetry` | 208 |
-| branch | `showFileName` | 226 |
-| branch | `onRemove` | 236 |
-| branch | `!file` | 256 |
-| branch | `variant === 'row'` | 265 |
-| branch | `selectable` | 283 |
-| branch | `hasImage` | 295 |
-| branch | `actions !== undefined` | 310 |
-| branch | `canDownload` | 313 |
-| branch | `hasImage` | 357 |
-| branch | `showFileName` | 364 |
-| branch | `(canDelete \|\| canRemove) && onRemove` | 373 |
-| overlay | `<Confirm open>` | 385 |
+| branch | `!file \|\| uploadProgress` | 113 |
+| branch | `onClick` | 114 |
+| branch | `uploadProgress && variant === 'row'` | 121 |
+| error | `isError` | 135 |
+| error | `isError && onRetry` | 160 |
+| branch | `onRemove` | 173 |
+| branch | `uploadProgress` | 192 |
+| error | `isError` | 204 |
+| branch | `onRetry` | 205 |
+| branch | `showFileName` | 223 |
+| branch | `onRemove` | 233 |
+| branch | `!file` | 253 |
+| branch | `variant === 'row'` | 262 |
+| branch | `selectable` | 280 |
+| branch | `hasImage` | 292 |
+| branch | `actions !== undefined` | 307 |
+| branch | `canDownload` | 310 |
+| branch | `hasImage` | 354 |
+| branch | `showFileName` | 361 |
+| branch | `(canDelete \|\| canRemove) && onRemove` | 370 |
+| overlay | `<Confirm open>` | 382 |
 
 ### `modules/file/components/FilePanel`
 
@@ -2197,22 +2206,22 @@ Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!platform \|\| !arch` | 97 |
-| branch | `isChecking && !updateCheck` | 166 |
-| branch | `updateError && !updateCheck` | 168 |
-| branch | `!updateCheck` | 178 |
-| empty | `readyUpstream.length === 0` | 182 |
-| branch | `readyUpstream.length > 10` | 197 |
-| branch | `loadingGpu && !gpu` | 216 |
-| branch | `!gpu` | 224 |
-| branch | `loadingGpu && !gpu` | 242 |
-| branch | `!gpu` | 250 |
-| branch | `v.size_bytes != null && !v.installed` | 294 |
-| branch | `isLatest` | 299 |
-| branch | `v.installed` | 300 |
-| branch | `v.prerelease` | 301 |
-| branch | `progress` | 320 |
-| error | `failed && progress?.error` | 321 |
+| branch | `!platform \|\| !arch` | 88 |
+| branch | `isChecking && !updateCheck` | 157 |
+| branch | `updateError && !updateCheck` | 159 |
+| branch | `!updateCheck` | 169 |
+| empty | `readyUpstream.length === 0` | 173 |
+| branch | `readyUpstream.length > 10` | 188 |
+| branch | `loadingGpu && !gpu` | 207 |
+| branch | `!gpu` | 215 |
+| branch | `loadingGpu && !gpu` | 233 |
+| branch | `!gpu` | 241 |
+| branch | `v.size_bytes != null && !v.installed` | 285 |
+| branch | `isLatest` | 290 |
+| branch | `v.installed` | 291 |
+| branch | `v.prerelease` | 292 |
+| branch | `progress` | 311 |
+| error | `failed && progress?.error` | 312 |
 
 ### `modules/llm-local-runtime/components/InstalledVersionsCard`
 
@@ -2560,11 +2569,11 @@ Required states: `empty`, `error`
 | branch | `repo?.built_in` | 99 |
 | error | `error && repositories.length === 0` | 228 |
 | empty | `repositories.length === 0` | 238 |
-| branch | `repository.built_in` | 263 |
-| branch | `!repository.enabled` | 268 |
-| branch | `repository.last_health_check_status === 'unhealthy'` | 306 |
-| branch | `index < repositories.length - 1` | 329 |
-| branch | `totalRepositories > 0` | 338 |
+| branch | `repository.built_in` | 258 |
+| branch | `!repository.enabled` | 263 |
+| branch | `repository.last_health_check_status === 'unhealthy'` | 301 |
+| branch | `index < repositories.length - 1` | 324 |
+| branch | `totalRepositories > 0` | 333 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
@@ -3617,13 +3626,12 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `users.length === 0` | 66 |
-| overlay | `<Confirm open>` | 119 |
-| branch | `loadingUsers` | 241 |
-| empty | `users.length === 0` | 243 |
-| branch | `usersError` | 244 |
-| branch | `index < users.length - 1` | 296 |
-| branch | `users.length > 0` | 302 |
+| overlay | `<Confirm open>` | 113 |
+| branch | `loadingUsers` | 235 |
+| empty | `users.length === 0` | 237 |
+| branch | `usersError` | 238 |
+| branch | `index < users.length - 1` | 290 |
+| branch | `users.length > 0` | 296 |
 
 ### `modules/web-search/components/WebSearchGlobalSection`
 

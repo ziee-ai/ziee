@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  SectionHeader,
   Confirm,
   Empty,
   ErrorState,
@@ -151,18 +152,23 @@ export function AuthProvidersListSection() {
 
   return (
     <>
-      <Card
-        data-testid="authprov-list-card"
-        title="Configured providers"
-        extra={
-          <Can permission={Permissions.AuthProvidersManage}>
-            <AddProviderMenu
-              existingNames={providers.map(p => p.name)}
-              onPick={template => setDrawer({ mode: 'create', template })}
-            />
-          </Can>
-        }
-      >
+      <Card data-testid="authprov-list-card">
+        {/* SectionHeader (never-wrap-with-room) instead of Card title/extra —
+            fixes the mobile premature-stack of the title above the add menu
+            (taxonomy B1). */}
+        <SectionHeader
+          title="Configured providers"
+          data-testid="authprov-list-header"
+          className="mb-4"
+          actions={
+            <Can permission={Permissions.AuthProvidersManage}>
+              <AddProviderMenu
+                existingNames={providers.map(p => p.name)}
+                onPick={template => setDrawer({ mode: 'create', template })}
+              />
+            </Can>
+          }
+        />
         {loading && providers.length === 0 ? (
           <div className="flex justify-center py-6">
             <Spin label="Loading" />

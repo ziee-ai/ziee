@@ -70,6 +70,7 @@ const TagInner = React.forwardRef<HTMLSpanElement, TagProps>(function Tag(
   return (
     <span
       ref={ref}
+      data-slot="tag"
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium',
         // Keep tag content on a single line; when the row is narrow the whole

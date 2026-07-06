@@ -14,7 +14,7 @@ Cross-cutting rules every agent must follow:
   the container's testid — give the CONTAINER a testid and the rows are covered.
 - Never import `antd`, never use raw `<button>/<input>/<select>/<textarea>` (Biome blocks both).
 
-66 components documented.
+67 components documented.
 
 ## Accordion _(discriminated union — see source for variant-specific props)_
 
@@ -970,6 +970,26 @@ _No always-required props._
 
 </details>
 
+## SectionHeader _(discriminated union — see source for variant-specific props)_
+
+**Required:**
+
+| prop | type | notes |
+|---|---|---|
+| `data-testid` | `string` | Test selector — REQUIRED, forwarded onto the header root (i18n-safe). |
+| `title` | `ReactNode` |  |
+
+<details><summary>Optional props (4)</summary>
+
+| prop | type | notes |
+|---|---|---|
+| `actions` | `ReactNode` | Right-aligned actions (buttons). Stay on the title's row; never wrap. |
+| `allowStyle` | `true | undefined` |  |
+| `description` | `ReactNode` | Optional muted description under the title (also truncates). |
+| `style` | `CSSProperties | undefined` |  |
+
+</details>
+
 ## Segmented _(discriminated union — see source for variant-specific props)_
 
 **Required:**
@@ -1249,7 +1269,7 @@ _No always-required props._
 | `data-testid` | `string` | Test selector — forwarded onto <root>. Triggers derive `${testid}-tab-${key}`, panels `${testid}-panel-${key}`. |
 | `items` | `TabItem[]` |  |
 
-<details><summary>Optional props (16)</summary>
+<details><summary>Optional props (17)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -1269,6 +1289,7 @@ _No always-required props._
 | `size` | `"default" | "sm" | undefined` |  |
 | `tabStripClassName` | `string | undefined` | Extra classes on the tab strip row (e.g. `justify-center px-3`). |
 | `value` | `string | undefined` |  |
+| `variant` | `"line" | "default" | undefined` | Tab strip look. `default` = boxed/segmented pill strip; `line` = quiet UNDERLINE tabs (no box). Per the design system, dense/narrow conta… |
 
 </details>
 
