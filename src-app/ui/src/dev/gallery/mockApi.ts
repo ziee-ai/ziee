@@ -99,6 +99,63 @@ let activeCassette: Cassette = {}
 let installed = false
 let originalFetch: typeof globalThis.fetch | undefined
 
+// ── SSE replay (serverless chat-token stream) ────────────────────────────────
+// The chat UI's live states (streaming tokens, tool-call progress, elicitation
+// prompts) arrive over the per-user `GET /api/chat/stream` SSE connection, not a
+// JSON endpoint. To exercise those states offline we REPLAY a recorded frame
+// sequence: an SSE cassette is an ordered list of `{ event, data }` frames the
+// interceptor serializes into a real `text/event-stream` body — the exact wire
+// shape ChatStreamClient parses (`event:` + `data:` lines). The stream stays
+// open after the last frame (like a real idle connection) so a mid-generation
+// cassette leaves the UI visibly streaming.
+
+/** One recorded SSE frame: the `event:` name + the JSON `data:` payload. */
+export interface SseFrame {
+  event: string
+  data: unknown
+}
+// Endpoints answered as a replayed event-stream rather than a JSON route.
+const SSE_STREAM = /\/api\/chat\/stream$/
+const SSE_SUBSCRIPTION = /\/api\/chat\/stream\/subscription$/
+let sseCassette: SseFrame[] = []
+/** Register the frame sequence the next `/api/chat/stream` request replays. */
+export function setSseCassette(frames: SseFrame[]): void {
+  sseCassette = frames
+}
+const SSE_FRAME_GAP_MS = 350
+
+function sseResponse(frames: SseFrame[]): Response {
+  const encoder = new globalThis.TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      // A `connected` handshake first (ChatStreamClient expects it to learn its
+      // connection id), then each recorded frame with a small gap so the UI
+      // paints the deltas progressively.
+      controller.enqueue(
+        encoder.encode(
+          `event: connected\ndata: ${JSON.stringify({ connectionId: 'gallery-sse' })}\n\n`,
+        ),
+      )
+      for (const f of frames) {
+        await new Promise(r => setTimeout(r, SSE_FRAME_GAP_MS))
+        controller.enqueue(
+          encoder.encode(`event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`),
+        )
+      }
+      // Leave the stream OPEN (never close) — a real idle SSE connection. The
+      // gallery frame unmounts / navigates away to tear it down.
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
+}
+
 /**
  * Data-state mode. The gallery renders the SAME surface under different modes to
  * cover the states where most bugs hide (empty / error), by transforming the
@@ -228,6 +285,15 @@ export function installMockApi(cassette?: Cassette): void {
     // Only intercept same-origin API calls; everything else is real.
     if (parsed.origin !== window.location.origin || !parsed.pathname.startsWith('/api/')) {
       return originalFetch!(input as RequestInfo, init)
+    }
+
+    // SSE chat-token stream: replay the recorded frame cassette as a real
+    // text/event-stream (NOT a JSON route). The subscription PUT is a no-op 200.
+    if (SSE_SUBSCRIPTION.test(parsed.pathname)) {
+      return jsonResponse({})
+    }
+    if (SSE_STREAM.test(parsed.pathname) && method === 'GET') {
+      return sseResponse(sseCassette)
     }
 
     // Apply the data-state mode. GET reads carry the state; mutations (POST/PUT/

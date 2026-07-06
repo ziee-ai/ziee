@@ -26,11 +26,26 @@ interface ChatFixture {
 
 const fixture: ChatFixture = recorded as ChatFixture
 
-export const chatConversations = fixture.conversations
-export const chatById = fixture.byId
-/** Showcase conversation ids — each a distinct chat-detail gallery combo. */
+/** Showcase conversation ids — each a distinct chat-detail gallery combo.
+ *  Derived from the recorded fixture ALONE (chat-deep.ts imports this, so it must
+ *  not depend on the deep bundles — no import cycle). */
 export const showcaseConversationIds = Object.keys(fixture.byId)
 const firstId = showcaseConversationIds[0]
+
+// Merge the synthetic deep-state bundles (tool running/failed, attachments) in.
+// Imported AFTER `showcaseConversationIds` is defined so the cycle stays acyclic
+// (chat-deep only reads the exported id list, not the merged map).
+import { chatDeepById } from './chat-deep'
+
+export const chatById: Record<string, ChatConversationBundle> = {
+  ...fixture.byId,
+  ...(chatDeepById as Record<string, ChatConversationBundle>),
+}
+
+// The list stays the RECORDED list (its rows are the richer `ConversationResponse`
+// shape); the synthetic deep conversations are rendered by PINNED id via the
+// isolated deep-state entries, so they don't need a list row.
+export const chatConversations = fixture.conversations
 
 export const chatCassette: Cassette = {
   'Conversation.list': chatConversations,

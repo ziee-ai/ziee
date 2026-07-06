@@ -16,6 +16,7 @@ import { GalleryPage } from './GalleryPage'
 import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
 import { OVERLAY_ENTRIES } from './overlays'
+import { DEEP_STATE_SLUGS } from './deepStates'
 import '@/index.css'
 
 // Runtime manifest for the runtime-health pass. Page slugs are enumerated from
@@ -25,6 +26,11 @@ import '@/index.css'
 // `?surface=<slug>&state=open` without hard-coding the list.
 ;(window as unknown as { __GALLERY_OVERLAYS__?: string[] }).__GALLERY_OVERLAYS__ =
   OVERLAY_ENTRIES.map(o => o.slug)
+// Deep active-conversation states (streaming / right-panel / elicitation / …) are
+// likewise interaction-only surfaces never on the browse canvas — expose their
+// slugs so the health + coverage passes drive each via `?surface=<slug>`.
+;(window as unknown as { __GALLERY_DEEP_STATES__?: string[] }).__GALLERY_DEEP_STATES__ =
+  DEEP_STATE_SLUGS
 
 // URL-driven multi-state rendering. The DEFAULT (no params) browses every page
 // in its loaded state. A single-combo URL renders ONE surface in ONE state for
