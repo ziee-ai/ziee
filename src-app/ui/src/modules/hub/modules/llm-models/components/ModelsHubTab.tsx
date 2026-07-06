@@ -100,7 +100,7 @@ export function ModelsHubTab() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             allowClear
-            className="flex-1"
+            className="flex-1 min-w-[10rem]"
             aria-label="Search models"
           />
 
@@ -109,7 +109,7 @@ export function ModelsHubTab() {
             placeholder="Filter by tags"
             value={selectedTags}
             onChange={(values: string[]) => setSelectedTags(values)}
-            className="flex-1"
+            className="flex-1 min-w-[10rem]"
             removeLabel={(label) => `Remove ${label}`}
             emptyText="No tags available"
             searchPlaceholder="Search tags..."
@@ -125,7 +125,7 @@ export function ModelsHubTab() {
             placeholder="Sort by"
             value={sortBy}
             onChange={(value: string) => setSortBy(value)}
-            className="flex-1"
+            className="flex-1 min-w-[10rem]"
             options={[
               { value: 'name', label: 'ID' },
               { value: 'display_name', label: 'Display name' },

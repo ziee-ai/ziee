@@ -738,10 +738,10 @@ Required states: `delayed`, `empty`, `error`, `open`
 | error | `error` | 165 |
 | loading | `loading && providers.length === 0` | 176 |
 | empty | `providers.length === 0` | 180 |
-| branch | `!row.enabled` | 202 |
-| branch | `row.last_test_ok === false` | 225 |
-| branch | `index < providers.length - 1` | 244 |
-| overlay | `<AuthProviderEditDrawer open>` | 254 |
+| branch | `!row.enabled` | 205 |
+| branch | `row.last_test_ok === false` | 228 |
+| branch | `index < providers.length - 1` | 247 |
+| overlay | `<AuthProviderEditDrawer open>` | 257 |
 
 ### `modules/auth/AuthCallbackPage`
 
@@ -847,7 +847,7 @@ Required states: `open`
 | kind | condition | line |
 |---|---|---|
 | branch | `sending \|\| isStreaming \|\| disabled \|\| isBlockedByExtension` | 39 |
-| overlay | `<Popover open>` | 88 |
+| overlay | `<Popover open>` | 90 |
 
 ### `modules/chat/components/ChatMessage`
 
@@ -1709,12 +1709,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `currentTabSlot` | 144 |
 | branch | `hubVersion` | 152 |
-| branch | `useMobileLayout` | 194 |
-| branch | `canRefresh` | 196 |
-| branch | `!useMobileLayout` | 233 |
-| branch | `canRefresh` | 242 |
-| branch | `urlSegmentIsForbidden` | 262 |
-| branch | `currentTabSlot` | 289 |
+| branch | `useMobileLayout` | 197 |
+| branch | `canRefresh` | 199 |
+| branch | `!useMobileLayout` | 236 |
+| branch | `canRefresh` | 245 |
+| branch | `urlSegmentIsForbidden` | 265 |
+| branch | `currentTabSlot` | 292 |
 
 ### `modules/hub/modules/assistants/components/AssistantDetailsDrawer`
 
@@ -2968,9 +2968,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!guide` | 78 |
 | branch | `!guide` | 105 |
-| branch | `isCompleted` | 181 |
-| branch | `nextError` | 215 |
-| branch | `StepComponent` | 225 |
+| branch | `isCompleted` | 183 |
+| branch | `nextError` | 217 |
+| branch | `StepComponent` | 227 |
 
 ### `modules/onboarding/OnboardingRedirect`
 
@@ -3494,8 +3494,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.is_system` | 139 |
-| branch | `registeredWidgets.length > 0` | 167 |
+| branch | `group.is_system` | 142 |
+| branch | `registeredWidgets.length > 0` | 172 |
 
 ### `modules/user/components/group/GroupMembersDrawer`
 

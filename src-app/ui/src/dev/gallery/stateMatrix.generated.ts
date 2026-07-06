@@ -640,10 +640,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error", line: 165 },
       { kind: "loading", condition: "loading && providers.length === 0", line: 176 },
       { kind: "empty", condition: "providers.length === 0", line: 180 },
-      { kind: "branch", condition: "!row.enabled", line: 202 },
-      { kind: "branch", condition: "row.last_test_ok === false", line: 225 },
-      { kind: "branch", condition: "index < providers.length - 1", line: 244 },
-      { kind: "overlay", condition: "<AuthProviderEditDrawer open>", line: 254 },
+      { kind: "branch", condition: "!row.enabled", line: 205 },
+      { kind: "branch", condition: "row.last_test_ok === false", line: 228 },
+      { kind: "branch", condition: "index < providers.length - 1", line: 247 },
+      { kind: "overlay", condition: "<AuthProviderEditDrawer open>", line: 257 },
     ],
   },
   "modules/auth/AuthCallbackPage": {
@@ -739,7 +739,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["open"],
     signals: [
       { kind: "branch", condition: "sending || isStreaming || disabled || isBlockedByExtension", line: 39 },
-      { kind: "overlay", condition: "<Popover open>", line: 88 },
+      { kind: "overlay", condition: "<Popover open>", line: 90 },
     ],
   },
   "modules/chat/components/ChatMessage": {
@@ -1527,12 +1527,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "currentTabSlot", line: 144 },
       { kind: "branch", condition: "hubVersion", line: 152 },
-      { kind: "branch", condition: "useMobileLayout", line: 194 },
-      { kind: "branch", condition: "canRefresh", line: 196 },
-      { kind: "branch", condition: "!useMobileLayout", line: 233 },
-      { kind: "branch", condition: "canRefresh", line: 242 },
-      { kind: "branch", condition: "urlSegmentIsForbidden", line: 262 },
-      { kind: "branch", condition: "currentTabSlot", line: 289 },
+      { kind: "branch", condition: "useMobileLayout", line: 197 },
+      { kind: "branch", condition: "canRefresh", line: 199 },
+      { kind: "branch", condition: "!useMobileLayout", line: 236 },
+      { kind: "branch", condition: "canRefresh", line: 245 },
+      { kind: "branch", condition: "urlSegmentIsForbidden", line: 265 },
+      { kind: "branch", condition: "currentTabSlot", line: 292 },
     ],
   },
   "modules/hub/modules/assistants/components/AssistantDetailsDrawer": {
@@ -2699,9 +2699,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "!guide", line: 78 },
       { kind: "branch", condition: "!guide", line: 105 },
-      { kind: "branch", condition: "isCompleted", line: 181 },
-      { kind: "branch", condition: "nextError", line: 215 },
-      { kind: "branch", condition: "StepComponent", line: 225 },
+      { kind: "branch", condition: "isCompleted", line: 183 },
+      { kind: "branch", condition: "nextError", line: 217 },
+      { kind: "branch", condition: "StepComponent", line: 227 },
     ],
   },
   "modules/onboarding/OnboardingRedirect": {
@@ -3182,8 +3182,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/user/components/group/GroupListItem",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "group.is_system", line: 139 },
-      { kind: "branch", condition: "registeredWidgets.length > 0", line: 167 },
+      { kind: "branch", condition: "group.is_system", line: 142 },
+      { kind: "branch", condition: "registeredWidgets.length > 0", line: 172 },
     ],
   },
   "modules/user/components/group/GroupMembersDrawer": {

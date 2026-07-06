@@ -102,7 +102,10 @@ function KeyboardShortcutsHelp() {
   if (mainContentMinSize.xs) return null
 
   return (
-    <div className="text-xs text-muted-foreground" data-testid="chat-keyboard-tips">
+    <div
+      className="text-xs text-muted-foreground truncate min-w-0"
+      data-testid="chat-keyboard-tips"
+    >
       <span>Tips: Ctrl+Enter to send, Ctrl+K to focus, Esc to clear</span>
     </div>
   )
