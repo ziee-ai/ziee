@@ -266,3 +266,11 @@ deliberately-incomplete WIP branch, `git push --no-verify` (and say so).
 - If a decision genuinely can't be resolved by convention, surface it EARLY
   rather than guessing ([[feedback_research_landscape_before_plan]]).
 - The lifecycle artifacts are committed; the skill/validator/hook are machine-local.
+
+## Merge hygiene (required)
+
+`.lifecycle/<feature>/` artifacts live ON THE FEATURE BRANCH so the validator
+and pre-push hook can gate it. They are process records, not product code —
+**strip them when merging to main**: the merge driver (or the final commit
+before merge) runs `git rm -r .lifecycle` so main never accumulates lifecycle
+artifacts. The branch history preserves them for audit.
