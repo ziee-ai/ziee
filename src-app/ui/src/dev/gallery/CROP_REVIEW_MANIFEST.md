@@ -109,4 +109,180 @@
 
 ## Captured crops
 
-_(run without `--no-shots` to capture PNGs under `crops/`)_
+150 crop(s) captured under `crops/`.
+
+### `deep-chat-long`
+- [mobile] mcp-tooluse-card-toolu_sandbox_1 — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_sandbox_1__6.png`
+- [mobile] mcp-tooluse-card-toolu_web_1 — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_web_1__7.png`
+- [mobile] mcp-tooluse-card-toolu_fetch_1 — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_fetch_1__8.png`
+- [mobile] lit-tool-result-card — `crops/deep-chat-long__mobile__lit-tool-result-card__10.png`
+- [mobile] mcp-tooluse-card-toolu_cit_1 — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_cit_1__12.png`
+- [mobile] mcp-tooluse-card-toolu_ctl_1 — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_ctl_1__13.png`
+- [mobile] mcp-tooluse-card-toolu_sandbox_err — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_sandbox_err__15.png`
+- [mobile] mcp-tooluse-card-toolu_cancelled — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_cancelled__16.png`
+- [mobile] mcp-tooluse-card-toolu_multi — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_multi__18.png`
+- [mobile] mcp-tooluse-card-toolu_ext — `crops/deep-chat-long__mobile__mcp-tooluse-card-toolu_ext__19.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/deep-chat-long__mobile__SCROLLED-MIDDLE.png`
+- [desktop] mcp-tooluse-card-toolu_sandbox_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_sandbox_1__7.png`
+- [desktop] mcp-tooluse-card-toolu_web_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_web_1__8.png`
+- [desktop] mcp-tooluse-card-toolu_fetch_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_fetch_1__9.png`
+- [desktop] mcp-tooluse-card-toolu_lit_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_lit_1__10.png`
+- [desktop] lit-tool-result-card — `crops/deep-chat-long__desktop__lit-tool-result-card__11.png`
+- [desktop] mcp-toolgroup-card — `crops/deep-chat-long__desktop__mcp-toolgroup-card__12.png`
+- [desktop] mcp-tooluse-card-toolu_cit_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_cit_1__13.png`
+- [desktop] mcp-tooluse-card-toolu_ctl_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_ctl_1__14.png`
+- [desktop] mcp-tooluse-card-toolu_gtr_1 — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_gtr_1__15.png`
+- [desktop] mcp-tooluse-card-toolu_sandbox_err — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_sandbox_err__16.png`
+- [desktop] mcp-tooluse-card-toolu_cancelled — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_cancelled__17.png`
+- [desktop] mcp-tooluse-card-toolu_big — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_big__18.png`
+- [desktop] mcp-tooluse-card-toolu_multi — `crops/deep-chat-long__desktop__mcp-tooluse-card-toolu_multi__19.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/deep-chat-long__desktop__SCROLLED-MIDDLE.png`
+
+### `deep-chat-right-panel-file`
+- [mobile] chat-right-panel — `crops/deep-chat-right-panel-file__mobile__chat-right-panel__6.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/deep-chat-right-panel-file__mobile__SCROLLED-MIDDLE.png`
+- [desktop] chat-right-panel — `crops/deep-chat-right-panel-file__desktop__chat-right-panel__6.png`
+- [desktop] mcp-tooluse-card-toolu_sandbox_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_sandbox_1__7.png`
+- [desktop] mcp-tooluse-card-toolu_web_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_web_1__8.png`
+- [desktop] mcp-tooluse-card-toolu_fetch_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_fetch_1__9.png`
+- [desktop] mcp-tooluse-card-toolu_lit_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_lit_1__10.png`
+- [desktop] lit-tool-result-card — `crops/deep-chat-right-panel-file__desktop__lit-tool-result-card__11.png`
+- [desktop] mcp-toolgroup-card — `crops/deep-chat-right-panel-file__desktop__mcp-toolgroup-card__12.png`
+- [desktop] mcp-tooluse-card-toolu_cit_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_cit_1__13.png`
+- [desktop] mcp-tooluse-card-toolu_ctl_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_ctl_1__14.png`
+- [desktop] mcp-tooluse-card-toolu_gtr_1 — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_gtr_1__15.png`
+- [desktop] mcp-tooluse-card-toolu_sandbox_err — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_sandbox_err__16.png`
+- [desktop] mcp-tooluse-card-toolu_cancelled — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_cancelled__17.png`
+- [desktop] mcp-tooluse-card-toolu_big — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_big__18.png`
+- [desktop] mcp-tooluse-card-toolu_multi — `crops/deep-chat-right-panel-file__desktop__mcp-tooluse-card-toolu_multi__19.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/deep-chat-right-panel-file__desktop__SCROLLED-MIDDLE.png`
+
+### `deep-chat-right-panel-literature`
+- [mobile] chat-right-panel — `crops/deep-chat-right-panel-literature__mobile__chat-right-panel__6.png`
+- [mobile] lit-screening-panel — `crops/deep-chat-right-panel-literature__mobile__lit-screening-panel__7.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/deep-chat-right-panel-literature__mobile__SCROLLED-MIDDLE.png`
+- [desktop] chat-right-panel — `crops/deep-chat-right-panel-literature__desktop__chat-right-panel__6.png`
+- [desktop] lit-screening-panel — `crops/deep-chat-right-panel-literature__desktop__lit-screening-panel__7.png`
+- [desktop] mcp-tooluse-card-toolu_sandbox_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_sandbox_1__8.png`
+- [desktop] mcp-tooluse-card-toolu_web_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_web_1__9.png`
+- [desktop] mcp-tooluse-card-toolu_fetch_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_fetch_1__10.png`
+- [desktop] mcp-tooluse-card-toolu_lit_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_lit_1__11.png`
+- [desktop] lit-tool-result-card — `crops/deep-chat-right-panel-literature__desktop__lit-tool-result-card__12.png`
+- [desktop] mcp-toolgroup-card — `crops/deep-chat-right-panel-literature__desktop__mcp-toolgroup-card__13.png`
+- [desktop] mcp-tooluse-card-toolu_cit_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_cit_1__14.png`
+- [desktop] mcp-tooluse-card-toolu_ctl_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_ctl_1__15.png`
+- [desktop] mcp-tooluse-card-toolu_gtr_1 — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_gtr_1__16.png`
+- [desktop] mcp-tooluse-card-toolu_sandbox_err — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_sandbox_err__17.png`
+- [desktop] mcp-tooluse-card-toolu_cancelled — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_cancelled__18.png`
+- [desktop] mcp-tooluse-card-toolu_big — `crops/deep-chat-right-panel-literature__desktop__mcp-tooluse-card-toolu_big__19.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/deep-chat-right-panel-literature__desktop__SCROLLED-MIDDLE.png`
+
+### `settings-assistant-templates`
+- [mobile] section — `crops/settings-assistant-templates__mobile__section__0.png`
+- [mobile] template-assistants-card — `crops/settings-assistant-templates__mobile__template-assistants-card__1.png`
+- [desktop] section — `crops/settings-assistant-templates__desktop__section__0.png`
+- [desktop] template-assistants-card — `crops/settings-assistant-templates__desktop__template-assistants-card__1.png`
+
+### `settings-assistants`
+- [mobile] section — `crops/settings-assistants__mobile__section__0.png`
+- [mobile] user-assistants-card — `crops/settings-assistants__mobile__user-assistants-card__1.png`
+- [desktop] section — `crops/settings-assistants__desktop__section__0.png`
+- [desktop] user-assistants-card — `crops/settings-assistants__desktop__user-assistants-card__1.png`
+
+### `settings-auth-providers`
+- [mobile] section — `crops/settings-auth-providers__mobile__section__0.png`
+- [mobile] authprov-list-card — `crops/settings-auth-providers__mobile__authprov-list-card__1.png`
+- [desktop] section — `crops/settings-auth-providers__desktop__section__0.png`
+- [desktop] authprov-list-card — `crops/settings-auth-providers__desktop__authprov-list-card__1.png`
+
+### `settings-citations`
+- [mobile] section — `crops/settings-citations__mobile__section__0.png`
+- [mobile] cite-settings-card — `crops/settings-citations__mobile__cite-settings-card__1.png`
+- [mobile] cite-card-11111111-1111-4111-8111-111111111111 — `crops/settings-citations__mobile__cite-card-11111111-1111-4111-8111-111111111111__2.png`
+- [mobile] cite-card-22222222-2222-4222-8222-222222222222 — `crops/settings-citations__mobile__cite-card-22222222-2222-4222-8222-222222222222__3.png`
+- [mobile] cite-card-33333333-3333-4333-8333-333333333333 — `crops/settings-citations__mobile__cite-card-33333333-3333-4333-8333-333333333333__4.png`
+- [mobile] cite-card-44444444-4444-4444-8444-444444444444 — `crops/settings-citations__mobile__cite-card-44444444-4444-4444-8444-444444444444__5.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-citations__mobile__SCROLLED-MIDDLE.png`
+- [desktop] section — `crops/settings-citations__desktop__section__0.png`
+- [desktop] cite-settings-card — `crops/settings-citations__desktop__cite-settings-card__1.png`
+- [desktop] cite-card-11111111-1111-4111-8111-111111111111 — `crops/settings-citations__desktop__cite-card-11111111-1111-4111-8111-111111111111__2.png`
+- [desktop] cite-card-22222222-2222-4222-8222-222222222222 — `crops/settings-citations__desktop__cite-card-22222222-2222-4222-8222-222222222222__3.png`
+- [desktop] cite-card-33333333-3333-4333-8333-333333333333 — `crops/settings-citations__desktop__cite-card-33333333-3333-4333-8333-333333333333__4.png`
+- [desktop] cite-card-44444444-4444-4444-8444-444444444444 — `crops/settings-citations__desktop__cite-card-44444444-4444-4444-8444-444444444444__5.png`
+
+### `settings-hardware`
+- [mobile] section — `crops/settings-hardware__mobile__section__0.png`
+- [mobile] hardware-os-card — `crops/settings-hardware__mobile__hardware-os-card__2.png`
+- [mobile] hardware-cpu-info-card — `crops/settings-hardware__mobile__hardware-cpu-info-card__3.png`
+- [mobile] hardware-memory-info-card — `crops/settings-hardware__mobile__hardware-memory-info-card__4.png`
+- [mobile] hardware-gpu-info-card-0 — `crops/settings-hardware__mobile__hardware-gpu-info-card-0__5.png`
+- [mobile] hardware-gpu-info-card-1 — `crops/settings-hardware__mobile__hardware-gpu-info-card-1__6.png`
+- [mobile] hardware-gpu-info-card-2 — `crops/settings-hardware__mobile__hardware-gpu-info-card-2__7.png`
+- [mobile] hardware-gpu-info-card-3 — `crops/settings-hardware__mobile__hardware-gpu-info-card-3__8.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-hardware__mobile__SCROLLED-MIDDLE.png`
+- [desktop] section — `crops/settings-hardware__desktop__section__0.png`
+- [desktop] hardware-os-card — `crops/settings-hardware__desktop__hardware-os-card__2.png`
+- [desktop] hardware-cpu-info-card — `crops/settings-hardware__desktop__hardware-cpu-info-card__3.png`
+- [desktop] hardware-memory-info-card — `crops/settings-hardware__desktop__hardware-memory-info-card__4.png`
+- [desktop] hardware-gpu-info-card-0 — `crops/settings-hardware__desktop__hardware-gpu-info-card-0__5.png`
+- [desktop] hardware-gpu-info-card-1 — `crops/settings-hardware__desktop__hardware-gpu-info-card-1__6.png`
+- [desktop] hardware-gpu-info-card-2 — `crops/settings-hardware__desktop__hardware-gpu-info-card-2__7.png`
+- [desktop] hardware-gpu-info-card-3 — `crops/settings-hardware__desktop__hardware-gpu-info-card-3__8.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-hardware__desktop__SCROLLED-MIDDLE.png`
+
+### `settings-llm-providers`
+- [mobile] llm-models-section-card — `crops/settings-llm-providers__mobile__llm-models-section-card__0.png`
+- [mobile] llm-remote-api-config-card — `crops/settings-llm-providers__mobile__llm-remote-api-config-card__1.png`
+- [mobile] llm-provider-groups-card — `crops/settings-llm-providers__mobile__llm-provider-groups-card__2.png`
+- [mobile] llm-proxy-settings-card — `crops/settings-llm-providers__mobile__llm-proxy-settings-card__3.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-llm-providers__mobile__SCROLLED-MIDDLE.png`
+- [desktop] llm-models-section-card — `crops/settings-llm-providers__desktop__llm-models-section-card__0.png`
+- [desktop] llm-remote-api-config-card — `crops/settings-llm-providers__desktop__llm-remote-api-config-card__1.png`
+- [desktop] llm-provider-groups-card — `crops/settings-llm-providers__desktop__llm-provider-groups-card__2.png`
+- [desktop] llm-proxy-settings-card — `crops/settings-llm-providers__desktop__llm-proxy-settings-card__3.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-llm-providers__desktop__SCROLLED-MIDDLE.png`
+
+### `settings-memory`
+- [mobile] section — `crops/settings-memory__mobile__section__0.png`
+- [mobile] memory-prefs-card — `crops/settings-memory__mobile__memory-prefs-card__1.png`
+- [mobile] memory-my-card — `crops/settings-memory__mobile__memory-my-card__2.png`
+- [mobile] memory-core-card — `crops/settings-memory__mobile__memory-core-card__3.png`
+- [mobile] memory-audit-card — `crops/settings-memory__mobile__memory-audit-card__4.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-memory__mobile__SCROLLED-MIDDLE.png`
+- [desktop] section — `crops/settings-memory__desktop__section__0.png`
+- [desktop] memory-prefs-card — `crops/settings-memory__desktop__memory-prefs-card__1.png`
+- [desktop] memory-my-card — `crops/settings-memory__desktop__memory-my-card__2.png`
+- [desktop] memory-core-card — `crops/settings-memory__desktop__memory-core-card__3.png`
+- [desktop] memory-audit-card — `crops/settings-memory__desktop__memory-audit-card__4.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-memory__desktop__SCROLLED-MIDDLE.png`
+
+### `settings-memory-admin`
+- [mobile] section — `crops/settings-memory-admin__mobile__section__0.png`
+- [mobile] memory-admin-master-card — `crops/settings-memory-admin__mobile__memory-admin-master-card__1.png`
+- [mobile] memory-fts-card — `crops/settings-memory-admin__mobile__memory-fts-card__2.png`
+- [mobile] memory-extraction-card — `crops/settings-memory-admin__mobile__memory-extraction-card__4.png`
+- [mobile] memory-retention-card — `crops/settings-memory-admin__mobile__memory-retention-card__5.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-memory-admin__mobile__SCROLLED-MIDDLE.png`
+- [desktop] section — `crops/settings-memory-admin__desktop__section__0.png`
+- [desktop] memory-admin-master-card — `crops/settings-memory-admin__desktop__memory-admin-master-card__1.png`
+- [desktop] memory-fts-card — `crops/settings-memory-admin__desktop__memory-fts-card__2.png`
+- [desktop] memory-semantic-card — `crops/settings-memory-admin__desktop__memory-semantic-card__3.png`
+- [desktop] memory-extraction-card — `crops/settings-memory-admin__desktop__memory-extraction-card__4.png`
+- [desktop] memory-retention-card — `crops/settings-memory-admin__desktop__memory-retention-card__5.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-memory-admin__desktop__SCROLLED-MIDDLE.png`
+
+### `settings-user-groups`
+- [mobile] section — `crops/settings-user-groups__mobile__section__0.png`
+- [mobile] user-group-card-86283a8b-366a-47d7-8d63-d5054ed45fb3 — `crops/settings-user-groups__mobile__user-group-card-86283a8b-366a-47d7-8d63-d5054ed45fb3__1.png`
+- [mobile] user-group-card-9b96a9cc-a240-4966-834c-bb3aa41464ef — `crops/settings-user-groups__mobile__user-group-card-9b96a9cc-a240-4966-834c-bb3aa41464ef__2.png`
+- [mobile] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-user-groups__mobile__SCROLLED-MIDDLE.png`
+- [desktop] section — `crops/settings-user-groups__desktop__section__0.png`
+- [desktop] user-group-card-86283a8b-366a-47d7-8d63-d5054ed45fb3 — `crops/settings-user-groups__desktop__user-group-card-86283a8b-366a-47d7-8d63-d5054ed45fb3__1.png`
+- [desktop] user-group-card-9b96a9cc-a240-4966-834c-bb3aa41464ef — `crops/settings-user-groups__desktop__user-group-card-9b96a9cc-a240-4966-834c-bb3aa41464ef__2.png`
+- [desktop] SCROLLED-MIDDLE (K4) 🔽 — `crops/settings-user-groups__desktop__SCROLLED-MIDDLE.png`
+
+### `settings-users`
+- [mobile] section — `crops/settings-users__mobile__section__0.png`
+- [mobile] user-list-card — `crops/settings-users__mobile__user-list-card__1.png`
+- [desktop] section — `crops/settings-users__desktop__section__0.png`
+- [desktop] user-list-card — `crops/settings-users__desktop__user-list-card__1.png`
