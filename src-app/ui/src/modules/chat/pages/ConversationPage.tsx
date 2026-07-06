@@ -10,6 +10,7 @@ import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Stores } from '@/core'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
 
 export default function ConversationPage() {
@@ -163,12 +164,20 @@ export default function ConversationPage() {
       <div className={cn('flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Chat column */}
         <div className={cn('flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
-          <div className={cn('flex-1', nativeScroll ? '' : 'overflow-y-auto')}>
+          {/* Desktop: overlay scroll (DivScrollY / OverlayScrollbars) so the
+              message history matches every other scroll surface in the app
+              instead of a heavy native scrollbar. `nativeFlow` keeps the mobile
+              window-scroll path (sticky composer, iOS toolbar collapse)
+              unchanged — it renders a plain flow container when nativeScroll is
+              active, exactly like the previous conditional did. The
+              messagesEnd sentinel + scrollIntoView + isAtBottom observer all
+              keep working: OverlayScrollbars scrolls a real viewport element. */}
+          <DivScrollY nativeFlow className="flex-1">
             <div className="w-full max-w-4xl mx-auto px-4 pt-4">
               <MessageList />
               <div ref={messagesEndRef} />
             </div>
-          </div>
+          </DivScrollY>
           {/* Composer: pinned. Native mode → position:sticky at the viewport
               bottom (with home-indicator safe-area) so messages document-scroll
               underneath; desktop → normal flow at the column bottom. */}
