@@ -90,11 +90,17 @@ impl ProjectRepository {
         user_id: Uuid,
         page: i64,
         limit: i64,
+        search: Option<&str>,
     ) -> Result<ProjectListResponse, AppError> {
         // saturating_mul guards against pathological inputs (the
         // handler clamps already prevent this, but defense-in-depth).
         let offset = (page - 1).saturating_mul(limit);
 
+        // Case-insensitive substring filter on name/description. When
+        // `search` is None the `$4::text IS NULL` guard short-circuits so
+        // no rows are excluded. Fully parameterized (mirrors the mcp
+        // repository list-search convention). Applied identically to the
+        // COUNT below so `total` stays consistent with the page.
         let projects = sqlx::query_as!(
             Project,
             r#"
@@ -106,20 +112,35 @@ impl ProjectRepository {
                 updated_at as "updated_at: _"
             FROM projects
             WHERE user_id = $1
+              AND (
+                    $4::text IS NULL
+                    OR name ILIKE '%' || $4 || '%'
+                    OR description ILIKE '%' || $4 || '%'
+                  )
             ORDER BY updated_at DESC
             LIMIT $2 OFFSET $3
             "#,
             user_id,
             limit,
             offset,
+            search,
         )
         .fetch_all(&self.pool)
         .await
         .map_err(AppError::database_error)?;
 
         let total: i64 = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM projects WHERE user_id = $1",
-            user_id
+            r#"
+            SELECT COUNT(*) FROM projects
+            WHERE user_id = $1
+              AND (
+                    $2::text IS NULL
+                    OR name ILIKE '%' || $2 || '%'
+                    OR description ILIKE '%' || $2 || '%'
+                  )
+            "#,
+            user_id,
+            search,
         )
         .fetch_one(&self.pool)
         .await

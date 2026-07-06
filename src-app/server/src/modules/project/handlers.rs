@@ -75,6 +75,59 @@ impl<'de> Deserialize<'de> for PaginationQuery {
     }
 }
 
+/// Query params for `GET /projects`: pagination + optional name/description
+/// search. A DEDICATED type (not the shared `PaginationQuery`) so the `search`
+/// param appears only on this endpoint's OpenAPI — mirrors the per-endpoint
+/// query-struct convention in `mcp/handlers/user.rs` (blind-audit FIX-A).
+#[derive(Debug, schemars::JsonSchema)]
+pub struct ProjectListQuery {
+    /// Page number (1-indexed). Defaults to 1.
+    pub page: Option<i64>,
+    /// Items per page. Defaults to 20, clamped to [1, 100].
+    pub limit: Option<i64>,
+    /// Case-insensitive substring filter on project name/description.
+    /// Blank/whitespace-only is treated as "no filter".
+    pub search: Option<String>,
+}
+
+impl ProjectListQuery {
+    /// Resolve the clamped (page, limit) pair (identical clamps to
+    /// `PaginationQuery::resolved`, so `(page-1) * limit` cannot overflow).
+    pub fn resolved(&self) -> (i64, i64) {
+        (
+            self.page.unwrap_or(1).clamp(1, PROJECT_MAX_PAGE),
+            self.limit.unwrap_or(20).clamp(1, PROJECT_MAX_LIMIT),
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for ProjectListQuery {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            page: Option<i64>,
+            limit: Option<i64>,
+            search: Option<String>,
+        }
+        let raw = Raw::deserialize(d)?;
+        Ok(ProjectListQuery {
+            page: raw.page,
+            limit: raw.limit,
+            search: raw.search,
+        })
+    }
+}
+
+/// Normalize a raw `search` query value: trim, and treat a blank/whitespace-only
+/// term as "no filter" (`None`). Extracted from the handler body so it's
+/// Tier-1 unit-testable independently of the HTTP layer. Mirrors the mcp
+/// list-search convention (`mcp/handlers/user.rs`).
+fn normalize_search(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 // =====================================================
 // Validation
 // =====================================================
@@ -238,12 +291,13 @@ pub fn create_project_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn list_projects(
     auth: RequirePermissions<(ProjectsRead,)>,
-    Query(query): Query<PaginationQuery>,
+    Query(query): Query<ProjectListQuery>,
 ) -> ApiResult<Json<ProjectListResponse>> {
     let (page, limit) = query.resolved();
+    let search = normalize_search(query.search.as_deref());
     let response = Repos
         .project
-        .list_for_user(auth.user.id, page, limit)
+        .list_for_user(auth.user.id, page, limit, search.as_deref())
         .await?;
     Ok((StatusCode::OK, Json(response)))
 }
@@ -556,5 +610,32 @@ mod tests {
         // is kept (the DB stores the raw string). Validator's contract:
         // "trim() must produce ≥ 1 char". The "Foo" inside satisfies it.
         assert!(validate_project_name("  Foo  ").is_ok());
+    }
+
+    // ─── search query wiring (project-search) ─────────────────────
+
+    /// TEST-1 — `ProjectListQuery` deserializes the `search` field so the
+    /// extractor actually carries it.
+    #[test]
+    fn project_list_query_deserializes_search() {
+        let q: ProjectListQuery =
+            serde_json::from_value(serde_json::json!({ "search": "foo" })).unwrap();
+        assert_eq!(q.search.as_deref(), Some("foo"));
+
+        let none: ProjectListQuery =
+            serde_json::from_value(serde_json::json!({ "page": 1 })).unwrap();
+        assert_eq!(none.search, None);
+    }
+
+    /// TEST-2 — `normalize_search` trims and maps blank/whitespace to
+    /// `None` (the "no filter" convention), non-blank to the trimmed term.
+    #[test]
+    fn normalize_search_trims_and_blanks_to_none() {
+        assert_eq!(normalize_search(None), None);
+        assert_eq!(normalize_search(Some("")), None);
+        assert_eq!(normalize_search(Some("   ")), None);
+        assert_eq!(normalize_search(Some("\t\n")), None);
+        assert_eq!(normalize_search(Some("  foo ")).as_deref(), Some("foo"));
+        assert_eq!(normalize_search(Some("roadmap")).as_deref(), Some("roadmap"));
     }
 }
