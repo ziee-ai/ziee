@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import {
-  Form,
-  FormField,
   Input,
   Button,
   Tooltip,
@@ -74,27 +72,26 @@ export function TitleEditor() {
   }
 
   if (isEditing) {
+    // Plain horizontal <form> (NOT the kit <Form>/<FormField>): the kit Form wraps
+    // children in a vertical FieldGroup whose responsive Field only becomes a row at
+    // an @md container width, which collapsed the input to ~20px and stacked the
+    // buttons below it. A flat flex row with the Input registered directly keeps the
+    // input growing (flex-1) and the confirm/cancel buttons on the same line.
     return (
-      <Form
+      <form
         data-testid="chat-title-editor-form"
-        name="title-editor"
-        form={form}
-        onSubmit={handleSave}
+        onSubmit={form.handleSubmit(handleSave)}
         className="flex items-center gap-1 flex-1 max-w-full"
       >
-        <FormField
-          name="title"
+        <Input
+          {...form.register('title')}
+          data-testid="chat-title-input"
           aria-label="Conversation title"
-          className="flex-1"
-        >
-          <Input
-            data-testid="chat-title-input"
-            placeholder="Enter conversation title"
-            autoFocus
-            size="sm"
-            className="!border-none !shadow-none bg-transparent text-base font-semibold"
-          />
-        </FormField>
+          placeholder="Enter conversation title"
+          autoFocus
+          size="sm"
+          className="flex-1 min-w-0 !border-none !shadow-none bg-transparent text-base font-semibold"
+        />
         <Button
           data-testid="chat-title-save-btn"
           type="submit"
@@ -105,13 +102,14 @@ export function TitleEditor() {
         />
         <Button
           data-testid="chat-title-cancel-btn"
+          type="button"
           variant="ghost"
           size="default"
           icon={<X />}
           onClick={handleCancel}
           className="!p-1"
         />
-      </Form>
+      </form>
     )
   }
 

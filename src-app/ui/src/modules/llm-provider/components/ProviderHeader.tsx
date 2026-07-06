@@ -2,8 +2,6 @@ import {
   Button,
   Confirm,
   Flex,
-  Form,
-  FormField,
   Input,
   Switch,
   Title,
@@ -116,33 +114,36 @@ export function ProviderHeader() {
     <Flex justify="between" align="center">
       <Flex align="center" gap="middle">
         <IconComponent className="text-2xl" />
-        <Form
+        {/* Plain horizontal <form> (NOT the kit <Form>/<FormField>): the kit Form's
+            FieldGroup/responsive Field collapsed the input to ~20px and stacked the
+            buttons below. A flat flex row with the Input registered directly keeps a
+            growing input + trailing confirm/cancel on one line. */}
+        <form
           name="provider-header-name-form"
-          className={isEditingName ? 'block' : 'hidden'}
-          form={form}
-          layout="inline"
-          onSubmit={handleSaveName}
+          className={
+            (isEditingName ? 'flex' : 'hidden') + ' items-center gap-2 w-full'
+          }
+          onSubmit={form.handleSubmit(handleSaveName)}
           data-testid="llm-provider-header-name-form"
         >
-          <div className={'flex items-center gap-2 w-full flex-wrap'}>
-            <FormField name="name" aria-label="Provider name">
-              <Input className={'!text-lg'} data-testid="llm-provider-header-name-input" />
-            </FormField>
-            <div className={'flex items-center gap-2'}>
-              <Button type="submit" size="icon" icon={<Check aria-hidden="true" />} tooltip="Save provider name" aria-label="Save provider name" data-testid="llm-provider-header-save-name-btn" />
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                icon={<X aria-hidden="true" />}
-                onClick={() => setIsEditingName(false)}
-                tooltip="Cancel editing provider name"
-                aria-label="Cancel editing provider name"
-                data-testid="llm-provider-header-cancel-name-btn"
-              />
-            </div>
-          </div>
-        </Form>
+          <Input
+            {...form.register('name')}
+            aria-label="Provider name"
+            className={'flex-1 min-w-0 !text-lg'}
+            data-testid="llm-provider-header-name-input"
+          />
+          <Button type="submit" size="icon" icon={<Check aria-hidden="true" />} tooltip="Save provider name" aria-label="Save provider name" data-testid="llm-provider-header-save-name-btn" />
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            icon={<X aria-hidden="true" />}
+            onClick={() => setIsEditingName(false)}
+            tooltip="Cancel editing provider name"
+            aria-label="Cancel editing provider name"
+            data-testid="llm-provider-header-cancel-name-btn"
+          />
+        </form>
         <div
           className={
             'flex items-center gap-2 overflow-x-hidden w-full ' +
