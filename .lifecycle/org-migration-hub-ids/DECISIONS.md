@@ -36,6 +36,10 @@
 **Resolution:** Clone via `gh` (HTTPS/token — SSH has no key here), branch `chore/org-migration-publisher-ids`, edit the 12 source YAMLs' `name:` + `dependencies[].name` to `io.github.ziee-ai/*`, leave `contributor`/README/CONTRIBUTING, run `validate.py` + `test-pages-build.sh`, push + `gh pr create`. The two PRs (hub + ziee) merge together.
 **Basis:** user/[[feedback_hub_repo_clone_first]] — the established two-PR hub workflow; SSH clone returned "Permission denied (publickey)" while `gh` is authenticated.
 
+### DEC-11: Fix the pre-existing catalog_v1 failures the rebrand surfaced?
+**Resolution:** Yes — minimal + correct: change the 5 stale `hub::models::read` grants (version/index/3× manifest tests) to `hub::catalog::read`, and bump `SEED_ITEM_COUNT` 28→29 + `workflows` 9→10. Leave the `refresh`/`installed` tests' `hub::models::read` untouched.
+**Basis:** codebase + evidence — the same 5 tests fail identically (403) on the rebrand-free base checkout (proven in DRIFT-2), so they are pre-existing (a hub-permission refactor moved the catalog reads behind `HubCatalogRead` without updating these grants; the sibling `catalog_read_cannot_refresh` test confirms `hub::catalog::read` is the correct read perm). The count bump reflects the actual seed (29 items / 10 workflows). Fixing them (rather than skipping) unblocks end-to-end rebrand verification and honors "no red in a touched file" ([[feedback_no_ignore_unless_platform]]).
+
 ### DEC-10: Run `cargo clean` after adding the migration?
 **Resolution:** No — a fresh `cargo check -p ziee` suffices in this new worktree; only fall back to `cargo clean` if sqlx emits a "relation does not exist" error.
 **Basis:** codebase — the per-worktree build DB (`ziee_build_<key>`) is provisioned + migrated from scratch on the worktree's first build (it inherits no stale schema), and the migration adds no schema/`sqlx::query!` surface, so a rebuild picks it up without a clean.
