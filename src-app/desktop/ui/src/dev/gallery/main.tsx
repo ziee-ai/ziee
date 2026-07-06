@@ -17,6 +17,15 @@ import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
 import '@/index.css'
 
+// Runtime manifest for the runtime-health pass (mirrors the web gallery). The
+// desktop gallery is PAGE-focused — kit component stories + interaction-only
+// overlay open-states live in the web workspace — so there are no extra overlay
+// surfaces to drive here. Page slugs are still enumerated from the rendered DOM
+// by the health script; this empty manifest just tells it there are no
+// `?surface=<slug>&state=open` overlay cells on this canvas.
+;(window as unknown as { __GALLERY_OVERLAYS__?: string[] }).__GALLERY_OVERLAYS__ =
+  []
+
 // URL-driven multi-state rendering. The DEFAULT (no params) browses every page
 // in its loaded state. A single-combo URL renders ONE surface in ONE state for
 // per-state screenshots + bug-finding:

@@ -42,7 +42,7 @@ export function Alert({ tone = 'info', title, description, icon, className, chil
   const onClose = (rest as { onClose?: () => void }).onClose
   const closeLabel = (rest as { closeLabel?: string }).closeLabel
   return (
-    <Base role={role} className={cn(toneCls[tone], onClose && 'pr-10', 'relative', className)} data-testid={testid}>
+    <Base role={role} className={cn(toneCls[tone], onClose && 'pe-10', 'relative', className)} data-testid={testid}>
       {icon != null ? <span aria-hidden>{icon}</span> : <Icon className="size-4" aria-hidden />}
       {title != null && <AlertTitle>{title}</AlertTitle>}
       {(description != null || children != null) && (
@@ -54,7 +54,7 @@ export function Alert({ tone = 'info', title, description, icon, className, chil
           onClick={onClose}
           aria-label={closeLabel}
           data-testid={`${testid}-close`}
-          className="absolute right-2 top-2 rounded-sm p-1 text-foreground/60 hover:text-foreground hover:bg-foreground/10"
+          className="absolute end-2 top-2 rounded-sm p-1 text-foreground/60 hover:text-foreground hover:bg-foreground/10"
         >
           <X className="size-4" aria-hidden />
         </button>
