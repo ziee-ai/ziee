@@ -1163,7 +1163,7 @@ mod tests {
     fn is_safe_name_accepts_reverse_dns_rejects_traversal() {
         // Valid reverse-DNS shapes (namespace `/` leaf).
         assert!(is_safe_name("io.github.modelcontextprotocol/filesystem"));
-        assert!(is_safe_name("io.github.phibya/llama-3-1-8b-instruct"));
+        assert!(is_safe_name("io.github.ziee-ai/llama-3-1-8b-instruct"));
         assert!(is_safe_name("com.example/foo_bar"));
         // Bare slugs (no `/`) are not valid reverse-DNS names.
         assert!(!is_safe_name("llama-3-1-8b-instruct"));
@@ -1250,21 +1250,21 @@ mod tests {
         // manifests are authored in resources/hub-seed/, consumed here).
         // Path layout: `<category>/<namespace>/<leaf>/<version>.json`.
         // The seed is a snapshot of ziee-ai/hub's build output, which
-        // uses the `io.github.phibya/...` namespace for ziee-native
+        // uses the `io.github.ziee-ai/...` namespace for ziee-native
         // entries.
         let model_json = HUB_SEED
-            .get_file("models/io.github.phibya/llama-3-1-8b-instruct/1.0.0.json")
+            .get_file("models/io.github.ziee-ai/llama-3-1-8b-instruct/1.0.0.json")
             .expect("seed has llama model");
         let model: HubModel =
             serde_json::from_slice(model_json.contents()).expect("parse model json");
-        assert_eq!(model.name, "io.github.phibya/llama-3-1-8b-instruct");
+        assert_eq!(model.name, "io.github.ziee-ai/llama-3-1-8b-instruct");
 
         let asst_json = HUB_SEED
-            .get_file("assistants/io.github.phibya/code-reviewer/1.0.0.json")
+            .get_file("assistants/io.github.ziee-ai/code-reviewer/1.0.0.json")
             .expect("seed has code-reviewer");
         let asst: HubAssistant = serde_json::from_slice(asst_json.contents())
             .expect("parse assistant json");
-        assert_eq!(asst.name, "io.github.phibya/code-reviewer");
+        assert_eq!(asst.name, "io.github.ziee-ai/code-reviewer");
 
         let mcp_json = HUB_SEED
             .get_file("mcp-servers/io.github.github/mcp/1.0.0.json")

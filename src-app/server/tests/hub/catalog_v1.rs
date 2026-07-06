@@ -84,8 +84,8 @@ async fn index_endpoint_lists_seed_items() {
     // Spot-check known ids — the seed is fixed at v2.0.0.
     // IndexItem uses `name` (reverse-DNS); there is no `id` field.
     let ids: Vec<&str> = items.iter().filter_map(|i| i["name"].as_str()).collect();
-    assert!(ids.contains(&"io.github.phibya/code-reviewer"), "missing code-reviewer in {ids:?}");
-    assert!(ids.contains(&"io.github.phibya/llama-3-1-8b-instruct"));
+    assert!(ids.contains(&"io.github.ziee-ai/code-reviewer"), "missing code-reviewer in {ids:?}");
+    assert!(ids.contains(&"io.github.ziee-ai/llama-3-1-8b-instruct"));
     assert!(ids.contains(&"io.github.github/mcp"));
 
     // Every seeded item ships a per-entry `version` string (the source
@@ -124,7 +124,7 @@ async fn manifest_endpoint_returns_model_json() {
     // Manifest lookup is by reverse-DNS `name` (URL-encoded `/`).
     let response = reqwest::Client::new()
         .get(server.api_url(
-            "/hub/manifest/io.github.phibya%2Fllama-3-1-8b-instruct?category=model",
+            "/hub/manifest/io.github.ziee-ai%2Fllama-3-1-8b-instruct?category=model",
         ))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
@@ -134,7 +134,7 @@ async fn manifest_endpoint_returns_model_json() {
     let payload: Json = response.json().await.expect("parse json");
     // HubManifest is a typed struct: { category, model?, assistant?, mcp_server? }.
     assert_eq!(payload["category"], "model");
-    assert_eq!(payload["model"]["name"], "io.github.phibya/llama-3-1-8b-instruct");
+    assert_eq!(payload["model"]["name"], "io.github.ziee-ai/llama-3-1-8b-instruct");
     // There is no model-wide `file_format`; check the first source.
     assert_eq!(payload["model"]["sources"][0]["fileFormat"], "safetensors");
     assert!(
@@ -313,7 +313,7 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     // reverse-DNS form directly.
     sqlx::query(
         "INSERT INTO hub_entities (id, entity_type, entity_id, hub_id, hub_category, hub_version)
-         VALUES ($1, 'assistant', $2, 'io.github.phibya/code-reviewer', 'assistant', '0.0.0-test')",
+         VALUES ($1, 'assistant', $2, 'io.github.ziee-ai/code-reviewer', 'assistant', '0.0.0-test')",
     )
     .bind(Uuid::new_v4())
     .bind(entity_id)
@@ -332,7 +332,7 @@ async fn installed_endpoint_lists_all_tracked_entities() {
     let body: Json = response.json().await.expect("parse json");
     let items = body["items"].as_array().expect("items array");
     assert_eq!(items.len(), 1, "expected exactly one installed row, got {items:?}");
-    assert_eq!(items[0]["hub_id"], "io.github.phibya/code-reviewer");
+    assert_eq!(items[0]["hub_id"], "io.github.ziee-ai/code-reviewer");
     assert_eq!(items[0]["installed_version"], "0.0.0-test");
     // Per-entry version stamp: code-reviewer ships at 1.0.0 in the seed
     // (NOT the catalog-wide hub_version 2.0.0).

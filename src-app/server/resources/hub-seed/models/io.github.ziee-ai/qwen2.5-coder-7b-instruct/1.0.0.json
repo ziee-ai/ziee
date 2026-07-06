@@ -1,22 +1,22 @@
 {
   "$schema": "/schemas/2026-06-12/model.schema.json",
-  "name": "io.github.phibya/deepseek-r1-70b",
+  "name": "io.github.ziee-ai/qwen2.5-coder-7b-instruct",
   "version": "1.0.0",
-  "display_name": "DeepSeek-R1 70B",
-  "description": "Large reasoning model. Flagged as requiring a future ziee-chat for its tensor-parallel runtime support \u2014 used to exercise the compat gate.",
+  "display_name": "Qwen2.5-Coder 7B",
+  "description": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
   "repository": {
-    "url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+    "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct",
     "source": "huggingface",
-    "id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    "id": "Qwen/Qwen2.5-Coder-7B-Instruct"
   },
   "sources": [
     {
       "registryType": "huggingface",
-      "identifier": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+      "identifier": "Qwen/Qwen2.5-Coder-7B-Instruct",
       "version": "main",
       "fileFormat": "safetensors",
       "runtimeHint": "mistralrs",
-      "contextLength": 65536,
+      "contextLength": 32768,
       "environmentVariables": [
         {
           "name": "HUGGINGFACE_API_KEY",
@@ -29,7 +29,7 @@
         {
           "name": "f16",
           "mainFile": "model.safetensors",
-          "sizeGb": 140.0,
+          "sizeGb": 15.2,
           "isDefault": true
         }
       ]
@@ -46,20 +46,21 @@
     "code_interpreter": true
   },
   "tags": [
-    "reasoning",
-    "large",
-    "instruct"
+    "code",
+    "instruct",
+    "chat",
+    "reasoning"
   ],
   "recommended_parameters": {
-    "temperature": 0.6,
-    "top_p": 0.95,
+    "temperature": 0.2,
+    "top_p": 0.9,
     "top_k": 40,
     "repeat_penalty": 1.05,
-    "context_size": 65536
+    "context_size": 32768
   },
   "language_support": [
     "en",
     "zh"
   ],
-  "license": "MIT"
+  "license": "Apache-2.0"
 }
