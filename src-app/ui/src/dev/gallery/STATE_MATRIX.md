@@ -127,10 +127,10 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `(title != null \|\| extra != null)` | 36 |
-| branch | `title != null` | 38 |
-| loading | `skeleton` | 47 |
-| branch | `footer != null` | 57 |
+| branch | `(title != null \|\| extra != null)` | 39 |
+| branch | `title != null` | 41 |
+| loading | `skeleton` | 50 |
+| branch | `footer != null` | 60 |
 
 ### `components/ui/kit/checkbox`
 
@@ -888,10 +888,10 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `conversation.message_count > 0` | 123 |
-| branch | `canDelete && !isInSelectionMode` | 161 |
-| overlay | `<Confirm open>` | 185 |
-| branch | `onSelect` | 203 |
+| branch | `conversation.message_count > 0` | 129 |
+| branch | `canDelete && !isInSelectionMode` | 167 |
+| overlay | `<Confirm open>` | 191 |
+| branch | `onSelect` | 209 |
 
 ### `modules/chat/components/ConversationList`
 
@@ -1219,12 +1219,12 @@ Required states: `delayed`, `error`
 |---|---|---|
 | branch | `!canRead` | 97 |
 | branch | `pinnedVersion` | 213 |
-| branch | `downloadedFlavors.length > 0` | 222 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 240 |
-| branch | `sseError` | 263 |
-| loading | `loading && groups.length === 0` | 272 |
-| error | `error && groups.length === 0` | 274 |
-| error | `error` | 284 |
+| branch | `downloadedFlavors.length > 0` | 224 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 242 |
+| branch | `sseError` | 265 |
+| loading | `loading && groups.length === 0` | 274 |
+| error | `error && groups.length === 0` | 276 |
+| error | `error` | 286 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -2686,9 +2686,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `canDelete && !server.is_built_in` | 274 |
 | branch | `server.last_health_check_status === 'unhealthy'` | 318 |
 | branch | `server.url` | 341 |
-| branch | `server.command` | 351 |
-| branch | `Array.isArray(server.args) && server.args.length > 0` | 355 |
-| branch | `bordered` | 371 |
+| branch | `server.command` | 358 |
+| branch | `Array.isArray(server.args) && server.args.length > 0` | 362 |
+| branch | `bordered` | 378 |
 
 ### `modules/mcp/components/common/McpServerDrawer`
 
@@ -2788,10 +2788,10 @@ Required states: `delayed`, `empty`, `error`
 |---|---|---|
 | loading | `loading && servers.length === 0` | 73 |
 | error | `error && servers.length === 0` | 85 |
-| branch | `policyAllowsAdd` | 150 |
-| branch | `(searchTerm \|\| statusFilter !== 'all')` | 160 |
-| empty | `filteredServers.length === 0` | 194 |
-| branch | `totalServers > 0` | 206 |
+| branch | `policyAllowsAdd` | 152 |
+| branch | `(searchTerm \|\| statusFilter !== 'all')` | 162 |
+| empty | `filteredServers.length === 0` | 196 |
+| branch | `totalServers > 0` | 208 |
 
 ### `modules/mcp/project-extension/components/ProjectMcpSettingsPanel`
 
@@ -3127,10 +3127,10 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canEdit` | 96 |
-| branch | `canDuplicate` | 111 |
-| branch | `canDelete` | 127 |
-| overlay | `<Confirm open>` | 143 |
+| branch | `canEdit` | 98 |
+| branch | `canDuplicate` | 113 |
+| branch | `canDelete` | 129 |
+| overlay | `<Confirm open>` | 145 |
 
 ### `modules/projects/components/ProjectDefaultsForm`
 
@@ -3616,8 +3616,8 @@ Required states: `empty`, `open`
 | overlay | `<Confirm open>` | 109 |
 | branch | `loadingUsers` | 231 |
 | empty | `users.length === 0` | 233 |
-| branch | `index < users.length - 1` | 273 |
-| branch | `users.length > 0` | 279 |
+| branch | `index < users.length - 1` | 276 |
+| branch | `users.length > 0` | 282 |
 
 ### `modules/web-search/components/WebSearchGlobalSection`
 
