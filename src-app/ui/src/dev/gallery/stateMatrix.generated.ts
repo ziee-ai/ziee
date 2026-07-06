@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 307 surfaces carry renderable-state signals; 1706 signals total.
+// 308 surfaces carry renderable-state signals; 1708 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -69,7 +69,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "hideBubble", line: 87 },
       { kind: "branch", condition: "dot", line: 88 },
       { kind: "branch", condition: "!(hideBubble)", line: 108 },
-      { kind: "branch", condition: "icon != null", line: 143 },
+      { kind: "branch", condition: "icon != null", line: 144 },
     ],
   },
   "components/ui/kit/button": {
@@ -312,6 +312,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "extra != null", line: 35 },
     ],
   },
+  "components/ui/kit/section-header": {
+    surface: "components/ui/kit/section-header",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "description != null", line: 49 },
+      { kind: "branch", condition: "actions != null", line: 55 },
+    ],
+  },
   "components/ui/kit/segmented": {
     surface: "components/ui/kit/segmented",
     requiredStates: ["delayed"],
@@ -393,17 +401,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/tabs",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "scrollX", line: 103 },
-      { kind: "branch", condition: "showClose", line: 146 },
-      { kind: "branch", condition: "editable && !hideAdd", line: 162 },
+      { kind: "branch", condition: "scrollX", line: 108 },
+      { kind: "branch", condition: "showClose", line: 151 },
+      { kind: "branch", condition: "editable && !hideAdd", line: 167 },
     ],
   },
   "components/ui/kit/tag": {
     surface: "components/ui/kit/tag",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "icon != null", line: 84 },
-      { kind: "branch", condition: "onClose != null", line: 86 },
+      { kind: "branch", condition: "icon != null", line: 85 },
+      { kind: "branch", condition: "onClose != null", line: 87 },
     ],
   },
   "components/ui/kit/textarea": {
@@ -599,28 +607,28 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/assistant/pages/AssistantsSettings",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading", line: 130 },
-      { kind: "error", condition: "error && assistants.length === 0", line: 132 },
-      { kind: "empty", condition: "assistants.length === 0", line: 140 },
-      { kind: "error", condition: "error", line: 141 },
-      { kind: "branch", condition: "assistant.is_default", line: 175 },
-      { kind: "branch", condition: "!assistant.enabled", line: 178 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 201 },
-      { kind: "branch", condition: "assistants.length > 0", line: 209 },
+      { kind: "loading", condition: "loading", line: 136 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 138 },
+      { kind: "empty", condition: "assistants.length === 0", line: 146 },
+      { kind: "error", condition: "error", line: 147 },
+      { kind: "branch", condition: "assistant.is_default", line: 181 },
+      { kind: "branch", condition: "!assistant.enabled", line: 184 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 207 },
+      { kind: "branch", condition: "assistants.length > 0", line: 215 },
     ],
   },
   "modules/assistant/pages/UserAssistantsSettings": {
     surface: "modules/assistant/pages/UserAssistantsSettings",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "error", condition: "error && assistants.length === 0", line: 131 },
-      { kind: "loading", condition: "loading", line: 141 },
-      { kind: "error", condition: "error && assistants.length === 0", line: 143 },
-      { kind: "empty", condition: "assistants.length === 0", line: 151 },
-      { kind: "branch", condition: "assistant.is_default", line: 169 },
-      { kind: "branch", condition: "!assistant.enabled", line: 172 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 200 },
-      { kind: "branch", condition: "assistants.length > 0", line: 208 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 137 },
+      { kind: "loading", condition: "loading", line: 147 },
+      { kind: "error", condition: "error && assistants.length === 0", line: 149 },
+      { kind: "empty", condition: "assistants.length === 0", line: 157 },
+      { kind: "branch", condition: "assistant.is_default", line: 175 },
+      { kind: "branch", condition: "!assistant.enabled", line: 178 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 206 },
+      { kind: "branch", condition: "assistants.length > 0", line: 214 },
     ],
   },
   "modules/auth-providers/components/AuthProviderEditDrawer": {
@@ -650,15 +658,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth-providers/components/AuthProvidersListSection",
     requiredStates: ["delayed","empty","error","open"],
     signals: [
-      { kind: "branch", condition: "row.last_test_ok === null || row.last_test_ok === undefined", line: 84 },
-      { kind: "branch", condition: "!row.last_test_ok", line: 94 },
-      { kind: "loading", condition: "loading && providers.length === 0", line: 166 },
-      { kind: "empty", condition: "providers.length === 0", line: 170 },
-      { kind: "error", condition: "error", line: 171 },
-      { kind: "branch", condition: "!row.enabled", line: 205 },
-      { kind: "branch", condition: "row.last_test_ok === false", line: 228 },
-      { kind: "branch", condition: "index < providers.length - 1", line: 247 },
-      { kind: "overlay", condition: "<AuthProviderEditDrawer open>", line: 257 },
+      { kind: "branch", condition: "row.last_test_ok === null || row.last_test_ok === undefined", line: 85 },
+      { kind: "branch", condition: "!row.last_test_ok", line: 95 },
+      { kind: "loading", condition: "loading && providers.length === 0", line: 172 },
+      { kind: "empty", condition: "providers.length === 0", line: 176 },
+      { kind: "error", condition: "error", line: 177 },
+      { kind: "branch", condition: "!row.enabled", line: 211 },
+      { kind: "branch", condition: "row.last_test_ok === false", line: 234 },
+      { kind: "branch", condition: "index < providers.length - 1", line: 253 },
+      { kind: "overlay", condition: "<AuthProviderEditDrawer open>", line: 263 },
     ],
   },
   "modules/auth/AuthCallbackPage": {

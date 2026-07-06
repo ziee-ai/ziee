@@ -793,6 +793,19 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       'LinkAccountPage',
     ),
   },
+  // ── DEFECT-REPRO: the detection system's own known-positive fixture. Renders
+  // the canonical human-caught geometry misses (starting with A1 zero-gap: the
+  // hardware "Disconnected"/"Connect" pair) so the Layer-1 detectors have a
+  // permanent regression target. INTENTIONALLY defective — allow-listed for the
+  // gate, still reported (see docs/DEFECT_TAXONOMY.md + geometry-allowlist.json).
+  {
+    slug: 'seeded-defect-repro',
+    title: 'Defect repro — detection-system known positives',
+    note: 'A1 zero-gap (hardware Disconnected/Connect) — intentional fixture',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./DefectRepro'), 'DefectRepro'),
+  },
 ]
 
 export const SEEDED_SURFACE_ENTRIES: SeededSurfaceEntry[] = [

@@ -13,6 +13,7 @@ import {
   ErrorState,
   Progress,
   Result,
+  SectionHeader,
   Separator,
   Skeleton,
   Spin,
@@ -577,8 +578,51 @@ const tooltipStory: GalleryStory = {
   ],
 }
 
+const sectionHeaderStory: GalleryStory = {
+  id: 'section-header',
+  title: 'Section header',
+  note: 'title + actions, never-wrap-with-room (title truncates; actions never drop to a new line)',
+  cases: [
+    {
+      key: 'short',
+      label: 'Short title + icon action',
+      render: () => (
+        <div className="w-80 rounded-lg border border-border p-3">
+          <SectionHeader
+            data-testid="g-section-header-short"
+            title="Template Assistants"
+            actions={
+              <Button size="icon" variant="default" data-testid="g-section-header-short-add" aria-label="Add">
+                +
+              </Button>
+            }
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'long',
+      label: 'Long title truncates (stays one row)',
+      render: () => (
+        <div className="w-64 rounded-lg border border-border p-3">
+          <SectionHeader
+            data-testid="g-section-header-long"
+            title="An extremely long section header title that must truncate rather than wrap or push the action button onto a second row"
+            actions={
+              <Button size="icon" variant="default" data-testid="g-section-header-long-add" aria-label="Add">
+                +
+              </Button>
+            }
+          />
+        </div>
+      ),
+    },
+  ],
+}
+
 export const displayStories: GalleryStory[] = [
   tagStory,
+  sectionHeaderStory,
   badgeStory,
   alertStory,
   avatarStory,

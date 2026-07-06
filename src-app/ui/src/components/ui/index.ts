@@ -159,6 +159,8 @@ export { Spinner, Spin } from './kit/spinner'
 export type { SpinnerProps, SpinProps } from './kit/spinner'
 export { Card } from './kit/card'
 export type { CardProps } from './kit/card'
+export { SectionHeader } from './kit/section-header'
+export type { SectionHeaderProps } from './kit/section-header'
 export { Text, Title, Paragraph, Link } from './kit/typography'
 export type { TextProps, TitleProps, ParagraphProps, LinkProps } from './kit/typography'
 

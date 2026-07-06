@@ -24,6 +24,11 @@ interface TabsBase {
   onTabClick?: (key: string) => void
   disabled?: boolean
   size?: 'sm' | 'default'
+  /** Tab strip look. `default` = boxed/segmented pill strip; `line` = quiet
+   *  UNDERLINE tabs (no box). Per the design system, dense/narrow containers
+   *  (side panels, toolbars) should use `line` — a boxed strip reads as heavy in
+   *  a narrow side panel (taxonomy J5). */
+  variant?: 'default' | 'line'
   className?: string
   /** Fill the container: root becomes a flex column, the tab strip stays a fixed
    *  row, and the active panel gets the remaining height (so its content can
@@ -65,7 +70,7 @@ interface TabsStatic {
 export type TabsProps = TabsBase & (TabsEditable | TabsStatic)
 
 export function Tabs({
-  items, value, defaultValue, onValueChange, onTabClick, disabled, size, className, fill,
+  items, value, defaultValue, onValueChange, onTabClick, disabled, size, variant, className, fill,
   tabStripClassName, scrollX,
   editable, hideAdd, onEdit, onClose, addLabel, closeLabel, 'data-testid': testid,
 }: TabsProps) {
@@ -125,7 +130,7 @@ export function Tabs({
   function renderStrip() {
     return (
       <>
-      <TabsList>
+      <TabsList variant={variant}>
         {items.map((t) => {
           const showClose = (t.closable ?? editable) && !s.disabled && !t.disabled
           // The close affordance is a REAL sibling <button>, never nested inside the

@@ -1,0 +1,11 @@
+{
+  "__doc__": "Allow-list for the Layer-1 geometry audit (scripts/gallery-geometry-audit.mjs). Each entry excuses a HIGH-severity finding that is a known, intentional, or unfixable-by-design pattern; the finding is still REPORTED (marked `allowed`) but does not fail `--gate`. Only HIGH findings gate, so this list only needs entries for HIGH classes (A1 real zero-gap, B3 page overflow, I4 modal-out-of-viewport, L1/L5 content-rendering, B1 genuine flex-WRAP-with-room). MEDIUM/LOW classes are review signal and never gate. Match fields: class (required), surface ('*' = any), selector (substring, optional), viewport (optional). Keep every reason specific + defensible — an allow-list entry is an accepted defect, not a silenced detector.",
+  "entries": [
+    {
+      "class": "A1",
+      "surface": "seeded-defect-repro",
+      "selector": "repro-a1",
+      "reason": "Intentional known-positive fixture (DefectRepro.tsx) reproducing the original hardware Disconnected/Connect zero-gap (user miss #1). The detector MUST flag it — that is the fixture's purpose — so it is allow-listed for --gate but still reported as acceptance proof."
+    }
+  ]
+}

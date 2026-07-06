@@ -110,6 +110,7 @@ export const GALLERY_COVERAGE = {
   "components/ui/kit/result": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/scroll-area": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/segmented": { kind: 'via', reason: 'kit-stories' },
+  "components/ui/kit/section-header": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/select": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/separator": { kind: 'via', reason: 'kit-stories' },
   "components/ui/kit/sheet": { kind: 'via', reason: 'kit-stories' },

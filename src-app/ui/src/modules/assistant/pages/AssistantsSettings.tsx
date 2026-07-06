@@ -2,6 +2,7 @@ import { Pencil, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
+  SectionHeader,
   Descriptions,
   Separator,
   Empty,
@@ -114,19 +115,24 @@ export function AssistantsSettings() {
       subtitle="Manage template assistants. Default assistants are automatically cloned for new users."
     >
       <div>
-        <Card
-          data-testid="template-assistants-card"
-          title="Template Assistants"
-          extra={
-            <Can permission={Permissions.AssistantsTemplateCreate}>
-              <AddButton
-                label="Create assistant"
-                onClick={handleCreate}
-                data-testid="template-assistants-create-btn"
-              />
-            </Can>
-          }
-        >
+        <Card data-testid="template-assistants-card">
+          {/* SectionHeader (never-wrap-with-room) instead of Card title/extra:
+              the kit Card header stacked this short title above the `+` button on
+              mobile even though both trivially fit one row (taxonomy B1). */}
+          <SectionHeader
+            title="Template Assistants"
+            data-testid="template-assistants-header"
+            className="mb-4"
+            actions={
+              <Can permission={Permissions.AssistantsTemplateCreate}>
+                <AddButton
+                  label="Create assistant"
+                  onClick={handleCreate}
+                  data-testid="template-assistants-create-btn"
+                />
+              </Can>
+            }
+          />
           {loading ? (
             <Loading />
           ) : error && assistants.length === 0 ? (

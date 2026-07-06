@@ -136,6 +136,20 @@ field primitives so spacing, label association, invalid state, and a11y come for
 - Settings pages: wrap the page in `SettingsPageContainer` and each section in `Card`
   (`@/components/ui`); match the existing settings cards rather than free-styling sizes/spacing.
 
+## Component variant selection — quiet variants in dense/narrow containers
+
+Match the variant's visual WEIGHT to the container's density (taxonomy J5):
+
+- **Tabs** — a side panel, drawer, or toolbar is narrow + dense: use `<Tabs variant="line">`
+  (quiet UNDERLINE tabs). Reserve the default boxed/segmented pill strip for wide, primary
+  tabbed surfaces. A boxed strip in a narrow side panel reads as heavy chrome.
+- **Section headers** — a title with actions uses `<SectionHeader title actions>`
+  (`@/components/ui`), not `Card title=/extra=`: it keeps the title + actions on ONE row
+  (title truncates; actions never wrap), avoiding the mobile premature-stack (taxonomy B1).
+- **Action groups** — peer icon-only buttons in one group share ONE variant (all `ghost` or
+  all `outline`); don't mix (taxonomy J6). Reserve a distinct variant for a genuine
+  primary/secondary split.
+
 ## Forbidden patterns (lint-enforced — a build fails on these)
 
 - **Hardcoded colors** — raw hues (`bg-red-600`), arbitrary color values (`text-[#fff]`,
