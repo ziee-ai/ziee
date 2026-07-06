@@ -6,6 +6,7 @@ import path from 'node:path'
 import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
+import { galleryCoveragePlugin } from './plugins/vite-plugin-gallery-coverage.js'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -14,8 +15,17 @@ export default defineConfig(async () => {
   const isDev = process.env.NODE_ENV !== 'production'
   const isTest = process.env.NODE_ENV === 'test'
 
+  // PART 2 (gallery branch-coverage): when GALLERY_COVERAGE=1, instrument the
+  // component/page source with babel-plugin-istanbul so the render pass exposes
+  // `window.__coverage__` (per-branch hit counts). Off by every other build —
+  // normal dev/build/test never pays the instrumentation cost.
+  const coverage = process.env.GALLERY_COVERAGE === '1'
+
   return {
     plugins: [
+      // Instrument component/page source FIRST (enforce:'pre') so branch coverage
+      // maps to real source lines, before react/oxc transpiles it.
+      ...(coverage ? [galleryCoveragePlugin({ srcDir: path.resolve(__dirname, 'src') })] : []),
       react(),
       tailwindcss(),
       // Detect duplicate form names

@@ -41,3 +41,6 @@ visual-judge-report.json
 # `gate:ui`. The human-readable RUNTIME_FINDINGS.md IS committed (a stable,
 # normalized snapshot); the per-finding .jsonl is a generated feed for the gate.
 src/dev/gallery/RUNTIME_FINDINGS.jsonl
+
+# gallery branch-coverage raw merge (Part 2) — regenerated, not committed
+src/dev/gallery/coverage.raw.json

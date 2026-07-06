@@ -1,0 +1,3 @@
+{
+  "__doc__": "PART 2 branch-coverage allow-list. Key = '<surface-file>:<line>' (optionally ':<arm>'); value = reason. An uncovered render branch listed here is excused (e.g. an unreachable defensive default, a platform/desktop-only path, or a branch a headless render legitimately can't reach). Everything else must be exercised by a gallery entry. Populated as the coverage pass runs; keep each reason specific."
+}
