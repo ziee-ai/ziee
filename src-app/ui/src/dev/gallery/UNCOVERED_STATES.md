@@ -11,22 +11,12 @@
 ## Summary
 
 - 626 instrumented surface files rendered.
-- **2** STATE gaps not allow-listed — the actionable queue.
-- 8592 generic branch forks not allow-listed (informational).
+- **0** STATE gaps not allow-listed — the actionable queue.
+- 8573 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
 
-### `modules/llm-provider/components/LocalProviderSettings.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 35 | loading | `if (!currentProvider && (loading \|\| !isInitialized)) {` |
-
-### `modules/user-profile/UserProfileWidget.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 86 | loading | `if (isInitializing \|\| isLoading) {` |
+✅ Every Part-1 named-state branch (loading/error/empty/overlay/panel) was exercised by a gallery combo (or allow-listed).
 
 ## Generic branch forks (informational — top files by count)
 
@@ -35,8 +25,8 @@
 | `modules/mcp/components/common/McpServerDrawer.tsx` | 395 |
 | `modules/chat/core/stores/Chat.store.ts` | 220 |
 | `modules/mcp/stores/McpComposer.store.ts` | 206 |
-| `modules/mcp/chat-extension/extension.tsx` | 151 |
 | `modules/layouts/app-layout/AppLayout.tsx` | 142 |
+| `modules/mcp/chat-extension/extension.tsx` | 136 |
 | `modules/file/stores/File.store.ts` | 113 |
 | `modules/hub/modules/llm-models/components/ModelHubCard.tsx` | 113 |
 | `modules/chat/core/extensions/registry.tsx` | 111 |
