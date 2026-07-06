@@ -3,6 +3,7 @@
  * (Playwright opens them and snapshots the open state); where an inline open
  * variant is cheap, it's shown too.
  */
+import { useState } from 'react'
 import {
   Button,
   Confirm,
@@ -15,6 +16,29 @@ import { FieldError } from '@/components/ui/shadcn/field'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined
+
+/**
+ * Inline OPEN + loading Sheet: open on mount so the coverage/visual pass captures
+ * the loading arm (`loading ? <Spinner> : children`), but with `onOpenChange` wired
+ * so the built-in close button / Escape / backdrop actually dismiss it — otherwise
+ * a hardcoded `open` with no handler pins a modal over the whole gallery canvas and
+ * blocks manual browsing.
+ */
+function SheetOpenLoadingCase() {
+  const [open, setOpen] = useState(true)
+  return (
+    <Sheet
+      data-testid="g-sheet-loading"
+      open={open}
+      onOpenChange={setOpen}
+      loading
+      loadingLabel="Loading sheet content"
+      title="Loading sheet"
+    >
+      <p className="text-sm text-muted-foreground">Hidden while loading.</p>
+    </Sheet>
+  )
+}
 
 const dialogStory: GalleryStory = {
   id: 'dialog',
@@ -71,20 +95,11 @@ const sheetStory: GalleryStory = {
     {
       // Inline OPEN + loading: the body is replaced by a centered spinner
       // (`loading ? <Spinner> : children`) — an arm no closed-trigger render
-      // reaches. Kept open on the canvas so the coverage pass sees it.
+      // reaches. Open on mount so the coverage pass sees it, but dismissable
+      // (see SheetOpenLoadingCase) so it doesn't pin a modal over the canvas.
       key: 'open-loading',
       label: 'Open · loading',
-      render: () => (
-        <Sheet
-          data-testid="g-sheet-loading"
-          open
-          loading
-          loadingLabel="Loading sheet content"
-          title="Loading sheet"
-        >
-          <p className="text-sm text-muted-foreground">Hidden while loading.</p>
-        </Sheet>
-      ),
+      render: () => <SheetOpenLoadingCase />,
     },
   ],
 }
