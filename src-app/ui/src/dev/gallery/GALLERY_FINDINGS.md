@@ -53,6 +53,52 @@ redirect/guard behavior, not a defect:
 - `/settings` — index route redirects to the first settings page.
 - `/setup` (desktop) — redirects when first-run setup is already complete.
 
+### Visual-review fix pass (fixture/seeding debt, 2026-07-06)
+
+The full visual review exposed gallery FIXTURE gaps (not app bugs) on the
+surfaces below. Each is now either seeded so its real state renders, or
+allow-listed here with the reason its `empty` state is meaningless.
+
+Seeded/fixed (the surface now renders its reviewable state):
+
+- **`/auth`** rendered blank — `AuthPage` returns `null` when authenticated and
+  the gallery seeds an admin. Fixed by a per-surface auth-seed override
+  (`SURFACE_AUTH_SEED` in `main.tsx`): the `auth` surface now seeds `none`, so
+  the login form renders. NOT an app bug.
+- **`/settings`** rendered blank — the enumerated route's element is `() => null`;
+  the real landing lives in `SettingsLayoutDef`, which the page grid doesn't
+  apply. Fixed by a seeded surface (`settings`) that renders `SettingsPage`'s nav
+  shell. NOT an app bug.
+- **`/hardware-monitor`** showed "Waiting for usage data…" — usage arrives over
+  the `/api/hardware/stream` SSE connection, not a JSON GET, so the loaded
+  cassette can't populate it. Fixed by a seeded surface that seeds a realistic
+  `currentUsage`/`hardwareInfo` snapshot. NOT an app bug.
+- **`/settings/sessions`** showed EMPTY numeric inputs — a FIXTURE GAP (the crawl
+  never recorded `Auth.getSessionSettings`, so the InputNumbers hydrated from the
+  mock-API safe-empty proxy). The page's `form.reset(settings)` hydration is
+  correct. Fixed by adding an `Auth.getSessionSettings` cassette entry (24h / 30d
+  defaults). NOT a hydration bug.
+- **`/settings/citations`** `empty` == `loaded` — the crawl recorded
+  `Citations.list` as `{ entries: [] }`, so `loaded` was ALREADY the `<Empty>`
+  state. Fixed by seeding a populated `Citations.list` fixture, so `loaded` shows
+  reference cards and `empty` (arrays deep-emptied) shows a genuinely different
+  `<Empty>`.
+
+Allow-listed — `empty` is meaningless (an always-populated singleton config /
+the current user's own record; `toEmpty` only empties arrays + zeros counts, so a
+scalar-toggle settings form is unchanged):
+
+- **`/settings/memory-admin`** — the `memory_admin_settings` singleton (toggles +
+  numeric thresholds); always present. Its adjacent lists (`Memory.list`,
+  `MemoryAudit.list`) are already empty in `loaded`.
+- **`/settings/file-rag-admin`** — the `file_rag_admin` singleton config; always
+  present.
+- **`/settings/profile`** — the signed-in user's own profile; always present.
+
+For these three, `empty` is indistinguishable from `loaded` BY DESIGN — there is
+no "no data yet" state a config/profile form can be in. The distinct states worth
+reviewing are `loaded` (covered) and `error` (the load-error path).
+
 ## Loose-typed fixtures (documented limitation, NOT stale data)
 
 `Hub.getAssistants/getCatalog/getCatalogVersion/getModels`,
@@ -98,7 +144,9 @@ not one-line crashes):
   load path should `catch` and set an error flag rather than re-throw. Not a
   crash, but noise + a missed error-state opportunity.
 - **`hardware-monitor` renders blank** in empty/error (len 0) — no empty/error
-  state at all.
+  state at all. RESOLVED (2026-07-06): the `hardware-monitor` seeded surface now
+  renders a realistic usage snapshot (see the fix pass above); the live metrics
+  arrive over SSE, which the GET-only mode transforms can't populate.
 
 These are tracked, not blocking: they need a per-page error-state design pass,
 not a mechanical fix.

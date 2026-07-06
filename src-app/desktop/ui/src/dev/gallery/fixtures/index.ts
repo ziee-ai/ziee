@@ -6,6 +6,7 @@
  */
 import type { Cassette } from '../mockApi'
 import { authCassette } from './auth'
+import { citationsCassette } from './citations'
 import { crawlCassette } from './crawl.generated'
 
 export { adminUser, adminMe, adminPermissions } from './auth'
@@ -13,4 +14,5 @@ export { adminUser, adminMe, adminPermissions } from './auth'
 export const GALLERY_CASSETTE: Cassette = {
   ...crawlCassette,
   ...authCassette,
+  ...citationsCassette,
 }
