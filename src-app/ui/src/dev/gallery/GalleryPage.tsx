@@ -12,6 +12,7 @@ import { ACCENT_PRESETS } from '@/components/ThemeProvider/accentPresets'
 import { GALLERY_ALL_ACCENTS, GALLERY_DIRS, GALLERY_THEMES } from './matrix'
 import { StorySection } from './story'
 import { ALL_STORIES } from './stories'
+import { GalleryPages } from './pages'
 import { useGalleryTheme } from './useGalleryTheme'
 
 const ctl = (name: string) => `gallery-control-${name}`
@@ -69,7 +70,13 @@ function ControlBar() {
   )
 }
 
-export function GalleryPage() {
+export function GalleryPage({
+  surface,
+  state,
+}: {
+  surface?: string
+  state?: string
+} = {}) {
   return (
     <div
       data-testid="gallery-root"
@@ -80,9 +87,19 @@ export function GalleryPage() {
     >
       <ControlBar />
       <div className="flex flex-col gap-6 p-6">
-        {ALL_STORIES.map(story => (
-          <StorySection key={story.id} story={story} />
-        ))}
+        {/* Single-surface state mode (?surface=&state=) renders ONE page in the
+            given data-state; the default browses every page loaded + the kit
+            component stories. */}
+        {surface ? (
+          <GalleryPages only={surface} state={state} />
+        ) : (
+          <>
+            <GalleryPages />
+            {ALL_STORIES.map(story => (
+              <StorySection key={story.id} story={story} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

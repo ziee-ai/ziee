@@ -60,7 +60,9 @@ export const UserGroups = defineStore('UserGroups', {
           per_page: requestPageSize,
         })
         set({
-          groups: response.groups,
+          // Guard: a malformed/edge response must not set `groups` undefined —
+          // consumers (UserGroupsDrawer) map over it unconditionally.
+          groups: Array.isArray(response.groups) ? response.groups : [],
           total: response.total,
           currentPage: response.page,
           pageSize: response.per_page,
@@ -91,7 +93,10 @@ export const UserGroups = defineStore('UserGroups', {
           per_page: 50,
         }).then(response => {
           set({
-            currentGroupMembers: response.users.map(u => ({
+            currentGroupMembers: (Array.isArray(response.users)
+              ? response.users
+              : []
+            ).map(u => ({
               id: u.id,
               username: u.username,
               email: u.email,

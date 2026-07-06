@@ -1,0 +1,2935 @@
+{
+  "Assistant.getDefault": {
+    "id": "3dd4dc94-8097-484d-978e-e5666d68063d",
+    "name": "Default Assistant",
+    "description": "General-purpose AI assistant for everyday tasks",
+    "instructions": "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.",
+    "parameters": {
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "top_p": 0.9
+    },
+    "is_template": true,
+    "is_default": true,
+    "enabled": true,
+    "created_at": "2026-07-05T15:43:20Z",
+    "updated_at": "2026-07-05T15:43:20Z"
+  },
+  "Assistant.list": {
+    "assistants": [],
+    "total": 0
+  },
+  "AssistantTemplate.getDefault": {
+    "id": "3dd4dc94-8097-484d-978e-e5666d68063d",
+    "name": "Default Assistant",
+    "description": "General-purpose AI assistant for everyday tasks",
+    "instructions": "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.",
+    "parameters": {
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "top_p": 0.9
+    },
+    "is_template": true,
+    "is_default": true,
+    "enabled": true,
+    "created_at": "2026-07-05T15:43:20Z",
+    "updated_at": "2026-07-05T15:43:20Z"
+  },
+  "AssistantTemplate.list": {
+    "assistants": [
+      {
+        "id": "3dd4dc94-8097-484d-978e-e5666d68063d",
+        "name": "Default Assistant",
+        "description": "General-purpose AI assistant for everyday tasks",
+        "instructions": "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.",
+        "parameters": {
+          "max_tokens": 2048,
+          "temperature": 0.7,
+          "top_p": 0.9
+        },
+        "is_template": true,
+        "is_default": true,
+        "enabled": true,
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z"
+      }
+    ],
+    "total": 1
+  },
+  "Auth.listProviders": {
+    "providers": []
+  },
+  "AuthProviders.list": [
+    {
+      "id": "17430303-ac1b-4ac5-a620-10da04bae489",
+      "name": "apple",
+      "provider_type": "apple",
+      "enabled": false,
+      "config": {
+        "key_id": "",
+        "private_key_path": "",
+        "scopes": [
+          "name",
+          "email"
+        ],
+        "services_id": "",
+        "team_id": ""
+      },
+      "created_at": "2026-07-05T15:43:20.776356Z",
+      "updated_at": "2026-07-05T15:43:20.776356Z"
+    },
+    {
+      "id": "c1362c14-15a1-4ab7-8317-7632c9066468",
+      "name": "google",
+      "provider_type": "oidc",
+      "enabled": false,
+      "config": {
+        "attribute_mapping": {
+          "display_name": "name",
+          "email": "email",
+          "first_name": "given_name",
+          "last_name": "family_name",
+          "user_id": "sub",
+          "username": "email"
+        },
+        "client_id": "",
+        "client_secret": "",
+        "display_name": "Sign in with Google",
+        "issuer_url": "https://accounts.google.com",
+        "scopes": [
+          "openid",
+          "email",
+          "profile"
+        ]
+      },
+      "created_at": "2026-07-05T15:43:20.776356Z",
+      "updated_at": "2026-07-05T15:43:20.776356Z"
+    },
+    {
+      "id": "a427997e-61f0-485e-a2f7-f17a0afabd65",
+      "name": "microsoft",
+      "provider_type": "oidc",
+      "enabled": false,
+      "config": {
+        "allowed_tenant_ids": [],
+        "attribute_mapping": {
+          "display_name": "name",
+          "email": "email",
+          "user_id": "sub",
+          "username": "preferred_username"
+        },
+        "client_id": "",
+        "client_secret": "",
+        "display_name": "Sign in with Microsoft",
+        "issuer_url": "https://login.microsoftonline.com/common/v2.0",
+        "scopes": [
+          "openid",
+          "email",
+          "profile"
+        ]
+      },
+      "created_at": "2026-07-05T15:43:20.776356Z",
+      "updated_at": "2026-07-05T15:43:20.776356Z"
+    }
+  ],
+  "Chat.getUserLlmProviders": {
+    "providers": []
+  },
+  "Citations.list": {
+    "entries": []
+  },
+  "Citations.listStyles": {
+    "styles": []
+  },
+  "CodeSandbox.getResourceLimits": {
+    "memory_max_bytes": 536870912,
+    "memory_swap_max_bytes": 0,
+    "pids_max": 256,
+    "cpu_max": "100000 100000",
+    "address_space_bytes": 4294967296,
+    "fsize_bytes": 268435456,
+    "nproc_max": 256,
+    "nofile_max": 1024,
+    "cpu_secs_max": 1240,
+    "timeout_secs": 620,
+    "vm_idle_evict_secs": 900,
+    "mac_vm_vcpus": 2,
+    "mac_vm_ram_mib": 2048,
+    "vm_max_concurrent_execs": 3,
+    "created_at": "2026-07-05T15:43:20.764425Z",
+    "updated_at": "2026-07-05T15:43:20.764425Z"
+  },
+  "CodeSandbox.listFlavors": {
+    "available": [
+      {
+        "flavor": "minimal",
+        "description": "Shell + coreutils + curl + jq + git + python3 (interpreter only).",
+        "approximate_size_mb": 57,
+        "cached": false,
+        "mounted": false
+      },
+      {
+        "flavor": "full",
+        "description": "minimal + numpy + pandas + torch + R 4.4 + tidyverse + Node 24 (npx) + uv (uvx) + ts-node.",
+        "approximate_size_mb": 853,
+        "cached": false,
+        "mounted": false
+      }
+    ],
+    "host_allowed_commands": [
+      "npx",
+      "uvx",
+      "python",
+      "python3",
+      "node"
+    ]
+  },
+  "Conversation.list": {
+    "conversations": [],
+    "total": 0
+  },
+  "File.list": {
+    "files": [],
+    "total": 0,
+    "page": 1,
+    "per_page": 100
+  },
+  "FileRagAdmin.get": {
+    "id": 1,
+    "enabled": true,
+    "embedding_dimensions": 768,
+    "chunk_chars": 1200,
+    "chunk_overlap_chars": 200,
+    "max_chunks_per_file": 5000,
+    "default_top_k": 8,
+    "cosine_threshold": 0.6,
+    "semantic_enabled": true,
+    "fts_enabled": true,
+    "fts_dictionary": "simple",
+    "fts_rrf_k": 60,
+    "fts_candidate_multiplier": 4,
+    "fts_min_rank": 0,
+    "updated_at": "2026-07-05T15:43:20.874625Z"
+  },
+  "Hardware.info": {
+    "hardware": {
+      "operating_system": {
+        "name": "Ubuntu",
+        "version": "22.04",
+        "kernel_version": "6.8.0-124-generic",
+        "architecture": "x86_64"
+      },
+      "cpu": {
+        "model": "AMD EPYC 9654 96-Core Processor",
+        "architecture": "x86_64",
+        "cores": 192,
+        "threads": 192,
+        "base_frequency": 3700
+      },
+      "memory": {
+        "total_ram": 3246432366592,
+        "total_swap": 8589930496
+      },
+      "gpu_devices": [
+        {
+          "device_id": "cuda:0",
+          "name": "NVIDIA H200 NVL",
+          "vendor": "NVIDIA",
+          "memory": 150754820096,
+          "driver_version": "610.43.02",
+          "compute_capabilities": {
+            "cuda_support": true,
+            "cuda_version": "9.0",
+            "metal_support": false,
+            "opencl_support": true,
+            "vulkan_support": true
+          }
+        },
+        {
+          "device_id": "cuda:1",
+          "name": "NVIDIA H200 NVL",
+          "vendor": "NVIDIA",
+          "memory": 150754820096,
+          "driver_version": "610.43.02",
+          "compute_capabilities": {
+            "cuda_support": true,
+            "cuda_version": "9.0",
+            "metal_support": false,
+            "opencl_support": true,
+            "vulkan_support": true
+          }
+        },
+        {
+          "device_id": "cuda:2",
+          "name": "NVIDIA H200 NVL",
+          "vendor": "NVIDIA",
+          "memory": 150754820096,
+          "driver_version": "610.43.02",
+          "compute_capabilities": {
+            "cuda_support": true,
+            "cuda_version": "9.0",
+            "metal_support": false,
+            "opencl_support": true,
+            "vulkan_support": true
+          }
+        },
+        {
+          "device_id": "cuda:3",
+          "name": "NVIDIA H200 NVL",
+          "vendor": "NVIDIA",
+          "memory": 150754820096,
+          "driver_version": "610.43.02",
+          "compute_capabilities": {
+            "cuda_support": true,
+            "cuda_version": "9.0",
+            "metal_support": false,
+            "opencl_support": true,
+            "vulkan_support": true
+          }
+        }
+      ]
+    }
+  },
+  "Hub.getAssistants": [
+    {
+      "name": "io.github.phibya/code-reviewer",
+      "display_name": "Code Reviewer",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/assistant.schema.json",
+      "description": "Expert code reviewer with a security-and-best-practices focus.",
+      "instructions": "You are an expert code reviewer. Focus on security, performance, maintainability,\nand best practices. Provide constructive feedback with specific, actionable suggestions.\nWhen you flag an issue, cite the file path and line number, explain the failure mode,\nand propose a concrete fix.\n",
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.3
+      },
+      "category": "development",
+      "tags": [
+        "code",
+        "security",
+        "review",
+        "best-practices"
+      ],
+      "capabilities_required": [
+        "tools"
+      ],
+      "author": "Ziee Team",
+      "dependencies": [
+        {
+          "kind": "model",
+          "name": "io.github.phibya/llama-3-1-8b-instruct",
+          "versionRange": "*"
+        },
+        {
+          "kind": "model",
+          "name": "io.github.phibya/phi-3-mini-4k-instruct",
+          "versionRange": "*"
+        }
+      ],
+      "created_ids": [],
+      "created_template_ids": []
+    },
+    {
+      "name": "io.github.phibya/creative-writer",
+      "display_name": "Creative Writer",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/assistant.schema.json",
+      "description": "Professional creative writer for stories, articles, and content.",
+      "instructions": "You are a professional creative writer with expertise in storytelling, content\ncreation, and engaging writing. Create compelling, well-structured content tailored\nto the user's tone, audience, and length requirements.\n",
+      "parameters": {
+        "max_tokens": 4096,
+        "temperature": 0.8
+      },
+      "category": "writing",
+      "tags": [
+        "writing",
+        "creative",
+        "storytelling",
+        "content"
+      ],
+      "author": "Ziee Team",
+      "dependencies": [
+        {
+          "kind": "model",
+          "name": "io.github.phibya/llama-3-1-8b-instruct",
+          "versionRange": "*"
+        },
+        {
+          "kind": "model",
+          "name": "io.github.phibya/phi-3-mini-4k-instruct",
+          "versionRange": "*"
+        }
+      ],
+      "created_ids": [],
+      "created_template_ids": []
+    },
+    {
+      "name": "io.github.phibya/deep-researcher",
+      "display_name": "Deep Researcher",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/assistant.schema.json",
+      "description": "Multi-step research assistant. Pinned to a future ziee-chat that ships the parallel sub-agent runtime — used to exercise the compat gate.",
+      "instructions": "You are a meticulous research assistant. Decompose the question into\nsub-questions, gather evidence for each, cite sources, and synthesize a\nbalanced answer. Flag uncertainty explicitly and distinguish established\nfacts from speculation.\n",
+      "parameters": {
+        "max_tokens": 4096,
+        "temperature": 0.4
+      },
+      "category": "research",
+      "tags": [
+        "research",
+        "analysis",
+        "synthesis"
+      ],
+      "author": "Ziee Team",
+      "dependencies": [
+        {
+          "kind": "model",
+          "name": "io.github.phibya/deepseek-r1-70b",
+          "versionRange": "*"
+        },
+        {
+          "kind": "model",
+          "name": "io.github.phibya/llama-3-1-8b-instruct",
+          "versionRange": "*"
+        },
+        {
+          "kind": "mcp-server",
+          "name": "com.brave/search-mcp",
+          "versionRange": "*"
+        }
+      ],
+      "created_ids": [],
+      "created_template_ids": []
+    },
+    {
+      "name": "io.github.phibya/sql-helper",
+      "display_name": "SQL Helper",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/assistant.schema.json",
+      "description": "Writes, explains, and optimizes SQL across Postgres, MySQL, and SQLite dialects.",
+      "instructions": "You are a SQL expert. Help users write correct, efficient, and readable SQL.\nWhen asked for a query: state your assumptions about the schema, give the\nquery, then a one-line explanation of what it does and any indexes it relies\non. Prefer standard SQL; call out dialect-specific syntax when you use it.\nNever run destructive statements without flagging them first.\n",
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.2
+      },
+      "category": "development",
+      "tags": [
+        "sql",
+        "database",
+        "queries"
+      ],
+      "capabilities_required": [
+        "tools"
+      ],
+      "author": "Ziee Team",
+      "dependencies": [
+        {
+          "kind": "model",
+          "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
+          "versionRange": "*"
+        },
+        {
+          "kind": "model",
+          "name": "io.github.phibya/llama-3-1-8b-instruct",
+          "versionRange": "*"
+        },
+        {
+          "kind": "mcp-server",
+          "name": "io.github.modelcontextprotocol/postgres",
+          "versionRange": "*"
+        }
+      ],
+      "created_ids": [],
+      "created_template_ids": []
+    },
+    {
+      "name": "io.github.phibya/vision-analyst",
+      "display_name": "Vision Analyst",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/assistant.schema.json",
+      "description": "Specialized assistant for image and visual content analysis.",
+      "instructions": "You are an expert in visual content analysis. Help users understand images,\nextract information, and provide detailed visual descriptions. When analyzing,\ndescribe composition, subject, mood, and notable details — then answer the\nuser's specific question.\n",
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.4
+      },
+      "category": "vision",
+      "tags": [
+        "vision",
+        "image-analysis",
+        "visual",
+        "description"
+      ],
+      "capabilities_required": [
+        "vision"
+      ],
+      "author": "Ziee Team",
+      "dependencies": [
+        {
+          "kind": "model",
+          "name": "io.github.phibya/qwen2.5-vl-3b-instruct",
+          "versionRange": "*"
+        }
+      ],
+      "created_ids": [],
+      "created_template_ids": []
+    }
+  ],
+  "Hub.getAssistantsVersion": {
+    "version": "2.0.0",
+    "last_updated": "2026-07-05T15:43:21.041450266+00:00"
+  },
+  "Hub.getCatalog": {
+    "schema_version": 2,
+    "hub_version": "2.0.0",
+    "generated_at": "2026-06-15T04:23:16Z",
+    "items": [
+      {
+        "name": "io.github.phibya/code-reviewer",
+        "category": "assistant",
+        "title": "Code Reviewer",
+        "summary": "Expert code reviewer with a security-and-best-practices focus.",
+        "tags": [
+          "code",
+          "security",
+          "review",
+          "best-practices"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "assistants/io.github.phibya/code-reviewer/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/creative-writer",
+        "category": "assistant",
+        "title": "Creative Writer",
+        "summary": "Professional creative writer for stories, articles, and content.",
+        "tags": [
+          "writing",
+          "creative",
+          "storytelling",
+          "content"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "assistants/io.github.phibya/creative-writer/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/deep-researcher",
+        "category": "assistant",
+        "title": "Deep Researcher",
+        "summary": "Multi-step research assistant. Pinned to a future ziee that ships the parallel sub-agent runtime.",
+        "tags": [
+          "research",
+          "analysis",
+          "synthesis"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "min_ziee_version": "99.0.0",
+        "manifest_path": "assistants/io.github.phibya/deep-researcher/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/sql-helper",
+        "category": "assistant",
+        "title": "SQL Helper",
+        "summary": "Writes, explains, and optimizes SQL across Postgres, MySQL, and SQLite dialects.",
+        "tags": [
+          "sql",
+          "database",
+          "queries"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "assistants/io.github.phibya/sql-helper/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/vision-analyst",
+        "category": "assistant",
+        "title": "Vision Analyst",
+        "summary": "Specialized assistant for image and visual content analysis.",
+        "tags": [
+          "vision",
+          "image-analysis",
+          "visual",
+          "description"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "assistants/io.github.phibya/vision-analyst/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "app.linear/mcp",
+        "category": "mcp-server",
+        "title": "Linear MCP Server",
+        "summary": "Manage Linear issues, projects, and cycles over Streamable HTTP.",
+        "tags": [
+          "linear",
+          "issues",
+          "project-management",
+          "api",
+          "streamable-http"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "min_ziee_version": "99.0.0",
+        "manifest_path": "mcp-servers/app.linear/mcp/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "com.brave/search-mcp",
+        "category": "mcp-server",
+        "title": "Brave Search MCP Server",
+        "summary": "Web search via the Brave Search API for up-to-date information.",
+        "tags": [
+          "search",
+          "web",
+          "api",
+          "research",
+          "streamable-http"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "mcp-servers/com.brave/search-mcp/1.2.0.json",
+        "version": "1.2.0"
+      },
+      {
+        "name": "io.github.github/mcp",
+        "category": "mcp-server",
+        "title": "GitHub MCP Server",
+        "summary": "Access GitHub repositories, issues, and pull requests over the official GitHub MCP endpoint.",
+        "tags": [
+          "github",
+          "git",
+          "version-control",
+          "api",
+          "streamable-http"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "mcp-servers/io.github.github/mcp/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.modelcontextprotocol/filesystem",
+        "category": "mcp-server",
+        "title": "Filesystem MCP Server",
+        "summary": "Local filesystem access (read/write/search) over MCP (stdio).",
+        "tags": [
+          "filesystem",
+          "files",
+          "io",
+          "stdio"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "mcp-servers/io.github.modelcontextprotocol/filesystem/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.modelcontextprotocol/memory",
+        "category": "mcp-server",
+        "title": "Memory & Context MCP Server",
+        "summary": "Store and retrieve conversation context, notes, and knowledge across sessions.",
+        "tags": [
+          "memory",
+          "context",
+          "notes",
+          "knowledge",
+          "stdio"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "mcp-servers/io.github.modelcontextprotocol/memory/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.modelcontextprotocol/postgres",
+        "category": "mcp-server",
+        "title": "PostgreSQL MCP Server",
+        "summary": "Connect to PostgreSQL databases, execute queries, manage schemas, and analyze data.",
+        "tags": [
+          "database",
+          "sql",
+          "postgresql",
+          "data",
+          "stdio"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "mcp-servers/io.github.modelcontextprotocol/postgres/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/deepseek-r1-70b",
+        "category": "model",
+        "title": "DeepSeek-R1 70B",
+        "summary": "Large reasoning model. Flagged as requiring a future ziee for its tensor-parallel runtime support.",
+        "tags": [
+          "reasoning",
+          "large",
+          "instruct"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "min_ziee_version": "99.0.0",
+        "manifest_path": "models/io.github.phibya/deepseek-r1-70b/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/llama-3-1-8b-instruct",
+        "category": "model",
+        "title": "Llama 3.1 8B",
+        "summary": "Meta's Llama 3.1 8B instruction-tuned model with improved capabilities.",
+        "tags": [
+          "instruct",
+          "chat",
+          "code",
+          "reasoning"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "models/io.github.phibya/llama-3-1-8b-instruct/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/llama-3-2-3b-instruct-gguf",
+        "category": "model",
+        "title": "Llama 3.2 3B",
+        "summary": "Meta's Llama 3.2 3B instruction-tuned model in GGUF format. Multiple quantizations available.",
+        "tags": [
+          "instruct",
+          "chat",
+          "code",
+          "gguf",
+          "efficient",
+          "small"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "models/io.github.phibya/llama-3-2-3b-instruct-gguf/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/nomic-embed-text-v1-5-gguf",
+        "category": "model",
+        "title": "Nomic Embed Text v1.5",
+        "summary": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp.",
+        "tags": [
+          "embedding",
+          "english",
+          "retrieval",
+          "rag",
+          "text-similarity",
+          "gguf",
+          "memory-recommended"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "models/io.github.phibya/nomic-embed-text-v1-5-gguf/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/phi-3-mini-4k-instruct",
+        "category": "model",
+        "title": "Phi-3 Mini",
+        "summary": "Microsoft's small but capable instruction-tuned model. Great for low-resource setups.",
+        "tags": [
+          "instruct",
+          "chat",
+          "small",
+          "efficient"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "models/io.github.phibya/phi-3-mini-4k-instruct/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
+        "category": "model",
+        "title": "Qwen2.5-Coder 7B",
+        "summary": "Alibaba's Qwen2.5-Coder 7B — code generation, completion, and reasoning across 40+ languages.",
+        "tags": [
+          "code",
+          "instruct",
+          "chat",
+          "reasoning"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "models/io.github.phibya/qwen2.5-coder-7b-instruct/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.phibya/qwen2.5-vl-3b-instruct",
+        "category": "model",
+        "title": "Qwen2.5-VL 3B",
+        "summary": "Qwen2.5-VL 3B instruction-tuned vision-language model. Supports image understanding plus tool use.",
+        "tags": [
+          "vision",
+          "multimodal",
+          "instruct",
+          "chat",
+          "image-understanding"
+        ],
+        "verified": true,
+        "added_at": "2026-05-29",
+        "manifest_path": "models/io.github.phibya/qwen2.5-vl-3b-instruct/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/answer-with-citations",
+        "category": "workflow",
+        "title": "Answer With Citations",
+        "summary": "Confirm scope, fan-out search queries, synthesize a cited answer.",
+        "tags": [
+          "question-answering",
+          "citations",
+          "elicit",
+          "llm-map"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/answer-with-citations/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/code-review",
+        "category": "workflow",
+        "title": "Code Review",
+        "summary": "Walks git diff, reviews each file via LLM, synthesizes findings.",
+        "tags": [
+          "code-review",
+          "git",
+          "sandbox",
+          "llm-map"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/code-review/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/data-transform-pipeline",
+        "category": "workflow",
+        "title": "Data Transform Pipeline",
+        "summary": "LLM detects shape, writes a Python transform script, sandbox runs + validates.",
+        "tags": [
+          "data",
+          "transformation",
+          "pandas",
+          "sandbox",
+          "json",
+          "csv"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/data-transform-pipeline/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/deep-research",
+        "category": "workflow",
+        "title": "Deep Research",
+        "summary": "Multi-stage research pipeline -- query gen, fan-out search, cross-verify, outline, memo.",
+        "tags": [
+          "research",
+          "fan-out",
+          "llm-map",
+          "headliner",
+          "memo"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/deep-research/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/document-from-outline",
+        "category": "workflow",
+        "title": "Document From Outline",
+        "summary": "Parse outline, fan-out write each section in parallel, assemble final doc.",
+        "tags": [
+          "writing",
+          "llm-map",
+          "document"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/document-from-outline/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/extract-and-classify",
+        "category": "workflow",
+        "title": "Extract and Classify",
+        "summary": "Chunk text, extract per chunk in parallel, classify aggregated extractions.",
+        "tags": [
+          "extraction",
+          "classification",
+          "llm-map",
+          "text-processing"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/extract-and-classify/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/git-commit-summarize",
+        "category": "workflow",
+        "title": "Git Commit Summarize",
+        "summary": "Capture git diff + status, draft a conventional-commits message.",
+        "tags": [
+          "git",
+          "commit",
+          "sandbox",
+          "conventional-commits"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/git-commit-summarize/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/research-summarize-write",
+        "category": "workflow",
+        "title": "Research, Summarize, Write",
+        "summary": "Three-step llm chain: research a topic, summarize sources, write a memo.",
+        "tags": [
+          "research",
+          "writing",
+          "demo",
+          "entry-level"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/research-summarize-write/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/web-page-to-markdown",
+        "category": "workflow",
+        "title": "Web Page to Markdown",
+        "summary": "Fetch a URL, extract readable content, polish to clean markdown.",
+        "tags": [
+          "web",
+          "scraping",
+          "markdown",
+          "sandbox",
+          "readability"
+        ],
+        "verified": true,
+        "added_at": "2026-06-14",
+        "manifest_path": "workflows/io.github.ziee/web-page-to-markdown/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/effective-prompting",
+        "category": "skill",
+        "title": "Effective Prompting",
+        "summary": "Model-agnostic techniques for clearer, more reliable LLM prompts — structure, output shaping, few-shot, and hallucination control.",
+        "tags": [
+          "prompting",
+          "prompt-engineering",
+          "llm",
+          "output-format",
+          "hallucination"
+        ],
+        "verified": true,
+        "added_at": "2026-06-15",
+        "manifest_path": "skills/io.github.ziee/effective-prompting/1.0.0.json",
+        "version": "1.0.0"
+      },
+      {
+        "name": "io.github.ziee/sr-review",
+        "category": "workflow",
+        "title": "SR: Systematic Review (durable)",
+        "summary": "End-to-end systematic review in one durable run: search + LLM auto-expansion + AI screen, a human screening gate, open-access full-text extraction, a human review gate, and a cited evidence synthesis.",
+        "tags": [
+          "systematic-review",
+          "literature",
+          "screening",
+          "synthesis",
+          "lit-search"
+        ],
+        "verified": true,
+        "added_at": "2026-06-22",
+        "manifest_path": "workflows/io.github.ziee/sr-review/1.0.0.json",
+        "version": "1.0.0"
+      }
+    ]
+  },
+  "Hub.getCatalogVersion": {
+    "hub_version": "2.0.0",
+    "server_version": "0.1.0",
+    "counts": {
+      "models": 7,
+      "assistants": 5,
+      "mcp_servers": 6,
+      "skills": 1,
+      "workflows": 10
+    },
+    "source": "seed",
+    "last_refreshed": "2026-07-05T15:43:21.041450266+00:00"
+  },
+  "Hub.getInstalled": {
+    "catalog_version": "2.0.0",
+    "items": []
+  },
+  "Hub.getLocalProviders": {
+    "providers": []
+  },
+  "Hub.getMCPServers": [
+    {
+      "name": "app.linear/mcp",
+      "description": "Manage Linear issues, projects, and cycles over the Streamable HTTP transport.",
+      "version": "1.0.0",
+      "repository": {
+        "url": "https://github.com/linear/linear-mcp",
+        "source": "github"
+      },
+      "websiteUrl": "https://linear.app/docs/mcp",
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+      "remotes": [
+        {
+          "type": "streamable-http",
+          "url": "https://mcp.linear.app/sse",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {LINEAR_API_KEY}",
+              "description": "Bearer token; interpolates LINEAR_API_KEY at runtime.",
+              "isSecret": true
+            }
+          ]
+        }
+      ],
+      "created_ids": [],
+      "created_system_ids": []
+    },
+    {
+      "name": "com.brave/search-mcp",
+      "description": "Web search via the Brave Search API for up-to-date information.",
+      "version": "1.2.0",
+      "repository": {
+        "url": "https://github.com/brave/brave-search-mcp",
+        "source": "github"
+      },
+      "websiteUrl": "https://brave.com/search/api/",
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+      "remotes": [
+        {
+          "type": "streamable-http",
+          "url": "https://api.search.brave.com/mcp",
+          "headers": [
+            {
+              "name": "X-Subscription-Token",
+              "value": "{BRAVE_SUBSCRIPTION_TOKEN}",
+              "description": "Brave Search subscription token; interpolates BRAVE_SUBSCRIPTION_TOKEN at runtime.",
+              "isSecret": true
+            }
+          ]
+        }
+      ],
+      "created_ids": [],
+      "created_system_ids": []
+    },
+    {
+      "name": "io.github.github/mcp",
+      "description": "Access GitHub repos, issues, and pull requests via the official GitHub MCP endpoint.",
+      "version": "1.0.0",
+      "repository": {
+        "url": "https://github.com/github/github-mcp-server",
+        "source": "github"
+      },
+      "websiteUrl": "https://github.com/github/github-mcp-server",
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+      "remotes": [
+        {
+          "type": "streamable-http",
+          "url": "https://api.githubcopilot.com/mcp/",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}",
+              "description": "Bearer token; interpolates GITHUB_PERSONAL_ACCESS_TOKEN at runtime.",
+              "isSecret": true
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3+json",
+              "isSecret": false
+            }
+          ]
+        }
+      ],
+      "created_ids": [],
+      "created_system_ids": []
+    },
+    {
+      "name": "io.github.modelcontextprotocol/filesystem",
+      "description": "Local filesystem access (read, write, search, list) over MCP. Stdio transport.",
+      "version": "1.0.0",
+      "repository": {
+        "url": "https://github.com/modelcontextprotocol/servers",
+        "source": "github",
+        "subfolder": "src/filesystem"
+      },
+      "websiteUrl": "https://modelcontextprotocol.io/",
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+      "packages": [
+        {
+          "registryType": "npm",
+          "identifier": "@modelcontextprotocol/server-filesystem",
+          "version": "1.5.2",
+          "transport": {
+            "type": "stdio"
+          },
+          "runtimeHint": "npx",
+          "runtimeArguments": [
+            {
+              "type": "positional",
+              "value": "-y"
+            }
+          ],
+          "packageArguments": [
+            {
+              "type": "positional",
+              "value": "/path/to/allowed/files",
+              "description": "Allowed root directory the MCP server can access.",
+              "valueHint": "allowed_dir"
+            }
+          ]
+        }
+      ],
+      "created_ids": [],
+      "created_system_ids": []
+    },
+    {
+      "name": "io.github.modelcontextprotocol/memory",
+      "description": "Store and retrieve conversation context, notes, and knowledge across sessions.",
+      "version": "1.0.0",
+      "repository": {
+        "url": "https://github.com/modelcontextprotocol/servers",
+        "source": "github",
+        "subfolder": "src/memory"
+      },
+      "websiteUrl": "https://modelcontextprotocol.io/",
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+      "packages": [
+        {
+          "registryType": "npm",
+          "identifier": "@modelcontextprotocol/server-memory",
+          "version": "0.6.3",
+          "transport": {
+            "type": "stdio"
+          },
+          "runtimeHint": "npx",
+          "runtimeArguments": [
+            {
+              "type": "positional",
+              "value": "-y"
+            }
+          ]
+        }
+      ],
+      "created_ids": [],
+      "created_system_ids": []
+    },
+    {
+      "name": "io.github.modelcontextprotocol/postgres",
+      "description": "Connect to PostgreSQL databases and execute queries, manage schemas, and analyze data.",
+      "version": "1.0.0",
+      "repository": {
+        "url": "https://github.com/modelcontextprotocol/servers",
+        "source": "github",
+        "subfolder": "src/postgres"
+      },
+      "websiteUrl": "https://modelcontextprotocol.io/",
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+      "packages": [
+        {
+          "registryType": "npm",
+          "identifier": "@modelcontextprotocol/server-postgres",
+          "version": "0.6.2",
+          "transport": {
+            "type": "stdio"
+          },
+          "runtimeHint": "npx",
+          "runtimeArguments": [
+            {
+              "type": "positional",
+              "value": "-y"
+            }
+          ],
+          "environmentVariables": [
+            {
+              "name": "POSTGRES_CONNECTION_STRING",
+              "value": "{POSTGRES_CONNECTION_STRING}",
+              "description": "PostgreSQL connection string in libpq format. Use a read-only role for safety.",
+              "isSecret": true
+            }
+          ]
+        }
+      ],
+      "created_ids": [],
+      "created_system_ids": []
+    }
+  ],
+  "Hub.getMCPServersVersion": {
+    "version": "2.0.0",
+    "last_updated": "2026-07-05T15:43:21.041450266+00:00"
+  },
+  "Hub.getModels": [
+    {
+      "name": "io.github.phibya/deepseek-r1-70b",
+      "display_name": "DeepSeek-R1 70B",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "Large reasoning model. Flagged as requiring a future ziee-chat for its tensor-parallel runtime support — used to exercise the compat gate.",
+      "repository": {
+        "url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "source": "huggingface",
+        "id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+          "version": "main",
+          "fileFormat": "safetensors",
+          "runtimeHint": "mistralrs",
+          "contextLength": 65536,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "f16",
+              "mainFile": "model.safetensors",
+              "sizeGb": 140,
+              "isDefault": true
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": false,
+        "audio": false,
+        "tools": true,
+        "code_interpreter": true,
+        "chat": true,
+        "text_embedding": false,
+        "image_generator": false
+      },
+      "tags": [
+        "reasoning",
+        "large",
+        "instruct"
+      ],
+      "recommended_parameters": {
+        "context_size": 65536,
+        "repeat_penalty": 1.05,
+        "temperature": 0.6,
+        "top_k": 40,
+        "top_p": 0.95
+      },
+      "license": "MIT",
+      "language_support": [
+        "en",
+        "zh"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    },
+    {
+      "name": "io.github.phibya/llama-3-1-8b-instruct",
+      "display_name": "Llama 3.1 8B",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "Meta's Llama 3.1 8B instruction-tuned model with improved capabilities.",
+      "repository": {
+        "url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+        "source": "huggingface",
+        "id": "meta-llama/Llama-3.1-8B-Instruct"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "meta-llama/Llama-3.1-8B-Instruct",
+          "version": "main",
+          "fileFormat": "safetensors",
+          "runtimeHint": "mistralrs",
+          "contextLength": 8192,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "f16",
+              "mainFile": "model.safetensors",
+              "sizeGb": 16.1,
+              "isDefault": true
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": false,
+        "audio": false,
+        "tools": true,
+        "code_interpreter": true,
+        "chat": true,
+        "text_embedding": false,
+        "image_generator": false
+      },
+      "tags": [
+        "instruct",
+        "chat",
+        "code",
+        "reasoning"
+      ],
+      "recommended_parameters": {
+        "context_size": 8192,
+        "repeat_penalty": 1.1,
+        "temperature": 0.7,
+        "top_k": 40,
+        "top_p": 0.9
+      },
+      "license": "Meta Custom License",
+      "language_support": [
+        "en",
+        "es",
+        "fr",
+        "de",
+        "it",
+        "pt",
+        "nl",
+        "pl"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    },
+    {
+      "name": "io.github.phibya/llama-3-2-3b-instruct-gguf",
+      "display_name": "Llama 3.2 3B",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "Meta's Llama 3.2 3B instruction-tuned model in GGUF format. Multiple quantizations available.",
+      "repository": {
+        "url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
+        "source": "huggingface",
+        "id": "bartowski/Llama-3.2-3B-Instruct-GGUF"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+          "version": "main",
+          "fileFormat": "gguf",
+          "runtimeHint": "llamacpp",
+          "contextLength": 8192,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "q5_k_s",
+              "mainFile": "Llama-3.2-3B-Instruct-Q5_K_S.gguf",
+              "sizeGb": 1.9,
+              "isDefault": true
+            },
+            {
+              "name": "q4_0",
+              "mainFile": "Llama-3.2-3B-Instruct-Q4_0.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "q4_k_m",
+              "mainFile": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "q5_0",
+              "mainFile": "Llama-3.2-3B-Instruct-Q5_0.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "q5_k_m",
+              "mainFile": "Llama-3.2-3B-Instruct-Q5_K_M.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "q6_k",
+              "mainFile": "Llama-3.2-3B-Instruct-Q6_K.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "q8_0",
+              "mainFile": "Llama-3.2-3B-Instruct-Q8_0.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "fp16",
+              "mainFile": "Llama-3.2-3B-Instruct-FP16.gguf",
+              "isDefault": false
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": false,
+        "audio": false,
+        "tools": true,
+        "code_interpreter": true,
+        "chat": true,
+        "text_embedding": false,
+        "image_generator": false
+      },
+      "tags": [
+        "instruct",
+        "chat",
+        "code",
+        "gguf",
+        "efficient",
+        "small"
+      ],
+      "recommended_parameters": {
+        "context_size": 8192,
+        "repeat_penalty": 1.1,
+        "temperature": 0.7,
+        "top_k": 40,
+        "top_p": 0.9
+      },
+      "license": "Meta Custom License",
+      "language_support": [
+        "en",
+        "es",
+        "fr",
+        "de",
+        "it",
+        "pt",
+        "nl"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    },
+    {
+      "name": "io.github.phibya/nomic-embed-text-v1-5-gguf",
+      "display_name": "Nomic Embed Text v1.5",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp. Recommended default for the Memory module.",
+      "repository": {
+        "url": "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF",
+        "source": "huggingface",
+        "id": "nomic-ai/nomic-embed-text-v1.5-GGUF"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+          "version": "main",
+          "fileFormat": "gguf",
+          "runtimeHint": "llamacpp",
+          "contextLength": 8192,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "q4_k_m",
+              "mainFile": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+              "sizeGb": 0.08,
+              "isDefault": true
+            },
+            {
+              "name": "q5_k_m",
+              "mainFile": "nomic-embed-text-v1.5.Q5_K_M.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "q8_0",
+              "mainFile": "nomic-embed-text-v1.5.Q8_0.gguf",
+              "isDefault": false
+            },
+            {
+              "name": "fp16",
+              "mainFile": "nomic-embed-text-v1.5.F16.gguf",
+              "isDefault": false
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": false,
+        "audio": false,
+        "tools": false,
+        "code_interpreter": false,
+        "chat": false,
+        "text_embedding": true,
+        "image_generator": false
+      },
+      "tags": [
+        "embedding",
+        "english",
+        "retrieval",
+        "rag",
+        "text-similarity",
+        "gguf",
+        "memory-recommended"
+      ],
+      "recommended_parameters": {
+        "context_size": 8192
+      },
+      "license": "Apache-2.0",
+      "language_support": [
+        "en"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    },
+    {
+      "name": "io.github.phibya/phi-3-mini-4k-instruct",
+      "display_name": "Phi-3 Mini",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "Microsoft's small but capable instruction-tuned model. Great for low-resource setups.",
+      "repository": {
+        "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct",
+        "source": "huggingface",
+        "id": "microsoft/Phi-3-mini-4k-instruct"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "microsoft/Phi-3-mini-4k-instruct",
+          "version": "main",
+          "fileFormat": "safetensors",
+          "runtimeHint": "mistralrs",
+          "contextLength": 4096,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "f16",
+              "mainFile": "model.safetensors",
+              "sizeGb": 7.6,
+              "isDefault": true
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": false,
+        "audio": false,
+        "tools": true,
+        "code_interpreter": true,
+        "chat": true,
+        "text_embedding": false,
+        "image_generator": false
+      },
+      "tags": [
+        "instruct",
+        "chat",
+        "small",
+        "efficient"
+      ],
+      "recommended_parameters": {
+        "context_size": 4096,
+        "repeat_penalty": 1.05,
+        "temperature": 0.6,
+        "top_k": 50,
+        "top_p": 0.95
+      },
+      "license": "MIT",
+      "language_support": [
+        "en"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    },
+    {
+      "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
+      "display_name": "Qwen2.5-Coder 7B",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "Alibaba's Qwen2.5-Coder 7B — code generation, completion, and reasoning across 40+ languages.",
+      "repository": {
+        "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct",
+        "source": "huggingface",
+        "id": "Qwen/Qwen2.5-Coder-7B-Instruct"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "Qwen/Qwen2.5-Coder-7B-Instruct",
+          "version": "main",
+          "fileFormat": "safetensors",
+          "runtimeHint": "mistralrs",
+          "contextLength": 32768,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "f16",
+              "mainFile": "model.safetensors",
+              "sizeGb": 15.2,
+              "isDefault": true
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": false,
+        "audio": false,
+        "tools": true,
+        "code_interpreter": true,
+        "chat": true,
+        "text_embedding": false,
+        "image_generator": false
+      },
+      "tags": [
+        "code",
+        "instruct",
+        "chat",
+        "reasoning"
+      ],
+      "recommended_parameters": {
+        "context_size": 32768,
+        "repeat_penalty": 1.05,
+        "temperature": 0.2,
+        "top_k": 40,
+        "top_p": 0.9
+      },
+      "license": "Apache-2.0",
+      "language_support": [
+        "en",
+        "zh"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    },
+    {
+      "name": "io.github.phibya/qwen2.5-vl-3b-instruct",
+      "display_name": "Qwen2.5-VL 3B",
+      "version": "1.0.0",
+      "$schema": "/schemas/2026-06-12/model.schema.json",
+      "description": "Qwen2.5-VL 3B instruction-tuned vision-language model. Supports image understanding plus tool use.",
+      "repository": {
+        "url": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct",
+        "source": "huggingface",
+        "id": "Qwen/Qwen2.5-VL-3B-Instruct"
+      },
+      "sources": [
+        {
+          "registryType": "huggingface",
+          "identifier": "Qwen/Qwen2.5-VL-3B-Instruct",
+          "version": "main",
+          "fileFormat": "safetensors",
+          "runtimeHint": "mistralrs",
+          "contextLength": 32768,
+          "environmentVariables": [
+            {
+              "name": "HUGGINGFACE_API_KEY",
+              "description": "Hugging Face access token with download access to this gated model.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          ],
+          "quantizations": [
+            {
+              "name": "f16",
+              "mainFile": "model.safetensors",
+              "sizeGb": 6.2,
+              "isDefault": true
+            }
+          ]
+        }
+      ],
+      "capabilities": {
+        "vision": true,
+        "audio": false,
+        "tools": true,
+        "code_interpreter": true,
+        "chat": true,
+        "text_embedding": false,
+        "image_generator": false
+      },
+      "tags": [
+        "vision",
+        "multimodal",
+        "instruct",
+        "chat",
+        "image-understanding"
+      ],
+      "recommended_parameters": {
+        "context_size": 32768,
+        "repeat_penalty": 1.05,
+        "temperature": 0.7,
+        "top_k": 40,
+        "top_p": 0.8
+      },
+      "license": "Apache-2.0",
+      "language_support": [
+        "en",
+        "zh",
+        "ja",
+        "ko",
+        "vi",
+        "th",
+        "ar",
+        "es",
+        "fr",
+        "ru",
+        "de"
+      ],
+      "source_auth_configured": false,
+      "created_ids": []
+    }
+  ],
+  "Hub.getModelsVersion": {
+    "version": "2.0.0",
+    "last_updated": "2026-07-05T15:43:21.041450266+00:00"
+  },
+  "LitSearch.getConnectors": {
+    "connectors": [
+      {
+        "key": "europepmc",
+        "display_name": "Europe PMC",
+        "keyless_note": "Works without a key — biomedical literature + preprints.",
+        "config_fields": [],
+        "enabled": true,
+        "configured": true,
+        "api_key_set": false,
+        "config": {}
+      },
+      {
+        "key": "crossref",
+        "display_name": "Crossref",
+        "keyless_note": "Works without a key; add a contact email to join the polite pool (higher rate limit).",
+        "key_field": {
+          "required": false,
+          "label": "Crossref Plus token",
+          "help": "Optional — Crossref Plus subscribers get higher rate limits.",
+          "docs_url": "https://www.crossref.org/documentation/metadata-plus/"
+        },
+        "config_fields": [
+          {
+            "key": "mailto",
+            "label": "Contact email (polite pool)",
+            "required": false,
+            "placeholder": "you@example.org",
+            "help": "Joins Crossref's polite pool (~10 req/s vs ~5 anonymous) AND enables Unpaywall, the DOI→open-access-PDF resolver used by fetch_paper_fulltext — without it, DOI-only papers can't resolve full text."
+          }
+        ],
+        "enabled": true,
+        "configured": true,
+        "api_key_set": false,
+        "config": {}
+      },
+      {
+        "key": "semanticscholar",
+        "display_name": "Semantic Scholar",
+        "keyless_note": "Works without a key (shared pool — may rate-limit); add a free key for a dedicated rate.",
+        "key_field": {
+          "required": false,
+          "label": "Semantic Scholar API key",
+          "help": "Free; sent as x-api-key. Recommended for reliable throughput.",
+          "docs_url": "https://www.semanticscholar.org/product/api#api-key"
+        },
+        "config_fields": [],
+        "enabled": true,
+        "configured": true,
+        "api_key_set": false,
+        "config": {}
+      },
+      {
+        "key": "pubmed",
+        "display_name": "PubMed (NCBI E-utilities)",
+        "keyless_note": "Works without a key (3 req/s); add a free NCBI key for 10 req/s.",
+        "key_field": {
+          "required": false,
+          "label": "NCBI API key",
+          "help": "Free — raises the rate limit from 3 to 10 req/s.",
+          "docs_url": "https://www.ncbi.nlm.nih.gov/account/settings/"
+        },
+        "config_fields": [
+          {
+            "key": "mailto",
+            "label": "Contact email",
+            "required": false,
+            "placeholder": "you@example.org",
+            "help": "NCBI asks API users to identify themselves."
+          }
+        ],
+        "enabled": true,
+        "configured": true,
+        "api_key_set": false,
+        "config": {}
+      },
+      {
+        "key": "arxiv",
+        "display_name": "arXiv",
+        "keyless_note": "Works without a key — CS / methods / quant-bio preprints.",
+        "config_fields": [],
+        "enabled": true,
+        "configured": true,
+        "api_key_set": false,
+        "config": {}
+      },
+      {
+        "key": "core",
+        "display_name": "CORE (open-access full text)",
+        "keyless_note": "Requires a free CORE API key.",
+        "key_field": {
+          "required": true,
+          "label": "CORE API key",
+          "help": "Free — register at core.ac.uk; sent as a bearer token.",
+          "docs_url": "https://core.ac.uk/services/api"
+        },
+        "config_fields": [],
+        "enabled": false,
+        "configured": false,
+        "api_key_set": false,
+        "config": {}
+      }
+    ]
+  },
+  "LitSearch.getSettings": {
+    "enabled": true,
+    "enabled_connectors": [
+      "europepmc",
+      "crossref",
+      "semanticscholar",
+      "pubmed",
+      "arxiv"
+    ],
+    "max_results": 25,
+    "per_source_limit": 50,
+    "request_timeout_secs": 30,
+    "completeness_estimate_enabled": true,
+    "updated_at": "2026-07-05T15:43:20.879751Z"
+  },
+  "LitSearch.listUserKeys": {
+    "connectors": [
+      {
+        "connector": "crossref",
+        "display_name": "Crossref",
+        "key_field": {
+          "required": false,
+          "label": "Crossref Plus token",
+          "help": "Optional — Crossref Plus subscribers get higher rate limits.",
+          "docs_url": "https://www.crossref.org/documentation/metadata-plus/"
+        },
+        "system_key_set": false
+      },
+      {
+        "connector": "semanticscholar",
+        "display_name": "Semantic Scholar",
+        "key_field": {
+          "required": false,
+          "label": "Semantic Scholar API key",
+          "help": "Free; sent as x-api-key. Recommended for reliable throughput.",
+          "docs_url": "https://www.semanticscholar.org/product/api#api-key"
+        },
+        "system_key_set": false
+      },
+      {
+        "connector": "pubmed",
+        "display_name": "PubMed (NCBI E-utilities)",
+        "key_field": {
+          "required": false,
+          "label": "NCBI API key",
+          "help": "Free — raises the rate limit from 3 to 10 req/s.",
+          "docs_url": "https://www.ncbi.nlm.nih.gov/account/settings/"
+        },
+        "system_key_set": false
+      },
+      {
+        "connector": "core",
+        "display_name": "CORE (open-access full text)",
+        "key_field": {
+          "required": true,
+          "label": "CORE API key",
+          "help": "Free — register at core.ac.uk; sent as a bearer token.",
+          "docs_url": "https://core.ac.uk/services/api"
+        },
+        "system_key_set": false
+      }
+    ]
+  },
+  "LlmModel.list": {
+    "models": [],
+    "total": 0,
+    "page": 1,
+    "per_page": 10
+  },
+  "LlmProvider.getUserLlmProviders": {
+    "providers": []
+  },
+  "LlmProvider.list": {
+    "providers": [
+      {
+        "id": "36f99341-8df3-4a1d-b0cf-6217c79afb6f",
+        "name": "Anthropic",
+        "provider_type": "anthropic",
+        "enabled": false,
+        "base_url": "https://api.anthropic.com/v1",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:20.684265Z"
+      },
+      {
+        "id": "e57f95cb-c012-48aa-bff3-8325c43aac60",
+        "name": "DeepSeek",
+        "provider_type": "deepseek",
+        "enabled": false,
+        "base_url": "https://api.deepseek.com",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:20.684265Z"
+      },
+      {
+        "id": "ddc6bca0-0989-4be5-8a35-e0fdeaa5ce89",
+        "name": "Google Gemini",
+        "provider_type": "gemini",
+        "enabled": false,
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:20.684265Z"
+      },
+      {
+        "id": "24a87be6-f70a-4861-a2a9-7923f834f3b5",
+        "name": "Groq",
+        "provider_type": "groq",
+        "enabled": false,
+        "base_url": "https://api.groq.com/openai/v1",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:20.684265Z"
+      },
+      {
+        "id": "cb52e2b7-2ec6-476e-9617-b1e49c096acb",
+        "name": "Local",
+        "provider_type": "local",
+        "enabled": false,
+        "base_url": "http://127.0.0.1:46305/api/local-llm/v1",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:21.003229Z"
+      },
+      {
+        "id": "ef200c1b-f37b-4e0d-a53f-8741c07d740c",
+        "name": "Mistral AI",
+        "provider_type": "mistral",
+        "enabled": false,
+        "base_url": "https://api.mistral.ai/v1",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:20.684265Z"
+      },
+      {
+        "id": "5d8ae494-79f9-4aa0-8959-307dbad7af21",
+        "name": "OpenAI",
+        "provider_type": "openai",
+        "enabled": false,
+        "base_url": "https://api.openai.com/v1",
+        "built_in": true,
+        "proxy_settings": {
+          "enabled": false,
+          "url": "",
+          "username": "",
+          "no_proxy": "",
+          "ignore_ssl_certificates": false
+        },
+        "created_at": "2026-07-05T15:43:20.684265Z",
+        "updated_at": "2026-07-05T15:43:20.684265Z"
+      }
+    ],
+    "total": 7,
+    "page": 1,
+    "per_page": 100
+  },
+  "LlmProvider.listUserApiKeys": {
+    "keys": []
+  },
+  "LlmRepository.list": {
+    "repositories": [
+      {
+        "id": "ba969392-74ec-4974-81b3-97ed33df08ba",
+        "name": "GitHub",
+        "url": "https://github.com",
+        "auth_type": "bearer_token",
+        "auth_config": {
+          "auth_test_api_endpoint": "https://api.github.com/user"
+        },
+        "enabled": true,
+        "built_in": true,
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z",
+        "last_health_check_status": "untested"
+      },
+      {
+        "id": "a084dc9d-cdb0-4864-a69e-91c5dc9f7f07",
+        "name": "Hugging Face Hub",
+        "url": "https://huggingface.co",
+        "auth_type": "api_key",
+        "auth_config": {
+          "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+        },
+        "enabled": true,
+        "built_in": true,
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z",
+        "last_health_check_status": "untested"
+      }
+    ],
+    "total": 2,
+    "page": 1,
+    "per_page": 100
+  },
+  "LocalRuntime.detectGpu": {
+    "available": [
+      "cpu",
+      "cuda"
+    ],
+    "recommended": "cuda",
+    "platform": "linux",
+    "arch": "x86_64"
+  },
+  "LocalRuntime.getRuntimeSettings": {
+    "idle_unload_secs": 1800,
+    "auto_start_timeout_secs": 30,
+    "drain_timeout_secs": 30,
+    "created_at": "2026-07-05T15:43:20.805920Z",
+    "updated_at": "2026-07-05T15:43:20.805920Z"
+  },
+  "Mcp.getDefaults": {},
+  "McpServer.listAccessible": {
+    "servers": [
+      {
+        "id": "93a8008c-166f-4cf7-bf26-5de025ddaf15",
+        "name": "fetch",
+        "display_name": "Web Fetch",
+        "description": "Fetch content from web URLs",
+        "enabled": true,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "stdio",
+        "command": "uvx",
+        "args": [
+          "mcp-server-fetch"
+        ],
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "per_page": 100,
+    "total_pages": 1
+  },
+  "McpServerSystem.list": {
+    "servers": [
+      {
+        "id": "d878787e-aa48-5f16-a31f-673052083f34",
+        "name": "control",
+        "display_name": "App Control",
+        "description": "Built-in app-control tools (list_capabilities / describe_capability / invoke_capability)",
+        "enabled": true,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "http",
+        "args": [],
+        "url": "http://127.0.0.1:46305/api/control/mcp",
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "max_concurrent_sessions": 4,
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:21Z",
+        "updated_at": "2026-07-05T15:43:21Z"
+      },
+      {
+        "id": "23e9b29d-6082-5567-a3cb-96ffc0adf0e5",
+        "name": "bio",
+        "display_name": "BioMCP",
+        "description": "Built-in biomedical database connectors (PubMed, ClinicalTrials.gov, variants, trials, drugs, and more) via BioMCP. Connected-only: query terms are sent to public upstream APIs. Configure deployment API keys (NCBI_API_KEY, S2_API_KEY, OPENFDA_API_KEY, NCI_API_KEY, ONCOKB_TOKEN, ALPHAGENOME_API_KEY, DISGENET_API_KEY) as secret entries in this server's Headers; they are injected into the managed sidecar's environment, never sent over HTTP.",
+        "enabled": true,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "http",
+        "args": [],
+        "url": "http://127.0.0.1:46305/api/bio/mcp",
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 120,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "max_concurrent_sessions": 4,
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:21Z",
+        "updated_at": "2026-07-05T15:43:21Z"
+      },
+      {
+        "id": "4f2e4bfd-ec2d-4e97-9498-56c374c44268",
+        "name": "browser",
+        "display_name": "Browser Automation",
+        "description": "Automate browser interactions",
+        "enabled": false,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "stdio",
+        "command": "npx",
+        "args": [
+          "@browsermcp/mcp"
+        ],
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z"
+      },
+      {
+        "id": "20dbd197-c845-4d57-b65c-0cd277b3ebcf",
+        "name": "filesystem",
+        "display_name": "Filesystem Access",
+        "description": "Access local filesystem operations",
+        "enabled": false,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem"
+        ],
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z"
+      },
+      {
+        "id": "ee66f5f7-03c4-4311-85ac-d8a609d42e95",
+        "name": "git",
+        "display_name": "Git Operations",
+        "description": "Git repository operations",
+        "enabled": false,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "mcp-git-server"
+        ],
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z"
+      },
+      {
+        "id": "82e9cfc4-b299-538e-93db-534a1ba14801",
+        "name": "skill",
+        "display_name": "Skills",
+        "description": "Built-in skill body access (load_skill / read_skill_file)",
+        "enabled": true,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "http",
+        "args": [],
+        "url": "http://127.0.0.1:46305/api/skills/mcp",
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "max_concurrent_sessions": 8,
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:21Z",
+        "updated_at": "2026-07-05T15:43:21Z"
+      },
+      {
+        "id": "93a8008c-166f-4cf7-bf26-5de025ddaf15",
+        "name": "fetch",
+        "display_name": "Web Fetch",
+        "description": "Fetch content from web URLs",
+        "enabled": true,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "stdio",
+        "command": "uvx",
+        "args": [
+          "mcp-server-fetch"
+        ],
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:20Z",
+        "updated_at": "2026-07-05T15:43:20Z"
+      },
+      {
+        "id": "5df3420c-4a5a-59c3-8f99-37a47e7469d6",
+        "name": "workflow",
+        "display_name": "Workflows",
+        "description": "Built-in workflow execution (one tool per installed workflow)",
+        "enabled": true,
+        "is_system": true,
+        "is_built_in": true,
+        "transport_type": "http",
+        "args": [],
+        "url": "http://127.0.0.1:46305/api/workflows/mcp",
+        "environment_variables_entries": [],
+        "headers_entries": [],
+        "timeout_seconds": 30,
+        "supports_sampling": false,
+        "usage_mode": "auto",
+        "max_concurrent_sessions": 8,
+        "run_in_sandbox": false,
+        "sandbox_flavor": "full",
+        "last_health_check_status": "untested",
+        "created_at": "2026-07-05T15:43:21Z",
+        "updated_at": "2026-07-05T15:43:21Z"
+      }
+    ],
+    "total": 8,
+    "page": 1,
+    "per_page": 100,
+    "total_pages": 1
+  },
+  "McpToolCall.list": {
+    "calls": [],
+    "total": 0,
+    "page": 1,
+    "per_page": 100,
+    "total_pages": 0
+  },
+  "McpUserPolicy.get": {
+    "allowed_transports": [
+      "http"
+    ],
+    "tool_call_retention_days": 90,
+    "updated_at": "2026-07-05T15:43:20Z"
+  },
+  "Memory.list": {
+    "items": [],
+    "total": 0,
+    "page": 1,
+    "per_page": 100
+  },
+  "MemoryAdmin.ftsRebuildStatus": {
+    "in_progress": false
+  },
+  "MemoryAdmin.get": {
+    "id": 1,
+    "embedding_dimensions": 768,
+    "default_top_k": 8,
+    "cosine_threshold": 0.6,
+    "enabled": true,
+    "soft_delete_grace_days": 30,
+    "daily_extraction_quota": 200,
+    "fts_dictionary": "simple",
+    "fts_enabled": true,
+    "semantic_enabled": true,
+    "fts_rrf_k": 60,
+    "fts_candidate_multiplier": 4,
+    "fts_min_rank": 0,
+    "updated_at": "2026-07-05T15:43:20.784961Z"
+  },
+  "MemoryAdmin.rebuildStatus": {
+    "in_progress": false,
+    "pending_count": 0
+  },
+  "MemoryAudit.list": [],
+  "MemorySettings.get": {
+    "user_id": "fccc19d9-678d-488d-965b-421e3634f5f3",
+    "extraction_enabled": false,
+    "retrieval_enabled": false,
+    "max_memories": 1000,
+    "created_at": "2026-07-05T15:43:27.466103Z",
+    "updated_at": "2026-07-05T15:43:27.466103Z"
+  },
+  "Onboarding.getProgress": {
+    "completed_guide_ids": [],
+    "completed_step_ids": []
+  },
+  "Project.list": {
+    "projects": [],
+    "total": 0
+  },
+  "RuntimeVersion.list": {
+    "versions": []
+  },
+  "RuntimeVersion.usage": {
+    "versions": [],
+    "unresolved": []
+  },
+  "ServerUpdate.getStatus": {
+    "current_version": "0.1.0",
+    "update_available": false,
+    "enabled": false
+  },
+  "Skill.list": {
+    "skills": [
+      {
+        "id": "9242e239-9f0b-46be-9eea-10aa1f12a7e5",
+        "name": "io.github.ziee/configure-code-sandbox",
+        "version": "0.1.0",
+        "display_name": "configure-code-sandbox",
+        "description": "Enable + configure ziee's bwrap-isolated code execution sandbox. Use when the user wants the LLM to run code, install Python packages, or asks about sandbox flavors.",
+        "when_to_use": "User asks about code execution, sandbox, bwrap, \"can the LLM run my script\", flavor downloads, Python in chat.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/configure-code-sandbox",
+        "bundle_sha256": "c77bcd96d3fe674fd95e771442d0324c4bb80713914637a3c80bfd345ffdfeeb",
+        "bundle_size_bytes": 2454,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Enable + configure ziee's bwrap-isolated code execution sandbox. Use when the user wants the LLM to run code, install Python packages, or asks about sandbox flavors.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "configure-code-sandbox",
+          "when_to_use": "User asks about code execution, sandbox, bwrap, \"can the LLM run my script\", flavor downloads, Python in chat."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.063728Z",
+        "updated_at": "2026-07-05T15:43:21.063728Z"
+      },
+      {
+        "id": "007a0cf5-1812-4dbb-9116-7cf8f0026991",
+        "name": "io.github.ziee/configure-llm-providers",
+        "version": "0.1.0",
+        "display_name": "configure-llm-providers",
+        "description": "Configure LLM providers (Anthropic, OpenAI, Groq, Ollama, local) in ziee. Use when the user mentions adding an API key, switching models, getting \"no providers configured\" errors, or asks how to use a specific model.",
+        "when_to_use": "User asks about LLM provider setup, API key configuration, \"how do I add my key\", connecting Ollama, picking a model, or seeing \"no model selected\" warnings.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/configure-llm-providers",
+        "bundle_sha256": "6a507ba61af0a36c556b74f044703493345b69bb4af40cb2301e7f093f338066",
+        "bundle_size_bytes": 2426,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Configure LLM providers (Anthropic, OpenAI, Groq, Ollama, local) in ziee. Use when the user mentions adding an API key, switching models, getting \"no providers configured\" errors, or asks how to use a specific model.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "configure-llm-providers",
+          "when_to_use": "User asks about LLM provider setup, API key configuration, \"how do I add my key\", connecting Ollama, picking a model, or seeing \"no model selected\" warnings."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.111258Z",
+        "updated_at": "2026-07-05T15:43:21.111258Z"
+      },
+      {
+        "id": "f38277b7-9b0f-42c9-9f6c-18f0e92a2e7d",
+        "name": "io.github.ziee/configure-mcp-servers",
+        "version": "0.1.0",
+        "display_name": "configure-mcp-servers",
+        "description": "Install + configure MCP servers in ziee. Use when the user wants to add a tool to the LLM (filesystem, web search, github, etc.) or asks about MCP.",
+        "when_to_use": "User mentions MCP, adding tools, \"how do I let the LLM read files\", filesystem access, web search integration, github tools.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/configure-mcp-servers",
+        "bundle_sha256": "e3afd2c35c0afdeffbe0c88b34adbfcbfee16819427da6ed18c18c7cf69e8f74",
+        "bundle_size_bytes": 2212,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Install + configure MCP servers in ziee. Use when the user wants to add a tool to the LLM (filesystem, web search, github, etc.) or asks about MCP.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "configure-mcp-servers",
+          "when_to_use": "User mentions MCP, adding tools, \"how do I let the LLM read files\", filesystem access, web search integration, github tools."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.113459Z",
+        "updated_at": "2026-07-05T15:43:21.113459Z"
+      },
+      {
+        "id": "83335f21-ab13-4336-b73e-e297d2d12039",
+        "name": "io.github.ziee/create-skill",
+        "version": "0.1.0",
+        "display_name": "create-skill",
+        "description": "Author a new skill for ziee (Agent Skills standard -- works in Claude Code too). Use when the user wants to create, edit, or share a skill.",
+        "when_to_use": "User asks \"how do I make a skill\", wants to create knowledge for the LLM, asks about SKILL.md, mentions Agent Skills spec.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/create-skill",
+        "bundle_sha256": "5dd56d5d472b9de3d11198d136db06fb804cd26cd77d12df53918831309a2a3f",
+        "bundle_size_bytes": 2261,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Author a new skill for ziee (Agent Skills standard -- works in Claude Code too). Use when the user wants to create, edit, or share a skill.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "create-skill",
+          "when_to_use": "User asks \"how do I make a skill\", wants to create knowledge for the LLM, asks about SKILL.md, mentions Agent Skills spec."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.115105Z",
+        "updated_at": "2026-07-05T15:43:21.115105Z"
+      },
+      {
+        "id": "f78316bc-9260-4d2d-aed0-e9df7a3b7c2b",
+        "name": "io.github.ziee/create-workflow",
+        "version": "0.1.0",
+        "display_name": "create-workflow",
+        "description": "Author a new workflow for ziee (declarative YAML DAG with llm / llm_map / sandbox / elicit step kinds). Use when the user wants to create, edit, or test a workflow.",
+        "when_to_use": "User asks \"how do I make a workflow\", wants to chain LLM calls, mentions workflow.yaml, asks about steps, kind, llm_map, sandbox steps.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/create-workflow",
+        "bundle_sha256": "60e4c7c5315ba83ecc4cbaade49cffaced3c69769940d817fea8d50101f2bf6a",
+        "bundle_size_bytes": 3026,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Author a new workflow for ziee (declarative YAML DAG with llm / llm_map / sandbox / elicit step kinds). Use when the user wants to create, edit, or test a workflow.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "create-workflow",
+          "when_to_use": "User asks \"how do I make a workflow\", wants to chain LLM calls, mentions workflow.yaml, asks about steps, kind, llm_map, sandbox steps."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.118005Z",
+        "updated_at": "2026-07-05T15:43:21.118005Z"
+      },
+      {
+        "id": "80f27053-9012-4f71-8106-5fec1c812956",
+        "name": "io.github.ziee/hub-installation",
+        "version": "0.1.0",
+        "display_name": "hub-installation",
+        "description": "Browse + install models, assistants, MCP servers, skills, workflows from the ziee hub. Use when the user asks about the hub, installing something from a catalog, or finding tools to extend ziee.",
+        "when_to_use": "User mentions hub, registry, catalog, browsing tools, installing skills/workflows/MCP servers, \"where do I find more X\".",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/hub-installation",
+        "bundle_sha256": "b8ee764bd62bd7cbce93ed0173c3d04a8a8018462894a4e99bb01cfde49bfaa3",
+        "bundle_size_bytes": 2425,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Browse + install models, assistants, MCP servers, skills, workflows from the ziee hub. Use when the user asks about the hub, installing something from a catalog, or finding tools to extend ziee.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "hub-installation",
+          "when_to_use": "User mentions hub, registry, catalog, browsing tools, installing skills/workflows/MCP servers, \"where do I find more X\"."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.120647Z",
+        "updated_at": "2026-07-05T15:43:21.120647Z"
+      },
+      {
+        "id": "e111d660-7b77-43a4-9521-358a715e13d0",
+        "name": "io.github.ziee/install-samtools-bcftools",
+        "version": "0.1.0",
+        "display_name": "install-samtools-bcftools",
+        "description": "Install samtools and bcftools (SAM/BAM/CRAM/VCF/BCF processing) into the code sandbox via bioconda. Use when the user works with sequencing alignment or variant files and these tools aren't installed.",
+        "when_to_use": "User mentions BAM/SAM/CRAM/VCF/BCF files, read alignments, variant calling, \"samtools\", \"bcftools\", \"index my BAM\", pileup, or genomics file conversion.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/install-samtools-bcftools",
+        "bundle_sha256": "933d3de5bf0ef5af2dcaaac4909db4e954b152f3155754e738d95675ea8e564a",
+        "bundle_size_bytes": 1848,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Install samtools and bcftools (SAM/BAM/CRAM/VCF/BCF processing) into the code sandbox via bioconda. Use when the user works with sequencing alignment or variant files and these tools aren't installed.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "install-samtools-bcftools",
+          "when_to_use": "User mentions BAM/SAM/CRAM/VCF/BCF files, read alignments, variant calling, \"samtools\", \"bcftools\", \"index my BAM\", pileup, or genomics file conversion."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.122022Z",
+        "updated_at": "2026-07-05T15:43:21.122022Z"
+      },
+      {
+        "id": "cfb5b32f-8855-411b-b3cf-88cc35b8b8a7",
+        "name": "io.github.ziee/manage-projects",
+        "version": "0.1.0",
+        "display_name": "manage-projects",
+        "description": "Create/manage chat projects in ziee -- group conversations + attach reference files + set per-project assistant + MCP defaults. Use when the user wants to organize conversations or attach files to multiple chats at once.",
+        "when_to_use": "User mentions projects, wants to attach files, organize conversations, set defaults for related chats.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/manage-projects",
+        "bundle_sha256": "3ec898b7f2a2431d559f0f07a0c743312b8dd676c8520be6ecee19bf8dda9f81",
+        "bundle_size_bytes": 2240,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Create/manage chat projects in ziee -- group conversations + attach reference files + set per-project assistant + MCP defaults. Use when the user wants to organize conversations or attach files to multiple chats at once.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "manage-projects",
+          "when_to_use": "User mentions projects, wants to attach files, organize conversations, set defaults for related chats."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.123783Z",
+        "updated_at": "2026-07-05T15:43:21.123783Z"
+      },
+      {
+        "id": "d84644df-fb0e-4f47-8306-4b1085514cd1",
+        "name": "io.github.ziee/rnaseq-toolkit",
+        "version": "0.1.0",
+        "display_name": "rnaseq-toolkit",
+        "description": "Install a bulk RNA-seq toolkit (STAR, salmon, HISAT2, featureCounts/subread, samtools) into the code sandbox via bioconda. Use when the user runs RNA-seq alignment or quantification and the tools aren't installed.",
+        "when_to_use": "User mentions RNA-seq, transcript quantification, read alignment for expression, STAR, salmon, HISAT2, featureCounts, subread, or \"FASTQ to counts\".",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/rnaseq-toolkit",
+        "bundle_sha256": "b483fa398d0206eac360664f63e2c06f198f7309e88566eb8ac1cd10c7e4ee6d",
+        "bundle_size_bytes": 1743,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Install a bulk RNA-seq toolkit (STAR, salmon, HISAT2, featureCounts/subread, samtools) into the code sandbox via bioconda. Use when the user runs RNA-seq alignment or quantification and the tools aren't installed.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "rnaseq-toolkit",
+          "when_to_use": "User mentions RNA-seq, transcript quantification, read alignment for expression, STAR, salmon, HISAT2, featureCounts, subread, or \"FASTQ to counts\"."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.125304Z",
+        "updated_at": "2026-07-05T15:43:21.125304Z"
+      },
+      {
+        "id": "af83141d-359b-45cb-91d6-b2378794968c",
+        "name": "io.github.ziee/setup-datascience-env",
+        "version": "0.1.0",
+        "display_name": "setup-datascience-env",
+        "description": "Bootstrap a persistent Python data-science environment (numpy/pandas/scipy/matplotlib/scikit-learn) inside the code sandbox using micromamba. Use when the user wants Python data analysis, plotting, or scientific computing in chat and the needed packages aren't already installed.",
+        "when_to_use": "User asks to analyze a CSV/dataframe, plot data, run pandas/numpy/scipy/sklearn, or \"set up a Python environment\". Run this before reaching for those libraries if an import fails.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/setup-datascience-env",
+        "bundle_sha256": "a608028801dc074bbb6d1d7aea7b5816721be1aa965b552e9cf8ca94972637ce",
+        "bundle_size_bytes": 2499,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Bootstrap a persistent Python data-science environment (numpy/pandas/scipy/matplotlib/scikit-learn) inside the code sandbox using micromamba. Use when the user wants Python data analysis, plotting, or scientific computing in chat and the needed packages aren't already installed.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "setup-datascience-env",
+          "when_to_use": "User asks to analyze a CSV/dataframe, plot data, run pandas/numpy/scipy/sklearn, or \"set up a Python environment\". Run this before reaching for those libraries if an import fails."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.128242Z",
+        "updated_at": "2026-07-05T15:43:21.128242Z"
+      },
+      {
+        "id": "30f07146-9037-4f5a-acdc-92be6cc6d046",
+        "name": "io.github.ziee/set-up-memory",
+        "version": "0.1.0",
+        "display_name": "set-up-memory",
+        "description": "Enable + use ziee's per-user persistent memory (mem0-style fact storage with vector retrieval). Use when the user wants the LLM to remember things across conversations.",
+        "when_to_use": "User mentions \"remember this\", asks why the LLM forgot something, wants persistent context, or asks about the memory feature.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/set-up-memory",
+        "bundle_sha256": "7c3ce65a18315b2a1ae1a946eb971e6d6ffe2e79af2466a6678574ccfc80773c",
+        "bundle_size_bytes": 1977,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Enable + use ziee's per-user persistent memory (mem0-style fact storage with vector retrieval). Use when the user wants the LLM to remember things across conversations.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "set-up-memory",
+          "when_to_use": "User mentions \"remember this\", asks why the LLM forgot something, wants persistent context, or asks about the memory feature."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.126462Z",
+        "updated_at": "2026-07-05T15:43:21.126462Z"
+      },
+      {
+        "id": "12ba36d9-6c1a-4c1a-a683-9f9fa1ec2422",
+        "name": "io.github.ziee/troubleshoot-workflow-run",
+        "version": "0.1.0",
+        "display_name": "troubleshoot-workflow-run",
+        "description": "Diagnose a failed workflow run using log resources + the error structure. Use when a workflow tool call returned is_error or a run failed.",
+        "when_to_use": "User reports \"my workflow failed\", asks why a tool errored, mentions a workflow run that didn't produce expected output, or the LLM just got an is_error tool_result from a workflow tool call.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/troubleshoot-workflow-run",
+        "bundle_sha256": "8f4cf8f1af5a270669f77ba61e75653f28d17b05fa9c7f562528930c0d5df4d3",
+        "bundle_size_bytes": 3385,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Diagnose a failed workflow run using log resources + the error structure. Use when a workflow tool call returned is_error or a run failed.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "troubleshoot-workflow-run",
+          "when_to_use": "User reports \"my workflow failed\", asks why a tool errored, mentions a workflow run that didn't produce expected output, or the LLM just got an is_error tool_result from a workflow tool call."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.131076Z",
+        "updated_at": "2026-07-05T15:43:21.131076Z"
+      },
+      {
+        "id": "c7f57722-93bf-4072-abe7-6f3e58c8f0aa",
+        "name": "io.github.ziee/use-assistants",
+        "version": "0.1.0",
+        "display_name": "use-assistants",
+        "description": "Use + create assistants in ziee -- preset combinations of system prompt + model + parameters. Use when the user wants a specialized chat persona or asks about assistants.",
+        "when_to_use": "User mentions assistant, wants a persona, asks \"what's the difference between chat and assistant\", wants to save a prompt as a reusable assistant.",
+        "extracted_path": "/data/pbya/ziee/tmp/gallery-record-NJgbX3/app-data/skills/builtin/use-assistants",
+        "bundle_sha256": "08e68723c729f395c60c0b872ebd786666f92f1a7673a2d89d26cf8ca3fa5aac",
+        "bundle_size_bytes": 2043,
+        "file_count": 1,
+        "entry_point": "SKILL.md",
+        "frontmatter_json": {
+          "description": "Use + create assistants in ziee -- preset combinations of system prompt + model + parameters. Use when the user wants a specialized chat persona or asks about assistants.",
+          "metadata": {
+            "author": "ziee",
+            "license": "CC0-1.0"
+          },
+          "name": "use-assistants",
+          "when_to_use": "User mentions assistant, wants a persona, asks \"what's the difference between chat and assistant\", wants to save a prompt as a reusable assistant."
+        },
+        "tags": [],
+        "scope": "built_in",
+        "enabled": true,
+        "is_dev": false,
+        "created_at": "2026-07-05T15:43:21.132670Z",
+        "updated_at": "2026-07-05T15:43:21.132670Z"
+      }
+    ]
+  },
+  "SkillSystem.list": {
+    "skills": []
+  },
+  "SummarizationAdmin.get": {
+    "id": 1,
+    "enabled": true,
+    "summarize_after_tokens": 12000,
+    "summarizer_keep_recent_tokens": 3000,
+    "updated_at": "2026-07-05T15:43:20.845707Z"
+  },
+  "User.list": {
+    "users": [
+      {
+        "id": "fccc19d9-678d-488d-965b-421e3634f5f3",
+        "username": "admin",
+        "email": "admin@gallery.dev",
+        "email_verified": false,
+        "is_active": true,
+        "is_admin": true,
+        "permissions": [],
+        "created_at": "2026-07-05T15:43:22.213111Z",
+        "updated_at": "2026-07-05T15:43:23.750118Z",
+        "last_login_at": "2026-07-05T15:43:23.750118Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "per_page": 100,
+    "total_pages": 1
+  },
+  "UserGroup.list": {
+    "groups": [
+      {
+        "id": "7f44ebc6-fe85-4fe6-8ebb-9792f1f3f653",
+        "name": "Administrators",
+        "description": "System administrators with full access to all features",
+        "permissions": [
+          "*",
+          "projects::create",
+          "projects::read",
+          "projects::edit",
+          "projects::delete",
+          "mcp_user_policy::edit"
+        ],
+        "is_system": true,
+        "is_active": true,
+        "is_default": false,
+        "created_at": "2026-07-05T15:43:20.666245Z",
+        "updated_at": "2026-07-05T15:43:20.834520Z"
+      },
+      {
+        "id": "a26b2c27-89d2-41a5-b0a2-49678ae40c86",
+        "name": "Users",
+        "description": "Default group for all users",
+        "permissions": [
+          "profile::read",
+          "profile::edit",
+          "chat::read",
+          "chat::create",
+          "conversations::create",
+          "conversations::read",
+          "conversations::edit",
+          "conversations::delete",
+          "messages::create",
+          "messages::read",
+          "messages::delete",
+          "branches::create",
+          "branches::switch",
+          "assistants::create",
+          "assistants::read",
+          "assistants::edit",
+          "assistants::delete",
+          "mcp_servers::read",
+          "mcp_servers::create",
+          "mcp_servers::edit",
+          "mcp_servers::delete",
+          "hub::assistants::read",
+          "hub::assistants::read_version",
+          "hub::assistants::create",
+          "hub::mcp_servers::read",
+          "hub::mcp_servers::read_version",
+          "hub::mcp_servers::create",
+          "files::read",
+          "files::upload",
+          "files::download",
+          "files::delete",
+          "files::preview",
+          "files::generate_token",
+          "user_llm_providers::read",
+          "code_sandbox::execute",
+          "llm_models::downloads_read",
+          "llm_models::downloads_cancel",
+          "llm_models::downloads_delete",
+          "memory::read",
+          "memory::write",
+          "memory::core::read",
+          "memory::core::write",
+          "bio::query",
+          "web_search::use",
+          "lit_search::use",
+          "citations::use",
+          "citations::manage",
+          "workflows::read",
+          "workflows::execute",
+          "control::use"
+        ],
+        "is_system": true,
+        "is_active": true,
+        "is_default": true,
+        "created_at": "2026-07-05T15:43:20.666245Z",
+        "updated_at": "2026-07-05T15:43:20.917144Z"
+      }
+    ],
+    "total": 2,
+    "page": 1,
+    "per_page": 100,
+    "total_pages": 1
+  },
+  "WebSearch.getProviders": {
+    "providers": [
+      {
+        "key": "searxng",
+        "display_name": "SearXNG (self-hosted)",
+        "needs_api_key": false,
+        "config_fields": [
+          {
+            "key": "base_url",
+            "label": "Base URL",
+            "required": true,
+            "placeholder": "https://searxng.example.com"
+          }
+        ],
+        "configured": false,
+        "api_key_set": false,
+        "config": {}
+      },
+      {
+        "key": "brave",
+        "display_name": "Brave Search",
+        "needs_api_key": true,
+        "config_fields": [],
+        "configured": false,
+        "api_key_set": false,
+        "config": {}
+      }
+    ]
+  },
+  "WebSearch.getSettings": {
+    "enabled": true,
+    "provider_chain": [
+      "searxng",
+      "brave"
+    ],
+    "max_results": 5,
+    "fetch_max_bytes": 5242880,
+    "fetch_max_chars": 40000,
+    "request_timeout_secs": 20,
+    "updated_at": "2026-07-05T15:43:20.870590Z"
+  },
+  "WebSearch.listUserKeys": {
+    "providers": [
+      {
+        "provider": "brave",
+        "display_name": "Brave Search",
+        "needs_api_key": true,
+        "system_key_set": false
+      }
+    ]
+  },
+  "Workflow.list": {
+    "workflows": []
+  },
+  "Workflow.listSystem": {
+    "workflows": []
+  }
+}

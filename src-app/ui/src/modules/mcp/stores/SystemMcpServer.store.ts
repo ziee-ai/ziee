@@ -214,7 +214,8 @@ export const SystemMcpServer = defineStore('SystemMcpServer', {
           // Read the group's assigned servers directly from the canonical
           // endpoint (iterating the paginated cache dropped servers not in it).
           const response = await ApiClient.Group.getSystemServers({ group_id: groupId })
-          return response.servers
+          // Guard: callers `.map` the result — never hand back undefined.
+          return Array.isArray(response.servers) ? response.servers : []
         } catch (error) {
           console.error('Failed to get servers for group:', error)
           throw error

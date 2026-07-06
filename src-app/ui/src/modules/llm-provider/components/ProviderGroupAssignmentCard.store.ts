@@ -34,7 +34,8 @@ export const ProviderGroupCard = defineStore('ProviderGroupCard', {
       try {
         const response = await ApiClient.UserGroup.list({ page: 1, per_page: 1000 })
         set(s => {
-          s.allGroups = response.groups
+          // Defensive: never assign a non-array (downstream reads `.length`/maps).
+          s.allGroups = Array.isArray(response.groups) ? response.groups : []
           s.groupsLoading = false
           s.groupsError = null
           s.groupsInitialized = true

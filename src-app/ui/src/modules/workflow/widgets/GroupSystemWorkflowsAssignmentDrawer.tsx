@@ -24,7 +24,8 @@ export function GroupSystemWorkflowsAssignmentDrawer() {
     let cancelled = false
     ApiClient.Workflow.listSystem()
       .then(res => {
-        if (!cancelled) setAllWorkflows(res.workflows)
+        if (!cancelled)
+          setAllWorkflows(Array.isArray(res.workflows) ? res.workflows : [])
       })
       .catch(err => console.error('Failed to load system workflows:', err))
     return () => {
@@ -42,7 +43,7 @@ export function GroupSystemWorkflowsAssignmentDrawer() {
       allEntities={allWorkflows}
       loadAssigned={gid =>
         ApiClient.Group.getSystemWorkflows({ group_id: gid }).then(r =>
-          r.workflows.map(w => w.id),
+          (Array.isArray(r.workflows) ? r.workflows : []).map(w => w.id),
         )
       }
       save={(gid, ids) =>

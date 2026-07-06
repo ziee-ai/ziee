@@ -122,7 +122,7 @@ export function FileCard({
     const isError = uploadProgress.status === 'error'
     const percent = Math.round(uploadProgress.progress)
     const ext =
-      uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'
+      (uploadProgress.filename?.split('.').pop()?.toUpperCase()) || 'FILE'
     return (
       <Attachment
         orientation="horizontal"
@@ -191,7 +191,7 @@ export function FileCard({
   // ── Square upload-progress ─────────────────────────────────────────────────
   if (uploadProgress) {
     const isError = uploadProgress.status === 'error'
-    const ext = uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'
+    const ext = (uploadProgress.filename?.split('.').pop()?.toUpperCase()) || 'FILE'
     return (
       <Attachment
         orientation="vertical"
@@ -252,7 +252,7 @@ export function FileCard({
 
   if (!file) return null
 
-  const ext = file.filename.split('.').pop()?.toUpperCase() || 'FILE'
+  const ext = (file.filename?.split('.').pop()?.toUpperCase()) || 'FILE'
   const viewerLabel = getViewer(file.filename, file.mime_type ?? undefined)?.label ?? ext
   // Show whatever thumbnail the backend generated (images, PDFs, docs,
   // spreadsheets all get one), not just image mime types.

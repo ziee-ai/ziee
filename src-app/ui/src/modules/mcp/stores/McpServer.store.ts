@@ -68,7 +68,8 @@ export const McpServerStoreDef = defineStore('McpServer', {
           ...(state.statusFilter !== 'all' ? { status: state.statusFilter } : {}),
         })
         set(draft => {
-          draft.servers = response.servers
+          // Defensive: never assign a non-array (the list is iterated/`.length`-read).
+          draft.servers = Array.isArray(response.servers) ? response.servers : []
           draft.total = response.total
           draft.currentPage = response.page
           draft.pageSize = response.per_page
