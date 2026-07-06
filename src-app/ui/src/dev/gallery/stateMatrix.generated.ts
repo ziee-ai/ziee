@@ -86,10 +86,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/card",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "branch", condition: "(title != null || extra != null)", line: 36 },
-      { kind: "branch", condition: "title != null", line: 38 },
-      { kind: "loading", condition: "skeleton", line: 47 },
-      { kind: "branch", condition: "footer != null", line: 57 },
+      { kind: "branch", condition: "(title != null || extra != null)", line: 39 },
+      { kind: "branch", condition: "title != null", line: 41 },
+      { kind: "loading", condition: "skeleton", line: 50 },
+      { kind: "branch", condition: "footer != null", line: 60 },
     ],
   },
   "components/ui/kit/checkbox": {
@@ -762,10 +762,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ConversationCard",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "conversation.message_count > 0", line: 123 },
-      { kind: "branch", condition: "canDelete && !isInSelectionMode", line: 161 },
-      { kind: "overlay", condition: "<Confirm open>", line: 185 },
-      { kind: "branch", condition: "onSelect", line: 203 },
+      { kind: "branch", condition: "conversation.message_count > 0", line: 129 },
+      { kind: "branch", condition: "canDelete && !isInSelectionMode", line: 167 },
+      { kind: "overlay", condition: "<Confirm open>", line: 191 },
+      { kind: "branch", condition: "onSelect", line: 209 },
     ],
   },
   "modules/chat/components/ConversationList": {
@@ -1062,10 +1062,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "!canRead", line: 96 },
       { kind: "branch", condition: "pinnedVersion", line: 212 },
-      { kind: "branch", condition: "downloadedFlavors.length > 0", line: 221 },
-      { kind: "branch", condition: "lastSwap && lastSwap.draining_mounts > 0", line: 239 },
-      { kind: "error", condition: "error", line: 259 },
-      { kind: "loading", condition: "loading && groups.length === 0", line: 261 },
+      { kind: "branch", condition: "downloadedFlavors.length > 0", line: 223 },
+      { kind: "branch", condition: "lastSwap && lastSwap.draining_mounts > 0", line: 241 },
+      { kind: "error", condition: "error", line: 261 },
+      { kind: "loading", condition: "loading && groups.length === 0", line: 263 },
     ],
   },
   "modules/code-sandbox/components/_rootfsShared": {
@@ -2417,9 +2417,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "canDelete && !server.is_built_in", line: 274 },
       { kind: "branch", condition: "server.last_health_check_status === 'unhealthy'", line: 318 },
       { kind: "branch", condition: "server.url", line: 341 },
-      { kind: "branch", condition: "server.command", line: 351 },
-      { kind: "branch", condition: "Array.isArray(server.args) && server.args.length > 0", line: 355 },
-      { kind: "branch", condition: "bordered", line: 371 },
+      { kind: "branch", condition: "server.command", line: 358 },
+      { kind: "branch", condition: "Array.isArray(server.args) && server.args.length > 0", line: 362 },
+      { kind: "branch", condition: "bordered", line: 378 },
     ],
   },
   "modules/mcp/components/common/McpServerDrawer": {
@@ -2512,10 +2512,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "loading", condition: "loading && servers.length === 0", line: 73 },
       { kind: "error", condition: "error && servers.length === 0", line: 85 },
-      { kind: "branch", condition: "policyAllowsAdd", line: 150 },
-      { kind: "branch", condition: "(searchTerm || statusFilter !== 'all')", line: 160 },
-      { kind: "empty", condition: "filteredServers.length === 0", line: 194 },
-      { kind: "branch", condition: "totalServers > 0", line: 206 },
+      { kind: "branch", condition: "policyAllowsAdd", line: 152 },
+      { kind: "branch", condition: "(searchTerm || statusFilter !== 'all')", line: 162 },
+      { kind: "empty", condition: "filteredServers.length === 0", line: 196 },
+      { kind: "branch", condition: "totalServers > 0", line: 208 },
     ],
   },
   "modules/mcp/project-extension/components/ProjectMcpSettingsPanel": {
@@ -2821,10 +2821,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/projects/components/ProjectCard",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "canEdit", line: 96 },
-      { kind: "branch", condition: "canDuplicate", line: 111 },
-      { kind: "branch", condition: "canDelete", line: 127 },
-      { kind: "overlay", condition: "<Confirm open>", line: 143 },
+      { kind: "branch", condition: "canEdit", line: 98 },
+      { kind: "branch", condition: "canDuplicate", line: 113 },
+      { kind: "branch", condition: "canDelete", line: 129 },
+      { kind: "overlay", condition: "<Confirm open>", line: 145 },
     ],
   },
   "modules/projects/components/ProjectDefaultsForm": {
@@ -3264,8 +3264,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "overlay", condition: "<Confirm open>", line: 109 },
       { kind: "branch", condition: "loadingUsers", line: 231 },
       { kind: "empty", condition: "users.length === 0", line: 233 },
-      { kind: "branch", condition: "index < users.length - 1", line: 273 },
-      { kind: "branch", condition: "users.length > 0", line: 279 },
+      { kind: "branch", condition: "index < users.length - 1", line: 276 },
+      { kind: "branch", condition: "users.length > 0", line: 282 },
     ],
   },
   "modules/web-search/components/WebSearchGlobalSection": {

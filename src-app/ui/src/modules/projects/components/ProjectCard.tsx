@@ -73,9 +73,11 @@ export function ProjectCard({
       className="group h-full focus-visible:outline focus-visible:outline-2"
       data-test-project-name={project.name}
       title={
-        <div className="flex items-center gap-2 min-w-0">
-          <Folder aria-hidden="true" />
-          <Title level={5} className="!m-0 truncate">
+        <div className="flex items-start gap-2 min-w-0">
+          <Folder aria-hidden="true" className="shrink-0 mt-0.5" />
+          {/* Wrap to two lines before ellipsizing — a single-line truncate
+              ("UI Sh…") wasted the card width on tablet/mobile. */}
+          <Title level={5} className="!m-0 line-clamp-2 [overflow-wrap:anywhere]">
             {project.name}
           </Title>
         </div>

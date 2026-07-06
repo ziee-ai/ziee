@@ -251,8 +251,11 @@ export function UsersSettings() {
                               <Badge tone={user.is_active ? 'success' : 'error'} data-testid={`user-status-badge-${user.id}`}>{user.is_active ? 'Active' : 'Inactive'}</Badge>
                             </Flex>
                           </div>
+                          {/* Left-align the wrapped action list on mobile
+                              so a lone wrapped action (e.g. "Groups") isn't
+                              orphaned right; right-align inline from sm up. */}
                           <div
-                            className={'flex flex-wrap gap-1 items-center justify-end'}
+                            className={'flex flex-wrap gap-1 items-center justify-start sm:justify-end'}
                           >
                             {getUserActions(user)}
                           </div>

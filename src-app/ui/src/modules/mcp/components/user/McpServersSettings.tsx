@@ -114,8 +114,10 @@ export function McpServersSettings() {
       subtitle="Manage Model Context Protocol servers for enhanced tool capabilities"
     >
       <div className="flex flex-col gap-3">
-        {/* Search and Filters — standalone list controls, not form fields. */}
-        <div className="flex gap-2 flex-wrap">
+        {/* Search and Filters — standalone list controls, not form fields.
+            Stacks full-width on mobile so the search placeholder isn't
+            squeezed to "Se…"; reflows to a single wrapping row from sm up. */}
+        <div className="flex flex-col sm:flex-row gap-2 sm:flex-wrap">
           <Input
             data-standalone-control
             placeholder="Search servers..."
@@ -123,7 +125,7 @@ export function McpServersSettings() {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
-            className="flex-1"
+            className="w-full sm:flex-1"
             aria-label="Search MCP servers"
             data-testid="mcp-settings-search-input"
           />
@@ -132,7 +134,7 @@ export function McpServersSettings() {
             placeholder="Filter by status"
             value={statusFilter}
             onChange={setStatusFilter}
-            className="min-w-[150px]"
+            className="w-full sm:w-auto sm:min-w-[150px]"
             aria-label="Filter servers by status"
             data-testid="mcp-settings-status-select"
             options={[

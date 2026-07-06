@@ -114,9 +114,15 @@ export function ConversationCard({
       hoverable
     >
       <div className="flex flex-col gap-2 pb-6">
-        {/* Title and metadata */}
-        <div className="flex items-center justify-between gap-2">
-          <Text strong className="text-base flex-1 min-w-0" ellipsis>
+        {/* Title and metadata — stack on mobile so the wide meta row
+            doesn't starve the title; sit side-by-side from sm up. */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-2">
+          {/* Wrap to two lines before ellipsizing — a hard single-line
+              truncate ("Ren…") wasted the available width on mobile. */}
+          <Text
+            strong
+            className="text-base sm:flex-1 min-w-0 line-clamp-2 [overflow-wrap:anywhere]"
+          >
             {conversation.title || 'Untitled Conversation'}
           </Text>
           <div className="flex items-center gap-x-1 flex-shrink-0">
