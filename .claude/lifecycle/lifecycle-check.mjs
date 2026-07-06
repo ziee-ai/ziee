@@ -37,7 +37,9 @@ let repoArg = opt('--repo');
 // locate repo + feature dir
 // ---------------------------------------------------------------------------
 function git(cwd, ...a) {
-  return execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  // 64 MiB: a regenerated openapi.json alone can produce a multi-MB positional
+  // diff; the default 1 MiB maxBuffer throws ENOBUFS on real feature diffs.
+  return execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }).trim();
 }
 let repo;
 try {
@@ -123,6 +125,8 @@ const RE_DEC = /^#{2,6}\s*(DEC-[A-Za-z0-9._-]+)\s*:/;
 const RE_DRIFT = /^-\s*\*\*(DRIFT-[A-Za-z0-9._-]+)\*\*.*?verdict\s*:\s*(plan-wins|impl-wins|none|resolved)\b/i;
 // TEST_RESULTS: - **TEST-2**: PASS
 const RE_RESULT = /\*\*(TEST-[A-Za-z0-9._-]+)\*\*\s*:?\s*.*?\b(PASS|FAIL|SKIP)\b/i;
+// Frontend gate line: `npm run check (ui): PASS` / `npm run check (desktop/ui): PASS`
+const RE_UI_CHECK = /npm run check\s*\(\s*([A-Za-z0-9._/\- ]+?)\s*\)\s*:?\s*.*?\b(PASS|FAIL)\b/i;
 
 function parsePlanItems() {
   const t = read('PLAN.md');
@@ -154,14 +158,26 @@ function parseTests() {
 // ---------------------------------------------------------------------------
 // git diff hunk parsing (git diff base...HEAD --unified=0)
 // ---------------------------------------------------------------------------
+// Exclude the lifecycle artifacts themselves and MECHANICALLY-GENERATED files
+// (OpenAPI spec + generated api-client types). Generated output is derived
+// deterministically from reviewed source by a golden-tested generator, so it is
+// not independently blind-auditable line-by-line — the source hunks
+// (handlers/repository/etc.) carry the review. These same excludes make
+// generated `ui/` artifacts NOT count as a real frontend touch (see
+// `frontendWorkspacesOf` / `changedFilePaths`), so a backend-only feature that
+// merely regenerates `openapi.json` + `types.ts` is still classified backend.
+const DIFF_EXCLUDES = [
+  ':(exclude).lifecycle',
+  ':(glob,exclude)**/openapi.json',
+  ':(glob,exclude)**/api-client/types.ts',
+];
 function diffHunks() {
   let out;
   try {
-    out = git(repo, 'diff', `${baseRef}...HEAD`, '--unified=0', '--no-color',
-      '--', '.', ':(exclude).lifecycle');
+    out = git(repo, 'diff', `${baseRef}...HEAD`, '--unified=0', '--no-color', '--', '.', ...DIFF_EXCLUDES);
   } catch (e) {
     // fall back to two-dot if merge-base form fails
-    out = git(repo, 'diff', baseRef, '--unified=0', '--no-color', '--', '.', ':(exclude).lifecycle');
+    out = git(repo, 'diff', baseRef, '--unified=0', '--no-color', '--', '.', ...DIFF_EXCLUDES);
   }
   const hunks = [];
   let file = null;
@@ -181,6 +197,58 @@ function diffHunks() {
   }
   return hunks;
 }
+
+// ---------------------------------------------------------------------------
+// touched-area detection (frontend vs backend) — drives the conditional
+// frontend gates in phase 3 (test plan) and phase 8 (test results).
+// ---------------------------------------------------------------------------
+// The list of changed files in `base...HEAD`, with the SAME excludes as
+// diffHunks (lifecycle artifacts + mechanically-generated openapi/types), so a
+// diff that only regenerates `openapi.json`/`types.ts` reads as backend-only.
+function changedFilePaths() {
+  let out;
+  try {
+    out = git(repo, 'diff', `${baseRef}...HEAD`, '--name-only', '--no-color', '--', '.', ...DIFF_EXCLUDES);
+  } catch (e) {
+    out = git(repo, 'diff', baseRef, '--name-only', '--no-color', '--', '.', ...DIFF_EXCLUDES);
+  }
+  return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+// A mechanically-generated frontend artifact never counts as a real UI touch
+// (belt-and-suspenders alongside DIFF_EXCLUDES; also used to filter PLAN paths).
+const RE_GENERATED_FE = /(?:^|\/)openapi\.json$|(?:^|\/)api-client\/types\.ts$/;
+// Map a set of paths → the frontend npm workspaces they touch.
+// `src-app/ui/**` → "ui"; `src-app/desktop/ui/**` → "desktop/ui".
+function frontendWorkspacesOf(paths) {
+  const ws = new Set();
+  for (const p of paths) {
+    if (RE_GENERATED_FE.test(p)) continue;
+    if (/^src-app\/desktop\/ui\//.test(p)) ws.add('desktop/ui');
+    else if (/^src-app\/ui\//.test(p)) ws.add('ui');
+  }
+  return ws;
+}
+// Frontend workspaces named in PLAN.md's "Files to touch" section — used at
+// phase 3, when the diff may still be empty (implementation not written yet).
+function planFrontendWorkspaces() {
+  const t = read('PLAN.md');
+  if (t == null) return new Set();
+  const lines = t.split(/\r?\n/);
+  let inSec = false;
+  const paths = [];
+  for (const ln of lines) {
+    const h = /^#{2,6}\s+(.*\S)\s*$/.exec(ln);
+    if (h) { inSec = /files\s*to\s*touch|files-to-touch/i.test(h[1]); continue; }
+    if (!inSec) continue;
+    for (const m of ln.matchAll(/src-app\/[A-Za-z0-9._\-\/]+/g)) paths.push(m[0]);
+  }
+  return frontendWorkspacesOf(paths);
+}
+// Frontend workspaces touched by the real diff (empty if not implemented yet).
+function diffFrontendWorkspaces() {
+  try { return frontendWorkspacesOf(changedFilePaths()); } catch { return new Set(); }
+}
+
 function parseCoverage() {
   const t = read('AUDIT_COVERAGE.tsv');
   if (t == null) return null;
@@ -270,6 +338,14 @@ function phase3() {
   }
   for (const id of items.keys()) {
     if (!covered.has(id)) g.push(`TESTS.md: ${id} is not covered by any TEST (bipartite completeness fails)`);
+  }
+  // Frontend work MUST enumerate ≥1 e2e-tier test. Detect a frontend touch from
+  // the diff OR (when nothing is implemented yet) from PLAN.md's files-to-touch.
+  // Generated openapi/types artifacts are filtered out, so a backend-only
+  // feature that merely regenerates the client is NOT treated as UI work.
+  const fe = new Set([...planFrontendWorkspaces(), ...diffFrontendWorkspaces()]);
+  if (fe.size > 0 && !tests.some((t) => t.tier === 'e2e')) {
+    g.push(`TESTS.md: frontend workspace(s) {${[...fe].join(', ')}} are touched but no "(tier: e2e)" test is enumerated — UI work requires ≥1 e2e-tier test; an all-unit plan is refused.`);
   }
   return { present: true, gaps: g };
 }
@@ -377,6 +453,33 @@ function phase8() {
     const r = results.get(test.id);
     if (!r) g.push(`TEST_RESULTS.md: ${test.id} (from TESTS.md) has no result line`);
     else if (r !== 'PASS') g.push(`TEST_RESULTS.md: ${test.id} is ${r}, not PASS`);
+  }
+  // Frontend-touching branches: require `npm run check` per touched workspace
+  // (that ONE command chains tsc + biome guardrails + lint:colors +
+  // lint:settings-field + check:kit-manifest + check:testid-registry +
+  // check:design-spec + check:gallery-coverage + check:state-matrix) AND require
+  // every enumerated e2e-tier spec to have run green. Backend-only diffs keep
+  // just the cargo TEST-ID chain above.
+  const feWs = diffFrontendWorkspaces();
+  if (feWs.size > 0) {
+    const checked = new Map();
+    for (const ln of t.split(/\r?\n/)) {
+      const m = RE_UI_CHECK.exec(ln);
+      if (m) checked.set(m[1].trim().toLowerCase(), m[2].toUpperCase());
+    }
+    for (const w of feWs) {
+      const v = checked.get(w.toLowerCase());
+      if (!v) g.push(`TEST_RESULTS.md: frontend workspace "${w}" was touched but no "npm run check (${w}): PASS" line is present (tsc + biome guardrails + lint:colors/settings-field + check:kit-manifest/testid-registry/design-spec/gallery-coverage/state-matrix).`);
+      else if (v !== 'PASS') g.push(`TEST_RESULTS.md: "npm run check (${w})" is ${v}, not PASS.`);
+    }
+    const e2e = tests.filter((tt) => tt.tier === 'e2e');
+    if (e2e.length === 0) {
+      g.push('TEST_RESULTS.md: frontend touched but TESTS.md enumerates no e2e-tier test (phase 3 should have blocked this) — enumerate + run the user-visible flow specs.');
+    }
+    for (const et of e2e) {
+      const r = results.get(et.id);
+      if (r !== 'PASS') g.push(`TEST_RESULTS.md: e2e spec ${et.id} is ${r || 'missing'}, not PASS — run "npx playwright test <spec> --workers=1".`);
+    }
   }
   return { present: true, gaps: g };
 }
