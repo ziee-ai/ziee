@@ -1,7 +1,7 @@
 //! Server self-update notification module.
 //!
 //! NOTIFICATION ONLY: a daily background task polls GitHub's `releases/latest`
-//! for `phibya/ziee-chat-new`, compares semver against the running version, and
+//! for `ziee-ai/ziee`, compares semver against the running version, and
 //! caches the result. An admin endpoint (`GET /api/server-update/status`)
 //! exposes it to the web UI (banner + System/About page). It never downloads or
 //! installs — operators update manually via `install.sh`.

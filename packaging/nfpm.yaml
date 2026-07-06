@@ -15,7 +15,7 @@ maintainer: "Ziee <noreply@ziee.local>"
 description: |
   Ziee server — self-hosted AI chat backend.
 vendor: "Ziee"
-homepage: "https://github.com/phibya/ziee-chat-new"
+homepage: "https://github.com/ziee-ai/ziee"
 license: "Apache-2.0"
 
 # Sandbox host deps are soft (the sandbox is opt-in / disabled by default), so

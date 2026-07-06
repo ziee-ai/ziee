@@ -47,7 +47,7 @@ test('buildLatestJson produces the exact static-manifest shape', () => {
   try {
     const m = buildLatestJson({
       artifactsDir: dir,
-      baseUrl: 'https://github.com/phibya/ziee-chat-new/releases/download/v0.2.0',
+      baseUrl: 'https://github.com/ziee-ai/ziee/releases/download/v0.2.0',
       version: '0.2.0',
       notes: 'Release notes here',
       pubDate: '2026-06-11T00:00:00.000Z',
@@ -64,7 +64,7 @@ test('buildLatestJson produces the exact static-manifest shape', () => {
       assert.equal(m.platforms[key].signature, sigs[key], `signature for ${key}`)
       assert.equal(
         m.platforms[key].url,
-        `https://github.com/phibya/ziee-chat-new/releases/download/v0.2.0/${files[key]}`,
+        `https://github.com/ziee-ai/ziee/releases/download/v0.2.0/${files[key]}`,
         `url for ${key}`,
       )
     }

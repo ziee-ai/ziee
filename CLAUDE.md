@@ -54,21 +54,30 @@ The application is named **ziee** (not `ziee-chat`). This applies to:
 - Log messages, error messages, doc comments
 - Anything user- or operator-facing
 
-The string `ziee-chat` survives only in **external references that are opaque
-to us**:
+The repo has been transferred to **`ziee-ai/ziee`** (renamed from
+`phibya/ziee-chat-new`). Every repo URL and release/self-update slug now points
+at `ziee-ai/ziee`; GitHub redirects the old slug, so nothing breaks in the
+meantime. The former `ziee-chat` naming exception is therefore **retired** —
+`ziee-chat` no longer survives in any live reference we control.
 
-- The GitHub repo URL (`github.com/phibya/ziee-chat`) — used by the sandbox
-  rootfs fetcher (`src-app/server/src/modules/code_sandbox/runtime_fetch.rs`),
-  the cosign cert-identity regex
-  (`scripts/bootstrap-first-rootfs-release.sh`), and `sandbox-rootfs/README.md`.
-- The self-update release repo slug `phibya/ziee-chat-new` — the actual
-  GitHub repo backing the app (the `origin` remote), used by
-  `src-app/server/src/modules/server_update/checker.rs` (`REPO` const, the
-  `mod.rs` doc-comment, and the test `html_url`). Deliberate; not legacy.
+The string `ziee-chat` survives only in:
+
+- **Cosign cert-identity verify regexes** for the sandbox rootfs, which must
+  **dual-accept** `phibya/ziee-chat` OR `ziee-ai/ziee` for now — rootfs
+  artifacts signed before the org migration carry the old OIDC identity, those
+  signed after carry the new one. See the dual-accept comments in
+  `.github/workflows/code_sandbox.yml` and
+  `scripts/bootstrap-first-rootfs-release.sh`. Drop the `phibya/ziee-chat`
+  alternative once every pre-migration rootfs release has been superseded.
+- The legacy reference project's local path `~/projects/ziee-chat-ref`
+  (provenance comments only; not a repo we publish).
 - Historical log/diagnostic artifacts under `src-app/server/test-logs/` and
   `src-app/ui/docs/antd-diagnostics/`. They roll over naturally.
+- Hub publisher IDs under the `io.github.phibya` namespace (owned by the
+  separate hub-migration workstream — do not touch here).
 
-Anywhere else, treat `ziee-chat` as a bug to fix.
+Anywhere else, treat `ziee-chat` (and a live `phibya/…` repo URL) as a bug to
+fix.
 
 ---
 

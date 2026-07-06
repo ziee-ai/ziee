@@ -227,7 +227,7 @@ A wide / complex table:
 ---
 
 Inline image (may 401 offline — exercises the `<img>` layout):
-![alt text](https://raw.githubusercontent.com/phibya/ziee-chat/main/does-not-exist.png)
+![alt text](https://raw.githubusercontent.com/ziee-ai/ziee/main/does-not-exist.png)
 
 Here is a footnote reference[^1] and a second[^2].
 

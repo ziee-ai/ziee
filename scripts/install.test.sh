@@ -86,7 +86,7 @@ cat > "$lv_stub/curl" <<'EOF'
 # Only the redirect probe (-w %{url_effective}) runs in --dry-run; echo a fake
 # effective URL pointing at a tagged release.
 for a in "$@"; do
-  case "$a" in *url_effective*) echo "https://github.com/phibya/ziee-chat-new/releases/tag/v9.9.9"; exit 0 ;; esac
+  case "$a" in *url_effective*) echo "https://github.com/ziee-ai/ziee/releases/tag/v9.9.9"; exit 0 ;; esac
 done
 exit 0
 EOF
@@ -105,7 +105,7 @@ EOF
 cat > "$cr_stub/curl" <<'EOF'
 #!/bin/sh
 for a in "$@"; do
-  case "$a" in *url_effective*) printf 'https://github.com/phibya/ziee-chat-new/releases/tag/v9.9.9\r\n'; exit 0 ;; esac
+  case "$a" in *url_effective*) printf 'https://github.com/ziee-ai/ziee/releases/tag/v9.9.9\r\n'; exit 0 ;; esac
 done
 exit 0
 EOF
@@ -185,7 +185,7 @@ case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) exec /usr/bin/uname "$@" ;;
 EOF
 cat > "$rf_stub/curl" <<'EOF'
 #!/bin/sh
-for a in "$@"; do case "$a" in *url_effective*) echo "https://github.com/phibya/ziee-chat-new/releases"; exit 0 ;; esac; done
+for a in "$@"; do case "$a" in *url_effective*) echo "https://github.com/ziee-ai/ziee/releases"; exit 0 ;; esac; done
 exit 0
 EOF
 chmod +x "$rf_stub/uname" "$rf_stub/curl"

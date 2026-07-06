@@ -14,7 +14,7 @@ import { byTestId } from '../testid'
 // ---------------------------------------------------------------------------
 
 const RELEASE_URL =
-  'https://github.com/phibya/ziee-chat-new/releases/tag/v0.2.0'
+  'https://github.com/ziee-ai/ziee/releases/tag/v0.2.0'
 
 const STATUS_AVAILABLE = {
   current_version: '0.1.0',

@@ -33,7 +33,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://phibya.github.io/ziee-chat-new/latest.json"
+        "https://ziee-ai.github.io/ziee/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCMTZEQ0VBMDBFOEU5RkUKUldUKzZlZ0E2dHdXZTlLSytNRnJlWlUyNDczM1VHbmEzTUxHcHo4OGxLalpTc3FMVXVmbVBnTGYK"
     }

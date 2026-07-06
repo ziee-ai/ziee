@@ -128,9 +128,14 @@ jobs:
 
       - name: cosign sign (keyless GitHub OIDC)
         # Keyless cosign binds the signature to THIS workflow file's
-        # OIDC identity. Operators verify via:
+        # OIDC identity. The org migration renamed the repo phibya/ziee-chat →
+        # ziee-ai/ziee: rootfs artifacts signed before the migration carry the
+        # OLD identity, artifacts signed after carry the NEW one. Operators
+        # verify with a regex that accepts BOTH during the dual-accept window
+        # (drop the phibya/ziee-chat alternative once every published rootfs
+        # release predating the migration has been superseded):
         #   --certificate-identity-regexp \
-        #     '^https://github\.com/phibya/ziee-chat/\.github/workflows/code_sandbox\.yml@refs/tags/sandbox-rootfs-v.+$'
+        #     '^https://github\.com/(phibya/ziee-chat|ziee-ai/ziee)/\.github/workflows/code_sandbox\.yml@refs/tags/sandbox-rootfs-v.+$'
         #   --certificate-oidc-issuer \
         #     https://token.actions.githubusercontent.com
         run: |
@@ -152,7 +157,7 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────
   # JOB 2: auto-PR an update to known_revisions.toml so that
-  # `ziee-chat fetch-sandbox-rootfs --version=latest` can resolve the
+  # `ziee fetch-sandbox-rootfs --version=latest` can resolve the
   # newly-published tag. Without this, the embedded toml stays stale
   # and every operator has to fetch by exact pinned version forever.
   # ─────────────────────────────────────────────────────────────────
@@ -235,7 +240,7 @@ jobs:
 
             After merge, operators can:
             ```
-            ziee-chat fetch-sandbox-rootfs --version=latest --flavor=full
+            ziee fetch-sandbox-rootfs --version=latest --flavor=full
             ```
           branch: chore/register-${{ steps.parse.outputs.tag }}
           delete-branch: true

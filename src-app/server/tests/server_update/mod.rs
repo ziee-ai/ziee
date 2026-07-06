@@ -27,11 +27,11 @@ async fn status_with_mock_tag(tag: &'static str) -> Value {
     let mirror = format!("http://{addr}");
     let body = json!({
         "tag_name": tag,
-        "html_url": format!("https://github.com/phibya/ziee-chat-new/releases/tag/{tag}"),
+        "html_url": format!("https://github.com/ziee-ai/ziee/releases/tag/{tag}"),
         "body": "notes"
     });
     let app = axum::Router::new().route(
-        "/repos/phibya/ziee-chat-new/releases/latest",
+        "/repos/ziee-ai/ziee/releases/latest",
         axum::routing::get(move || {
             let body = body.clone();
             async move { axum::Json(body) }
@@ -150,11 +150,11 @@ async fn detects_update_via_mock_github() {
     let addr = listener.local_addr().unwrap();
     let mirror = format!("http://{addr}");
     let app = axum::Router::new().route(
-        "/repos/phibya/ziee-chat-new/releases/latest",
+        "/repos/ziee-ai/ziee/releases/latest",
         axum::routing::get(|| async {
             axum::Json(json!({
                 "tag_name": "v99.0.0",
-                "html_url": "https://github.com/phibya/ziee-chat-new/releases/tag/v99.0.0",
+                "html_url": "https://github.com/ziee-ai/ziee/releases/tag/v99.0.0",
                 "body": "A big new release"
             }))
         }),
@@ -197,7 +197,7 @@ async fn detects_update_via_mock_github() {
     assert_eq!(body["latest_version"], json!("99.0.0"));
     assert_eq!(
         body["release_url"],
-        json!("https://github.com/phibya/ziee-chat-new/releases/tag/v99.0.0")
+        json!("https://github.com/ziee-ai/ziee/releases/tag/v99.0.0")
     );
     assert_eq!(body["notes"], json!("A big new release"));
     assert_eq!(body["enabled"], json!(true));
