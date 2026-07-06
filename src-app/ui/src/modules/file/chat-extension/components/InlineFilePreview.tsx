@@ -134,20 +134,6 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
           borderBottom: showBody ? '1px solid var(--border)' : 'none',
         }}
       >
-        {/* Chevron = ONLY collapse toggle. Only render when the viewer
-            actually has an inline body to toggle; otherwise the header is
-            the whole UI and a chevron would be a noop. */}
-        {canInline && Body && (
-          <Button
-            variant="ghost"
-            size="default"
-            aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
-            aria-expanded={!collapsed}
-            icon={collapsed ? <ChevronRight /> : <ChevronDown />}
-            onClick={() => setCollapsed(c => !c)}
-            data-testid="inline-file-preview-chevron"
-          />
-        )}
         <span
           className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
           style={{ width: 20, height: 20 }}
@@ -207,6 +193,21 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             />
           )}
         </Tooltip>
+        {/* Expand/collapse toggle — trailing (right) edge, matching the app
+            convention used by the execute_command / MCP tool-call cards (chevron
+            on the right). Only render when the viewer actually has an inline body
+            to toggle; otherwise the header is the whole UI and it would be a noop. */}
+        {canInline && Body && (
+          <Button
+            variant="ghost"
+            size="default"
+            aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
+            aria-expanded={!collapsed}
+            icon={collapsed ? <ChevronRight /> : <ChevronDown />}
+            onClick={() => setCollapsed(c => !c)}
+            data-testid="inline-file-preview-chevron"
+          />
+        )}
       </div>
 
       {/* Body — viewer's existing component, called with the source variant.
