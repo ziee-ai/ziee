@@ -8,7 +8,7 @@
 ## Summary
 
 - **306** surfaces carry at least one renderable-state signal.
-- **1673** signals total: 1317 branch, 106 empty, 67 error, 97 loading, 84 overlay, 2 panel.
+- **1674** signals total: 1317 branch, 106 empty, 68 error, 97 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -554,9 +554,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `showTrigger` | 68 |
-| branch | `showClear` | 78 |
-| branch | `showRemove` | 250 |
+| branch | `showTrigger` | 80 |
+| branch | `showClear` | 91 |
+| branch | `showRemove` | 263 |
 
 ### `components/ui/shadcn/dialog`
 
@@ -1430,7 +1430,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `versions.length <= 1` | 42 |
-| branch | `isViewingOld` | 82 |
+| branch | `isViewingOld` | 89 |
 
 ### `modules/file/project-extension/components/ProjectFilesInlinePreview`
 
@@ -1557,7 +1557,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `truncated` | 95 |
+| branch | `truncated` | 101 |
 
 ### `modules/file/viewers/tabular/XlsxBody`
 
@@ -2534,12 +2534,12 @@ Required states: `empty`
 |---|---|---|
 | branch | `!Stores.LlmRepository.llmRepositoryHasCredentials(repository)` | 46 |
 | branch | `repo?.built_in` | 97 |
-| empty | `repositories.length === 0` | 224 |
-| branch | `repository.built_in` | 244 |
-| branch | `!repository.enabled` | 249 |
-| branch | `repository.last_health_check_status === 'unhealthy'` | 287 |
-| branch | `index < repositories.length - 1` | 310 |
-| branch | `totalRepositories > 0` | 319 |
+| empty | `repositories.length === 0` | 226 |
+| branch | `repository.built_in` | 246 |
+| branch | `!repository.enabled` | 251 |
+| branch | `repository.last_health_check_status === 'unhealthy'` | 289 |
+| branch | `index < repositories.length - 1` | 312 |
+| branch | `totalRepositories > 0` | 321 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
@@ -2547,17 +2547,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 206 |
-| branch | `isMultiSelect` | 208 |
-| branch | `fieldSchema.type === 'boolean'` | 246 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 260 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 285 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 305 |
-| branch | `fieldSchema.format === 'password'` | 327 |
-| branch | `status === 'accepted'` | 426 |
-| branch | `items.length > 0` | 459 |
-| branch | `status === 'declined'` | 474 |
-| branch | `status === 'cancelled'` | 497 |
+| branch | `isSelectField` | 215 |
+| branch | `isMultiSelect` | 217 |
+| branch | `fieldSchema.type === 'boolean'` | 255 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
+| branch | `fieldSchema.format === 'password'` | 336 |
+| branch | `status === 'accepted'` | 435 |
+| branch | `items.length > 0` | 468 |
+| branch | `status === 'declined'` | 483 |
+| branch | `status === 'cancelled'` | 506 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -2592,30 +2592,31 @@ Required states: `error`
 |---|---|---|
 | branch | `toolCall.status === 'pending_approval'` | 35 |
 | branch | `toolCall.server && !looksLikeId(toolCall.server)` | 61 |
-| branch | `toolCall.status === 'started' && toolCall.progress` | 77 |
-| branch | `toolCall.progress.message` | 79 |
-| branch | `isExpanded` | 102 |
-| branch | `toolCall.input !== undefined` | 104 |
-| branch | `toolCall.result !== undefined` | 113 |
-| error | `toolCall.error` | 122 |
-| branch | `!toolUseData.id` | 148 |
-| branch | `toolCall` | 155 |
-| branch | `toolResultData?.is_error` | 177 |
-| branch | `toolResultData` | 179 |
-| branch | `server?.display_name` | 185 |
-| branch | `toolResultData` | 190 |
-| branch | `hasDetails` | 198 |
-| branch | `isExpanded` | 209 |
-| branch | `!!toolUseData.input` | 211 |
-| branch | `toolResultData` | 219 |
-| branch | `toolResultData.is_error` | 222 |
-| error | `hasError` | 283 |
-| branch | `!allDone` | 285 |
-| branch | `isExpanded` | 307 |
-| branch | `!run \|\| countToolUses(run) < 2` | 332 |
-| branch | `!mcpStore` | 362 |
-| branch | `!streamingMessage` | 699 |
-| branch | `!toolUseId` | 714 |
+| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 69 |
+| branch | `toolCall.status === 'started' && toolCall.progress` | 87 |
+| branch | `toolCall.progress.message` | 89 |
+| branch | `isExpanded` | 112 |
+| branch | `toolCall.input !== undefined` | 114 |
+| branch | `toolCall.result !== undefined` | 123 |
+| error | `toolCall.error` | 132 |
+| branch | `!toolUseData.id` | 158 |
+| branch | `toolCall` | 165 |
+| branch | `toolResultData?.is_error` | 187 |
+| branch | `toolResultData` | 189 |
+| branch | `server?.display_name` | 195 |
+| branch | `toolResultData` | 200 |
+| branch | `hasDetails` | 208 |
+| branch | `isExpanded` | 219 |
+| branch | `!!toolUseData.input` | 221 |
+| branch | `toolResultData` | 229 |
+| branch | `toolResultData.is_error` | 232 |
+| error | `hasError` | 293 |
+| branch | `!allDone` | 295 |
+| branch | `isExpanded` | 317 |
+| branch | `!run \|\| countToolUses(run) < 2` | 342 |
+| branch | `!mcpStore` | 372 |
+| branch | `!streamingMessage` | 709 |
+| branch | `!toolUseId` | 724 |
 
 ### `modules/mcp/components/McpConfigModal`
 
@@ -2764,10 +2765,10 @@ Required states: `delayed`, `empty`, `error`
 |---|---|---|
 | loading | `loading && servers.length === 0` | 73 |
 | error | `error && servers.length === 0` | 85 |
-| branch | `policyAllowsAdd` | 148 |
-| branch | `(searchTerm \|\| statusFilter !== 'all')` | 158 |
-| empty | `filteredServers.length === 0` | 192 |
-| branch | `totalServers > 0` | 204 |
+| branch | `policyAllowsAdd` | 150 |
+| branch | `(searchTerm \|\| statusFilter !== 'all')` | 160 |
+| empty | `filteredServers.length === 0` | 194 |
+| branch | `totalServers > 0` | 206 |
 
 ### `modules/mcp/project-extension/components/ProjectMcpSettingsPanel`
 
@@ -2826,9 +2827,9 @@ Required states: `delayed`, `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `!canRead` | 20 |
-| loading | `loading` | 49 |
-| empty | `entries.length === 0` | 53 |
-| branch | `v` | 124 |
+| loading | `loading` | 52 |
+| empty | `entries.length === 0` | 56 |
+| branch | `v` | 127 |
 
 ### `modules/memory/components/sections/CoreMemorySection`
 
@@ -2889,16 +2890,16 @@ Required states: `delayed`, `empty`, `open`
 | branch | `!canRead` | 88 |
 | branch | `canWrite` | 110 |
 | branch | `canWrite` | 123 |
-| loading | `loading && filtered.length === 0` | 192 |
-| empty | `filtered.length === 0` | 196 |
-| branch | `canWrite` | 209 |
-| branch | `index < filtered.length - 1` | 303 |
-| branch | `totalMemories > 0` | 312 |
-| branch | `canWrite` | 327 |
-| overlay | `<CreateMemoryDrawer open>` | 329 |
-| overlay | `<Drawer open>` | 437 |
-| branch | `!row` | 518 |
-| overlay | `<Drawer open>` | 531 |
+| loading | `loading && filtered.length === 0` | 197 |
+| empty | `filtered.length === 0` | 201 |
+| branch | `canWrite` | 214 |
+| branch | `index < filtered.length - 1` | 308 |
+| branch | `totalMemories > 0` | 317 |
+| branch | `canWrite` | 332 |
+| overlay | `<CreateMemoryDrawer open>` | 334 |
+| overlay | `<Drawer open>` | 442 |
+| branch | `!row` | 523 |
+| overlay | `<Drawer open>` | 536 |
 
 ### `modules/memory/components/sections/PreferencesSection`
 
@@ -3224,7 +3225,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `selected` | 83 |
+| branch | `selected` | 87 |
 
 ### `modules/settings/SettingsPage`
 
@@ -3580,11 +3581,11 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| overlay | `<Confirm open>` | 108 |
-| branch | `loadingUsers` | 230 |
-| empty | `users.length === 0` | 232 |
-| branch | `index < users.length - 1` | 272 |
-| branch | `users.length > 0` | 278 |
+| overlay | `<Confirm open>` | 109 |
+| branch | `loadingUsers` | 231 |
+| empty | `users.length === 0` | 233 |
+| branch | `index < users.length - 1` | 273 |
+| branch | `users.length > 0` | 279 |
 
 ### `modules/web-search/components/WebSearchGlobalSection`
 
