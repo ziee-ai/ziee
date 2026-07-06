@@ -30,6 +30,11 @@ export interface DropdownProps {
   >['collisionAvoidance']
   /** Disables the trigger (legacy `disabled`). */
   disabled?: boolean
+  /** Override the native-button heuristic below. Set `false` when the trigger is a
+   *  component that renders a non-<button> element (e.g. kit <Tag>, a <span> pill) —
+   *  Base UI then supplies button ARIA/keyboard semantics instead of warning that a
+   *  real <button> was expected. Omit to auto-detect from the child element type. */
+  nativeButton?: boolean
   /** Global selection handler receiving the activated item's `key` (legacy `menu.onClick`).
    *  Fires in addition to a per-item `onClick`. */
   onSelect?: (key: string) => void
@@ -43,15 +48,18 @@ export interface DropdownProps {
   'data-testid': string
 }
 
-export function Dropdown({ items, children, side, align = 'end', collisionAvoidance, disabled, onSelect, open, onOpenChange, defaultOpen, 'data-testid': testid }: DropdownProps) {
+export function Dropdown({ items, children, side, align = 'end', collisionAvoidance, disabled, onSelect, open, onOpenChange, defaultOpen, nativeButton: nativeButtonProp, 'data-testid': testid }: DropdownProps) {
   // Base UI's trigger defaults to `nativeButton: true` and warns if the rendered
   // element isn't a real <button>. Our trigger is a caller-supplied element that
   // may be a native <button>, a component (e.g. kit <Button>, which renders one),
   // or a bare <div role="button"> (legacy Radix pattern). Only a literal
   // intrinsic that isn't 'button' needs nativeButton=false — then Base UI supplies
-  // the button ARIA/keyboard semantics on the non-button element.
+  // the button ARIA/keyboard semantics on the non-button element. The heuristic
+  // can't introspect what a *component* child renders, so a caller whose component
+  // renders a non-button (e.g. kit <Tag> → <span>) passes an explicit override.
   const childType = (children as React.ReactElement)?.type
-  const nativeButton = typeof childType === 'string' ? childType === 'button' : true
+  const nativeButton =
+    nativeButtonProp ?? (typeof childType === 'string' ? childType === 'button' : true)
   return (
     <Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
       <DropdownMenuTrigger render={children} disabled={disabled} nativeButton={nativeButton} />

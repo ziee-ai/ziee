@@ -136,6 +136,7 @@ export function SummarizationStatusPill() {
         items={items}
         onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}
+        nativeButton={false}
       >
         <Tag variant="outline"
           data-testid="summ-mode-tag"
