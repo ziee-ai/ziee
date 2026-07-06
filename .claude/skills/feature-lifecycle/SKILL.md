@@ -45,7 +45,8 @@ Match these line formats precisely or the gate will not pass.
 - **Audit verdict** — `- **ITEM-3** — verdict: PASS — <rationale>`
   (verdict ∈ `PASS | CONCERN | BLOCKED`; `BLOCKED` fails the gate)
 - **Test** — `- **TEST-2** (tier: integration) [covers: ITEM-1, ITEM-3] file: \`path/to/test.rs\` — asserts: <what it proves>`
-  (tier ∈ `unit | integration | e2e`)
+  (tier ∈ `unit | integration | e2e`). **UI work must enumerate ≥1 `tier: e2e`
+  test** — the gate refuses an all-unit plan for a frontend-touching diff.
 - **Decision** — `### DEC-1: <question>` then a `**Resolution:** <answer>` line
   and a `**Basis:** <convention|user|codebase>` line
 - **Drift entry** — `- **DRIFT-1.2** — verdict: plan-wins — <text>`
@@ -57,6 +58,9 @@ Match these line formats precisely or the gate will not pass.
   `src/foo.rs⇥120⇥145⇥correctness,security,perf`
 - **Fix round** (`FIX_ROUND-1.md`) — a `**New confirmed findings:** <N>` line
 - **Test result** (`TEST_RESULTS.md`) — `- **TEST-2**: PASS`
+- **Frontend gate line** (`TEST_RESULTS.md`, REQUIRED once the diff touches a UI
+  workspace) — `npm run check (ui): PASS` — one line per touched workspace; the
+  label is `ui` (→ `src-app/ui`) or `desktop/ui` (→ `src-app/desktop/ui`)
 
 ---
 
@@ -100,7 +104,22 @@ existing tier pattern (unit `#[cfg(test)]` / integration `tests/<module>/` / e2e
 `ui/tests/e2e/`) ([[feedback_comprehensive_tests]]). No cosmetic tests — mock
 only the external boundary ([[feedback_no_cosmetic_tests]]).
 
-Gate: `--phase 3` (fails loudly if any ITEM is unmapped).
+Enumerate tests per tier for each ITEM. A backend item usually gets unit +
+integration; **a user-visible UI item MUST also get an `e2e` spec** for the flow:
+
+```
+- **TEST-4** (tier: unit)        [covers: ITEM-3] file: `src-app/ui/src/modules/foo/Foo.store.ts` — asserts: store reducer maps the response
+- **TEST-5** (tier: e2e)         [covers: ITEM-3] file: `src-app/ui/tests/e2e/foo/foo.spec.ts` — asserts: user opens Foo, submits, sees the result
+```
+
+The gate computes touched areas from the diff (or, before any code exists,
+PLAN.md's *Files to touch*). If a **frontend** path (`src-app/ui/**` or
+`src-app/desktop/ui/**`, ignoring the mechanically-generated
+`openapi.json`/`api-client/types.ts`) is touched and **no `tier: e2e` test is
+enumerated, the gate fails** — an all-unit plan for UI work is refused. Budget
+the e2e specs here; phase 8 runs them.
+
+Gate: `--phase 3` (fails loudly if any ITEM is unmapped, or a UI diff has no e2e test).
 
 ## Phase 4 — DECISIONS.md
 
@@ -149,6 +168,15 @@ by **≥3 distinct angles**. The validator parses the real diff and reconciles i
 against the TSV — any uncovered hunk fails the gate. (Forks that share the
 parent's cached context are the cheap way to fan out — [[feedback_fork_cache_review]].)
 
+> The coverage law excludes the lifecycle artifacts and **mechanically-generated
+> files** (`**/openapi.json`, `**/api-client/types.ts`) — those are derived
+> deterministically from reviewed source by a golden-tested generator, so review
+> the *source* hunks, not the generated output. (The same exclusion is why a
+> backend feature that merely regenerates the client is **not** treated as UI
+> work by the phase 3 / phase 8 frontend gates.) A regen may produce a large
+> positional (key-order) diff in `openapi.json` with a tiny content delta; verify
+> the content delta with `comm` on sorted files and record it as a drift entry.
+
 Gate: `--phase 6`.
 
 ## Phase 7 — Fix / re-audit loop
@@ -160,23 +188,63 @@ false positives explicitly in the ledger; a dismissed finding is not a fix.)
 
 Gate: `--phase 7` (checks the final round is 0).
 
-## Phase 8 — Gated test run
+## Phase 8 — Gated test run (conditional on the touched areas)
 
-ONLY NOW run tests, scoped to what you built ([[feedback_test_scope]]):
+ONLY NOW run tests, scoped to what you built ([[feedback_test_scope]]). **Which
+gates apply is computed from `git diff main...HEAD`** (generated
+`openapi.json`/`api-client/types.ts` excluded, so they never make a backend diff
+look like UI work). A diff that touches both back- and front-end runs BOTH
+chains.
+
+**If the diff touches the backend** (`src-app/server/**`, `src-app/desktop/tauri/**`):
 
 ```bash
 # integration (source the env file first — real LLM keys live there)
 source src-app/server/tests/.env.test
 cargo test --test integration_tests <module>:: -- --test-threads=1 \
   2>&1 | tee /data/pbya/ziee/tmp/lifecycle-logs/<feature>-int.log
-# e2e for any spec you wrote
-cd src-app/ui && npx playwright test tests/e2e/<file> --workers=1
 ```
 
+**If the diff touches a frontend workspace** (`src-app/ui/**` and/or
+`src-app/desktop/ui/**`), ALL of the following are required, per touched
+workspace:
+
+1. **`npm run check` — the one gate command, run in EACH touched workspace.** It
+   chains the whole static frontend contract: `tsc` + the biome guardrails +
+   `lint:colors` + `lint:settings-field` + `check:kit-manifest` +
+   `check:testid-registry` + `check:design-spec` + `check:gallery-coverage` +
+   `check:state-matrix`. Don't run these individually — run the one command and
+   record its result:
+   ```bash
+   cd src-app/ui && npm run check          # and src-app/desktop/ui if touched
+   ```
+   Write a `npm run check (ui): PASS` line (and `npm run check (desktop/ui): PASS`)
+   in `TEST_RESULTS.md` — the gate requires one per touched workspace.
+2. **New conditional render states need gallery coverage.** Any new
+   loading/empty/error/variant state your diff introduces must have a gallery
+   entry (or an explicit allowlist reason). This is enforced by the
+   `check:state-matrix` gate *inside* `npm run check` above — budget for it: if
+   you added a state, add its gallery cell or the gate (and thus phase 8) fails.
+3. **UI evaluator gate** (per CLAUDE.md's "UI Build Gate"): zero console
+   errors / uncaught exceptions / failed requests / AA-contrast failures on the
+   touched gallery surfaces, and the visual-regression baseline matches. Run the
+   gallery runtime + gate scripts:
+   ```bash
+   cd src-app/ui && npm run gate:ui                     # runtime-health + Layer A/axe + tsc/lint
+   VISUAL_SNAPSHOTS=1 npm run gate:ui                   # + Layer B pixel regression vs baseline
+   ```
+4. **e2e specs for the user-visible flows** you enumerated as `tier: e2e` in
+   phase 3 (TESTS.md) — run them and record each TEST-ID:
+   ```bash
+   cd src-app/ui && npx playwright test tests/e2e/<file> --workers=1
+   ```
+
 Write `TEST_RESULTS.md` with a `- **TEST-N**: PASS` line for **every** TEST-ID
-from Phase 3. The gate fails if any phase-3 test is missing or not PASS. Never
-`#[ignore]` to go green — only genuine platform-incompatibility is a legit skip
-([[feedback_no_ignore_unless_platform]]).
+from Phase 3 (plus the `npm run check (<ws>): PASS` line(s) above for a UI diff).
+The gate fails if any phase-3 test is missing/not PASS, if a touched workspace has
+no passing `npm run check` line, or if any enumerated `tier: e2e` spec is not
+PASS. Never `#[ignore]` (or `.skip`) to go green — only genuine
+platform-incompatibility is a legit skip ([[feedback_no_ignore_unless_platform]]).
 
 Gate: `--phase 8`.
 
