@@ -72,6 +72,23 @@ Anywhere else, treat `ziee-chat` as a bug to fix.
 
 ---
 
+## Design System (generated)
+
+Before touching any UI, read **[`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)** (repo
+root) — the concise, machine-readable design contract: the semantic color-token
+table (use `bg-primary`/`text-muted-foreground`, **never** a raw `bg-blue-500` or
+`bg-[#…]`), the 4px spacing rhythm + gap conventions, the radius scale, the
+`Field`-not-raw-flex-gap form/settings-layout rule, and the lint-enforced
+forbidden patterns. It exists so agents stop re-inventing tokens (the root cause
+of UI drift).
+
+It is **generated** from the shadcn CSS variables in `src-app/ui/src/index.css`
+(the single source of truth) by `npm run gen:design-spec`. After any token change,
+regenerate + commit; `npm run check:design-spec` (part of `npm run check`) fails on
+drift.
+
+---
+
 ## Development Environment
 
 ### Docker Compose
