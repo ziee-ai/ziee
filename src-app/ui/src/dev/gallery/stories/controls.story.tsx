@@ -11,6 +11,7 @@ import {
   DatePicker,
   Input,
   InputNumber,
+  KitSurfaceProvider,
   MultiSelect,
   PasswordInput,
   RadioGroup,
@@ -533,8 +534,96 @@ const datePickerStory: GalleryStory = {
   ],
 }
 
+/**
+ * Ambient `loading` surface — every kit control reads `useSurface().loading` and
+ * renders its OWN region skeleton (`if (s.loading) return <Skeleton/>`). Wrapping
+ * a control in `<KitSurfaceProvider loading>` exercises that skeleton arm, which
+ * no data-state page combo reaches (the surface-loading channel is ambient, not
+ * store-driven). One case per control that has a surface-loading skeleton.
+ */
+const surfaceLoadingStory: GalleryStory = {
+  id: 'surface-loading',
+  title: 'Surface loading (ambient skeleton)',
+  note: 'each kit control inside <KitSurfaceProvider loading> → its own region skeleton',
+  cases: [
+    {
+      key: 'controls',
+      label: 'Loading skeletons',
+      render: () => (
+        <KitSurfaceProvider loading>
+          <div className="flex flex-col gap-3 w-64">
+            <Input data-testid="g-load-input" aria-label="Loading input" />
+            <Textarea data-testid="g-load-textarea" aria-label="Loading textarea" />
+            <Select
+              data-testid="g-load-select"
+              aria-label="Loading select"
+              options={opts}
+            />
+            <Combobox
+              data-testid="g-load-combobox"
+              aria-label="Loading combobox"
+              options={opts}
+              placeholder="Pick one"
+              searchPlaceholder="Search…"
+              emptyText="No matches"
+            />
+            <MultiSelect
+              data-testid="g-load-multiselect"
+              aria-label="Loading multiselect"
+              options={opts}
+              placeholder="Pick some"
+              searchPlaceholder="Search…"
+              emptyText="No matches"
+              removeLabel={l => `Remove ${l}`}
+            />
+            <Segmented
+              data-testid="g-load-segmented"
+              aria-label="Loading segmented"
+              defaultValue="a"
+              options={opts}
+            />
+            <RadioGroup
+              data-testid="g-load-radio"
+              aria-label="Loading radio"
+              defaultValue="a"
+              options={opts}
+            />
+            <DatePicker
+              data-testid="g-load-datepicker"
+              aria-label="Loading datepicker"
+              placeholder="Pick a date"
+              onChange={noop}
+            />
+            <div className="flex items-center gap-3">
+              <Checkbox data-testid="g-load-checkbox" aria-label="Loading checkbox" />
+              <Switch data-testid="g-load-switch" aria-label="Loading switch" />
+            </div>
+          </div>
+        </KitSurfaceProvider>
+      ),
+    },
+    {
+      key: 'own-loading',
+      label: 'Own loading prop (spinner adornment)',
+      render: () => (
+        <div className="flex flex-col gap-3 w-64">
+          {/* Input's OWN `loading` prop (distinct from the surface skeleton):
+              shows the Loader2 right-adornment on a still-interactive field. */}
+          <Input
+            data-testid="g-own-load-input"
+            aria-label="Own-loading input"
+            loading
+            defaultValue="fetching…"
+          />
+        </div>
+      ),
+    },
+  ],
+}
+
 export const controlStories: GalleryStory[] = [
   buttonStory,
+  surfaceLoadingStory,
   inputStory,
   passwordStory,
   textareaStory,

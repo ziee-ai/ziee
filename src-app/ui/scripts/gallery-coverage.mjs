@@ -119,8 +119,10 @@ async function enumerateSlugs(holder) {
   }
   const overlays = await page.evaluate(() => window.__GALLERY_OVERLAYS__ || [])
   const deep = await page.evaluate(() => window.__GALLERY_DEEP_STATES__ || [])
+  const seeded = await page.evaluate(() => window.__GALLERY_SEEDED__ || [])
   await ctx.close()
-  return { pages: pages.filter(p => !overlays.includes(p) && !deep.includes(p)), overlays, deep }
+  const special = new Set([...overlays, ...deep, ...seeded])
+  return { pages: pages.filter(p => !special.has(p)), overlays, deep, seeded }
 }
 
 // Part-1 cross-reference: which surface lines carry a NAMED state signal
@@ -245,16 +247,16 @@ async function main() {
   const holder = { b: null }
   const acc = {}
   console.log('=== gallery branch-coverage pass ===')
-  const { pages, overlays, deep } = await enumerateSlugs(holder)
-  console.log(`enumerated ${pages.length} pages, ${overlays.length} overlays, ${deep.length} deep states`)
+  const { pages, overlays, deep, seeded } = await enumerateSlugs(holder)
+  console.log(`enumerated ${pages.length} pages, ${overlays.length} overlays, ${deep.length} deep states, ${seeded.length} seeded surfaces`)
 
   let done = 0
-  const total = 1 + pages.length * STATES.length + overlays.length + deep.length
+  const total = 1 + pages.length * STATES.length + overlays.length + deep.length + seeded.length
   const tick = () => { if (++done % 15 === 0) console.log(`  …${done}/${total} combos`) }
   await visit(holder, BASE, acc); tick() // browse (all pages, loaded)
   for (const slug of pages)
     for (const st of STATES) { await visit(holder, `${BASE}?surface=${slug}&state=${st}`, acc); tick() }
-  for (const slug of [...overlays, ...deep]) { await visit(holder, `${BASE}?surface=${slug}`, acc); tick() }
+  for (const slug of [...overlays, ...deep, ...seeded]) { await visit(holder, `${BASE}?surface=${slug}`, acc); tick() }
   try { await holder.b?.close() } catch {}
 
   fs.writeFileSync(OUT_RAW, JSON.stringify(acc))

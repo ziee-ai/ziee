@@ -11,6 +11,7 @@ import {
   Popover,
   Sheet,
 } from '@/components/ui'
+import { FieldError } from '@/components/ui/shadcn/field'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined
@@ -65,6 +66,58 @@ const sheetStory: GalleryStory = {
         >
           <p className="text-sm text-muted-foreground">Sheet body content.</p>
         </Sheet>
+      ),
+    },
+    {
+      // Inline OPEN + loading: the body is replaced by a centered spinner
+      // (`loading ? <Spinner> : children`) — an arm no closed-trigger render
+      // reaches. Kept open on the canvas so the coverage pass sees it.
+      key: 'open-loading',
+      label: 'Open · loading',
+      render: () => (
+        <Sheet
+          data-testid="g-sheet-loading"
+          open
+          loading
+          loadingLabel="Loading sheet content"
+          title="Loading sheet"
+        >
+          <p className="text-sm text-muted-foreground">Hidden while loading.</p>
+        </Sheet>
+      ),
+    },
+  ],
+}
+
+const fieldErrorStory: GalleryStory = {
+  id: 'field-error',
+  title: 'FieldError',
+  note: 'multi-error list arm (>1 unique messages → the <ul><li> map)',
+  cases: [
+    {
+      key: 'single',
+      label: 'Single error',
+      render: () => (
+        <FieldError
+          data-testid="g-field-error-single"
+          errors={[{ message: 'This field is required.' }]}
+        />
+      ),
+    },
+    {
+      // ≥2 unique messages → FieldError renders the bulleted <ul> and maps each
+      // `error.message` to an <li> (field.tsx:203) — the single-message arm above
+      // returns a bare string and never hits that map.
+      key: 'multi',
+      label: 'Multiple errors',
+      render: () => (
+        <FieldError
+          data-testid="g-field-error-multi"
+          errors={[
+            { message: 'Must be at least 8 characters.' },
+            { message: 'Must contain a number.' },
+          ]}
+        />
       ),
     },
   ],
@@ -148,6 +201,7 @@ const dropdownStory: GalleryStory = {
 export const overlayStories: GalleryStory[] = [
   dialogStory,
   sheetStory,
+  fieldErrorStory,
   popoverStory,
   confirmStory,
   dropdownStory,

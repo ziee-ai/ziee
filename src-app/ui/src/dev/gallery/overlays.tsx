@@ -10,6 +10,7 @@
  */
 import { type ComponentType, type LazyExoticComponent, lazy } from 'react'
 import { Stores } from '@/core/stores'
+import { dialog } from '@/components/ui'
 import { adminUser } from './fixtures/auth'
 import { llmProvidersList, llmGroupsList } from './fixtures/llm-providers'
 
@@ -171,6 +172,38 @@ export const OVERLAY_ENTRIES: OverlayEntry[] = [
       'AssistantFormDrawer',
     ),
     open: () => Stores.AssistantDrawer.openAssistantDrawer(),
+  },
+  {
+    // <DialogHost/> singleton with a DESCRIBED alert → the open AlertDialog (:94)
+    // + the `description != null` arm of the aria-describedby spread (:95).
+    slug: 'overlay-dialog-host-described',
+    surface: 'components/ui/kit/dialog-host',
+    title: 'Imperative dialog — described',
+    component: lazyNamed(() => import('@/components/ui'), 'DialogHost'),
+    open: () => {
+      void dialog.info({
+        title: 'Heads up',
+        description: 'A described alert dialog.',
+        okText: 'OK',
+        testid: 'gallery-dialog-with-desc',
+      })
+    },
+  },
+  {
+    // Bare alert (no description) → the `description == null` arm of :95
+    // (aria-describedby explicitly undefined). Separate frame: two simultaneously
+    // -open Radix AlertDialogs don't both mount.
+    slug: 'overlay-dialog-host-bare',
+    surface: 'components/ui/kit/dialog-host',
+    title: 'Imperative dialog — bare (no description)',
+    component: lazyNamed(() => import('@/components/ui'), 'DialogHost'),
+    open: () => {
+      void dialog.warning({
+        title: 'Bare alert (no description)',
+        okText: 'OK',
+        testid: 'gallery-dialog-no-desc',
+      })
+    },
   },
 ]
 

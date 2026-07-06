@@ -25,6 +25,7 @@ import {
 } from './fixtures/llm-providers'
 import { type OverlayEntry, overlayBySlug } from './overlays'
 import { DeepStateFrame, deepStateBySlug } from './deepStates'
+import { SeededSurfaceFrame, seededSurfaceBySlug } from './seededSurfaces'
 
 export const pageTestId = (id: string) => `gallery-page-${id}`
 
@@ -210,6 +211,8 @@ export function GalleryPages({ only, state }: { only?: string; state?: string })
   const pages = useResolvedPages()
   const deep = only ? deepStateBySlug(only) : undefined
   if (deep) return <DeepStateFrame entry={deep} />
+  const seeded = only ? seededSurfaceBySlug(only) : undefined
+  if (seeded) return <SeededSurfaceFrame entry={seeded} />
   const overlay = only ? overlayBySlug(only) : undefined
   if (overlay) return <OverlayFrame entry={overlay} />
   const shown = only ? pages.filter(p => p.id === only) : pages

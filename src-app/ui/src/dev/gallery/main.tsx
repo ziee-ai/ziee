@@ -17,6 +17,7 @@ import { seedGallery, type AuthSeed } from './seed'
 import { setMockMode, type MockMode } from './mockApi'
 import { OVERLAY_ENTRIES } from './overlays'
 import { DEEP_STATE_SLUGS } from './deepStates'
+import { SEEDED_SURFACE_SLUGS } from './seededSurfaces'
 import '@/index.css'
 
 // Runtime manifest for the runtime-health pass. Page slugs are enumerated from
@@ -31,6 +32,11 @@ import '@/index.css'
 // slugs so the health + coverage passes drive each via `?surface=<slug>`.
 ;(window as unknown as { __GALLERY_DEEP_STATES__?: string[] }).__GALLERY_DEEP_STATES__ =
   DEEP_STATE_SLUGS
+// Seeded surfaces (real pages/components rendered with a mount-time store seed to
+// reach loaded-then-error / seeded-empty branches the GET-only pass can't) are
+// likewise interaction-only — expose their slugs for the coverage + health passes.
+;(window as unknown as { __GALLERY_SEEDED__?: string[] }).__GALLERY_SEEDED__ =
+  SEEDED_SURFACE_SLUGS
 
 // URL-driven multi-state rendering. The DEFAULT (no params) browses every page
 // in its loaded state. A single-combo URL renders ONE surface in ONE state for

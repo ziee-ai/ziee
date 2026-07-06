@@ -11,28 +11,10 @@
 ## Summary
 
 - 626 instrumented surface files rendered.
-- **262** STATE gaps not allow-listed — the actionable queue.
-- 9093 generic branch forks not allow-listed (informational).
+- **235** STATE gaps not allow-listed — the actionable queue.
+- 9104 generic branch forks not allow-listed (informational).
 
 ## State-level gaps (actionable)
-
-### `components/ui/kit/checkbox.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 41 | loading | `if (s.loading) return <Skeleton className={cn('size-4 rounded', className)} />` |
-
-### `components/ui/kit/combobox.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 75 | loading | `if (s.loading) return <Skeleton className={cn('h-8 w-full rounded-lg', className)} />` |
-
-### `components/ui/kit/date-picker.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 94 | loading | `if (s.loading) return <Skeleton className={cn('h-8', 'w-full rounded-lg', className)} />` |
 
 ### `components/ui/kit/dialog-host.tsx`
 
@@ -41,13 +23,6 @@
 | 94 | overlay | `<AlertDialog key={it.id} open onOpenChange={(o) => { if (!o) close(it, false) }}>` |
 | 95 | overlay | `<AlertDialogContent data-testid={it.testid} {...(it.description == null ? { 'aria-describedby': undefined } : {})}>` |
 | 95 | overlay | `<AlertDialogContent data-testid={it.testid} {...(it.description == null ? { 'aria-describedby': undefined } : {})}>` |
-
-### `components/ui/kit/input.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 28 | loading | `if (s.loading) {` |
-| 43 | loading | `const rightAdornment = loading ? <Loader2 className="size-4 animate-spin opacity-70" aria-hidden /> : (clearBtn ?? suffix)` |
 
 ### `components/ui/kit/multi-select.tsx`
 
@@ -59,25 +34,6 @@
 | 133 | empty | `) : filtered.length === 0 ? null : (` |
 | 133 | empty | `) : filtered.length === 0 ? null : (` |
 | 134 | empty | `<div ref={scrollRef} role="listbox" aria-multiselectable id={listboxId} className="max-h-72 overflow-auto p-1">` |
-| 259 | loading | `if (s.loading) return <Skeleton className={cn('h-8 w-full rounded-lg', className)} />` |
-
-### `components/ui/kit/radio-group.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 44 | loading | `if (s.loading) {` |
-
-### `components/ui/kit/segmented.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 45 | loading | `if (s.loading) return <Skeleton className={cn('h-8 w-full rounded-lg', className)} />` |
-
-### `components/ui/kit/select.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 139 | loading | `if (s.loading) {` |
 
 ### `components/ui/kit/sheet.tsx`
 
@@ -86,18 +42,6 @@
 | 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
 | 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
 | 106 | loading | `? <div className="flex min-h-40 items-center justify-center"><Spinner label={loadingLabel ?? ''} /></div>` |
-
-### `components/ui/kit/switch.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 50 | loading | `if (s.loading) return <Skeleton className={cn('h-[1.15rem] w-8 rounded-full', className)} />` |
-
-### `components/ui/kit/textarea.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 21 | loading | `if (s.loading) {` |
 
 ### `components/ui/kit/tree.tsx`
 
@@ -246,47 +190,11 @@
 | 75 | empty | `) : entries.length === 0 ? (` |
 | 76 | empty | `<Empty description="No references in this project yet." data-testid="cite-bib-panel-empty" />` |
 
-### `modules/code-sandbox/components/SandboxResourceLimitsSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 203 | error | `{error && (` |
-| 204 | error | `<Alert` |
-| 212 | loading | `{loading && !limits ? (` |
-| 212 | loading | `{loading && !limits ? (` |
-| 213 | loading | `<Spin label="Loading resource limits…" description="Loading resource limits…" />` |
-
 ### `modules/file-rag/components/sections/ChunkingSection.tsx`
 
 | line | state | condition |
 |---|---|---|
 | 128 | error | `<Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error \|\| validationError} />` |
-| 128 | error | `<Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error \|\| validationError} />` |
-| 128 | error | `<Alert data-testid="filerag-chunking-error-alert" tone="error" className="!mb-4" title={error \|\| validationError} />` |
-
-### `modules/file-rag/components/sections/EmbeddingSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 169 | error | `{error && <Alert data-testid="filerag-embedding-error-alert" tone="error" className="!mb-4" title={error} />}` |
-
-### `modules/file-rag/components/sections/EnableSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 90 | error | `{error && <Alert data-testid="filerag-enable-error-alert" tone="error" className="!mb-4" title={error} />}` |
-
-### `modules/file-rag/components/sections/FullTextSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 118 | error | `{error && <Alert data-testid="filerag-fts-error-alert" tone="error" className="!mb-4" title={error} />}` |
-
-### `modules/file-rag/components/sections/MaintenanceSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 55 | error | `{error && <Alert data-testid="filerag-maintenance-error-alert" tone="error" className="!mb-4" title={error} />}` |
 
 ### `modules/file/chat-extension/components/FileUploadArea.tsx`
 
@@ -422,14 +330,6 @@
 |---|---|---|
 | 68 | empty | `<Text type="secondary" className="text-xs block mb-2" data-testid="lit-tool-result-empty">` |
 
-### `modules/literature/components/settings/LitSearchConnectorsSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 95 | loading | `if (loading && connectors.length === 0) {` |
-| 95 | loading | `if (loading && connectors.length === 0) {` |
-| 95 | loading | `if (loading && connectors.length === 0) {` |
-
 ### `modules/llm-local-runtime/components/AvailableVersionsCard.tsx`
 
 | line | state | condition |
@@ -539,9 +439,7 @@
 
 | line | state | condition |
 |---|---|---|
-| 122 | error | `{toolCall.error && (` |
-| 123 | error | `<Alert` |
-| 284 | error | `<CircleX className="text-destructive" />` |
+| 123 | error | `{toolCall.result !== undefined && (` |
 
 ### `modules/mcp/components/common/KeyValueSecretEditor.tsx`
 
@@ -604,6 +502,15 @@
 | 85 | loading | `<Empty description="No blocks yet" data-testid="memory-core-blocks-empty" />` |
 | 215 | overlay | `data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}` |
 | 215 | overlay | `data-testid={existing ? 'memory-core-block-edit-dialog' : 'memory-core-block-create-dialog'}` |
+
+### `modules/memory/components/sections/MyMemoriesSection.tsx`
+
+| line | state | condition |
+|---|---|---|
+| 436 | overlay | `error instanceof Error ? error.message : 'Failed to add memory.',` |
+| 436 | overlay | `error instanceof Error ? error.message : 'Failed to add memory.',` |
+| 530 | overlay | `error instanceof Error ? error.message : 'Failed to update memory.',` |
+| 530 | overlay | `error instanceof Error ? error.message : 'Failed to update memory.',` |
 
 ### `modules/onboarding/OnboardingRedirect.tsx`
 
@@ -673,20 +580,6 @@
 | line | state | condition |
 |---|---|---|
 | 63 | empty | `if (groupIds.length === 0) return` |
-
-### `modules/web-search/components/WebSearchGlobalSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 112 | loading | `if (loading && !settings) {` |
-| 112 | loading | `if (loading && !settings) {` |
-
-### `modules/web-search/components/WebSearchProvidersSection.tsx`
-
-| line | state | condition |
-|---|---|---|
-| 92 | loading | `if (loading && providers.length === 0) {` |
-| 92 | loading | `if (loading && providers.length === 0) {` |
 
 ### `modules/workflow/components/DryRunPreviewDialog.tsx`
 
@@ -775,8 +668,8 @@
 | `modules/mcp/components/common/McpServerDrawer.tsx` | 395 |
 | `modules/chat/core/stores/Chat.store.ts` | 221 |
 | `modules/mcp/stores/McpComposer.store.ts` | 206 |
+| `modules/mcp/chat-extension/extension.tsx` | 156 |
 | `modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx` | 152 |
-| `modules/mcp/chat-extension/extension.tsx` | 149 |
 | `modules/layouts/app-layout/AppLayout.tsx` | 142 |
 | `modules/workflow/components/WorkflowElicitForm.tsx` | 141 |
 | `modules/workflow/components/EditableArrayTable.tsx` | 123 |
@@ -794,11 +687,11 @@
 | `modules/file/project-extension/components/ProjectFilesManagePanel.tsx` | 89 |
 | `components/ui/kit/tree.tsx` | 86 |
 | `modules/layouts/app-layout/components/LeftSidebar.tsx` | 86 |
+| `modules/projects/chat-extension/extension.tsx` | 84 |
 | `modules/llm-provider/components/llm-models/AddLocalLlmModelUploadDrawer.tsx` | 83 |
 | `modules/workflow/stores/WorkflowRun.store.ts` | 82 |
 | `modules/mcp/components/McpConfigModal.tsx` | 80 |
 | `modules/llm-provider/components/LlmModelsSection.tsx` | 76 |
-| `modules/projects/chat-extension/extension.tsx` | 75 |
-| `modules/mcp/chat-extension/components/ElicitationFormContent.tsx` | 69 |
+| `modules/mcp/chat-extension/components/ElicitationFormContent.tsx` | 75 |
 | `modules/llm-local-runtime/components/AvailableVersionsCard.tsx` | 66 |
 | `modules/file/components/FileCard.tsx` | 65 |
