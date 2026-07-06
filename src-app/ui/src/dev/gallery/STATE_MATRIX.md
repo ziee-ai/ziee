@@ -709,14 +709,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error && assistants.length === 0` | 130 |
-| loading | `loading` | 140 |
-| error | `error && assistants.length === 0` | 142 |
-| empty | `assistants.length === 0` | 150 |
-| branch | `assistant.is_default` | 168 |
-| branch | `!assistant.enabled` | 171 |
-| branch | `index < assistants.length - 1` | 199 |
-| branch | `assistants.length > 0` | 207 |
+| error | `error && assistants.length === 0` | 131 |
+| loading | `loading` | 141 |
+| error | `error && assistants.length === 0` | 143 |
+| empty | `assistants.length === 0` | 151 |
+| branch | `assistant.is_default` | 169 |
+| branch | `!assistant.enabled` | 172 |
+| branch | `index < assistants.length - 1` | 200 |
+| branch | `assistants.length > 0` | 208 |
 
 ### `modules/auth-providers/components/AuthProviderEditDrawer`
 

@@ -363,38 +363,6 @@ const emptyStory: GalleryStory = {
   ],
 }
 
-const errorStateStory: GalleryStory = {
-  id: 'error-state',
-  title: 'ErrorState',
-  cases: [
-    {
-      key: 'inline',
-      label: 'Inline (with retry + details)',
-      render: () => (
-        <ErrorState
-          data-testid="g-error-state-inline"
-          resource="providers"
-          description="The configured providers couldn't be loaded."
-          details="Internal server error"
-          onRetry={() => {}}
-        />
-      ),
-    },
-    {
-      key: 'page',
-      label: 'Page variant',
-      render: () => (
-        <ErrorState
-          variant="page"
-          data-testid="g-error-state-page"
-          resource="hardware information"
-          description="This machine's hardware details couldn't be loaded."
-          onRetry={() => {}}
-        />
-      ),
-    },
-  ],
-}
 
 const resultStory: GalleryStory = {
   id: 'result',
