@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **306** surfaces carry at least one renderable-state signal.
-- **1674** signals total: 1317 branch, 106 empty, 68 error, 97 loading, 84 overlay, 2 panel.
+- **307** surfaces carry at least one renderable-state signal.
+- **1690** signals total: 1322 branch, 107 empty, 82 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 82 |
 | `empty` | 86 |
-| `error` | 56 |
+| `error` | 66 |
 | `open` | 71 |
 | `panel-open` | 2 |
 
@@ -222,6 +222,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `title != null` | 24 |
 | branch | `description != null` | 25 |
 | branch | `children != null` | 27 |
+
+### `components/ui/kit/error-state`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `hasActions` | 75 |
+| branch | `onRetry != null` | 77 |
+| branch | `details != null` | 86 |
+| branch | `details != null && showDetails` | 98 |
+| branch | `variant === 'page'` | 109 |
 
 ### `components/ui/kit/form`
 
@@ -692,16 +704,17 @@ Required states: `delayed`, `empty`
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 127 |
-| empty | `assistants.length === 0` | 129 |
-| branch | `assistant.is_default` | 147 |
-| branch | `!assistant.enabled` | 150 |
-| branch | `index < assistants.length - 1` | 178 |
-| branch | `assistants.length > 0` | 186 |
+| error | `error && assistants.length === 0` | 120 |
+| loading | `loading` | 130 |
+| empty | `assistants.length === 0` | 132 |
+| branch | `assistant.is_default` | 150 |
+| branch | `!assistant.enabled` | 153 |
+| branch | `index < assistants.length - 1` | 181 |
+| branch | `assistants.length > 0` | 189 |
 
 ### `modules/auth-providers/components/AuthProviderEditDrawer`
 
@@ -808,7 +821,7 @@ Required states: `delayed`, `empty`, `error`
 | branch | `n.includes('microsoft') \|\| n.includes('entra') \|\| n.includes('azure')` | 19 |
 | loading | `isLoading \|\| !hasLoaded` | 43 |
 | error | `error` | 51 |
-| empty | `!providers \|\| providers.length === 0` | 63 |
+| empty | `!providers \|\| providers.length === 0` | 64 |
 
 ### `modules/auth/RegisterForm`
 
@@ -2528,18 +2541,19 @@ Required states: `open`
 
 ### `modules/llm-repository/components/LlmRepositorySettings`
 
-Required states: `empty`
+Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!Stores.LlmRepository.llmRepositoryHasCredentials(repository)` | 46 |
-| branch | `repo?.built_in` | 97 |
-| empty | `repositories.length === 0` | 226 |
-| branch | `repository.built_in` | 246 |
-| branch | `!repository.enabled` | 251 |
-| branch | `repository.last_health_check_status === 'unhealthy'` | 289 |
-| branch | `index < repositories.length - 1` | 312 |
-| branch | `totalRepositories > 0` | 321 |
+| branch | `!Stores.LlmRepository.llmRepositoryHasCredentials(repository)` | 48 |
+| branch | `repo?.built_in` | 99 |
+| error | `error && repositories.length === 0` | 228 |
+| empty | `repositories.length === 0` | 238 |
+| branch | `repository.built_in` | 258 |
+| branch | `!repository.enabled` | 263 |
+| branch | `repository.last_health_check_status === 'unhealthy'` | 301 |
+| branch | `index < repositories.length - 1` | 324 |
+| branch | `totalRepositories > 0` | 333 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
@@ -2751,11 +2765,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `systemServersLoading` | 82 |
-| branch | `(searchTerm \|\| statusFilter !== 'all')` | 128 |
-| branch | `multiUserMode` | 165 |
-| empty | `filteredServers.length === 0` | 173 |
-| branch | `systemServersTotal > 0` | 183 |
+| branch | `systemServersLoading && !systemServersError` | 83 |
+| branch | `(searchTerm \|\| statusFilter !== 'all')` | 129 |
+| branch | `multiUserMode` | 166 |
+| empty | `systemServersError && filteredServers.length === 0` | 174 |
+| empty | `filteredServers.length === 0` | 188 |
+| branch | `systemServersTotal > 0` | 199 |
 
 ### `modules/mcp/components/user/McpServersSettings`
 
@@ -2822,25 +2837,27 @@ Required states: `delayed`, `open`
 
 ### `modules/memory/components/sections/AuditLogSection`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
 | branch | `!canRead` | 20 |
-| loading | `loading` | 52 |
-| empty | `entries.length === 0` | 56 |
-| branch | `v` | 127 |
+| error | `error && entries.length === 0` | 52 |
+| loading | `loading` | 60 |
+| empty | `entries.length === 0` | 64 |
+| branch | `v` | 135 |
 
 ### `modules/memory/components/sections/CoreMemorySection`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
 | branch | `!canRead` | 25 |
-| loading | `loading` | 37 |
-| empty | `assistants.length === 0` | 39 |
-| branch | `assistantId` | 62 |
+| error | `error && assistants.length === 0` | 37 |
+| loading | `loading` | 45 |
+| empty | `assistants.length === 0` | 47 |
+| branch | `assistantId` | 70 |
 
 ### `modules/memory/components/sections/ExtractionSection`
 
@@ -2883,34 +2900,36 @@ Required states: `error`
 
 ### `modules/memory/components/sections/MyMemoriesSection`
 
-Required states: `delayed`, `empty`, `open`
+Required states: `delayed`, `empty`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 88 |
-| branch | `canWrite` | 110 |
-| branch | `canWrite` | 123 |
-| loading | `loading && filtered.length === 0` | 197 |
-| empty | `filtered.length === 0` | 201 |
-| branch | `canWrite` | 214 |
-| branch | `index < filtered.length - 1` | 308 |
-| branch | `totalMemories > 0` | 317 |
-| branch | `canWrite` | 332 |
-| overlay | `<CreateMemoryDrawer open>` | 334 |
-| overlay | `<Drawer open>` | 442 |
-| branch | `!row` | 523 |
-| overlay | `<Drawer open>` | 536 |
+| branch | `!canRead` | 90 |
+| branch | `canWrite` | 112 |
+| branch | `canWrite` | 125 |
+| error | `error && filtered.length === 0` | 199 |
+| loading | `loading && filtered.length === 0` | 207 |
+| empty | `filtered.length === 0` | 211 |
+| branch | `canWrite` | 224 |
+| branch | `index < filtered.length - 1` | 318 |
+| branch | `totalMemories > 0` | 327 |
+| branch | `canWrite` | 342 |
+| overlay | `<CreateMemoryDrawer open>` | 344 |
+| overlay | `<Drawer open>` | 452 |
+| branch | `!row` | 533 |
+| overlay | `<Drawer open>` | 546 |
 
 ### `modules/memory/components/sections/PreferencesSection`
 
-Required states: `delayed`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 69 |
-| loading | `loading \|\| !settings` | 73 |
-| branch | `adminDisabled` | 101 |
-| branch | `canWrite` | 112 |
+| branch | `!canRead` | 70 |
+| error | `error && !settings` | 74 |
+| loading | `loading \|\| !settings` | 88 |
+| branch | `adminDisabled` | 116 |
+| branch | `canWrite` | 127 |
 
 ### `modules/memory/components/sections/RebuildStatusSection`
 
@@ -3321,15 +3340,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/skill/components/SkillsList`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 54 |
+| error | `loading && !error` | 54 |
 | branch | `skill.description` | 83 |
 | branch | `skills.length > 0` | 94 |
-| loading | `!loading && skills.length === 0` | 109 |
-| overlay | `<ImportSkillDialog open>` | 118 |
+| error | `error && skills.length === 0` | 109 |
+| loading | `!loading && skills.length === 0` | 118 |
+| overlay | `<ImportSkillDialog open>` | 129 |
 
 ### `modules/skill/components/admin/AdminSkillGroupAssignment`
 
@@ -3341,16 +3361,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/skill/components/admin/AdminSkillsPage`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 52 |
-| branch | `skill.description` | 81 |
-| branch | `multiUserMode` | 88 |
-| loading | `!loading && systemSkills.length === 0` | 95 |
-| branch | `total > 0` | 99 |
-| overlay | `<ImportSkillDialog open>` | 113 |
+| error | `loading && !error` | 52 |
+| branch | `skill.description` | 83 |
+| branch | `multiUserMode` | 90 |
+| error | `error && systemSkills.length === 0` | 97 |
+| loading | `!loading && systemSkills.length === 0` | 106 |
+| branch | `total > 0` | 112 |
+| overlay | `<ImportSkillDialog open>` | 126 |
 
 ### `modules/skill/widgets/GroupSystemSkillsAssignmentDrawer`
 
@@ -3854,27 +3875,29 @@ Required states: `delayed`, `error`, `open`
 
 ### `modules/workflow/components/WorkflowsList`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 40 |
+| error | `loading && !error` | 40 |
 | branch | `workflow.description` | 62 |
-| loading | `!loading && workflows.length === 0` | 71 |
-| overlay | `<ImportWorkflowDialog open>` | 80 |
+| error | `error && workflows.length === 0` | 71 |
+| loading | `!loading && workflows.length === 0` | 80 |
+| overlay | `<ImportWorkflowDialog open>` | 91 |
 
 ### `modules/workflow/components/admin/AdminWorkflowsPage`
 
-Required states: `delayed`, `open`
+Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 54 |
-| branch | `workflow.description` | 76 |
-| branch | `multiUserMode` | 83 |
-| loading | `!loading && systemWorkflows.length === 0` | 91 |
-| branch | `total > 0` | 99 |
-| overlay | `<ImportWorkflowDialog open>` | 113 |
+| error | `loading && !error` | 54 |
+| branch | `workflow.description` | 78 |
+| branch | `multiUserMode` | 85 |
+| error | `error && systemWorkflows.length === 0` | 93 |
+| loading | `!loading && systemWorkflows.length === 0` | 102 |
+| branch | `total > 0` | 112 |
+| overlay | `<ImportWorkflowDialog open>` | 126 |
 
 ### `modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer`
 

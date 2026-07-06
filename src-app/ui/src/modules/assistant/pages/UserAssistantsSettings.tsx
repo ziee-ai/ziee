@@ -5,6 +5,7 @@ import {
   Descriptions,
   Separator,
   Empty,
+  ErrorState,
   Flex,
   Confirm,
   Tag,
@@ -13,7 +14,6 @@ import {
 } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
-import { useEffect } from 'react'
 import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { AddButton } from '@/modules/settings/components/AddButton'
@@ -34,13 +34,6 @@ export function UserAssistantsSettings() {
 
   const canEdit = usePermission(Permissions.AssistantsEdit)
   const canDelete = usePermission(Permissions.AssistantsDelete)
-
-  // Show errors
-  useEffect(() => {
-    if (error) {
-      Stores.UserAssistants.clearUserAssistantsStoreError()
-    }
-  }, [error])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
@@ -124,7 +117,17 @@ export function UserAssistantsSettings() {
             </Can>
           }
         >
-          {loading ? (
+          {error && assistants.length === 0 ? (
+            <ErrorState
+              resource="assistants"
+              description="Something went wrong while loading your assistants."
+              details={error}
+              onRetry={() =>
+                Stores.UserAssistants.loadUserAssistants(storePage, storePageSize)
+              }
+              data-testid="user-assistants-error"
+            />
+          ) : loading ? (
             <Loading />
           ) : assistants.length === 0 ? (
             <div>

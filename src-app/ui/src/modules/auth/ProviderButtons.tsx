@@ -1,4 +1,4 @@
-import { Alert, Button, Separator, Spin, Text } from '@/components/ui'
+import { Button, ErrorState, Separator, Spin, Text } from '@/components/ui'
 import { Apple as AppleIcon, Globe, LogIn, Monitor } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { PublicProvider } from '@/api-client/types'
@@ -50,11 +50,12 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
 
   if (error) {
     return (
-      <Alert
+      <ErrorState
         data-testid="auth-providers-error"
-        tone="warning"
-        title="Unable to load sign-in options"
-        description={error}
+        resource="sign-in options"
+        description="We couldn't load the external sign-in options. You can still sign in with your username and password."
+        details={error}
+        onRetry={() => Stores.AuthProviders.loadProviders()}
         className="my-2"
       />
     )

@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Empty,
+  ErrorState,
   Flex,
   Switch,
 } from '@/components/ui'
@@ -25,6 +26,7 @@ export function LlmRepositorySettings() {
   const {
     repositories,
     testing,
+    error,
     total: totalRepositories,
     currentPage: storePage,
     pageSize: storePageSize,
@@ -223,7 +225,17 @@ export function LlmRepositorySettings() {
       >
         <Flex className="flex-col gap-4">
           <div>
-            {repositories.length === 0 ? (
+            {error && repositories.length === 0 ? (
+              <ErrorState
+                resource="repositories"
+                description="Something went wrong while loading your LLM repositories."
+                details={error}
+                onRetry={() =>
+                  Stores.LlmRepository.loadLlmRepositories(storePage, storePageSize)
+                }
+                data-testid="llmrepo-error"
+              />
+            ) : repositories.length === 0 ? (
               <Empty
                 data-testid="llmrepo-empty"
                 description="No repositories yet"

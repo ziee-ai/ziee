@@ -1,5 +1,5 @@
 import { Import as ImportIcon } from 'lucide-react'
-import { Button, Empty, Flex, Space, Text } from '@/components/ui'
+import { Button, Empty, ErrorState, Flex, Space, Text } from '@/components/ui'
 import { ListPagination } from '@/components/common/ListPagination'
 import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/types'
@@ -17,7 +17,7 @@ import { AdminWorkflowGroupAssignment } from './AdminWorkflowGroupAssignment'
  * import.
  */
 export function AdminWorkflowsPage() {
-  const { systemWorkflows, loading } = Stores.SystemWorkflow
+  const { systemWorkflows, loading, error } = Stores.SystemWorkflow
   const { multiUserMode } = Stores.AppMode
   const [importOpen, setImportOpen] = useState(false)
 
@@ -51,7 +51,9 @@ export function AdminWorkflowsPage() {
           </Can>
         </Flex>
 
-        {loading && <Text type="secondary">Loading system workflows...</Text>}
+        {loading && !error && (
+          <Text type="secondary">Loading system workflows...</Text>
+        )}
 
         <div className="flex flex-col gap-3">
           {pagedWorkflows.map(workflow => (
@@ -88,12 +90,23 @@ export function AdminWorkflowsPage() {
           ))}
         </div>
 
-        {!loading && systemWorkflows.length === 0 && (
-          <Empty
-            data-testid="wf-admin-empty"
-            description="No system workflows installed"
-            className="!mt-12"
+        {error && systemWorkflows.length === 0 ? (
+          <ErrorState
+            resource="system workflows"
+            description="Something went wrong while loading system workflows."
+            details={error}
+            onRetry={() => Stores.SystemWorkflow.loadSystemWorkflows()}
+            data-testid="wf-admin-error"
           />
+        ) : (
+          !loading &&
+          systemWorkflows.length === 0 && (
+            <Empty
+              data-testid="wf-admin-empty"
+              description="No system workflows installed"
+              className="!mt-12"
+            />
+          )
         )}
 
         {total > 0 && (
