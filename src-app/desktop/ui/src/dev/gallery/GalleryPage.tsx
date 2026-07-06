@@ -5,7 +5,7 @@
  * Layers A/B/C all run against this one stable surface.
  *
  * Dev-only: mounted at `/dev/gallery` (gated on `import.meta.env.DEV`) inside the
- * app shell, and served standalone (backend-free) at `/dev-gallery.html`.
+ * app shell, and served standalone (backend-free) at `/gallery.html`.
  */
 import { Flex, Select, Text, Title } from '@/components/ui'
 import { ACCENT_PRESETS } from '@/components/ThemeProvider/accentPresets'

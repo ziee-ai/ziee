@@ -14,7 +14,7 @@ import path from 'node:path'
 
 const arg = (n, d) => (process.argv.find(a => a.startsWith(`--${n}=`)) || `--${n}=${d}`).split('=').slice(1).join('=')
 const OUT = arg('out', '/tmp/gallery-forms')
-const BASE = arg('url', 'http://localhost:1466/dev-gallery.html')
+const BASE = arg('url', 'http://localhost:1466/gallery.html')
 
 // Form overlays worth filled/invalid coverage (a subset of the wired overlays).
 const FORM_OVERLAYS = [

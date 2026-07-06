@@ -9,7 +9,7 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
  * bundles get an empty route list, so the gallery never ships.
  *
  * The canonical, backend-free surface used by the Playwright visual layers is
- * the standalone `/dev-gallery.html` entry; this route is for manual review in a
+ * the standalone `/gallery.html` entry; this route is for manual review in a
  * running, set-up instance.
  */
 const GalleryPage = lazyWithPreload(() =>

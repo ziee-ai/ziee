@@ -5,7 +5,7 @@
  * overlap, sub-min touch targets, silent truncation) — see
  * `tests/e2e/helpers/layout.ts` and the VISUAL_TESTING_GUIDE.
  *
- * Backend-free: drives the standalone `/dev-gallery.html` entry via the gallery
+ * Backend-free: drives the standalone `/gallery.html` entry via the gallery
  * Vite server (playwright.visual.config.ts).
  */
 import AxeBuilder from '@axe-core/playwright'

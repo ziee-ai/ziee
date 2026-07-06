@@ -26,13 +26,14 @@
  *
  * Usage:
  *   GALLERY_COVERAGE=1 npm run dev -- --port 1466 --strictPort   # (instrumented)
- *   node scripts/gallery-coverage.mjs --url=http://localhost:1466/dev-gallery.html
+ *   node scripts/gallery-coverage.mjs --url=http://localhost:1466/gallery.html
  *   node scripts/gallery-coverage.mjs --url=… --gate              # CI gate
  */
 import { chromium } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { enumerateSurfaces } from './lib/gallery-surfaces.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const UI_DIR = path.resolve(HERE, '..')
@@ -46,7 +47,7 @@ const arg = (n, d) => {
   const a = process.argv.find(x => x.startsWith(`--${n}=`))
   return a ? a.slice(n.length + 3) : d
 }
-const BASE = arg('url', 'http://localhost:1466/dev-gallery.html')
+const BASE = arg('url', 'http://localhost:1466/gallery.html')
 const GATE = process.argv.includes('--gate')
 const STATES = ['empty', 'error', 'delayed']
 const LAUNCH = { args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] }
@@ -113,19 +114,11 @@ async function enumerateSlugs(holder) {
   const browser = await ensureBrowser(holder)
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await ctx.newPage()
-  await page.goto(BASE, { waitUntil: 'domcontentloaded' })
-  await page.waitForTimeout(5000)
-  const pages = []
-  for (const s of await page.locator('[data-testid^="gallery-page-"]').all()) {
-    const id = (await s.getAttribute('data-testid'))?.replace('gallery-page-', '')
-    if (id) pages.push(id)
-  }
-  const overlays = await page.evaluate(() => window.__GALLERY_OVERLAYS__ || [])
-  const deep = await page.evaluate(() => window.__GALLERY_DEEP_STATES__ || [])
-  const seeded = await page.evaluate(() => window.__GALLERY_SEEDED__ || [])
+  // Single-source enumeration (shared with the capture scripts) — pages minus the
+  // interaction-only classes already resolved inside `listAllSurfaces`.
+  const classes = await enumerateSurfaces(page, BASE)
   await ctx.close()
-  const special = new Set([...overlays, ...deep, ...seeded])
-  return { pages: pages.filter(p => !special.has(p)), overlays, deep, seeded }
+  return classes
 }
 
 // Part-1 cross-reference: which surface lines carry a NAMED state signal

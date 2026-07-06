@@ -1355,19 +1355,19 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `inView` | 62 |
-| branch | `typeof IntersectionObserver === 'undefined'` | 63 |
-| branch | `!el` | 68 |
-| branch | `!file` | 102 |
-| branch | `!file` | 116 |
-| branch | `canInline && Body` | 140 |
-| branch | `collapsed` | 146 |
-| branch | `label` | 165 |
-| branch | `displaySize !== undefined` | 166 |
-| branch | `HeaderActions` | 169 |
-| branch | `file` | 172 |
-| branch | `file` | 185 |
-| branch | `showBody && Body` | 222 |
+| branch | `inView` | 64 |
+| branch | `typeof IntersectionObserver === 'undefined'` | 65 |
+| branch | `!el` | 70 |
+| branch | `!file` | 104 |
+| branch | `!file` | 118 |
+| branch | `canInline && Body` | 142 |
+| branch | `collapsed` | 148 |
+| branch | `label` | 167 |
+| branch | `displaySize !== undefined` | 168 |
+| branch | `HeaderActions` | 171 |
+| branch | `file` | 174 |
+| branch | `file` | 187 |
+| branch | `showBody && Body` | 224 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
@@ -1396,27 +1396,27 @@ Required states: `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!file \|\| uploadProgress` | 113 |
-| branch | `onClick` | 114 |
-| branch | `uploadProgress && variant === 'row'` | 121 |
-| error | `isError` | 135 |
-| error | `isError && onRetry` | 160 |
-| branch | `onRemove` | 173 |
-| branch | `uploadProgress` | 192 |
-| error | `isError` | 204 |
-| branch | `onRetry` | 205 |
-| branch | `showFileName` | 223 |
-| branch | `onRemove` | 233 |
-| branch | `!file` | 253 |
-| branch | `variant === 'row'` | 262 |
-| branch | `selectable` | 280 |
-| branch | `hasImage` | 292 |
-| branch | `actions !== undefined` | 307 |
-| branch | `canDownload` | 310 |
-| branch | `hasImage` | 354 |
-| branch | `showFileName` | 361 |
-| branch | `(canDelete \|\| canRemove) && onRemove` | 370 |
-| overlay | `<Confirm open>` | 382 |
+| branch | `!file \|\| uploadProgress` | 116 |
+| branch | `onClick` | 117 |
+| branch | `uploadProgress && variant === 'row'` | 124 |
+| error | `isError` | 138 |
+| error | `isError && onRetry` | 163 |
+| branch | `onRemove` | 176 |
+| branch | `uploadProgress` | 195 |
+| error | `isError` | 207 |
+| branch | `onRetry` | 208 |
+| branch | `showFileName` | 226 |
+| branch | `onRemove` | 236 |
+| branch | `!file` | 256 |
+| branch | `variant === 'row'` | 265 |
+| branch | `selectable` | 283 |
+| branch | `hasImage` | 295 |
+| branch | `actions !== undefined` | 310 |
+| branch | `canDownload` | 313 |
+| branch | `hasImage` | 357 |
+| branch | `showFileName` | 364 |
+| branch | `(canDelete \|\| canRemove) && onRemove` | 373 |
+| overlay | `<Confirm open>` | 385 |
 
 ### `modules/file/components/FilePanel`
 

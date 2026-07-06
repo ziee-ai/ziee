@@ -19,7 +19,9 @@ interface InlineFilePreviewProps {
 }
 
 function formatFileSize(bytes: number | undefined): string {
-  if (bytes === undefined) return ''
+  // A missing / malformed size (undefined, null, NaN) must never render as
+  // "NaN GB" — show nothing instead.
+  if (bytes === undefined || !Number.isFinite(bytes)) return ''
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`

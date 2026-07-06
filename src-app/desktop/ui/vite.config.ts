@@ -6,6 +6,7 @@ import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { localOverridePlugin } from './plugins/vite-plugin-local-override.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
+import { galleryAliasPlugin } from './plugins/vite-plugin-gallery-alias.js'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -24,6 +25,9 @@ export default defineConfig(async () => {
       }),
       react(),
       tailwindcss(),
+      // Serve the gallery at the pretty `/gallery` URL + keep `/dev-gallery.html`
+      // working post-rename (dev/preview only).
+      galleryAliasPlugin(),
       // Detect duplicate form names
       formNamesPlugin({
         srcDir: 'src',
