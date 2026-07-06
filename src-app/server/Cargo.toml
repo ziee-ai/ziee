@@ -213,6 +213,10 @@ windows-sys = { version = "0.59", features = [
     # ConnectNamedPipe's signature references OVERLAPPED, so windows-sys gates
     # it behind the IO feature too.
     "Win32_System_IO",
+    # GetExtendedTcpTable + MIB_TCP*TABLE_OWNER_PID rows for the Windows twin
+    # of verify_loopback_bind (assert a spawned engine bound 127.0.0.1/::1, not
+    # 0.0.0.0). See llm_local_runtime/deployment/local.rs.
+    "Win32_NetworkManagement_IpHelper",
 ] }
 # Windows service scaffolding for the LocalSystem sandbox-helper: SCM
 # dispatcher + install/uninstall. The helper resolves the WSL utility VM's
