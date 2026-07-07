@@ -1,4 +1,4 @@
-import { Fragment, memo, type ReactNode } from 'react'
+import { Fragment, memo, useMemo, useRef, type ReactNode } from 'react'
 import { ScrollArea } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { MessageWithContent } from '@/api-client/types'
@@ -23,6 +23,32 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = message.role === 'user'
   const { activeMatchId } = useConversationFind()
   const isActiveMatch = activeMatchId === message.id
+
+  // Once a message has streamed in THIS mount, never retroactively clamp it:
+  // snapping a long answer the user is reading from full height to a 384px
+  // clamp the instant streaming ends is a jarring reflow (DEC-6 exempts only
+  // the in-flight message; this extends that to the just-finished one). The ref
+  // survives the isStreaming true→false transition; a fresh mount (reload) has
+  // it false, so history still clamps.
+  const wasStreamingRef = useRef(false)
+  if (isStreaming) wasStreamingRef.current = true
+
+  // Memoized so the find-highlight re-render (every ChatMessage consumes the
+  // find context, so an active-match change re-renders them all) doesn't
+  // recompute the message text + collapse decision each time — only when its
+  // inputs change. The ACTIVE find match is never clamped, so the matched text
+  // can't hide below the fold when find scrolls to it (isActiveMatch in deps
+  // triggers recompute; reading the ref is safe because isStreaming is a dep).
+  const offerCollapse = useMemo(() => {
+    // Short-circuit BEFORE the O(n) messageText concat: a streaming, just-
+    // streamed, or active-match message is never clamped, so don't rebuild the
+    // full text on every streaming token (that would be O(n^2) over a stream).
+    if (isStreaming || wasStreamingRef.current || isActiveMatch) return false
+    return shouldOfferCollapse({
+      length: messageText(message).length,
+      isStreaming: false,
+    })
+  }, [message, isStreaming, isActiveMatch])
 
   // Check if message has any content to render
   if (!message.contents || message.contents.length === 0) {
@@ -152,10 +178,7 @@ export const ChatMessage = memo(function ChatMessage({
               'flex flex-1 w-full overflow-x-hidden flex-col px-0.5'
             }
           >
-            {shouldOfferCollapse({
-              length: messageText(message).length,
-              isStreaming,
-            }) ? (
+            {offerCollapse ? (
               <CollapsibleBlock
                 className="w-full"
                 data-testid="chat-message-collapsible"

@@ -61,16 +61,24 @@ test.describe('Chat — collapse long messages', () => {
     await expect(toggle).toBeVisible()
     await expect(toggle).toHaveText(/Show more/i)
 
-    // The collapsed content is clamped.
-    const block = page.getByTestId('chat-message-collapsible')
-    await expect(block).toBeVisible()
+    // The collapsed content region is actually height-clamped (~24rem / 384px).
+    const content = page.getByTestId('collapsible-content')
+    const collapsedBox = await content.boundingBox()
+    expect(collapsedBox).not.toBeNull()
+    expect(collapsedBox!.height).toBeLessThanOrEqual(400)
 
-    // Expand → "Show less".
+    // Expand → "Show less" AND the content grows well beyond the clamp.
     await toggle.click()
     await expect(toggle).toHaveText(/Show less/i)
+    await expect
+      .poll(async () => (await content.boundingBox())?.height ?? 0)
+      .toBeGreaterThan(collapsedBox!.height + 100)
 
-    // Re-clamp.
+    // Re-clamp → back to Show more and clamped height.
     await toggle.click()
     await expect(toggle).toHaveText(/Show more/i)
+    await expect
+      .poll(async () => (await content.boundingBox())?.height ?? 0)
+      .toBeLessThanOrEqual(400)
   })
 })

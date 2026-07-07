@@ -64,7 +64,9 @@ export function FilePasteHandler() {
         .filter((f) => f.size > MAX_FILE_SIZE)
         .forEach((f) =>
           message.error(
-            `Pasted image ${f.name || ''} is too large. Maximum size is 100MB.`,
+            f.name
+              ? `Pasted image ${f.name} is too large. Maximum size is 100MB.`
+              : 'Pasted image is too large. Maximum size is 100MB.',
           ),
         )
 

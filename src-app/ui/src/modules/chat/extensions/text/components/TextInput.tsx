@@ -4,7 +4,6 @@ import { Stores } from '@/core/stores'
 import {
   getDraft,
   setDraft,
-  clearDraft,
   NEW_DRAFT_KEY,
 } from '@/modules/chat/extensions/text/chatDrafts'
 
@@ -22,7 +21,7 @@ import {
 export function TextInput() {
   const ref = useRef<HTMLTextAreaElement>(null)
   const { sending } = Stores.Chat
-  const { setGetMessage, setSetMessage, setClearMessage, setClearDraft } =
+  const { setGetMessage, setSetMessage, setClearMessage } =
     Stores.Chat.TextStore
 
   // The draft bucket for the composer's CURRENT conversation. `new` when there
@@ -50,21 +49,32 @@ export function TextInput() {
     setClearMessage(() => {
       if (ref.current) ref.current.value = ''
     })
-    // On successful send, clear the persisted draft for the key that was active
-    // when the user typed (and the `new` bucket — see clearDraft).
-    setClearDraft(() => clearDraft(draftKeyRef.current))
-  }, [setGetMessage, setSetMessage, setClearMessage, setClearDraft])
+  }, [setGetMessage, setSetMessage, setClearMessage])
 
-  // Restore the saved draft when the composer (re)binds to a conversation key.
-  // Only when NOT editing and the textarea is empty, so we never overwrite an
-  // edit/regenerate prefill or in-progress typing (DEC-7).
+  // Restore the saved draft when the composer binds to a NEW conversation key.
+  // ConversationPage/TextInput are reused (not remounted) across an in-app
+  // A→B switch, so we must key restoration off draftKey CHANGES (tracked in a
+  // ref) — restoring once per key REPLACES the textarea with the target key's
+  // draft. This both (a) loads B's draft and (b) discards A's leftover text
+  // (already persisted under A), preventing it from bleeding into B and being
+  // re-saved under B's key. Suppressed while editing so an edit/regenerate
+  // prefill is never clobbered (DEC-7); re-restoring within the same key is a
+  // no-op so in-progress typing is never overwritten.
+  const restoredKeyRef = useRef<string | null>(null)
   useEffect(() => {
-    if (isEditing) return
     const el = ref.current
     if (!el) return
-    if (el.value.length > 0) return
-    const saved = getDraft(draftKey)
-    if (saved) el.value = saved
+    if (isEditing) {
+      // Entering edit: the edit prefill (TextStore.setText) owns the textarea.
+      // Forget the "already restored" latch so that when the edit ends —
+      // cancelEdit clears the textarea WITHOUT changing draftKey — the effect
+      // re-runs and re-restores the pre-edit draft instead of leaving it empty.
+      restoredKeyRef.current = null
+      return
+    }
+    if (restoredKeyRef.current === draftKey) return
+    restoredKeyRef.current = draftKey
+    el.value = getDraft(draftKey)
   }, [draftKey, isEditing])
 
   // Persist on input (debounced). Suppressed while editing so the edit buffer

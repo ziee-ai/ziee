@@ -122,3 +122,26 @@ async fn test_search_title_or_content_and_filtered_total() {
     assert_eq!(empty["conversations"].as_array().unwrap().len(), 0);
     assert_eq!(empty["total"].as_i64().unwrap(), 0);
 }
+
+/// LIKE metacharacters in the search term match LITERALLY, not as wildcards
+/// (regression for the escape fix): `user_data` must not match `userXdata`.
+#[tokio::test]
+async fn test_search_escapes_like_metacharacters() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["conversations::create", "conversations::read"],
+    )
+    .await;
+
+    helpers::create_conversation(&server, &user.token, None, Some("user_data notes")).await;
+    helpers::create_conversation(&server, &user.token, None, Some("userXdata notes")).await;
+
+    // If `_` were treated as a wildcard, this would match BOTH; escaped, it
+    // matches only the literal-underscore title.
+    let body = list_with_search(&server, &user.token, "user_data").await;
+    let found = titles(&body);
+    assert_eq!(found, vec!["user_data notes".to_string()], "got {found:?}");
+    assert_eq!(body["total"].as_i64().unwrap(), 1);
+}

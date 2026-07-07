@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,7 @@ export function CollapsibleBlock({
   'data-testid': dataTestid = 'collapsible-block',
 }: CollapsibleBlockProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const regionId = useId()
   const [collapsed, setCollapsed] = useState(true)
   const [overflowing, setOverflowing] = useState(false)
 
@@ -60,16 +61,27 @@ export function CollapsibleBlock({
     <div className={cn('flex flex-col', className)} data-testid={dataTestid}>
       <div
         ref={contentRef}
-        className={cn('relative', isClamped && 'overflow-hidden')}
+        id={regionId}
+        data-testid="collapsible-content"
+        // If a focusable descendant (a link / copy button in a long answer)
+        // receives focus while the block is clamped, auto-expand so its focus
+        // ring isn't clipped or alpha-faded below the fold (WCAG 2.4.7/2.4.11).
+        onFocusCapture={e => {
+          if (isClamped && e.target !== e.currentTarget) setCollapsed(false)
+        }}
+        className={cn(
+          'relative',
+          // Bottom fade cueing there's more below. A mask (not a color overlay)
+          // fades the content itself to transparent, so it blends over ANY
+          // background (the primary/10 user bubble as well as the transparent
+          // assistant body) — no mismatched color band.
+          isClamped &&
+            'overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]',
+        )}
         style={isClamped ? { maxHeight: maxHeightPx } : undefined}
         data-collapsed={overflowing ? collapsed : undefined}
       >
         {children}
-        {isClamped && (
-          // Bottom fade cueing there's more below. Theme-aware token gradient;
-          // pointer-events-none so it never blocks selection/clicks.
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-background" />
-        )}
       </div>
       {overflowing && (
         <Button
@@ -79,6 +91,7 @@ export function CollapsibleBlock({
           icon={collapsed ? <ChevronDown /> : <ChevronUp />}
           onClick={() => setCollapsed(c => !c)}
           aria-expanded={!collapsed}
+          aria-controls={regionId}
         >
           {collapsed ? 'Show more' : 'Show less'}
         </Button>

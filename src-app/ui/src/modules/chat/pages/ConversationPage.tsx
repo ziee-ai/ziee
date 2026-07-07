@@ -52,6 +52,13 @@ export default function ConversationPage() {
 
   // In-conversation find (ITEM-1) + jump-to-latest visibility (ITEM-2).
   const [findOpen, setFindOpen] = useState(false)
+  // Restore focus to the toggle when the find bar closes (it unmounts, so its
+  // focused input would otherwise drop focus to <body>).
+  const findToggleRef = useRef<HTMLButtonElement>(null)
+  const closeFind = () => {
+    setFindOpen(false)
+    findToggleRef.current?.focus()
+  }
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null)
   // Mirror of isAtBottomRef surfaced to render so the jump-to-latest button can
   // show/hide. The ref stays the source of truth for the scroll effects.
@@ -74,9 +81,13 @@ export default function ConversationPage() {
 
   // Cmd/Ctrl-F opens the in-conversation find bar, overriding the browser's
   // native find (our find covers the same rendered message content — DEC-5).
+  // Only when a conversation is actually loaded — otherwise the find bar isn't
+  // rendered (Loading / ErrorState early returns), so we must NOT swallow native
+  // find and strand the user with neither.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+        if (!Stores.Chat.__state.conversation) return
         e.preventDefault()
         setFindOpen(true)
       }
@@ -181,13 +192,14 @@ export default function ConversationPage() {
                 Cmd/Ctrl-F. */}
             <Tooltip content="Find in conversation">
               <Button
+                ref={findToggleRef}
                 data-testid="conversation-find-toggle-btn"
                 variant={findOpen ? 'default' : 'ghost'}
                 size="icon"
                 icon={<SearchIcon />}
                 aria-label="Find in conversation"
                 aria-pressed={findOpen}
-                onClick={() => setFindOpen(v => !v)}
+                onClick={() => (findOpen ? closeFind() : setFindOpen(true))}
               />
             </Tooltip>
             {/* Decoupled chip injection point — other modules register
@@ -215,7 +227,7 @@ export default function ConversationPage() {
             <div className="pointer-events-auto">
               <ConversationFindBar
                 open={findOpen}
-                onClose={() => setFindOpen(false)}
+                onClose={closeFind}
                 onActiveMatchChange={setActiveMatchId}
               />
             </div>

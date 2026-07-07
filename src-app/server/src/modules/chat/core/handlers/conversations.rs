@@ -53,6 +53,14 @@ pub struct PaginationQuery {
 fn default_page() -> i64 {
     1
 }
+
+/// Escape LIKE/ILIKE metacharacters so a search term matches literally.
+/// Backslash first (it's the default ESCAPE char), then the wildcards.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
 fn default_limit() -> i64 {
     20
 }
@@ -138,24 +146,28 @@ pub async fn list_conversations(
     let offset = (page - 1) * limit;
 
     // Treat a blank/whitespace search as "no filter" so an empty box doesn't
-    // ILIKE '%%' every row through the content-search path.
-    let search = params
+    // ILIKE '%%' every row through the content-search path. Escape LIKE
+    // metacharacters (\ % _) so the term is matched as a LITERAL substring
+    // (matching the client-side plain-substring find), not as SQL wildcards —
+    // ILIKE's default ESCAPE is backslash.
+    let search: Option<String> = params
         .search
         .as_deref()
         .map(str::trim)
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.is_empty())
+        .map(escape_like);
     let sort = params.sort.as_deref();
 
     let conversations = Repos
         .chat
         .core
-        .list_conversations(auth.user.id, limit, offset, search, sort)
+        .list_conversations(auth.user.id, limit, offset, search.as_deref(), sort)
         .await?;
 
     let total = Repos
         .chat
         .core
-        .count_conversations(auth.user.id, search)
+        .count_conversations(auth.user.id, search.as_deref())
         .await?;
 
     Ok((StatusCode::OK, Json(ConversationListResponse { conversations, total })))

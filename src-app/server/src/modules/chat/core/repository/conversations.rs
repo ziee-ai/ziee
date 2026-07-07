@@ -172,8 +172,10 @@ pub async fn list_conversations(
               SELECT 1
               FROM message_contents mc
               JOIN branch_messages bm2 ON bm2.message_id = mc.message_id
-              JOIN branches b2 ON b2.id = bm2.branch_id
-              WHERE b2.conversation_id = c.id
+              -- Only the conversation's ACTIVE branch: content in a superseded
+              -- edit branch is invisible when the conversation is opened, and
+              -- the client find bar searches the active branch only.
+              WHERE bm2.branch_id = c.active_branch_id
                 AND mc.content_type = 'text'
                 AND mc.content->>'text' ILIKE '%' || $4 || '%'
             )
@@ -233,8 +235,8 @@ pub async fn count_conversations(
               SELECT 1
               FROM message_contents mc
               JOIN branch_messages bm2 ON bm2.message_id = mc.message_id
-              JOIN branches b2 ON b2.id = bm2.branch_id
-              WHERE b2.conversation_id = c.id
+              -- Active branch only (see list_conversations).
+              WHERE bm2.branch_id = c.active_branch_id
                 AND mc.content_type = 'text'
                 AND mc.content->>'text' ILIKE '%' || $2 || '%'
             )

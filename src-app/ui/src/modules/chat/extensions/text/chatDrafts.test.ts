@@ -38,12 +38,16 @@ test('drafts are isolated per key', () => {
   assert.equal(getDraft('conv-2'), 'two')
 })
 
-test('clearDraft on a conversation key also clears the new bucket', () => {
+test('clearDraft clears ONLY the given key (never the new bucket)', () => {
   setDraft(NEW_DRAFT_KEY, 'started in new chat')
   setDraft('conv-1', 'in conversation')
   clearDraft('conv-1')
   assert.equal(getDraft('conv-1'), '', 'the conversation draft is cleared')
-  assert.equal(getDraft(NEW_DRAFT_KEY), '', 'the new bucket is also cleared')
+  assert.equal(
+    getDraft(NEW_DRAFT_KEY),
+    'started in new chat',
+    'a separate new-chat draft is NOT wiped by clearing a conversation draft',
+  )
 })
 
 test('clearDraft on the new key clears only new', () => {

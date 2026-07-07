@@ -7,7 +7,7 @@
  *
  * Client-only (localStorage), matching the "persist across navigation" scope —
  * not a cross-device/synced surface (see DEC-8). All access is guarded so a
- * disabled/þrowing storage (private mode, quota) degrades to a no-op instead of
+ * disabled/throwing storage (private mode, quota) degrades to a no-op instead of
  * breaking the composer.
  */
 
@@ -46,17 +46,14 @@ export function setDraft(key: string, text: string): void {
 }
 
 /**
- * Clear the draft for a conversation key AND the `new` bucket. Clearing `new`
- * on every send covers the new-chat→created transition: the text was saved
- * under `new`, but by the time the message is sent the active key has become
- * the freshly-created conversation id.
+ * Clear the draft for exactly ONE conversation key. Callers that send from the
+ * new-chat page must pass `NEW_DRAFT_KEY` (the key the text was authored under)
+ * — captured BEFORE the conversation is created — so a send never wipes an
+ * unrelated conversation's (or a separate new-chat) draft.
  */
 export function clearDraft(key: string): void {
   try {
     localStorage.removeItem(storageKey(key))
-    if (key !== NEW_DRAFT_KEY) {
-      localStorage.removeItem(storageKey(NEW_DRAFT_KEY))
-    }
   } catch {
     // ignore
   }
