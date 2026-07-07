@@ -191,6 +191,14 @@ pub fn active() -> &'static dyn OfficePlatform {
 pub(crate) struct MockOfficePlatform {
     docs: Vec<OpenDoc>,
     elevated: bool,
+    /// Whether `probe()` reports Office as present (default `true`).
+    office_present: bool,
+    /// Whether `install_cert_trust` succeeds (default `true`); `false` returns a
+    /// typed error so TEST-16 can assert `cert_trusted == false`.
+    cert_ok: bool,
+    /// Whether `register_sideload` succeeds (default `true`); `false` returns a
+    /// typed error so TEST-16 can assert `sideloaded == false`.
+    sideload_ok: bool,
 }
 
 #[cfg(test)]
@@ -218,6 +226,9 @@ impl MockOfficePlatform {
                 },
             ],
             elevated: false,
+            office_present: true,
+            cert_ok: true,
+            sideload_ok: true,
         }
     }
 
@@ -226,8 +237,32 @@ impl MockOfficePlatform {
     pub(crate) fn with_docs(docs: Vec<OpenDoc>) -> Self {
         Self {
             docs,
-            elevated: false,
+            ..Self::new()
         }
+    }
+
+    /// Set whether running Office is reported as elevated (TEST-16).
+    pub(crate) fn with_elevated(mut self, elevated: bool) -> Self {
+        self.elevated = elevated;
+        self
+    }
+
+    /// Set whether `probe()` reports Office as present (TEST-16).
+    pub(crate) fn with_office_present(mut self, office_present: bool) -> Self {
+        self.office_present = office_present;
+        self
+    }
+
+    /// Set whether `install_cert_trust` succeeds (TEST-16).
+    pub(crate) fn with_cert_ok(mut self, cert_ok: bool) -> Self {
+        self.cert_ok = cert_ok;
+        self
+    }
+
+    /// Set whether `register_sideload` succeeds (TEST-16).
+    pub(crate) fn with_sideload_ok(mut self, sideload_ok: bool) -> Self {
+        self.sideload_ok = sideload_ok;
+        self
     }
 }
 
@@ -237,7 +272,7 @@ impl OfficePlatform for MockOfficePlatform {
     fn probe(&self) -> Option<OfficeCaps> {
         Some(OfficeCaps {
             desktop: true,
-            office_present: true,
+            office_present: self.office_present,
         })
     }
 
@@ -264,11 +299,27 @@ impl OfficePlatform for MockOfficePlatform {
     }
 
     fn install_cert_trust(&self, _cert_der: &[u8]) -> Result<(), AppError> {
-        Ok(())
+        if self.cert_ok {
+            Ok(())
+        } else {
+            Err(AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "OFFICE_CERT_TRUST_FAILED",
+                "mock: cert trust install failed",
+            ))
+        }
     }
 
     fn register_sideload(&self, _manifest_path: &Path) -> Result<(), AppError> {
-        Ok(())
+        if self.sideload_ok {
+            Ok(())
+        } else {
+            Err(AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "OFFICE_SIDELOAD_FAILED",
+                "mock: sideload registration failed",
+            ))
+        }
     }
 
     fn office_is_elevated(&self) -> bool {

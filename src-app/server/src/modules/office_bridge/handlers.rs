@@ -1,5 +1,7 @@
 //! HTTP handlers: the JSON-RPC MCP endpoint + the admin settings REST surface.
 
+use std::path::{Path, PathBuf};
+
 use aide::transform::TransformOperation;
 use axum::{
     Json, debug_handler,
@@ -16,7 +18,7 @@ use crate::modules::code_sandbox::types::{
 };
 use crate::modules::permissions::{RequirePermissions, with_permission};
 
-use super::models::{OfficeBridgeSettings, UpdateOfficeBridgeSettingsRequest};
+use super::models::{ConnectReadiness, OfficeBridgeSettings, UpdateOfficeBridgeSettingsRequest};
 use super::permissions::{OfficeBridgeAdminRead, OfficeBridgeManage, OfficeBridgeUse};
 use super::platform::{self, DocOp, OfficeApp, OfficePlatform};
 
@@ -331,6 +333,147 @@ pub fn update_settings_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<OfficeBridgeSettings>>()
 }
 
+// ─────────────────────────── Admin REST: [Connect] ──────────────────────────
+
+/// Run the one-shot `[Connect]` install steps against `platform` and report
+/// readiness (ITEM-13). Pure + injectable (takes the platform as a trait object)
+/// so tests can drive it with a `MockOfficePlatform` without a real Office
+/// install; production passes `platform::active()`.
+///
+/// Every platform call is **best-effort**: a failure sets that step's boolean to
+/// `false` and appends a note to `message`, rather than propagating an error and
+/// 500-ing the request. This lets the admin see a partial-success report (e.g.
+/// "cert trusted, but Office is elevated") instead of an opaque failure.
+///
+/// Steps:
+/// - `probe()` → `office_present`.
+/// - `install_cert_trust(ca_der)` (one UAC on Windows) → `cert_trusted`.
+/// - `register_sideload(manifest_path)` → `sideloaded`.
+/// - `office_is_elevated()` → `office_elevated_warning` (true = warn: an elevated
+///   Office disables the add-in platform and cannot be automated).
+pub fn run_connect(
+    platform: &dyn OfficePlatform,
+    ca_der: &[u8],
+    manifest_path: &Path,
+    bridge_port: i32,
+) -> ConnectReadiness {
+    let mut notes: Vec<String> = Vec::new();
+
+    // Office presence (a supported desktop with Office *absent* still connects so
+    // the admin can be told to open a document).
+    let office_present = platform.probe().map(|c| c.office_present).unwrap_or(false);
+    if !office_present {
+        notes.push(
+            "No Microsoft Office installation was detected; open Word, Excel, or \
+             PowerPoint before using the bridge."
+                .to_string(),
+        );
+    }
+
+    // Trust the bridge CA (one elevation prompt on Windows) — best-effort.
+    let cert_trusted = match platform.install_cert_trust(ca_der) {
+        Ok(()) => true,
+        Err(e) => {
+            notes.push(format!("Trusting the bridge certificate failed: {e}."));
+            false
+        }
+    };
+
+    // Register the add-in manifest for sideloading — best-effort.
+    let sideloaded = match platform.register_sideload(manifest_path) {
+        Ok(()) => true,
+        Err(e) => {
+            notes.push(format!("Registering the add-in for sideloading failed: {e}."));
+            false
+        }
+    };
+
+    // Elevated-Office warning (COM same-integrity rule — an elevated Office
+    // cannot be automated from the non-elevated daemon, and the add-in platform
+    // is disabled for it).
+    let office_elevated_warning = platform.office_is_elevated();
+    if office_elevated_warning {
+        notes.push(
+            "Microsoft Office is running elevated (as administrator); the add-in \
+             platform is disabled for elevated Office. Restart Office without \
+             administrator rights."
+                .to_string(),
+        );
+    }
+
+    if notes.is_empty() {
+        notes.push(
+            "Office bridge connected: the certificate is trusted and the add-in is \
+             sideloaded. Use the ribbon button to open the task pane."
+                .to_string(),
+        );
+    }
+
+    ConnectReadiness {
+        office_present,
+        office_elevated_warning,
+        cert_trusted,
+        sideloaded,
+        bridge_port,
+        message: notes.join(" "),
+    }
+}
+
+/// Materialize the embedded add-in manifest to a real file under the data dir so
+/// `register_sideload` has a path to hand to Office. The embedded manifest
+/// hard-codes the default bridge port (44300 — the value baked into every
+/// `https://localhost:44300/...` URL); when the runtime port differs we rewrite
+/// those references so the sideloaded manifest matches the live listener.
+fn materialize_manifest(data_dir: &Path, port: i32) -> Result<PathBuf, AppError> {
+    let bytes = super::bridge::assets::get("manifest.xml")
+        .ok_or_else(|| AppError::internal_error("embedded office-bridge manifest.xml is missing"))?;
+    let mut xml = String::from_utf8(bytes.to_vec())
+        .map_err(|e| AppError::internal_error(format!("manifest.xml is not utf-8: {e}")))?;
+    if port != 44300 {
+        xml = xml.replace(":44300", &format!(":{port}"));
+    }
+    let dir = data_dir.join("office-bridge");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal_error(format!("create {}: {e}", dir.display())))?;
+    let path = dir.join("manifest.xml");
+    std::fs::write(&path, xml.as_bytes())
+        .map_err(|e| AppError::internal_error(format!("write {}: {e}", path.display())))?;
+    Ok(path)
+}
+
+/// `POST /api/office-bridge/connect` — the admin `[Connect]` installer flow.
+///
+/// Loads (or mints) the bridge CA, materializes the embedded add-in manifest to
+/// a real path under the data dir (injecting the configured port), then runs
+/// [`run_connect`] against the live platform and returns the readiness report.
+/// Gated on `office_bridge::admin::manage` by the extractor (403 without it).
+#[debug_handler]
+pub async fn connect(
+    _auth: RequirePermissions<(OfficeBridgeManage,)>,
+) -> ApiResult<Json<ConnectReadiness>> {
+    let settings = Repos.office_bridge.get_settings().await?;
+    let port = settings.port;
+
+    let data_dir = crate::core::get_app_data_dir();
+    // Mint/load the CA to trust and materialize the manifest to sideload. These
+    // are genuine prerequisites (no CA / no manifest = nothing to install), so a
+    // failure here is a real 500 — distinct from the best-effort platform steps
+    // inside `run_connect`.
+    let minted = super::bridge::cert::load_or_mint(&data_dir)?;
+    let manifest_path = materialize_manifest(&data_dir, port)?;
+
+    let readiness = run_connect(platform::active(), &minted.ca_der, &manifest_path, port);
+    Ok((StatusCode::OK, Json(readiness)))
+}
+
+pub fn connect_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(OfficeBridgeManage,)>(op)
+        .id("OfficeBridge.connect")
+        .tag("OfficeBridge")
+        .summary("Run the [Connect] installer flow (trust cert, sideload add-in, report readiness)")
+        .response::<200, Json<ConnectReadiness>>()
+}
+
 // ─────────────────────────────────── Tests ──────────────────────────────────
 
 #[cfg(test)]
@@ -485,5 +628,72 @@ mod tests {
             .await
             .expect_err("unknown tool errors");
         assert_eq!(err.error_code(), "UNKNOWN_TOOL");
+    }
+
+    // ───────────────────────── TEST-16: run_connect ─────────────────────────
+
+    // A throwaway manifest path — `run_connect` hands it verbatim to the mock's
+    // `register_sideload`, which ignores it, so the path need not exist.
+    fn dummy_manifest() -> std::path::PathBuf {
+        std::path::PathBuf::from(r"C:\Users\test\office-bridge\manifest.xml")
+    }
+
+    /// TEST-16 — the happy path: a mock probing as Office-present, whose
+    /// cert-trust + sideload succeed and which is NOT elevated, yields a fully
+    /// ready report (all booleans set the expected way, the port echoed).
+    #[test]
+    fn test16_run_connect_all_green() {
+        let mock = MockOfficePlatform::new();
+        let r = run_connect(&mock, b"ca-der-bytes", &dummy_manifest(), 44300);
+        assert!(r.office_present, "office present reflected from probe()");
+        assert!(r.cert_trusted, "cert trust succeeded → true");
+        assert!(r.sideloaded, "sideload succeeded → true");
+        assert!(!r.office_elevated_warning, "not elevated → no warning");
+        assert_eq!(r.bridge_port, 44300, "port echoed");
+        assert!(!r.message.is_empty());
+    }
+
+    /// TEST-16 — `office_present` reflects the probe: a mock reporting Office
+    /// absent produces `office_present == false` and a note in the message.
+    #[test]
+    fn test16_run_connect_reflects_office_absent() {
+        let mock = MockOfficePlatform::new().with_office_present(false);
+        let r = run_connect(&mock, b"ca", &dummy_manifest(), 44300);
+        assert!(!r.office_present);
+        assert!(
+            r.message.to_lowercase().contains("office"),
+            "absent-office note present: {}",
+            r.message
+        );
+    }
+
+    /// TEST-16 — a mock reporting Office elevated sets `office_elevated_warning`.
+    #[test]
+    fn test16_run_connect_elevated_sets_warning() {
+        let mock = MockOfficePlatform::new().with_elevated(true);
+        let r = run_connect(&mock, b"ca", &dummy_manifest(), 44300);
+        assert!(r.office_elevated_warning, "elevated Office → warn the user");
+        assert!(r.message.to_lowercase().contains("elevated"));
+    }
+
+    /// TEST-16 — each platform step is best-effort: cert-trust + sideload
+    /// failures set their booleans `false` and append to `message` WITHOUT
+    /// panicking or aborting (the fn always returns a report).
+    #[test]
+    fn test16_run_connect_step_failures_are_best_effort() {
+        let mock = MockOfficePlatform::new()
+            .with_cert_ok(false)
+            .with_sideload_ok(false);
+        let r = run_connect(&mock, b"ca", &dummy_manifest(), 12345);
+        assert!(!r.cert_trusted, "cert trust failed → false");
+        assert!(!r.sideloaded, "sideload failed → false");
+        // Office is still present + not elevated in this mock.
+        assert!(r.office_present);
+        assert!(!r.office_elevated_warning);
+        assert_eq!(r.bridge_port, 12345);
+        // Both failure notes surfaced in the message.
+        let m = r.message.to_lowercase();
+        assert!(m.contains("certificate"), "cert failure noted: {}", r.message);
+        assert!(m.contains("sideload"), "sideload failure noted: {}", r.message);
     }
 }

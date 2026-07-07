@@ -1,6 +1,6 @@
 //! office_bridge routes: the JSON-RPC MCP endpoint + admin settings REST.
 
-use aide::axum::{ApiRouter, routing::get_with};
+use aide::axum::{ApiRouter, routing::get_with, routing::post_with};
 use axum::routing::post;
 
 use super::handlers;
@@ -14,5 +14,11 @@ pub fn office_bridge_router() -> ApiRouter {
             "/office-bridge/settings",
             get_with(handlers::get_settings, handlers::get_settings_docs)
                 .put_with(handlers::update_settings, handlers::update_settings_docs),
+        )
+        // Admin `[Connect]` installer flow (ITEM-13): trust the bridge cert,
+        // sideload the add-in, report readiness. Gated on `office_bridge::admin::manage`.
+        .api_route(
+            "/office-bridge/connect",
+            post_with(handlers::connect, handlers::connect_docs),
         )
 }
