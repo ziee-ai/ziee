@@ -1,0 +1,29 @@
+# Office Bridge — TESTS
+
+Every ITEM is covered by ≥1 TEST. Tiers mirror ziee's existing pattern (unit `#[cfg(test)]` /
+integration `tests/office_bridge/` / e2e `ui/tests/e2e/`). Mock only the external boundary
+(`OfficePlatform` behind a mock impl; a fake in-process pane WSS client for the bridge). Windows-live
+COM tests are `#[cfg(windows)]` + `#[ignore]` (opt-in, like the sandbox rootfs tiers) — genuine
+platform gating, not a green-washing skip.
+
+## Tests
+
+- **TEST-1** (tier: unit) [covers: ITEM-1] file: `src-app/server/src/modules/office_bridge/repository.rs` — asserts: `upsert_builtin_server` is idempotent (two calls → one row, identity/url re-asserted) using a DB-gated `#[cfg(test)]` test.
+- **TEST-2** (tier: integration) [covers: ITEM-1, ITEM-12] file: `src-app/server/tests/office_bridge/mcp_test.rs` — asserts: the `office_bridge.ziee.internal` row is registered and JSON-RPC `initialize` + `tools/list` respond with the office tool descriptors.
+- **TEST-3** (tier: integration) [covers: ITEM-2] file: `src-app/server/tests/office_bridge/settings_test.rs` — asserts: the `office_bridge_settings` singleton exists (GET returns defaults) and migrations 132/133 applied cleanly (grant present on the Users group).
+- **TEST-4** (tier: unit) [covers: ITEM-3] file: `src-app/server/src/modules/office_bridge/permissions.rs` — asserts: the three `PermissionCheck` impls expose the exact `office_bridge::use` / `::admin::read` / `::admin::manage` strings + module name.
+- **TEST-5** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/office_bridge/settings_test.rs` — asserts: settings GET/PUT are permission-gated (403 without `office_bridge::admin::read`/`manage`; secret/token never returned in the body).
+- **TEST-6** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/modules/office_bridge/bridge/cert.rs` — asserts: the rcgen cert's SAN contains exactly `localhost`, `127.0.0.1`, and `::1`, CN=localhost, and it round-trips as a valid rustls server cert.
+- **TEST-7** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/office_bridge/bridge_test.rs` — asserts: the bridge serves `/taskpane.html` over rustls reachable on BOTH `127.0.0.1:44300` and `[::1]:44300`, a `/bridge` WSS echo round-trips with a valid token, and connects with a bad Origin or missing/invalid token are rejected.
+- **TEST-8** (tier: unit) [covers: ITEM-6] file: `src-app/server/src/modules/office_bridge/platform/mod.rs` — asserts: `active()` returns the cfg-selected backend and the trait is object-safe; a `MockOfficePlatform` satisfies the trait for downstream tests.
+- **TEST-9** (tier: integration) [covers: ITEM-7] file: `src-app/server/tests/office_bridge/windows_com_test.rs` — asserts: (`#[cfg(windows)]` `#[ignore]`) with a doc opened non-elevated, `list_open_documents` returns it with a full path and `act_on_document` append+save+read-back succeeds (the spike-proven flow).
+- **TEST-10** (tier: unit) [covers: ITEM-7] file: `src-app/server/src/modules/office_bridge/platform/windows.rs` — asserts: the pure helpers — window-class→app mapping (`OpusApp/XLMAIN/PPTFrameClass`) and the Excel `XLDESK▸EXCEL7` child-walk target selection — are correct under `#[cfg(windows)]` unit tests.
+- **TEST-11** (tier: unit) [covers: ITEM-8] file: `src-app/server/src/modules/office_bridge/platform/unsupported.rs` — asserts: the unsupported/`probe()`→None backend returns typed `NotSupported` for every method and `MAC_TRANSPORT_VERIFIED == false` (macOS not claimed working).
+- **TEST-12** (tier: integration) [covers: ITEM-9] file: `src-app/server/tests/office_bridge/mcp_test.rs` — asserts: `tools/call` dispatches `list_open_documents`/`get_selection` via a `MockOfficePlatform`, and `add_comment`/`set_track_changes` on a PowerPoint doc return a typed capability error (not a crash).
+- **TEST-13** (tier: unit) [covers: ITEM-10] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: `auto_attach_builtin_ids` includes `office_bridge_server_id()` when the `attach_office_bridge_mcp` flag is set, and `is_builtin_server_id` does NOT include it (mutating tool stays behind approval).
+- **TEST-14** (tier: unit) [covers: ITEM-11] file: `src-app/server/src/modules/office_bridge/handlers.rs` — asserts: the watch-diff computes correct open/close deltas from successive `list_open_documents` snapshots and would emit `SyncEntity::OfficeDocument` with an owner audience.
+- **TEST-15** (tier: integration) [covers: ITEM-12] file: `src-app/server/tests/office_bridge/bridge_test.rs` — asserts: the embedded `manifest.xml` and `taskpane.html` are served from `include_dir!` and the manifest is well-formed multi-host XML (Document/Workbook/Presentation, SourceLocation `https://localhost:44300/taskpane.html`).
+- **TEST-16** (tier: integration) [covers: ITEM-13] file: `src-app/server/tests/office_bridge/settings_test.rs` — asserts: `POST /api/office-bridge/connect` is admin-gated (403 without `office_bridge::admin::manage`) and returns a readiness object (office-present + elevated-Office-warning fields) with `OfficePlatform` mocked.
+- **TEST-17** (tier: unit) [covers: ITEM-14] file: `src-app/ui/src/modules/office-bridge/stores/OfficeBridge.store.ts` — asserts: the store maps a `sync:office_document` notify payload → refetch and exposes the open-documents list to the panel (self-gated on `office_bridge::use`).
+- **TEST-18** (tier: e2e) [covers: ITEM-14] file: `src-app/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts` — asserts: with a mocked sync feed + tool_result, the `list_open_documents` result card renders and clicking it opens the "Open Office documents" right panel listing the docs (semantic selectors).
+- **TEST-19** (tier: unit) [covers: ITEM-15] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: the golden `types_ts_parity` test stays green after the office_bridge DTOs/permissions/`SyncEntity` variant are regenerated (regen keeps `openapi.json` ↔ `types.ts` byte-parity).
