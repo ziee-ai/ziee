@@ -666,8 +666,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isDarkMode` | 76 |
-| branch | `setupError` | 163 |
+| branch | `isDarkMode` | 77 |
+| branch | `setupError` | 164 |
 
 ### `modules/assistant/chat-extension/components/AssistantMenuItem`
 
@@ -858,8 +858,8 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error` | 89 |
-| branch | `onSwitchToLogin` | 152 |
+| error | `error` | 90 |
+| branch | `onSwitchToLogin` | 153 |
 
 ### `modules/auth/SessionSettingsPage`
 
@@ -2777,17 +2777,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 214 |
-| branch | `isMultiSelect` | 216 |
-| branch | `fieldSchema.type === 'boolean'` | 254 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 268 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 293 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 313 |
-| branch | `fieldSchema.format === 'password'` | 335 |
-| branch | `status === 'accepted'` | 463 |
-| branch | `items.length > 0` | 492 |
-| branch | `status === 'declined'` | 506 |
-| branch | `status === 'cancelled'` | 526 |
+| branch | `isSelectField` | 215 |
+| branch | `isMultiSelect` | 217 |
+| branch | `fieldSchema.type === 'boolean'` | 255 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
+| branch | `fieldSchema.format === 'password'` | 336 |
+| branch | `status === 'accepted'` | 464 |
+| branch | `items.length > 0` | 493 |
+| branch | `status === 'declined'` | 507 |
+| branch | `status === 'cancelled'` | 527 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -3787,8 +3787,8 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| overlay | `<Drawer open>` | 59 |
-| branch | `canCreate` | 79 |
+| overlay | `<Drawer open>` | 60 |
+| branch | `canCreate` | 80 |
 
 ### `modules/user/components/user/EditUserDrawer`
 
@@ -4016,19 +4016,19 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isTableProperty(field)` | 205 |
-| branch | `field.description` | 211 |
-| branch | `isMultiSelectField(field)` | 228 |
-| branch | `isTitledSelectField(field)` | 251 |
-| branch | `field.enum` | 269 |
-| branch | `field.type === 'boolean'` | 285 |
-| branch | `field.type === 'number' \|\| field.type === 'integer'` | 299 |
-| branch | `field.format === 'date'` | 323 |
-| branch | `field.format === 'date-time'` | 342 |
-| branch | `field.format === 'password'` | 361 |
-| branch | `!isValid` | 435 |
-| branch | `err` | 450 |
-| error | `error` | 484 |
+| branch | `isTableProperty(field)` | 206 |
+| branch | `field.description` | 212 |
+| branch | `isMultiSelectField(field)` | 229 |
+| branch | `isTitledSelectField(field)` | 252 |
+| branch | `field.enum` | 270 |
+| branch | `field.type === 'boolean'` | 286 |
+| branch | `field.type === 'number' \|\| field.type === 'integer'` | 300 |
+| branch | `field.format === 'date'` | 324 |
+| branch | `field.format === 'date-time'` | 343 |
+| branch | `field.format === 'password'` | 362 |
+| branch | `!isValid` | 436 |
+| branch | `err` | 451 |
+| error | `error` | 485 |
 
 ### `modules/workflow/components/WorkflowRunDialog`
 
