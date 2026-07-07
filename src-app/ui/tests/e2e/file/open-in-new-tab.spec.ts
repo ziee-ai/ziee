@@ -16,7 +16,7 @@ test.describe('File viewer — open in new tab', () => {
     await page.addInitScript(() => {
       ;(window as unknown as { __opened: string[] }).__opened = []
       const orig = window.open.bind(window)
-      window.open = ((u?: string | URL, ...rest: unknown[]) => {
+      window.open = ((u?: string | URL, ..._rest: unknown[]) => {
         if (typeof u === 'string') (window as unknown as { __opened: string[] }).__opened.push(u)
         // Don't actually open (avoids a real download in CI); mimic noopener null.
         void orig
