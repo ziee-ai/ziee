@@ -21,6 +21,7 @@ use uuid::Uuid;
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 pub mod bridge;
+pub mod chat_extension;
 pub mod handlers;
 pub mod models;
 pub mod permissions;

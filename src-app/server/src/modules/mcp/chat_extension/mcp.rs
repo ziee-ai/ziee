@@ -162,6 +162,16 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::citations::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::citations::citations_server_id());
     }
+    // `office_bridge` attaches behind the flag set by the office_bridge chat
+    // extension (`attach_office_bridge_mcp`), gated on tool-capable + the
+    // built-in row being enabled/available. Same id-fetch + `s.enabled` guard.
+    // Deliberately NOT added to `is_builtin_server_id` below (DEC-4): the office
+    // tools include MUTATING operations (edit_document/add_comment/
+    // set_track_changes), so — like `control` — they stay behind per-call
+    // approval rather than being approval-bypassed.
+    if flag(crate::modules::office_bridge::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::office_bridge::office_bridge_server_id());
+    }
     // `control` attaches behind the flag set by the control chat extension
     // (`attach_control_mcp`), gated on the deploy kill-switch + tool-capable.
     // Unlike the read-only built-ins it is NOT approval-bypassed (see
@@ -3046,6 +3056,43 @@ mod builtin_tests {
         assert!(
             !is_builtin_server_id(control),
             "control must NOT be approval-bypassed"
+        );
+    }
+
+    /// TEST-13 — office_bridge attach seam + the security-critical negative
+    /// (DEC-4). office_bridge is auto-attached behind `attach_office_bridge_mcp`
+    /// (the documented silent-failure footgun — the single `mcp.rs`
+    /// `auto_attach_builtin_ids` edit), but is deliberately NOT on the
+    /// approval-bypass list — so a mutating `edit_document`/`add_comment`/
+    /// `set_track_changes` is always forced through approval (mirrors control_mcp).
+    #[test]
+    fn office_bridge_attaches_on_flag_and_is_not_approval_bypassed() {
+        let office = crate::modules::office_bridge::office_bridge_server_id();
+
+        // Tool-capable model with NO office flag → office_bridge must not attach.
+        let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+        m.insert("model_tools_capable".into(), json!(true));
+        assert!(
+            !auto_attach_builtin_ids(&m).contains(&office),
+            "office_bridge must not attach without its flag"
+        );
+
+        // Set the flag → office_bridge server id is auto-attached.
+        m.insert(
+            crate::modules::office_bridge::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+        assert!(
+            auto_attach_builtin_ids(&m).contains(&office),
+            "attach_office_bridge_mcp must push the office_bridge server id (the mcp.rs edit)"
+        );
+
+        // The linchpin of "mutating writes require approval": office_bridge is
+        // deliberately absent from is_builtin_server_id, so its writes never
+        // auto-run (DEC-4 — mutating tool stays behind per-call approval).
+        assert!(
+            !is_builtin_server_id(office),
+            "office_bridge must NOT be approval-bypassed (mutating tool stays behind approval)"
         );
     }
 
