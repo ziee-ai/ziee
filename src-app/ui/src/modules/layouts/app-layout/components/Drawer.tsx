@@ -266,11 +266,6 @@ export const Drawer: React.FC<DrawerProps> = ({
               className={cn('flex w-full items-center gap-1 relative px-1 py-2 pt-[10px]', classNames?.header)}
               style={styles?.header}
             >
-              {closable && (
-                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="layout-drawer-close-button">
-                  <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
-                </Button>
-              )}
               {typeof title === 'string' ? (
                 // The visible heading IS the dialog's accessible name.
                 <DialogPrimitive.Title asChild>
@@ -285,7 +280,18 @@ export const Drawer: React.FC<DrawerProps> = ({
                   {title}
                 </>
               )}
-              {extra != null && <div className="ml-auto">{extra}</div>}
+              {/* Header-action + close cluster, right-aligned. J7: the close
+                  affordance is standardized to the RIGHT to match the dialog /
+                  sheet / panel majority (a dismiss action must sit on the same
+                  side everywhere) rather than the old left-of-title position. */}
+              <div className="ms-auto flex items-center gap-1">
+                {extra != null && <div>{extra}</div>}
+                {closable && (
+                  <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="layout-drawer-close-button">
+                    <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 

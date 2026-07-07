@@ -258,13 +258,18 @@ export const Drawer: React.FC<DrawerProps> = ({
               onMouseDown={handleTitleMouseDown}
               onDoubleClick={handleTitleDoubleClick}
             >
-              {closable && (
-                <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="desktop-layout-drawer-close">
-                  <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
-                </Button>
-              )}
               {typeof title === 'string' ? <Title level={5} className="!m-0">{title}</Title> : title}
-              {extra != null && <div className="ml-auto">{extra}</div>}
+              {/* Header-action + close cluster, right-aligned. J7: the close
+                  affordance is standardized to the RIGHT to match the dialog /
+                  sheet / panel majority rather than the old left-of-title spot. */}
+              <div className="ms-auto flex items-center gap-1">
+                {extra != null && <div>{extra}</div>}
+                {closable && (
+                  <Button variant="ghost" size="icon" tooltip="Close" aria-label="Close drawer" onClick={onClose} className="w-[30px]" data-testid="desktop-layout-drawer-close">
+                    <span className="text-xl"><IoIosArrowBack aria-hidden="true" /></span>
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
