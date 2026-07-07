@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 308 surfaces carry renderable-state signals; 1709 signals total.
+// 309 surfaces carry renderable-state signals; 1710 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -76,10 +76,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/button",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "branch", condition: "regionLoading", line: 47 },
-      { kind: "loading", condition: "loading", line: 70 },
-      { kind: "branch", condition: "icon != null", line: 70 },
-      { kind: "branch", condition: "linkHref && !isDisabled", line: 77 },
+      { kind: "branch", condition: "regionLoading", line: 68 },
+      { kind: "loading", condition: "loading", line: 91 },
+      { kind: "branch", condition: "icon != null", line: 91 },
+      { kind: "branch", condition: "linkHref && !isDisabled", line: 98 },
     ],
   },
   "components/ui/kit/card": {
@@ -611,10 +611,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error && assistants.length === 0", line: 138 },
       { kind: "empty", condition: "assistants.length === 0", line: 146 },
       { kind: "error", condition: "error", line: 147 },
-      { kind: "branch", condition: "assistant.is_default", line: 181 },
-      { kind: "branch", condition: "!assistant.enabled", line: 184 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 207 },
-      { kind: "branch", condition: "assistants.length > 0", line: 215 },
+      { kind: "branch", condition: "assistant.is_default && assistants.length > 1", line: 185 },
+      { kind: "branch", condition: "!assistant.enabled", line: 188 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 211 },
+      { kind: "branch", condition: "assistants.length > 0", line: 219 },
     ],
   },
   "modules/assistant/pages/UserAssistantsSettings": {
@@ -994,9 +994,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/citations/components/CitationCard",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "canManage", line: 63 },
-      { kind: "branch", condition: "meta", line: 85 },
-      { kind: "branch", condition: "entry.doi", line: 86 },
+      { kind: "branch", condition: "canManage", line: 67 },
+      { kind: "branch", condition: "meta", line: 89 },
+      { kind: "branch", condition: "entry.doi", line: 90 },
     ],
   },
   "modules/citations/components/ImportCitationsModal": {
@@ -1925,10 +1925,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "empty", condition: "selected.size === 0", line: 92 },
       { kind: "branch", condition: "degradedSources.length > 0", line: 144 },
       { kind: "branch", condition: "completeness", line: 150 },
-      { kind: "branch", condition: "record.is_preprint", line: 221 },
-      { kind: "branch", condition: "(record.doi || record.pmid)", line: 229 },
-      { kind: "branch", condition: "record.abstract_text", line: 234 },
-      { kind: "branch", condition: "decision === 'exclude'", line: 255 },
+      { kind: "branch", condition: "record.is_preprint", line: 225 },
+      { kind: "branch", condition: "(record.doi || record.pmid)", line: 233 },
+      { kind: "branch", condition: "record.abstract_text", line: 238 },
+      { kind: "branch", condition: "decision === 'exclude'", line: 259 },
     ],
   },
   "modules/literature/components/LiteratureToolResultCard": {
@@ -2991,6 +2991,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "forbiddenSection", line: 325 },
     ],
   },
+  "modules/settings/components/SettingsFormActions": {
+    surface: "modules/settings/components/SettingsFormActions",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "saveDisabled && saveDisabledReason", line: 50 },
+    ],
+  },
   "modules/settings/components/SettingsPageContainer": {
     surface: "modules/settings/components/SettingsPageContainer",
     requiredStates: [],
@@ -3224,8 +3231,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/user/components/group/GroupListItem",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "group.is_system", line: 142 },
-      { kind: "branch", condition: "registeredWidgets.length > 0", line: 172 },
+      { kind: "branch", condition: "group.is_system", line: 141 },
+      { kind: "branch", condition: "registeredWidgets.length > 0", line: 176 },
     ],
   },
   "modules/user/components/group/GroupMembersDrawer": {

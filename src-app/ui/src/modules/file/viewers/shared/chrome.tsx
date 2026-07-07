@@ -104,8 +104,10 @@ export function CopyButton({ file }: { file: FileEntity }) {
     }
   }
   return (
+    // ghost, matching the drawer's own close affordance — peer icon-only header
+    // actions share ONE variant (Spec B) rather than mixing outline + ghost.
     <Button
-      variant="outline"
+      variant="ghost"
       size="icon"
       tooltip="Copy"
       icon={<Copy />}
@@ -121,8 +123,10 @@ export function CopyButton({ file }: { file: FileEntity }) {
 
 export function DownloadButton({ file }: { file: FileEntity }) {
   return (
+    // ghost, matching the drawer's close affordance + the Copy button — peer
+    // icon-only header actions share ONE variant (Spec B).
     <Button
-      variant="outline"
+      variant="ghost"
       size="icon"
       tooltip="Download"
       icon={<Download />}

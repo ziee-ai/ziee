@@ -178,7 +178,11 @@ export function AssistantsSettings() {
                             <Text className="font-medium">
                               {assistant.name}
                             </Text>
-                            {assistant.is_default && (
+                            {/* "Default" only distinguishes among several
+                                templates — on a single-row list it's redundant
+                                chrome, so render it only when there's more than
+                                one to disambiguate. */}
+                            {assistant.is_default && assistants.length > 1 && (
                               <Tag variant="outline" data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
