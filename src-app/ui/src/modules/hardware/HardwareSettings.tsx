@@ -18,6 +18,15 @@ import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { HardwareMonitorButton } from '@/modules/hardware/HardwareMonitorButton'
 
+// A standalone copy button (reuses the kit Text `copyable` affordance with no
+// content) placed next to a diagnostic value, so operators can lift model
+// strings / driver versions / kernel names straight into a bug report. Renders
+// nothing for empty / unknown values (nothing worth copying).
+function CopyValue({ text, label, testId }: { text?: string | null; label: string; testId: string }) {
+  if (!text || text === 'Unknown') return null
+  return <Text copyable={{ text, label, testId }} />
+}
+
 export default function HardwareSettings() {
   const {
     hardwareInfo,
@@ -80,11 +89,13 @@ export default function HardwareSettings() {
           data-testid="hardware-os-name"
           title="Name"
           value={hardwareInfo?.operating_system.name || 'Unknown'}
+          suffix={<CopyValue text={hardwareInfo?.operating_system.name} label="Copy OS name" testId="hardware-os-name-copy" />}
         />
         <Statistic
           data-testid="hardware-os-version"
           title="Version"
           value={hardwareInfo?.operating_system.version || 'Unknown'}
+          suffix={<CopyValue text={hardwareInfo?.operating_system.version} label="Copy OS version" testId="hardware-os-version-copy" />}
         />
         <Statistic
           data-testid="hardware-os-arch"
@@ -96,6 +107,7 @@ export default function HardwareSettings() {
             data-testid="hardware-os-kernel"
             title="Kernel"
             value={hardwareInfo.operating_system.kernel_version}
+            suffix={<CopyValue text={hardwareInfo.operating_system.kernel_version} label="Copy kernel version" testId="hardware-os-kernel-copy" />}
           />
         )}
       </div>
@@ -110,6 +122,7 @@ export default function HardwareSettings() {
             data-testid="hardware-cpu-model"
             title="Model"
             value={hardwareInfo?.cpu.model || 'Unknown'}
+            suffix={<CopyValue text={hardwareInfo?.cpu.model} label="Copy CPU model" testId="hardware-cpu-model-copy" />}
           />
           <Statistic
             data-testid="hardware-cpu-arch"
@@ -236,15 +249,24 @@ export default function HardwareSettings() {
           ? currentUsage.gpu_devices[0]
           : undefined)
 
+      // Prefix a slot index ("GPU 0 · <name>") only on multi-GPU hosts, so two
+      // identically-named cards (e.g. 2× "NVIDIA H200") are distinguishable at a
+      // glance; a single-GPU box keeps the bare device name.
+      const multiGpu = hardwareInfo.gpu_devices.length > 1
+      const cardTitle = multiGpu ? `GPU ${index} · ${gpu.name}` : gpu.name
+
       return (
-        <Card key={index} title={gpu.name} data-testid={`hardware-gpu-info-card-${index}`}>
+        <Card key={index} title={cardTitle} data-testid={`hardware-gpu-info-card-${index}`}>
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap gap-6">
               <div>
                 <Text type="secondary" className="text-xs block">
                   Vendor
                 </Text>
-                <div className="text-2xl font-semibold">{gpu.vendor}</div>
+                <div className="flex items-baseline gap-1 text-2xl font-semibold">
+                  {gpu.vendor}
+                  <CopyValue text={gpu.vendor} label="Copy GPU vendor" testId={`hardware-gpu-vendor-copy-${index}`} />
+                </div>
               </div>
               {gpu.memory ? (
                 <div>
@@ -268,8 +290,9 @@ export default function HardwareSettings() {
                   <Text type="secondary" className="text-xs block">
                     Driver
                   </Text>
-                  <div className="text-2xl font-semibold">
+                  <div className="flex items-baseline gap-1 text-2xl font-semibold">
                     {gpu.driver_version}
+                    <CopyValue text={gpu.driver_version} label="Copy GPU driver version" testId={`hardware-gpu-driver-copy-${index}`} />
                   </div>
                 </div>
               )}

@@ -8,7 +8,7 @@
 ## Summary
 
 - **310** surfaces carry at least one renderable-state signal.
-- **1709** signals total: 1328 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **1715** signals total: 1334 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -708,10 +708,10 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && assistants.length === 0` | 138 |
 | empty | `assistants.length === 0` | 146 |
 | error | `error` | 147 |
-| branch | `assistant.is_default && assistants.length > 1` | 185 |
-| branch | `!assistant.enabled` | 188 |
-| branch | `index < assistants.length - 1` | 211 |
-| branch | `assistants.length > 0` | 219 |
+| branch | `assistant.is_default && assistants.length > 1` | 199 |
+| branch | `!assistant.enabled` | 202 |
+| branch | `index < assistants.length - 1` | 225 |
+| branch | `assistants.length > 0` | 233 |
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
@@ -760,13 +760,13 @@ Required states: `delayed`, `empty`, `error`, `open`
 |---|---|---|
 | branch | `row.last_test_ok === null \|\| row.last_test_ok === undefined` | 85 |
 | branch | `!row.last_test_ok` | 95 |
-| loading | `loading && providers.length === 0` | 172 |
-| empty | `providers.length === 0` | 176 |
-| error | `error` | 177 |
-| branch | `!row.enabled` | 211 |
-| branch | `row.last_test_ok === false` | 234 |
-| branch | `index < providers.length - 1` | 253 |
-| overlay | `<AuthProviderEditDrawer open>` | 263 |
+| loading | `loading && providers.length === 0` | 177 |
+| empty | `providers.length === 0` | 181 |
+| error | `error` | 182 |
+| branch | `!row.enabled` | 216 |
+| branch | `row.last_test_ok === false` | 239 |
+| branch | `index < providers.length - 1` | 258 |
+| overlay | `<AuthProviderEditDrawer open>` | 268 |
 
 ### `modules/auth/AuthCallbackPage`
 
@@ -1129,9 +1129,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canManage` | 67 |
-| branch | `meta` | 89 |
-| branch | `entry.doi` | 90 |
+| branch | `canManage` | 71 |
+| branch | `meta` | 100 |
+| branch | `entry.doi` | 101 |
 
 ### `modules/citations/components/ImportCitationsModal`
 
@@ -1696,40 +1696,41 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canMonitor` | 38 |
-| branch | `hardwareLoading` | 54 |
-| branch | `hardwareError && !hardwareInfo` | 62 |
-| branch | `hardwareInfo?.operating_system.kernel_version` | 94 |
-| branch | `hardwareInfo?.cpu.threads` | 120 |
-| branch | `hardwareInfo?.cpu.base_frequency` | 123 |
-| branch | `hardwareInfo?.cpu.max_frequency` | 130 |
-| branch | `currentUsage` | 138 |
-| branch | `currentUsage.cpu.temperature` | 151 |
-| branch | `currentUsage.cpu.frequency` | 156 |
-| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 180 |
-| branch | `currentUsage` | 192 |
-| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 219 |
-| branch | `gpu.memory` | 249 |
-| branch | `gpu.vendor?.includes('Apple')` | 258 |
-| branch | `gpu.driver_version` | 266 |
-| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 276 |
-| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 313 |
-| branch | `gpuUsage` | 324 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 326 |
-| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 341 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 348 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 358 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 377 |
-| branch | `gpu.vendor?.includes('Apple')` | 389 |
-| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 400 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 410 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 423 |
-| branch | `gpuUsage.memory_used !== undefined` | 436 |
-| branch | `gpuUsage.temperature !== undefined` | 446 |
-| branch | `gpuUsage.power_usage !== undefined` | 456 |
-| branch | `canMonitor && !sseConnected && !usageLoading` | 501 |
-| branch | `usageLoading` | 506 |
-| branch | `currentUsage` | 512 |
+| branch | `!text \|\| text === 'Unknown'` | 26 |
+| branch | `!canMonitor` | 47 |
+| branch | `hardwareLoading` | 63 |
+| branch | `hardwareError && !hardwareInfo` | 71 |
+| branch | `hardwareInfo?.operating_system.kernel_version` | 105 |
+| branch | `hardwareInfo?.cpu.threads` | 133 |
+| branch | `hardwareInfo?.cpu.base_frequency` | 136 |
+| branch | `hardwareInfo?.cpu.max_frequency` | 143 |
+| branch | `currentUsage` | 151 |
+| branch | `currentUsage.cpu.temperature` | 164 |
+| branch | `currentUsage.cpu.frequency` | 169 |
+| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 193 |
+| branch | `currentUsage` | 205 |
+| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 232 |
+| branch | `gpu.memory` | 271 |
+| branch | `gpu.vendor?.includes('Apple')` | 280 |
+| branch | `gpu.driver_version` | 288 |
+| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 299 |
+| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 336 |
+| branch | `gpuUsage` | 347 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 349 |
+| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 364 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 371 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 381 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 400 |
+| branch | `gpu.vendor?.includes('Apple')` | 412 |
+| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 423 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 433 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 446 |
+| branch | `gpuUsage.memory_used !== undefined` | 459 |
+| branch | `gpuUsage.temperature !== undefined` | 469 |
+| branch | `gpuUsage.power_usage !== undefined` | 479 |
+| branch | `canMonitor && !sseConnected && !usageLoading` | 524 |
+| branch | `usageLoading` | 529 |
+| branch | `currentUsage` | 535 |
 
 ### `modules/hub/HubPage`
 
@@ -1792,6 +1793,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && assistants.length === 0` | 75 |
 | branch | `(searchTerm \|\| selectedTags.length > 0)` | 136 |
 | empty | `visible.length === 0` | 180 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 181 |
 
 ### `modules/hub/modules/installed/components/InstalledHubTab`
 
@@ -1884,6 +1886,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && models.length === 0` | 80 |
 | branch | `(searchTerm \|\| selectedTags.length > 0)` | 139 |
 | empty | `visibleModels.length === 0` | 186 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 187 |
 
 ### `modules/hub/modules/llm-models/hooks/useHubModelDownloadGate`
 
@@ -1949,6 +1952,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && servers.length === 0` | 91 |
 | branch | `(searchTerm \|\| selectedTags.length > 0)` | 152 |
 | empty | `visible.length === 0` | 191 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 192 |
 
 ### `modules/hub/modules/skill/components/SkillDetailsDrawer`
 
@@ -1986,6 +1990,7 @@ Required states: `delayed`, `empty`
 |---|---|---|
 | loading | `loading && items.length === 0` | 51 |
 | empty | `filtered.length === 0` | 90 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 91 |
 
 ### `modules/hub/modules/workflow/components/WorkflowDetailsDrawer`
 
@@ -2023,6 +2028,7 @@ Required states: `delayed`, `empty`
 |---|---|---|
 | loading | `loading && items.length === 0` | 49 |
 | empty | `filtered.length === 0` | 90 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 91 |
 
 ### `modules/layouts/app-layout/AppLayout`
 
@@ -2951,11 +2957,11 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 70 |
-| error | `error && !settings` | 74 |
-| loading | `loading \|\| !settings` | 88 |
-| branch | `adminDisabled` | 116 |
-| branch | `canWrite` | 127 |
+| branch | `!canRead` | 111 |
+| error | `error && !settings` | 115 |
+| loading | `loading \|\| !settings` | 129 |
+| branch | `adminDisabled` | 157 |
+| branch | `canWrite` | 168 |
 
 ### `modules/memory/components/sections/RebuildStatusSection`
 
