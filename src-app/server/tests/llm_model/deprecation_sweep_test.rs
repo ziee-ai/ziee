@@ -154,7 +154,8 @@ async fn refresh_flags_removed_model_and_emits_sync() {
 
 /// TEST-12: the route is wired into the running server and returns the reconciled
 /// model list; a no-change refresh returns all models unflagged. Also proves the
-/// permission gate (llm_providers::read).
+/// permission gate — the mutating endpoint requires `llm_models::edit`, and a
+/// user holding only `llm_providers::read` is refused (403).
 #[tokio::test]
 async fn refresh_route_wired_and_permission_gated() {
     let upstream = mock_models(&["m1", "m2"]).await; // both models still listed
