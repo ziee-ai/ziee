@@ -218,6 +218,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/TextContent": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/components/TitleEditor": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/core/MessageContext": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
+  "modules/chat/core/ToolStatusIcon": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/core/components/ChatRightPanel": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/core/extensions/registry": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
   "modules/chat/core/extensions/slots": { kind: 'via', reason: 'rendered within the chat module page' },
