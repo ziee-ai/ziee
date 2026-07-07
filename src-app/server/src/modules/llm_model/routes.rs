@@ -47,7 +47,8 @@ pub fn llm_model_router() -> ApiRouter {
             post_with(validate_model, validate_model_docs),
         )
         // Refresh a provider's models against its live list (deprecation
-        // reconcile). Provider-scoped path, gated by llm_providers::read.
+        // reconcile). Provider-scoped path; gated by llm_models::edit because it
+        // MUTATES model rows (unlike the read-only discover-models).
         .api_route(
             "/llm-providers/{provider_id}/refresh-models",
             post_with(refresh_provider_models, refresh_provider_models_docs),

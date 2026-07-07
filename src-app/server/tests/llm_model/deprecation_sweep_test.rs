@@ -175,9 +175,26 @@ async fn refresh_route_wired_and_permission_gated() {
         "no model is flagged when all are still listed"
     );
 
-    // Permission gate: without llm_providers::read → 403.
-    let no_read =
-        create_user_with_only_permissions(&server, "sweep_noread", &["profile::read"]).await;
-    let (forbidden, _) = refresh(&server, &no_read.token, &provider_id).await;
+    // Permission gate: refresh MUTATES, so it requires llm_models::edit.
+    // A user with no relevant perms is refused...
+    let no_perms =
+        create_user_with_only_permissions(&server, "sweep_noperms", &["profile::read"]).await;
+    let (forbidden, _) = refresh(&server, &no_perms.token, &provider_id).await;
     assert_eq!(forbidden, StatusCode::FORBIDDEN);
+
+    // ...and — the crux of the read→edit gate — a user who holds only
+    // llm_providers::read (which WOULD have sufficed under the old gate) is ALSO
+    // refused, locking in that the mutating endpoint needs the write perm.
+    let read_only = create_user_with_only_permissions(
+        &server,
+        "sweep_readonly",
+        &["profile::read", "llm_providers::read"],
+    )
+    .await;
+    let (read_forbidden, _) = refresh(&server, &read_only.token, &provider_id).await;
+    assert_eq!(
+        read_forbidden,
+        StatusCode::FORBIDDEN,
+        "llm_providers::read alone must NOT authorize the mutating refresh endpoint"
+    );
 }
