@@ -244,18 +244,23 @@ export function Tree({
             ? <ChevronRight className={cn('size-4 shrink-0 transition-transform', open && 'rotate-90')} aria-hidden />
             : <span className="inline-block size-4 shrink-0" aria-hidden />}
         {checkable && (
-          // Row-height, ≥40px-wide flex cell so the checkbox has a comfortable
-          // touch target on mobile (the visual box stays 16px; Checkbox's own
-          // `::after` expands the precise hit-test area further).
+          // Row-height, ≥36px flex cell so the checkbox has a comfortable touch
+          // target on mobile (the visual box stays 16px; Checkbox's own
+          // `::after` expands the precise hit-test area further). The cell also
+          // carries the keyboard-focus ring as an INSET box-shadow: an outset
+          // ring on the checkbox is clipped by the tree's `overflow-auto` scroll
+          // container (G7), whereas an inset ring is drawn inside the box and can
+          // never be clipped by an ancestor's overflow.
           <span
-            className="flex min-h-9 min-w-9 shrink-0 items-center justify-center"
+            className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md [&:has(:focus-visible)]:[box-shadow:inset_0_0_0_2px_var(--ring)]"
             onClick={(e) => e.stopPropagation()}
           >
             <Checkbox
               // 24px visual box on phones (16px from `sm` up) so the tap target
               // is comfortable on touch; combines with the cell + Checkbox's
-              // `::after` for a >=40px hit area.
-              className="size-6 sm:size-4"
+              // `::after` for a >=40px hit area. `ring-0` drops the checkbox's
+              // own outset ring — the cell's inset ring is the focus indicator.
+              className="size-6 sm:size-4 focus-visible:ring-0"
               data-testid={`${testid}-check-${n.key}`}
               checked={checkedSet.has(n.key)}
               indeterminate={halfSet.has(n.key)}
