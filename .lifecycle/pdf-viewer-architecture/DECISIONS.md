@@ -42,5 +42,9 @@ an unresolved item — the resolution below is the recommended answer).
 **Basis:** convention — standard PDF-viewer defaults; encoded in the pure `zoom.ts` helper so it is unit-testable and centrally tweakable.
 
 ### DEC-10: Search scope and text extraction?
-**Resolution:** Whole-document find across all pages via PDF.js `page.getTextContent()`, extracted lazily and cached per page; matches enumerated in document order with wrap-around next/prev.
-**Basis:** convention — the scope explicitly requires cross-document find + next/prev; per-page joined text with a char→item index map (in `search.ts`) drives highlight placement in the text layer.
+**Resolution:** Whole-document find across all pages, delegated to PDF.js's built-in `PDFFindController` (highlight-all, next/prev, match-count) driven via the `EventBus` `find` event; no bespoke text scan.
+**Basis:** codebase — the scope requires cross-document find + next/prev, which `PDFFindController` provides natively and robustly (handles cross-text-item matches, highlight placement, scroll-to-match). Rolling our own would be strictly worse (see DEC-11).
+
+### DEC-11: Hand-rolled canvas rendering vs. PDF.js's prebuilt viewer component?
+**Resolution:** Use PDF.js's **viewer component** (`PDFViewer` + `EventBus` + `PDFLinkService` + `PDFFindController` from `pdfjs-dist/web/pdf_viewer`), mounted into our drawer with our own shadcn toolbar driving it — NOT a hand-rolled canvas-per-page + IntersectionObserver + bespoke text layer.
+**Basis:** codebase/convention — this is the component LaTeX Workshop's notably-smooth preview is built on (Mozilla PDF.js, customized). It provides native continuous-scroll virtualization, incremental rendering, the text layer, zoom (`currentScaleValue`), page tracking (`currentPageNumber`/`pagechanging`), and find (`PDFFindController`) out of the box — smoother AND less code than hand-rolling. We supply only the toolbar chrome + wiring. Trade-off: we import `web/pdf_viewer` + its CSS (still lazy-chunked). This supersedes the earlier "canvas-per-page on demand" phrasing in the ITEM-5/6/8 descriptions.

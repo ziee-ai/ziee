@@ -12,9 +12,8 @@ the e2e specs drive the real renderer end-to-end (real PDF bytes → real pdfjs)
 
 ## Frontend — pure-logic unit (node --test)
 
-- **TEST-3** (tier: unit) [covers: ITEM-7] file: `src-app/ui/src/modules/file/viewers/pdf/zoom.test.ts` — asserts: `fitWidth`/`fitPage` compute scale = viewport/pageDim (fit-width uses width, fit-page uses min of width/height ratio); zoom-in/out step clamps to the min/max bounds; actual-size = 1.0.
-- **TEST-4** (tier: unit) [covers: ITEM-8] file: `src-app/ui/src/modules/file/viewers/pdf/search.test.ts` — asserts: match enumeration over per-page joined text finds all case-insensitive occurrences in document order, `next`/`prev` cycle wrap-around correctly, current-match index maps back to `{page, charStart, charEnd}`, and empty/no-match query yields 0 matches with a null current.
-- **TEST-5** (tier: unit) [covers: ITEM-6] file: `src-app/ui/src/modules/file/viewers/pdf/nav.test.ts` — asserts: `pageForScroll(offsets, scrollTop)` returns the page whose band contains the scroll position (the "Page N of M" current page), and `jumpTarget(page)` clamps to `[1, numPages]`.
+- **TEST-3** (tier: unit) [covers: ITEM-7] file: `src-app/ui/src/modules/file/viewers/pdf/zoom.test.ts` — asserts: the discrete zoom-step ladder — `nextZoomStep(current, +1)` returns the next-larger step, `nextZoomStep(current, -1)` the next-smaller, both clamped to `[0.25, 4.0]`; a scale between steps snaps to the correct neighbour; actual-size step = 1.0 is present.
+- **TEST-5** (tier: unit) [covers: ITEM-6] file: `src-app/ui/src/modules/file/viewers/pdf/nav.test.ts` — asserts: `clampPage(n, numPages)` clamps to `[1, numPages]`, and `parseJump(input, numPages)` parses a user-typed page string (ignoring non-numeric / out-of-range → clamped or null), used by the jump-to-page input.
 - **TEST-6** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/dev/gallery/mockApi.binary.test.ts` — asserts: a binary cassette entry for `/files/{id}/raw` produces a `Response` with `application/pdf` content-type whose `arrayBuffer()` equals the fixture bytes (proves the new binary-response path returns bytes, not JSON).
 - **TEST-7** (tier: unit) [covers: ITEM-10] file: `src-app/ui/src/modules/file/viewers/pdf/module.test.ts` — asserts: the exported `viewers[]` maps the `application/pdf`/`pdf` entry's `body` to `PdfJsBody` and the DOCX/RTF/ODT entry's `body` to the legacy `PdfBody` (module split routes correctly).
 
@@ -23,7 +22,7 @@ the e2e specs drive the real renderer end-to-end (real PDF bytes → real pdfjs)
 - **TEST-8** (tier: e2e) [covers: ITEM-3, ITEM-4, ITEM-5, ITEM-9, ITEM-10] file: `src-app/ui/tests/e2e/file-viewer/pdf-viewer.spec.ts` — asserts: after uploading a multi-page PDF and opening its preview, pdfjs loads (worker chunk fetched, no console error), page 1 renders a `<canvas>` with a positioned text layer, the pdfjs toolbar (not the office image body) is shown, the selected page text is selectable/copyable, and the truncation banner is absent.
 - **TEST-9** (tier: e2e) [covers: ITEM-6] file: `src-app/ui/tests/e2e/file-viewer/pdf-viewer.spec.ts` — asserts: the indicator shows "Page 1 of N"; clicking next advances to page 2 (indicator + scroll), prev returns, and typing a page number in jump-to-page scrolls that page into view and updates the indicator.
 - **TEST-10** (tier: e2e) [covers: ITEM-7] file: `src-app/ui/tests/e2e/file-viewer/pdf-viewer.spec.ts` — asserts: zoom-in increases the rendered canvas pixel width, zoom-out decreases it, fit-width fills the viewport width, and actual-size returns to 100%.
-- **TEST-11** (tier: e2e) [covers: ITEM-8] file: `src-app/ui/tests/e2e/file-viewer/pdf-viewer.spec.ts` — asserts: opening find, typing a term present in the PDF shows an "x of N" count with visible highlight(s), next/prev move the active highlight and scroll to it, and a term not present shows "0" matches.
+- **TEST-11** (tier: e2e) [covers: ITEM-8] file: `src-app/ui/tests/e2e/file-viewer/pdf-viewer.spec.ts` — asserts: opening find, typing a term present in the PDF drives `PDFFindController` to show an "x of N" count with visible highlight(s), next/prev move the active highlight and scroll to it, and a term not present shows "0" matches.
 - **TEST-12** (tier: e2e) [covers: ITEM-11] file: `src-app/ui/tests/e2e/file-viewer/pdf-viewer-gallery.spec.ts` — asserts: the gallery `overlay-file-preview-drawer` (PDF fixture) renders the loaded PDF page offline via the mockApi binary route with zero console errors / failed requests (backs the gallery loaded/find-open state cells that `check:state-matrix` + `gate:ui` enforce).
 
 ## Coverage map (every ITEM → ≥1 TEST)
@@ -35,7 +34,7 @@ the e2e specs drive the real renderer end-to-end (real PDF bytes → real pdfjs)
 - ITEM-5 → TEST-8
 - ITEM-6 → TEST-5, TEST-9
 - ITEM-7 → TEST-3, TEST-10
-- ITEM-8 → TEST-4, TEST-11
+- ITEM-8 → TEST-11
 - ITEM-9 → TEST-8
 - ITEM-10 → TEST-7, TEST-8
 - ITEM-11 → TEST-6, TEST-12
