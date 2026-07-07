@@ -56,6 +56,11 @@ export const STATE_COVERAGE = {
   'modules/file/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-file',
   },
+  'modules/file/components/FileViewPage:delayed': {
+    skip: true,
+    reason:
+      "full-page file view (/files/:id) — static/e2e-verified surface; ':delayed' is the route lazy-load fallback, exercised by the full-page-view e2e spec",
+  },
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
   },

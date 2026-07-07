@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **314** surfaces carry at least one renderable-state signal.
-- **1722** signals total: 1341 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **316** surfaces carry at least one renderable-state signal.
+- **1741** signals total: 1359 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,7 +16,7 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 82 |
+| `delayed` | 83 |
 | `empty` | 86 |
 | `error` | 73 |
 | `open` | 71 |
@@ -1468,13 +1468,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 50 |
-| branch | `!hideHeader` | 92 |
-| branch | `tooLarge` | 102 |
-| branch | `isViewingOld` | 118 |
-| branch | `oldVersionText === null` | 120 |
-| branch | `tooLarge` | 135 |
-| branch | `Body` | 159 |
+| branch | `HeaderActions` | 67 |
+| branch | `showFullPage` | 70 |
+| branch | `!hideHeader` | 114 |
+| branch | `tooLarge` | 124 |
+| branch | `isViewingOld` | 140 |
+| branch | `oldVersionText === null` | 142 |
+| branch | `tooLarge` | 157 |
+| branch | `Body` | 181 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1495,6 +1496,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `versions.length <= 1` | 42 |
 | branch | `isViewingOld` | 89 |
+
+### `modules/file/components/FileViewPage`
+
+Required states: `delayed`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!fileId` | 25 |
+| branch | `state.status === 'ready'` | 54 |
+| loading | `state.status === 'loading'` | 64 |
+| branch | `state.status === 'not-found'` | 68 |
 
 ### `modules/file/project-extension/components/ProjectFilesInlinePreview`
 
@@ -1539,9 +1551,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!file` | 19 |
-| branch | `errored` | 20 |
-| branch | `!thumbnailUrl` | 56 |
+| branch | `!file` | 20 |
+| branch | `errored` | 21 |
+| branch | `!thumbnailUrl` | 90 |
+| branch | `view.mode === 'fit'` | 99 |
+| branch | `o.x <= 0 && o.y <= 0` | 120 |
+| branch | `!d` | 126 |
 
 ### `modules/file/viewers/image/header`
 
@@ -1549,7 +1564,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 9 |
+| branch | `!('file' in props)` | 13 |
 
 ### `modules/file/viewers/markdown/body`
 
@@ -1557,15 +1572,16 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!url` | 22 |
-| branch | `url.startsWith('data:')` | 24 |
-| branch | `!isLocalImageUrl(src)` | 40 |
-| branch | `href?.startsWith('#')` | 65 |
-| error | `!(err instanceof Error)` | 91 |
-| error | `this.state.error` | 136 |
-| branch | `content === '__error__'` | 186 |
-| branch | `content === null` | 193 |
-| branch | `file && mode === 'raw'` | 196 |
+| branch | `!url` | 24 |
+| branch | `url.startsWith('data:')` | 26 |
+| branch | `!isLocalImageUrl(src)` | 42 |
+| branch | `href?.startsWith('#')` | 67 |
+| error | `!(err instanceof Error)` | 93 |
+| error | `this.state.error` | 138 |
+| branch | `content === '__error__'` | 189 |
+| branch | `content === null` | 196 |
+| branch | `file` | 203 |
+| branch | `file && mode === 'raw'` | 205 |
 
 ### `modules/file/viewers/markdown/header`
 
@@ -1573,7 +1589,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 8 |
+| branch | `!('file' in props)` | 16 |
+| branch | `isRaw` | 24 |
 
 ### `modules/file/viewers/pdf/body`
 
@@ -1603,9 +1620,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!filename` | 47 |
-| branch | `cancelled` | 149 |
-| branch | `cancelled` | 155 |
-| branch | `truncated` | 179 |
+| branch | `cancelled` | 153 |
+| branch | `cancelled` | 159 |
+| branch | `truncated` | 184 |
 
 ### `modules/file/viewers/shared/chrome`
 
@@ -1613,8 +1630,20 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `file.text_page_count === 0` | 29 |
-| branch | `text === undefined \|\| text === ''` | 97 |
+| empty | `file.text_page_count === 0` | 41 |
+| branch | `text === undefined \|\| text === ''` | 109 |
+| branch | `!isHighlightSupported()` | 169 |
+| branch | `text.trim() === ''` | 214 |
+
+### `modules/file/viewers/shared/find/FindableRegion`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!supported` | 46 |
+| branch | `supported` | 65 |
+| branch | `active` | 71 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 
@@ -1663,8 +1692,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `content === '__error__'` | 14 |
-| branch | `content === null` | 21 |
+| branch | `content === '__error__'` | 18 |
+| branch | `content === null` | 25 |
+| branch | `file` | 31 |
 
 ### `modules/file/viewers/text/header`
 
@@ -1672,7 +1702,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 6 |
+| branch | `!('file' in props)` | 12 |
 
 ### `modules/file/viewers/web/body`
 
@@ -1680,9 +1710,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 9 |
-| branch | `content === null` | 14 |
-| branch | `mode === 'raw'` | 17 |
+| branch | `!('file' in props)` | 11 |
+| branch | `content === null` | 17 |
+| branch | `mode === 'raw'` | 20 |
 
 ### `modules/file/viewers/web/header`
 
@@ -1690,7 +1720,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 6 |
+| branch | `!('file' in props)` | 14 |
+| branch | `isRaw` | 22 |
+| branch | `isRaw` | 23 |
+| branch | `isRaw` | 24 |
 
 ### `modules/hardware/HardwareMonitor`
 

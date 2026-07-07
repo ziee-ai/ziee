@@ -3,6 +3,7 @@ import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
+import { type ImageViewState, clampScale, zoomStep } from '../viewers/image/zoom'
 
 // Enable Map + Set support in Immer (the store uses Map/Set extensively
 // for caches and upload tracking).
@@ -98,6 +99,19 @@ interface FileExtensionStore {
   fileBinaryLoadingSet: Set<string>
   fileViewModes: Map<string, 'compiled' | 'raw'>
 
+  // ── Viewer affordance state (viewer-shell-affordances) ──────────────────────
+  // Per-file, ephemeral (in-memory), header↔body coordination — mirrors the
+  // fileViewModes idiom exactly (immutable-copy setters; dropped on sync, cleared
+  // on reconnect). Absent entry ⇒ the documented default, which reproduces the
+  // pre-feature render.
+
+  /** Image zoom + fit-mode per file. Default (absent) = { scale: 1, mode: 'fit' }. */
+  imageViewStates: Map<string, ImageViewState>
+  /** Whether the find-in-document bar is open for a file. Default = false. */
+  fileFindOpen: Map<string, boolean>
+  /** Whether word-wrap is on for a file's raw/code view. Default = false. */
+  fileWordWrap: Map<string, boolean>
+
   /**
    * Returns cached text content for the file. Triggers load on first call.
    * Returns null while loading. Call from render — no useEffect needed.
@@ -124,6 +138,19 @@ interface FileExtensionStore {
 
   /** Sets the view mode (compiled/raw) for a specific file tab. */
   setFileViewMode: (fileId: string, mode: 'compiled' | 'raw') => void
+
+  /** Sets the image fit-mode ('fit' | 'actual') for a file, adjusting scale:
+   *  'fit' resets to scale 1, 'actual' keeps the current (or 1) scale. */
+  setImageViewMode: (fileId: string, mode: 'fit' | 'actual') => void
+  /** Multiplies the file's image scale by `factor`, clamped to [0.1, 8], and
+   *  switches the mode to 'actual' (any non-fit zoom is an explicit scale). */
+  zoomImage: (fileId: string, factor: number) => void
+  /** Resets a file's image view to the default { scale: 1, mode: 'fit' }. */
+  resetImageView: (fileId: string) => void
+  /** Opens/closes the find-in-document bar for a file. */
+  setFileFindOpen: (fileId: string, open: boolean) => void
+  /** Turns word-wrap on/off for a file's raw/code view. */
+  setFileWordWrap: (fileId: string, on: boolean) => void
 
   /**
    * Returns the cached file entity for a message file, or the fallback if not yet loaded.
@@ -249,6 +276,9 @@ export const File = defineStore('File', {
     fileBinaryContents: new Map(),
     fileBinaryLoadingSet: new Set(),
     fileViewModes: new Map(),
+    imageViewStates: new Map(),
+    fileFindOpen: new Map(),
+    fileWordWrap: new Map(),
   } as unknown as Pick<
     FileExtensionStore,
     | 'uploadingFiles'
@@ -270,6 +300,9 @@ export const File = defineStore('File', {
     | 'fileBinaryContents'
     | 'fileBinaryLoadingSet'
     | 'fileViewModes'
+    | 'imageViewStates'
+    | 'fileFindOpen'
+    | 'fileWordWrap'
   >,
   actions: (set, getRaw) => {
     const get = getRaw as () => FileExtensionStore
@@ -639,6 +672,50 @@ export const File = defineStore('File', {
       })
     },
 
+    setImageViewMode: (fileId: string, mode: 'fit' | 'actual') => {
+      set((state) => {
+        const next = new Map(state.imageViewStates)
+        const cur = next.get(fileId) ?? { scale: 1, mode: 'fit' as const }
+        // 'fit' pins scale back to 1 (object-contain); 'actual' keeps the
+        // current scale (or 1 if it was still at fit).
+        next.set(fileId, { mode, scale: mode === 'fit' ? 1 : clampScale(cur.scale) })
+        state.imageViewStates = next
+      })
+    },
+
+    zoomImage: (fileId: string, factor: number) => {
+      set((state) => {
+        const next = new Map(state.imageViewStates)
+        const cur = next.get(fileId) ?? { scale: 1, mode: 'fit' as const }
+        next.set(fileId, { mode: 'actual', scale: zoomStep(cur.scale, factor) })
+        state.imageViewStates = next
+      })
+    },
+
+    resetImageView: (fileId: string) => {
+      set((state) => {
+        const next = new Map(state.imageViewStates)
+        next.set(fileId, { scale: 1, mode: 'fit' })
+        state.imageViewStates = next
+      })
+    },
+
+    setFileFindOpen: (fileId: string, open: boolean) => {
+      set((state) => {
+        const next = new Map(state.fileFindOpen)
+        next.set(fileId, open)
+        state.fileFindOpen = next
+      })
+    },
+
+    setFileWordWrap: (fileId: string, on: boolean) => {
+      set((state) => {
+        const next = new Map(state.fileWordWrap)
+        next.set(fileId, on)
+        state.fileWordWrap = next
+      })
+    },
+
     // Backup current files (before clearing)
     setBackupFiles: () => {
       const { selectedFiles, uploadingFiles } = get()
@@ -957,6 +1034,18 @@ export const File = defineStore('File', {
             const v = new Map(s.fileViewModes)
             v.delete(fileId)
             s.fileViewModes = v
+            // Viewer affordance state is keyed by fileId with no version, so a
+            // HEAD change makes a stale zoom/wrap/find-open meaningless — drop it
+            // (the viewer re-renders at the documented default).
+            const iv = new Map(s.imageViewStates)
+            iv.delete(fileId)
+            s.imageViewStates = iv
+            const fo = new Map(s.fileFindOpen)
+            fo.delete(fileId)
+            s.fileFindOpen = fo
+            const ww = new Map(s.fileWordWrap)
+            ww.delete(fileId)
+            s.fileWordWrap = ww
           })
           // Refresh the cached HEAD entity (version/metadata) so open panels
           // re-render against the new head. Async action → outside set().
@@ -987,6 +1076,9 @@ export const File = defineStore('File', {
             s.fileTextContents = new Map()
             s.fileBinaryContents = new Map()
             s.fileViewModes = new Map()
+            s.imageViewStates = new Map()
+            s.fileFindOpen = new Map()
+            s.fileWordWrap = new Map()
           })
         }
         eventBus.on('sync:file', onFileSync, GROUP)

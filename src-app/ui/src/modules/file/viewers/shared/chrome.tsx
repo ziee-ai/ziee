@@ -1,8 +1,20 @@
-import { Code, Copy, Download, Eye } from 'lucide-react'
+import {
+  ClipboardCopy,
+  Code,
+  Copy,
+  Download,
+  ExternalLink,
+  Eye,
+  Maximize2,
+  Search,
+  WrapText,
+} from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Segmented, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { message } from '@/components/ui'
+import { isHighlightSupported } from './find/highlightSupported'
 
 /**
  * Shared chrome building blocks for file viewer headers. Viewers compose
@@ -143,6 +155,127 @@ export function DownloadButton({ file }: { file: FileEntity }) {
         )
       }}
       data-testid="file-viewer-download-btn"
+    />
+  )
+}
+
+// ── FindButton ──────────────────────────────────────────────────────────────
+// Toggles the find-in-document bar (rendered by FindableRegion in the body).
+// Header + body coordinate through File.store.fileFindOpen. Renders nothing when
+// the CSS Custom Highlight API is unavailable — the browser's native find is the
+// fallback, so a dead button never appears.
+
+export function FindButton({ file }: { file: FileEntity }) {
+  if (!isHighlightSupported()) return null
+  const open = Stores.File.fileFindOpen.get(file.id) ?? false
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      tooltip="Find (Ctrl+F)"
+      aria-label="Find in document"
+      aria-pressed={open}
+      icon={<Search />}
+      onClick={() => Stores.File.__state.setFileFindOpen(file.id, !open)}
+      data-testid="file-viewer-find-btn"
+    />
+  )
+}
+
+// ── WrapToggle ──────────────────────────────────────────────────────────────
+// Toggles word-wrap for the raw/code view. Off (default) keeps long lines on one
+// line with horizontal scroll; on wraps them. Coordinated via File.store.fileWordWrap.
+
+export function WrapToggle({ file }: { file: FileEntity }) {
+  const on = Stores.File.fileWordWrap.get(file.id) ?? false
+  return (
+    <Button
+      variant={on ? 'default' : 'ghost'}
+      size="icon"
+      tooltip={on ? 'Word wrap: on' : 'Word wrap: off'}
+      aria-label="Toggle word wrap"
+      aria-pressed={on}
+      icon={<WrapText />}
+      onClick={() => Stores.File.__state.setFileWordWrap(file.id, !on)}
+      data-testid="file-viewer-wrap-btn"
+    />
+  )
+}
+
+// ── CopySelectionButton ─────────────────────────────────────────────────────
+// Copies the currently-selected text when the selection is inside the viewer.
+// Distinct from CopyButton (whole-document copy). Warns (not errors) on an empty
+// selection so the clipboard is never clobbered.
+
+export function CopySelectionButton() {
+  const handleCopy = async () => {
+    const selection = window.getSelection()
+    const text = selection?.toString() ?? ''
+    if (text.trim() === '') {
+      message.warning('Select text to copy')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      message.success('Copied selection')
+    } catch {
+      message.error('Failed to copy')
+    }
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      tooltip="Copy selection"
+      aria-label="Copy selection"
+      icon={<ClipboardCopy />}
+      onClick={handleCopy}
+      data-testid="file-viewer-copy-selection-btn"
+    />
+  )
+}
+
+// ── OpenInNewTabButton ──────────────────────────────────────────────────────
+// Opens the raw file in a new browser tab (browser-native rendering) via a
+// freshly-minted download token. Shell-level affordance — file-type agnostic.
+
+export function OpenInNewTabButton({ file }: { file: FileEntity }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      tooltip="Open in new tab"
+      aria-label="Open file in new tab"
+      icon={<ExternalLink />}
+      onClick={() =>
+        Stores.File.openFileInNewTab(file.id).catch(() =>
+          message.error('Failed to open file'),
+        )
+      }
+      data-testid="file-viewer-open-tab-btn"
+    />
+  )
+}
+
+// ── FullPageButton ──────────────────────────────────────────────────────────
+// Navigates to the dedicated full-page in-app view (/files/:id) and closes the
+// preview drawer (so returning via Back lands on the originating page, not a
+// drawer over it). Shell-level affordance.
+
+export function FullPageButton({ file }: { file: FileEntity }) {
+  const navigate = useNavigate()
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      tooltip="Open full page"
+      aria-label="Open file full page"
+      icon={<Maximize2 />}
+      onClick={() => {
+        Stores.FilePreviewDrawer.__state.closePreview()
+        navigate(`/files/${file.id}`)
+      }}
+      data-testid="file-viewer-fullpage-btn"
     />
   )
 }
