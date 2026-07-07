@@ -220,6 +220,15 @@ impl MockOfficePlatform {
             elevated: false,
         }
     }
+
+    /// Seed the mock with an explicit document set (ITEM-9 / TEST-12 injects a
+    /// PowerPoint doc to exercise the capability-matrix branch).
+    pub(crate) fn with_docs(docs: Vec<OpenDoc>) -> Self {
+        Self {
+            docs,
+            elevated: false,
+        }
+    }
 }
 
 #[cfg(test)]
