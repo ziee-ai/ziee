@@ -1,7 +1,7 @@
 import { Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
-import { cn } from '@/lib/utils'
+import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 
 /**
  * McpMenuItem Component
@@ -25,17 +25,15 @@ export function McpMenuItem() {
   }
 
   return (
-    <div
+    <PlusMenuItem
       data-testid="chat-mcp-menu-item"
-      className={cn(
-        "flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer",
-        "text-foreground",
-        "hover:bg-muted"
-      )}
-      onClick={() => { mcpStore.openConfigModal(); close() }}
-    >
-      <Wrench className="size-4" />
-      <span className="text-sm">MCP tools & servers</span>
-    </div>
+      aria-label="MCP tools & servers"
+      icon={<Wrench />}
+      label="MCP tools & servers"
+      onClick={() => {
+        mcpStore.openConfigModal()
+        close()
+      }}
+    />
   )
 }

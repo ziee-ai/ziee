@@ -1,6 +1,7 @@
 import { BookOpen } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
+import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import { SkillConversationDrawer } from '@/modules/skill/components/SkillConversationDrawer'
 
 /**
@@ -18,27 +19,16 @@ export function SkillMenuItem() {
   if (!conversation?.id) return null
 
   return (
-    <div
-      className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2"
-      role="button"
-      tabIndex={0}
+    <PlusMenuItem
       data-testid="skill-conversation-menu-item"
       aria-label="Skills in this chat"
+      icon={<BookOpen />}
+      label="Skills in this chat"
       onClick={() => {
         Stores.SkillConversationDrawer.openDrawer()
         close()
       }}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          Stores.SkillConversationDrawer.openDrawer()
-          close()
-        }
-      }}
-    >
-      <BookOpen className="size-4" />
-      <span className="text-sm">Skills in this chat</span>
-    </div>
+    />
   )
 }
 

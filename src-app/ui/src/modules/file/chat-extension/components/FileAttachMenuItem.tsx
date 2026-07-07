@@ -36,10 +36,10 @@ export function FileAttachMenuItem() {
       label="Attach files or photos"
       onFiles={handleFiles}
       data-testid="file-attach-menu-upload"
-      className="!flex-row !items-center !justify-start !border-0 !px-3 !py-1.5 gap-2 rounded-md text-foreground hover:bg-muted"
+      className="!flex-row !items-center !justify-start !border-0 !px-3 !py-1.5 gap-2 rounded-md text-foreground hover:bg-muted whitespace-nowrap"
     >
-      <Paperclip className="size-4" />
-      <span className="text-sm">Attach files or photos</span>
+      <Paperclip className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-sm">Attach files or photos</span>
     </Upload>
   )
 }

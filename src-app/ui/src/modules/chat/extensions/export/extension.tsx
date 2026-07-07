@@ -1,10 +1,11 @@
 import { Dropdown, message } from '@/components/ui'
-import { Download } from 'lucide-react'
+import { Download, ChevronRight } from 'lucide-react'
 import {
   createExtension,
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
+import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import type { MessageWithContent } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
@@ -168,16 +169,15 @@ function ExportMenuItem() {
 
   return (
     <Dropdown data-testid="chat-export-dropdown" items={items} side="right" align="start">
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2"
-        role="button"
-        tabIndex={0}
+      {/* Trailing chevron marks this as opening a submenu — same affordance as the
+          "Select assistant" item. */}
+      <PlusMenuItem
         data-testid="chat-export-menu-item"
         aria-label="Export conversation"
-      >
-        <Download className="size-4" />
-        <span className="text-sm">Export conversation</span>
-      </div>
+        icon={<Download />}
+        label="Export conversation"
+        trailing={<ChevronRight className="size-3 opacity-45" />}
+      />
     </Dropdown>
   )
 }

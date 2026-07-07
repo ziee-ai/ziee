@@ -59,11 +59,11 @@ export function AssistantMenuItem() {
     >
       <div
         data-testid="assistant-menu-trigger"
-        className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted whitespace-nowrap"
       >
-        <div className="flex items-center gap-2">
-          <Bot className="size-4" />
-          <span className="text-sm">
+        <div className="flex min-w-0 items-center gap-2">
+          <Bot className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-sm">
             {loading && availableAssistants.length === 0
               ? 'Loading assistants…'
               : selectedAssistant
@@ -71,7 +71,7 @@ export function AssistantMenuItem() {
                 : 'Select assistant'}
           </span>
         </div>
-        <ChevronRight className="size-3 opacity-45" />
+        <ChevronRight className="size-3 shrink-0 opacity-45" />
       </div>
     </Popover>
   )
