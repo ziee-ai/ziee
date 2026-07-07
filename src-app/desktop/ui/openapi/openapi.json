@@ -6208,6 +6208,62 @@
         ]
       }
     },
+    "/api/llm-providers/{provider_id}/refresh-models": {
+      "post": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Refresh a provider's models against its live list; flags deprecated/removed ones.",
+        "description": "Runs the deprecation reconcile for one remote provider: re-fetches its live /v1/models set and flips is_deprecated on saved models that vanished or that the curated catalog marks deprecated (clearing it on reappearance). No-op on a failed/empty fetch. Returns the refreshed models.",
+        "operationId": "LlmProvider.refreshModels",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LlmModel"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-models/upload": {
       "post": {
         "tags": [
@@ -7807,6 +7863,19 @@
                 "null"
               ],
               "format": "int64"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "description": "Case-insensitive substring filter on project name/description.\n Blank/whitespace-only is treated as \"no filter\".",
+            "schema": {
+              "description": "Case-insensitive substring filter on project name/description.\n Blank/whitespace-only is treated as \"no filter\".",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "style": "form"
           }
@@ -31309,6 +31378,35 @@
           "files",
           "total"
         ]
+      },
+      "ProjectListQuery": {
+        "description": "Query params for `GET /projects`: pagination + optional name/description\n search. A DEDICATED type (not the shared `PaginationQuery`) so the `search`\n param appears only on this endpoint's OpenAPI — mirrors the per-endpoint\n query-struct convention in `mcp/handlers/user.rs` (blind-audit FIX-A).",
+        "type": "object",
+        "properties": {
+          "limit": {
+            "description": "Items per page. Defaults to 20, clamped to [1, 100].",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page": {
+            "description": "Page number (1-indexed). Defaults to 1.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "search": {
+            "description": "Case-insensitive substring filter on project name/description.\n Blank/whitespace-only is treated as \"no filter\".",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "ProjectListResponse": {
         "description": "List response.",

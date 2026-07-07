@@ -3872,6 +3872,24 @@ export interface ProjectFileListResponse {
   total: number
 }
 
+/**
+ * Query params for `GET /projects`: pagination + optional name/description
+ *  search. A DEDICATED type (not the shared `PaginationQuery`) so the `search`
+ *  param appears only on this endpoint's OpenAPI — mirrors the per-endpoint
+ *  query-struct convention in `mcp/handlers/user.rs` (blind-audit FIX-A).
+ */
+export interface ProjectListQuery {
+  /** Items per page. Defaults to 20, clamped to [1, 100]. */
+  limit?: number
+  /** Page number (1-indexed). Defaults to 1. */
+  page?: number
+  /**
+   * Case-insensitive substring filter on project name/description.
+   *  Blank/whitespace-only is treated as "no filter".
+   */
+  search?: string
+}
+
 /** List response. */
 export interface ProjectListResponse {
   projects: Project[]
@@ -6759,6 +6777,7 @@ export const ApiEndpoints = {
   'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
   'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
+  'LlmProvider.refreshModels': 'POST /api/llm-providers/{provider_id}/refresh-models',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
   'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
   'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
@@ -7135,6 +7154,7 @@ export type ApiEndpointParameters = {
   'LlmProvider.getUserLlmProviders': { limit?: number; offset?: number }
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
+  'LlmProvider.refreshModels': { provider_id: string }
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
   'LlmProvider.rotateProxyToken': { provider_id: string }
   'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
@@ -7233,7 +7253,7 @@ export type ApiEndpointParameters = {
   'Project.forConversation': { conversation_id: string }
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
-  'Project.list': { limit?: number; page?: number }
+  'Project.list': { limit?: number; page?: number; search?: string }
   'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
@@ -7511,6 +7531,7 @@ export type ApiEndpointResponses = {
   'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
   'LlmProvider.listUserApiKeys': UserApiKeyListResponse
+  'LlmProvider.refreshModels': LlmModel[]
   'LlmProvider.removeGroup': void
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void

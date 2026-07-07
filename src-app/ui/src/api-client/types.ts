@@ -6537,6 +6537,7 @@ export const ApiEndpoints = {
   'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
   'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
+  'LlmProvider.refreshModels': 'POST /api/llm-providers/{provider_id}/refresh-models',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
   'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
   'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
@@ -6887,6 +6888,7 @@ export type ApiEndpointParameters = {
   'LlmProvider.getUserLlmProviders': { limit?: number; offset?: number }
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
+  'LlmProvider.refreshModels': { provider_id: string }
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
   'LlmProvider.rotateProxyToken': { provider_id: string }
   'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
@@ -7237,6 +7239,7 @@ export type ApiEndpointResponses = {
   'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
   'LlmProvider.listUserApiKeys': UserApiKeyListResponse
+  'LlmProvider.refreshModels': LlmModel[]
   'LlmProvider.removeGroup': void
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void

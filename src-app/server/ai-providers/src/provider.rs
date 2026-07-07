@@ -107,14 +107,13 @@ impl Provider {
         }
 
         let inner: Box<dyn AIProvider> = match provider_type.as_str() {
-            "openai" | "groq" | "deepseek" | "mistral" | "huggingface" | "local" | "custom" => {
-                Box::new(OpenAIProvider)
-            }
+            "openai" | "groq" | "deepseek" | "mistral" | "huggingface" | "local" | "custom"
+            | "openrouter" => Box::new(OpenAIProvider),
             "anthropic" => Box::new(AnthropicProvider),
             "gemini" => Box::new(GeminiProvider),
             _ => {
                 return Err(ProviderError::InvalidRequest(format!(
-                    "Unknown provider type: '{}'. Supported: openai, anthropic, gemini, groq, deepseek, mistral",
+                    "Unknown provider type: '{}'. Supported: openai, anthropic, gemini, groq, deepseek, mistral, openrouter",
                     provider_type
                 )))
             }

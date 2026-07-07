@@ -1,5 +1,6 @@
-import { Trash2, Pencil, Plus, Upload } from 'lucide-react'
+import { Trash2, Pencil, Plus, Upload, RefreshCw } from 'lucide-react'
 import {
+  Badge,
   Button,
   Card,
   Separator,
@@ -155,6 +156,26 @@ export function LlmModelsSection() {
     Stores.EditLlmModelDrawer.openEditLlmModelDrawer(modelId)
   }
 
+  // Reconcile this remote provider's saved models against its live model list —
+  // flags deprecated/removed ones and clears the flag on any that reappeared.
+  const handleRefreshModels = async () => {
+    if (!currentProvider) return
+    try {
+      const models = await Stores.LlmProvider.refreshProviderModels(currentProvider.id)
+      const deprecated = models.filter(m => m.is_deprecated).length
+      message.success(
+        deprecated > 0
+          ? `Models refreshed — ${deprecated} unavailable/deprecated`
+          : 'Models refreshed — all available',
+      )
+    } catch (error) {
+      console.error('Failed to refresh models:', error)
+      message.error(
+        error instanceof Error ? error.message : 'Failed to refresh models',
+      )
+    }
+  }
+
   const getLlmModelActions = (llmModel: LlmModel) => {
     const actions: React.ReactNode[] = []
 
@@ -290,13 +311,44 @@ export function LlmModelsSection() {
     )
   }
 
+  // "Refresh models" — remote providers only (local list from the DB). Reconciles
+  // deprecated/removed models against the provider's live list.
+  const getRefreshButton = () => {
+    if (!currentProvider || currentProvider.provider_type === 'local') return null
+    if (!canCreateModels) return null
+    const refreshing = Boolean(Stores.LlmProvider.refreshingModels[currentProvider.id])
+    return (
+      <Tooltip content="Refresh models from provider">
+        <span className="inline-flex">
+          <Button
+            variant="ghost"
+            size="icon"
+            icon={<RefreshCw aria-hidden="true" />}
+            loading={refreshing}
+            disabled={refreshing}
+            onClick={handleRefreshModels}
+            aria-label="Refresh models from provider"
+            data-testid="llm-models-refresh-btn"
+          />
+        </span>
+      </Tooltip>
+    )
+  }
+
+  const getExtra = () => (
+    <Flex align="center" className="gap-1">
+      {getRefreshButton()}
+      {getAddButton()}
+    </Flex>
+  )
+
   // Return early if no provider
   if (!currentProvider) {
     return null
   }
 
   return (
-    <Card title="Models" extra={getAddButton()} data-testid="llm-models-section-card">
+    <Card title="Models" extra={getExtra()} data-testid="llm-models-section-card">
       {loading ? (
         <Loading />
       ) : llmModels.length === 0 ? (
@@ -316,14 +368,14 @@ export function LlmModelsSection() {
                         {llmModel.display_name}
                       </Text>
                       {llmModel.is_deprecated && (
-                        <Tooltip content="Deprecated">
-                          <span
-                            className="text-xs"
-                            role="img"
-                            aria-label="Deprecated"
+                        <Tooltip content="This model is no longer offered by the provider (or is deprecated). Calls to it may fail.">
+                          <Badge
+                            tone="warning"
+                            className="ml-2 align-middle"
+                            data-testid={`llm-model-deprecated-badge-${llmModel.id}`}
                           >
-                            ⚠️
-                          </span>
+                            Deprecated
+                          </Badge>
                         </Tooltip>
                       )}
                     </div>

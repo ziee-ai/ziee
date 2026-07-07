@@ -16,6 +16,7 @@ pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
         "deepseek",
         "huggingface",
         "custom",
+        "openrouter",
     ];
     if valid_types.contains(&provider_type) {
         Ok(())
