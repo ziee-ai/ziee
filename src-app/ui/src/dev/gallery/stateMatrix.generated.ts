@@ -1428,9 +1428,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!filename", line: 47 },
-      { kind: "branch", condition: "cancelled", line: 146 },
-      { kind: "branch", condition: "cancelled", line: 152 },
-      { kind: "branch", condition: "truncated", line: 176 },
+      { kind: "branch", condition: "cancelled", line: 149 },
+      { kind: "branch", condition: "cancelled", line: 155 },
+      { kind: "branch", condition: "truncated", line: 179 },
     ],
   },
   "modules/file/viewers/shared/chrome": {

@@ -1603,9 +1603,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!filename` | 47 |
-| branch | `cancelled` | 146 |
-| branch | `cancelled` | 152 |
-| branch | `truncated` | 176 |
+| branch | `cancelled` | 149 |
+| branch | `cancelled` | 155 |
+| branch | `truncated` | 179 |
 
 ### `modules/file/viewers/shared/chrome`
 
