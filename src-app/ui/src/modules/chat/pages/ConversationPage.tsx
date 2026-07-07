@@ -91,7 +91,7 @@ export default function ConversationPage() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
-        if (!Stores.Chat.__state.conversation) return
+        if (!Stores.Chat.$.conversation) return
         e.preventDefault()
         setFindOpen(true)
       }

@@ -119,11 +119,11 @@ export function FindableRegion({
   )
 
   const openFind = useCallback(() => {
-    Stores.File.__state.setFileFindOpen(fileId, true)
+    Stores.File.setFileFindOpen(fileId, true)
   }, [fileId])
 
   const close = useCallback(() => {
-    Stores.File.__state.setFileFindOpen(fileId, false)
+    Stores.File.setFileFindOpen(fileId, false)
     // Restore focus into the viewer so keyboard focus doesn't drop to <body>.
     regionRef.current?.focus()
   }, [fileId])

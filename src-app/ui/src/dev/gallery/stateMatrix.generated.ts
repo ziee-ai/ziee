@@ -1056,7 +1056,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed","error"],
     signals: [
       { kind: "branch", condition: "!sentinel", line: 73 },
-      { kind: "branch", condition: "!Stores.Chat.__state.conversation", line: 94 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 94 },
       { kind: "branch", condition: "!conversationId", line: 123 },
       { kind: "loading", condition: "loading && !conversation", line: 149 },
       { kind: "loading", condition: "!loading && !conversation", line: 158 },

@@ -151,10 +151,10 @@ const textExtension: ChatExtension = createExtension({
     // (which would flip the composer's key to the new id). For an existing
     // conversation it's that id; for a new chat it's the shared `new` bucket.
     // Must match TextInput's user-namespaced draftKey so onMessageSent clears the
-    // right entry. `__state` (non-render access from an async hook).
+    // right entry. Read via `$` snapshot (non-render access from an async hook).
     capturedDraftKey = makeDraftKey(
-      Stores.Auth.__state.user?.id,
-      Stores.Chat.__state.conversation?.id,
+      Stores.Auth.$.user?.id,
+      Stores.Chat.$.conversation?.id,
     )
 
     return { cancel: false }
@@ -185,7 +185,7 @@ const textExtension: ChatExtension = createExtension({
     // covers regenerate, which sets no editingMessage and so wouldn't trigger
     // the TextInput restore-on-edit-end effect.)
     const isBranchSend =
-      Stores.Chat.__state.pendingBranchFromMessageId != null
+      Stores.Chat.$.pendingBranchFromMessageId != null
     if (capturedDraftKey) {
       if (isBranchSend) {
         const draft = getDraft(capturedDraftKey)

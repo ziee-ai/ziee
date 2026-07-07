@@ -1197,7 +1197,7 @@ Required states: `delayed`, `error`
 | kind | condition | line |
 |---|---|---|
 | branch | `!sentinel` | 73 |
-| branch | `!Stores.Chat.__state.conversation` | 94 |
+| branch | `!Stores.Chat.$.conversation` | 94 |
 | branch | `!conversationId` | 123 |
 | loading | `loading && !conversation` | 149 |
 | loading | `!loading && !conversation` | 158 |

@@ -186,7 +186,7 @@ export function FindButton({ file }: { file: FileEntity }) {
       aria-label="Find in document"
       aria-pressed={open}
       icon={<Search />}
-      onClick={() => Stores.File.__state.setFileFindOpen(file.id, !open)}
+      onClick={() => Stores.File.setFileFindOpen(file.id, !open)}
       data-testid="file-viewer-find-btn"
     />
   )
@@ -206,7 +206,7 @@ export function WrapToggle({ file }: { file: FileEntity }) {
       aria-label="Toggle word wrap"
       aria-pressed={on}
       icon={<WrapText />}
-      onClick={() => Stores.File.__state.setFileWordWrap(file.id, !on)}
+      onClick={() => Stores.File.setFileWordWrap(file.id, !on)}
       data-testid="file-viewer-wrap-btn"
     />
   )
@@ -305,7 +305,7 @@ function RouterFullPageButton({ file }: { file: FileEntity }) {
       aria-label="Open file full page"
       icon={<Maximize2 />}
       onClick={() => {
-        Stores.FilePreviewDrawer.__state.closePreview()
+        Stores.FilePreviewDrawer.closePreview()
         navigate(`/files/${file.id}`)
       }}
       data-testid="file-viewer-fullpage-btn"
@@ -322,7 +322,7 @@ function AnchorFullPageButton({ file }: { file: FileEntity }) {
       aria-label="Open file full page"
       icon={<Maximize2 />}
       href={`/files/${file.id}`}
-      onClick={() => Stores.FilePreviewDrawer.__state.closePreview()}
+      onClick={() => Stores.FilePreviewDrawer.closePreview()}
       data-testid="file-viewer-fullpage-btn"
     />
   )

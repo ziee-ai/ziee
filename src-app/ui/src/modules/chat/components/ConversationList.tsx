@@ -146,7 +146,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
               aria-label="Sort conversations"
               value={sort}
               onChange={value =>
-                Stores.ChatHistory.__state.setSort(value as ConversationSort)
+                Stores.ChatHistory.setSort(value as ConversationSort)
               }
               options={SORT_OPTIONS}
               className="w-40"

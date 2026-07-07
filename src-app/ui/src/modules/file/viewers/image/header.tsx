@@ -23,13 +23,13 @@ export function ImageHeader(props: FileViewerSlotProps) {
         tooltip="Zoom out"
         aria-label="Zoom out"
         icon={<ZoomOut />}
-        onClick={() => Stores.File.__state.zoomImage(file.id, 0.8)}
+        onClick={() => Stores.File.zoomImage(file.id, 0.8)}
         data-testid="file-viewer-zoom-out-btn"
       />
       <Segmented
         value={view.mode}
         onChange={(v: string) =>
-          Stores.File.__state.setImageViewMode(file.id, v as 'fit' | 'actual')
+          Stores.File.setImageViewMode(file.id, v as 'fit' | 'actual')
         }
         data-testid="file-viewer-image-fit-segmented"
         options={[
@@ -43,7 +43,7 @@ export function ImageHeader(props: FileViewerSlotProps) {
         tooltip="Zoom in"
         aria-label="Zoom in"
         icon={<ZoomIn />}
-        onClick={() => Stores.File.__state.zoomImage(file.id, 1.25)}
+        onClick={() => Stores.File.zoomImage(file.id, 1.25)}
         data-testid="file-viewer-zoom-in-btn"
       />
       <DownloadButton file={file} />
