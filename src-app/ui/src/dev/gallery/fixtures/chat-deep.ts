@@ -303,6 +303,17 @@ const renderingShowcase: DeepBundle = {
           '    return f"Hello, {name}!"',
           '```',
           '',
+          // HTML block → the code⇄preview toggle (sandboxed-iframe render).
+          // Renders CODE by default; the `html-preview` interaction flips it.
+          '```html',
+          '<!doctype html>',
+          '<html><body style="font-family:sans-serif;padding:12px">',
+          '  <h1>Sandboxed preview</h1>',
+          '  <p>Rendered inside a strictly-sandboxed iframe.</p>',
+          '  <button onclick="this.textContent=\'clicked\'">Click me</button>',
+          '</body></html>',
+          '```',
+          '',
           '| Trial | HR | 95% CI |',
           '| --- | --- | --- |',
           '| SELECT | 0.80 | 0.72–0.90 |',

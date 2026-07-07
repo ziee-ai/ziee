@@ -44,3 +44,7 @@ src/dev/gallery/RUNTIME_FINDINGS.jsonl
 
 # gallery branch-coverage raw merge (Part 2) — regenerated, not committed
 src/dev/gallery/coverage.raw.json
+
+# Transient affordance-audit output (regenerated per run; see RUNTIME_FINDINGS rule above)
+src/dev/gallery/AFFORDANCE_FINDINGS.jsonl
+src/dev/gallery/AFFORDANCE_FINDINGS.md

@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **310** surfaces carry at least one renderable-state signal.
-- **1715** signals total: 1334 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **311** surfaces carry at least one renderable-state signal.
+- **1717** signals total: 1336 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -953,8 +953,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 23 |
-| branch | `isUser` | 28 |
+| branch | `!textData.text` | 27 |
+| branch | `isUser` | 32 |
 
 ### `modules/chat/components/TitleEditor`
 
@@ -1006,6 +1006,15 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!match` | 203 |
+
+### `modules/chat/core/utils/HtmlBlock`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `copied` | 72 |
+| branch | `effectiveMode === 'preview'` | 81 |
 
 ### `modules/chat/core/utils/StreamdownErrorBoundary`
 
@@ -1067,7 +1076,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 24 |
+| branch | `!textData.text` | 28 |
 
 ### `modules/chat/extensions/text/components/ThinkingContent`
 
