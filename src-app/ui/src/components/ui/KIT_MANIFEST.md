@@ -418,7 +418,7 @@ _No always-required props._
 | `data-testid` | `string` | Test selector — forwarded onto the menu content <root>. Items derive `${testid}-item-${key}`. |
 | `items` | `DropdownItem[]` |  |
 
-<details><summary>Optional props (8)</summary>
+<details><summary>Optional props (9)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -426,6 +426,7 @@ _No always-required props._
 | `collisionAvoidance` | `CollisionAvoidance | undefined` | Collision handling for the align axis. Defaults to Base UI's `flip`, which swaps start↔end near a viewport edge; pass `{ align: 'shift' }… |
 | `defaultOpen` | `boolean | undefined` | Initial open state when uncontrolled (legacy `defaultOpen`). |
 | `disabled` | `boolean | undefined` | Disables the trigger (legacy `disabled`). |
+| `nativeButton` | `boolean | undefined` | Override the native-button heuristic below. Set `false` when the trigger is a component that renders a non-<button> element (e.g. kit <Ta… |
 | `onOpenChange` | `((open: boolean) => void) | undefined` | Fires when the menu requests an open-state change (pairs with `open`). |
 | `onSelect` | `((key: string) => void) | undefined` | Global selection handler receiving the activated item's `key` (legacy `menu.onClick`). Fires in addition to a per-item `onClick`. |
 | `open` | `boolean | undefined` | Controlled open state. Omit for the default uncontrolled behavior. |
