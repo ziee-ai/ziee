@@ -57,3 +57,7 @@ src-app/ui/src/modules/workflow/components/WorkflowTestsPanel.tsx	1	1000000	corr
 src-app/ui/src/modules/workflow/components/admin/AdminWorkflowGroupAssignment.tsx	1	1000000	correctness,state-management,error-handling
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	1000000	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	1000000	patterns-conformance,correctness,tests-quality
+src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1000000	correctness,state-management,error-handling
+src-app/ui/src/modules/file/chat-extension/components/FilePasteHandler.tsx	1	1000000	correctness,state-management,error-handling
+src-app/ui/src/modules/file/viewers/image/header.tsx	1	1000000	correctness,state-management,error-handling
+src-app/ui/src/modules/file/viewers/shared/find/FindableRegion.tsx	1	1000000	correctness,state-management,error-handling

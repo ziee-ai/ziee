@@ -9,7 +9,12 @@ npm run check (desktop/ui): PASS
 grit + lint:colors/settings-field/… + check:kit-manifest/testid-registry/
 design-spec/gallery-coverage/state-matrix/overlay-registry. Both exited 0.)
 
-## Unit tests — `node --import ./scripts/node-test-loader.mjs --test "src/**/*.test.ts"` → 13 pass / 0 fail
+> Re-verified AFTER merging origin/main (a1ca389c, F2/F3/model-picker) and
+> sweeping the 15 new `.__state` sites that merge introduced. `__state` count in
+> source = **0**; ban-lint (`lint:guardrails`) = **0 violations** in both
+> workspaces; the grit guardrail still fires on a `.__state` probe.
+
+## Unit tests — `node --import ./scripts/node-test-loader.mjs --test "src/**/*.test.ts"` → 81 pass / 0 fail (13 proxy specs + F2/F3's new specs)
 
 - **TEST-1**: PASS  — action callable hook-free outside render, mutates state (real createStoreProxy loaded via the loader → also proves ITEM-10).
 - **TEST-2**: PASS  — `$` returns getState() snapshot hook-free outside render.
@@ -24,7 +29,13 @@ design-spec/gallery-coverage/state-matrix/overlay-registry. Both exited 0.)
 
 ## E2E — Playwright `--workers=1` (full stack: cargo-run backend + Vite preview + Postgres)
 
-- **TEST-7**: PASS  — `tests/e2e/chat/conversation-list-search.spec.ts` → 2 passed (1.7m). Typing in the conversation-list search drives the swept `Stores.ChatHistory.setSearchQuery`/`loadConversations` handlers (formerly `.__state.*`) — direct action calls from a real onChange handler work end-to-end.
-- **TEST-8**: PASS  — `tests/e2e/projects/conversation-list-interaction.spec.ts` → 1 passed (27.4s). Conversation delete drives the swept `Stores.ChatHistory.deleteConversation` handler from a real onClick.
+- **TEST-7**: PASS  — `tests/e2e/chat/conversation-list-search.spec.ts` → 2 passed (re-run on merged tree; the swept `setSearchQuery`/`loadConversations`/`setSort` handlers on `ConversationList.tsx` drive from real onChange/onClick).
+- **TEST-8**: PASS  — `tests/e2e/projects/conversation-list-interaction.spec.ts` → 1 passed (re-run on merged tree; swept `deleteConversation` from a real onClick).
 
-All enumerated TEST-IDs PASS; both touched frontend workspaces have a passing `npm run check`.
+### Post-merge sweep validation (F2/F3 file-viewer specs exercising the newly-swept actions)
+
+- `tests/e2e/file/find-in-document.spec.ts` → PASS — drives swept `Stores.File.setFileFindOpen` (chrome.tsx toolbar + FindableRegion.tsx).
+- `tests/e2e/file/image-zoom.spec.ts` → PASS — drives swept `Stores.File.zoomImage` / `setImageViewMode` (image/header.tsx).
+- `tests/e2e/file/word-wrap.spec.ts` → PASS — drives swept `Stores.File.setFileWordWrap` (chrome.tsx).
+
+All enumerated TEST-IDs PASS on the post-merge tree; both touched frontend workspaces have a passing `npm run check`; `__state` count = 0; ban-lint 0 violations.
