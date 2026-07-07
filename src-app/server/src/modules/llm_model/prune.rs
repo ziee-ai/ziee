@@ -2,7 +2,7 @@
 //! caches. Mirrors the `mcp::tool_calls::prune` pattern: a fire-and-forget
 //! background task spawned at module init that ticks on a fixed interval.
 //!
-//! Two jobs per tick (both best-effort — a failure logs and is retried next
+//! Three jobs per tick (all best-effort — a failure logs and is retried next
 //! tick, never crashes the server):
 //!
 //!   1. **download_instances retention** — terminal rows
@@ -17,6 +17,11 @@
 //!      (The HF-models cache is intentionally NOT swept here: its files back
 //!      registered models with no on-disk→DB path mapping to make mtime
 //!      eviction safe.)
+//!
+//!   3. **deprecation sweep** — re-discovers each remote provider's live model
+//!      list and flips `is_deprecated` on saved rows that vanished (or that the
+//!      curated catalog marks deprecated), clearing it when a model reappears.
+//!      No-op on a failed/empty fetch (see [`sweep_provider_once`]).
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -52,8 +57,172 @@ pub async fn run_prune_loop(pool: PgPool) {
     loop {
         prune_download_instances(&pool).await;
         evict_caches(&pool).await;
+        sweep_deprecated_models(&pool).await;
         tokio::time::sleep(PRUNE_INTERVAL).await;
     }
+}
+
+// =====================================================================
+// Deprecation sweep (orphaned / removed remote models)
+// =====================================================================
+//
+// A model a user added may be deprecated or removed by the provider. Once per
+// tick we re-discover each REMOTE provider's live model list and flip
+// `is_deprecated` on saved rows that vanished (or that the curated catalog marks
+// deprecated), clearing the flag when a model reappears. Best-effort: any error
+// logs and is retried next tick.
+
+use crate::modules::llm_model::models::LlmModel;
+use crate::modules::llm_model::permissions::LlmModelsRead;
+use crate::modules::llm_model::repository::{list_llm_models_by_provider, set_model_deprecated};
+use crate::modules::llm_provider::models::LlmProvider;
+use crate::modules::llm_provider::permissions::UserLlmProvidersRead;
+use crate::modules::llm_provider::repositories::admin::list_llm_providers;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
+
+/// Sweep every remote provider once. Local providers list from the DB, so they
+/// are skipped.
+async fn sweep_deprecated_models(pool: &PgPool) {
+    let providers = match list_llm_providers(pool).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("llm_model::prune: deprecation sweep could not list providers: {e}");
+            return;
+        }
+    };
+    let mut flipped = 0usize;
+    for provider in providers {
+        // Skip local (DB-listed) providers and any provider an admin has not
+        // enabled — probing a disabled/unconfigured provider would make a
+        // pointless outbound call (and a 401) at every boot. The on-demand
+        // refresh endpoint still works on any provider the admin explicitly asks
+        // to reconcile.
+        if provider.provider_type == "local" || !provider.enabled {
+            continue;
+        }
+        match sweep_provider_once(pool, &provider).await {
+            Ok(n) => flipped += n,
+            Err(e) => tracing::warn!(
+                "llm_model::prune: deprecation sweep for provider {} failed: {e}",
+                provider.id
+            ),
+        }
+    }
+    if flipped > 0 {
+        tracing::info!("llm_model::prune: deprecation sweep updated {flipped} model(s)");
+    }
+}
+
+/// Reconcile one remote provider's saved models against its live `/v1/models`
+/// set, returning the number of rows whose `is_deprecated` flag changed.
+///
+/// SAFETY (DEC-5): only mutate when the live fetch SUCCEEDS and returns a
+/// NON-EMPTY set. A missing key / offline / 401 must be a no-op — otherwise a
+/// transient failure would deprecate every model. A model is flagged deprecated
+/// when it is absent from the live set OR the curated catalog marks it
+/// deprecated; the flag is cleared when it is present and not catalog-deprecated.
+///
+/// Shared by the background loop and the on-demand refresh handler.
+pub async fn sweep_provider_once(
+    pool: &PgPool,
+    provider: &LlmProvider,
+) -> Result<usize, String> {
+    // Local providers manage their own model list.
+    if provider.provider_type == "local" {
+        return Ok(0);
+    }
+    let Some(base_url) = provider.base_url.as_deref().filter(|b| !b.is_empty()) else {
+        // No endpoint to query → cannot safely decide; no-op.
+        return Ok(0);
+    };
+    let api_key = provider.api_key.clone().unwrap_or_default();
+
+    let live = crate::modules::llm_provider::handlers::discover::fetch_live_models(
+        &provider.provider_type,
+        base_url,
+        &api_key,
+    )
+    .await?;
+
+    // DEC-5 guard: an empty set (or a failure, already `?`-propagated above) is
+    // never treated as "every model is gone".
+    if live.is_empty() {
+        return Ok(0);
+    }
+    let live_ids: std::collections::HashSet<String> =
+        live.iter().map(|m| m.id.clone()).collect();
+
+    let models = list_llm_models_by_provider(pool, provider.id)
+        .await
+        .map_err(|e| format!("list models: {e}"))?;
+
+    let decisions = decide_deprecations(&provider.provider_type, &live_ids, &models);
+
+    let mut changed = 0usize;
+    for (model_id, should_deprecate) in decisions {
+        match set_model_deprecated(pool, model_id, should_deprecate).await {
+            Ok(true) => {
+                changed += 1;
+                emit_model_sync(model_id);
+                tracing::info!(
+                    "llm_model::prune: model {model_id} is_deprecated -> {should_deprecate}"
+                );
+            }
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                "llm_model::prune: failed to set is_deprecated on {model_id}: {e}"
+            ),
+        }
+    }
+    Ok(changed)
+}
+
+/// Pure decision core: given the live model-id set and the saved models, return
+/// the `(model_id, new_is_deprecated)` pairs that must change. Network- and
+/// DB-free so it is directly unit-testable.
+///
+/// A model is deprecated when it is absent from the live set OR the curated
+/// catalog marks it deprecated; the flag is cleared when it is present and not
+/// catalog-deprecated. An EMPTY live set yields no changes (DEC-5 guard, also
+/// enforced by the caller before the fetch is trusted).
+pub(crate) fn decide_deprecations(
+    provider_type: &str,
+    live_ids: &std::collections::HashSet<String>,
+    models: &[LlmModel],
+) -> Vec<(uuid::Uuid, bool)> {
+    if live_ids.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for m in models {
+        let catalog_deprecated = ai_providers::registry_lookup(provider_type, &m.name)
+            .map(|c| c.deprecated)
+            .unwrap_or(false);
+        let should = !live_ids.contains(&m.name) || catalog_deprecated;
+        if should != m.is_deprecated {
+            out.push((m.id, should));
+        }
+    }
+    out
+}
+
+/// Emit the dual permission-scoped sync pair for a model change from a detached
+/// task (origin = None), mirroring what `create_model` emits.
+fn emit_model_sync(model_id: uuid::Uuid) {
+    sync_publish(
+        SyncEntity::LlmModel,
+        SyncAction::Update,
+        model_id,
+        Audience::perm::<LlmModelsRead>(),
+        None,
+    );
+    sync_publish(
+        SyncEntity::UserLlmProvider,
+        SyncAction::Update,
+        model_id,
+        Audience::perm::<UserLlmProvidersRead>(),
+        None,
+    );
 }
 
 /// Delete terminal download rows older than the retention window.
@@ -239,5 +408,81 @@ fn older_than(path: &Path, now: SystemTime, max_age: Duration) -> bool {
     match newest {
         Some(m) => now.duration_since(m).map(|age| age > max_age).unwrap_or(false),
         None => false, // can't read mtime → keep, fail safe
+    }
+}
+
+#[cfg(test)]
+mod deprecation_tests {
+    use super::decide_deprecations;
+    use crate::modules::llm_model::models::LlmModel;
+    use std::collections::HashSet;
+    use uuid::Uuid;
+
+    fn model(name: &str, is_deprecated: bool) -> LlmModel {
+        serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(),
+            "provider_id": Uuid::new_v4(),
+            "name": name,
+            "display_name": name,
+            "enabled": true,
+            "is_deprecated": is_deprecated,
+            "is_active": false,
+            "capabilities": {},
+            "parameters": {},
+            "created_at": "2020-01-01T00:00:00Z",
+            "updated_at": "2020-01-01T00:00:00Z",
+            "engine_type": "none",
+            "file_format": "safetensors"
+        }))
+        .expect("valid LlmModel")
+    }
+
+    fn ids(list: &[&str]) -> HashSet<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn flags_model_absent_from_live_set() {
+        let live = ids(&["gpt-4o"]);
+        let models = vec![model("gpt-4o", false), model("removed-model", false)];
+        let d = decide_deprecations("openai", &live, &models);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].0, models[1].id);
+        assert!(d[0].1, "removed model must be flagged deprecated");
+    }
+
+    #[test]
+    fn clears_flag_when_model_reappears() {
+        let live = ids(&["gpt-4o"]);
+        let models = vec![model("gpt-4o", true)]; // currently deprecated, but present
+        let d = decide_deprecations("openai", &live, &models);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].1, false, "reappeared model must be un-deprecated");
+    }
+
+    #[test]
+    fn empty_live_set_never_flags() {
+        // DEC-5: an empty (failed/degraded) fetch is a no-op, never mass-flag.
+        let live: HashSet<String> = HashSet::new();
+        let models = vec![model("gpt-4o", false), model("anything", false)];
+        assert!(decide_deprecations("openai", &live, &models).is_empty());
+    }
+
+    #[test]
+    fn catalog_deprecated_flagged_even_when_present() {
+        // gpt-3.5-turbo is present live but marked deprecated in known_models.json.
+        let live = ids(&["gpt-4o", "gpt-3.5-turbo"]);
+        let models = vec![model("gpt-4o", false), model("gpt-3.5-turbo", false)];
+        let d = decide_deprecations("openai", &live, &models);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].0, models[1].id);
+        assert!(d[0].1);
+    }
+
+    #[test]
+    fn no_change_returns_empty() {
+        let live = ids(&["gpt-4o"]);
+        let models = vec![model("gpt-4o", false)];
+        assert!(decide_deprecations("openai", &live, &models).is_empty());
     }
 }

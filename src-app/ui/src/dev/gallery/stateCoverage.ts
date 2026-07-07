@@ -56,6 +56,11 @@ export const STATE_COVERAGE = {
   'modules/file/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-file',
   },
+  'modules/file/components/FileViewPage:delayed': {
+    skip: true,
+    reason:
+      "full-page file view (/files/:id) — static/e2e-verified surface; ':delayed' is the route lazy-load fallback, exercised by the full-page-view e2e spec",
+  },
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
   },
@@ -153,6 +158,8 @@ export const STATE_COVERAGE = {
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/markdown/body:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/pdf/body:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
+  "modules/file/viewers/pdf/pdfjs-body:delayed": { skip: true, reason: "via surface — rendered within the file preview drawer; 'delayed' (PDF loading) branch proven by Part 2 runtime coverage + the pdf-viewer e2e" },
+  "modules/file/viewers/pdf/pdfjs-body:error": { skip: true, reason: "via surface — rendered within the file preview drawer; 'error' branch proven by Part 2 runtime coverage + the pdf-viewer e2e" },
   "modules/file/viewers/shared/chrome:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/tabular/XlsxBody:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/tabular/XlsxBody:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
@@ -369,6 +376,8 @@ export const STATE_COVERAGE = {
   "modules/projects/pages/ProjectsListPage:error": { via: 'page-state-mode' },
   "modules/user-llm-providers/chat-extension/components/ModelSelector:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/user/components/group/UserGroupsSettings:error": { via: 'page-state-mode' },
+  "modules/chat/components/ConversationFindBar:empty": { skip: true, reason: "via surface — the find bar renders null when closed; its open/match states are proven by the conversation-find e2e + Part 2 runtime coverage" },
+  "modules/file/chat-extension/components/FilePasteHandler:empty": { skip: true, reason: "via surface — an invisible composer-attached paste-image sentinel (renders only a hidden span); behavior proven by the composer-paste-image e2e" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

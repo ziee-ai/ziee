@@ -86,6 +86,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       title: 'Duration',
       key: 'duration_ms',
       width: 100,
+      numeric: true,
       render: row => (row.duration_ms == null ? '—' : `${row.duration_ms} ms`),
     },
   ]
@@ -117,6 +118,12 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
         loading={loading}
         dataSource={calls}
         columns={columns}
+        // Sort reorders the loaded page (safe). NO client-side `filterable`
+        // here: this grid is SERVER-paginated, so filtering only the current
+        // page would hide matches on other pages and contradict the pager
+        // (DEC-5). Server-side filtering is a follow-up. The memory audit log,
+        // which loads all ≤limit rows at once, DOES enable filterable.
+        sortable
         empty={<Empty description="No tool calls recorded yet" data-testid="mcp-tool-calls-empty" />}
         onRowClick={row =>
           setExpandedId(id => (id === row.id ? null : row.id))

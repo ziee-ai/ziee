@@ -25,6 +25,7 @@ pub fn file_router() -> ApiRouter {
         .api_route("/files", get_with(list_files, list_files_docs))
         // Binary endpoints (must come BEFORE /files/{file_id} to avoid route conflicts)
         .api_route("/files/{file_id}/preview", get_with(get_preview, get_preview_docs))
+        .api_route("/files/{file_id}/raw", get_with(get_raw, get_raw_docs))
         .api_route("/files/{file_id}/thumbnail", get_with(get_thumbnail, get_thumbnail_docs))
         .api_route("/files/{file_id}/text", get_with(get_text_content, get_text_content_docs))
         .api_route("/files/{file_id}/download", get_with(download_file, download_file_docs))

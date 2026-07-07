@@ -30,6 +30,24 @@ use crate::{
 
 use super::super::permissions::*;
 
+/// A model as reported by a provider's live `/v1/models` response, with any
+/// richer capability fields we can parse. Fields are `Option` because most
+/// OpenAI-compatible `/models` responses list IDs only — OpenRouter (and, to a
+/// lesser degree, Gemini/Groq) carry structured capability/context data.
+///
+/// `pub(crate)` so the deprecation sweep (`llm_model::prune`) can reuse the same
+/// fetch to compute the live model-id set for a provider.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct LiveModel {
+    pub id: String,
+    pub display_name: Option<String>,
+    pub context_length: Option<u32>,
+    pub max_output_tokens: Option<u32>,
+    pub supports_vision: Option<bool>,
+    pub supports_tool_use: Option<bool>,
+    pub supports_embeddings: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DiscoveredModel {
     pub id: String,
@@ -128,26 +146,44 @@ pub async fn discover_models(
     };
     let api_key = provider.api_key.clone().unwrap_or_default();
 
-    match fetch_v1_models(&provider_type, &base_url, &api_key).await {
-        Ok(live_ids) => {
-            for id in live_ids {
-                if !models.iter().any(|m| m.id == id) {
-                    let registry = ai_providers::registry_lookup(&provider_type, &id);
+    match fetch_live_models(&provider_type, &base_url, &api_key).await {
+        Ok(live) => {
+            for lm in live {
+                if !models.iter().any(|m| m.id == lm.id) {
+                    // Catalog stays the source of truth for capability values;
+                    // for IDs the catalog does not know we prefer the live-parsed
+                    // fields (OpenRouter etc.) and fall back to registry/defaults.
+                    let registry = ai_providers::registry_lookup(&provider_type, &lm.id);
+                    let embeddings_hint = lm.supports_embeddings.unwrap_or(false);
                     models.push(DiscoveredModel {
-                        id: id.clone(),
-                        display_name: registry.as_ref().and_then(|c| c.display_name.clone()),
-                        context_length: registry.as_ref().and_then(|c| c.context_length),
-                        max_output_tokens: registry.as_ref().and_then(|c| c.max_output_tokens),
-                        supports_chat: registry.as_ref().map(|c| c.supports_chat).unwrap_or(true),
-                        supports_embeddings: registry
+                        id: lm.id.clone(),
+                        display_name: lm
+                            .display_name
+                            .clone()
+                            .or_else(|| registry.as_ref().and_then(|c| c.display_name.clone())),
+                        context_length: lm
+                            .context_length
+                            .or_else(|| registry.as_ref().and_then(|c| c.context_length)),
+                        max_output_tokens: lm
+                            .max_output_tokens
+                            .or_else(|| registry.as_ref().and_then(|c| c.max_output_tokens)),
+                        // A pure-embeddings model isn't a chat model; otherwise
+                        // default chat=true for a discovered generative model.
+                        supports_chat: registry
                             .as_ref()
-                            .map(|c| c.supports_embeddings)
+                            .map(|c| c.supports_chat)
+                            .unwrap_or(!embeddings_hint),
+                        supports_embeddings: lm
+                            .supports_embeddings
+                            .or_else(|| registry.as_ref().map(|c| c.supports_embeddings))
                             .unwrap_or(false),
-                        supports_vision: registry
-                            .as_ref()
-                            .map(|c| c.supports_vision)
+                        supports_vision: lm
+                            .supports_vision
+                            .or_else(|| registry.as_ref().map(|c| c.supports_vision))
                             .unwrap_or(false),
-                        supports_tool_use: registry.as_ref().and_then(|c| c.supports_tool_use),
+                        supports_tool_use: lm
+                            .supports_tool_use
+                            .or_else(|| registry.as_ref().and_then(|c| c.supports_tool_use)),
                         deprecated: registry.as_ref().map(|c| c.deprecated).unwrap_or(false),
                         source: if registry.is_some() {
                             "catalog".into()
@@ -175,14 +211,31 @@ pub async fn discover_models(
     ))
 }
 
-/// Best-effort fetch of the provider's `/v1/models`-shaped response.
-/// We extract just the model IDs — per-provider capability shape is
-/// well-divergent and the catalog covers the structured side.
-async fn fetch_v1_models(
+/// SSRF policy for the live `/v1/models` fetch. `PUBLIC_HTTP_OR_HTTPS` in
+/// release builds. A debug-only env seam (`LLM_DISCOVER_ALLOW_LOOPBACK`) relaxes
+/// it to `DEV_LOCAL` so integration tests can point a provider at a 127.0.0.1
+/// mock `/models` — compiled out of release builds via `cfg!(debug_assertions)`,
+/// mirroring `web_search`'s `WEB_SEARCH_FETCH_ALLOW_LOOPBACK`. RFC1918 /
+/// link-local / IMDS stay blocked even under `DEV_LOCAL`.
+fn discovery_url_policy() -> crate::utils::url_validator::OutboundUrlPolicy {
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("LLM_DISCOVER_ALLOW_LOOPBACK").is_ok() {
+            return crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL;
+        }
+    }
+    crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+}
+
+/// Best-effort fetch of the provider's `/v1/models`-shaped response, parsed into
+/// [`LiveModel`]s. Most OpenAI-compatible providers list IDs only; OpenRouter
+/// (and Gemini/Groq) carry structured context/capability fields we surface when
+/// present. `pub(crate)` so the deprecation sweep reuses the exact same fetch.
+pub(crate) async fn fetch_live_models(
     provider_type: &str,
     base_url: &str,
     api_key: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<LiveModel>, String> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
     // SSRF hardening: this request carries the provider's api_key. Threats:
     //   * a 302 to an internal host (e.g. cloud metadata) to harvest the bearer
@@ -191,7 +244,7 @@ async fn fetch_v1_models(
     //     169.254.169.254 / loopback / RFC1918 before connect) — blocked by the
     //     connect-time GuardingResolver baked into `validated_client_builder`,
     //   * an ambient proxy tunnelling/seeing the secret — blocked by `no_proxy()`.
-    let policy = crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS;
+    let policy = discovery_url_policy();
     crate::utils::url_validator::validate_outbound_url(&url, &policy)
         .map_err(|e| format!("blocked url: {e}"))?;
     let client = crate::utils::url_validator::validated_client_builder(policy)
@@ -212,27 +265,176 @@ async fn fetch_v1_models(
         return Err(format!("HTTP {}", resp.status()));
     }
     let body: serde_json::Value = resp.json().await.map_err(|e| format!("parse: {e}"))?;
+    Ok(parse_live_models(provider_type, &body))
+}
 
-    // OpenAI / Groq / DeepSeek / Mistral: { data: [{id, ...}] }
-    // Anthropic:                          { data: [{id, ...}] }
-    // Gemini:                             { models: [{name, ...}] }
-    let mut ids = Vec::new();
+/// Pure parser for a `/models` response body → [`LiveModel`]s. Network-free so
+/// it is directly unit-testable. Handles the two response shapes plus the richer
+/// OpenRouter/OpenAI-compatible per-model fields (all optional):
+///
+/// * OpenAI / Groq / DeepSeek / Mistral / OpenRouter / Anthropic: `{ data: [{id, ...}] }`
+/// * Gemini: `{ models: [{name, ...}] }` (the `models/` prefix is trimmed)
+///
+/// Rich fields when present: `name`→display_name, top-level `context_length`,
+/// `top_provider.max_completion_tokens`→max_output_tokens,
+/// `architecture.input_modalities` containing `"image"`→vision,
+/// `supported_parameters` containing `"tools"`→tool_use. `pricing` is
+/// intentionally ignored (DEC-4: no pricing).
+pub(crate) fn parse_live_models(provider_type: &str, body: &serde_json::Value) -> Vec<LiveModel> {
+    let mut out = Vec::new();
     if let Some(arr) = body.get("data").and_then(|v| v.as_array()) {
         for item in arr {
-            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
-                ids.push(id.to_string());
-            }
+            let Some(id) = item.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            out.push(parse_one_live_model(id.to_string(), item));
         }
     } else if let Some(arr) = body.get("models").and_then(|v| v.as_array()) {
         for item in arr {
             if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
                 // Gemini reports "models/gemini-2.0-flash"; trim the prefix.
-                let id = name.strip_prefix("models/").unwrap_or(name);
-                ids.push(id.to_string());
+                let id = name.strip_prefix("models/").unwrap_or(name).to_string();
+                out.push(parse_one_live_model(id, item));
             }
         }
     }
-    Ok(ids)
+    let _ = provider_type; // reserved for future provider-specific shapes
+    out
+}
+
+fn parse_one_live_model(id: String, item: &serde_json::Value) -> LiveModel {
+    // `name` is only useful as a display name when it differs from the id
+    // (OpenRouter sets a human label; OpenAI omits it).
+    let display_name = item
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|n| !n.is_empty() && *n != id)
+        .map(|s| s.to_string());
+
+    let context_length = item
+        .get("context_length")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| u32::try_from(n).ok());
+
+    let max_output_tokens = item
+        .get("top_provider")
+        .and_then(|tp| tp.get("max_completion_tokens"))
+        .and_then(|v| v.as_u64())
+        .and_then(|n| u32::try_from(n).ok());
+
+    let supports_vision = item
+        .get("architecture")
+        .and_then(|a| a.get("input_modalities"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .any(|m| m.eq_ignore_ascii_case("image"))
+        });
+    // `/models` responses carry no reliable embeddings signal (embeddings is an
+    // OUTPUT modality, and no common provider tags it on `input_modalities`), so
+    // we do not infer it from the live response — the curated catalog is the
+    // source of truth for embeddings capability.
+    let supports_embeddings = None;
+
+    let supports_tool_use = item
+        .get("supported_parameters")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .any(|p| p == "tools" || p == "tool_choice")
+        });
+
+    LiveModel {
+        id,
+        display_name,
+        context_length,
+        max_output_tokens,
+        supports_vision,
+        supports_tool_use,
+        supports_embeddings,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_openrouter_rich_fields() {
+        // Shape captured from the live OpenRouter /api/v1/models response.
+        let body = json!({
+            "data": [{
+                "id": "anthropic/claude-sonnet-5",
+                "name": "Anthropic: Claude Sonnet 5",
+                "context_length": 200000,
+                "architecture": { "input_modalities": ["text", "image"] },
+                "supported_parameters": ["tools", "temperature", "max_tokens"],
+                "top_provider": { "max_completion_tokens": 64000 },
+                "pricing": { "prompt": "0.000003", "completion": "0.000015" }
+            }]
+        });
+        let out = parse_live_models("openrouter", &body);
+        assert_eq!(out.len(), 1);
+        let m = &out[0];
+        assert_eq!(m.id, "anthropic/claude-sonnet-5");
+        assert_eq!(m.display_name.as_deref(), Some("Anthropic: Claude Sonnet 5"));
+        assert_eq!(m.context_length, Some(200000));
+        assert_eq!(m.max_output_tokens, Some(64000));
+        assert_eq!(m.supports_vision, Some(true));
+        assert_eq!(m.supports_tool_use, Some(true));
+        // pricing must never leak into a LiveModel field.
+    }
+
+    #[test]
+    fn tool_and_vision_negatives() {
+        let body = json!({
+            "data": [{
+                "id": "some/text-only",
+                "context_length": 8192,
+                "architecture": { "input_modalities": ["text"] },
+                "supported_parameters": ["temperature", "max_tokens"]
+            }]
+        });
+        let m = &parse_live_models("openrouter", &body)[0];
+        assert_eq!(m.supports_vision, Some(false));
+        assert_eq!(m.supports_tool_use, Some(false));
+        assert_eq!(m.context_length, Some(8192));
+    }
+
+    #[test]
+    fn plain_openai_ids_only() {
+        // OpenAI's /v1/models lists ids with no capability fields.
+        let body = json!({
+            "data": [
+                { "id": "gpt-4o", "object": "model", "owned_by": "openai" },
+                { "id": "text-embedding-3-small", "object": "model" }
+            ]
+        });
+        let out = parse_live_models("openai", &body);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].id, "gpt-4o");
+        assert!(out[0].display_name.is_none());
+        assert!(out[0].context_length.is_none());
+        assert!(out[0].supports_vision.is_none());
+        assert!(out[0].supports_tool_use.is_none());
+    }
+
+    #[test]
+    fn gemini_models_shape_strips_prefix() {
+        let body = json!({
+            "models": [
+                { "name": "models/gemini-2.5-flash" },
+                { "name": "models/gemini-2.0-flash" }
+            ]
+        });
+        let out = parse_live_models("gemini", &body);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].id, "gemini-2.5-flash");
+        assert_eq!(out[1].id, "gemini-2.0-flash");
+    }
 }
 
 pub fn discover_models_docs(op: TransformOperation) -> TransformOperation {

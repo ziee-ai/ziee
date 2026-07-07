@@ -5,6 +5,7 @@ import {
 } from '@/modules/chat/core/extensions'
 import { FilePreviewList } from '@/modules/file/chat-extension/components/FilePreviewList'
 import { FileUploadArea } from '@/modules/file/chat-extension/components/FileUploadArea'
+import { FilePasteHandler } from '@/modules/file/chat-extension/components/FilePasteHandler'
 import { FileAttachMenuItem } from '@/modules/file/chat-extension/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
@@ -20,6 +21,21 @@ import type { File as FileEntity, MessageContent, MessageContentDataFileAttachme
 // Module-level vars so cleanup can tear down subscriptions created in initialize.
 let unsubConversation: (() => void) | null = null
 let unsubEditingMessage: (() => void) | null = null
+
+/**
+ * Both composer-attached file listeners in one slot entry: the drag-and-drop
+ * overlay and the paste-image handler. Each independently locates the composer
+ * via `[data-chat-composer]`; grouping them lets the single `input_area_suffix`
+ * slot host both without either module importing the other.
+ */
+function ComposerFileListeners() {
+  return (
+    <>
+      <FileUploadArea />
+      <FilePasteHandler />
+    </>
+  )
+}
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
 // data: ... })` and `registerPanelRenderer('file', ...)` are type-checked.
@@ -401,8 +417,11 @@ const fileExtension: ChatExtension = createExtension({
     toolbar_plus_items: { component: FileAttachMenuItem, order: 10 },
     // File preview list above textarea
     input_area_prefix: { component: FilePreviewList, order: 10 },
-    // Drag-and-drop overlay — attaches to the composer via [data-chat-composer].
-    input_area_suffix: { component: FileUploadArea, order: 10 },
+    // Composer-attached file listeners (both locate the composer via
+    // [data-chat-composer]): the drag-and-drop overlay + the paste-image
+    // handler (ITEM-8). Grouped into the single input_area_suffix entry since a
+    // slot takes one component per extension.
+    input_area_suffix: { component: ComposerFileListeners, order: 10 },
   },
 })
 

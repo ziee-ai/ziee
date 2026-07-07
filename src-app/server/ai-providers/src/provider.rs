@@ -107,14 +107,13 @@ impl Provider {
         }
 
         let inner: Box<dyn AIProvider> = match provider_type.as_str() {
-            "openai" | "groq" | "deepseek" | "mistral" | "huggingface" | "local" | "custom" => {
-                Box::new(OpenAIProvider)
-            }
+            "openai" | "groq" | "deepseek" | "mistral" | "huggingface" | "local" | "custom"
+            | "openrouter" => Box::new(OpenAIProvider),
             "anthropic" => Box::new(AnthropicProvider),
             "gemini" => Box::new(GeminiProvider),
             _ => {
                 return Err(ProviderError::InvalidRequest(format!(
-                    "Unknown provider type: '{}'. Supported: openai, anthropic, gemini, groq, deepseek, mistral",
+                    "Unknown provider type: '{}'. Supported: openai, anthropic, gemini, groq, deepseek, mistral, openrouter",
                     provider_type
                 )))
             }
@@ -369,6 +368,16 @@ mod tests {
         let provider = Provider::new("gemini", "test-key", "").unwrap();
         assert_eq!(provider.provider_type(), "gemini");
         assert_eq!(provider.name(), "Gemini");
+    }
+
+    // TEST-4: OpenRouter is OpenAI-compatible for chat, so it must dispatch to
+    // the OpenAIProvider client (whose name() is "OpenAI").
+    #[test]
+    fn test_provider_creation_openrouter() {
+        let provider =
+            Provider::new("openrouter", "sk-or-test", "https://openrouter.ai/api/v1").unwrap();
+        assert_eq!(provider.provider_type(), "openrouter");
+        assert_eq!(provider.name(), "OpenAI");
     }
 
     #[test]

@@ -13,6 +13,12 @@ import {
   Tree,
 } from '@/components/ui'
 import type { TableColumn } from '@/components/ui'
+import {
+  DelimitedViewerDemo,
+  TableActionsDemo,
+  TableScrollDemo,
+  XlsxViewerDemo,
+} from '../TableDemos'
 import type { GalleryStory } from '../story'
 
 interface Row {
@@ -64,6 +70,33 @@ const tableStory: GalleryStory = {
       ),
     },
   ],
+}
+
+// kit Table actions + tabular viewers. The BROWSE-view story cases render the
+// shared demo components for visual coverage; the interactive e2e drives the
+// isolated `?surface=seeded-kit-table-*` / `seeded-*-viewer` seeded entries
+// (the browse canvas has open-overlay backdrops that intercept clicks).
+const tableActionsStory: GalleryStory = {
+  id: 'table-actions',
+  title: 'Table — actions',
+  cases: [
+    { key: 'actions', label: 'Sort / filter / resize / columns / numeric', render: () => <TableActionsDemo /> },
+  ],
+}
+const tableScrollStory: GalleryStory = {
+  id: 'table-scroll',
+  title: 'Table — scroll-to-index',
+  cases: [{ key: 'scroll', label: 'Virtualized jump', render: () => <TableScrollDemo /> }],
+}
+const delimitedStory: GalleryStory = {
+  id: 'delimited-viewer',
+  title: 'Tabular viewer — CSV',
+  cases: [{ key: 'csv', label: 'CSV with toolbar', render: () => <DelimitedViewerDemo /> }],
+}
+const xlsxSheetStory: GalleryStory = {
+  id: 'xlsx-viewer',
+  title: 'Tabular viewer — XLSX sheet',
+  cases: [{ key: 'sheet', label: 'Sheet with toolbar', render: () => <XlsxViewerDemo /> }],
 }
 
 const listStory: GalleryStory = {
@@ -266,6 +299,10 @@ const paginationStory: GalleryStory = {
 
 export const dataStories: GalleryStory[] = [
   tableStory,
+  tableActionsStory,
+  tableScrollStory,
+  delimitedStory,
+  xlsxSheetStory,
   listStory,
   descriptionsStory,
   treeStory,

@@ -1,8 +1,10 @@
 import { Spin } from '@/components/ui'
+import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
 import { RawCodeView } from '../shared/RawCodeView'
+import { FindableRegion } from '../shared/find/FindableRegion'
 import { getSource } from '../shared/source'
 
 export function TextBody(props: FileViewerSlotProps) {
@@ -10,6 +12,8 @@ export function TextBody(props: FileViewerSlotProps) {
   const rightPanelContent = useFileTextContent(file, !file)
   const inlineContent = useResourceLinkContent(url, !!file)
   const content = file ? rightPanelContent : inlineContent
+  // Read the wrap flag reactively (right-panel only; inline has no fileId).
+  const wordWrap = file ? Stores.File.fileWordWrap.get(file.id) ?? false : false
 
   if (content === '__error__') {
     return (
@@ -21,5 +25,12 @@ export function TextBody(props: FileViewerSlotProps) {
   if (content === null) {
     return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
   }
-  return <RawCodeView text={content} filename={file?.filename} />
+  const view = <RawCodeView text={content} filename={file?.filename} wordWrap={wordWrap} />
+  // Find-in-document is a right-panel affordance (needs a fileId to coordinate
+  // the header toggle); inline previews render the raw view directly.
+  return file ? (
+    <FindableRegion fileId={file.id}>{view}</FindableRegion>
+  ) : (
+    view
+  )
 }

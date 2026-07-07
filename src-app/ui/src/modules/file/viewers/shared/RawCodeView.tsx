@@ -94,12 +94,16 @@ const lineNumberTransformer: ShikiTransformer = {
 export function RawCodeView({
   text,
   filename,
+  wordWrap = false,
 }: {
   text: string
   /** Optional filename used to infer the syntax-highlight language.
    *  When omitted (or extension isn't a known shiki grammar), the
    *  body renders as plain text. */
   filename?: string
+  /** When true, long lines soft-wrap instead of scrolling horizontally.
+   *  Default false preserves the one-line-per-line + horizontal-scroll render. */
+  wordWrap?: boolean
 }) {
   const { isDarkMode } = useTheme()
 
@@ -172,8 +176,9 @@ export function RawCodeView({
 
   return (
     <div
-      className="flex flex-col w-full h-full"
+      className={`flex flex-col w-full h-full${wordWrap ? ' raw-code-wrap' : ''}`}
       data-testid="raw-code-view"
+      data-word-wrap={wordWrap ? 'on' : 'off'}
       style={{ ['--shiki-bg' as string]: shikiBg ?? 'var(--card)' }}
     >
       {truncated && (
@@ -194,7 +199,8 @@ export function RawCodeView({
         className="flex-1 min-h-0 w-full raw-code-view"
         options={{
           scrollbars: { autoHide: 'scroll' },
-          overflow: { x: 'scroll', y: 'scroll' },
+          // Wrapping removes horizontal overflow, so hide the x scrollbar then.
+          overflow: { x: wordWrap ? 'hidden' : 'scroll', y: 'scroll' },
         }}
         defer
       >
@@ -272,6 +278,23 @@ export function RawCodeView({
            to be on this wrapper to apply to all of them. */
         .raw-code-view pre.shiki .line-code {
           white-space: pre;
+        }
+        /* Word-wrap mode — long lines soft-wrap instead of overflowing. The
+           code column collapses to a plain 1fr (no max-content), and the whole
+           pre stops growing past the container, so there's no horizontal scroll.
+           The sticky line-number gutter still anchors left. */
+        .raw-code-wrap .raw-code-view pre.shiki,
+        .raw-code-wrap .raw-code-view pre.shiki code,
+        .raw-code-wrap .raw-code-view pre.shiki .line {
+          width: auto;
+          min-width: 0;
+        }
+        .raw-code-wrap .raw-code-view pre.shiki .line {
+          grid-template-columns: 44px 1fr;
+        }
+        .raw-code-wrap .raw-code-view pre.shiki .line-code {
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
         }
       `}</style>
     </div>

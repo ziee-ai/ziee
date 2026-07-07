@@ -28,6 +28,7 @@
     "modules/citations/components/CitationCard": "Inline remove-Confirm on a citation card. Card rendered on the citations page; reached via a card action. Tracked.",
     "modules/code-sandbox/components/RootfsVersionGroup": "Inline evict-Confirm on a cached rootfs version row. Rendered on the sandbox settings page; reached via a row action. Tracked.",
     "modules/file/project-extension/components/ProjectFilesManagePanel": "Inline detach-Confirm on a project-file row. Panel rendered on the project detail page; reached via a row action. Tracked.",
+    "modules/file/viewers/tabular/ExpandableCell": "Cell-overflow expand Popover — opens only on a click on a clipped (long) tabular cell inside the CSV/TSV/XLSX viewer. Interaction-gated; covered by the tabular-viewer e2e (cell-overflow expand). Tracked for a gallery interaction recipe.",
     "modules/hub/modules/installed/components/InstalledHubTab": "Inline uninstall-Confirm on an installed-hub-item row. Tab rendered on the hub page; reached via a row action. Tracked.",
     "modules/llm-local-runtime/components/RuntimeVersionCard": "Inline delete-Confirm on a downloaded runtime version. Card rendered on the local-runtime settings page; reached via a card action. Tracked.",
     "modules/llm-provider/components/ProviderHeader": "Inline delete-provider Confirm in the provider-detail header. Header rendered on the provider detail page; reached via the delete button. Tracked.",

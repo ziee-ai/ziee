@@ -23,6 +23,9 @@ pub(crate) mod helpers;
 // extraction. What remains here tests chat's own surface only.
 mod permissions_test;
 mod conversations_test;
+// Content search + sort on the conversation list endpoint (chat-power-features).
+mod conversation_search_test;
+mod conversation_sort_test;
 mod messages_test;
 mod branches_test;
 mod streaming_test;

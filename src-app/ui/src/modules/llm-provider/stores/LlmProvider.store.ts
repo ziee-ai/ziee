@@ -3,6 +3,7 @@ import {
   type LlmProvider as BaseLlmProvider,
   type CreateLlmModelRequest,
   type CreateLlmProviderRequest,
+  type DiscoveredModel,
   type Group,
   type LlmModel,
   Permissions,
@@ -42,6 +43,12 @@ export const LlmProviderStoreDef = defineStore('LlmProvider', {
     llmModelsLoading: {} as Record<string, boolean>, // providerId -> loading
     modelError: {} as Record<string, string>, // providerId -> error message
     llmModelOperations: {} as Record<string, boolean>, // modelId -> operation in progress
+    // Model discovery (picker) per provider: results + loading, keyed by providerId.
+    discoveredModels: {} as Record<string, DiscoveredModel[]>,
+    discoverNotes: {} as Record<string, string[]>,
+    discoverLoading: {} as Record<string, boolean>,
+    // "Refresh models" (deprecation reconcile) in-flight, keyed by providerId.
+    refreshingModels: {} as Record<string, boolean>,
     error: null as string | null,
   },
   actions: (set, get) => {
@@ -320,6 +327,59 @@ export const LlmProviderStoreDef = defineStore('LlmProvider', {
           set(state => ({
             error: error instanceof Error ? error.message : 'Failed to delete model',
             llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+          }))
+          throw error
+        }
+      },
+      // Discover the models a remote provider offers (catalog + live /v1/models).
+      // Populates the picker in the Add Remote Model drawer. Never throws for an
+      // empty result — the backend degrades to catalog-only with a note.
+      discoverModels: async (providerId: string): Promise<DiscoveredModel[]> => {
+        set(state => ({
+          discoverLoading: { ...state.discoverLoading, [providerId]: true },
+        }))
+        try {
+          const resp = await ApiClient.LlmProvider.discoverModels({ provider_id: providerId })
+          set(state => ({
+            discoveredModels: { ...state.discoveredModels, [providerId]: resp.models },
+            discoverNotes: { ...state.discoverNotes, [providerId]: resp.notes },
+            discoverLoading: { ...state.discoverLoading, [providerId]: false },
+          }))
+          return resp.models
+        } catch (error) {
+          set(state => ({
+            discoveredModels: { ...state.discoveredModels, [providerId]: [] },
+            discoverNotes: {
+              ...state.discoverNotes,
+              [providerId]: [
+                error instanceof Error ? error.message : 'Failed to discover models',
+              ],
+            },
+            discoverLoading: { ...state.discoverLoading, [providerId]: false },
+          }))
+          return []
+        }
+      },
+      // Refresh a provider's models against its live list: flags deprecated /
+      // removed ones and clears the flag on any that reappeared. Replaces the
+      // provider's llm_models with the reconciled list.
+      refreshProviderModels: async (providerId: string): Promise<LlmModel[]> => {
+        set(state => ({
+          refreshingModels: { ...state.refreshingModels, [providerId]: true },
+        }))
+        try {
+          const models = await ApiClient.LlmProvider.refreshModels({ provider_id: providerId })
+          set(state => ({
+            providers: state.providers.map(p =>
+              p.id === providerId ? { ...p, llm_models: models } : p,
+            ),
+            refreshingModels: { ...state.refreshingModels, [providerId]: false },
+          }))
+          return models
+        } catch (error) {
+          set(state => ({
+            error: error instanceof Error ? error.message : 'Failed to refresh models',
+            refreshingModels: { ...state.refreshingModels, [providerId]: false },
           }))
           throw error
         }

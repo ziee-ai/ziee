@@ -1124,3 +1124,62 @@ pub async fn get_approval_status_from_db(
 
     result.map(|row| row.status)
 }
+
+/// Seed a message carrying a single `text` content block directly into a
+/// conversation's branch, bypassing the streaming/LLM path. Used by the
+/// content-search + sort tests to give conversations deterministic, searchable
+/// message text without a provider. Returns the new message id.
+pub async fn seed_text_message(
+    database_url: &str,
+    branch_id: Uuid,
+    role: &str,
+    text: &str,
+) -> Uuid {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    // originated_from_id is NOT NULL; a standalone seeded message originates
+    // from itself.
+    let message_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO messages (role, originated_from_id, edit_count)
+         VALUES ($1, gen_random_uuid(), 0)
+         RETURNING id",
+    )
+    .bind(role)
+    .fetch_one(&pool)
+    .await
+    .expect("insert message");
+
+    sqlx::query("UPDATE messages SET originated_from_id = id WHERE id = $1")
+        .bind(message_id)
+        .execute(&pool)
+        .await
+        .expect("set originated_from_id");
+
+    let content = json!({ "type": "text", "text": text });
+    sqlx::query(
+        "INSERT INTO message_contents (message_id, content_type, content, sequence_order)
+         VALUES ($1, 'text', $2, 0)",
+    )
+    .bind(message_id)
+    .bind(&content)
+    .execute(&pool)
+    .await
+    .expect("insert message_contents");
+
+    sqlx::query(
+        "INSERT INTO branch_messages (branch_id, message_id, is_clone)
+         VALUES ($1, $2, false)",
+    )
+    .bind(branch_id)
+    .bind(message_id)
+    .execute(&pool)
+    .await
+    .expect("insert branch_messages");
+
+    pool.close().await;
+    message_id
+}

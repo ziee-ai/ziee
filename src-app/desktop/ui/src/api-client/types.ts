@@ -3723,6 +3723,17 @@ export interface PaginationQuery5 {
   limit?: number
   /** Page number (1-indexed) */
   page?: number
+  /**
+   * Optional case-insensitive search term. Matches a conversation's title
+   *  OR the text of any of its messages (substring). Omit for no filter.
+   */
+  search?: string
+  /**
+   * Optional sort order: `recent` (default, most-recently updated first),
+   *  `oldest`, `alpha` (by title A→Z), or `most_messages`. Unknown values
+   *  fall back to `recent`.
+   */
+  sort?: string
 }
 
 /**
@@ -3870,6 +3881,24 @@ export interface Project {
 export interface ProjectFileListResponse {
   files: File[]
   total: number
+}
+
+/**
+ * Query params for `GET /projects`: pagination + optional name/description
+ *  search. A DEDICATED type (not the shared `PaginationQuery`) so the `search`
+ *  param appears only on this endpoint's OpenAPI — mirrors the per-endpoint
+ *  query-struct convention in `mcp/handlers/user.rs` (blind-audit FIX-A).
+ */
+export interface ProjectListQuery {
+  /** Items per page. Defaults to 20, clamped to [1, 100]. */
+  limit?: number
+  /** Page number (1-indexed). Defaults to 1. */
+  page?: number
+  /**
+   * Case-insensitive substring filter on project name/description.
+   *  Blank/whitespace-only is treated as "no filter".
+   */
+  search?: string
 }
 
 /** List response. */
@@ -6672,6 +6701,7 @@ export const ApiEndpoints = {
   'File.get': 'GET /api/files/{file_id}',
   'File.getHeadVersion': 'GET /api/files/{file_id}/head',
   'File.getPreview': 'GET /api/files/{file_id}/preview',
+  'File.getRaw': 'GET /api/files/{file_id}/raw',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
@@ -6759,6 +6789,7 @@ export const ApiEndpoints = {
   'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
   'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
+  'LlmProvider.refreshModels': 'POST /api/llm-providers/{provider_id}/refresh-models',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
   'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
   'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
@@ -7027,7 +7058,7 @@ export type ApiEndpointParameters = {
   'Conversation.getMcpSettings': { id: string }
   'Conversation.getMemoryMode': { id: string }
   'Conversation.getSummarizationMode': { id: string }
-  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.list': { limit?: number; page?: number; search?: string; sort?: string }
   'Conversation.setMemoryMode': { id: string } & UpdateConversationMemoryModeRequest
   'Conversation.setSummarizationMode': { id: string } & UpdateConversationSummarizationModeRequest
   'Conversation.update': { id: string } & UpdateConversationRequest
@@ -7048,6 +7079,7 @@ export type ApiEndpointParameters = {
   'File.get': { file_id: string }
   'File.getHeadVersion': { file_id: string }
   'File.getPreview': { file_id: string; page?: number }
+  'File.getRaw': { file_id: string }
   'File.getTextContent': { file_id: string; page?: number }
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
@@ -7135,6 +7167,7 @@ export type ApiEndpointParameters = {
   'LlmProvider.getUserLlmProviders': { limit?: number; offset?: number }
   'LlmProvider.list': PaginationQuery
   'LlmProvider.listUserApiKeys': void
+  'LlmProvider.refreshModels': { provider_id: string }
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
   'LlmProvider.rotateProxyToken': { provider_id: string }
   'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
@@ -7233,7 +7266,7 @@ export type ApiEndpointParameters = {
   'Project.forConversation': { conversation_id: string }
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
-  'Project.list': { limit?: number; page?: number }
+  'Project.list': { limit?: number; page?: number; search?: string }
   'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
@@ -7424,6 +7457,7 @@ export type ApiEndpointResponses = {
   'File.get': File
   'File.getHeadVersion': FileVersion
   'File.getPreview': Blob
+  'File.getRaw': Blob
   'File.getTextContent': Blob
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
@@ -7511,6 +7545,7 @@ export type ApiEndpointResponses = {
   'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
   'LlmProvider.listUserApiKeys': UserApiKeyListResponse
+  'LlmProvider.refreshModels': LlmModel[]
   'LlmProvider.removeGroup': void
   'LlmProvider.rotateProxyToken': RotateProxyTokenResponse
   'LlmProvider.saveUserApiKey': void

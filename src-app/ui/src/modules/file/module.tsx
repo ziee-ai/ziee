@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { useFileStore } from './stores/File.store'
 import { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'
 import { useFileVersionsStore } from './stores/FileVersions.store'
@@ -23,10 +24,17 @@ const FilePreviewDrawer = lazyWithPreload(() =>
   })),
 )
 
+const FileViewPage = lazyWithPreload(() =>
+  import('./components/FileViewPage').then(m => ({
+    default: m.FileViewPage,
+  })),
+)
+
 /**
  * File module — top-level home for file-domain state, components,
- * viewers, and the file-viewer registry. No routes, no nav slots, no
- * admin pages: file is a chat-composer concern (chat-extension auto-
+ * viewers, and the file-viewer registry. One route (the dedicated
+ * full-page file view at /files/:fileId), no nav slots, no admin
+ * pages: file is a chat-composer concern (chat-extension auto-
  * discovered at modules/file/chat-extension/) AND a cross-module
  * primitive (projects' knowledge drawer reuses FileCard at
  * modules/file/components/FileCard.tsx).
@@ -40,6 +48,16 @@ export default createModule({
     description: 'File storage, upload, preview and viewer registry',
   },
   dependencies: ['router'],
+  routes: [
+    {
+      // Dedicated full-page file view — reached via the FullPageButton in the
+      // viewer chrome (opens /files/:fileId, closing the preview drawer).
+      path: '/files/:fileId',
+      element: FileViewPage,
+      requiresAuth: true,
+      layout: AppLayoutDef,
+    },
+  ],
   stores: [
     { name: 'File', store: useFileStore },
     { name: 'FilePreviewDrawer', store: useFilePreviewDrawerStore },

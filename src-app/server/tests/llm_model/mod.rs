@@ -1,5 +1,7 @@
 // Integration tests for LLM Model module
 
+mod create_deprecated_test;
+mod deprecation_sweep_test;
 mod download_management_test;
 mod download_progress_test;
 pub mod download_test;
