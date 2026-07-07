@@ -1622,7 +1622,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `truncated` | 101 |
+| branch | `truncated` | 114 |
 
 ### `modules/file/viewers/tabular/XlsxBody`
 
@@ -1630,13 +1630,13 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!fileBinaryContent` | 36 |
-| branch | `!file` | 86 |
-| error | `loadError` | 88 |
-| loading | `!fileBinaryContent \|\| loading` | 97 |
-| empty | `sheets.length === 0` | 101 |
-| branch | `sheet.truncated` | 143 |
-| branch | `sheets.length === 1` | 163 |
+| branch | `!fileBinaryContent` | 42 |
+| branch | `!file` | 92 |
+| error | `loadError` | 94 |
+| loading | `!fileBinaryContent \|\| loading` | 103 |
+| empty | `sheets.length === 0` | 107 |
+| branch | `sheet.truncated` | 157 |
+| branch | `sheets.length === 1` | 177 |
 
 ### `modules/file/viewers/tabular/body`
 

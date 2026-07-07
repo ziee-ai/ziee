@@ -1445,20 +1445,20 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/DelimitedTable",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "truncated", line: 101 },
+      { kind: "branch", condition: "truncated", line: 114 },
     ],
   },
   "modules/file/viewers/tabular/XlsxBody": {
     surface: "modules/file/viewers/tabular/XlsxBody",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "!fileBinaryContent", line: 36 },
-      { kind: "branch", condition: "!file", line: 86 },
-      { kind: "error", condition: "loadError", line: 88 },
-      { kind: "loading", condition: "!fileBinaryContent || loading", line: 97 },
-      { kind: "empty", condition: "sheets.length === 0", line: 101 },
-      { kind: "branch", condition: "sheet.truncated", line: 143 },
-      { kind: "branch", condition: "sheets.length === 1", line: 163 },
+      { kind: "branch", condition: "!fileBinaryContent", line: 42 },
+      { kind: "branch", condition: "!file", line: 92 },
+      { kind: "error", condition: "loadError", line: 94 },
+      { kind: "loading", condition: "!fileBinaryContent || loading", line: 103 },
+      { kind: "empty", condition: "sheets.length === 0", line: 107 },
+      { kind: "branch", condition: "sheet.truncated", line: 157 },
+      { kind: "branch", condition: "sheets.length === 1", line: 177 },
     ],
   },
   "modules/file/viewers/tabular/body": {
