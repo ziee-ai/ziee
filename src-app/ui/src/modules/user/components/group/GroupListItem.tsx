@@ -1,6 +1,5 @@
 import { Trash2, Pencil, Users, User } from 'lucide-react'
 import {
-  Badge,
   Button,
   Card,
   Confirm,
@@ -140,10 +139,15 @@ export function GroupListItem({
                 <Users aria-hidden="true" />
                 <Text className="font-medium">{group.name}</Text>
                 {group.is_system && <Tag variant="outline" tone="warning" data-testid={`user-group-system-tag-${group.id}`}>System</Tag>}
-                <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                  <Badge color={group.is_active ? 'green' : 'red'} data-testid={`user-group-active-badge-${group.id}`} />
-                  <Text data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</Text>
-                </span>
+                {/* State pill carries its state color (Spec C): Active = green
+                    fill (success), Inactive = muted (default). No flat gray
+                    "state pill" that reads the same for both states. */}
+                <Tag
+                  tone={group.is_active ? 'success' : 'default'}
+                  data-testid={`user-group-active-badge-${group.id}`}
+                >
+                  <span data-testid={`user-group-status-text-${group.id}`}>{group.is_active ? 'Active' : 'Inactive'}</span>
+                </Tag>
               </Flex>
             </div>
             <div className={'flex flex-wrap gap-1 items-center justify-end'}>
