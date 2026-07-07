@@ -207,9 +207,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 67 |
-| branch | `'type' in it && it.type === 'label'` | 69 |
-| branch | `(it as { icon?: React.ReactNode }).icon != null` | 87 |
+| branch | `'type' in it && it.type === 'divider'` | 72 |
+| branch | `'type' in it && it.type === 'label'` | 74 |
+| branch | `(it as { icon?: React.ReactNode }).icon != null` | 92 |
 
 ### `components/ui/kit/empty`
 
@@ -345,8 +345,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `hover` | 38 |
-| branch | `title != null` | 41 |
+| branch | `hover` | 45 |
+| branch | `title != null` | 48 |
 
 ### `components/ui/kit/progress`
 

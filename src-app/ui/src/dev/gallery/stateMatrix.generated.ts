@@ -158,9 +158,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/dropdown",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 67 },
-      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 69 },
-      { kind: "branch", condition: "(it as { icon?: React.ReactNode }).icon != null", line: 87 },
+      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 72 },
+      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 74 },
+      { kind: "branch", condition: "(it as { icon?: React.ReactNode }).icon != null", line: 92 },
     ],
   },
   "components/ui/kit/empty": {
@@ -285,8 +285,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/popover",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "hover", line: 38 },
-      { kind: "branch", condition: "title != null", line: 41 },
+      { kind: "branch", condition: "hover", line: 45 },
+      { kind: "branch", condition: "title != null", line: 48 },
     ],
   },
   "components/ui/kit/progress": {
