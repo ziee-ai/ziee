@@ -40,19 +40,45 @@ impl Assets {
     }
 }
 
-/// Serve embedded static files with SPA fallback
+// Cache-Control for content-hashed build assets: everything Vite emits under
+// `assets/` carries a content hash in its filename (`index-WiM5Va7E.js`), so the
+// URL changes whenever the bytes change — safe to cache forever + `immutable`
+// (the browser won't even revalidate). A new deploy ships new filenames.
+const IMMUTABLE_CACHE: &str = "public, max-age=31536000, immutable";
+// `index.html` (and the SPA fallback) is NOT hashed and points at the current
+// asset filenames, so it must always be revalidated or a client would keep
+// booting an old bundle after a deploy.
+const HTML_CACHE: &str = "no-cache";
+
+/// Serve embedded static files with SPA fallback.
 ///
-/// - Serves exact file matches from embedded assets
-/// - Falls back to index.html for unknown routes (SPA behavior)
+/// - Serves exact file matches from embedded assets, with a long-lived
+///   `immutable` `Cache-Control` for content-hashed `assets/*` files and
+///   `no-cache` for the (unhashed) HTML entrypoint.
+/// - Falls back to `index.html` for unknown routes (SPA behavior).
+///
+/// Compression (br/gzip) is applied by the `CompressionLayer` wrapping this
+/// handler at the router seam (see `backend/mod.rs`), so responses are
+/// negotiated per the request's `Accept-Encoding` without this handler having
+/// to pre-compress. This path serves the Remote Access tunnel (the local Tauri
+/// webview loads assets over the `tauri://` protocol), where both caching and
+/// compression matter most.
 pub async fn serve_embedded_files(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
     // Try the exact path first
     if let Some(content) = Assets::get_file(path) {
         let mime = mime_guess::from_path(path).first_or_octet_stream();
+        // Hashed build assets live under `assets/`; the HTML entry does not.
+        let cache_control = if path.starts_with("assets/") {
+            IMMUTABLE_CACHE
+        } else {
+            HTML_CACHE
+        };
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, mime.as_ref())
+            .header(header::CACHE_CONTROL, cache_control)
             .body(Body::from(content.data.into_owned()))
             .unwrap();
     }
@@ -62,6 +88,7 @@ pub async fn serve_embedded_files(uri: Uri) -> impl IntoResponse {
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "text/html")
+            .header(header::CACHE_CONTROL, HTML_CACHE)
             .body(Body::from(content.data.into_owned()))
             .unwrap();
     }

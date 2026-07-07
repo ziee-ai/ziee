@@ -114,7 +114,7 @@ axum = { version = "0.8.4", features = ["macros", "multipart"] }
 aide = { version = "0.15", features = ["axum", "axum-json", "axum-extra-json-deserializer", "axum-extra-query", "axum-extra", "axum-extra-headers", "axum-multipart", "axum-query", "macros", "redoc"] }
 schemars = { version = "0.9.0", features = ["chrono04", "uuid1"] }
 tower = "0.5"
-tower-http = { version = "0.6.2", features = ["cors", "timeout", "set-header"] }
+tower-http = { version = "0.6.2", features = ["cors", "timeout", "set-header", "compression-br", "compression-gzip"] }
 
 # HTML extraction (web_search page fetch) — readability-style main-content
 # extraction (dom_smoothie, a Mozilla Readability port) + HTML→markdown

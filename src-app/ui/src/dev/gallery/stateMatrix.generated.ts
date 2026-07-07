@@ -1427,10 +1427,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/shared/RawCodeView",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!filename", line: 45 },
-      { kind: "branch", condition: "cancelled", line: 135 },
-      { kind: "branch", condition: "cancelled", line: 141 },
-      { kind: "branch", condition: "truncated", line: 165 },
+      { kind: "branch", condition: "!filename", line: 47 },
+      { kind: "branch", condition: "cancelled", line: 146 },
+      { kind: "branch", condition: "cancelled", line: 152 },
+      { kind: "branch", condition: "truncated", line: 176 },
     ],
   },
   "modules/file/viewers/shared/chrome": {
