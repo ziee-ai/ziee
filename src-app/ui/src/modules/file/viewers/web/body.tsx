@@ -1,7 +1,9 @@
 import { Spin } from '@/components/ui'
+import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { RawCodeView } from '../shared/RawCodeView'
+import { FindableRegion } from '../shared/find/FindableRegion'
 
 export function WebBody(props: FileViewerSlotProps) {
   // Web viewer is not inline-capable (XSS surface; deferred). Type guard
@@ -10,12 +12,19 @@ export function WebBody(props: FileViewerSlotProps) {
   const { file } = props
   const content = useFileTextContent(file)
   const mode = useFileViewMode(file.id)
+  const wordWrap = Stores.File.fileWordWrap.get(file.id) ?? false
 
   if (content === null) {
     return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
   }
   if (mode === 'raw') {
-    return <RawCodeView text={content} />
+    // Find/word-wrap operate on the raw source (the rendered branch below is a
+    // sandboxed iframe — a separate document our highlight can't reach).
+    return (
+      <FindableRegion fileId={file.id}>
+        <RawCodeView text={content} filename={file.filename} wordWrap={wordWrap} />
+      </FindableRegion>
+    )
   }
   // sandbox WITHOUT allow-scripts. Both file types (HTML and SVG) render
   // their visual content declaratively; script execution would be a real
