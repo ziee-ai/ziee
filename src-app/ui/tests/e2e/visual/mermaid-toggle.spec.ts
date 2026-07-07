@@ -1,21 +1,44 @@
 /**
- * Mermaid code⇄render toggle — behavioral e2e against the component gallery
- * (backend-free `/gallery.html`). Drives the real `MermaidBlock` renderer through
- * the `mermaid-block` story cases (render / source / error / streaming) so the
- * real `mermaid` package renders a real `<svg>` in the browser.
+ * Mermaid code⇄render toggle — behavioral e2e against the backend-free gallery.
+ *
+ * Two surfaces:
+ *  - the isolated `deep-chat-rendering-showcase` deep-state (a REAL
+ *    ConversationPage that renders a mermaid fence through the production chat
+ *    path: TextContent → Streamdown → our `plugins.renderers` MermaidBlock). This
+ *    surface has no gallery overlay backdrops, so the controls are clickable —
+ *    the interactive tests (render / toggle / copy / download) run here and thus
+ *    prove the real chat integration.
+ *  - the `mermaid-block` component story (render / source / error / streaming
+ *    cases), used for the visibility-only state assertions (both-modes +
+ *    edge-state exercise); the browse-all-stories view carries open-overlay
+ *    backdrops so it is only asserted against, never clicked.
  *
  * Closes AFFORDANCE_MATRIX G1 (source⇄render toggle) + G2 (copy source) + the
  * download-SVG rider. Lifecycle: .lifecycle/mermaid-toggle (TEST-1..6).
  */
 import { readFile } from 'node:fs/promises'
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { openGallery } from './_gallery'
 
+const SHOWCASE = '/gallery.html?surface=deep-chat-rendering-showcase&theme=light'
 const SECTION = 'gallery-section-mermaid-block'
 const caseId = (k: string) => `gallery-case-mermaid-block-${k}`
 // Async mermaid render (lazy import + parse + layout) can take a beat on a cold
-// Vite server.
-const RENDER_TIMEOUT = 20_000
+// Vite server; the deep-state also has to load its conversation first.
+const RENDER_TIMEOUT = 25_000
+
+/**
+ * Open the real-chat showcase surface and return its (single) rendered mermaid
+ * block, once the diagram SVG is on screen.
+ */
+async function openShowcaseBlock(page: Page) {
+  await page.goto(SHOWCASE)
+  const block = page.locator('[data-streamdown="mermaid-block"]').first()
+  await block
+    .locator('[data-testid="mermaid-diagram"] svg')
+    .waitFor({ state: 'visible', timeout: RENDER_TIMEOUT })
+  return block
+}
 
 test.describe('Mermaid code⇄render toggle', () => {
   let pageErrors: string[]
@@ -23,45 +46,38 @@ test.describe('Mermaid code⇄render toggle', () => {
   test.beforeEach(async ({ page }) => {
     pageErrors = []
     page.on('pageerror', e => pageErrors.push(String(e)))
-    await openGallery(page, 'light', 'blue')
-    await page.getByTestId(SECTION).scrollIntoViewIfNeeded()
   })
 
-  test('TEST-1: renders the diagram by default (real svg)', async ({ page }) => {
-    const card = page
-      .getByTestId(caseId('render'))
-      .locator('[data-streamdown="mermaid-block"]')
-    await expect(card).toBeVisible()
-    await expect(
-      card.locator('[data-testid="mermaid-diagram"] svg'),
-    ).toBeVisible({ timeout: RENDER_TIMEOUT })
+  test('TEST-1: renders the diagram by default via the real chat path', async ({ page }) => {
+    const block = await openShowcaseBlock(page)
+    await expect(block).toBeVisible()
+    await expect(block.locator('[data-testid="mermaid-diagram"] svg')).toBeVisible()
   })
 
   test('TEST-2: toggle flips render↔source', async ({ page }) => {
-    const scope = page.getByTestId(caseId('render'))
-    await expect(
-      scope.locator('[data-testid="mermaid-diagram"] svg'),
-    ).toBeVisible({ timeout: RENDER_TIMEOUT })
+    const block = await openShowcaseBlock(page)
 
     // Default = Diagram selected.
-    await expect(
-      scope.getByTestId('mermaid-source-toggle-opt-render'),
-    ).toHaveAttribute('data-state', 'on')
+    await expect(block.getByTestId('mermaid-source-toggle-opt-render')).toHaveAttribute(
+      'data-state',
+      'on',
+    )
 
     // Flip to Source → raw source shows, diagram gone.
-    await scope.getByTestId('mermaid-source-toggle-opt-source').click()
-    await expect(scope.getByTestId('mermaid-source-view')).toBeVisible()
-    await expect(scope.getByTestId('mermaid-source-view')).toContainText('graph TD')
-    await expect(scope.locator('[data-testid="mermaid-diagram"]')).toHaveCount(0)
+    await block.getByTestId('mermaid-source-toggle-opt-source').click()
+    await expect(block.getByTestId('mermaid-source-view')).toBeVisible()
+    await expect(block.getByTestId('mermaid-source-view')).toContainText('graph TD')
+    await expect(block.locator('[data-testid="mermaid-diagram"]')).toHaveCount(0)
 
     // Flip back to Diagram → svg returns.
-    await scope.getByTestId('mermaid-source-toggle-opt-render').click()
-    await expect(
-      scope.locator('[data-testid="mermaid-diagram"] svg'),
-    ).toBeVisible()
+    await block.getByTestId('mermaid-source-toggle-opt-render').click()
+    await expect(block.locator('[data-testid="mermaid-diagram"] svg')).toBeVisible()
   })
 
   test('TEST-3: invalid diagram → inline error; streaming → placeholder', async ({ page }) => {
+    await openGallery(page, 'light', 'blue')
+    await page.getByTestId(SECTION).scrollIntoViewIfNeeded()
+
     const err = page.getByTestId(caseId('error'))
     await expect(err.getByTestId('mermaid-error')).toBeVisible({ timeout: RENDER_TIMEOUT })
     await expect(err.locator('[data-testid="mermaid-diagram"]')).toHaveCount(0)
@@ -79,39 +95,37 @@ test.describe('Mermaid code⇄render toggle', () => {
     context,
   }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    const scope = page.getByTestId(caseId('render'))
-    await scope.getByTestId('mermaid-copy-source-btn').click()
+    const block = await openShowcaseBlock(page)
+    await block.getByTestId('mermaid-copy-source-btn').click()
     const copied = await page.evaluate(() => navigator.clipboard.readText())
     expect(copied).toContain('graph TD')
     expect(copied).toContain('B{Decision}')
   })
 
-  test('TEST-5: download-svg disabled while streaming, enabled + downloads after render', async ({
+  test('TEST-5: download-svg disabled while streaming, enabled + downloads real SVG', async ({
     page,
   }) => {
+    // Disabled state — read on the story's streaming case (an attribute check,
+    // no click, so the browse-view overlay backdrops don't matter).
+    await openGallery(page, 'light', 'blue')
     await expect(
       page.getByTestId(caseId('streaming')).getByTestId('mermaid-download-svg-btn'),
     ).toBeDisabled()
 
-    const scope = page.getByTestId(caseId('render'))
-    await expect(
-      scope.locator('[data-testid="mermaid-diagram"] svg'),
-    ).toBeVisible({ timeout: RENDER_TIMEOUT })
-    const dlBtn = scope.getByTestId('mermaid-download-svg-btn')
+    // Enabled + real download — on the clickable showcase surface.
+    const block = await openShowcaseBlock(page)
+    const dlBtn = block.getByTestId('mermaid-download-svg-btn')
     await expect(dlBtn).toBeEnabled()
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      dlBtn.click(),
-    ])
+    const [download] = await Promise.all([page.waitForEvent('download'), dlBtn.click()])
     expect(download.suggestedFilename()).toMatch(/\.svg$/)
     // Prove the download carries the real rendered SVG, not an empty/broken blob.
     const path = await download.path()
-    const bytes = await readFile(path, 'utf8')
-    expect(bytes).toContain('<svg')
+    expect(await readFile(path, 'utf8')).toContain('<svg')
   })
 
-  test('TEST-6: all four cases reach their expected terminal state', async ({ page }) => {
+  test('TEST-6: all four story cases reach their expected terminal state', async ({ page }) => {
+    await openGallery(page, 'light', 'blue')
+    await page.getByTestId(SECTION).scrollIntoViewIfNeeded()
     await expect(
       page.getByTestId(caseId('render')).locator('[data-testid="mermaid-diagram"] svg'),
     ).toBeVisible({ timeout: RENDER_TIMEOUT })
