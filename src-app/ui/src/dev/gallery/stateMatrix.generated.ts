@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 314 surfaces carry renderable-state signals; 1722 signals total.
+// 315 surfaces carry renderable-state signals; 1740 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -391,11 +391,26 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/table",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "v == null || typeof v === 'boolean'", line: 53 },
-      { kind: "branch", condition: "props.virtualized && !busy && (props.dataSource?.length ?? 0) > 0", line: 63 },
-      { kind: "branch", condition: "caption != null", line: 74 },
-      { kind: "branch", condition: "busy", line: 85 },
-      { kind: "empty", condition: "dataSource.length === 0", line: 93 },
+      { kind: "branch", condition: "v == null || typeof v === 'boolean'", line: 116 },
+      { kind: "branch", condition: "!active", line: 148 },
+      { kind: "branch", condition: "view.sort!.dir === 'asc'", line: 149 },
+      { kind: "branch", condition: "meta.sortable", line: 152 },
+      { kind: "branch", condition: "props.filterable", line: 220 },
+      { kind: "branch", condition: "props.columnChooser && hideable.length > 0", line: 232 },
+      { kind: "branch", condition: "target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'", line: 310 },
+      { kind: "branch", condition: "!tsv", line: 312 },
+      { kind: "branch", condition: "showVirtual", line: 323 },
+      { kind: "branch", condition: "hasToolbar", line: 334 },
+      { kind: "branch", condition: "idx == null || idx < 0 || idx >= rows.length", line: 365 },
+      { kind: "branch", condition: "caption != null", line: 375 },
+      { kind: "branch", condition: "resizableTable", line: 376 },
+      { kind: "branch", condition: "meta.resizable", line: 396 },
+      { kind: "branch", condition: "busy", line: 403 },
+      { kind: "empty", condition: "rows.length === 0", line: 411 },
+      { kind: "branch", condition: "meta.resizable", line: 522 },
+      { kind: "branch", condition: "mode === 'none'", line: 572 },
+      { kind: "branch", condition: "(props.selectionMode ?? 'none') === 'none'", line: 577 },
+      { kind: "branch", condition: "!selectionActive(props, col)", line: 584 },
     ],
   },
   "components/ui/kit/tabs": {
@@ -1445,20 +1460,29 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/DelimitedTable",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "truncated", line: 114 },
+      { kind: "branch", condition: "idx < 0", line: 155 },
+      { kind: "branch", condition: "truncated", line: 194 },
+    ],
+  },
+  "modules/file/viewers/tabular/ExpandableCell": {
+    surface: "modules/file/viewers/tabular/ExpandableCell",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "value.length <= EXPAND_THRESHOLD", line: 14 },
     ],
   },
   "modules/file/viewers/tabular/XlsxBody": {
     surface: "modules/file/viewers/tabular/XlsxBody",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "!fileBinaryContent", line: 42 },
-      { kind: "branch", condition: "!file", line: 92 },
-      { kind: "error", condition: "loadError", line: 94 },
-      { kind: "loading", condition: "!fileBinaryContent || loading", line: 103 },
-      { kind: "empty", condition: "sheets.length === 0", line: 107 },
-      { kind: "branch", condition: "sheet.truncated", line: 157 },
-      { kind: "branch", condition: "sheets.length === 1", line: 177 },
+      { kind: "branch", condition: "idx < 0", line: 117 },
+      { kind: "branch", condition: "sheet.truncated", line: 153 },
+      { kind: "branch", condition: "!fileBinaryContent", line: 208 },
+      { kind: "branch", condition: "!file", line: 258 },
+      { kind: "error", condition: "loadError", line: 260 },
+      { kind: "loading", condition: "!fileBinaryContent || loading", line: 269 },
+      { kind: "empty", condition: "sheets.length === 0", line: 273 },
+      { kind: "branch", condition: "sheets.length === 1", line: 277 },
     ],
   },
   "modules/file/viewers/tabular/body": {
@@ -2537,9 +2561,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["error"],
     signals: [
       { kind: "branch", condition: "row.is_built_in", line: 59 },
-      { kind: "error", condition: "error", line: 109 },
-      { kind: "branch", condition: "expandedCall", line: 125 },
-      { kind: "branch", condition: "expandedCall.error_message", line: 140 },
+      { kind: "error", condition: "error", line: 110 },
+      { kind: "branch", condition: "expandedCall", line: 132 },
+      { kind: "branch", condition: "expandedCall.error_message", line: 147 },
     ],
   },
   "modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer": {
@@ -2647,7 +2671,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error && entries.length === 0", line: 52 },
       { kind: "loading", condition: "loading", line: 60 },
       { kind: "empty", condition: "entries.length === 0", line: 64 },
-      { kind: "branch", condition: "v", line: 135 },
+      { kind: "branch", condition: "v", line: 138 },
     ],
   },
   "modules/memory/components/sections/CoreMemorySection": {

@@ -284,6 +284,8 @@ export const GALLERY_COVERAGE = {
   "modules/file/viewers/shared/RawCodeView": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/shared/chrome": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/tabular/DelimitedTable": { kind: 'via', reason: 'rendered within the file module page' },
+  "modules/file/viewers/tabular/ExpandableCell": { kind: 'via', reason: 'rendered within the tabular viewer' },
+  "modules/file/viewers/tabular/TabularToolbar": { kind: 'via', reason: 'rendered within the tabular viewer' },
   "modules/file/viewers/tabular/XlsxBody": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/tabular/body": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/tabular/header": { kind: 'via', reason: 'rendered within the file module page' },

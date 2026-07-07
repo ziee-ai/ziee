@@ -68,6 +68,9 @@ export function AuditLogSection() {
           data-testid="memory-audit-table"
           dataSource={entries}
           rowKey="id"
+          sortable
+          filterable
+          filterPlaceholder="Filter audit log…"
           columns={[
             {
               key: 'created_at',

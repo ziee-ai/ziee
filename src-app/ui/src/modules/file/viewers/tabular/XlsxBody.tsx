@@ -1,11 +1,22 @@
-import { useState, useEffect } from 'react'
-import { Spin, Alert, Text } from '@/components/ui'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Spin, Alert, Text, message } from '@/components/ui'
 import { Tabs } from '@/components/ui/kit/tabs'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
+import { detectNumericColumns } from '@/components/ui/kit/table-view-core'
 import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'
 import type { FileViewerSlotProps } from '../../types/viewer'
+import { ExpandableCell } from './ExpandableCell'
+import { TabularToolbar } from './TabularToolbar'
+import {
+  type ExportColumn,
+  type TabularRecord,
+  downloadBlob,
+  exportFilename,
+  rowsToDelimited,
+  viewToXlsxBlob,
+} from './tableView'
 
 /** Above this row count a sheet switches to row virtualization (needs a definite
  *  scroll height); at/below it renders a plain table that hugs its content, so a
@@ -23,6 +34,161 @@ const MAX_ROWS = 10_000
 const ROW_NUM_WIDTH = 56
 const COL_WIDTH = 240
 
+export interface Sheet {
+  name: string
+  headers: string[]
+  rows: string[][]
+  truncated: boolean
+}
+
+// One sheet's grid — owns its own view state (sort/filter/selection) + toolbar,
+// so switching tabs keeps each sheet independent. Mirrors DelimitedTable.
+// Exported for the gallery (renderable from a plain `sheet` prop, no binary).
+export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string }) {
+  const { columns, dataSource, exportColumns } = useMemo(() => {
+    const colKeys = sheet.headers.map((_, i) => String(i))
+    const rowNumberColumn: TableColumn<TabularRecord> = {
+      title: '#',
+      dataIndex: '__rn',
+      key: '__rn',
+      width: ROW_NUM_WIDTH,
+      align: 'right',
+      rowHeader: true,
+      render: (record: TabularRecord) => (
+        <span style={{ opacity: 0.5, fontVariantNumeric: 'tabular-nums' }}>
+          {record.__rn}
+        </span>
+      ),
+    }
+    const dataSource: TabularRecord[] = sheet.rows.map((row, ri) => {
+      const record: TabularRecord = { key: String(ri), __rn: String(ri + 1) }
+      for (let i = 0; i < colKeys.length; i++) {
+        record[colKeys[i]] = String(row[i] ?? '')
+      }
+      return record
+    })
+    const numericKeys = detectNumericColumns(
+      dataSource,
+      colKeys.map(k => ({ key: k, dataIndex: k })),
+    )
+    const dataColumns: TableColumn<TabularRecord>[] = sheet.headers.map((h, i) => {
+      const key = colKeys[i]
+      const numeric = numericKeys.has(key)
+      const col: TableColumn<TabularRecord> = {
+        title: h || `Column ${i + 1}`,
+        dataIndex: key,
+        key,
+        width: COL_WIDTH,
+        sortable: true,
+        hideable: true,
+        numeric,
+        ellipsis: numeric,
+      }
+      if (!numeric) {
+        col.render = (record: TabularRecord) => (
+          <ExpandableCell value={record[key] ?? ''} testid={`file-xlsx-cell-${sheet.name}-${key}`} />
+        )
+      }
+      return col
+    })
+    const columns = [rowNumberColumn, ...dataColumns]
+    const exportColumns: ExportColumn[] = sheet.headers.map((h, i) => ({
+      key: colKeys[i],
+      title: h || `Column ${i + 1}`,
+    }))
+    return { columns, dataSource, exportColumns }
+  }, [sheet])
+
+  const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
+  const viewRef = useRef<TabularRecord[]>(dataSource)
+  const [viewCount, setViewCount] = useState(dataSource.length)
+  const selectionRef = useRef('')
+  const [scrollTo, setScrollTo] = useState<number | null>(null)
+  const titleByKey = useMemo(
+    () => new Map(exportColumns.map(c => [c.key, c.title])),
+    [exportColumns],
+  )
+  const visibleKeysRef = useRef<string[]>(exportColumns.map(c => c.key))
+  const activeColumns = (): ExportColumn[] =>
+    visibleKeysRef.current.map(k => ({ key: k, title: titleByKey.get(k) ?? k }))
+
+  const onJump = (rowNumber: number) => {
+    const idx = viewRef.current.findIndex(r => r.__rn === String(rowNumber))
+    if (idx < 0) {
+      message.error(`Row ${rowNumber} is not in the current view`)
+      return
+    }
+    setScrollTo(null)
+    requestAnimationFrame(() => setScrollTo(idx))
+  }
+
+  const onCopy = async () => {
+    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, activeColumns(), '\t')
+    try {
+      await navigator.clipboard.writeText(tsv)
+      message.success('Copied to clipboard')
+    } catch {
+      message.error('Failed to copy')
+    }
+  }
+
+  const onExport = async () => {
+    try {
+      const blob = await viewToXlsxBlob(viewRef.current, activeColumns(), sheet.name)
+      downloadBlob(blob, exportFilename(fileName, 'xlsx'))
+    } catch {
+      message.error('Failed to export sheet')
+    }
+  }
+
+  return (
+    // Plain (small) sheet hugs its content; a virtualized (large) sheet
+    // supplies its own definite scroll height (see DelimitedTable).
+    <div
+      className={cn(
+        'flex flex-col w-full',
+        virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
+      )}
+    >
+      {sheet.truncated && (
+        <Alert
+          tone="warning"
+          title={`Showing first ${MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
+          className="mb-2 flex-shrink-0"
+          data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
+        />
+      )}
+      <TabularToolbar
+        testidPrefix={`file-xlsx-${sheet.name}`}
+        total={dataSource.length}
+        viewCount={viewCount}
+        onJump={onJump}
+        onCopy={onCopy}
+        onExport={onExport}
+        exportLabel="Export XLSX"
+      />
+      {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+      <Table
+        virtualized={virtualized}
+        columns={columns}
+        dataSource={dataSource}
+        rowKey="key"
+        sortable
+        filterable
+        resizable
+        columnChooser
+        selectionMode="cell"
+        sanitizeClipboard
+        filterPlaceholder="Filter rows…"
+        onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns }}
+        onSelectionChange={tsv => { selectionRef.current = tsv }}
+        scrollToIndex={scrollTo}
+        data-testid={`file-xlsx-table-${sheet.name}`}
+      />
+    </div>
+  )
+}
+
 export function XlsxBody(props: FileViewerSlotProps) {
   // XLSX is not inline-capable (binary parse + heavy bundle). Guard for
   // type-narrowing; chat dispatcher won't reach here for source-shaped props.
@@ -34,7 +200,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
   if (file && fileBinaryContent === null) {
     Stores.File.getFileBinaryContent(file.id, file)
   }
-  const [sheets, setSheets] = useState<{ name: string; headers: string[]; rows: string[][]; truncated: boolean }[]>([])
+  const [sheets, setSheets] = useState<Sheet[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -108,72 +274,6 @@ export function XlsxBody(props: FileViewerSlotProps) {
     return <div className="flex items-center justify-center py-8"><Text type="secondary">No data found</Text></div>
   }
 
-  const renderSheet = (sheet: { name: string; headers: string[]; rows: string[][]; truncated: boolean }) => {
-    // Row-number gutter column — matches the CSV/TSV view for
-    // visual consistency. kit Table has no fixed/sticky column support,
-    // so the gutter scrolls with the rest of the sheet.
-    //
-    // kit column render signature is (record, index) — no leading value arg.
-    const colKeys = sheet.headers.map((_, i) => String(i))
-    const rowNumberColumn: TableColumn<Record<string, string>> = {
-      title: '#',
-      dataIndex: '__rn',
-      key: '__rn',
-      width: ROW_NUM_WIDTH,
-      align: 'right',
-      render: (record: Record<string, string>) => (
-        <span style={{ opacity: 0.5, fontVariantNumeric: 'tabular-nums' }}>
-          {record.__rn}
-        </span>
-      ),
-    }
-    const dataColumns: TableColumn<Record<string, string>>[] = sheet.headers.map((h, i) => ({
-      title: h || `Column ${i + 1}`,
-      dataIndex: colKeys[i],
-      key: colKeys[i],
-      width: COL_WIDTH,
-    }))
-    const columns = [rowNumberColumn, ...dataColumns]
-    const dataSource = sheet.rows.map((row, ri) => {
-      const record: Record<string, string> = {
-        key: String(ri),
-        __rn: String(ri + 1),
-      }
-      for (let i = 0; i < colKeys.length; i++) {
-        record[colKeys[i]] = String(row[i] ?? '')
-      }
-      return record
-    })
-    const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
-    return (
-      // Plain (small) sheet hugs its content; a virtualized (large) sheet
-      // supplies its own definite scroll height (see DelimitedTable).
-      <div
-        className={cn(
-          'flex flex-col w-full',
-          virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
-        )}
-      >
-        {sheet.truncated && (
-          <Alert
-            tone="warning"
-            title={`Showing first ${MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
-            className="mb-2 flex-shrink-0"
-            data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
-          />
-        )}
-        {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
-        <Table
-          virtualized={virtualized}
-          columns={columns}
-          dataSource={dataSource}
-          rowKey="key"
-          data-testid={`file-xlsx-table-${sheet.name}`}
-        />
-      </div>
-    )
-  }
-
   if (sheets.length === 1) {
     // A single-sheet workbook renders no tab bar (nothing to switch between),
     // but the viewer root still carries `file-xlsx-tabs` so the same selector
@@ -181,7 +281,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
     // root already forwards this testid in the multi-sheet branch below.)
     return (
       <div className="flex flex-col w-full" data-testid="file-xlsx-tabs">
-        {renderSheet(sheets[0])}
+        <XlsxSheet sheet={sheets[0]} fileName={file.filename} />
       </div>
     )
   }
@@ -202,7 +302,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
           label: sheet.name,
           children: (
             <div className="flex flex-col min-h-0 overflow-hidden h-full">
-              {renderSheet(sheet)}
+              <XlsxSheet sheet={sheet} fileName={file.filename} />
             </div>
           ),
         }))}

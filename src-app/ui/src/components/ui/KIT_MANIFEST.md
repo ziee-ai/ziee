@@ -1247,17 +1247,30 @@ _No always-required props._
 | `dataSource` | `T[]` |  |
 | `rowKey` | `(keyof T & string) | ((record: T, index: number) => string)` | Row key: a record field name (legacy string form) or a function. |
 
-<details><summary>Optional props (8)</summary>
+<details><summary>Optional props (21)</summary>
 
 | prop | type | notes |
 |---|---|---|
 | `caption` | `ReactNode` |  |
 | `className` | `string | undefined` |  |
+| `columnChooser` | `boolean | undefined` | Toolbar column-chooser (show/hide hideable columns). |
+| `defaultSort` | `SortState | null | undefined` | Initial sort. |
+| `detectNumericColumns` | `boolean | undefined` | Auto-detect all-numeric columns → right-align + tabular-nums. |
 | `empty` | `ReactNode` |  |
 | `estimateRowHeight` | `number | undefined` | Estimated row height (px) for the virtualizer; real heights are measured. |
+| `filterable` | `boolean | undefined` | Render a toolbar search input; rows are filtered by case-insensitive substring across visible columns. |
+| `filterPlaceholder` | `string | undefined` | Placeholder for the filter input. |
 | `loading` | `boolean | undefined` | Own loading → in-place skeleton rows. Region loading (surface) → skeleton too. |
 | `maxHeight` | `string | undefined` | Max height (CSS length) of the virtualized scroll box; short tables shrink to fit, taller ones cap here and scroll. Default `min(60vh, 36… |
+| `onCopy` | `((tsv: string) => void) | undefined` | Called with the copied TSV after a selection copy. |
 | `onRowClick` | `((record: T, index: number) => void) | undefined` |  |
+| `onSelectionChange` | `((tsv: string) => void) | undefined` | Called (from an effect) with the current selection serialised to TSV (empty string when nothing is selected) — lets an external "Copy" bu… |
+| `onViewChange` | `((view: T[], meta: { visibleColumns: string[]; }) => void) | undefined` | Called (from an effect) with the current filtered+sorted view whenever it changes, plus the currently-visible (non-gutter) column keys — … |
+| `resizable` | `boolean | undefined` | Column-drag resize handles + a `<colgroup>`/fixed layout in the plain path. |
+| `sanitizeClipboard` | `boolean | undefined` | Neutralize spreadsheet formulas (=,+,-,@) in copied/serialised TSV so an untrusted cell can't execute when pasted into Excel/Sheets. |
+| `scrollToIndex` | `number | null | undefined` | View-relative index to scroll into view (virtual: scrollToIndex; plain: scrollIntoView). Change the value to trigger a scroll. |
+| `selectionMode` | `"row" | "none" | "cell" | undefined` | Cell/row selection + copy. `'cell'` selects single cells + rows (via a rowHeader column); `'row'` selects rows only. Ctrl/Cmd+C copies as… |
+| `sortable` | `boolean | undefined` | Clickable sort on every column that doesn't set `sortable:false`. |
 | `virtualized` | `boolean | undefined` | Row-virtualize the body (only visible rows mount) for large data sets. Requires a bounded-height scroll ancestor (the kit ScrollArea / an… |
 
 </details>
