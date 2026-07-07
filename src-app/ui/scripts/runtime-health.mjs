@@ -364,6 +364,17 @@ async function main() {
   for (const slug of classes.seeded)
     cells.push({ surface: slug, state: 'seeded', kind: 'seeded' })
 
+  // Optional scoping: `--only-kinds=overlay` (comma-list) restricts the run to
+  // one or more surface classes; `--only-match=<substr>` restricts to slugs
+  // containing the substring. Lets an overlay-focused pass skip the ~300 pages.
+  const onlyKinds = arg('only-kinds', '').split(',').filter(Boolean)
+  const onlyMatch = arg('only-match', '')
+  let scoped = cells
+  if (onlyKinds.length) scoped = scoped.filter(c => onlyKinds.includes(c.kind))
+  if (onlyMatch) scoped = scoped.filter(c => c.surface.includes(onlyMatch))
+  cells.length = 0
+  cells.push(...scoped)
+
   console.log(
     `runtime-health: ${classes.pages.length} pages × ${STATES.length} states + ${classes.overlays.length} overlays + ${classes.deep.length} deep + ${classes.seeded.length} seeded = ${cells.length} surface/state cells × ${THEMES.length} themes\n`,
   )

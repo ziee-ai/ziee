@@ -195,7 +195,7 @@ function PageFrame({
  *  then renders the component (which portals its Sheet/Dialog to the body). */
 function OverlayFrame({ entry }: { entry: OverlayEntry }) {
   useEffect(() => {
-    entry.open()
+    entry.open?.()
   }, [entry])
   // Overlays portal on mount; give the recipe a moment for the portal to paint.
   useRunInteraction(entry.interactions, 700)
