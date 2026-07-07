@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert } from '@/components/ui'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
-import {
-  codeToHtml,
-  type BundledLanguage,
-  bundledLanguages,
-  type ShikiTransformer,
-} from 'shiki'
+import type { BundledLanguage, ShikiTransformer } from 'shiki'
 import { useTheme } from '@/hooks/useTheme'
+
+// Lazy-load the shiki highlighter core (~90 KB, plus the bundled-grammar table)
+// so it stays OUT of the initial entry chunk — it only loads when a code file is
+// actually viewed. Module-level promise cache so repeated views reuse one import.
+let shikiPromise: Promise<typeof import('shiki')> | null = null
+function loadShiki(): Promise<typeof import('shiki')> {
+  if (!shikiPromise) shikiPromise = import('shiki')
+  return shikiPromise
+}
 
 /** Cap on rendered lines. Above this, the file is truncated to the first
  *  N and a banner offers Download for full content. The wider 10 MB
@@ -39,16 +43,16 @@ const EXT_TO_LANG: Record<string, BundledLanguage> = {
   conf: 'ini',
 }
 
-const BUNDLED_LANG_NAMES = new Set(Object.keys(bundledLanguages))
-
-function inferLang(filename?: string): BundledLanguage | null {
+function inferLang(filename?: string): string | null {
   if (!filename) return null
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
   if (ext in EXT_TO_LANG) return EXT_TO_LANG[ext]
-  // The raw extension may itself be a valid shiki language id
-  // (json, css, html, sql, java, c, cpp, php, swift, go, dart, etc.).
-  if (BUNDLED_LANG_NAMES.has(ext)) return ext as BundledLanguage
-  return null
+  // The raw extension may itself be a valid shiki language id (json, css, sql,
+  // java, c, cpp, php, swift, go, dart, …). We can no longer check the bundled-
+  // language table synchronously (it lives behind the lazy shiki import), so we
+  // return the ext as a candidate and validate it against `bundledLanguages`
+  // inside the async highlight below — an unknown id falls back to plain text.
+  return ext || null
 }
 
 /** Shiki transformer — for each `<span class="line">` it emits,
@@ -126,11 +130,18 @@ export function RawCodeView({
     // variable mode — the app's theme is user-controlled via
     // ThemeProvider (not OS prefers-color-scheme), so a media-query
     // swap wouldn't reflect manual light/dark toggles.
-    codeToHtml(source, {
-      lang: lang ?? 'text',
-      theme: isDarkMode ? 'github-dark' : 'github-light',
-      transformers: [lineNumberTransformer],
-    })
+    loadShiki()
+      .then(({ codeToHtml, bundledLanguages }) => {
+        // Validate the inferred language against the (now lazily-loaded)
+        // bundled-grammar table; unknown ids render as plain text.
+        const validLang =
+          lang && lang in bundledLanguages ? (lang as BundledLanguage) : 'text'
+        return codeToHtml(source, {
+          lang: validLang,
+          theme: isDarkMode ? 'github-dark' : 'github-light',
+          transformers: [lineNumberTransformer],
+        })
+      })
       .then(out => {
         if (cancelled) return
         setHtml(out)

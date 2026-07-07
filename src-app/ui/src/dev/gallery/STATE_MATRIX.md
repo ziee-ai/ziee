@@ -1584,10 +1584,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!filename` | 45 |
-| branch | `cancelled` | 135 |
-| branch | `cancelled` | 141 |
-| branch | `truncated` | 165 |
+| branch | `!filename` | 47 |
+| branch | `cancelled` | 146 |
+| branch | `cancelled` | 152 |
+| branch | `truncated` | 176 |
 
 ### `modules/file/viewers/shared/chrome`
 

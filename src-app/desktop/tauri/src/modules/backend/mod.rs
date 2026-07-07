@@ -289,11 +289,21 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                 router.fallback(proxy_to_vite)
             };
 
-            // Production: serve embedded static files
+            // Production: serve embedded static files, br/gzip-compressed.
+            // The CompressionLayer is scoped to the static fallback ONLY (not
+            // the API/SSE routes on `router`), and negotiates encoding from the
+            // request's Accept-Encoding. tower-http's DefaultPredicate already
+            // skips already-compressed types + tiny bodies. This shrinks the
+            // ~1.7 MB JS + 210 KB CSS bundle to a fraction on the wire for the
+            // Remote Access tunnel (the local Tauri webview loads over tauri://
+            // and never hits this path).
             #[cfg(not(debug_assertions))]
             let router = {
-                tracing::info!("Production mode: serving embedded static files");
-                router.fallback(static_files::serve_embedded_files)
+                tracing::info!("Production mode: serving embedded static files (br/gzip)");
+                router.fallback_service(
+                    axum::routing::any(static_files::serve_embedded_files)
+                        .layer(tower_http::compression::CompressionLayer::new()),
+                )
             };
 
             router
