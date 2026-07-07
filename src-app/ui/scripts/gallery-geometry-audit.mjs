@@ -9,6 +9,7 @@
  *
  *   A1 zero-gap adjacency   A2 overlap          A3 protrusion
  *   A4 uneven sibling gap    A7 off-grid spacing  A8 row vertical-centering
+ *   A9 peer metric mismatch  A11 border clipped by ancestor
  *   B1 premature wrap/stack  B2 failure-to-wrap  B3 h-overflow
  *   B6 fixed > viewport      B8 mid-word break
  *   C7 indistinguishable roles  C9 icon/label split  C10 icon disproportion
@@ -93,6 +94,7 @@ const CLASS_SEVERITY = {
   A7: 'LOW',
   A8: 'MEDIUM',
   A9: 'MEDIUM',
+  A11: 'MEDIUM', // a bordered side cut by a clipping ancestor's edge (hairline border eaten)
   B1: 'MEDIUM', // per-finding upgraded to HIGH for genuine flex-WRAP-with-room
   B2: 'MEDIUM',
   B3: 'HIGH',
@@ -776,6 +778,94 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
       }
     }
     try { if (active?.focus) active.focus({ preventScroll: true }) } catch { /* */ }
+  }
+
+  // ── A11 element border clipped by a clipping ancestor ────────────────────
+  // Sibling of G7 (reuses the per-axis clipping-ancestor walk): for every element
+  // with a real (opaque, ≥1px) border, compare each bordered side's border-box edge
+  // to the nearest overflow-clipping ancestor's INNER clip rect (padding box minus
+  // scrollbar). If a bordered side sits AT/OUTSIDE that clip edge, the clip cuts the
+  // border stroke → the border is being eaten (the classic "card/control border eaten
+  // by a negative-margin / overflow-hidden container edge").
+  //
+  // The discriminator against a genuinely SCROLLED-OUT element (whose edge is also
+  // "outside" the clip, but is NOT a defect — it's just off-screen content in a
+  // scroll pane) is MAJORITY-VISIBILITY: we only flag an element that is still mostly
+  // inside the clip viewport. A row scrolled thousands of px away is ~0% visible and
+  // is skipped; an element pinned at the edge with its border poking a few px past is
+  // ~full visible and is flagged.
+  if (run('A11')) {
+    const px = v => parseFloat(v) || 0
+    const paintedBorder = (s, name) => {
+      const w = px(s[`border${name}Width`])
+      if (w < 1) return 0
+      const style = s[`border${name}Style`]
+      if (style === 'none' || style === 'hidden') return 0
+      const col = parseColor(s[`border${name}Color`])
+      if (col && col.a === 0) return 0 // transparent border occupies layout but paints nothing
+      return w
+    }
+    // Inner clip rect = the ancestor's padding box minus any scrollbar gutter, i.e.
+    // the region overflow actually clips to. Built from computed border widths (sub-
+    // pixel) + the client/offset delta (the scrollbar gutter).
+    const innerClipRect = anc => {
+      const p = rectOf(anc)
+      const s = cs(anc)
+      const bl = px(s.borderLeftWidth), br = px(s.borderRightWidth)
+      const bt = px(s.borderTopWidth), bb = px(s.borderBottomWidth)
+      const vGutter = Math.max(0, anc.offsetWidth - anc.clientWidth - bl - br) // vertical scrollbar
+      const hGutter = Math.max(0, anc.offsetHeight - anc.clientHeight - bt - bb)
+      return { left: p.left + bl, top: p.top + bt, right: p.right - br - vGutter, bottom: p.bottom - bb - hGutter }
+    }
+    const HUGE = { left: -1e7, top: -1e7, right: 1e7, bottom: 1e7 }
+    const LO = 0.75 // ignore sub-pixel rounding of a flush edge
+    let scanned = 0
+    for (const el of pool) {
+      if (scanned > 6000) break
+      scanned++
+      const s = cs(el)
+      const bw = {
+        left: paintedBorder(s, 'Left'), right: paintedBorder(s, 'Right'),
+        top: paintedBorder(s, 'Top'), bottom: paintedBorder(s, 'Bottom'),
+      }
+      if (!(bw.left || bw.right || bw.top || bw.bottom)) continue
+      const r = rectOf(el)
+      if (r.width < 4 || r.height < 4) continue
+      const xAnc = clippingAncestor(el, 'x')
+      const yAnc = clippingAncestor(el, 'y')
+      if ((!xAnc || xAnc === el) && (!yAnc || yAnc === el)) continue
+      const cx = xAnc && xAnc !== el ? innerClipRect(xAnc) : HUGE
+      const cy = yAnc && yAnc !== el ? innerClipRect(yAnc) : HUGE
+      // Majority-visibility: intersection of the element with the (x-clip × y-clip)
+      // viewport, as a fraction of the element's own area. Excludes scrolled-out rows.
+      const vw = Math.max(0, Math.min(r.right, cx.right) - Math.max(r.left, cx.left))
+      const vh = Math.max(0, Math.min(r.bottom, cy.bottom) - Math.max(r.top, cy.top))
+      if ((vw * vh) / Math.max(1, r.width * r.height) < 0.5) continue
+      const sidesFor = axis => axis === 'x'
+        ? [['left', bw.left, cx], ['right', bw.right, cx]]
+        : [['top', bw.top, cy], ['bottom', bw.bottom, cy]]
+      for (const axis of ['x', 'y']) {
+        const anc = axis === 'x' ? xAnc : yAnc
+        if (!anc || anc === el) continue
+        for (const [side, w, clip] of sidesFor(axis)) {
+          if (!w) continue
+          const overshoot =
+            side === 'left' ? clip.left - r.left
+            : side === 'right' ? r.right - clip.right
+            : side === 'top' ? clip.top - r.top
+            : r.bottom - clip.bottom
+          // The clip line is at/inside the border-box edge → the border stroke (and
+          // often a sliver of the element) is cut. Report the measured overshoot.
+          if (overshoot > LO) {
+            push(
+              'A11', selectorFor(el),
+              `${side} border (${w}px) clipped by overflow-${axis} ancestor ${selectorFor(anc)} — cut ${overshoot.toFixed(1)}px`,
+              { side, border: w, cut: +overshoot.toFixed(2), axis },
+            )
+          }
+        }
+      }
+    }
   }
 
   // ── I1 z-collision (interactive occluded at center) ──────────────────────
