@@ -3063,7 +3063,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading && !available", line: 43 },
       { kind: "error", condition: "error && !available", line: 49 },
       { kind: "empty", condition: "allRows.length === 0", line: 68 },
-      { kind: "branch", condition: "skill.description", line: 119 },
+      { kind: "branch", condition: "skill.description", line: 121 },
     ],
   },
   "modules/skill/components/ImportSkillDialog": {
@@ -3483,8 +3483,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/workflow/components/StepLogExpander",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "loading", condition: "loading", line: 75 },
-      { kind: "error", condition: "error", line: 77 },
+      { kind: "loading", condition: "loading", line: 81 },
+      { kind: "error", condition: "error", line: 83 },
     ],
   },
   "modules/workflow/components/StepOutputExpander": {

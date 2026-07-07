@@ -3364,7 +3364,7 @@ Required states: `delayed`, `empty`, `error`
 | loading | `loading && !available` | 43 |
 | error | `error && !available` | 49 |
 | empty | `allRows.length === 0` | 68 |
-| branch | `skill.description` | 119 |
+| branch | `skill.description` | 121 |
 
 ### `modules/skill/components/ImportSkillDialog`
 
@@ -3821,8 +3821,8 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 75 |
-| error | `error` | 77 |
+| loading | `loading` | 81 |
+| error | `error` | 83 |
 
 ### `modules/workflow/components/StepOutputExpander`
 

@@ -1,4 +1,4 @@
-import { Button, Accordion, Spin, Paragraph, message } from '@/components/ui'
+import { Accordion, Spin, Paragraph, message } from '@/components/ui'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
 
@@ -67,10 +67,16 @@ export function StepLogExpander({
       items={[
         {
           key: kind,
+          // The Accordion renders `label` inside its trigger <button>; a nested
+          // <Button> here is invalid DOM (button-in-button hydration error). The
+          // trigger already handles the toggle, so this is a styled <span>.
           label: (
-            <Button data-testid={`wf-step-log-btn-${stepId}-${kind}`} variant="link" size="default" className="!px-0">
+            <span
+              data-testid={`wf-step-log-btn-${stepId}-${kind}`}
+              className="text-xs text-[var(--ant-color-link)]"
+            >
               {label}
-            </Button>
+            </span>
           ),
           children: loading ? (
             <Spin size="sm" label="Loading log" />

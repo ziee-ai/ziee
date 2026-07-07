@@ -92,8 +92,10 @@ export function ConversationSkillsPanel({
       dataSource={allRows}
       renderItem={(skill, index) => {
         const visible = availableIds.has(skill.id)
+        // NOTE: the `List` kit wraps each renderItem in its own <li>, so this
+        // returns a <div> — a nested <li> here is an invalid-DOM hydration error.
         return (
-          <li
+          <div
             key={skill.id || index}
             className="flex items-center justify-between py-2"
           >
@@ -130,7 +132,7 @@ export function ConversationSkillsPanel({
               checked={visible}
               onChange={next => void handleToggle(skill.id, next)}
             />
-          </li>
+          </div>
         )
       }}
     />
