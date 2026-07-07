@@ -1022,7 +1022,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `typeof props.children === 'string'` | 30 |
+| branch | `typeof props.children === 'string'` | 38 |
 
 ### `modules/chat/core/utils/StreamdownErrorBoundary`
 

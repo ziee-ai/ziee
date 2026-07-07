@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import type { StreamdownProps } from 'streamdown'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 /**
  * Lazy-loaded wrapper around Streamdown.
@@ -20,10 +21,17 @@ import type { StreamdownProps } from 'streamdown'
  *
  * This is a drop-in replacement: `import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'`
  * in place of `import { Streamdown } from 'streamdown'`.
+ *
+ * The loader goes through core's `lazyWithPreload` (not a bare `import()`), so
+ * the desktop override kicks in: inside the Tauri webview the chunk is already
+ * embedded in the binary, so it preloads at module-load and `React.lazy`
+ * resolves without ever showing the fallback. Remote-browser (tunnel) + web
+ * builds keep the deferred behavior — the chunk only downloads on first render.
  */
-const StreamdownImpl = lazy(() =>
+const loadStreamdown = lazyWithPreload(() =>
   import('streamdown').then(m => ({ default: m.Streamdown })),
 )
+const StreamdownImpl = lazy(loadStreamdown)
 
 export function Streamdown(props: StreamdownProps) {
   const fallback =

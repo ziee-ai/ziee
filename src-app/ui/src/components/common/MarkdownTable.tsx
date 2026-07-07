@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Maximize2, X } from 'lucide-react'
 import { Button, ScrollArea } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 // Load Streamdown's copy/download controls dynamically so this file carries NO
 // static `import … from 'streamdown'`. That is what lets the whole `streamdown`
@@ -10,13 +11,17 @@ import { cn } from '@/lib/utils'
 // chunk instead of being pulled into the initial entry bundle (see
 // LazyStreamdown.tsx). Safe because MarkdownTable is a `components.table`
 // renderer that ONLY ever mounts inside an already-loaded Streamdown tree, so
-// the chunk is present by the time these render.
-const TableCopyDropdown = lazy(() =>
+// the chunk is present by the time these render. The loaders go through
+// `lazyWithPreload` so the desktop webview preloads them (embedded chunk) while
+// web/tunnel builds keep the deferred download.
+const loadCopyDropdown = lazyWithPreload(() =>
   import('streamdown').then(m => ({ default: m.TableCopyDropdown })),
 )
-const TableDownloadDropdown = lazy(() =>
+const loadDownloadDropdown = lazyWithPreload(() =>
   import('streamdown').then(m => ({ default: m.TableDownloadDropdown })),
 )
+const TableCopyDropdown = lazy(loadCopyDropdown)
+const TableDownloadDropdown = lazy(loadDownloadDropdown)
 
 /**
  * Replacement for Streamdown's built-in table wrapper (`components.table`).

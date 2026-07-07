@@ -897,7 +897,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/utils/LazyStreamdown",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "typeof props.children === 'string'", line: 30 },
+      { kind: "branch", condition: "typeof props.children === 'string'", line: 38 },
     ],
   },
   "modules/chat/core/utils/StreamdownErrorBoundary": {
