@@ -23,6 +23,7 @@ use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 pub mod handlers;
 pub mod models;
 pub mod permissions;
+pub mod platform;
 pub mod repository;
 pub mod routes;
 pub mod tools;
@@ -76,15 +77,12 @@ impl AppModule for OfficeBridgeModule {
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
 
-        // Deploy-level kill switch — ON by default (an absent `office_bridge:`
-        // config section means enabled). Operators opt OUT with
+        // FIRST gate — deploy-level kill switch, ON by default (an absent
+        // `office_bridge:` config section means enabled). Operators opt OUT with
         // `office_bridge: { enabled: false }`; an admin cannot re-enable it
         // (distinct from the runtime `office_bridge_settings.enabled` toggle —
-        // DEC-12: two independent levels). Mirrors web_search.
-        //
-        // NOTE: full runtime probe-gating (supported desktop OS + Office
-        // present, so a headless/Linux server never binds 44300 or attempts
-        // COM) is wired in ITEM-6; for now we honour only the config switch.
+        // DEC-12: two independent levels). Mirrors web_search. Config disabled ⇒
+        // skip regardless of the host probe below.
         let enabled = ctx
             .config
             .office_bridge
@@ -94,6 +92,31 @@ impl AppModule for OfficeBridgeModule {
         if !enabled {
             tracing::info!("office_bridge: disabled in config; skipping registration");
             return Ok(());
+        }
+
+        // SECOND gate — runtime host probe (DEC-3, mirrors code_sandbox's
+        // `probe_host`). `platform::active().probe()` is cheap + sync; `None`
+        // means "not a supported desktop OS with an Office automation backend"
+        // (a headless / Linux server), so we log the reason and skip MCP-row
+        // registration + (later items) the bridge listener entirely — the rest
+        // of the server boots fine.
+        match platform::active().probe() {
+            None => {
+                tracing::info!(
+                    "office_bridge: host probe returned None (no Office \
+                     automation backend on {}); skipping registration",
+                    std::env::consts::OS
+                );
+                return Ok(());
+            }
+            Some(caps) => {
+                tracing::info!(
+                    "office_bridge: host probe OK (desktop={}, office_present={}); \
+                     registering built-in MCP server",
+                    caps.desktop,
+                    caps.office_present
+                );
+            }
         }
 
         // Pin loopback regardless of the configured server host (same helper
