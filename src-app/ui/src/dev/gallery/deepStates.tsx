@@ -20,6 +20,8 @@ import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
 import { type InteractionRecipe, useRunInteraction } from './interactions'
+import { holdForever } from './seeded/helpers'
+import { ModelPicker } from '@/modules/user-llm-providers/ModelPicker.store'
 import {
   BRANCHED_ANCHOR_MESSAGE_ID,
   BRANCHED_BRANCH_IDS,
@@ -116,6 +118,61 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         }
       })
     },
+    interactions: [
+      {
+        // The composer "+" dropdown menu renders its items ONLY while open
+        // (a Popover). Mount-only capture never shows them, so the A9 peer-icon
+        // check couldn't scan the menu — where the "Skills in this chat" item's
+        // BookOpen icon renders at lucide's 24px default (className="text-base"
+        // doesn't resize an svg) vs the 16px (size-4) icons of its peers. This
+        // recipe opens the menu so geometry + crop review see the item rows.
+        name: 'open-plus-menu',
+        note: 'click the composer "+" button → the open tools/files dropdown (mcp / skills / assistant menu-item rows)',
+        steps: async d => {
+          await d.click('chat-input-add-btn')
+          await d.wait(400)
+        },
+      },
+    ],
+  },
+  {
+    // H7 empty-control coverage: the composer model picker (`ullm-model-select`)
+    // with ZERO models. ModelPicker is held empty (providers=[]) while the
+    // conversation still carries a stale model id → the Select has a value it
+    // can't resolve against 0 options + no placeholder (suppressed once a value is
+    // set) → the trigger renders LITERALLY BLANK (no value, no "No models" hint,
+    // no configure affordance). This state only exists after a store seed — the
+    // enumerated composer always has models.
+    slug: 'deep-chat-no-models',
+    title: 'Conversation — composer with no models configured',
+    conversationId: SHOWCASE_CONVERSATION_ID,
+    note: 'ModelPicker held empty (providers=[]) + stale selectedModelId → the composer model-select renders blank (H7 empty-control-renders-nothing)',
+    setup: async () => {
+      await whenLoaded(SHOWCASE_CONVERSATION_ID)
+      // holdForever re-asserts every 150ms so the composer's own loadProviders()
+      // (which refills from the cassette on mount) can't repopulate it.
+      holdForever(() =>
+        ModelPicker.store.setState({
+          providers: [],
+          selectedModelId: null,
+          loading: false,
+          error: null,
+        } as never),
+      )
+    },
+    interactions: [
+      {
+        // Open the model picker so H7 can see the OPEN dropdown: with 0 models it
+        // renders a listbox with ZERO options and NO "No models" empty-hint — it
+        // shows literally nothing to select.
+        name: 'open-model-select',
+        note: 'click the composer model select → the (empty) listbox: 0 options, no "No models" hint (H7)',
+        steps: async d => {
+          await d.click('ullm-model-select')
+          await d.wait(400)
+        },
+      },
+    ],
   },
   {
     slug: 'deep-chat-tool-running',

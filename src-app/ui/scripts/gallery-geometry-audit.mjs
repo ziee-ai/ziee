@@ -9,12 +9,15 @@
  *
  *   A1 zero-gap adjacency   A2 overlap          A3 protrusion
  *   A4 uneven sibling gap    A7 off-grid spacing  A8 row vertical-centering
+ *   A9 peer metric mismatch  A11 border clipped by ancestor
+ *   A12 cramped nested borders (double border ≤8px)
  *   B1 premature wrap/stack  B2 failure-to-wrap  B3 h-overflow
  *   B6 fixed > viewport      B8 mid-word break
  *   C7 indistinguishable roles  C9 icon/label split  C10 icon disproportion
  *   C12 placeholder element
  *   D1 truncated-with-room
  *   G5 tap-target < 44 (mobile)  G7 clipped focus-ring / elevation shadow
+ *   H7 empty picker dropdown (0 options, no empty-hint)
  *   I1 z-collision (hit-test)    I4 modal-in-viewport   I5 wrong-scroll-axis (strip)
  *   J6 mixed button variants     J7 same-action control side (cross-surface)
  *   K1 persistent context inside scroll
@@ -92,6 +95,7 @@ export const CLASS_SEVERITY = {
   A2: 'MEDIUM',
   A3: 'MEDIUM',
   A4: 'LOW',
+  A5: 'MEDIUM', // asymmetric vertical padding around input content (off-center)
   A7: 'LOW',
   A8: 'MEDIUM',
   A9: 'MEDIUM',
@@ -125,6 +129,7 @@ export const CLASS_SEVERITY = {
   L4: 'MEDIUM',
   L5: 'HIGH',
   H6: 'MEDIUM',
+  H7: 'MEDIUM',
 }
 
 // Context-level testids that must NOT live inside a message/content scroll
@@ -523,6 +528,60 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
           })
         }
       }
+
+      // Menu / dropdown / popover ITEMS: leading-icon + text-label rows that are
+      // actionable (role menuitem/button/link/option, a menu-ish testid/slot, a
+      // tabindex, or cursor:pointer). They carry PER-ITEM testids, so the keyOf
+      // grouping above never groups them — group ALL such rows in ONE parent and
+      // require their LEADING icon boxes to match. This closes the coverage gap
+      // where the composer "+" menu "Skills in this chat" item renders its icon at
+      // lucide's 24px default among 16px (size-4) peers, unscanned because the
+      // menu is interaction-gated + the rows have distinct testids.
+      const isMenuItemRow = el => {
+        if (!el.querySelector('svg,img') || !textOf(el)) return false
+        const role = el.getAttribute('role')
+        const tid = el.getAttribute('data-testid') || ''
+        const slot = el.getAttribute('data-slot') || ''
+        // A STRONG menu signal only — not a bare role=button / cursor:pointer (those
+        // match ordinary message rows / clickable cards and produced a flood).
+        const strong =
+          role === 'menuitem' || role === 'option' ||
+          /menu-?item|menu-trigger|menu-option|dropdown-item|cmdk-item/i.test(tid) ||
+          /menu-?item|dropdown-menu-item|command-item/i.test(slot)
+        if (strong) return true
+        // …or a plain icon+label row that lives INSIDE a menu/dropdown/popover/command
+        // surface (the composer "+" items are custom rows inside a Popover).
+        return !!el.closest(
+          '[role="menu"],[role="listbox"],[data-slot*="menu"],[data-slot*="popover"],[data-slot*="dropdown"],[data-radix-popper-content-wrapper],[cmdk-list]',
+        )
+      }
+      const menuItems = Array.from(parent.children).filter(
+        c => visible(c) && !inSvg(c) && isMenuItemRow(c),
+      )
+      if (menuItems.length >= 3) {
+        const boxes = menuItems.map(el => {
+          const ic = el.querySelector('svg,img')
+          return ic ? ic.getBoundingClientRect() : null
+        })
+        for (const [field, prop] of [['ih', 'height'], ['iw', 'width']]) {
+          const vals = boxes.map(bx => (bx ? Math.round(bx[prop]) : 0)).filter(v => v > 0)
+          if (vals.length < 3) continue
+          const freq = {}
+          for (const v of vals) freq[v] = (freq[v] || 0) + 1
+          const mode = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]
+          if (freq[mode] < menuItems.length / 2) continue
+          menuItems.forEach((mi, i) => {
+            const bx = boxes[i]
+            if (!bx) return
+            const v = Math.round(bx[prop])
+            if (v > 0 && Math.abs(v - mode) > 2) {
+              push('A9', selectorFor(mi),
+                `menu-item leading-icon ${field === 'ih' ? 'height' : 'width'} ${v}px vs group mode ${mode}px among ${menuItems.length} menu items`,
+                { field, v, mode, menu: true })
+            }
+          })
+        }
+      }
     }
   }
 
@@ -826,6 +885,215 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
       }
     }
     try { if (active?.focus) active.focus({ preventScroll: true }) } catch { /* */ }
+  }
+
+  // ── A11 element border clipped by a clipping ancestor ────────────────────
+  // Sibling of G7 (reuses the per-axis clipping-ancestor walk): for every element
+  // with a real (opaque, ≥1px) border, compare each bordered side's border-box edge
+  // to the nearest overflow-clipping ancestor's INNER clip rect (padding box minus
+  // scrollbar). If a bordered side sits AT/OUTSIDE that clip edge, the clip cuts the
+  // border stroke → the border is being eaten (the classic "card/control border eaten
+  // by a negative-margin / overflow-hidden container edge").
+  //
+  // The discriminator against a genuinely SCROLLED-OUT element (whose edge is also
+  // "outside" the clip, but is NOT a defect — it's just off-screen content in a
+  // scroll pane) is MAJORITY-VISIBILITY: we only flag an element that is still mostly
+  // inside the clip viewport. A row scrolled thousands of px away is ~0% visible and
+  // is skipped; an element pinned at the edge with its border poking a few px past is
+  // ~full visible and is flagged.
+  if (run('A11')) {
+    const px = v => parseFloat(v) || 0
+    const paintedBorder = (s, name) => {
+      const w = px(s[`border${name}Width`])
+      if (w < 1) return 0
+      const style = s[`border${name}Style`]
+      if (style === 'none' || style === 'hidden') return 0
+      const col = parseColor(s[`border${name}Color`])
+      if (col && col.a === 0) return 0 // transparent border occupies layout but paints nothing
+      return w
+    }
+    // Inner clip rect = the ancestor's padding box minus any scrollbar gutter, i.e.
+    // the region overflow actually clips to. Built from computed border widths (sub-
+    // pixel) + the client/offset delta (the scrollbar gutter).
+    const innerClipRect = anc => {
+      const p = rectOf(anc)
+      const s = cs(anc)
+      const bl = px(s.borderLeftWidth), br = px(s.borderRightWidth)
+      const bt = px(s.borderTopWidth), bb = px(s.borderBottomWidth)
+      const vGutter = Math.max(0, anc.offsetWidth - anc.clientWidth - bl - br) // vertical scrollbar
+      const hGutter = Math.max(0, anc.offsetHeight - anc.clientHeight - bt - bb)
+      return { left: p.left + bl, top: p.top + bt, right: p.right - br - vGutter, bottom: p.bottom - bb - hGutter }
+    }
+    const HUGE = { left: -1e7, top: -1e7, right: 1e7, bottom: 1e7 }
+    const LO = 0.75 // ignore sub-pixel rounding of a flush edge
+    let scanned = 0
+    for (const el of pool) {
+      if (scanned > 6000) break
+      scanned++
+      const s = cs(el)
+      const bw = {
+        left: paintedBorder(s, 'Left'), right: paintedBorder(s, 'Right'),
+        top: paintedBorder(s, 'Top'), bottom: paintedBorder(s, 'Bottom'),
+      }
+      if (!(bw.left || bw.right || bw.top || bw.bottom)) continue
+      const r = rectOf(el)
+      if (r.width < 4 || r.height < 4) continue
+      const xAnc = clippingAncestor(el, 'x')
+      const yAnc = clippingAncestor(el, 'y')
+      if ((!xAnc || xAnc === el) && (!yAnc || yAnc === el)) continue
+      const cx = xAnc && xAnc !== el ? innerClipRect(xAnc) : HUGE
+      const cy = yAnc && yAnc !== el ? innerClipRect(yAnc) : HUGE
+      // Majority-visibility: intersection of the element with the (x-clip × y-clip)
+      // viewport, as a fraction of the element's own area. Excludes scrolled-out rows.
+      const vw = Math.max(0, Math.min(r.right, cx.right) - Math.max(r.left, cx.left))
+      const vh = Math.max(0, Math.min(r.bottom, cy.bottom) - Math.max(r.top, cy.top))
+      if ((vw * vh) / Math.max(1, r.width * r.height) < 0.5) continue
+      const sidesFor = axis => axis === 'x'
+        ? [['left', bw.left, cx], ['right', bw.right, cx]]
+        : [['top', bw.top, cy], ['bottom', bw.bottom, cy]]
+      for (const axis of ['x', 'y']) {
+        const anc = axis === 'x' ? xAnc : yAnc
+        if (!anc || anc === el) continue
+        for (const [side, w, clip] of sidesFor(axis)) {
+          if (!w) continue
+          const overshoot =
+            side === 'left' ? clip.left - r.left
+            : side === 'right' ? r.right - clip.right
+            : side === 'top' ? clip.top - r.top
+            : r.bottom - clip.bottom
+          // The clip line is at/inside the border-box edge → the border stroke (and
+          // often a sliver of the element) is cut. Report the measured overshoot.
+          if (overshoot > LO) {
+            push(
+              'A11', selectorFor(el),
+              `${side} border (${w}px) clipped by overflow-${axis} ancestor ${selectorFor(anc)} — cut ${overshoot.toFixed(1)}px`,
+              { side, border: w, cut: +overshoot.toFixed(2), axis },
+            )
+          }
+        }
+      }
+    }
+  }
+
+  // ── A5 asymmetric vertical padding around input content (off-center) ─────
+  // [G] form of A5 (was vision-only): a box wrapping an input / editable region
+  // whose TOP padding differs from its BOTTOM padding renders the content
+  // vertically off-center — it reads uncomfortable/unbalanced. Horizontal padding
+  // must be ~symmetric (else it's a deliberate directional layout, not a centering
+  // bug). *(the chat composer input area `px-3 pt-2.5 pb-1` = 10px top vs 4px
+  // bottom around the text input.)*
+  if (run('A5')) {
+    const INPUTISH = 'textarea,input:not([type="hidden"]),[contenteditable="true"],[role="textbox"]'
+    for (const el of pool) {
+      const s = cs(el)
+      const pt = parseFloat(s.paddingTop) || 0, pb = parseFloat(s.paddingBottom) || 0
+      const pl = parseFloat(s.paddingLeft) || 0, pr = parseFloat(s.paddingRight) || 0
+      if (Math.abs(pt - pb) <= 3) continue // symmetric enough
+      if (Math.abs(pl - pr) > 3) continue // horizontally asymmetric → directional layout, not centering
+      if (pt < 1 && pb < 1) continue
+      const input = el.querySelector(INPUTISH)
+      if (!input || !visible(input) || inSvg(el)) continue
+      const r = rectOf(el)
+      if (r.height < 12 || r.height > 260) continue // input row, not a page section
+      // The input must DOMINATE the box vertically — else the padding isn't what
+      // offsets it (excludes a toolbar/row that merely nests some unrelated input).
+      const contentH = r.height - pt - pb
+      if (rectOf(input).height < 0.5 * contentH) continue
+      push('A5', selectorFor(el),
+        `asymmetric vertical padding (top ${Math.round(pt)}px vs bottom ${Math.round(pb)}px) around input content — reads vertically off-center`,
+        { pt: Math.round(pt), pb: Math.round(pb) })
+    }
+  }
+
+  // ── A12 cramped nested borders (a double border with a tight gap) ────────
+  // A bordered CONTROL (button / input / select) whose border-box edge sits within
+  // ~8px of its nearest bordered ANCESTOR's inner (padding-box) edge reads as a
+  // crowded double border — two stroke lines almost touching. The usual fix is a
+  // quiet/ghost variant instead of an outline inside an already-bordered container.
+  // Scoped to controls (that's where the outline-in-a-box anti-pattern lives) to
+  // avoid flagging every full-bleed child of a card.
+  if (run('A12')) {
+    const px = v => parseFloat(v) || 0
+    const paintedBorder = (s, name) => {
+      const w = px(s[`border${name}Width`])
+      if (w < 1) return 0
+      const st = s[`border${name}Style`]
+      if (st === 'none' || st === 'hidden') return 0
+      const c = parseColor(s[`border${name}Color`])
+      if (c && c.a === 0) return 0
+      return w
+    }
+    const anyBorder = el => {
+      const s = cs(el)
+      return paintedBorder(s, 'Left') || paintedBorder(s, 'Right') || paintedBorder(s, 'Top') || paintedBorder(s, 'Bottom')
+    }
+    const CONTROL = 'button,a[href],input,select,textarea,[role="button"],[role="link"],[data-slot="button"]'
+    // ≤10px: a bordered control this close to its bordered container's edge paints a
+    // redundant double stroke (the container border + the control's outline almost
+    // parallel). Standard control padding inside a card is ≥12px (px-3), so 10px is
+    // the boundary between "comfortably inside" and "crammed double border".
+    const GAP = 10
+    let scanned = 0
+    for (const el of pool) {
+      if (scanned > 6000) break
+      scanned++
+      if (!el.matches?.(CONTROL)) continue
+      const es = cs(el)
+      const bw = {
+        left: paintedBorder(es, 'Left'), right: paintedBorder(es, 'Right'),
+        top: paintedBorder(es, 'Top'), bottom: paintedBorder(es, 'Bottom'),
+      }
+      if (!(bw.left || bw.right || bw.top || bw.bottom)) continue
+      let anc = el.parentElement
+      while (anc && anc !== document.body && !anyBorder(anc)) anc = anc.parentElement
+      if (!anc || anc === document.body || inSvg(anc) || !visible(anc)) continue
+      const as = cs(anc)
+      const r = rectOf(el), a = rectOf(anc)
+      const innerLeft = a.left + px(as.borderLeftWidth), innerRight = a.right - px(as.borderRightWidth)
+      const innerTop = a.top + px(as.borderTopWidth), innerBottom = a.bottom - px(as.borderBottomWidth)
+      const check = (side, elB, ancB, gap) => {
+        if (elB && ancB && gap > -0.5 && gap <= GAP) {
+          push('A12', selectorFor(el),
+            `${side} border crammed ${gap.toFixed(1)}px from bordered ancestor ${selectorFor(anc)} inner edge — crowded double border (≤${GAP}px); use a quiet/ghost variant, not an outline, inside an already-bordered container`,
+            { side, gap: +gap.toFixed(1) })
+        }
+      }
+      check('left', bw.left, paintedBorder(as, 'Left'), r.left - innerLeft)
+      check('right', bw.right, paintedBorder(as, 'Right'), innerRight - r.right)
+      check('top', bw.top, paintedBorder(as, 'Top'), r.top - innerTop)
+      check('bottom', bw.bottom, paintedBorder(as, 'Bottom'), innerBottom - r.bottom)
+    }
+  }
+
+  // ── H7 empty picker — a select/menu dropdown that renders NOTHING ────────
+  // An OPEN listbox/menu popup with ZERO selectable options AND no empty-state
+  // hint text ("No models", "No results") shows the user literally nothing to
+  // select — the composer model picker with 0 models configured is exactly this
+  // (no options, no "No models" text, no configure affordance). Interaction-gated:
+  // the popup only exists once opened, driven by an `open-…-select` recipe.
+  if (run('H7')) {
+    const OPTION_SEL =
+      '[role="option"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[data-slot="select-item"],[cmdk-item]'
+    const popups = document.querySelectorAll(
+      '[role="listbox"],[role="menu"],[data-slot="select-content"],[data-slot="command-list"]',
+    )
+    for (const pop of popups) {
+      if (isChrome(pop) || inSvg(pop) || !visible(pop)) continue
+      if (pop.querySelectorAll(OPTION_SEL).length > 0) continue
+      // Any human text in the popup = an empty-state hint ("No models found") → fine.
+      if (/[a-z0-9]/i.test(textOf(pop))) continue
+      const id = pop.id
+      const trigger =
+        (id && document.querySelector(`[aria-controls="${id}"]`)) ||
+        document.querySelector(
+          '[role="combobox"][aria-expanded="true"],[aria-haspopup][aria-expanded="true"]',
+        )
+      push(
+        'H7', selectorFor(trigger || pop),
+        `picker dropdown renders nothing: 0 options + no empty-state hint (${selectorFor(pop)}) — the user sees literally nothing to select`,
+        { options: 0 },
+      )
+    }
   }
 
   // ── I1 z-collision (interactive occluded at center) ──────────────────────
@@ -1207,16 +1475,20 @@ async function enumerateSurfaces(browser) {
   const overlays = await p.evaluate(() => window.__GALLERY_OVERLAYS__ || [])
   const deep = await p.evaluate(() => window.__GALLERY_DEEP_STATES__ || [])
   const seeded = await p.evaluate(() => window.__GALLERY_SEEDED__ || [])
+  // Interaction recipes ({slug,name}) drive post-mount actions (open a menu,
+  // expand a panel) so interaction-gated states get scanned too — else A9's
+  // menu-item check / A11 etc. never see e.g. the composer "+" dropdown.
+  const interactions = await p.evaluate(() => window.__GALLERY_INTERACTIONS__ || [])
   await p.close()
   const special = new Set([...overlays, ...deep, ...seeded])
-  return { pages: pages.filter(x => !special.has(x)), overlays, deep, seeded }
+  return { pages: pages.filter(x => !special.has(x)), overlays, deep, seeded, interactions }
 }
 
 async function main() {
   const browser = await chromium.launch({
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
   })
-  const { pages, overlays, deep, seeded } = await enumerateSurfaces(browser)
+  const { pages, overlays, deep, seeded, interactions } = await enumerateSurfaces(browser)
 
   // Optional surface filter (substring match) for fast iteration on a few surfaces.
   const surfaceFilter = arg('surfaces', '').split(',').map(s => s.trim()).filter(Boolean)
@@ -1225,11 +1497,14 @@ async function main() {
   for (const s of pages) if (keep(s)) for (const st of PAGE_STATES) cells.push({ surface: s, state: st })
   for (const s of [...seeded, ...deep]) if (keep(s)) cells.push({ surface: s, state: 'seeded' })
   for (const s of overlays) if (keep(s)) cells.push({ surface: s, state: 'open' })
+  // Interaction-gated states: one cell per recipe, driven post-mount (open a menu,
+  // expand a panel). state='loaded' + the `interact` slug the frame runs on mount.
+  for (const it of interactions) if (keep(it.slug)) cells.push({ surface: it.slug, state: 'interact', interact: it.name })
 
   const jobs = []
   for (const c of cells) for (const vp of VIEWPORTS) jobs.push({ c, vp })
   console.log(
-    `geometry-audit${PREVIEW ? ' [preview-build]' : ''}: ${pages.length} pages×${PAGE_STATES.length} + ${seeded.length + deep.length} seeded + ${overlays.length} overlays = ${cells.length} cells × ${VIEWPORTS.length} viewports = ${jobs.length} renders\n`,
+    `geometry-audit${PREVIEW ? ' [preview-build]' : ''}: ${pages.length} pages×${PAGE_STATES.length} + ${seeded.length + deep.length} seeded + ${overlays.length} overlays + ${interactions.length} interactions = ${cells.length} cells × ${VIEWPORTS.length} viewports = ${jobs.length} renders\n`,
   )
 
   const findings = []
@@ -1243,9 +1518,15 @@ async function main() {
   }
   async function runJob({ c, vp }) {
     const p = await browser.newPage({ viewport: { width: vp.width, height: vp.height } })
-    const url = `${BASE}?surface=${c.surface}&state=${c.state === 'seeded' || c.state === 'open' ? 'loaded' : c.state}&theme=light`
+    const stateParam = c.state === 'seeded' || c.state === 'open' || c.state === 'interact' ? 'loaded' : c.state
+    const url = `${BASE}?surface=${c.surface}&state=${stateParam}&theme=light${c.interact ? `&interact=${c.interact}` : ''}`
     try {
       await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 25_000 })
+      // Interaction cells: wait for the frame to finish driving the recipe (it
+      // stamps body[data-gallery-interact-done]) before scanning the open state.
+      if (c.interact) {
+        await p.waitForSelector('body[data-gallery-interact-done]', { timeout: 12_000 }).catch(() => {})
+      }
       await p.waitForTimeout(c.state === 'error' ? 1100 : 900)
       const { findings: raw, actionSides: sides } = await p.evaluate(inPageGeometry, inPageArg)
       for (const f of raw) {
