@@ -292,7 +292,7 @@ export default function HardwareSettings() {
               <div className="flex flex-wrap gap-1">
                 <Tag variant="outline"
                   data-testid={`hardware-gpu-cuda-tag-${index}`}
-                  tone={gpu.compute_capabilities.cuda_support ? 'success' : 'info'}
+                  tone={gpu.compute_capabilities.cuda_support ? 'success' : 'default'}
                 >
                   CUDA {gpu.compute_capabilities.cuda_support ? '✓' : '✗'}
                   {gpu.compute_capabilities.cuda_version &&
@@ -300,20 +300,20 @@ export default function HardwareSettings() {
                 </Tag>
                 <Tag variant="outline"
                   data-testid={`hardware-gpu-metal-tag-${index}`}
-                  tone={gpu.compute_capabilities.metal_support ? 'success' : 'info'}
+                  tone={gpu.compute_capabilities.metal_support ? 'success' : 'default'}
                 >
                   Metal {gpu.compute_capabilities.metal_support ? '✓' : '✗'}
                 </Tag>
                 <Tag variant="outline"
                   data-testid={`hardware-gpu-opencl-tag-${index}`}
-                  tone={gpu.compute_capabilities.opencl_support ? 'success' : 'info'}
+                  tone={gpu.compute_capabilities.opencl_support ? 'success' : 'default'}
                 >
                   OpenCL {gpu.compute_capabilities.opencl_support ? '✓' : '✗'}
                 </Tag>
                 {gpu.compute_capabilities.vulkan_support !== undefined && (
                   <Tag variant="outline"
                     data-testid={`hardware-gpu-vulkan-tag-${index}`}
-                    tone={gpu.compute_capabilities.vulkan_support ? 'success' : 'info'}
+                    tone={gpu.compute_capabilities.vulkan_support ? 'success' : 'default'}
                   >
                     Vulkan {gpu.compute_capabilities.vulkan_support ? '✓' : '✗'}
                   </Tag>

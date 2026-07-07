@@ -142,6 +142,7 @@ export function RemoteProviderSettings() {
               onSave={form.handleSubmit(handleSaveSettings)}
               onCancel={() => form.reset()}
               saveDisabled={!isDirty}
+              saveDisabledReason="No changes to save"
               cancelDisabled={!isDirty}
               saveTestid="llm-remote-save-btn"
               cancelTestid="llm-remote-cancel-btn"
