@@ -92,7 +92,12 @@ async fn sweep_deprecated_models(pool: &PgPool) {
     };
     let mut flipped = 0usize;
     for provider in providers {
-        if provider.provider_type == "local" {
+        // Skip local (DB-listed) providers and any provider an admin has not
+        // enabled — probing a disabled/unconfigured provider would make a
+        // pointless outbound call (and a 401) at every boot. The on-demand
+        // refresh endpoint still works on any provider the admin explicitly asks
+        // to reconcile.
+        if provider.provider_type == "local" || !provider.enabled {
             continue;
         }
         match sweep_provider_once(pool, &provider).await {
