@@ -79,13 +79,15 @@ const VIEWPORTS = ALL_VIEWPORTS.filter(v =>
 )
 const PAGE_STATES = arg('states', 'loaded,empty,error').split(',').filter(Boolean)
 
+import { pathToFileURL } from 'node:url'
+
 const SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 }
 /**
  * Per-class default severity. HIGH is reserved for near-zero-false-positive
  * classes so the `--gate` is a meaningful cannot-miss tripwire; the rich review
  * signal lives in MEDIUM/LOW (still fully reported = still "flagged").
  */
-const CLASS_SEVERITY = {
+export const CLASS_SEVERITY = {
   A1: 'HIGH', // real zero-gap between content pills (segmented controls excluded)
   A2: 'MEDIUM',
   A3: 'MEDIUM',
@@ -93,6 +95,12 @@ const CLASS_SEVERITY = {
   A7: 'LOW',
   A8: 'MEDIUM',
   A9: 'MEDIUM',
+  A10: 'MEDIUM', // form control at zero/near-zero size (the "input disappears" class)
+  A11: 'MEDIUM', // bordered element whose border is clipped by an overflow ancestor
+  A12: 'LOW', // cramped double-border (edge-adjacent outline control)
+  C1: 'MEDIUM', // status badge ordered before its label
+  G9: 'MEDIUM', // hover-only controls reserve no space → persistent sibling shifts
+  H7: 'MEDIUM', // empty select/combobox trigger renders nothing
   B1: 'MEDIUM', // per-finding upgraded to HIGH for genuine flex-WRAP-with-room
   B2: 'MEDIUM',
   B3: 'HIGH',
@@ -121,7 +129,7 @@ const CLASS_SEVERITY = {
 
 // Context-level testids that must NOT live inside a message/content scroll
 // container (K1). Kept in sync with the app's conversation chrome.
-const CONTEXT_TESTIDS = [
+export const CONTEXT_TESTIDS = [
   'project-header-chip-tag', // the "In project: …" conversation chip
   'conversation-project-chip',
   'conversation-title',
@@ -131,7 +139,7 @@ const CONTEXT_TESTIDS = [
 ]
 // Action-control testids whose SIDE (left/right) must be consistent across
 // containers (J7). Matched as substrings.
-const ACTION_SIDE_TOKENS = [
+export const ACTION_SIDE_TOKENS = [
   'expand', 'collapse', 'fullscreen', 'close', 'copy', 'download',
 ]
 
@@ -139,7 +147,7 @@ const ACTION_SIDE_TOKENS = [
 // The in-page geometry audit. Self-contained (serialized into the page).
 // Returns { findings:[{cls,severity?,selector,detail,nums}], actionSides:[{action,side,selector}] }.
 // ───────────────────────────────────────────────────────────────────────────
-function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
+export function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
   const run = c => !classesArg.length || classesArg.includes(c)
   const findings = []
   const push = (cls, selector, detail, nums, severity) =>
@@ -980,6 +988,184 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
     }
   }
 
+  // ── C1 status badge ordered BEFORE its label ─────────────────────────────
+  // A qualifying badge/tag must FOLLOW the thing it qualifies. A badge that is
+  // the FIRST child of its row, carries a status/qualifier word, and is
+  // immediately followed by a longer text label reads as "(verified) key"
+  // (taxonomy C1, user miss #4). [V] in the taxonomy; this is a narrow geometric
+  // proxy (first-child + status vocabulary) to keep the full audit low-noise.
+  if (run('C1')) {
+    const STATUS_WORDS = /^(verified|unverified|new|beta|alpha|draft|active|inactive|error|failed|pending|done|complete|deprecated|default|required|optional|preview|experimental)$/i
+    const isBadge = el =>
+      el.getAttribute?.('data-slot') === 'badge' ||
+      el.getAttribute?.('data-slot') === 'tag' ||
+      /\b(badge|tag|chip|pill)\b/.test(clsOf(el).toLowerCase())
+    for (const parent of parentsOf()) {
+      const kids = Array.from(parent.children).filter(c => visible(c) && !inSvg(c))
+      if (kids.length < 2) continue
+      const a = kids[0], b = kids[1]
+      if (!isBadge(a) || isBadge(b)) continue
+      const ta = textOf(a), tb = textOf(b)
+      if (!ta || !tb || !STATUS_WORDS.test(ta)) continue
+      const ra = rectOf(a), rb = rectOf(b)
+      const sameRow = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top) > 4
+      if (sameRow && ra.right <= rb.left + 1 && tb.length >= ta.length) {
+        push('C1', selectorFor(a),
+          `status badge "${ta.slice(0, 16)}" ordered BEFORE its label "${tb.slice(0, 20)}" — a badge should FOLLOW the thing it qualifies`,
+          {})
+      }
+    }
+  }
+
+  // ── A10 form control at zero/near-zero size (the "input disappears" class) ─
+  if (run('A10')) {
+    for (const el of document.querySelectorAll('input:not([type="hidden"]),select,textarea')) {
+      if (isChrome(el) || inSvg(el)) continue
+      const s = cs(el)
+      if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') continue
+      const r = rectOf(el)
+      const minDim = Math.min(r.width, r.height)
+      const maxDim = Math.max(r.width, r.height)
+      // near-zero in ONE dimension while the other is real → a control meant to
+      // show that collapsed (inline rename form rendering vertical, user miss #16).
+      if (minDim < 4 && maxDim >= 6) {
+        const parent = el.parentElement
+        const pr = parent ? rectOf(parent) : null
+        if (pr && pr.width >= 8 && pr.height >= 8) {
+          push('A10', selectorFor(el),
+            `form control <${el.tagName.toLowerCase()}> rendered ${Math.round(r.width)}×${Math.round(r.height)}px (near-zero ${r.width < r.height ? 'width' : 'height'}) while visible-intent — the "input disappears" class`,
+            { w: Math.round(r.width), h: Math.round(r.height) })
+        }
+      }
+    }
+  }
+
+  // ── A11 bordered element clipped by an overflow ancestor ─────────────────
+  // A3 (protrusion) deliberately SKIPS elements under a clipping ancestor; A11
+  // fills that gap — a bordered box whose border-box edge reaches/exceeds a
+  // NON-scrolling (overflow:hidden/clip) ancestor's edge has its border painted
+  // out (taxonomy A11, user miss #18: tool-call card borders clipped).
+  if (run('A11')) {
+    for (const el of pool) {
+      const s = cs(el)
+      if (s.borderStyle === 'none') continue
+      const bw = {
+        top: parseFloat(s.borderTopWidth) || 0,
+        right: parseFloat(s.borderRightWidth) || 0,
+        bottom: parseFloat(s.borderBottomWidth) || 0,
+        left: parseFloat(s.borderLeftWidth) || 0,
+      }
+      if (Math.max(bw.top, bw.right, bw.bottom, bw.left) <= 0) continue
+      const r = rectOf(el)
+      for (const axis of ['x', 'y']) {
+        const anc = clippingAncestor(el, axis)
+        if (!anc || isChrome(anc)) continue
+        // Only overflow:hidden / clip PERMANENTLY cut a border (no way to reveal
+        // it). overflow:auto/scroll makes the far edge reachable by scrolling —
+        // not a visual defect — AND is silently induced on the perpendicular
+        // axis (setting overflow-x:auto computes overflow-y to auto), which was
+        // the dominant false positive (scrollable code blocks). So judge ONLY
+        // hidden/clip ancestors.
+        const ov = axis === 'x' ? cs(anc).overflowX : cs(anc).overflowY
+        if (ov !== 'hidden' && ov !== 'clip') continue
+        const p = rectOf(anc)
+        const sides =
+          axis === 'x'
+            ? [ { n: 'right', bw: bw.right, cut: r.right - p.right }, { n: 'left', bw: bw.left, cut: p.left - r.left } ]
+            : [ { n: 'bottom', bw: bw.bottom, cut: r.bottom - p.bottom }, { n: 'top', bw: bw.top, cut: p.top - r.top } ]
+        const hit = sides.find(sd => sd.bw > 0 && sd.cut > 0.5)
+        if (hit) {
+          push('A11', selectorFor(el),
+            `bordered element's ${hit.n} border clipped by overflow-${axis} ancestor ${selectorFor(anc)} (${Math.round(hit.cut)}px past the clip edge)`,
+            { side: hit.n, cut: Math.round(hit.cut) })
+          break
+        }
+      }
+    }
+  }
+
+  // ── A12 cramped double-border (edge-adjacent outline control) ────────────
+  if (run('A12')) {
+    const borderedAncestor = el => {
+      let n = el.parentElement
+      while (n && n !== document.body) {
+        const s = cs(n)
+        if (s.borderStyle !== 'none' &&
+          (parseFloat(s.borderTopWidth) || parseFloat(s.borderRightWidth) ||
+            parseFloat(s.borderBottomWidth) || parseFloat(s.borderLeftWidth)))
+          return n
+        n = n.parentElement
+      }
+      return null
+    }
+    for (const el of pool) {
+      // Target edge-adjacent ACTION controls (the taxonomy A12 case is an outline
+      // BUTTON crammed against a container border → should be ghost). A bordered
+      // input/select nested in a bordered field is normal design, not a defect.
+      if (!el.matches?.('button,[role="button"],a[href]')) continue
+      const s = cs(el)
+      if (s.borderStyle === 'none') continue
+      if (!(parseFloat(s.borderTopWidth) || parseFloat(s.borderRightWidth) ||
+        parseFloat(s.borderBottomWidth) || parseFloat(s.borderLeftWidth))) continue
+      const anc = borderedAncestor(el)
+      if (!anc || isChrome(anc)) continue
+      const as = cs(anc)
+      const r = rectOf(el), p = rectOf(anc)
+      const abl = parseFloat(as.borderLeftWidth) || 0, abr = parseFloat(as.borderRightWidth) || 0
+      const abt = parseFloat(as.borderTopWidth) || 0, abb = parseFloat(as.borderBottomWidth) || 0
+      const gaps = [
+        { n: 'left', g: r.left - (p.left + abl), ab: abl },
+        { n: 'right', g: (p.right - abr) - r.right, ab: abr },
+        { n: 'top', g: r.top - (p.top + abt), ab: abt },
+        { n: 'bottom', g: (p.bottom - abb) - r.bottom, ab: abb },
+      ]
+      const cramped = gaps.filter(x => x.ab > 0 && x.g >= -1 && x.g < 8)
+      if (cramped.length >= 1) {
+        push('A12', selectorFor(el),
+          `outline ${el.tagName.toLowerCase()} border sits ${cramped.map(c => `${c.n} ${Math.round(c.g)}px`).join(', ')} from the container border (crowded double-border — an edge-adjacent action should be ghost/borderless)`,
+          { sides: cramped.length }, 'LOW')
+      }
+    }
+  }
+
+  // ── G9 hover-only controls reserve no space → persistent sibling shifts ───
+  if (run('G9')) {
+    for (const parent of parentsOf()) {
+      const ps = cs(parent)
+      if (!ps.display.includes('flex')) continue
+      const allKids = Array.from(parent.children)
+      const hoverHidden = allKids.filter(c => {
+        if (inSvg(c)) return false
+        if (cs(c).display !== 'none') return false
+        const cl = clsOf(c)
+        const sig = /group-hover|hover:|opacity-0/.test(cl) || c.hasAttribute('data-hover-reveal')
+        return sig && (c.matches?.('button,[role="button"],a[href]') || !!c.querySelector?.('button,[role="button"]'))
+      })
+      if (!hoverHidden.length) continue
+      const persistent = allKids.filter(c => visible(c) && !inSvg(c))
+      if (!persistent.length) continue
+      push('G9', selectorFor(parent),
+        `${hoverHidden.length} hover-reveal control(s) use display:none (reserve NO layout space) beside ${persistent.length} persistent sibling(s) — the persistent element shifts when hover controls appear; reserve space via visibility/opacity`,
+        { hoverHidden: hoverHidden.length })
+    }
+  }
+
+  // ── H7 empty select/combobox renders nothing ─────────────────────────────
+  if (run('H7')) {
+    for (const el of document.querySelectorAll('select')) {
+      if (isChrome(el) || !visible(el)) continue
+      if (el.querySelectorAll('option').length === 0)
+        push('H7', selectorFor(el), `<select> has zero <option>s — renders nothing to pick (empty control must say something)`, {})
+    }
+    for (const el of document.querySelectorAll('[role="combobox"],[data-slot="select-trigger"],[role="listbox"]')) {
+      if (isChrome(el) || inSvg(el) || !visible(el)) continue
+      if (!textOf(el) && !el.querySelector('svg,img'))
+        push('H7', selectorFor(el),
+          `${el.getAttribute('role') || el.getAttribute('data-slot')} trigger renders NO text / placeholder / icon — an empty control the user needs must say SOMETHING`,
+          {})
+    }
+  }
+
   // ── H6 broken image ───────────────────────────────────────────────────────
   if (run('H6')) {
     for (const img of document.querySelectorAll('img')) {
@@ -1181,7 +1367,9 @@ function writeReports(findings) {
   console.log(`  → ${path.relative(process.cwd(), path.join(OUT, 'GEOMETRY_FINDINGS.md'))}`)
 }
 
-main().catch(e => {
-  console.error(e)
-  process.exit(2)
-})
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(e => {
+    console.error(e)
+    process.exit(2)
+  })
+}

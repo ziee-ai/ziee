@@ -119,6 +119,7 @@
     "lint:native-scroll": "node scripts/lint-native-scroll.mjs",
     "gallery:geometry": "node scripts/gallery-geometry-audit.mjs",
     "gallery:geometry:gate": "node scripts/gallery-geometry-audit.mjs --gate",
+    "detector:acceptance": "node scripts/detector-acceptance.mjs",
     "gen:crop-review": "node scripts/gen-crop-review-manifests.mjs",
     "check:kit-manifest": "node scripts/gen-kit-manifest.mjs --check",
     "gen:kit-manifest": "node scripts/gen-kit-manifest.mjs",
