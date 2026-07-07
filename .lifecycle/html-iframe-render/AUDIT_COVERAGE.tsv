@@ -33,4 +33,4 @@ src-app/ui/src/modules/chat/core/utils/htmlBlockSandbox.ts	1	99	security,correct
 src-app/ui/src/modules/chat/core/utils/streamdownPlugins.ts	1	21	correctness,patterns-conformance,security
 src-app/ui/src/modules/chat/extensions/text/components/TextContent.tsx	8	8	correctness,patterns-conformance,security,state-management
 src-app/ui/src/modules/chat/extensions/text/components/TextContent.tsx	37	37	correctness,patterns-conformance,security,state-management
-src-app/ui/tests/e2e/chat/html-iframe-render.spec.ts	1	309	tests-quality,security,correctness
+src-app/ui/tests/e2e/chat/html-iframe-render.spec.ts	1	308	tests-quality,security,correctness
