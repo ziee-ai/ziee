@@ -44,7 +44,18 @@ export interface Sheet {
 // One sheet's grid — owns its own view state (sort/filter/selection) + toolbar,
 // so switching tabs keeps each sheet independent. Mirrors DelimitedTable.
 // Exported for the gallery (renderable from a plain `sheet` prop, no binary).
-export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string }) {
+export function XlsxSheet({
+  sheet,
+  fileName,
+  // Multi-sheet books render a sheet-tab strip directly above this grid, so the
+  // toolbar needs only a little top space (tight). A single-sheet book has no
+  // strip, so it keeps the fuller top inset that separates it from the header.
+  tightTop = false,
+}: {
+  sheet: Sheet
+  fileName?: string
+  tightTop?: boolean
+}) {
   const { columns, dataSource, exportColumns } = useMemo(() => {
     const colKeys = sheet.headers.map((_, i) => String(i))
     const rowNumberColumn: TableColumn<TabularRecord> = {
@@ -144,9 +155,13 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
   return (
     // Plain (small) sheet hugs its content; a virtualized (large) sheet
     // supplies its own definite scroll height (see DelimitedTable).
+    // px-3 pt-3: inset toolbar + grid from the padding-less, overflow-hidden
+    // panel body (see DelimitedTable) so the row isn't flush against the edge
+    // and the jump input's focus ring isn't clipped.
     <div
       className={cn(
-        'flex flex-col w-full',
+        'flex flex-col w-full px-3',
+        tightTop ? 'pt-1' : 'pt-3',
         virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
       )}
     >
@@ -158,16 +173,8 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
           data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
         />
       )}
-      <TabularToolbar
-        testidPrefix={`file-xlsx-${sheet.name}`}
-        total={dataSource.length}
-        viewCount={viewCount}
-        onJump={onJump}
-        onCopy={onCopy}
-        onExport={onExport}
-        exportLabel="Export XLSX"
-      />
-      {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
+      {/* Readout + jump-to-row ride the Table's own toolbar (toolbarExtra) so
+          they share ONE row with filter + columns, not a stacked second row. */}
       <Table
         virtualized={virtualized}
         columns={columns}
@@ -177,8 +184,22 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
         filterable
         resizable
         columnChooser
+        toolbarExtra={
+          <TabularToolbar
+            testidPrefix={`file-xlsx-${sheet.name}`}
+            total={dataSource.length}
+            viewCount={viewCount}
+            onJump={onJump}
+            onCopy={onCopy}
+            onExport={onExport}
+            exportLabel="Export XLSX"
+          />
+        }
         selectionMode="cell"
         sanitizeClipboard
+        // Size columns to content instead of stretching across the container
+        // (see DelimitedTable). Container still scrolls for genuinely wide data.
+        className="w-auto table-auto"
         filterPlaceholder="Filter rows…"
         onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns }}
         onSelectionChange={tsv => { selectionRef.current = tsv }}
@@ -290,7 +311,9 @@ export function XlsxBody(props: FileViewerSlotProps) {
     // Multi-sheet: the Tabs `fill` layout needs a definite height for the grid
     // panel, so cap at the same bounded height (small multi-sheet books keep the
     // tab chrome; the single-sheet path above hugs content).
-    <div className="flex flex-col h-[min(360px,55vh)] w-full">
+    // pt-2: give the sheet-tab strip some breathing room below the panel header
+    // (the strip sat flush against the header border).
+    <div className="flex flex-col h-[min(360px,55vh)] w-full pt-2">
       <Tabs
         data-testid="file-xlsx-tabs"
         fill
@@ -302,7 +325,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
           label: sheet.name,
           children: (
             <div className="flex flex-col min-h-0 overflow-hidden h-full">
-              <XlsxSheet sheet={sheet} fileName={file.filename} />
+              <XlsxSheet sheet={sheet} fileName={file.filename} tightTop />
             </div>
           ),
         }))}

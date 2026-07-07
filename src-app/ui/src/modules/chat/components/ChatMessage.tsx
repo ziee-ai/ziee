@@ -1,7 +1,7 @@
 import { Fragment, memo, useMemo, useRef, type ReactNode } from 'react'
 import { ScrollArea } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { MessageWithContent } from '@/api-client/types'
+import type { MessageWithContent, MessageContentDataImage } from '@/api-client/types'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
@@ -68,13 +68,17 @@ export const ChatMessage = memo(function ChatMessage({
   // For user messages, file attachments lift OUT of the text bubble and render
   // as a single horizontal row ABOVE it (outside the bordered box) that
   // x-scrolls when it overflows, instead of wrapping or stacking vertically.
-  // Assistant messages keep every block in the body (which has no bubble border
-  // anyway), so they're unchanged.
-  const attachmentBlocks = isUser
-    ? sortedContents.filter(c => c.content_type === 'file_attachment')
-    : []
+  // A user-attached image is an `image` block whose source is a stored file —
+  // it's an attachment too, so it joins the row (and renders as the same
+  // FileCard). Assistant/tool images (url/base64 or model-returned) stay inline
+  // in the body. Assistant messages keep every block in the body.
+  const isAttachmentBlock = (c: (typeof sortedContents)[number]): boolean =>
+    c.content_type === 'file_attachment' ||
+    (c.content_type === 'image' &&
+      (c.content as MessageContentDataImage).source?.type === 'file')
+  const attachmentBlocks = isUser ? sortedContents.filter(isAttachmentBlock) : []
   const bubbleBlocks = isUser
-    ? sortedContents.filter(c => c.content_type !== 'file_attachment')
+    ? sortedContents.filter(c => !isAttachmentBlock(c))
     : sortedContents
 
   // Render blocks with a run-loop (not a plain map): a renderer that claims a
@@ -139,7 +143,11 @@ export const ChatMessage = memo(function ChatMessage({
               short list packs against the bubble's right edge (matching the
               right-aligned user message); a no-op once the row overflows (it just
               scrolls). */}
-          <div className="flex gap-2 w-max py-0.5 ms-auto">
+          {/* px-1/py-1: the x-axis ScrollArea clips at the viewport edge, and a
+              FileCard's focus/selection ring renders just OUTSIDE its border — so
+              the first/last card's ring got shaved. A small inset gives every
+              edge ring room while the row still scrolls. */}
+          <div className="flex gap-2 w-max px-1 py-1 ms-auto">
             {attachmentBlocks.map((content, index) => (
               <ContentRenderer
                 key={`${content.id || `att-${index}`}`}
@@ -169,13 +177,15 @@ export const ChatMessage = memo(function ChatMessage({
         >
           <div
             className={
-              // px-0.5: the bubble inner is overflow-x-hidden (it clips wide code
-              // blocks), and the assistant body has no padding, so a full-width
-              // child Card (MCP tool-call / tool-group card) sits FLUSH against the
-              // clip edge — its border + rounded corners get shaved on the left/
-              // right. A 2px inset gives every card edge room to render fully while
-              // the overflow clip still contains wide content.
-              'flex flex-1 w-full overflow-x-hidden flex-col px-0.5'
+              // overflow-x-clip (NOT overflow-x-hidden): `overflow-x: hidden`
+              // forces the browser to compute `overflow-y: auto`, turning this
+              // into a vertical scroll container that CLIPS the top border of a
+              // first-child card (tool-group / MCP card) and can vertically
+              // offset the bubble text. `overflow-x: clip` clips wide content
+              // horizontally while leaving `overflow-y` truly visible.
+              // px-0.5: a 2px horizontal inset so a full-width child Card's
+              // left/right border + rounded corners aren't shaved by the clip.
+              'flex flex-1 w-full overflow-x-clip flex-col px-0.5'
             }
           >
             {offerCollapse ? (
@@ -199,8 +209,20 @@ export const ChatMessage = memo(function ChatMessage({
             `tool_result` content renderer), so nothing registers here today. */}
         <ExtensionSlot name="message_footer" />
         <div className="flex flex-row items-center gap-1 mt-1">
-          <BranchNavigator />
-          <MessageActions />
+          {/* The branch switcher sits on the message's OUTER edge: user rows are
+              right-aligned so it goes last (far right, after copy+edit);
+              assistant rows are left-aligned so it goes first (far left). */}
+          {isUser ? (
+            <>
+              <MessageActions />
+              <BranchNavigator />
+            </>
+          ) : (
+            <>
+              <BranchNavigator />
+              <MessageActions />
+            </>
+          )}
           {/* Extensions can register additional message actions here */}
           <ExtensionSlot name="message_actions" />
         </div>

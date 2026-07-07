@@ -36,9 +36,16 @@ export function FileAttachMenuItem() {
       label="Attach files or photos"
       onFiles={handleFiles}
       data-testid="file-attach-menu-upload"
-      className="!flex-row !items-center !justify-start !border-0 !px-3 !py-1.5 gap-2 rounded-md text-foreground hover:bg-muted whitespace-nowrap"
+      className="!flex-row !items-center !justify-start !border-0 !px-3 !py-1.5 gap-2 rounded-md text-foreground hover:bg-muted whitespace-nowrap !text-start"
     >
-      <Paperclip className="size-4 shrink-0" />
+      {/* Match PlusMenuItem exactly: icon wrapped so it's vertically centered
+          and sized consistently; label left-aligned (!text-start above cancels
+          the Upload dropzone's default `text-center`, which otherwise centers
+          this label inside its flex-1 span and misaligns it vs the other +
+          menu items). */}
+      <span className="shrink-0 inline-flex items-center [&_svg]:size-4">
+        <Paperclip />
+      </span>
       <span className="min-w-0 flex-1 truncate text-sm">Attach files or photos</span>
     </Upload>
   )

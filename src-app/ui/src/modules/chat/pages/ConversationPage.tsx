@@ -270,20 +270,15 @@ export default function ConversationPage() {
               <div ref={messagesEndRef} />
             </div>
           </DivScrollY>
-          {/* Jump-to-latest: floating above the composer, shown only when the
-              user has scrolled up (ITEM-2). */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center">
-            <div className="pointer-events-auto">
-              <JumpToLatestButton visible={!atBottom} onClick={jumpToLatest} />
-            </div>
-          </div>
           {/* Composer: pinned. Native mode → position:sticky at the viewport
               bottom (with home-indicator safe-area) so messages document-scroll
-              underneath; desktop → normal flow at the column bottom. */}
+              underneath; desktop → normal flow at the column bottom. Made a
+              positioning context (sticky in native, relative on desktop) so the
+              jump-to-latest button can anchor to its TOP edge. */}
           <div
             className={cn(
-              'w-full max-w-4xl mx-auto p-4 border-t border-border',
-              nativeScroll ? 'sticky bottom-0 z-10 bg-background' : '',
+              'w-full max-w-4xl mx-auto p-4',
+              nativeScroll ? 'sticky bottom-0 z-10 bg-background' : 'relative',
             )}
             style={
               nativeScroll
@@ -291,6 +286,14 @@ export default function ConversationPage() {
                 : undefined
             }
           >
+            {/* Jump-to-latest: floats just ABOVE the composer (bottom-full anchors
+                it to the composer's top edge, so it clears the input regardless of
+                the input's height). Shown only when scrolled up (ITEM-2). */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 z-20 flex justify-center">
+              <div className="pointer-events-auto">
+                <JumpToLatestButton visible={!atBottom} onClick={jumpToLatest} />
+              </div>
+            </div>
             <ChatInput />
           </div>
         </div>

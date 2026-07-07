@@ -185,9 +185,13 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
     // measurable scroll height or it renders its header but 0 data rows, so it
     // supplies its own bounded height rather than relying on the container (the
     // inline preview box only caps via max-height).
+    // px-3 pt-3: inset the toolbar + grid from the panel body (which is
+    // overflow-hidden with no padding of its own) — without it the toolbar sat
+    // flush against the top/left edge and the jump input's focus ring was
+    // clipped by the container's top edge.
     <div
       className={cn(
-        'flex flex-col w-full',
+        'flex flex-col w-full px-3 pt-3',
         virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
       )}
     >
@@ -199,19 +203,12 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
           data-testid="file-delimited-truncated-alert"
         />
       )}
-      <TabularToolbar
-        testidPrefix="file-delimited"
-        total={dataSource.length}
-        viewCount={viewCount}
-        onJump={onJump}
-        onCopy={onCopy}
-        onExport={onExport}
-        exportLabel={delimiter === '\t' ? 'Export TSV' : 'Export CSV'}
-      />
       {/* Virtualize only large grids. Row virtualization needs a definite,
           measurable scroll-viewport height (supplied by this root above); a
           plain table has no such dependency, so small grids (the overwhelming
-          majority — and most inline previews) render all rows and hug content. */}
+          majority — and most inline previews) render all rows and hug content.
+          The row-count readout + jump-to-row control ride the Table's own
+          toolbar (toolbarExtra) so they share ONE row with filter + columns. */}
       <Table
         virtualized={virtualized}
         columns={columns}
@@ -221,8 +218,24 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
         filterable
         resizable
         columnChooser
+        toolbarExtra={
+          <TabularToolbar
+            testidPrefix="file-delimited"
+            total={dataSource.length}
+            viewCount={viewCount}
+            onJump={onJump}
+            onCopy={onCopy}
+            onExport={onExport}
+            exportLabel={delimiter === '\t' ? 'Export TSV' : 'Export CSV'}
+          />
+        }
         selectionMode="cell"
         sanitizeClipboard
+        // Size columns to content (w-auto overrides the kit's default w-full):
+        // with table-fixed + auto width the table hugs its content instead of
+        // stretching a few short columns across the whole container. The
+        // container still scrolls if the data is genuinely wider than it.
+        className="w-auto table-auto"
         filterPlaceholder="Filter rows…"
         onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns }}
         onSelectionChange={tsv => { selectionRef.current = tsv }}

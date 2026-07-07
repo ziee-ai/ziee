@@ -7,20 +7,74 @@ import { FilePreviewList } from '@/modules/file/chat-extension/components/FilePr
 import { FileUploadArea } from '@/modules/file/chat-extension/components/FileUploadArea'
 import { FilePasteHandler } from '@/modules/file/chat-extension/components/FilePasteHandler'
 import { FileAttachMenuItem } from '@/modules/file/chat-extension/components/FileAttachMenuItem'
-import { FileCard } from '@/modules/file/components/FileCard'
+import { AttachedFileCard } from '@/modules/file/chat-extension/components/AttachedFileCard'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 import { ImageContent } from '@/modules/file/chat-extension/components/ImageContent'
-import { Stores } from '@/core/stores'
 // Raw zustand hook for the `useSendBlocker` reactive subscription —
 // going through Stores.File would fire the Stores-proxy's internal
 // useEffect+useStore on property access, corrupting the outer hook
 // count (see ProjectFiles.store.ts's earlier bug).
 import { useFileStore } from '@/modules/file/stores/File.store'
-import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
+import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment, MessageContentDataImage } from '@/api-client/types'
 
 // Module-level vars so cleanup can tear down subscriptions created in initialize.
 let unsubConversation: (() => void) | null = null
 let unsubEditingMessage: (() => void) | null = null
+
+/**
+ * Build a composer stub FileEntity from a message's attachment content block.
+ * Handles BOTH `file_attachment` blocks and `image` blocks whose source is a
+ * stored file (a user-attached image) — so editing a message with images
+ * restores those images into the input, same as any other file. Returns null
+ * for any other block (text / url-or-base64 images / tool results). The stub is
+ * upgraded to the full entity (thumbnail-capable) by the caller.
+ */
+function attachmentStubFromBlock(c: MessageContent): FileEntity | null {
+  if (c.content_type === 'file_attachment') {
+    const data = c.content as MessageContentDataFileAttachment
+    if (!data.file_id) return null
+    return {
+      id: data.file_id,
+      filename: data.filename,
+      file_size: data.file_size,
+      mime_type: data.mime_type ?? undefined,
+      has_thumbnail: false,
+      preview_page_count: 0,
+      created_at: '',
+      updated_at: '',
+      user_id: '',
+      created_by: '',
+      processing_metadata: null,
+      text_page_count: 0,
+      version: data.version ?? 1,
+      current_version_id: data.version_id ?? '',
+      blob_version_id: data.version_id ?? data.file_id,
+    }
+  }
+  if (c.content_type === 'image') {
+    const data = c.content as MessageContentDataImage
+    if (data.source?.type !== 'file') return null
+    const fileId = data.source.file_id
+    return {
+      id: fileId,
+      filename: data.alt_text || 'image',
+      file_size: 0,
+      mime_type: undefined,
+      has_thumbnail: false,
+      preview_page_count: 0,
+      created_at: '',
+      updated_at: '',
+      user_id: '',
+      created_by: '',
+      processing_metadata: null,
+      text_page_count: 0,
+      version: 1,
+      current_version_id: '',
+      blob_version_id: fileId,
+    }
+  }
+  return null
+}
 
 /**
  * Both composer-attached file listeners in one slot entry: the drag-and-drop
@@ -55,56 +109,15 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
 
   if (!fileData?.file_id || !fileData?.filename) return null
 
-  // Fallback entity from content block data (shown while store fetches the full entity)
-  const fallback = {
-    id: fileData.file_id,
-    filename: fileData.filename,
-    file_size: fileData.file_size,
-    mime_type: fileData.mime_type ?? undefined,
-    has_thumbnail: false,
-    preview_page_count: 0,
-    created_at: '',
-    updated_at: '',
-    user_id: '',
-    created_by: '',
-    processing_metadata: null,
-    text_page_count: 0,
-    version: fileData.version ?? 1,
-    current_version_id: fileData.version_id ?? '',
-    blob_version_id: fileData.version_id ?? fileData.file_id,
-  }
-
-  // Reactive subscription to messageFilesCache — re-renders when the file entity is loaded
-  const messageFilesCache = Stores.File.messageFilesCache
-  const file = messageFilesCache.get(fileData.file_id) ?? fallback
-
-  // Trigger background load on first access (deferred inside store action — safe in render)
-  Stores.File.getMessageFile(fileData.file_id, fallback)
-
-  // Chat surfaces opt into the side-by-side right-panel (ChatRightPanel
-  // is mounted inside ConversationPage). Without this explicit onClick,
-  // FileCard's default falls back to opening the global preview drawer.
-  const openInRightPanel = () => {
-    // displayInRightPanel is an action — callable directly from an event
-    // handler (actions are hook-free; only state *reads* in a handler need `$`).
-    Stores.Chat.displayInRightPanel({
-      id: file.id,
-      title: file.filename,
-      type: 'file',
-      // Pin the panel to the version this message referenced (if any), so an
-      // old message opens the file as it was when sent.
-      data: { fileId: file.id, version: fileData.version ?? undefined },
-    })
-  }
-
   return (
-    <FileCard
-      file={file}
-      variant={isUser ? 'square' : 'row'}
-      showFileName={true}
-      canRemove={false}
-      canDelete={false}
-      onClick={openInRightPanel}
+    <AttachedFileCard
+      fileId={fileData.file_id}
+      filename={fileData.filename}
+      fileSize={fileData.file_size}
+      mimeType={fileData.mime_type ?? undefined}
+      version={fileData.version ?? undefined}
+      versionId={fileData.version_id ?? undefined}
+      isUser={isUser}
     />
   )
 }
@@ -168,42 +181,20 @@ const fileExtension: ChatExtension = createExtension({
         if (!fileStore) return
 
         if (editingMessage) {
-          // Restore file_attachment content blocks from the edited message
-          const fileContents = editingMessage.contents.filter(
-            c => c.content_type === 'file_attachment'
-          )
-          if (fileContents.length > 0) {
-            // Phase 1 — Synchronous: build stubs from content block data immediately.
-            // This ensures selectedFiles is populated before the user can click Send.
-            const stubs: FileEntity[] = fileContents.map(c => {
-              const data = c.content as MessageContentDataFileAttachment
-              return {
-                id: data.file_id,
-                filename: data.filename,
-                file_size: data.file_size,
-                mime_type: data.mime_type ?? undefined,
-                has_thumbnail: false,
-                preview_page_count: 0,
-                created_at: '',
-                updated_at: '',
-                user_id: '',
-                created_by: '',
-                processing_metadata: null,
-                text_page_count: 0,
-                version: data.version ?? 1,
-                current_version_id: data.version_id ?? '',
-                blob_version_id: data.version_id ?? data.file_id,
-              }
-            })
+          // Restore attachment content blocks (file_attachment AND user-attached
+          // image blocks) from the edited message into the composer.
+          const stubs: FileEntity[] = editingMessage.contents
+            .map(attachmentStubFromBlock)
+            .filter((f): f is FileEntity => f !== null)
+          if (stubs.length > 0) {
+            // Phase 1 — Synchronous: stubs from block data, so selectedFiles is
+            // populated before the user can click Send.
             fileStore.restoreFilesFromEdit(stubs)
 
             // Phase 2 — Async: upgrade stubs with full server entities (enables thumbnails).
             try {
               const fullFiles = await Promise.all(
-                fileContents.map(c => {
-                  const data = c.content as MessageContentDataFileAttachment
-                  return fileStore.getFileEntityById(data.file_id)
-                })
+                stubs.map(s => fileStore.getFileEntityById(s.id))
               )
               const validFiles = fullFiles.filter(Boolean) as FileEntity[]
               if (validFiles.length > 0) {
@@ -282,35 +273,15 @@ const fileExtension: ChatExtension = createExtension({
   // Chat.store.ts:891-921 (lazy-imported Stores.File to avoid the
   // chat → file dependency).
   onMessageEditRestore: async (contents) => {
-    const fileContents = contents.filter(
-      c => c.content_type === 'file_attachment',
-    )
-    if (fileContents.length === 0) return
+    const stubs: FileEntity[] = contents
+      .map(attachmentStubFromBlock)
+      .filter((f): f is FileEntity => f !== null)
+    if (stubs.length === 0) return
 
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
     if (!fileStore) return
 
-    const stubs: FileEntity[] = fileContents.map(c => {
-      const data = c.content as MessageContentDataFileAttachment
-      return {
-        id: data.file_id,
-        filename: data.filename,
-        file_size: data.file_size,
-        mime_type: data.mime_type ?? undefined,
-        has_thumbnail: false,
-        preview_page_count: 0,
-        created_at: '',
-        updated_at: '',
-        user_id: '',
-        created_by: '',
-        processing_metadata: null,
-        text_page_count: 0,
-        version: data.version ?? 1,
-        current_version_id: data.version_id ?? '',
-        blob_version_id: data.version_id ?? data.file_id,
-      }
-    })
     fileStore.restoreFilesFromEdit(stubs)
   },
 

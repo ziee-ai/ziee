@@ -37,7 +37,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
   return (
     <Card
       size="sm"
-      className="mb-2 bg-black/2"
+      className={cn('mb-2', !isExpanded && 'py-2.5')}
       data-testid={`mcp-toolcall-card-${toolCall.tool_use_id}`}
     >
       <div className="flex items-center justify-between">
@@ -172,7 +172,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
 
   // Historical view for tool calls loaded from DB (store is empty after reload)
   return (
-    <Card size="sm" className="mb-2 bg-black/2" data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
+    <Card size="sm" className={cn('mb-2', !isExpanded && 'py-2.5')} data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <ToolStatusIcon
@@ -282,7 +282,7 @@ function McpToolGroupCard({
   )
 
   return (
-    <Card size="sm" className="mb-2 bg-black/2" data-testid="mcp-toolgroup-card">
+    <Card size="sm" className={cn('mb-2', !isExpanded && 'py-2.5')} data-testid="mcp-toolgroup-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {icon}

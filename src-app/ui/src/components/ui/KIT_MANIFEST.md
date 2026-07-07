@@ -1247,7 +1247,7 @@ _No always-required props._
 | `dataSource` | `T[]` |  |
 | `rowKey` | `(keyof T & string) | ((record: T, index: number) => string)` | Row key: a record field name (legacy string form) or a function. |
 
-<details><summary>Optional props (21)</summary>
+<details><summary>Optional props (22)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -1271,6 +1271,7 @@ _No always-required props._
 | `scrollToIndex` | `number | null | undefined` | View-relative index to scroll into view (virtual: scrollToIndex; plain: scrollIntoView). Change the value to trigger a scroll. |
 | `selectionMode` | `"row" | "none" | "cell" | undefined` | Cell/row selection + copy. `'cell'` selects single cells + rows (via a rowHeader column); `'row'` selects rows only. Ctrl/Cmd+C copies as… |
 | `sortable` | `boolean | undefined` | Clickable sort on every column that doesn't set `sortable:false`. |
+| `toolbarExtra` | `ReactNode` | Extra content rendered on the trailing (right) edge of the toolbar row — e.g. a row-count readout + jump-to-row control — so callers don'… |
 | `virtualized` | `boolean | undefined` | Row-virtualize the body (only visible rows mount) for large data sets. Requires a bounded-height scroll ancestor (the kit ScrollArea / an… |
 
 </details>

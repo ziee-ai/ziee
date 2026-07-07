@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Button, Input } from '@/components/ui'
 
@@ -41,11 +41,15 @@ export function FindBar({
         ref={inputRef}
         size="sm"
         value={query}
-        prefix={<Search className="size-3.5 text-muted-foreground" />}
         placeholder="Find in document"
         aria-label="Find in document"
         data-testid="file-find-input"
-        className="max-w-[220px]"
+        // flex-1 (mirrors the PDF viewer's find bar): the input grows to fill
+        // the strip so the count + nav buttons pin to the right edge, instead of
+        // packing everything left. No search-icon prefix — the PDF bar's input
+        // is bare, so these match. ms-1: a little breathing room from the strip's
+        // left edge.
+        className="flex-1 ms-1"
         onChange={e => onQueryChange(e.target.value)}
         onKeyDown={e => {
           if (e.key === 'Enter') {
@@ -58,19 +62,22 @@ export function FindBar({
           }
         }}
       />
+      {/* Count reads "N of M" (hidden while the query is empty), matching the
+          PDF viewer's find bar — no reserved-width box, no "No results" text
+          (0 of M conveys the same). */}
       <span
-        className="text-xs text-muted-foreground tabular-nums min-w-[52px] text-center"
+        className="ms-2 text-xs text-muted-foreground tabular-nums whitespace-nowrap"
         data-testid="file-find-count"
         aria-live="polite"
       >
-        {query === '' ? '' : count === 0 ? 'No results' : `${activeIndex + 1} / ${count}`}
+        {query === '' ? '' : `${count === 0 ? 0 : activeIndex + 1} of ${count}`}
       </span>
       <Button
         variant="ghost"
         size="icon"
         tooltip="Previous match"
         aria-label="Previous match"
-        icon={<ChevronUp />}
+        icon={<ChevronLeft />}
         disabled={count === 0}
         onClick={onPrev}
         data-testid="file-find-prev-btn"
@@ -80,7 +87,7 @@ export function FindBar({
         size="icon"
         tooltip="Next match"
         aria-label="Next match"
-        icon={<ChevronDown />}
+        icon={<ChevronRight />}
         disabled={count === 0}
         onClick={onNext}
         data-testid="file-find-next-btn"
