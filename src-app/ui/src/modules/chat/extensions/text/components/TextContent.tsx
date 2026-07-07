@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { cn } from '@/lib/utils'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import type { MessageContent } from '@/api-client/types'
 import { Stores } from '@/core/stores'
@@ -6,6 +7,7 @@ import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdown
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
 import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
+import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 
 interface TextContentProps {
   content: MessageContent
@@ -28,7 +30,14 @@ export const TextContent = memo(function TextContent({
   // Both user and assistant text render as markdown (code blocks, tables, etc.).
   // Only the assistant's LIVE stream animates; a user message is never streaming.
   return (
-    <div className="w-full overflow-x-auto pt-2">
+    <div className={cn(
+      'w-full overflow-x-auto',
+      // pt-2 gives assistant blocks a little top breathing room when stacked.
+      // A user message is a single centered bubble (px-3 py-2) — the extra top
+      // padding would push its text off-center (16px top vs 8px bottom), so it's
+      // assistant-only.
+      !isUser && 'pt-2',
+    )}>
       <StreamdownErrorBoundary fallbackText={textData.text}>
         <Streamdown
           isAnimating={!isUser && isStreaming}
@@ -37,7 +46,7 @@ export const TextContent = memo(function TextContent({
           components={components}
           urlTransform={streamdownUrlTransform}
         >
-          {textData.text}
+          {preprocessMarkdown(textData.text)}
         </Streamdown>
       </StreamdownErrorBoundary>
     </div>

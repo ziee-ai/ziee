@@ -7,6 +7,8 @@ import {
   HEADING_CLASS,
   LINK_CLASS,
 } from '@/components/common/markdownHeadings'
+import { renderGfmAlert } from '@/components/common/gfmAlert'
+import { BlockedImage } from '@/components/common/BlockedImage'
 import { cn } from '@/lib/utils'
 
 /**
@@ -125,6 +127,10 @@ export function useStreamdownComponents(contentId: string) {
         return <a id={scopedId} href={scopedHref} className={cn(LINK_CLASS, className)} {...rest} target="_blank" rel="noreferrer" />
       },
       blockquote(props: JSX.IntrinsicElements['blockquote']) {
+        // A `> [!NOTE]`-style GFM alert renders as a styled callout, not the
+        // generic "Cited excerpt" collapsible (which would show the raw marker).
+        const alert = renderGfmAlert(props.children)
+        if (alert) return alert
         return (
           <details className="footnote-quote">
             <summary>Cited excerpt</summary>
@@ -142,14 +148,17 @@ export function useStreamdownComponents(contentId: string) {
         const src = props.src
         if (typeof src !== 'string' || src.length === 0) return null
         if (src.startsWith('/')) return <img {...props} />
-        if (src.startsWith('data:')) return null
-        try {
-          const u = new URL(src, window.location.origin)
-          if (u.origin === window.location.origin) return <img {...props} />
-        } catch {
-          /* malformed */
+        if (!src.startsWith('data:')) {
+          try {
+            const u = new URL(src, window.location.origin)
+            if (u.origin === window.location.origin) return <img {...props} />
+          } catch {
+            /* malformed → placeholder below */
+          }
         }
-        return null
+        // Blocked (external URL or data: URI) — show a placeholder instead of
+        // rendering nothing (which left a broken-looking stray caption).
+        return <BlockedImage src={src} alt={typeof props.alt === 'string' ? props.alt : undefined} />
       },
       li(props: JSX.IntrinsicElements['li']) {
         const { id, className, ...rest } = props
@@ -157,10 +166,31 @@ export function useStreamdownComponents(contentId: string) {
         const scopedId = id?.startsWith('user-content-fn-')
           ? `${contentId}-fn-${id.slice('user-content-fn-'.length)}`
           : id
+        // GFM task-list items (`- [ ] …`) carry their own checkbox, so drop the
+        // list bullet (list-none) — otherwise it reads as "• ☐ text".
+        const isTask = typeof className === 'string' && className.includes('task-list-item')
         // Re-apply Streamdown's default li classes (our override replaces its renderer,
         // losing "py-1 [&>p]:inline" which keeps the number and text on the same line)
-        const mergedClassName = ['py-1', '[&>p]:inline', className].filter(Boolean).join(' ')
+        const mergedClassName = ['py-1', '[&>p]:inline', isTask && 'list-none', className]
+          .filter(Boolean)
+          .join(' ')
         return <li id={scopedId} className={mergedClassName} {...rest} />
+      },
+      input(props: JSX.IntrinsicElements['input']) {
+        // Style GFM task-list checkboxes (native, `disabled`) — accent color +
+        // a real gap to the label — instead of the raw gray browser default.
+        if (props.type === 'checkbox') {
+          return (
+            <input
+              {...props}
+              className={cn(
+                'me-1.5 size-3.5 translate-y-[2px] accent-primary',
+                props.className,
+              )}
+            />
+          )
+        }
+        return <input {...props} />
       },
     }
   }, [contentId])
