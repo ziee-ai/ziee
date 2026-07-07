@@ -769,9 +769,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ChatMessage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 18 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 80 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 101 },
+      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 19 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 89 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 110 },
     ],
   },
   "modules/chat/components/ContentRenderer": {
@@ -828,7 +828,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed"],
     signals: [
       { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 44 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 42 },
     ],
   },
   "modules/chat/components/TextContent": {
@@ -970,12 +970,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 49 },
-      { kind: "branch", condition: "!conversationId", line: 75 },
-      { kind: "loading", condition: "loading && !conversation", line: 101 },
-      { kind: "loading", condition: "!loading && !conversation", line: 110 },
-      { kind: "error", condition: "error", line: 113 },
-      { kind: "error", condition: "error", line: 156 },
+      { kind: "branch", condition: "!sentinel", line: 50 },
+      { kind: "branch", condition: "!conversationId", line: 76 },
+      { kind: "loading", condition: "loading && !conversation", line: 102 },
+      { kind: "loading", condition: "!loading && !conversation", line: 111 },
+      { kind: "error", condition: "error", line: 114 },
+      { kind: "error", condition: "error", line: 157 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
