@@ -6264,13 +6264,13 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View LLM providers and list available providers",
-                        "name": "LlmProvidersRead",
-                        "value": "llm_providers::read"
+                        "description": "Edit existing LLM models",
+                        "name": "LlmModelsEdit",
+                        "value": "llm_models::edit"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_providers::read",
+                  "error": "Missing required permission: llm_models::edit",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
