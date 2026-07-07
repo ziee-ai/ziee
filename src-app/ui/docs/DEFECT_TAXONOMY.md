@@ -82,6 +82,7 @@ Detector legend: [G] deterministic DOM-geometry rule (gallery runtime pass — C
 - H4 [V] single-item vs many-items vs MAX-items (pagination/scroll appears; layout survives 100 rows)
 - H5 [V] long/hostile content: 200-char titles, no-space strings, emoji, URLs-as-names
 - H6 [G] image aspect/fallback (broken image icon, layout shift on load)
+- H7 [G] **empty control renders nothing** — an OPEN picker/select/menu dropdown (`role=listbox`/`role=menu`/`[data-slot=select-content]`) with ZERO selectable option items AND no empty-state hint text ("No models", "No results") — it shows the user literally nothing to select and no affordance to fix it. Interaction-gated: the popup only exists once opened, so it's fed via an `open-…-select` recipe. *(the composer model picker `ullm-model-select` with 0 models configured opens to an empty listbox — no options, no "No models" text, no disabled+configure affordance.)*
 
 ## I. Stacking & overlays
 - I1 [G] z-index collisions — element unintentionally under another (hit-test at corners)

@@ -16,6 +16,7 @@
  *   C12 placeholder element
  *   D1 truncated-with-room
  *   G5 tap-target < 44 (mobile)  G7 clipped focus-ring / elevation shadow
+ *   H7 empty picker dropdown (0 options, no empty-hint)
  *   I1 z-collision (hit-test)    I4 modal-in-viewport   I5 wrong-scroll-axis (strip)
  *   J6 mixed button variants     J7 same-action control side (cross-surface)
  *   K1 persistent context inside scroll
@@ -119,6 +120,7 @@ const CLASS_SEVERITY = {
   L4: 'MEDIUM',
   L5: 'HIGH',
   H6: 'MEDIUM',
+  H7: 'MEDIUM',
 }
 
 // Context-level testids that must NOT live inside a message/content scroll
@@ -919,6 +921,37 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
           }
         }
       }
+    }
+  }
+
+  // ── H7 empty picker — a select/menu dropdown that renders NOTHING ────────
+  // An OPEN listbox/menu popup with ZERO selectable options AND no empty-state
+  // hint text ("No models", "No results") shows the user literally nothing to
+  // select — the composer model picker with 0 models configured is exactly this
+  // (no options, no "No models" text, no configure affordance). Interaction-gated:
+  // the popup only exists once opened, driven by an `open-…-select` recipe.
+  if (run('H7')) {
+    const OPTION_SEL =
+      '[role="option"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[data-slot="select-item"],[cmdk-item]'
+    const popups = document.querySelectorAll(
+      '[role="listbox"],[role="menu"],[data-slot="select-content"],[data-slot="command-list"]',
+    )
+    for (const pop of popups) {
+      if (isChrome(pop) || inSvg(pop) || !visible(pop)) continue
+      if (pop.querySelectorAll(OPTION_SEL).length > 0) continue
+      // Any human text in the popup = an empty-state hint ("No models found") → fine.
+      if (/[a-z0-9]/i.test(textOf(pop))) continue
+      const id = pop.id
+      const trigger =
+        (id && document.querySelector(`[aria-controls="${id}"]`)) ||
+        document.querySelector(
+          '[role="combobox"][aria-expanded="true"],[aria-haspopup][aria-expanded="true"]',
+        )
+      push(
+        'H7', selectorFor(trigger || pop),
+        `picker dropdown renders nothing: 0 options + no empty-state hint (${selectorFor(pop)}) — the user sees literally nothing to select`,
+        { options: 0 },
+      )
     }
   }
 
