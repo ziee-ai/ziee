@@ -102,6 +102,8 @@ export const CLASS_SEVERITY = {
   A10: 'MEDIUM', // form control at zero/near-zero size (the "input disappears" class)
   A11: 'MEDIUM', // bordered element whose border is clipped by an overflow ancestor
   A12: 'LOW', // cramped double-border (edge-adjacent outline control)
+  A13: 'MEDIUM', // child block breaks the parent's alignment axis (left block in a right-aligned message)
+  A14: 'LOW', // dead space from an over-tall min/fixed height (content fills far less than the box)
   C1: 'MEDIUM', // status badge ordered before its label
   G9: 'MEDIUM', // hover-only controls reserve no space → persistent sibling shifts
   H7: 'MEDIUM', // empty select/combobox trigger renders nothing
@@ -1062,6 +1064,79 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
       check('right', bw.right, paintedBorder(as, 'Right'), innerRight - r.right)
       check('top', bw.top, paintedBorder(as, 'Top'), r.top - innerTop)
       check('bottom', bw.bottom, paintedBorder(as, 'Bottom'), innerBottom - r.bottom)
+    }
+  }
+
+  // ── A13 child block breaks the parent's alignment axis ───────────────────
+  // In a RIGHT-aligned message (the whole bubble pushed right via flex-end /
+  // margin-left:auto), a child content block (attachment/file list, action row)
+  // that stays LEFT-packed floats at the far left of the message's own width,
+  // detached from the bubble it belongs to. Flag a file/attachment/image block
+  // whose right edge sits well short of the message's right edge while its left
+  // edge hugs the message's left — an alignment mismatch among one message's
+  // children. Only right-aligned messages are inspected (left-aligned assistant
+  // messages legitimately pack left).
+  if (run('A13')) {
+    const FILEISH = '[data-testid*="attach"],[data-testid*="file"],[data-testid*="image"],img'
+    for (const el of pool) {
+      const s = cs(el)
+      const parent = el.parentElement
+      if (!parent) continue
+      const rightAligned = s.alignSelf === 'flex-end' || s.marginLeft === 'auto'
+      if (!rightAligned) continue
+      const r = rectOf(el)
+      if (r.width < 60) continue
+      const seen = new Set()
+      for (const f of el.querySelectorAll(FILEISH)) {
+        if (!visible(f) || inSvg(f)) continue
+        const fr = rectOf(f)
+        if (fr.width < 8 || fr.width > r.width * 0.9) continue // spans the msg → aligned, skip
+        const gapRight = r.right - fr.right
+        const leftHug = fr.left - r.left
+        if (gapRight > 0.4 * r.width && leftHug < 0.12 * r.width) {
+          const key = selectorFor(f)
+          if (seen.has(key)) continue
+          seen.add(key)
+          push('A13', key,
+            `left-aligned block inside a right-aligned message ${selectorFor(el)}: its right edge is ${Math.round(gapRight)}px (${Math.round(100 * gapRight / r.width)}% of the message width) from the message's right edge — it detaches from the bubble instead of following its right-alignment`,
+            { gapRight: Math.round(gapRight) })
+          break // one per message
+        }
+      }
+    }
+  }
+
+  // ── A14 dead space from an over-tall min/fixed height ────────────────────
+  // A container with an explicit min-height / fixed height whose CONTENT fills
+  // far less than the box leaves a large blank band (a small table in a viewer
+  // sized for many rows, a short panel pinned to a tall min-height). Flag when
+  // (box_height − content_height) exceeds BOTH 35% of the box AND an absolute px
+  // floor. Content height = the union extent of the container's visible children.
+  if (run('A14')) {
+    const FLOOR = 120 // px of empty band before it's worth flagging
+    for (const el of pool) {
+      const s = cs(el)
+      const minH = parseFloat(s.minHeight) || 0
+      const hasFixed = s.height !== 'auto' && /px$/.test(s.height)
+      if (minH < FLOOR && !hasFixed) continue
+      const r = rectOf(el)
+      if (r.height < FLOOR) continue
+      // Only when the explicit sizing is what makes it tall (content would be shorter).
+      const boxH = r.height
+      const kids = Array.from(el.children).filter(c => visible(c) && !inSvg(c))
+      if (!kids.length) continue
+      let top = Infinity, bottom = -Infinity
+      for (const c of kids) { const cr = rectOf(c); top = Math.min(top, cr.top); bottom = Math.max(bottom, cr.bottom) }
+      const contentH = bottom - top
+      if (!(contentH > 0)) continue
+      const empty = boxH - contentH
+      // scrollable content that's merely clipped isn't dead space
+      if (el.scrollHeight > el.clientHeight + 4) continue
+      if (empty > 0.35 * boxH && empty > FLOOR) {
+        push('A14', selectorFor(el),
+          `dead space: content fills ${Math.round(contentH)}px of a ${Math.round(boxH)}px box (${Math.round(empty)}px / ${Math.round(100 * empty / boxH)}% blank) — the ${minH ? `min-height ${Math.round(minH)}px` : 'fixed height'} is too tall for the content`,
+          { empty: Math.round(empty), boxH: Math.round(boxH) })
+      }
     }
   }
 
