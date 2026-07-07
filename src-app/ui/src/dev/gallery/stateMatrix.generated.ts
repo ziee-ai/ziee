@@ -244,8 +244,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!collapsed", line: 68 },
       { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 76 },
       { kind: "branch", condition: "!(collapsed)", line: 77 },
-      { kind: "branch", condition: "item.icon != null", line: 105 },
-      { kind: "branch", condition: "!collapsed", line: 107 },
+      { kind: "branch", condition: "item.icon != null", line: 109 },
+      { kind: "branch", condition: "!collapsed", line: 111 },
     ],
   },
   "components/ui/kit/multi-select": {

@@ -164,15 +164,15 @@ export function HardwareMonitor() {
           <>
             {/* CPU and Memory Usage - First Row */}
             <div className="flex gap-3 flex-wrap">
-              <div className="flex-1 min-w-80">{renderCPUUsage()}</div>
-              <div className="flex-1 min-w-80">{renderMemoryUsage()}</div>
+              <div className="flex-1 min-w-0 sm:min-w-80">{renderCPUUsage()}</div>
+              <div className="flex-1 min-w-0 sm:min-w-80">{renderMemoryUsage()}</div>
             </div>
 
             {/* GPU Usage Cards - Arranged with wrapping support */}
             <div className="flex gap-3 flex-wrap">
               {!currentUsage?.gpu_devices ||
               currentUsage.gpu_devices.length === 0 ? (
-                <div className="flex-1 min-w-80">
+                <div className="flex-1 min-w-0 sm:min-w-80">
                   <Card title="GPU Usage" data-testid="hardware-gpu-empty-card">
                     <Text type="secondary">No GPU usage data available</Text>
                   </Card>
@@ -188,7 +188,7 @@ export function HardwareMonitor() {
                     gpuInfo?.name || gpuUsage.device_name || `GPU ${index + 1}`
 
                   return (
-                    <div key={index} className="flex-1 min-w-80">
+                    <div key={index} className="flex-1 min-w-0 sm:min-w-80">
                       <Card title={`${gpuName} Usage`} data-testid={`hardware-gpu-card-${index}`}>
                         <div className="space-y-3">
                           {gpuUsage.utilization_percentage !== undefined && (
