@@ -35,6 +35,14 @@
  *     no cookies, storage, or parent/DOM access, so there is nothing sensitive
  *     to exfiltrate (the same "nothing to steal" posture as the server-side
  *     code_sandbox — the guarantee is isolation, not an egress block).
+ *
+ *     A second accepted residual: a preview script can busy-loop
+ *     (`<script>while(1){}</script>`) and hang the tab, since a sandboxed
+ *     iframe may share the main thread. This is inherent to every live-HTML
+ *     preview (jsfiddle/codepen included); it affects only the user who
+ *     explicitly clicked Preview on their own conversation and causes no data
+ *     loss — the DEFAULT Code view (DEC-2) means it never triggers unless the
+ *     user opts in per block.
  */
 
 /**
