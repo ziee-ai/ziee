@@ -19,7 +19,7 @@ export function SkillMenuItem() {
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-foreground min-w-[180px] focus-visible:outline focus-visible:outline-2"
+      className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2"
       role="button"
       tabIndex={0}
       data-testid="skill-conversation-menu-item"
@@ -35,20 +35,8 @@ export function SkillMenuItem() {
           close()
         }
       }}
-      onMouseEnter={e => {
-        e.currentTarget.style.backgroundColor = 'bg-muted'
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.backgroundColor = 'transparent'
-      }}
-      onFocus={e => {
-        e.currentTarget.style.backgroundColor = 'bg-muted'
-      }}
-      onBlur={e => {
-        e.currentTarget.style.backgroundColor = 'transparent'
-      }}
     >
-      <BookOpen className="text-base" />
+      <BookOpen className="size-4" />
       <span className="text-sm">Skills in this chat</span>
     </div>
   )

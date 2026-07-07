@@ -1,9 +1,10 @@
-import { Button, Dropdown, message } from '@/components/ui'
+import { Dropdown, message } from '@/components/ui'
 import { Download } from 'lucide-react'
 import {
   createExtension,
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
+import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import type { MessageWithContent } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
@@ -141,21 +142,42 @@ function getExportMenuItems() {
 }
 
 /**
- * Export button component
+ * Export entry INSIDE the "+" dropdown. Renders a row visually identical to its
+ * sibling "+" menu items (Attach files / Skills / MCP / Assistant): same
+ * `flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-muted` wrapper, a
+ * `size-4` leading icon, and a `text-sm` label (A9 peer-metric consistency). The
+ * export FORMAT choice (JSON / Text / Markdown) opens as a nested Dropdown; picking
+ * one exports and closes the "+" menu.
  */
-function ExportButton() {
+function ExportMenuItem() {
   const messages = Array.from(Stores.Chat.messages.values())
+  const { close } = usePlusDropdown()
 
-  // Don't show export button if no messages
+  // Don't show export if there's nothing to export.
   if (messages.length === 0) {
     return null
   }
 
+  const items = getExportMenuItems().map(it => ({
+    ...it,
+    onClick: () => {
+      it.onClick()
+      close()
+    },
+  }))
+
   return (
-    <Dropdown data-testid="chat-export-dropdown" items={getExportMenuItems()} side="bottom" align="end">
-      <Button data-testid="chat-export-btn" icon={<Download />}>
-        Export
-      </Button>
+    <Dropdown data-testid="chat-export-dropdown" items={items} side="right" align="start">
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2"
+        role="button"
+        tabIndex={0}
+        data-testid="chat-export-menu-item"
+        aria-label="Export conversation"
+      >
+        <Download className="size-4" />
+        <span className="text-sm">Export conversation</span>
+      </div>
     </Dropdown>
   )
 }
@@ -171,9 +193,10 @@ const exportExtension: ChatExtension = createExtension({
 
   // No store needed - stateless extension
 
-  // Register slot components
+  // Register slot components: Export lives INSIDE the "+" dropdown (a peer of
+  // Attach files / Skills / MCP / Assistant), not as a standalone toolbar button.
   slots: {
-    toolbar_actions: { component: ExportButton, order: 70 },
+    toolbar_plus_items: { component: ExportMenuItem, order: 70 },
   },
 })
 
