@@ -449,6 +449,40 @@ export function DefectRepro() {
           <ArrowRight size={15} aria-hidden />
         </button>
       </Cell>
+
+      {/* ── #22 · A13 child block breaks the parent's right-alignment axis ───── */}
+      <Cell id="a13-align-break" title="A13 · left-packed attachment under a right-aligned message">
+        {/* flex COLUMN → cross axis is horizontal; the message uses self-end to
+            right-align (matching the real chat bubble). Its attachment block packs
+            LEFT, so the file card floats at the far left of the message's width. */}
+        <div className="flex flex-col">
+          <div className="self-end w-[300px] rounded-lg bg-muted p-2" data-testid="repro-a13-message">
+            <div className="text-end text-sm">Here's the spreadsheet</div>
+            <div className="flex" data-testid="repro-a13-attachments">
+              <div className="w-[90px] rounded border border-border p-2 text-xs" data-testid="repro-a13-file">
+                data.csv
+              </div>
+            </div>
+          </div>
+        </div>
+      </Cell>
+
+      {/* ── #23 · A14 dead space from an over-tall fixed/min height ──────────── */}
+      <Cell id="a14-dead-space" title="A14 · small table in a tall fixed-height viewer body">
+        {/* mirrors the inline file-viewer body (`h-[min(360px,55vh)]`): a fixed 300px
+            box holding a 2-row table leaves a large blank band below the content. */}
+        <div className="overflow-auto h-[300px] rounded border border-border" data-testid="repro-a14-deadspace">
+          <table className="text-sm">
+            <thead>
+              <tr><th className="px-2 py-1 text-start">Name</th><th className="px-2 py-1 text-start">Value</th></tr>
+            </thead>
+            <tbody>
+              <tr><td className="px-2 py-1">alpha</td><td className="px-2 py-1">1</td></tr>
+              <tr><td className="px-2 py-1">beta</td><td className="px-2 py-1">2</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Cell>
     </div>
   )
 }
