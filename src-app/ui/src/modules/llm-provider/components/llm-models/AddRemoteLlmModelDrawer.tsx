@@ -57,12 +57,16 @@ export function AddRemoteLlmModelDrawer() {
   const { open, providerId } = Stores.AddRemoteLlmModelDrawer
   const canCreate = usePermission(Permissions.LlmModelsCreate)
 
-  // Discovered models + state for THIS provider (reactive reads).
-  const discovered = providerId ? Stores.LlmProvider.discoveredModels[providerId] : undefined
-  const discovering = providerId
-    ? Boolean(Stores.LlmProvider.discoverLoading[providerId])
-    : false
-  const notes = providerId ? Stores.LlmProvider.discoverNotes[providerId] : undefined
+  // Discovered models + state for THIS provider. Read the reactive proxy fields
+  // UNCONDITIONALLY (each access calls a store hook — a ternary around them would
+  // change the hook count when providerId toggles null<->value on open/close and
+  // crash with "rendered more/fewer hooks"), then index by providerId plainly.
+  const discoveredMap = Stores.LlmProvider.discoveredModels
+  const discoverLoadingMap = Stores.LlmProvider.discoverLoading
+  const discoverNotesMap = Stores.LlmProvider.discoverNotes
+  const discovered = providerId ? discoveredMap[providerId] : undefined
+  const discovering = providerId ? Boolean(discoverLoadingMap[providerId]) : false
+  const notes = providerId ? discoverNotesMap[providerId] : undefined
 
   // Fetch the provider's available models when the drawer opens.
   useEffect(() => {
@@ -180,6 +184,7 @@ export function AddRemoteLlmModelDrawer() {
                 placeholder="Select a model"
                 searchPlaceholder="Search models…"
                 emptyText={discovering ? 'Loading models…' : 'No models found — use a custom ID'}
+                aria-label="Model"
                 data-testid="llm-remote-model-picker"
               />
             ) : (
@@ -196,6 +201,7 @@ export function AddRemoteLlmModelDrawer() {
                   setUseCustomId(v)
                   form.setValue('name', '')
                 }}
+                aria-label="Enter a custom model ID"
                 data-testid="llm-remote-custom-id-toggle"
               />
             </Flex>

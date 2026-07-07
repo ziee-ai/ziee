@@ -47,6 +47,7 @@ async fn admin_server() -> (TestServer, String) {
             "llm_providers::create",
             "llm_models::create",
             "llm_models::read",
+            "llm_models::edit",
         ],
     )
     .await;

@@ -15,7 +15,7 @@ use crate::{
     common::r#type::{ApiResult, AppError},
     core::{events::EventBus, repository::Repos},
     modules::llm_model::permissions::LlmModelsRead,
-    modules::llm_provider::permissions::{LlmProvidersRead, UserLlmProvidersRead},
+    modules::llm_provider::permissions::UserLlmProvidersRead,
     modules::llm_provider::repositories::admin::get_llm_provider_by_id,
     modules::permissions::{RequirePermissions, with_permission},
     modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
@@ -190,13 +190,17 @@ pub fn create_model_docs(op: TransformOperation) -> TransformOperation {
 /// Refresh a remote provider's models against its live `/v1/models` list,
 /// flipping `is_deprecated` on any that vanished (or the catalog marks
 /// deprecated) and clearing it on any that reappeared. Returns the refreshed
-/// model list. Requires `llm_providers::read` (mirrors discover-models).
+/// model list.
+///
+/// Requires `llm_models::edit` (NOT merely `llm_providers::read`): unlike the
+/// read-only discover-models, this MUTATES model rows and makes an api_key-bearing
+/// outbound call, so it takes the same write perm as `update_model`.
 ///
 /// Best-effort: a discovery failure leaves the flags untouched and still returns
 /// the current list — see `prune::sweep_provider_once` for the DEC-5 no-op guard.
 #[debug_handler]
 pub async fn refresh_provider_models(
-    _auth: RequirePermissions<(LlmProvidersRead,)>,
+    _auth: RequirePermissions<(LlmModelsEdit,)>,
     Extension(pool): Extension<sqlx::PgPool>,
     Path(provider_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<LlmModel>>> {
@@ -219,7 +223,7 @@ pub async fn refresh_provider_models(
 }
 
 pub fn refresh_provider_models_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(LlmProvidersRead,)>(op)
+    with_permission::<(LlmModelsEdit,)>(op)
         .id("LlmProvider.refreshModels")
         .tag("LLM Providers")
         .summary("Refresh a provider's models against its live list; flags deprecated/removed ones.")

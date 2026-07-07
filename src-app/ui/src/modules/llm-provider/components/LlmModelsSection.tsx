@@ -315,7 +315,9 @@ export function LlmModelsSection() {
   // deprecated/removed models against the provider's live list.
   const getRefreshButton = () => {
     if (!currentProvider || currentProvider.provider_type === 'local') return null
-    if (!canCreateModels) return null
+    // Refresh mutates is_deprecated → gate on edit (matches the backend's
+    // llm_models::edit on POST /refresh-models), not create.
+    if (!canEditModels) return null
     const refreshing = Boolean(Stores.LlmProvider.refreshingModels[currentProvider.id])
     return (
       <Tooltip content="Refresh models from provider">

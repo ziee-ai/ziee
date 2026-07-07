@@ -322,23 +322,20 @@ fn parse_one_live_model(id: String, item: &serde_json::Value) -> LiveModel {
         .and_then(|v| v.as_u64())
         .and_then(|n| u32::try_from(n).ok());
 
-    let input_modalities = item
+    let supports_vision = item
         .get("architecture")
         .and_then(|a| a.get("input_modalities"))
-        .and_then(|v| v.as_array());
-    let supports_vision = input_modalities.map(|arr| {
-        arr.iter()
-            .filter_map(|v| v.as_str())
-            .any(|m| m.eq_ignore_ascii_case("image"))
-    });
-    let supports_embeddings = input_modalities.map(|arr| {
-        // A model whose only output modality is an embedding vector. OpenRouter
-        // doesn't currently expose embeddings, so this stays None in practice;
-        // kept for OpenAI-compatible providers that tag it.
-        arr.iter()
-            .filter_map(|v| v.as_str())
-            .any(|m| m.eq_ignore_ascii_case("embedding"))
-    });
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .any(|m| m.eq_ignore_ascii_case("image"))
+        });
+    // `/models` responses carry no reliable embeddings signal (embeddings is an
+    // OUTPUT modality, and no common provider tags it on `input_modalities`), so
+    // we do not infer it from the live response — the curated catalog is the
+    // source of truth for embeddings capability.
+    let supports_embeddings = None;
 
     let supports_tool_use = item
         .get("supported_parameters")
