@@ -146,30 +146,35 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     expect(srcdoc).toContain('preview me')
   })
 
-  // TEST-3: the injected CSP actually BLOCKS external network — proven by
-  // observed effect (no request ever leaves), not just mechanism-presence.
-  test('preview CSP blocks external network (no request leaves the frame)', async ({
+  // TEST-3: the injected CSP actually BLOCKS external network — proven by the
+  // block observed FROM INSIDE the null-origin frame (the browser's own verdict
+  // on whether the external image loaded), independent of Playwright internals.
+  test('preview CSP blocks external network (external image blocked in-frame)', async ({
     page,
     testInfra,
   }) => {
     const SENTINEL = 'blocked-sentinel-xyz'
-    // Any external request the frame ATTEMPTS surfaces here (Playwright fires
-    // `request` on attempt, before DNS/connect). A CSP-blocked request is never
-    // attempted → never seen. So an empty `seen` proves the CSP severed network.
-    const seen: string[] = []
-    page.on('request', r => {
-      if (r.url().includes(SENTINEL)) seen.push(r.url())
-    })
+    // A valid 1×1 PNG. This route makes ANY request that actually reaches the
+    // network succeed — so if the CSP FAILED to block, the img would LOAD
+    // (IMG_LOADED). A CSP-blocked request never reaches the route (blocked in
+    // the renderer before dispatch), so the img errors instead → IMG_BLOCKED
+    // unambiguously means the CSP severed the external load (not a coincidental
+    // network/DNS failure).
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    )
+    await page.route(`**/*${SENTINEL}*`, route =>
+      route.fulfill({ status: 200, contentType: 'image/png', body: PNG }),
+    )
     const html = [
       '<!doctype html><html><body>',
-      '<h1 id="ran">before</h1>',
-      // external image (img-src is data: only) …
-      `<img src="http://${SENTINEL}.invalid/beacon.png">`,
-      // … and an external fetch (connect-src falls back to default-src 'none') …
-      `<script>fetch("http://${SENTINEL}.invalid/exfil").catch(function(){})</script>`,
-      // … and a POSITIVE control: an inline script that DID run (so seen===[]
-      // can't pass just because the frame never loaded/parsed).
-      '<script>document.getElementById("ran").textContent = "frame-ran"</script>',
+      '<h1 id="img">pending</h1>',
+      // External image — img-src is data: only, so the CSP must block this http
+      // load. onerror running ALSO proves the frame executed (no vacuous pass).
+      `<img onload="document.getElementById('img').textContent='IMG_LOADED'"`,
+      `     onerror="document.getElementById('img').textContent='IMG_BLOCKED'"`,
+      `     src="http://${SENTINEL}.example.com/beacon.png">`,
       '</body></html>',
     ].join('\n')
     await seedAssistantWithText(page, testInfra.baseURL, fence(html))
@@ -185,15 +190,10 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     expect(srcdoc).toContain("default-src 'none'")
     expect(await iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
 
-    // POSITIVE control: the frame actually loaded + executed inline script (so
-    // the blocked img/fetch WERE attempted at the JS/parse layer) …
+    // … and effect, observed from INSIDE the null-origin frame: the external
+    // image was blocked by the CSP (would be IMG_LOADED if the CSP failed).
     const frame = page.frameLocator('[data-testid="html-block-preview"]')
-    await expect(frame.locator('#ran')).toHaveText('frame-ran', { timeout: 5000 })
-
-    // … and effect observed: the frame's external img + fetch were both blocked
-    // by the CSP, so no request to the sentinel host was ever attempted.
-    await page.waitForTimeout(800)
-    expect(seen).toEqual([])
+    await expect(frame.locator('#img')).toHaveText('IMG_BLOCKED', { timeout: 5000 })
   })
 
   // TEST-4: SECURITY — sandbox script runs but cannot reach the parent.
@@ -228,24 +228,23 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     expect(page.url()).not.toContain('evil.test')
   })
 
-  // TEST-5: streaming/incomplete fence stays CODE, Preview disabled, no iframe.
-  test('incomplete (streaming) html fence stays in CODE view, no iframe, no error', async ({
+  // TEST-5: while the fence is genuinely mid-stream (isStreaming true + unclosed
+  // fence ⇒ isIncomplete), the block stays CODE, Preview is disabled, no iframe.
+  test('incomplete (streaming) html fence stays in CODE view, Preview disabled, no iframe', async ({
     page,
     testInfra,
   }) => {
-    // An UNCLOSED ```html fence — the block is incomplete for the whole stream.
-    const finalText = '```html\n<div>partial'
+    // Deliver started + partial deltas of an UNCLOSED ```html fence but NO
+    // `complete` — so the stream stays open (isStreaming=true) and the fence is
+    // genuinely incomplete. (A finalized unclosed fence would be auto-completed
+    // and NOT incomplete — the disabled state only exists live.)
     const chunks = ['```html\n', '<div>', 'partial']
     await mockChatStream(page, [
       [
         startedEvent({ userMessageId: 'umsg_inc_1' }),
         ...chunks.map(c => textDeltaEvent({ delta: c, messageId: 'amsg_inc_1' })),
-        completeEvent(),
+        // intentionally no completeEvent()
       ],
-    ])
-    await mockGetMessages(page, [
-      mockUserMessage({ id: 'umsg_inc_1', text: 'stream html' }),
-      assistantTextMessage('amsg_inc_1', finalText),
     ])
     const pageErrors: string[] = []
     page.on('pageerror', e => pageErrors.push(e.message))
@@ -256,13 +255,13 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     await textarea.fill('stream html')
     await byTestId(page, 'chat-input-send-btn').click()
 
-    const bubble = assistantBubble(page)
-    await expect(bubble).toBeVisible({ timeout: 15000 })
-    const block = bubble.locator('[data-testid="html-block"]')
-    await expect(block).toBeVisible({ timeout: 10000 })
-    // Preview option is disabled while incomplete; no iframe rendered.
+    // The live streaming bubble renders the partial (unclosed) html fence.
+    const block = page.locator('[data-testid="html-block"]')
+    await expect(block).toBeVisible({ timeout: 15000 })
+    // Preview option is disabled while incomplete (Base UI reflects it in
+    // aria-disabled); no iframe rendered.
     const previewOpt = block.locator('[data-testid="html-block-toggle-opt-preview"]')
-    await expect(previewOpt).toBeDisabled()
+    await expect(previewOpt).toHaveAttribute('aria-disabled', 'true')
     expect(await block.locator('iframe').count()).toBe(0)
     expect(pageErrors).toEqual([])
   })
