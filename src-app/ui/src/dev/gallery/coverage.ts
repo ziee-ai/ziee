@@ -500,6 +500,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/CollapsibleBlock": { kind: 'via', reason: 'rendered within the chat module page (collapses long messages)' },
   "modules/chat/components/ConversationFindBar": { kind: 'via', reason: 'rendered within the chat module page (find-in-conversation)' },
   "modules/chat/components/JumpToLatestButton": { kind: 'via', reason: 'rendered within the chat module page (jump-to-latest)' },
+  "modules/file/chat-extension/components/AttachedFileCard": { kind: 'via', reason: 'rendered within the chat module page (message + composer file/image attachments)' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 

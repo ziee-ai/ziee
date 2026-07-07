@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1808** signals total: 1420 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
+- **1813** signals total: 1425 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -30,7 +30,7 @@ conversation page.
 
 | panel type | registered in |
 |---|---|
-| `file` | `modules/file/chat-extension/extension`:138 |
+| `file` | `modules/file/chat-extension/extension`:151 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
 
 ## Slot registrations
@@ -84,10 +84,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `icon != null` | 54 |
-| branch | `title != null` | 55 |
-| branch | `(description != null \|\| children != null)` | 56 |
-| branch | `onClose` | 59 |
+| branch | `icon != null` | 57 |
+| branch | `title != null` | 69 |
+| branch | `(description != null \|\| children != null)` | 70 |
+| branch | `onClose` | 73 |
 
 ### `components/ui/kit/avatar`
 
@@ -463,26 +463,27 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 116 |
-| branch | `!active` | 148 |
-| branch | `view.sort!.dir === 'asc'` | 149 |
-| branch | `meta.sortable` | 152 |
-| branch | `props.filterable` | 220 |
-| branch | `props.columnChooser && hideable.length > 0` | 232 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 310 |
-| branch | `!tsv` | 312 |
-| branch | `showVirtual` | 323 |
-| branch | `hasToolbar` | 334 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 365 |
-| branch | `caption != null` | 375 |
-| branch | `resizableTable` | 376 |
-| branch | `meta.resizable` | 396 |
-| branch | `busy` | 403 |
-| empty | `rows.length === 0` | 411 |
-| branch | `meta.resizable` | 522 |
-| branch | `mode === 'none'` | 572 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 577 |
-| branch | `!selectionActive(props, col)` | 584 |
+| branch | `v == null \|\| typeof v === 'boolean'` | 120 |
+| branch | `!active` | 152 |
+| branch | `view.sort!.dir === 'asc'` | 153 |
+| branch | `meta.sortable` | 156 |
+| branch | `props.filterable` | 224 |
+| branch | `props.columnChooser && hideable.length > 0` | 236 |
+| branch | `props.toolbarExtra` | 264 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 317 |
+| branch | `!tsv` | 319 |
+| branch | `showVirtual` | 330 |
+| branch | `hasToolbar` | 341 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 372 |
+| branch | `caption != null` | 382 |
+| branch | `resizableTable` | 383 |
+| branch | `meta.resizable` | 403 |
+| branch | `busy` | 410 |
+| empty | `rows.length === 0` | 418 |
+| branch | `meta.resizable` | 529 |
+| branch | `mode === 'none'` | 579 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 584 |
+| branch | `!selectionActive(props, col)` | 591 |
 
 ### `components/ui/kit/tabs`
 
@@ -898,9 +899,10 @@ Required states: `empty`
 |---|---|---|
 | branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 46 |
 | empty | `!message.contents \|\| message.contents.length === 0` | 54 |
-| branch | `attachmentBlocks.length > 0` | 132 |
-| branch | `bubbleBlocks.length > 0` | 157 |
-| branch | `offerCollapse` | 181 |
+| branch | `attachmentBlocks.length > 0` | 136 |
+| branch | `bubbleBlocks.length > 0` | 165 |
+| branch | `offerCollapse` | 191 |
+| branch | `isUser` | 215 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1104,14 +1106,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 48 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 65 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 81 |
-| branch | `scopedHref?.startsWith('#')` | 102 |
-| empty | `typeof src !== 'string' \|\| src.length === 0` | 143 |
-| branch | `src.startsWith('/')` | 144 |
-| branch | `src.startsWith('data:')` | 145 |
-| branch | `u.origin === window.location.origin` | 148 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 50 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 67 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 83 |
+| branch | `scopedHref?.startsWith('#')` | 104 |
+| empty | `typeof src !== 'string' \|\| src.length === 0` | 149 |
+| branch | `src.startsWith('/')` | 150 |
+| branch | `u.origin === window.location.origin` | 154 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1149,7 +1150,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 24 |
+| branch | `!textData.text` | 26 |
 
 ### `modules/chat/extensions/text/components/TextInput`
 
@@ -1168,7 +1169,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!thinkingData.thinking` | 14 |
+| branch | `!text` | 19 |
+| branch | `isExpanded` | 50 |
 
 ### `modules/chat/extensions/title/extension`
 
@@ -1456,12 +1458,13 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!url` | 23 |
-| branch | `source.type === 'url'` | 71 |
-| branch | `isSameOriginUrl(source.url)` | 72 |
-| branch | `source.type === 'base64'` | 75 |
-| branch | `!source.media_type?.startsWith('image/')` | 76 |
-| branch | `!url` | 88 |
+| branch | `!url` | 24 |
+| branch | `isUser && source.type === 'file'` | 77 |
+| branch | `source.type === 'url'` | 87 |
+| branch | `isSameOriginUrl(source.url)` | 88 |
+| branch | `source.type === 'base64'` | 91 |
+| branch | `!source.media_type?.startsWith('image/')` | 92 |
+| branch | `!url` | 104 |
 
 ### `modules/file/chat-extension/components/InlineFilePreview`
 
@@ -1497,12 +1500,14 @@ Required states: `empty`, `panel-open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!fileData?.file_id \|\| !fileData?.filename` | 56 |
-| panel | `registerPanelRenderer('file')` | 138 |
-| branch | `!file` | 143 |
-| branch | `!fileStore` | 168 |
-| empty | `fileContents.length === 0` | 288 |
-| branch | `!fileStore` | 292 |
+| branch | `!data.file_id` | 35 |
+| branch | `data.source?.type !== 'file'` | 56 |
+| branch | `!fileData?.file_id \|\| !fileData?.filename` | 110 |
+| panel | `registerPanelRenderer('file')` | 151 |
+| branch | `!file` | 156 |
+| branch | `!fileStore` | 181 |
+| empty | `stubs.length === 0` | 279 |
+| branch | `!fileStore` | 283 |
 
 ### `modules/file/components/FileCard`
 
@@ -1649,16 +1654,16 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!url` | 24 |
-| branch | `url.startsWith('data:')` | 26 |
-| branch | `!isLocalImageUrl(src)` | 42 |
-| branch | `href?.startsWith('#')` | 67 |
-| error | `!(err instanceof Error)` | 93 |
-| error | `this.state.error` | 138 |
-| branch | `content === '__error__'` | 189 |
-| branch | `content === null` | 196 |
-| branch | `file` | 203 |
-| branch | `file && mode === 'raw'` | 205 |
+| branch | `!url` | 27 |
+| branch | `url.startsWith('data:')` | 29 |
+| branch | `!isLocalImageUrl(src)` | 46 |
+| branch | `href?.startsWith('#')` | 73 |
+| error | `!(err instanceof Error)` | 99 |
+| error | `this.state.error` | 144 |
+| branch | `content === '__error__'` | 202 |
+| branch | `content === null` | 209 |
+| branch | `file` | 216 |
+| branch | `file && mode === 'raw'` | 218 |
 
 ### `modules/file/viewers/markdown/header`
 
@@ -1751,7 +1756,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `idx < 0` | 155 |
-| branch | `truncated` | 194 |
+| branch | `truncated` | 198 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1767,14 +1772,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 117 |
-| branch | `sheet.truncated` | 153 |
-| branch | `!fileBinaryContent` | 208 |
-| branch | `!file` | 258 |
-| error | `loadError` | 260 |
-| loading | `!fileBinaryContent \|\| loading` | 269 |
-| empty | `sheets.length === 0` | 273 |
-| branch | `sheets.length === 1` | 277 |
+| branch | `idx < 0` | 128 |
+| branch | `sheet.truncated` | 168 |
+| branch | `!fileBinaryContent` | 229 |
+| branch | `!file` | 279 |
+| error | `loadError` | 281 |
+| loading | `!fileBinaryContent \|\| loading` | 290 |
+| empty | `sheets.length === 0` | 294 |
+| branch | `sheets.length === 1` | 298 |
 
 ### `modules/file/viewers/tabular/body`
 
@@ -2772,17 +2777,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 215 |
-| branch | `isMultiSelect` | 217 |
-| branch | `fieldSchema.type === 'boolean'` | 255 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
-| branch | `fieldSchema.format === 'password'` | 336 |
-| branch | `status === 'accepted'` | 435 |
-| branch | `items.length > 0` | 468 |
-| branch | `status === 'declined'` | 483 |
-| branch | `status === 'cancelled'` | 506 |
+| branch | `isSelectField` | 214 |
+| branch | `isMultiSelect` | 216 |
+| branch | `fieldSchema.type === 'boolean'` | 254 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 268 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 293 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 313 |
+| branch | `fieldSchema.format === 'password'` | 335 |
+| branch | `status === 'accepted'` | 463 |
+| branch | `items.length > 0` | 492 |
+| branch | `status === 'declined'` | 506 |
+| branch | `status === 'cancelled'` | 526 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 

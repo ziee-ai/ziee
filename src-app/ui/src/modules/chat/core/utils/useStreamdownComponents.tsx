@@ -167,30 +167,23 @@ export function useStreamdownComponents(contentId: string) {
           ? `${contentId}-fn-${id.slice('user-content-fn-'.length)}`
           : id
         // GFM task-list items (`- [ ] …`) carry their own checkbox, so drop the
-        // list bullet (list-none) — otherwise it reads as "• ☐ text".
+        // list bullet (list-none) — otherwise it reads as "• ☐ text". The
+        // checkbox is styled via a descendant selector on the item (accent color
+        // + a real gap to the label) rather than a raw <input> renderer, which
+        // the kit guardrail forbids; a task item only ever contains the checkbox.
         const isTask = typeof className === 'string' && className.includes('task-list-item')
         // Re-apply Streamdown's default li classes (our override replaces its renderer,
         // losing "py-1 [&>p]:inline" which keeps the number and text on the same line)
-        const mergedClassName = ['py-1', '[&>p]:inline', isTask && 'list-none', className]
+        const mergedClassName = [
+          'py-1',
+          '[&>p]:inline',
+          isTask &&
+            'list-none [&_input]:me-1.5 [&_input]:size-3.5 [&_input]:translate-y-[2px] [&_input]:accent-primary',
+          className,
+        ]
           .filter(Boolean)
           .join(' ')
         return <li id={scopedId} className={mergedClassName} {...rest} />
-      },
-      input(props: JSX.IntrinsicElements['input']) {
-        // Style GFM task-list checkboxes (native, `disabled`) — accent color +
-        // a real gap to the label — instead of the raw gray browser default.
-        if (props.type === 'checkbox') {
-          return (
-            <input
-              {...props}
-              className={cn(
-                'me-1.5 size-3.5 translate-y-[2px] accent-primary',
-                props.className,
-              )}
-            />
-          )
-        }
-        return <input {...props} />
       },
     }
   }, [contentId])
