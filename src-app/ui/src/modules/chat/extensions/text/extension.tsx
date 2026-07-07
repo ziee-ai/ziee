@@ -122,7 +122,7 @@ const textExtension: ChatExtension = createExtension({
    */
   composeRequestFields: async () => {
     const { Stores } = await import('@/core/stores')
-    const content = Stores.Chat.__state.TextStore.getText()
+    const content = Stores.Chat.$.TextStore.getText()
     return { content: content?.trim() || '' }
   },
 
@@ -132,7 +132,7 @@ const textExtension: ChatExtension = createExtension({
    */
   beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
-    const content = Stores.Chat.__state.TextStore.getText()
+    const content = Stores.Chat.$.TextStore.getText()
 
     if (!content || !content.trim()) {
       return {
@@ -151,7 +151,7 @@ const textExtension: ChatExtension = createExtension({
    */
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.__state.TextStore
+    const textStore = Stores.Chat.$.TextStore
 
     // Backup text before clearing
     const currentText = textStore.getText()
@@ -169,7 +169,7 @@ const textExtension: ChatExtension = createExtension({
    */
   onStreamError: async (_error: Error) => {
     const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.__state.TextStore
+    const textStore = Stores.Chat.$.TextStore
 
     // Restore text from backup
     textStore.restoreFromBackup()
@@ -185,7 +185,7 @@ const textExtension: ChatExtension = createExtension({
    */
   afterStreamComplete: async (_message) => {
     const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.__state.TextStore
+    const textStore = Stores.Chat.$.TextStore
 
     // Clear backup since message was sent successfully
     textStore.setBackupMessage(null)

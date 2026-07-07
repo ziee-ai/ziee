@@ -124,7 +124,7 @@ export function ProjectDetailPage() {
     let failed = 0
     for (const id of ids) {
       try {
-        await Stores.ChatHistory.__state.deleteConversation(id)
+        await Stores.ChatHistory.deleteConversation(id)
         succeeded += 1
       } catch {
         failed += 1

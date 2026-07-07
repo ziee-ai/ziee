@@ -96,7 +96,7 @@ export function MagicLinkPage() {
     // pushed the session into Stores.Auth (still in memory). If we're
     // already authenticated, just bounce home rather than show the
     // "link expired" page — the user is already logged in.
-    if (Stores.Auth.__state.isAuthenticated) {
+    if (Stores.Auth.$.isAuthenticated) {
       navigate('/', { replace: true })
       return null
     }

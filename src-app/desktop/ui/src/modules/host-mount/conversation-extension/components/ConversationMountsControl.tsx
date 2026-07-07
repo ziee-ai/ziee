@@ -31,7 +31,7 @@ export function ConversationMountsControl() {
     if (next) {
       await Stores.ConversationHostMounts.loadMounts(conversationId)
       setDraft(
-        Stores.ConversationHostMounts.__state.byConversation[conversationId] ?? [],
+        Stores.ConversationHostMounts.$.byConversation[conversationId] ?? [],
       )
     }
   }

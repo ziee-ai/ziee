@@ -51,7 +51,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // Debounce search query
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      Stores.ChatHistory.__state.setSearchQuery(localSearchQuery)
+      Stores.ChatHistory.setSearchQuery(localSearchQuery)
     }, 500)
 
     return () => clearTimeout(timeoutId)
@@ -68,12 +68,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // internal `loading/loadingMore` in-flight check, so unconditional
   // refetch is safe.
   useEffect(() => {
-    Stores.ChatHistory.__state.loadConversations()
+    Stores.ChatHistory.loadConversations()
   }, [])
 
   const handleLoadMore = async () => {
     try {
-      await Stores.ChatHistory.__state.loadNextPage()
+      await Stores.ChatHistory.loadNextPage()
     } catch (error) {
       console.error('Failed to load more conversations:', error)
     }
@@ -81,7 +81,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
   const handleDeleteSelected = async () => {
     try {
-      await Stores.ChatHistory.__state.bulkDelete()
+      await Stores.ChatHistory.bulkDelete()
       message.success(`${selectedIds.size} conversations deleted successfully`)
     } catch (error) {
       console.error('Failed to delete selected conversations:', error)
@@ -89,11 +89,11 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   }
 
   const handleToggleSelection = (id: string) => {
-    Stores.ChatHistory.__state.toggleSelection(id)
+    Stores.ChatHistory.toggleSelection(id)
   }
 
   const handleDeleteConversation = async (id: string) => {
-    await Stores.ChatHistory.__state.deleteConversation(id)
+    await Stores.ChatHistory.deleteConversation(id)
   }
 
   // Determine which conversations to show
@@ -144,13 +144,13 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                   <Button
                     data-testid="chat-bulk-deselect-btn"
                     icon={<CircleX />}
-                    onClick={() => Stores.ChatHistory.__state.deselectAll()}
+                    onClick={() => Stores.ChatHistory.deselectAll()}
                   >
                     Deselect All
                   </Button>
                   <Button
                     data-testid="chat-bulk-select-all-btn"
-                    onClick={() => Stores.ChatHistory.__state.selectAll()}
+                    onClick={() => Stores.ChatHistory.selectAll()}
                   >
                     Select All
                   </Button>

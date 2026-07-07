@@ -31,7 +31,7 @@ export function WorkflowTestsPanel({
     setLoading(true)
     setError(null)
     setResult(null)
-    Stores.Workflow.__state
+    Stores.Workflow
       .test(workflow.id)
       .then(r => {
         if (!cancelled) setResult(r)

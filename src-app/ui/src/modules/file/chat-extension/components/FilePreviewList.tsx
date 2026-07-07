@@ -80,7 +80,7 @@ export function FilePreviewList() {
                 onClick={() =>
                   // `__state` (not the render-only proxy) for store access from
                   // an event handler — the proxy fires React hooks on access.
-                  Stores.Chat.__state.displayInRightPanel({
+                  Stores.Chat.displayInRightPanel({
                     id: file.id,
                     title: file.filename,
                     type: 'file',

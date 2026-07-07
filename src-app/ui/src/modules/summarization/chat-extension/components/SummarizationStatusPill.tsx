@@ -13,7 +13,7 @@ type Mode = 'inherit' | 'on' | 'off'
  *
  * Also acts as the **read-model driver** for the in-thread summary
  * marker: subscribes to `messages.size` + `conversation.id` and calls
- * `Stores.ConversationSummarization.__state.loadForConversation(id)`
+ * `Stores.ConversationSummarization.loadForConversation(id)`
  * on change. This load-bearing pattern rides cross-device freshness
  * transitively on `sync:conversation` — DO NOT move the trigger
  * elsewhere (audit lesson from the crashed-session redo).
@@ -60,10 +60,10 @@ export function SummarizationStatusPill() {
   // ConversationSummarization rotates on conversation switch.
   useEffect(() => {
     if (!conversation?.id) {
-      Stores.ConversationSummarization.__state.clear()
+      Stores.ConversationSummarization.clear()
       return
     }
-    void Stores.ConversationSummarization.__state.loadForConversation(
+    void Stores.ConversationSummarization.loadForConversation(
       conversation.id,
     )
   }, [conversation?.id, messages.size])

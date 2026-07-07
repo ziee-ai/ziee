@@ -22,7 +22,7 @@ export function AdminWorkflowGroupAssignment({
   const canAssign = usePermission(Permissions.WorkflowsAssignToGroups)
 
   useEffect(() => {
-    void Stores.SystemWorkflow.__state.loadGroups(workflowId)
+    void Stores.SystemWorkflow.loadGroups(workflowId)
   }, [workflowId])
 
   return (

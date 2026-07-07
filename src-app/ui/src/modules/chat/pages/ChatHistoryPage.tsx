@@ -52,7 +52,7 @@ export default function ChatHistoryPage() {
   // useEffect never fires. Trigger the refetch here so newly-created
   // conversations always appear.
   useEffect(() => {
-    Stores.ChatHistory.__state.loadConversations()
+    Stores.ChatHistory.loadConversations()
   }, [])
 
   // Closing the body search affordance when the page grows back to

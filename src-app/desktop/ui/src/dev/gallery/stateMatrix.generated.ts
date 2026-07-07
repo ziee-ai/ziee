@@ -181,7 +181,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!token", line: 71 },
       { kind: "branch", condition: "exchangingToken === token && !exchangeError", line: 84 },
       { kind: "branch", condition: "exchangeError", line: 93 },
-      { kind: "branch", condition: "Stores.Auth.__state.isAuthenticated", line: 99 },
+      { kind: "branch", condition: "Stores.Auth.$.isAuthenticated", line: 99 },
     ],
   },
   "modules/tunnel-auth/PhoneAuthPage": {

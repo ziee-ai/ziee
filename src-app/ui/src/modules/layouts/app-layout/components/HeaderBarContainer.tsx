@@ -28,7 +28,7 @@ export const HeaderBarContainer = ({
   const [pinned, setPinned] = useState(false)
   const lastY = useRef(0)
   useEffect(() => {
-    const setHeaderHidden = Stores.AppLayout.__state.setHeaderHidden
+    const setHeaderHidden = Stores.AppLayout.setHeaderHidden
     if (!nativeScroll) {
       setPinned(false)
       setHeaderHidden(false)

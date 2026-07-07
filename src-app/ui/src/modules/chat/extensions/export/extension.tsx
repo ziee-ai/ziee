@@ -31,7 +31,7 @@ function extractMessageText(message: MessageWithContent): string {
  */
 function exportAsJSON(): void {
   // Access raw state outside React context
-  const { conversation, messages } = Stores.Chat.__state
+  const { conversation, messages } = Stores.Chat.$
   if (!conversation) return
 
   const messagesArray = Array.from(messages.values())
@@ -66,7 +66,7 @@ function exportAsJSON(): void {
  */
 function exportAsText(): void {
   // Access raw state outside React context
-  const { conversation, messages } = Stores.Chat.__state
+  const { conversation, messages } = Stores.Chat.$
   if (!conversation) return
 
   const messagesArray = Array.from(messages.values())
@@ -95,7 +95,7 @@ function exportAsText(): void {
  */
 function exportAsMarkdown(): void {
   // Access raw state outside React context
-  const { conversation, messages } = Stores.Chat.__state
+  const { conversation, messages } = Stores.Chat.$
   if (!conversation) return
 
   const messagesArray = Array.from(messages.values())

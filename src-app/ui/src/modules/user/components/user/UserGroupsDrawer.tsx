@@ -44,7 +44,7 @@ export function UserGroupsDrawer() {
         const userGroups = new Set<string>()
         for (const group of groups) {
           await Stores.UserGroups.loadUserGroupMembers(group.id)
-          const members = Stores.UserGroups.__state.currentGroupMembers
+          const members = Stores.UserGroups.$.currentGroupMembers
           if (members.some(m => m.id === user.id)) {
             userGroups.add(group.id)
           }

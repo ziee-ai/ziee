@@ -78,7 +78,7 @@ export function RawToggle({ file }: { file: FileEntity }) {
 
 export function CopyButton({ file }: { file: FileEntity }) {
   const handleCopy = async () => {
-    // `Stores.File.__state` is the raw zustand getState — bypasses
+    // `Stores.File.$` is the raw zustand getState — bypasses
     // the reactive proxy, safe to use inside event handlers. The
     // proxy's `.get` trap calls useEffect/useStore on every
     // property access (see core/stores.ts:266), which is a Rules-
@@ -89,10 +89,10 @@ export function CopyButton({ file }: { file: FileEntity }) {
     // `undefined` = not loaded, or a prior load FAILED — File.store doesn't
     // cache an error sentinel, it just leaves the entry absent. So a cold/failed
     // read drives the load itself and re-reads (a retry on each click).
-    let text = Stores.File.__state.fileTextContents.get(file.id)
+    let text = Stores.File.$.fileTextContents.get(file.id)
     if (text === undefined) {
-      await Stores.File.__state.loadFileTextContent(file.id, file)
-      text = Stores.File.__state.fileTextContents.get(file.id)
+      await Stores.File.loadFileTextContent(file.id, file)
+      text = Stores.File.$.fileTextContents.get(file.id)
     }
     if (text === undefined || text === '') {
       message.error('Failed to load file content')

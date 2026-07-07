@@ -67,7 +67,7 @@ export function ProjectConversationsList({
   }
 
   const handleDelete = async (id: string) => {
-    await Stores.ChatHistory.__state.deleteConversation(id)
+    await Stores.ChatHistory.deleteConversation(id)
   }
 
   const handleLoadMore = () => {

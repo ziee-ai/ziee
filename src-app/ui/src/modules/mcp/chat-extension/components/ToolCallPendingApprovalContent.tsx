@@ -61,7 +61,7 @@ export function ToolCallPendingApprovalContent({
       // resolves, so poll once to revert the optimistic update on that failure.
       // (A generation error after a successful POST arrives later on the chat
       // stream and surfaces in the conversation, not by reverting this panel.)
-      const chatError = Stores.Chat.__state.error
+      const chatError = Stores.Chat.$.error
       if (chatError) {
         throw new Error(chatError)
       }
@@ -82,7 +82,7 @@ export function ToolCallPendingApprovalContent({
     // Optimistic status update (same rationale as handleApproveOnce)
     mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'started' })
     try {
-      const chatState = Stores.Chat.__state
+      const chatState = Stores.Chat.$
       const conversationId = chatState.conversation?.id || null
 
       // 1. Add tool to auto_approved_tools for this conversation
@@ -95,7 +95,7 @@ export function ToolCallPendingApprovalContent({
 
         // 2. Persist to backend if conversation exists
         if (conversationId) {
-          const mcpServerState = Stores.McpServer.__state
+          const mcpServerState = Stores.McpServer.$
           const availableServerIds = (mcpServerState?.servers || [])
             .filter((s: { enabled: boolean }) => s.enabled)
             .map((s: { id: string }) => s.id)
@@ -116,7 +116,7 @@ export function ToolCallPendingApprovalContent({
       })
 
       await Stores.Chat.sendMessage()
-      const chatError = Stores.Chat.__state.error
+      const chatError = Stores.Chat.$.error
       if (chatError) {
         throw new Error(chatError)
       }

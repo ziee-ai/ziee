@@ -100,7 +100,7 @@ export function HubPage() {
       // Read via `__state` (not the render-only `Stores.HubCatalog.*`
       // proxy, which calls a hook — illegal inside this async handler
       // and throws React #321, swallowing the success toast).
-      message.success(`Hub catalog refreshed to v${Stores.HubCatalog.__state.hubVersion ?? '?'}`)
+      message.success(`Hub catalog refreshed to v${Stores.HubCatalog.$.hubVersion ?? '?'}`)
       // Trigger each visible tab's own refresh hook so per-tab lists
       // re-render against the new catalog (the back-compat per-category
       // endpoints already serve from the rotated `current/` dir).

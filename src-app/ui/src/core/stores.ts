@@ -31,7 +31,6 @@ type ExtractZustandState<T> = T extends UseBoundStore<infer Store>
   ? Store extends StoreApi<infer State>
     ? RemoveVoid<State> & {
         $: RemoveVoid<State>
-        __state: RemoveVoid<State>
         __setState: StoreApi<State>['setState']
       }
     : Store extends { getState(): infer State }
@@ -40,7 +39,7 @@ type ExtractZustandState<T> = T extends UseBoundStore<infer Store>
           ? never
           : S
         : RemoveVoid<State> & {
-            __state: RemoveVoid<State>
+            $: RemoveVoid<State>
             __setState: any
           }
       : never
@@ -51,12 +50,14 @@ type ExtractZustandState<T> = T extends UseBoundStore<infer Store>
  * access patterns — picked by what `state[prop]` IS at the time of
  * access, not by where the access happens at runtime:
  *
- *   1. **Special properties** (`__state`, `__setState`, `__refCount`,
+ *   1. **Special properties** (`$`, `__setState`, `__refCount`,
  *      `__refTracker`, `__destroyed`) — return synchronously, no hooks.
- *      Safe to read anywhere.
- *   2. **Function values (actions)** — return the function as-is, no
- *      hooks. Safe to call anywhere: event handlers, async callbacks,
- *      module-init code.
+ *      Safe to read anywhere. `$` is the single handler-side snapshot
+ *      escape: `Stores.X.$.field` reads `getState()` with no hooks.
+ *   2. **Function values (actions)** — returned resolved from
+ *      `getState()`, no hooks. Safe to call ANYWHERE — render, event
+ *      handlers, async callbacks, module-init — with NO `$` and NO
+ *      snapshot ceremony: `Stores.X.doThing()` just works.
  *   3. **Nested store proxies** (objects with `__refTracker`) — return
  *      directly, no hooks. Safe to read anywhere. (The nested proxy
  *      handles its own reactivity.)
@@ -72,15 +73,15 @@ type ExtractZustandState<T> = T extends UseBoundStore<infer Store>
  * `useEffect`.
  *
  * In practice:
- *   - `Stores.Auth.login()` — function, safe anywhere.
- *   - `const { user } = Stores.Auth` — state read, MUST be inside a
- *     component / `use*` hook. Reactive.
- *   - `Stores.Auth.__state.user` — snapshot read, safe anywhere.
+ *   - `Stores.Auth.login()` — action, safe anywhere (render + handlers).
+ *   - `const { user } = Stores.Auth` — reactive state read, MUST be
+ *     inside a component / `use*` hook. Re-renders on change.
+ *   - `Stores.Auth.$.user` — hook-free snapshot read, safe in handlers.
  *
  * Reading a non-special, non-action state value from non-component
- * code throws React's `Invalid hook call` at runtime. There's no
- * static lint rule today; a `ts-morph` AST walker (`scripts/
- * lint-stores.ts`) is planned for follow-up to catch this at CI time.
+ * code throws React's `Invalid hook call` at runtime — use `$` there.
+ * The `.__state` alias for `$` was removed; a Biome guardrail
+ * (`biome-plugins/no-store-internal-state.grit`) bans its reintroduction.
  *
  * (audit 01 B-1)
  */
@@ -212,10 +213,11 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
   return new Proxy({} as Readonly<ExtractZustandState<T>>, {
     get: (_, prop) => {
       // Special properties.
-      // `$` is the clean handler-side snapshot: `Stores.X.$.field` reads
-      // getState() with NO hooks (safe in event handlers / async). It is the
-      // preferred replacement for the older `__state` (kept as an alias below).
-      if (prop === '$' || prop === '__state') {
+      // `$` is the SOLE handler-side snapshot escape: `Stores.X.$.field`
+      // reads getState() with NO hooks (safe in event handlers / async).
+      // (The old `__state` alias was removed — actions no longer need any
+      // snapshot escape; a Biome guardrail bans `.__state` reintroduction.)
+      if (prop === '$') {
         return useStore.getState()
       }
       if (prop === '__setState') {
@@ -250,7 +252,11 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
         propInitCheck.set(prop, true)
       }
 
-      // If the property is a function (action), return it directly
+      // If the property is a function (action), return it resolved from
+      // getState(), hook-free. This is what makes actions callable in ANY
+      // context — render AND event handlers / async — with no `$`/snapshot
+      // ceremony. The reference is stable across renders (actions are built
+      // once), so no Rules-of-Hooks concern.
       const value = (state as any)[prop]
       if (typeof value === 'function') {
         return value
@@ -292,9 +298,10 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 // Helper type to wrap store state with proxy methods
 export type StoreProxy<T> = Readonly<
   T & {
-    /** Handler-side snapshot: `Stores.X.$.field` (no hooks, safe anywhere). */
+    /** Handler-side snapshot: `Stores.X.$.field` (no hooks, safe anywhere).
+     *  The only escape needed for READING state in a handler — actions are
+     *  always callable directly (`Stores.X.action()`), no `$` required. */
     $: T
-    __state: T
     __setState: (partial: Partial<T> | ((state: T) => Partial<T>)) => void
     __refCount: number
     __refTracker: ReferenceTracker

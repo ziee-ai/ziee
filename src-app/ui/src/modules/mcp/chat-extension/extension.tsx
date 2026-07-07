@@ -831,7 +831,7 @@ const mcpExtension: ChatExtension = createExtension({
 
       // Get available servers to compute selectedServers from disabledServers
       // Access __state directly on the McpServer store (outside React context)
-      const mcpServerState = Stores.McpServer.__state
+      const mcpServerState = Stores.McpServer.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const availableServerIds = new Set(availableServers.map(s => s.id))
 
@@ -894,7 +894,7 @@ const mcpExtension: ChatExtension = createExtension({
       }
     } catch {
       // If settings don't exist yet, create default config with all servers enabled
-      const mcpServerState = Stores.McpServer.__state
+      const mcpServerState = Stores.McpServer.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
       for (const server of availableServers) {
@@ -941,8 +941,8 @@ const mcpExtension: ChatExtension = createExtension({
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
     // Use __state on McpStore too since it's also a proxy
-    const mcpStore = Stores.McpComposer.__state
-    const chatStore = Stores.Chat.__state
+    const mcpStore = Stores.McpComposer.$
+    const chatStore = Stores.Chat.$
 
     // Get current conversation from chat store
     const conversation = chatStore.conversation
@@ -956,7 +956,7 @@ const mcpExtension: ChatExtension = createExtension({
       mcpStore.setCurrentConversation(conversation.id)
 
       // Get available server IDs for proper disabled_servers computation
-      const mcpServerState = Stores.McpServer.__state
+      const mcpServerState = Stores.McpServer.$
       const availableServerIds = (mcpServerState?.servers || [])
         .filter(s => s.enabled)
         .map(s => s.id)

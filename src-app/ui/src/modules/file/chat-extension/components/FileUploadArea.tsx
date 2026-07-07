@@ -62,7 +62,7 @@ export function FileUploadArea() {
       if (files.length > 0) {
         // `__state` (not the render-only proxy) — store access from a raw DOM
         // event listener, outside React render.
-        Stores.File.__state.uploadFiles(files).catch((error: unknown) => {
+        Stores.File.uploadFiles(files).catch((error: unknown) => {
           console.error('Upload failed:', error)
           message.error('Failed to upload files')
         })

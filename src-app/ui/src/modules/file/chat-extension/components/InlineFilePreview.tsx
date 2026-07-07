@@ -106,7 +106,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     // access, a Rules-of-Hooks violation inside an event handler.
     // Pin the panel to the version this resource_link referenced (head if the
     // link carried no version) so a historical tool result opens its own bytes.
-    Stores.Chat.__state.displayInRightPanel({
+    Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
       type: 'file',

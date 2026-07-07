@@ -73,7 +73,7 @@ export function SkillDetailDrawer() {
     if (conversationAvailable) {
       setHidden(!conversationAvailable.some(s => s.id === skill.id))
     } else {
-      void Stores.ConversationSkills.__state.loadAvailable(conversationId)
+      void Stores.ConversationSkills.loadAvailable(conversationId)
     }
   }, [isOpen, skill, conversationId, conversationAvailable])
 

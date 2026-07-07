@@ -71,7 +71,7 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
   const openInRightPanel = () => {
     // `__state` (not the render-only `Stores.X` proxy) for store access inside an
     // event handler — the proxy fires React hooks on access (Rules-of-Hooks).
-    Stores.Chat.__state.displayInRightPanel({
+    Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
       type: 'file',

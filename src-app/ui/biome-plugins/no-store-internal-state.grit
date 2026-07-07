@@ -1,0 +1,14 @@
+language js
+
+// Bans the removed `.__state` store-proxy escape. Actions are callable directly
+// on `Stores.X` (hook-free, any context); the ONLY handler-side state-read
+// escape is `Stores.X.$.field`. `.__state` no longer exists on the proxy type,
+// so this is defense-in-depth against reintroduction (tsc already rejects it).
+// Matches the exact member name `__state` only — `.__setState`/`.__refCount`/
+// etc. are untouched.
+`$obj.__state` as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "`.__state` was removed. Call actions directly (`Stores.X.doThing()` — hook-free anywhere) and read state in handlers via the `$` snapshot (`Stores.X.$.field`)."
+  )
+}

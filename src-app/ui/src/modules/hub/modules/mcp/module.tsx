@@ -58,7 +58,7 @@ export default createModule({
           if (hasPermissionNow(Permissions.McpServersAdminCreate)) {
             return true
           }
-          const policy = Stores.McpUserPolicy.__state.policy
+          const policy = Stores.McpUserPolicy.$.policy
           return !!policy && policy.allowed_transports.length > 0
         },
         refresh: async () => {

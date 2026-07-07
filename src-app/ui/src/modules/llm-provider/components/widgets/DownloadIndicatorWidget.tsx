@@ -111,7 +111,7 @@ export function DownloadIndicatorWidget() {
     // user gets a retry; if it fails for a credentials reason, the
     // toast carries the backend's error message.
     const repoPath = d.request_data.repository_path
-    // Snapshot via `.__state` — `handleRetry` is an event handler,
+    // Snapshot via `.$` — `handleRetry` is an event handler,
     // not a render path. The bare `Stores.HubModels.models` proxy
     // would call React hooks outside render. See
     // `feedback_stores_state_in_handlers` in project memory.
@@ -120,7 +120,7 @@ export function DownloadIndicatorWidget() {
     // the download path; matching against ALL of them lets a model
     // with multiple sources still be detected on retry).
     const hubModel = repoPath
-      ? Stores.HubModels.__state.models.find(m =>
+      ? Stores.HubModels.$.models.find(m =>
           (m.sources ?? []).some(s => s.identifier === repoPath),
         )
       : undefined

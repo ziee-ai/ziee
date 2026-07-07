@@ -58,7 +58,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
       // `__state` (not the render-only `Stores.X` proxy) for store access from
       // an event handler — the proxy fires React hooks on every access and would
       // be a Rules-of-Hooks violation outside render.
-      await Stores.FileVersions.__state.restoreVersion(file.id, current)
+      await Stores.FileVersions.restoreVersion(file.id, current)
       onSelectVersion(null)
     } catch (e) {
       message.error(`Failed to restore v${current}`)
