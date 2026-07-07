@@ -1014,8 +1014,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `renderers.length === 0` | 29 |
-| branch | `fallback` | 30 |
+| empty | `renderers.length === 0` | 32 |
+| branch | `fallback` | 33 |
 
 ### `modules/chat/core/extensions/utils`
 

@@ -18,6 +18,12 @@
       "surface": "seeded-defect-repro",
       "selector": ".prose",
       "reason": "Intentional L1 known-positive fixture (DefectRepro.tsx, user miss #11a: raw TeX with no KaTeX). The detector MUST flag it (detector-acceptance asserts it FIRES); allow-listed for --gate, still reported."
+    },
+    {
+      "class": "B1",
+      "surface": "*",
+      "selector": "composer-status-slot",
+      "reason": "The composer's `toolbar_status` chip strip (ChatInput.tsx: `flex flex-wrap items-center gap-1.5`, testid `composer-status-slot`) is an intentional variable-length wrap row holding the MCP / assistant / memory / summary chips. On a 272px mobile composer two chips near-fit and wrap by a hair (~23px slack). Wrapping is the CORRECT behaviour for a chip row whose length depends on how many tools/pills are active — the only alternative (flex-nowrap) would clip chips off the edge. The row renders on whichever deep-chat surface has ≥2 chips (surface-variable across runs), so this is scoped to the stable testid, not a surface. Per ROUND3_FIX_SPEC Shard 1: allow-list the status-chip row (do NOT force it nowrap). Still reported; excused from --gate."
     }
   ]
 }

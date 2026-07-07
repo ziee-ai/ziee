@@ -928,6 +928,20 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
     }
     const HUGE = { left: -1e7, top: -1e7, right: 1e7, bottom: 1e7 }
     const LO = 0.75 // ignore sub-pixel rounding of a flush edge
+    // A nearest clip ancestor that ACTUALLY scrolls on the axis (overflow
+    // auto/scroll with real overflow — e.g. a horizontal attachment strip that
+    // x-scrolls its file cards) does NOT permanently paint out a border: the far
+    // edge is reachable by scrolling, so a card poking past the current viewport
+    // is normal scroll content, not a clipped stroke. Treat it as non-clipping on
+    // that axis (mirrors A3's `hasScrollingAncestorX` guard). overflow:hidden/clip
+    // ancestors still clip and are still judged.
+    const scrollsAxis = (anc, axis) => {
+      const os = axis === 'x' ? cs(anc).overflowX : cs(anc).overflowY
+      if (os !== 'auto' && os !== 'scroll') return false
+      return axis === 'x'
+        ? anc.scrollWidth - anc.clientWidth > 2
+        : anc.scrollHeight - anc.clientHeight > 2
+    }
     let scanned = 0
     for (const el of pool) {
       if (scanned > 6000) break
@@ -943,8 +957,10 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
       const xAnc = clippingAncestor(el, 'x')
       const yAnc = clippingAncestor(el, 'y')
       if ((!xAnc || xAnc === el) && (!yAnc || yAnc === el)) continue
-      const cx = xAnc && xAnc !== el ? innerClipRect(xAnc) : HUGE
-      const cy = yAnc && yAnc !== el ? innerClipRect(yAnc) : HUGE
+      const xClip = xAnc && xAnc !== el && !scrollsAxis(xAnc, 'x')
+      const yClip = yAnc && yAnc !== el && !scrollsAxis(yAnc, 'y')
+      const cx = xClip ? innerClipRect(xAnc) : HUGE
+      const cy = yClip ? innerClipRect(yAnc) : HUGE
       // Majority-visibility: intersection of the element with the (x-clip × y-clip)
       // viewport, as a fraction of the element's own area. Excludes scrolled-out rows.
       const vw = Math.max(0, Math.min(r.right, cx.right) - Math.max(r.left, cx.left))
@@ -954,8 +970,8 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
         ? [['left', bw.left, cx], ['right', bw.right, cx]]
         : [['top', bw.top, cy], ['bottom', bw.bottom, cy]]
       for (const axis of ['x', 'y']) {
+        if (!(axis === 'x' ? xClip : yClip)) continue
         const anc = axis === 'x' ? xAnc : yAnc
-        if (!anc || anc === el) continue
         for (const [side, w, clip] of sidesFor(axis)) {
           if (!w) continue
           const overshoot =
@@ -1008,12 +1024,15 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
   }
 
   // ── A12 cramped nested borders (a double border with a tight gap) ────────
-  // A bordered CONTROL (button / input / select) whose border-box edge sits within
+  // A bordered ACTION control (button / link) whose border-box edge sits within
   // ~8px of its nearest bordered ANCESTOR's inner (padding-box) edge reads as a
   // crowded double border — two stroke lines almost touching. The usual fix is a
   // quiet/ghost variant instead of an outline inside an already-bordered container.
-  // Scoped to controls (that's where the outline-in-a-box anti-pattern lives) to
-  // avoid flagging every full-bleed child of a card.
+  // Scoped to action controls (that's where the outline-in-a-box anti-pattern
+  // lives). Form fields (input/select/textarea) are DELIBERATELY excluded: a
+  // bordered input nested in a bordered field/card is normal, expected design —
+  // its own outline is the field affordance, not a redundant double stroke (see
+  // the edge-adjacent A12 pass below, which states the same principle).
   if (run('A12')) {
     const px = v => parseFloat(v) || 0
     const paintedBorder = (s, name) => {
@@ -1029,7 +1048,7 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
       const s = cs(el)
       return paintedBorder(s, 'Left') || paintedBorder(s, 'Right') || paintedBorder(s, 'Top') || paintedBorder(s, 'Bottom')
     }
-    const CONTROL = 'button,a[href],input,select,textarea,[role="button"],[role="link"],[data-slot="button"]'
+    const CONTROL = 'button,a[href],[role="button"],[role="link"],[data-slot="button"]'
     // ≤10px: a bordered control this close to its bordered container's edge paints a
     // redundant double stroke (the container border + the control's outline almost
     // parallel). Standard control padding inside a card is ≥12px (px-3), so 10px is
@@ -1389,14 +1408,31 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
   // NON-scrolling (overflow:hidden/clip) ancestor's edge has its border painted
   // out (taxonomy A11, user miss #18: tool-call card borders clipped).
   if (run('A11')) {
+    // A transparent (alpha-0) border occupies layout but PAINTS NOTHING, so it
+    // cannot be visibly clipped — the robust A11 pass above (paintedBorder)
+    // already excludes it. Mirror that here so the universal `border
+    // border-transparent` every kit Button carries isn't reported as a clipped
+    // border (that transparent-outline flood — copy/regenerate/edit/branch
+    // message-action buttons scrolled deep in a long conversation — was this
+    // pass's dominant false positive).
+    const px = v => parseFloat(v) || 0
+    const paintedW = (s, name) => {
+      const w = px(s[`border${name}Width`])
+      if (w < 1) return 0
+      const st = s[`border${name}Style`]
+      if (st === 'none' || st === 'hidden') return 0
+      const c = parseColor(s[`border${name}Color`])
+      if (c && c.a === 0) return 0
+      return w
+    }
     for (const el of pool) {
       const s = cs(el)
       if (s.borderStyle === 'none') continue
       const bw = {
-        top: parseFloat(s.borderTopWidth) || 0,
-        right: parseFloat(s.borderRightWidth) || 0,
-        bottom: parseFloat(s.borderBottomWidth) || 0,
-        left: parseFloat(s.borderLeftWidth) || 0,
+        top: paintedW(s, 'Top'),
+        right: paintedW(s, 'Right'),
+        bottom: paintedW(s, 'Bottom'),
+        left: paintedW(s, 'Left'),
       }
       if (Math.max(bw.top, bw.right, bw.bottom, bw.left) <= 0) continue
       const r = rectOf(el)
@@ -1412,6 +1448,14 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
         const ov = axis === 'x' ? cs(anc).overflowX : cs(anc).overflowY
         if (ov !== 'hidden' && ov !== 'clip') continue
         const p = rectOf(anc)
+        // Majority-visibility: a row scrolled far past the clip edge is off-screen
+        // content, not a painted-out border. Only flag an element still mostly
+        // inside the clip viewport (matches the robust pass's guard).
+        const visFrac =
+          (Math.max(0, Math.min(r.right, p.right) - Math.max(r.left, p.left)) *
+            Math.max(0, Math.min(r.bottom, p.bottom) - Math.max(r.top, p.top))) /
+          Math.max(1, r.width * r.height)
+        if (visFrac < 0.5) continue
         const sides =
           axis === 'x'
             ? [ { n: 'right', bw: bw.right, cut: r.right - p.right }, { n: 'left', bw: bw.left, cut: p.left - r.left } ]
@@ -1448,8 +1492,21 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
       if (!el.matches?.('button,[role="button"],a[href]')) continue
       const s = cs(el)
       if (s.borderStyle === 'none') continue
-      if (!(parseFloat(s.borderTopWidth) || parseFloat(s.borderRightWidth) ||
-        parseFloat(s.borderBottomWidth) || parseFloat(s.borderLeftWidth))) continue
+      // Require a PAINTED (non-transparent) outline: the kit's universal `border
+      // border-transparent` on ghost/default buttons occupies 1px of layout but
+      // paints nothing, so it is not a visible "double border" against the
+      // container stroke. Only a real coloured outline crammed against the edge
+      // qualifies (the fix for those is a ghost variant — but a ghost button is
+      // already fine and must not be flagged).
+      const painted = name => {
+        const w = parseFloat(s[`border${name}Width`]) || 0
+        if (w < 1) return false
+        const st = s[`border${name}Style`]
+        if (st === 'none' || st === 'hidden') return false
+        const c = parseColor(s[`border${name}Color`])
+        return !(c && c.a === 0)
+      }
+      if (!(painted('Top') || painted('Right') || painted('Bottom') || painted('Left'))) continue
       const anc = borderedAncestor(el)
       if (!anc || isChrome(anc)) continue
       const as = cs(anc)

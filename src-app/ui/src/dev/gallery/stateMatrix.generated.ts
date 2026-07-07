@@ -890,8 +890,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/extensions/slots",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "renderers.length === 0", line: 29 },
-      { kind: "branch", condition: "fallback", line: 30 },
+      { kind: "empty", condition: "renderers.length === 0", line: 32 },
+      { kind: "branch", condition: "fallback", line: 33 },
     ],
   },
   "modules/chat/core/extensions/utils": {

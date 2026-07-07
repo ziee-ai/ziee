@@ -12,6 +12,8 @@ interface ExtensionSlotProps {
   className?: string
   /** Optional fallback content if no extensions render */
   fallback?: React.ReactNode
+  /** Optional stable test selector forwarded onto the wrapper div. */
+  'data-testid'?: string
 }
 
 /**
@@ -23,6 +25,7 @@ export function ExtensionSlot({
   name,
   className,
   fallback,
+  'data-testid': dataTestid,
 }: ExtensionSlotProps) {
   const renderers = chatExtensionRegistry.renderSlot(name)
 
@@ -31,7 +34,7 @@ export function ExtensionSlot({
   }
 
   return (
-    <div className={className} data-chat-extension-slot={name}>
+    <div className={className} data-chat-extension-slot={name} data-testid={dataTestid}>
       {renderers.map((renderer, index) => (
         <Fragment key={`${name}-${index}`}>{renderer}</Fragment>
       ))}

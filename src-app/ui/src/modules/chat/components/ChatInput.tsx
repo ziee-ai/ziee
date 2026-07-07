@@ -128,10 +128,18 @@ export function ChatInput({
             />
           </div>
         </div>
-        {/* Status row: active MCP servers + selected assistant */}
+        {/* Status row: active MCP servers + selected assistant. An intentional
+            variable-length wrap row (chips count depends on active tools/pills);
+            the testid gives the geometry audit a stable target so its B1
+            near-fit wrap can be allow-listed precisely (not by class substring).
+            pb-3 (not pb-2): the outlined status chips (memory / summary pills)
+            are the composer card's last row, so their bottom border sat only 8px
+            from the card's own border — a crowded double stroke (A12). 12px of
+            breathing room clears the double-border without ghosting the pills. */}
         <ExtensionSlot
           name="toolbar_status"
-          className="flex flex-wrap items-center gap-1.5 px-3 pb-2 empty:hidden"
+          data-testid="composer-status-slot"
+          className="flex flex-wrap items-center gap-1.5 px-3 pb-3 empty:hidden"
         />
       </div>
     </div>
