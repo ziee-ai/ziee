@@ -234,6 +234,28 @@ windows-service = "0.7"
 # Safe HKLM access for the GuestCommunicationServices vsock-port registration.
 winreg = "0.52"
 
+# office_bridge (ITEM-7): late-bound COM/IDispatch automation of open Office
+# documents. Unlike `windows-sys` (raw FFI, no COM helper types), the `windows`
+# crate ships the `IDispatch` vtable wrapper, `VARIANT` (with Drop=VariantClear /
+# Clone=VariantCopy), `BSTR`, and the oleacc/registry/shell/token bindings the
+# Windows `OfficePlatform` needs. Scoped to `cfg(windows)`; all `unsafe` COM is
+# confined to `modules/office_bridge/platform/windows.rs`. Version pinned to the
+# 0.61 line already resolved in the tree (windows-core 0.61 / windows-strings 0.4).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
 [build-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 sqlx.workspace = true

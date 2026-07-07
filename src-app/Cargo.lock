@@ -12799,6 +12799,7 @@ dependencies = [
  "uuid",
  "wgpu-hal",
  "which",
+ "windows 0.61.3",
  "windows-service",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
