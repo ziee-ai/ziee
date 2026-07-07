@@ -392,7 +392,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["empty"],
     signals: [
       { kind: "branch", condition: "v == null || typeof v === 'boolean'", line: 53 },
-      { kind: "branch", condition: "props.virtualized && !busy && props.dataSource.length > 0", line: 63 },
+      { kind: "branch", condition: "props.virtualized && !busy && (props.dataSource?.length ?? 0) > 0", line: 63 },
       { kind: "branch", condition: "caption != null", line: 74 },
       { kind: "branch", condition: "busy", line: 85 },
       { kind: "empty", condition: "dataSource.length === 0", line: 93 },

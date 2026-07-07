@@ -25,7 +25,7 @@ export interface ListProps<T> {
 
 const rowPad = (size?: 'sm' | 'default' | 'lg') => (size === 'sm' ? 'px-3 py-2' : size === 'lg' ? 'px-5 py-4' : 'px-4 py-3')
 
-export function List<T>({ dataSource, renderItem, rowKey, header, footer, empty, loading, size, className, 'aria-label': ariaLabel, 'data-testid': testid }: ListProps<T>) {
+export function List<T>({ dataSource = [], renderItem, rowKey, header, footer, empty, loading, size, className, 'aria-label': ariaLabel, 'data-testid': testid }: ListProps<T>) {
   const s = useSurface({})
   const busy = loading || s.loading
   const keyOf = (item: T, i: number) =>

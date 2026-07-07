@@ -60,13 +60,13 @@ export function Table<T>(props: TableProps<T>) {
   const busy = !!(props.loading || s.loading)
   // Virtualize only when there's real data to window — loading/empty states use
   // the plain path (their skeleton/empty rows don't need a virtualizer).
-  if (props.virtualized && !busy && props.dataSource.length > 0) {
+  if (props.virtualized && !busy && (props.dataSource?.length ?? 0) > 0) {
     return <VirtualTable {...props} />
   }
   return <PlainTable {...props} busy={busy} />
 }
 
-function PlainTable<T>({ columns, dataSource, rowKey, caption, empty, className, onRowClick, busy, 'data-testid': testid }: TableProps<T> & { busy: boolean }) {
+function PlainTable<T>({ columns, dataSource = [], rowKey, caption, empty, className, onRowClick, busy, 'data-testid': testid }: TableProps<T> & { busy: boolean }) {
   const keyOf = (record: T, i: number) =>
     typeof rowKey === 'function' ? rowKey(record, i) : String((record as Record<string, unknown>)[rowKey])
   return (
@@ -136,7 +136,7 @@ function PlainTable<T>({ columns, dataSource, rowKey, caption, empty, className,
 // overflow ancestor) so it can live inside our overlay scrollers unchanged.
 const justifyFor = { left: 'justify-start', center: 'justify-center', right: 'justify-end' } as const
 function VirtualTable<T>({
-  columns, dataSource, rowKey, className, onRowClick, estimateRowHeight = 40,
+  columns, dataSource = [], rowKey, className, onRowClick, estimateRowHeight = 40,
   maxHeight = 'min(60vh, 36rem)', 'data-testid': testid,
 }: TableProps<T>) {
   // Own the scroll container so the virtualizer reads a ref that's populated by

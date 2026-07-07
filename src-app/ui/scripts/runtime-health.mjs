@@ -369,7 +369,11 @@ async function main() {
   // containing the substring. Lets an overlay-focused pass skip the ~300 pages.
   const onlyKinds = arg('only-kinds', '').split(',').filter(Boolean)
   const onlyMatch = arg('only-match', '')
-  let scoped = cells
+  // COPY, do not alias: `scoped = cells` would share the array reference, so the
+  // `cells.length = 0` below empties BOTH and the re-push restores nothing — the
+  // default (no --only-*) run then renders ZERO cells and truthfully reports
+  // "0 findings", a silent false-clean. `[...cells]` gives scoped its own array.
+  let scoped = [...cells]
   if (onlyKinds.length) scoped = scoped.filter(c => onlyKinds.includes(c.kind))
   if (onlyMatch) scoped = scoped.filter(c => c.surface.includes(onlyMatch))
   cells.length = 0
@@ -378,6 +382,21 @@ async function main() {
   console.log(
     `runtime-health: ${classes.pages.length} pages × ${STATES.length} states + ${classes.overlays.length} overlays + ${classes.deep.length} deep + ${classes.seeded.length} seeded = ${cells.length} surface/state cells × ${THEMES.length} themes\n`,
   )
+
+  // Fail-loud regression guard: enumerating surfaces but building ZERO cells is
+  // the cell-aliasing false-clean class — it would report "0 findings" while
+  // rendering nothing. If any surface class was enumerated and no scoping arg
+  // was supplied, an empty cell list is a bug, not a clean run. Refuse to lie.
+  const enumeratedSurfaces =
+    classes.pages.length + classes.overlays.length + classes.deep.length + classes.seeded.length
+  const scopingApplied = onlyKinds.length > 0 || onlyMatch.length > 0
+  if (enumeratedSurfaces > 0 && cells.length === 0 && !scopingApplied) {
+    console.error(
+      `runtime-health: enumerated ${enumeratedSurfaces} surfaces but built 0 cells with no scoping — ` +
+        `refusing to report a false "0 findings" (cell-aliasing regression). See the COPY comment above.`,
+    )
+    process.exit(2)
+  }
 
   const findings = []
   // Normalize volatile substrings so the committed report is stable across runs:

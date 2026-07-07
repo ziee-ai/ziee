@@ -464,7 +464,7 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `v == null \|\| typeof v === 'boolean'` | 53 |
-| branch | `props.virtualized && !busy && props.dataSource.length > 0` | 63 |
+| branch | `props.virtualized && !busy && (props.dataSource?.length ?? 0) > 0` | 63 |
 | branch | `caption != null` | 74 |
 | branch | `busy` | 85 |
 | empty | `dataSource.length === 0` | 93 |
