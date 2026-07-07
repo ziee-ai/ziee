@@ -2610,13 +2610,13 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!m` | 90 |
-| branch | `!providerId` | 105 |
-| branch | `!name` | 107 |
-| overlay | `<Drawer open>` | 153 |
-| branch | `canCreate` | 161 |
-| branch | `!useCustomId` | 178 |
-| branch | `notes && notes.length > 0` | 209 |
+| branch | `!m` | 91 |
+| branch | `!providerId` | 107 |
+| branch | `!name` | 109 |
+| overlay | `<Drawer open>` | 155 |
+| branch | `canCreate` | 163 |
+| branch | `!useCustomId` | 180 |
+| branch | `notes && notes.length > 0` | 211 |
 
 ### `modules/llm-provider/components/llm-models/EditLlmModelDrawer`
 
