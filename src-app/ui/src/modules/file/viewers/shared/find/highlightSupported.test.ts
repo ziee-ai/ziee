@@ -14,3 +14,26 @@ test('isHighlightSupported is false in the non-DOM node env (no CSS.highlights)'
   // proving the FindButton/Ctrl-F are correctly suppressed when the API is absent.
   assert.equal(isHighlightSupported(), false)
 })
+
+test('isHighlightSupported is true when CSS.highlights + Highlight exist', () => {
+  // Positively exercise the supported branch (node has neither global by default)
+  // by stubbing the two the detector checks, then restoring.
+  const g = globalThis as Record<string, unknown>
+  const hadCSS = 'CSS' in g
+  const hadHighlight = 'Highlight' in g
+  const prevCSS = g.CSS
+  const prevHighlight = g.Highlight
+  try {
+    g.CSS = { highlights: new Map() }
+    g.Highlight = function Highlight() {} as unknown
+    assert.equal(isHighlightSupported(), true)
+    // Missing the constructor → false even with the registry present.
+    g.Highlight = undefined
+    assert.equal(isHighlightSupported(), false)
+  } finally {
+    if (hadCSS) g.CSS = prevCSS
+    else delete g.CSS
+    if (hadHighlight) g.Highlight = prevHighlight
+    else delete g.Highlight
+  }
+})

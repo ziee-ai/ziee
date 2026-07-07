@@ -165,6 +165,16 @@ export function DownloadButton({ file }: { file: FileEntity }) {
 // the CSS Custom Highlight API is unavailable — the browser's native find is the
 // fallback, so a dead button never appears.
 
+// Platform-aware find shortcut label (⌘F on macOS, Ctrl+F elsewhere). `navigator`
+// is always present in the browser; guard for the (test/SSR) absence anyway.
+function findShortcutLabel(): string {
+  const p =
+    typeof navigator !== 'undefined'
+      ? navigator.platform || navigator.userAgent
+      : ''
+  return /mac|iphone|ipad|ipod/i.test(p) ? 'Find (⌘F)' : 'Find (Ctrl+F)'
+}
+
 export function FindButton({ file }: { file: FileEntity }) {
   if (!isHighlightSupported()) return null
   const open = Stores.File.fileFindOpen.get(file.id) ?? false
@@ -172,7 +182,7 @@ export function FindButton({ file }: { file: FileEntity }) {
     <Button
       variant="ghost"
       size="icon"
-      tooltip="Find (Ctrl+F)"
+      tooltip={findShortcutLabel()}
       aria-label="Find in document"
       aria-pressed={open}
       icon={<Search />}
@@ -211,8 +221,17 @@ export function CopySelectionButton() {
   const handleCopy = async () => {
     const selection = window.getSelection()
     const text = selection?.toString() ?? ''
-    if (text.trim() === '') {
-      message.warning('Select text to copy')
+    // Only copy a selection that lies INSIDE a file viewer region — otherwise a
+    // stray page selection (sidebar, another panel) would be copied by this
+    // viewer's button, which is surprising.
+    const anchor = selection?.anchorNode ?? null
+    const anchorEl =
+      anchor?.nodeType === Node.ELEMENT_NODE
+        ? (anchor as Element)
+        : anchor?.parentElement ?? null
+    const inViewer = !!anchorEl?.closest('[data-testid="file-findable-region"]')
+    if (text.trim() === '' || !inViewer) {
+      message.warning('Select text in the document to copy')
       return
     }
     try {

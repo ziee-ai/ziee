@@ -29,7 +29,7 @@ export function ImageHeader(props: FileViewerSlotProps) {
       <Segmented
         value={view.mode}
         onChange={(v: string) =>
-          Stores.File.setImageViewMode(file.id, v as 'fit' | 'actual')
+          Stores.File.__state.setImageViewMode(file.id, v as 'fit' | 'actual')
         }
         data-testid="file-viewer-image-fit-segmented"
         options={[

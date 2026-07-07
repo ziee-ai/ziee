@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 316 surfaces carry renderable-state signals; 1741 signals total.
+// 316 surfaces carry renderable-state signals; 1749 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1383,10 +1383,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "!file", line: 20 },
       { kind: "branch", condition: "errored", line: 21 },
-      { kind: "branch", condition: "!thumbnailUrl", line: 90 },
-      { kind: "branch", condition: "view.mode === 'fit'", line: 99 },
-      { kind: "branch", condition: "o.x <= 0 && o.y <= 0", line: 120 },
-      { kind: "branch", condition: "!d", line: 126 },
+      { kind: "branch", condition: "view.mode === 'fit'", line: 100 },
+      { kind: "branch", condition: "!thumbnailUrl", line: 110 },
+      { kind: "branch", condition: "view.mode === 'fit'", line: 119 },
+      { kind: "branch", condition: "o.x <= 0 && o.y <= 0", line: 141 },
+      { kind: "branch", condition: "!d", line: 156 },
+      { kind: "branch", condition: "!d", line: 178 },
+      { kind: "branch", condition: "o.x <= 0 && o.y <= 0", line: 181 },
     ],
   },
   "modules/file/viewers/image/header": {
@@ -1455,17 +1458,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "empty", condition: "file.text_page_count === 0", line: 41 },
       { kind: "branch", condition: "text === undefined || text === ''", line: 109 },
-      { kind: "branch", condition: "!isHighlightSupported()", line: 169 },
-      { kind: "branch", condition: "text.trim() === ''", line: 214 },
+      { kind: "branch", condition: "!isHighlightSupported()", line: 179 },
+      { kind: "branch", condition: "text.trim() === '' || !inViewer", line: 233 },
     ],
   },
   "modules/file/viewers/shared/find/FindableRegion": {
     surface: "modules/file/viewers/shared/find/FindableRegion",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!supported", line: 46 },
-      { kind: "branch", condition: "supported", line: 65 },
-      { kind: "branch", condition: "active", line: 71 },
+      { kind: "branch", condition: "docListener", line: 26 },
+      { kind: "branch", condition: "!(e.ctrlKey || e.metaKey)", line: 28 },
+      { kind: "branch", condition: "e.key !== 'f' && e.key !== 'F'", line: 29 },
+      { kind: "branch", condition: "isVisible(openRegions[i].el)", line: 32 },
+      { kind: "branch", condition: "!supported", line: 104 },
+      { kind: "branch", condition: "!el", line: 106 },
+      { kind: "branch", condition: "supported", line: 117 },
+      { kind: "branch", condition: "active", line: 123 },
     ],
   },
   "modules/file/viewers/tabular/DelimitedTable": {

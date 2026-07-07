@@ -35,6 +35,9 @@ test.describe('File viewer — image zoom', () => {
 
     // Zooming in switches to actual mode and grows the scale > 1.
     await zoomIn.click()
+    // Zoom in several more times so the (tiny) image overflows the container and
+    // becomes pannable.
+    for (let i = 0; i < 5; i++) await zoomIn.click()
     await expect(body).toHaveAttribute('data-view-mode', 'actual')
     await expect
       .poll(async () =>
@@ -42,9 +45,30 @@ test.describe('File viewer — image zoom', () => {
       )
       .toBeGreaterThan(1)
 
-    // Zoom out repeatedly then Fit returns to the fit render.
-    await drawer.getByTestId('file-viewer-zoom-out-btn').click()
-    // Select the "Fit" segment (aria-label) to reset.
+    // Drag-to-pan: the applied translate changes after a pointer drag across the
+    // zoomed image (exercises pointer capture + overflow geometry + clampTranslate).
+    const img = body.locator('img')
+    const transformBefore = await img.evaluate(el => getComputedStyle(el).transform)
+    const box = await body.boundingBox()
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2 - 40, { steps: 8 })
+      await page.mouse.up()
+    }
+    await expect
+      .poll(() => img.evaluate(el => getComputedStyle(el).transform))
+      .not.toBe(transformBefore)
+
+    // Keyboard pan: focusing the body and pressing an arrow also moves it.
+    await body.focus()
+    const beforeKey = await img.evaluate(el => getComputedStyle(el).transform)
+    await page.keyboard.press('ArrowRight')
+    await expect
+      .poll(() => img.evaluate(el => getComputedStyle(el).transform))
+      .not.toBe(beforeKey)
+
+    // Fit returns to the fit render (and resets pan).
     await fit.getByText('Fit', { exact: true }).click()
     await expect(body).toHaveAttribute('data-view-mode', 'fit')
   })

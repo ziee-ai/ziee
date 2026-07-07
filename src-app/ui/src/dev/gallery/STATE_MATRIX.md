@@ -8,7 +8,7 @@
 ## Summary
 
 - **316** surfaces carry at least one renderable-state signal.
-- **1741** signals total: 1359 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
+- **1749** signals total: 1367 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1553,10 +1553,13 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!file` | 20 |
 | branch | `errored` | 21 |
-| branch | `!thumbnailUrl` | 90 |
-| branch | `view.mode === 'fit'` | 99 |
-| branch | `o.x <= 0 && o.y <= 0` | 120 |
-| branch | `!d` | 126 |
+| branch | `view.mode === 'fit'` | 100 |
+| branch | `!thumbnailUrl` | 110 |
+| branch | `view.mode === 'fit'` | 119 |
+| branch | `o.x <= 0 && o.y <= 0` | 141 |
+| branch | `!d` | 156 |
+| branch | `!d` | 178 |
+| branch | `o.x <= 0 && o.y <= 0` | 181 |
 
 ### `modules/file/viewers/image/header`
 
@@ -1632,8 +1635,8 @@ Required states: `empty`
 |---|---|---|
 | empty | `file.text_page_count === 0` | 41 |
 | branch | `text === undefined \|\| text === ''` | 109 |
-| branch | `!isHighlightSupported()` | 169 |
-| branch | `text.trim() === ''` | 214 |
+| branch | `!isHighlightSupported()` | 179 |
+| branch | `text.trim() === '' \|\| !inViewer` | 233 |
 
 ### `modules/file/viewers/shared/find/FindableRegion`
 
@@ -1641,9 +1644,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!supported` | 46 |
-| branch | `supported` | 65 |
-| branch | `active` | 71 |
+| branch | `docListener` | 26 |
+| branch | `!(e.ctrlKey \|\| e.metaKey)` | 28 |
+| branch | `e.key !== 'f' && e.key !== 'F'` | 29 |
+| branch | `isVisible(openRegions[i].el)` | 32 |
+| branch | `!supported` | 104 |
+| branch | `!el` | 106 |
+| branch | `supported` | 117 |
+| branch | `active` | 123 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 

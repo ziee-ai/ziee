@@ -1,56 +1,78 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { collectMatches } from './matcher'
+import { locateSegment } from './offset'
 import { isHighlightSupported } from './highlightSupported'
 
 // CSS Custom Highlight API registry names. Registered in a <style> by FindableRegion
-// as ::highlight(file-find) / ::highlight(file-find-active).
-const HL_ALL = 'file-find'
-const HL_ACTIVE = 'file-find-active'
+// as ::highlight(file-find) / ::highlight(file-find-active). The registry is
+// process-global, so FindableRegion namespaces the registered names per instance
+// and passes them in (two open viewers must not clobber each other).
+export interface HighlightNames {
+  all: string
+  active: string
+}
 
 interface FindController {
-  /** Total matches for the current query. */
   count: number
-  /** 0-based index of the active match, or -1 when there are none. */
   activeIndex: number
-  /** Advance to the next match (wraps). No-op when count is 0. */
   next: () => void
-  /** Go to the previous match (wraps). No-op when count is 0. */
   prev: () => void
 }
 
-/** {node, offset} address inside the walked text. */
 interface Addr {
   node: Text
   offset: number
 }
 
+/** Debounce (ms) before re-walking on a query change — one keystroke shouldn't
+ *  trigger a full O(N) tree walk mid-word. */
+const REBUILD_DEBOUNCE_MS = 100
+
 /**
  * Find-in-document over a container, painting matches with the CSS Custom
  * Highlight API (no DOM mutation, so it survives shiki markup, Streamdown
- * re-renders, and `content-visibility` virtualization). Rebuilds on query change
- * and whenever the container subtree mutates while active (handles async render).
+ * re-renders, and `content-visibility` virtualization). Rebuilds (debounced) on
+ * query change and whenever the container subtree mutates while active.
  */
 export function useFindInDocument(
   containerRef: React.RefObject<HTMLElement | null>,
   query: string,
   active: boolean,
+  names: HighlightNames,
 ): FindController {
   const [count, setCount] = useState(0)
   const [activeIndex, setActiveIndex] = useState(-1)
-  // Ordered match ranges, kept in a ref so next/prev + the active-highlight
-  // effect can read them without re-running the (expensive) walk.
   const rangesRef = useRef<Range[]>([])
+  // Latest activeIndex, readable inside rebuild without making rebuild depend on
+  // it (which would thrash the observer). Kept in sync below.
+  const activeIndexRef = useRef(-1)
+  activeIndexRef.current = activeIndex
 
   const supported = isHighlightSupported()
 
   const clearHighlights = useCallback(() => {
     if (!supported) return
-    CSS.highlights.delete(HL_ALL)
-    CSS.highlights.delete(HL_ACTIVE)
+    CSS.highlights.delete(names.all)
+    CSS.highlights.delete(names.active)
     rangesRef.current = []
-  }, [supported])
+  }, [supported, names.all, names.active])
 
-  // Walk text nodes → build Ranges for every match → register the "all" highlight.
+  // Paint the active match distinctly (used by rebuild + the index effect so the
+  // active highlight is refreshed even when a rebuild keeps count/index the same).
+  const paintActive = useCallback(
+    (index: number) => {
+      if (!supported) return
+      const ranges = rangesRef.current
+      if (index < 0 || index >= ranges.length) {
+        CSS.highlights.delete(names.active)
+        return
+      }
+      CSS.highlights.set(names.active, new Highlight(ranges[index]))
+    },
+    [supported, names.active],
+  )
+
+  // Walk text nodes → build Ranges for every match → register the highlights.
   const rebuild = useCallback(() => {
     if (!supported) return
     const root = containerRef.current
@@ -61,21 +83,19 @@ export function useFindInDocument(
       return
     }
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    const nodes: { node: Text; start: number }[] = []
+    const nodes: Text[] = []
+    const starts: number[] = []
     let text = ''
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       const t = n as Text
-      nodes.push({ node: t, start: text.length })
+      nodes.push(t)
+      starts.push(text.length)
       text += t.data
     }
-    // Map a global string offset onto a {textNode, localOffset}. Binary-searchable
-    // but linear is fine (node counts are viewport-bounded via content-visibility).
     const addrOf = (offset: number): Addr | null => {
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const { node, start } = nodes[i]
-        if (offset >= start) return { node, offset: offset - start }
-      }
-      return nodes.length ? { node: nodes[0].node, offset: 0 } : null
+      const i = locateSegment(starts, offset)
+      if (i < 0) return null
+      return { node: nodes[i], offset: offset - starts[i] }
     }
     const spans = collectMatches(text, query)
     const ranges: Range[] = []
@@ -99,15 +119,26 @@ export function useFindInDocument(
       setActiveIndex(-1)
       return
     }
-    // Highlight ctor accepts a spread of ranges.
-    CSS.highlights.set(HL_ALL, new Highlight(...ranges))
+    CSS.highlights.set(names.all, new Highlight(...ranges))
     setCount(ranges.length)
     // Keep the active match if still valid; else start at the first.
-    setActiveIndex(prev => (prev >= 0 && prev < ranges.length ? prev : 0))
-  }, [supported, containerRef, query, clearHighlights])
+    const nextActive =
+      activeIndexRef.current >= 0 && activeIndexRef.current < ranges.length
+        ? activeIndexRef.current
+        : 0
+    setActiveIndex(nextActive)
+    // Refresh the active highlight against the FRESH range objects immediately —
+    // the index effect won't re-run when count/index are unchanged.
+    paintActive(nextActive)
+  }, [supported, containerRef, query, clearHighlights, paintActive, names.all])
 
-  // (Re)build when the query / active flag changes, and observe the subtree so an
-  // async-rendered body (Streamdown, shiki) re-matches once its DOM settles.
+  // Keep a stable ref to the latest rebuild so the observer effect below doesn't
+  // depend on `query` (which would disconnect+reconnect the observer per keystroke).
+  const rebuildRef = useRef(rebuild)
+  rebuildRef.current = rebuild
+
+  // (Re)build on query/active change — DEBOUNCED so a fast typist doesn't trigger
+  // a full walk on every keystroke.
   useEffect(() => {
     if (!supported || !active) {
       clearHighlights()
@@ -115,43 +146,47 @@ export function useFindInDocument(
       setActiveIndex(-1)
       return
     }
-    rebuild()
+    const id = setTimeout(() => rebuildRef.current(), REBUILD_DEBOUNCE_MS)
+    return () => clearTimeout(id)
+  }, [supported, active, query, clearHighlights])
+
+  // Observe the subtree so an async-rendered body (Streamdown, shiki) re-matches
+  // once its DOM settles. Stable deps (no `query`) → set up once per active session.
+  useEffect(() => {
+    if (!supported || !active) return
     const root = containerRef.current
     if (!root || typeof MutationObserver === 'undefined') return
     let raf = 0
     const obs = new MutationObserver(() => {
       cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(rebuild)
+      raf = requestAnimationFrame(() => rebuildRef.current())
     })
     obs.observe(root, { childList: true, subtree: true, characterData: true })
     return () => {
       cancelAnimationFrame(raf)
       obs.disconnect()
     }
-  }, [supported, active, rebuild, clearHighlights, containerRef])
+  }, [supported, active, containerRef])
 
   // Clear everything on unmount so highlights don't leak to the next viewer.
   useEffect(() => clearHighlights, [clearHighlights])
 
-  // Paint the active match distinctly + scroll it into view.
+  // Repaint + scroll when the active index changes (next/prev).
   useEffect(() => {
     if (!supported) return
     const ranges = rangesRef.current
     if (activeIndex < 0 || activeIndex >= ranges.length) {
-      CSS.highlights.delete(HL_ACTIVE)
+      CSS.highlights.delete(names.active)
       return
     }
-    const active = ranges[activeIndex]
-    CSS.highlights.set(HL_ACTIVE, new Highlight(active))
-    // Scroll the match's containing element into view. A content-visibility:auto
-    // ancestor still exposes geometry (contain-intrinsic-size), so this positions
-    // the scroller and forces the offscreen line to render.
+    paintActive(activeIndex)
+    const r = ranges[activeIndex]
     const el =
-      active.startContainer.nodeType === Node.TEXT_NODE
-        ? active.startContainer.parentElement
-        : (active.startContainer as HTMLElement)
+      r.startContainer.nodeType === Node.TEXT_NODE
+        ? r.startContainer.parentElement
+        : (r.startContainer as HTMLElement)
     el?.scrollIntoView({ block: 'center', inline: 'nearest' })
-  }, [supported, activeIndex, count])
+  }, [supported, activeIndex, count, paintActive, names.active])
 
   const next = useCallback(() => {
     setActiveIndex(prev => {
