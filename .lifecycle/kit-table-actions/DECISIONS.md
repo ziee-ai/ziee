@@ -33,9 +33,12 @@ index using the `onViewChange` rows (each row carries its `__rn`), then sets
 rendered list, which is the filtered/sorted view.
 
 ### DEC-5: Grid sort/filter — client-side or server-side?
-**Resolution:** Client-side over already-loaded data. MCP tool-calls: the current
-server page (pagination unchanged). Memory audit: the full ≤`limit` loaded set.
-No new query params, no backend change.
+**Resolution:** Client-side over already-loaded data. MCP tool-calls is
+server-paginated, so it gets **sort only** (reordering the loaded page is safe;
+a client-side filter would hide matches on other pages while the pager still
+advertises them — so no `filterable` there). Memory audit loads the full ≤`limit`
+set in one shot, so it gets **sort + filter** (complete + correct). No new query
+params, no backend change.
 **Basis:** convention/scope — F1 is a frontend kit upgrade; the grids currently
 have NO sort/filter, so client-side is a strict improvement. Server-side filtering
 is a documented follow-up, not a regression.

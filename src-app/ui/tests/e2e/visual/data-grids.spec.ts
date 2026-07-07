@@ -6,8 +6,9 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 
 async function order(scope: Page | Locator, table: string): Promise<string[]> {
-  return scope.locator(`[data-testid^="${table}-row-"]`).evaluateAll(els =>
-    els.map(e => e.getAttribute('data-testid')!.replace(`${table}-row-`, '')),
+  return scope.locator(`[data-testid^="${table}-row-"]`).evaluateAll(
+    (els, prefix) => els.map(e => e.getAttribute('data-testid')!.replace(prefix, '')),
+    `${table}-row-`,
   )
 }
 async function openSeeded(page: Page, slug: string, table: string) {
@@ -16,7 +17,9 @@ async function openSeeded(page: Page, slug: string, table: string) {
 }
 
 test.describe('Data grids — sort + filter', () => {
-  test('TEST-27: MCP tool-calls grid sorts by Duration + filters; Duration is numeric', async ({ page }) => {
+  test('TEST-27: MCP tool-calls grid sorts by Duration; Duration is numeric (right-aligned)', async ({ page }) => {
+    // Server-paginated grid → sort-only (client-side filter would mislead across
+    // pages, DEC-5). Sort reorders the loaded page; Duration is a numeric column.
     const T = 'mcp-tool-calls-table'
     await openSeeded(page, 'seeded-mcp-tool-calls-loaded', T)
     // Rows id 1(search,120ms) 2(fetch,40ms) 3(remember,8ms).
@@ -28,9 +31,6 @@ test.describe('Data grids — sort + filter', () => {
     // Duration column (5th: Time,Tool,Status,Source,Duration) is right-aligned.
     const durCell = page.getByTestId(`${T}-row-1`).locator('td').nth(4)
     expect(await durCell.evaluate(el => getComputedStyle(el).textAlign)).toBe('right')
-
-    await page.getByTestId(`${T}-search`).fill('search') // tool_name = search → id 1
-    expect(await order(page, T)).toEqual(['1'])
   })
 
   test('TEST-28: memory audit grid sorts by Op + filters', async ({ page }) => {

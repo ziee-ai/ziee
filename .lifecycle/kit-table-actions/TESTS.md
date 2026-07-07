@@ -47,5 +47,5 @@ Frontend diff ⇒ ≥1 `tier: e2e` (there are 15).
 
 ## e2e — data grids (gallery seeded)
 
-- **TEST-27** (tier: e2e) [covers: ITEM-17] file: `src-app/ui/tests/e2e/visual/data-grids.spec.ts` — asserts: the MCP tool-calls grid sorts by a column and filters rows via the search box over the loaded page; the Duration column is right-aligned (numeric)
+- **TEST-27** (tier: e2e) [covers: ITEM-17] file: `src-app/ui/tests/e2e/visual/data-grids.spec.ts` — asserts: the MCP tool-calls grid sorts by the Duration column over the loaded page (server-paginated → sort-only, no client-side filter per DEC-5); the Duration column is right-aligned (numeric)
 - **TEST-28** (tier: e2e) [covers: ITEM-18] file: `src-app/ui/tests/e2e/visual/data-grids.spec.ts` — asserts: the memory audit-log grid sorts by a column and filters rows via the search box (over the ≤limit loaded rows)

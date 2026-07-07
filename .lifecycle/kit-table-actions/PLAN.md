@@ -87,9 +87,11 @@ no OpenAPI regen, no migration. Desktop consumes the same kit via the
 
 ### Data grids
 
-- **ITEM-17**: `McpToolCallsTab` — enable `sortable filterable` on the kit Table;
-  make `Duration` a numeric column; filter/sort operate client-side over the
-  currently-loaded page (server pagination unchanged — documented scope).
+- **ITEM-17**: `McpToolCallsTab` — enable `sortable` on the kit Table (reorders
+  the loaded server page); make `Duration` a numeric column. **No** client-side
+  `filterable`: the grid is server-paginated, so filtering only the current page
+  would mislead across pages (DEC-5). (The non-paginated memory audit log DOES
+  get filter — ITEM-18.)
 - **ITEM-18**: `AuditLogSection` — enable `sortable filterable` on the kit Table
   (full client-side over the ≤`limit` loaded rows).
 

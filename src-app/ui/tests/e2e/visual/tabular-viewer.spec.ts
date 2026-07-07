@@ -17,8 +17,9 @@ async function openSeeded(page: Page, slug: string, table: string) {
   await page.getByTestId(table).waitFor({ state: 'visible' })
 }
 async function order(page: Page, table: string): Promise<string[]> {
-  return page.locator(`[data-testid^="${table}-row-"]`).evaluateAll(els =>
-    els.map(e => e.getAttribute('data-testid')!.replace(`${table}-row-`, '')),
+  return page.locator(`[data-testid^="${table}-row-"]`).evaluateAll(
+    (els, prefix) => els.map(e => e.getAttribute('data-testid')!.replace(prefix, '')),
+    `${table}-row-`,
   )
 }
 

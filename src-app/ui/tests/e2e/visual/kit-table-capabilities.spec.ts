@@ -18,8 +18,11 @@ async function openSeeded(page: Page, slug: string, table: string): Promise<Loca
   return page.getByTestId(`${table}-root`)
 }
 async function rowOrder(scope: Page, table = T): Promise<string[]> {
-  return scope.locator(`[data-testid^="${table}-row-"]`).evaluateAll(els =>
-    els.map(e => e.getAttribute('data-testid')!.replace(`${table}-row-`, '')),
+  // The prefix is passed as an evaluateAll arg — closure vars aren't available
+  // in the browser-side callback.
+  return scope.locator(`[data-testid^="${table}-row-"]`).evaluateAll(
+    (els, prefix) => els.map(e => e.getAttribute('data-testid')!.replace(prefix, '')),
+    `${table}-row-`,
   )
 }
 
