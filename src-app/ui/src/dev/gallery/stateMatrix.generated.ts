@@ -995,8 +995,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "canManage", line: 71 },
-      { kind: "branch", condition: "meta", line: 100 },
-      { kind: "branch", condition: "entry.doi", line: 101 },
+      { kind: "branch", condition: "meta", line: 95 },
+      { kind: "branch", condition: "entry.doi", line: 96 },
     ],
   },
   "modules/citations/components/ImportCitationsModal": {

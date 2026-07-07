@@ -90,13 +90,8 @@ export function CitationCard({
               </Confirm>
             </div>
           )}
-<<<<<<< HEAD
-        </Space>
-        <Text strong className="[overflow-wrap:anywhere]">{entry.title || '(untitled)'}</Text>
-=======
         </div>
-        <Text strong>{entry.title || '(untitled)'}</Text>
->>>>>>> origin/fix/r2-vision-residue
+        <Text strong className=\"[overflow-wrap:anywhere]\">{entry.title || '(untitled)'}</Text>
         {meta && <Text type="secondary">{meta}</Text>}
         {entry.doi && (
           <Paragraph className="m-0">

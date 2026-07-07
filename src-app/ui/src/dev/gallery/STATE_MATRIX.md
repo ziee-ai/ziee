@@ -1130,8 +1130,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `canManage` | 71 |
-| branch | `meta` | 100 |
-| branch | `entry.doi` | 101 |
+| branch | `meta` | 95 |
+| branch | `entry.doi` | 96 |
 
 ### `modules/citations/components/ImportCitationsModal`
 
