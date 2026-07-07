@@ -59,20 +59,27 @@ impl ChatCoreRepository {
         conversations::create_conversation(&self.pool, user_id, model_id, title).await
     }
 
-    /// List the user's conversations, ordered by most-recently
-    /// updated.
+    /// List the user's conversations with optional content `search` + `sort`
+    /// (see `conversations::list_conversations`).
     pub async fn list_conversations(
         &self,
         user_id: Uuid,
         limit: i64,
         offset: i64,
+        search: Option<&str>,
+        sort: Option<&str>,
     ) -> Result<Vec<ConversationResponse>, AppError> {
-        conversations::list_conversations(&self.pool, user_id, limit, offset).await
+        conversations::list_conversations(&self.pool, user_id, limit, offset, search, sort).await
     }
 
-    /// Count the user's conversations (full server-side total, for pagination).
-    pub async fn count_conversations(&self, user_id: Uuid) -> Result<i64, AppError> {
-        conversations::count_conversations(&self.pool, user_id).await
+    /// Count the user's conversations (server-side total, honoring the same
+    /// optional content `search` filter so paginated totals stay consistent).
+    pub async fn count_conversations(
+        &self,
+        user_id: Uuid,
+        search: Option<&str>,
+    ) -> Result<i64, AppError> {
+        conversations::count_conversations(&self.pool, user_id, search).await
     }
 
     /// Update a conversation's metadata (title only).

@@ -157,8 +157,11 @@ const textExtension: ChatExtension = createExtension({
     const currentText = textStore.getText()
     textStore.setBackupMessage(currentText)
 
-    // Clear text
+    // Clear text + the persisted draft for this conversation (ITEM-7). The
+    // draft is cleared only once the message is actually on its way, so an
+    // error before send still leaves the draft to restore.
     textStore.clearText()
+    textStore.clearDraftText()
     console.log('[TextExtension] Backed up and cleared text after message sent')
     return {}
   },

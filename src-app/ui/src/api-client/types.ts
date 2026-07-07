@@ -3641,6 +3641,17 @@ export interface PaginationQuery5 {
   limit?: number
   /** Page number (1-indexed) */
   page?: number
+  /**
+   * Optional case-insensitive search term. Matches a conversation's title
+   *  OR the text of any of its messages (substring). Omit for no filter.
+   */
+  search?: string
+  /**
+   * Optional sort order: `recent` (default, most-recently updated first),
+   *  `oldest`, `alpha` (by title A→Z), or `most_messages`. Unknown values
+   *  fall back to `recent`.
+   */
+  sort?: string
 }
 
 export interface PendingApprovalsResponse {
@@ -6790,7 +6801,7 @@ export type ApiEndpointParameters = {
   'Conversation.getMcpSettings': { id: string }
   'Conversation.getMemoryMode': { id: string }
   'Conversation.getSummarizationMode': { id: string }
-  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.list': { limit?: number; page?: number; search?: string; sort?: string }
   'Conversation.setMemoryMode': { id: string } & UpdateConversationMemoryModeRequest
   'Conversation.setSummarizationMode': { id: string } & UpdateConversationSummarizationModeRequest
   'Conversation.update': { id: string } & UpdateConversationRequest

@@ -7,13 +7,22 @@ import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
 import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
 import { MessageActions } from '@/modules/chat/components/MessageActions'
+import { CollapsibleBlock } from '@/modules/chat/components/CollapsibleBlock'
+import { shouldOfferCollapse } from '@/modules/chat/components/collapsible'
+import { messageText } from '@/modules/chat/components/findMatches'
+import { useConversationFind } from '@/modules/chat/components/ConversationFindContext'
 
 export const ChatMessage = memo(function ChatMessage({
   message,
+  isStreaming = false,
 }: {
   message: MessageWithContent
+  /** True only for the message currently streaming — it is never collapsed. */
+  isStreaming?: boolean
 }) {
   const isUser = message.role === 'user'
+  const { activeMatchId } = useConversationFind()
+  const isActiveMatch = activeMatchId === message.id
 
   // Check if message has any content to render
   if (!message.contents || message.contents.length === 0) {
@@ -77,12 +86,15 @@ export const ChatMessage = memo(function ChatMessage({
         // (self-end + w-fit, capped so they never span full width and read as
         // centered); assistant messages stay flush-left and full-width. This is
         // what lets a reader — and the C7 role-signature check — tell them apart.
-        'flex flex-col overflow-visible group',
+        'flex flex-col overflow-visible group scroll-mt-24',
         isUser ? 'items-end self-end w-fit max-w-[85%]' : 'items-start w-full',
+        // Transient highlight for the active in-conversation find match (ITEM-1).
+        isActiveMatch && 'rounded-lg ring-2 ring-primary ring-offset-2 ring-offset-background transition-shadow',
       )}
       data-testid="chat-message"
       data-role={message.role}
       data-message-id={message.id}
+      data-find-active={isActiveMatch ? '' : undefined}
     >
       {/* User attachments: a single horizontal row above the bubble that
           x-scrolls (via the app's overlay ScrollArea) when it overflows.
@@ -140,7 +152,19 @@ export const ChatMessage = memo(function ChatMessage({
               'flex flex-1 w-full overflow-x-hidden flex-col px-0.5'
             }
           >
-            <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
+            {shouldOfferCollapse({
+              length: messageText(message).length,
+              isStreaming,
+            }) ? (
+              <CollapsibleBlock
+                className="w-full"
+                data-testid="chat-message-collapsible"
+              >
+                <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
+              </CollapsibleBlock>
+            ) : (
+              <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
+            )}
           </div>
         </div>
       )}

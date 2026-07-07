@@ -122,13 +122,39 @@ pub async fn get_conversation(
     Ok(conversation)
 }
 
-/// List the user's conversations, ordered by most-recently updated.
+/// Normalize an incoming `sort` query value to a whitelisted canonical key.
+///
+/// Only these four keys ever reach the query's ORDER BY CASE; any unknown /
+/// missing value collapses to `recent` (the historical `updated_at DESC`
+/// default). The value is passed as a BOUND parameter, never interpolated, so
+/// this is defense-in-depth against injection AND the single source of the sort
+/// vocabulary.
+pub fn normalize_sort(sort: Option<&str>) -> &'static str {
+    match sort {
+        Some("oldest") => "oldest",
+        Some("alpha") => "alpha",
+        Some("most_messages") => "most_messages",
+        // "recent" + anything unknown/None → the default.
+        _ => "recent",
+    }
+}
+
+/// List the user's conversations with optional content search + sort.
+///
+/// - `search`: when `Some`, filters to conversations whose title OR any
+///   `text` message-content block contains the term (case-insensitive
+///   substring, `ILIKE`). `None`/empty → no filter.
+/// - `sort`: a whitelisted key (see [`normalize_sort`]) driving a bound-param
+///   CASE `ORDER BY`, keeping the whole query compile-time verified.
 pub async fn list_conversations(
     pool: &PgPool,
     user_id: Uuid,
     limit: i64,
     offset: i64,
+    search: Option<&str>,
+    sort: Option<&str>,
 ) -> Result<Vec<ConversationResponse>, AppError> {
+    let sort_key = normalize_sort(sort);
     let rows = sqlx::query!(
         r#"
         SELECT
@@ -139,13 +165,32 @@ pub async fn list_conversations(
         LEFT JOIN branches b ON b.conversation_id = c.id
         LEFT JOIN branch_messages bm ON bm.branch_id = b.id
         WHERE c.user_id = $1
+          AND (
+            $4::text IS NULL
+            OR c.title ILIKE '%' || $4 || '%'
+            OR EXISTS (
+              SELECT 1
+              FROM message_contents mc
+              JOIN branch_messages bm2 ON bm2.message_id = mc.message_id
+              JOIN branches b2 ON b2.id = bm2.branch_id
+              WHERE b2.conversation_id = c.id
+                AND mc.content_type = 'text'
+                AND mc.content->>'text' ILIKE '%' || $4 || '%'
+            )
+          )
         GROUP BY c.id
-        ORDER BY c.updated_at DESC
+        ORDER BY
+          CASE WHEN $5 = 'oldest' THEN c.updated_at END ASC NULLS LAST,
+          CASE WHEN $5 = 'alpha' THEN c.title END ASC NULLS LAST,
+          CASE WHEN $5 = 'most_messages' THEN COUNT(bm.message_id) END DESC NULLS LAST,
+          c.updated_at DESC
         LIMIT $2 OFFSET $3
         "#,
         user_id,
         limit,
-        offset
+        offset,
+        search,
+        sort_key,
     )
     .fetch_all(pool)
     .await
@@ -168,11 +213,35 @@ pub async fn list_conversations(
         .collect())
 }
 
-/// Count the user's conversations (for paginated list responses).
-pub async fn count_conversations(pool: &PgPool, user_id: Uuid) -> Result<i64, AppError> {
+/// Count the user's conversations (for paginated list responses), honoring the
+/// same optional content `search` filter as [`list_conversations`] so the
+/// paginated `total` reflects the filtered result set.
+pub async fn count_conversations(
+    pool: &PgPool,
+    user_id: Uuid,
+    search: Option<&str>,
+) -> Result<i64, AppError> {
     let total = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM conversations WHERE user_id = $1",
-        user_id
+        r#"
+        SELECT COUNT(*)
+        FROM conversations c
+        WHERE c.user_id = $1
+          AND (
+            $2::text IS NULL
+            OR c.title ILIKE '%' || $2 || '%'
+            OR EXISTS (
+              SELECT 1
+              FROM message_contents mc
+              JOIN branch_messages bm2 ON bm2.message_id = mc.message_id
+              JOIN branches b2 ON b2.id = bm2.branch_id
+              WHERE b2.conversation_id = c.id
+                AND mc.content_type = 'text'
+                AND mc.content->>'text' ILIKE '%' || $2 || '%'
+            )
+          )
+        "#,
+        user_id,
+        search,
     )
     .fetch_one(pool)
     .await
@@ -292,4 +361,26 @@ pub async fn update_conversation_state(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_sort;
+
+    #[test]
+    fn normalize_sort_whitelists_known_keys() {
+        assert_eq!(normalize_sort(Some("recent")), "recent");
+        assert_eq!(normalize_sort(Some("oldest")), "oldest");
+        assert_eq!(normalize_sort(Some("alpha")), "alpha");
+        assert_eq!(normalize_sort(Some("most_messages")), "most_messages");
+    }
+
+    #[test]
+    fn normalize_sort_defaults_unknown_and_none_to_recent() {
+        assert_eq!(normalize_sort(None), "recent");
+        assert_eq!(normalize_sort(Some("")), "recent");
+        assert_eq!(normalize_sort(Some("bogus")), "recent");
+        // Defense-in-depth: an injection attempt is not a known key → default.
+        assert_eq!(normalize_sort(Some("updated_at; DROP TABLE conversations")), "recent");
+    }
 }

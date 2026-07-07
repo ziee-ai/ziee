@@ -19,6 +19,12 @@ export const createTextStore = defineExtensionStore({
     setMessage: null as ((text: string) => void) | null,
     /** Function to clear message text (set by TextInput). */
     clearMessage: null as (() => void) | null,
+    /**
+     * Function to clear the persisted draft for the composer's active
+     * conversation (set by TextInput). Called on successful send so the
+     * localStorage draft doesn't linger after the message is delivered.
+     */
+    clearDraft: null as (() => void) | null,
     /** Backup of message text (for error recovery). */
     backupMessage: null as string | null,
   },
@@ -40,6 +46,17 @@ export const createTextStore = defineExtensionStore({
       set(state => {
         state.clearMessage = clearer
       })
+    },
+    /** Register the persisted-draft clearer (called by TextInput on mount). */
+    setClearDraft: (clearer: () => void) => {
+      set(state => {
+        state.clearDraft = clearer
+      })
+    },
+    /** Clear the persisted draft for the active conversation, if registered. */
+    clearDraftText: () => {
+      const { clearDraft } = get()
+      clearDraft?.()
     },
     /** Get current text value via stored getter. */
     getText: (): string => {
