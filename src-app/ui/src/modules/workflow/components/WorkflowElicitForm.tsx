@@ -17,6 +17,7 @@ import {
 } from '@/components/ui'
 import { z } from 'zod'
 import { useState } from 'react'
+import { EMAIL_RE } from '@/lib/validation'
 import type { SSEElicitationRequiredData } from '@/api-client/types'
 import { EditableArrayTable } from './EditableArrayTable'
 import {
@@ -157,7 +158,7 @@ function buildFieldZodType(field: FieldSchema, required: boolean): z.ZodTypeAny 
         // Server sent a malformed regex — skip rather than crashing the form.
       }
     }
-    if (field.format === 'email') s = s.email('Enter a valid email address')
+    if (field.format === 'email') s = s.regex(EMAIL_RE, 'Enter a valid email address')
     if (field.format === 'uri') s = s.url('Enter a valid URL')
     // Presence: required enforces non-empty; optional tolerates '' / cleared.
     return required

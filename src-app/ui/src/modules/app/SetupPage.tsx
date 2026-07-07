@@ -5,6 +5,7 @@ import { Card, Form, FormField, useForm, zodResolver, Input, Button, Alert, Titl
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core'
 import { useTheme } from '@/hooks/useTheme'
+import { EMAIL_RE } from '@/lib/validation'
 import setupCloudsUrl from './setup-clouds.webp'
 
 const setupSchema = z
@@ -21,7 +22,7 @@ const setupSchema = z
     email: z
       .string()
       .min(1, 'Email is required')
-      .email('Invalid email format')
+      .regex(EMAIL_RE, 'Invalid email format')
       .max(255, 'Email must be less than 255 characters'),
     password: z
       .string()

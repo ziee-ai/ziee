@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { z } from 'zod'
+import { EMAIL_RE } from '@/lib/validation'
 import {
   Alert,
   Button,
@@ -165,7 +166,7 @@ function buildFieldZodSchema(fieldSchema: FieldSchema, required: boolean): z.Zod
       // Server sent a malformed regex — skip the constraint rather than crashing.
     }
   }
-  if (fieldSchema.format === 'email') s = s.email('Enter a valid email address')
+  if (fieldSchema.format === 'email') s = s.regex(EMAIL_RE, 'Enter a valid email address')
   if (fieldSchema.format === 'uri') s = s.url('Enter a valid URL')
 
   // A required field left untouched holds `undefined` (its default), which would
