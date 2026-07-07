@@ -10,6 +10,7 @@
  *   A1 zero-gap adjacency   A2 overlap          A3 protrusion
  *   A4 uneven sibling gap    A7 off-grid spacing  A8 row vertical-centering
  *   A9 peer metric mismatch  A11 border clipped by ancestor
+ *   A12 cramped nested borders (double border ≤8px)
  *   B1 premature wrap/stack  B2 failure-to-wrap  B3 h-overflow
  *   B6 fixed > viewport      B8 mid-word break
  *   C7 indistinguishable roles  C9 icon/label split  C10 icon disproportion
@@ -96,6 +97,7 @@ const CLASS_SEVERITY = {
   A8: 'MEDIUM',
   A9: 'MEDIUM',
   A11: 'MEDIUM', // a bordered side cut by a clipping ancestor's edge (hairline border eaten)
+  A12: 'LOW', // crowded double border — a bordered control ≤8px from a bordered ancestor edge
   B1: 'MEDIUM', // per-finding upgraded to HIGH for genuine flex-WRAP-with-room
   B2: 'MEDIUM',
   B3: 'HIGH',
@@ -921,6 +923,66 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
           }
         }
       }
+    }
+  }
+
+  // ── A12 cramped nested borders (a double border with a tight gap) ────────
+  // A bordered CONTROL (button / input / select) whose border-box edge sits within
+  // ~8px of its nearest bordered ANCESTOR's inner (padding-box) edge reads as a
+  // crowded double border — two stroke lines almost touching. The usual fix is a
+  // quiet/ghost variant instead of an outline inside an already-bordered container.
+  // Scoped to controls (that's where the outline-in-a-box anti-pattern lives) to
+  // avoid flagging every full-bleed child of a card.
+  if (run('A12')) {
+    const px = v => parseFloat(v) || 0
+    const paintedBorder = (s, name) => {
+      const w = px(s[`border${name}Width`])
+      if (w < 1) return 0
+      const st = s[`border${name}Style`]
+      if (st === 'none' || st === 'hidden') return 0
+      const c = parseColor(s[`border${name}Color`])
+      if (c && c.a === 0) return 0
+      return w
+    }
+    const anyBorder = el => {
+      const s = cs(el)
+      return paintedBorder(s, 'Left') || paintedBorder(s, 'Right') || paintedBorder(s, 'Top') || paintedBorder(s, 'Bottom')
+    }
+    const CONTROL = 'button,a[href],input,select,textarea,[role="button"],[role="link"],[data-slot="button"]'
+    // ≤10px: a bordered control this close to its bordered container's edge paints a
+    // redundant double stroke (the container border + the control's outline almost
+    // parallel). Standard control padding inside a card is ≥12px (px-3), so 10px is
+    // the boundary between "comfortably inside" and "crammed double border".
+    const GAP = 10
+    let scanned = 0
+    for (const el of pool) {
+      if (scanned > 6000) break
+      scanned++
+      if (!el.matches?.(CONTROL)) continue
+      const es = cs(el)
+      const bw = {
+        left: paintedBorder(es, 'Left'), right: paintedBorder(es, 'Right'),
+        top: paintedBorder(es, 'Top'), bottom: paintedBorder(es, 'Bottom'),
+      }
+      if (!(bw.left || bw.right || bw.top || bw.bottom)) continue
+      let anc = el.parentElement
+      while (anc && anc !== document.body && !anyBorder(anc)) anc = anc.parentElement
+      if (!anc || anc === document.body || inSvg(anc) || !visible(anc)) continue
+      const as = cs(anc)
+      const r = rectOf(el), a = rectOf(anc)
+      const innerLeft = a.left + px(as.borderLeftWidth), innerRight = a.right - px(as.borderRightWidth)
+      const innerTop = a.top + px(as.borderTopWidth), innerBottom = a.bottom - px(as.borderBottomWidth)
+      const check = (side, elB, ancB, gap) => {
+        if (elB && ancB && gap > -0.5 && gap <= GAP) {
+          push('A12', selectorFor(el),
+            `${side} border crammed ${gap.toFixed(1)}px from bordered ancestor ${selectorFor(anc)} inner edge — crowded double border (≤${GAP}px); use a quiet/ghost variant, not an outline, inside an already-bordered container`,
+            { side, gap: +gap.toFixed(1) })
+        }
+      }
+      check('left', bw.left, paintedBorder(as, 'Left'), r.left - innerLeft)
+      check('right', bw.right, paintedBorder(as, 'Right'), innerRight - r.right)
+      check('top', bw.top, paintedBorder(as, 'Top'), r.top - innerTop)
+      check('bottom', bw.bottom, paintedBorder(as, 'Bottom'), innerBottom - r.bottom)
     }
   }
 
