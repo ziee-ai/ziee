@@ -56,7 +56,7 @@ src-app/server/src/modules/office_bridge/chat_extension/office_bridge.rs	1	166	c
 src-app/server/src/modules/office_bridge/handlers.rs	1	818	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/src/modules/office_bridge/mod.rs	1	227	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/src/modules/office_bridge/models.rs	1	62	correctness,security,perms-authz,api-contract,error-handling
-src-app/server/src/modules/office_bridge/permissions.rs	1	31	correctness,security,perms-authz,api-contract,error-handling
+src-app/server/src/modules/office_bridge/permissions.rs	1	73	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/src/modules/office_bridge/platform/macos.rs	1	505	correctness,security,concurrency,error-handling,perf
 src-app/server/src/modules/office_bridge/platform/mod.rs	1	375	correctness,security,concurrency,error-handling,perf
 src-app/server/src/modules/office_bridge/platform/unsupported.rs	1	118	correctness,security,concurrency,error-handling,perf
@@ -68,7 +68,8 @@ src-app/server/src/modules/office_bridge/watcher.rs	1	359	correctness,security,c
 src-app/server/src/modules/sync/event.rs	138	146	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/tests/integration_tests.rs	29	29	tests-quality,correctness,security
 src-app/server/tests/office_bridge/bridge_test.rs	1	188	tests-quality,correctness,security
-src-app/server/tests/office_bridge/mod.rs	1	12	tests-quality,correctness,security
+src-app/server/tests/office_bridge/mod.rs	1	32	tests-quality,correctness,security
+src-app/server/tests/office_bridge/settings_mcp_test.rs	1	278	tests-quality,correctness,security
 src-app/server/tests/office_bridge/windows_com_test.rs	1	97	tests-quality,correctness,security
 src-app/ui/src/components/ui/testIds.generated.ts	2	2	state-management,a11y,patterns-conformance,i18n-copy,correctness
 src-app/ui/src/components/ui/testIds.generated.ts	883	891	state-management,a11y,patterns-conformance,i18n-copy,correctness
