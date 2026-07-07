@@ -102,7 +102,9 @@ async fn test7_bridge_https_and_wss_end_to_end() {
     // the exact cert bytes the listener will load from the cache.
     let dir = tempfile::tempdir().expect("tempdir");
     let minted = cert::load_or_mint(dir.path()).expect("mint bridge cert");
-    let cert_der = minted.cert_der.clone();
+    // The client trusts the CA (the installed root), NOT the leaf; the server
+    // presents leaf+CA and the client validates the leaf against this root.
+    let cert_der = minted.ca_der.clone();
 
     let handle = server::start(0, dir.path().to_path_buf())
         .await

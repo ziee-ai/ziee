@@ -92,7 +92,9 @@ fn allowed_origins(port: u16) -> Vec<String> {
 /// concrete port.
 pub async fn start(port: u16, data_dir: PathBuf) -> Result<BridgeHandle, AppError> {
     let minted = cert::load_or_mint(&data_dir)?;
-    let server_config = cert::build_server_config(&minted.cert_pem, &minted.key_pem)?;
+    // Serve the full chain (leaf + CA) so a client trusting the CA validates the
+    // presented leaf; the leaf's private key is the server key.
+    let server_config = cert::build_server_config(&minted.chain_pem, &minted.leaf_key_pem)?;
     let tls = RustlsConfig::from_config(Arc::new(server_config));
 
     // Bind v4 synchronously so the socket is listening before we return, and so
