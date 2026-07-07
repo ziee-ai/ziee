@@ -1,9 +1,27 @@
-import { memo, useEffect, useState, type JSX } from 'react'
+import { lazy, memo, Suspense, useEffect, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, X } from 'lucide-react'
-import { TableCopyDropdown, TableDownloadDropdown } from 'streamdown'
 import { Button, ScrollArea } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+// Load Streamdown's copy/download controls dynamically so this file carries NO
+// static `import … from 'streamdown'`. That is what lets the whole `streamdown`
+// package (Shiki + micromark/mdast/rehype + parse5) split into its own lazy
+// chunk instead of being pulled into the initial entry bundle (see
+// LazyStreamdown.tsx). Safe because MarkdownTable is a `components.table`
+// renderer that ONLY ever mounts inside an already-loaded Streamdown tree, so
+// the chunk is present by the time these render. The loaders go through
+// `lazyWithPreload` so the desktop webview preloads them (embedded chunk) while
+// web/tunnel builds keep the deferred download.
+const loadCopyDropdown = lazyWithPreload(() =>
+  import('streamdown').then(m => ({ default: m.TableCopyDropdown })),
+)
+const loadDownloadDropdown = lazyWithPreload(() =>
+  import('streamdown').then(m => ({ default: m.TableDownloadDropdown })),
+)
+const TableCopyDropdown = lazy(loadCopyDropdown)
+const TableDownloadDropdown = lazy(loadDownloadDropdown)
 
 /**
  * Replacement for Streamdown's built-in table wrapper (`components.table`).
@@ -69,8 +87,10 @@ export const MarkdownTable = memo(function MarkdownTable({
       <div className="flex h-8 items-center justify-between text-muted-foreground text-xs">
         <span className="ml-1 font-mono lowercase">table</span>
         <div className="flex items-center gap-0.5">
-          <TableCopyDropdown className={CONTROL_BTN} />
-          <TableDownloadDropdown className={CONTROL_BTN} />
+          <Suspense fallback={null}>
+            <TableCopyDropdown className={CONTROL_BTN} />
+            <TableDownloadDropdown className={CONTROL_BTN} />
+          </Suspense>
           <Button
             size="icon"
             variant="ghost"

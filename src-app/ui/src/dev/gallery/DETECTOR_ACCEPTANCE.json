@@ -1,0 +1,245 @@
+[
+  {
+    "miss": "#1",
+    "cls": "A1",
+    "kind": "geometry",
+    "where": "repro-a1",
+    "desc": "zero-gap adjacency (Disconnected/Connect)",
+    "fired": true,
+    "detail": "[data-testid=\"repro-a1-tag\"] + [data-testid=\"repro-a1-button\"]"
+  },
+  {
+    "miss": "#2/3",
+    "cls": "B1",
+    "kind": "geometry",
+    "where": "repro-b1",
+    "desc": "premature wrap (fits on one row)",
+    "fired": true,
+    "detail": "[data-testid=\"repro-b1-row\"]"
+  },
+  {
+    "miss": "#4",
+    "cls": "C1",
+    "kind": "geometry",
+    "where": "repro-c1",
+    "desc": "status badge before its label",
+    "fired": true,
+    "detail": "[data-testid=\"repro-c1-badge\"]"
+  },
+  {
+    "miss": "#5",
+    "cls": "G7",
+    "kind": "geometry",
+    "where": "repro-g7",
+    "desc": "focus ring clipped by overflow ancestor",
+    "fired": true,
+    "detail": "[data-testid=\"repro-g7-btn\"]"
+  },
+  {
+    "miss": "#6",
+    "cls": "C7",
+    "kind": "geometry",
+    "where": "repro-usr",
+    "desc": "user vs assistant indistinguishable",
+    "fired": true,
+    "detail": "[data-role=\"repro-usr\"] vs [data-role=\"repro-asst\"]"
+  },
+  {
+    "miss": "#7a",
+    "cls": "C9",
+    "kind": "geometry",
+    "where": "repro-c9",
+    "desc": "icon/label split across lines",
+    "fired": true,
+    "detail": "[data-testid=\"repro-c9-row\"]"
+  },
+  {
+    "miss": "#7b",
+    "cls": "C10",
+    "kind": "geometry",
+    "where": "repro-c10",
+    "desc": "icon disproportionate to text",
+    "fired": true,
+    "detail": "[data-testid=\"repro-c10-icon\"]"
+  },
+  {
+    "miss": "#8",
+    "cls": "K1",
+    "kind": "geometry",
+    "where": "conversation-title",
+    "desc": "persistent context inside scroll",
+    "fired": true,
+    "detail": "[data-testid=\"conversation-title\"]"
+  },
+  {
+    "miss": "#9b",
+    "cls": "I5",
+    "kind": "geometry",
+    "where": "repro-i5",
+    "desc": "horizontal strip scrolls vertically",
+    "fired": true,
+    "detail": "[data-testid=\"repro-i5-tablist\"]"
+  },
+  {
+    "miss": "#9c",
+    "cls": "A8",
+    "kind": "geometry",
+    "where": "repro-a8",
+    "desc": "strip child off the row center",
+    "fired": true,
+    "detail": "[data-testid=\"repro-a8-tablist\"]"
+  },
+  {
+    "miss": "#10a",
+    "cls": "J6",
+    "kind": "geometry",
+    "where": "repro-j6",
+    "desc": "mixed button variants in a peer group",
+    "fired": true,
+    "detail": "[data-testid=\"repro-j6-group\"]"
+  },
+  {
+    "miss": "#11a",
+    "cls": "L1",
+    "kind": "geometry",
+    "where": "",
+    "desc": "math fell back to raw TeX",
+    "fired": true,
+    "detail": ".prose"
+  },
+  {
+    "miss": "#11b",
+    "cls": "L2",
+    "kind": "geometry",
+    "where": "",
+    "desc": "mermaid fell back to raw source",
+    "fired": true,
+    "detail": "pre"
+  },
+  {
+    "miss": "#11c",
+    "cls": "L3",
+    "kind": "geometry",
+    "where": "repro-l3",
+    "desc": "syntax highlighting absent",
+    "fired": true,
+    "detail": "[data-testid=\"repro-l3-pre\"]"
+  },
+  {
+    "miss": "#12",
+    "cls": "J7",
+    "kind": "geometry",
+    "where": "repro-j7",
+    "desc": "same action on opposite sides",
+    "fired": true,
+    "detail": "[data-testid=\"repro-j7-copy-right\"]"
+  },
+  {
+    "miss": "#13a",
+    "cls": "C12",
+    "kind": "geometry",
+    "where": "repro-c12",
+    "desc": "bare placeholder avatar circle",
+    "fired": true,
+    "detail": "[data-testid=\"repro-c12-avatar\"]"
+  },
+  {
+    "miss": "#15",
+    "cls": "A9",
+    "kind": "geometry",
+    "where": "repro-a9",
+    "desc": "peer chips, unequal icon sizes",
+    "fired": true,
+    "detail": "[data-testid=\"repro-a9-chip-3\"]"
+  },
+  {
+    "miss": "#16",
+    "cls": "A10",
+    "kind": "geometry",
+    "where": "repro-a10",
+    "desc": "inline edit input collapsed to zero",
+    "fired": true,
+    "detail": "[data-testid=\"repro-a10-input\"]"
+  },
+  {
+    "miss": "#18",
+    "cls": "A11",
+    "kind": "geometry",
+    "where": "repro-a11",
+    "desc": "card border clipped by overflow",
+    "fired": true,
+    "detail": "[data-testid=\"repro-a11-card\"]"
+  },
+  {
+    "miss": "#21c",
+    "cls": "A12",
+    "kind": "geometry",
+    "where": "repro-a12",
+    "desc": "cramped double-border outline button",
+    "fired": true,
+    "detail": "[data-testid=\"repro-a12-btn\"]"
+  },
+  {
+    "miss": "#21a",
+    "cls": "G9",
+    "kind": "geometry",
+    "where": "repro-g9",
+    "desc": "hover-only controls reserve no space",
+    "fired": true,
+    "detail": "[data-testid=\"repro-g9-row\"]"
+  },
+  {
+    "miss": "#20",
+    "cls": "H7",
+    "kind": "geometry",
+    "where": "repro-h7",
+    "desc": "empty model select renders nothing",
+    "fired": true,
+    "detail": "[data-testid=\"repro-h7-select\"]"
+  },
+  {
+    "miss": "#10b",
+    "cls": "C11",
+    "kind": "lint",
+    "lint": "lint-icon-action.mjs",
+    "desc": "open-in-new-tab renders the wrong glyph",
+    "fired": true,
+    "detail": "exit 1"
+  },
+  {
+    "miss": "#17",
+    "cls": "J8",
+    "kind": "lint",
+    "lint": "lint-native-scroll.mjs",
+    "extra": [
+      "--gate"
+    ],
+    "desc": "raw native scroll instead of DivScrollY",
+    "fired": true,
+    "detail": "exit 1"
+  },
+  {
+    "miss": "#9a",
+    "cls": "J5",
+    "kind": "vision",
+    "desc": "button-look tabs in a dense side panel (density-variant)",
+    "fired": null,
+    "detail": "vision rubric — not machine-gated"
+  },
+  {
+    "miss": "#13b",
+    "cls": "C13",
+    "kind": "vision",
+    "desc": "valueless decoration (avatar with no value)",
+    "fired": null,
+    "detail": "vision rubric — not machine-gated"
+  },
+  {
+    "miss": "#14",
+    "cls": "M1",
+    "kind": "vision",
+    "desc": "affordance absent (mermaid/html need source/render toggle)",
+    "fired": null,
+    "detail": "vision rubric — not machine-gated"
+  }
+]

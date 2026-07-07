@@ -6,6 +6,18 @@
       "surface": "seeded-defect-repro",
       "selector": "repro-a1",
       "reason": "Intentional known-positive fixture (DefectRepro.tsx) reproducing the original hardware Disconnected/Connect zero-gap (user miss #1). The detector MUST flag it — that is the fixture's purpose — so it is allow-listed for --gate but still reported as acceptance proof."
+    },
+    {
+      "class": "B1",
+      "surface": "seeded-defect-repro",
+      "selector": "repro-b1",
+      "reason": "Intentional B1 known-positive fixture (DefectRepro.tsx, user miss #2/#3: premature wrap). The detector MUST flag it (detector-acceptance asserts it FIRES); allow-listed for --gate, still reported."
+    },
+    {
+      "class": "L1",
+      "surface": "seeded-defect-repro",
+      "selector": ".prose",
+      "reason": "Intentional L1 known-positive fixture (DefectRepro.tsx, user miss #11a: raw TeX with no KaTeX). The detector MUST flag it (detector-acceptance asserts it FIRES); allow-listed for --gate, still reported."
     }
   ]
 }

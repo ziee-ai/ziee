@@ -54,10 +54,11 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix",
+    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field && npm run lint:logical-direction && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "lint:colors": "node ../../ui/scripts/lint-hardcoded-colors.mjs",
     "lint:settings-field": "node ../../ui/scripts/lint-settings-field.mjs",
+    "lint:logical-direction": "node ../../ui/scripts/lint-logical-direction.mjs",
     "gen:gallery-coverage": "node scripts/gen-gallery-coverage.mjs",
     "check:gallery-coverage": "node scripts/gen-gallery-coverage.mjs --check",
     "gen:state-matrix": "node scripts/gen-state-matrix.mjs",

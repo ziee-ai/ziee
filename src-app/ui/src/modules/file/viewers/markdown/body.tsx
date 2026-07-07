@@ -8,7 +8,7 @@ import {
   LINK_CLASS,
 } from '@/components/common/markdownHeadings'
 import { cn } from '@/lib/utils'
-import { Streamdown } from 'streamdown'
+import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'

@@ -174,6 +174,13 @@ export async function runInteraction(
   settleMs = 400,
 ): Promise<void> {
   const body = document.body
+  // Re-entry lock (set SYNCHRONOUSLY, before the first await): React StrictMode
+  // double-invokes the mount effect in dev (setup → cleanup → setup), so
+  // useRunInteraction calls this twice. Without the lock a TOGGLE recipe (open a
+  // Popover/menu) fires twice and ends CLOSED — the exact state we were driving to
+  // reveal. The lock lets only the first invocation run; the second bails.
+  if (body.getAttribute('data-gallery-interact-lock') === recipe.name) return
+  body.setAttribute('data-gallery-interact-lock', recipe.name)
   body.setAttribute('data-gallery-interact', recipe.name)
   try {
     await sleep(settleMs)
