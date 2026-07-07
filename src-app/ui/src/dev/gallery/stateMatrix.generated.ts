@@ -835,8 +835,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 27 },
-      { kind: "branch", condition: "isUser", line: 32 },
+      { kind: "branch", condition: "!textData.text", line: 23 },
+      { kind: "branch", condition: "isUser", line: 28 },
     ],
   },
   "modules/chat/components/TitleEditor": {
@@ -946,7 +946,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/text/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 28 },
+      { kind: "branch", condition: "!textData.text", line: 24 },
     ],
   },
   "modules/chat/extensions/text/components/ThinkingContent": {
