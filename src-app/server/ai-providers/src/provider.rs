@@ -370,6 +370,16 @@ mod tests {
         assert_eq!(provider.name(), "Gemini");
     }
 
+    // TEST-4: OpenRouter is OpenAI-compatible for chat, so it must dispatch to
+    // the OpenAIProvider client (whose name() is "OpenAI").
+    #[test]
+    fn test_provider_creation_openrouter() {
+        let provider =
+            Provider::new("openrouter", "sk-or-test", "https://openrouter.ai/api/v1").unwrap();
+        assert_eq!(provider.provider_type(), "openrouter");
+        assert_eq!(provider.name(), "OpenAI");
+    }
+
     #[test]
     fn test_provider_creation_groq() {
         let provider =
