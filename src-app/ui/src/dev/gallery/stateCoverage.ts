@@ -376,6 +376,8 @@ export const STATE_COVERAGE = {
   "modules/projects/pages/ProjectsListPage:error": { via: 'page-state-mode' },
   "modules/user-llm-providers/chat-extension/components/ModelSelector:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/user/components/group/UserGroupsSettings:error": { via: 'page-state-mode' },
+  "modules/chat/components/ConversationFindBar:empty": { skip: true, reason: "via surface — the find bar renders null when closed; its open/match states are proven by the conversation-find e2e + Part 2 runtime coverage" },
+  "modules/file/chat-extension/components/FilePasteHandler:empty": { skip: true, reason: "via surface — an invisible composer-attached paste-image sentinel (renders only a hidden span); behavior proven by the composer-paste-image e2e" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

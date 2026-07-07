@@ -262,6 +262,7 @@ export const GALLERY_COVERAGE = {
   "modules/file-rag/pages/FileRagAdminPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/file/chat-extension/components/FileAttachMenuItem": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/chat-extension/components/FilePreviewList": { kind: 'via', reason: 'rendered within the file module page' },
+  "modules/file/chat-extension/components/FilePasteHandler": { kind: 'via', reason: 'invisible composer-attached paste-image handler in the chat composer' },
   "modules/file/chat-extension/components/FileUploadArea": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/chat-extension/components/FileUploadButton": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/chat-extension/components/ImageContent": { kind: 'via', reason: 'rendered within the file module page' },
@@ -496,6 +497,9 @@ export const GALLERY_COVERAGE = {
   "modules/workflow/components/admin/AdminWorkflowsPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer": { kind: 'overlay', states: ['open'] },
   "modules/workflow/widgets/GroupSystemWorkflowsWidget": { kind: 'via', reason: 'slot-widget in workflow' },
+  "modules/chat/components/CollapsibleBlock": { kind: 'via', reason: 'rendered within the chat module page (collapses long messages)' },
+  "modules/chat/components/ConversationFindBar": { kind: 'via', reason: 'rendered within the chat module page (find-in-conversation)' },
+  "modules/chat/components/JumpToLatestButton": { kind: 'via', reason: 'rendered within the chat module page (jump-to-latest)' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 
