@@ -110,9 +110,9 @@ export function CopyButton({ file }: { file: FileEntity }) {
       variant="ghost"
       size="icon"
       tooltip="Copy"
-      // Panel-header top row → drop the tooltip into the body so it never clips
-      // at the top edge nor overlaps the adjacent close/tab control above.
-      tooltipSide="bottom"
+      // Default (top) placement so ALL file-viewer header actions share one
+      // tooltip side; Base UI's collision handling flips it to the bottom only
+      // when it would actually clip at the panel's top edge.
       icon={<Copy />}
       onClick={handleCopy}
       data-testid="file-viewer-copy-btn"
@@ -132,9 +132,8 @@ export function DownloadButton({ file }: { file: FileEntity }) {
       variant="ghost"
       size="icon"
       tooltip="Download"
-      // See CopyButton: bottom-anchored so the header tooltip can't clip at the
-      // panel's top edge or be obscured by the close/tab control above it.
-      tooltipSide="bottom"
+      // See CopyButton: default (top) placement to match every other header
+      // action; Base UI flips it to the bottom only if it would clip.
       icon={<Download />}
       onClick={() => {
         Stores.File.downloadFile(file).catch(() =>

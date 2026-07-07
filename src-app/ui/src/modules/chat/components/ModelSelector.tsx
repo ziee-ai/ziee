@@ -1,4 +1,6 @@
-import { FormField, Select } from '@/components/ui'
+import { FormField, Select, Button, Tooltip } from '@/components/ui'
+import { CircleAlert } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 interface ModelSelectorProps {
   isBreaking: boolean
@@ -14,6 +16,43 @@ export function ModelSelector({
   isDisabled,
   availableModels,
 }: ModelSelectorProps) {
+  const navigate = useNavigate()
+  const hasModels = availableModels.some(g => g.options.length > 0)
+
+  // Empty state: a bare Select would render an all-but-invisible trigger with an
+  // empty dropdown and no guidance. Show an explicit, actionable affordance
+  // instead — "No models" + a tooltip/CTA that routes to provider settings.
+  if (!hasModels) {
+    return (
+      <FormField name="model" label="Model" className="mb-0 inline-block">
+        <Tooltip content="No models available — add an LLM provider in Settings">
+          {isBreaking ? (
+            <Button
+              variant="outline"
+              size="icon"
+              icon={<CircleAlert className="text-muted-foreground" />}
+              onClick={() => navigate('/settings/llm-providers')}
+              data-testid="chat-model-select-empty"
+              aria-label="No models available — add an LLM provider"
+              className="w-10"
+            />
+          ) : (
+            <Button
+              variant="outline"
+              icon={<CircleAlert className="text-muted-foreground" />}
+              onClick={() => navigate('/settings/llm-providers')}
+              data-testid="chat-model-select-empty"
+              aria-label="No models available — add an LLM provider"
+              className="w-[140px] justify-start font-normal text-muted-foreground"
+            >
+              No models — Add
+            </Button>
+          )}
+        </Tooltip>
+      </FormField>
+    )
+  }
+
   return (
     <FormField
       name="model"
