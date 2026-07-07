@@ -476,6 +476,60 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
           })
         }
       }
+
+      // Menu / dropdown / popover ITEMS: leading-icon + text-label rows that are
+      // actionable (role menuitem/button/link/option, a menu-ish testid/slot, a
+      // tabindex, or cursor:pointer). They carry PER-ITEM testids, so the keyOf
+      // grouping above never groups them — group ALL such rows in ONE parent and
+      // require their LEADING icon boxes to match. This closes the coverage gap
+      // where the composer "+" menu "Skills in this chat" item renders its icon at
+      // lucide's 24px default among 16px (size-4) peers, unscanned because the
+      // menu is interaction-gated + the rows have distinct testids.
+      const isMenuItemRow = el => {
+        if (!el.querySelector('svg,img') || !textOf(el)) return false
+        const role = el.getAttribute('role')
+        const tid = el.getAttribute('data-testid') || ''
+        const slot = el.getAttribute('data-slot') || ''
+        // A STRONG menu signal only — not a bare role=button / cursor:pointer (those
+        // match ordinary message rows / clickable cards and produced a flood).
+        const strong =
+          role === 'menuitem' || role === 'option' ||
+          /menu-?item|menu-trigger|menu-option|dropdown-item|cmdk-item/i.test(tid) ||
+          /menu-?item|dropdown-menu-item|command-item/i.test(slot)
+        if (strong) return true
+        // …or a plain icon+label row that lives INSIDE a menu/dropdown/popover/command
+        // surface (the composer "+" items are custom rows inside a Popover).
+        return !!el.closest(
+          '[role="menu"],[role="listbox"],[data-slot*="menu"],[data-slot*="popover"],[data-slot*="dropdown"],[data-radix-popper-content-wrapper],[cmdk-list]',
+        )
+      }
+      const menuItems = Array.from(parent.children).filter(
+        c => visible(c) && !inSvg(c) && isMenuItemRow(c),
+      )
+      if (menuItems.length >= 3) {
+        const boxes = menuItems.map(el => {
+          const ic = el.querySelector('svg,img')
+          return ic ? ic.getBoundingClientRect() : null
+        })
+        for (const [field, prop] of [['ih', 'height'], ['iw', 'width']]) {
+          const vals = boxes.map(bx => (bx ? Math.round(bx[prop]) : 0)).filter(v => v > 0)
+          if (vals.length < 3) continue
+          const freq = {}
+          for (const v of vals) freq[v] = (freq[v] || 0) + 1
+          const mode = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]
+          if (freq[mode] < menuItems.length / 2) continue
+          menuItems.forEach((mi, i) => {
+            const bx = boxes[i]
+            if (!bx) return
+            const v = Math.round(bx[prop])
+            if (v > 0 && Math.abs(v - mode) > 2) {
+              push('A9', selectorFor(mi),
+                `menu-item leading-icon ${field === 'ih' ? 'height' : 'width'} ${v}px vs group mode ${mode}px among ${menuItems.length} menu items`,
+                { field, v, mode, menu: true })
+            }
+          })
+        }
+      }
     }
   }
 
@@ -1069,16 +1123,20 @@ async function enumerateSurfaces(browser) {
   const overlays = await p.evaluate(() => window.__GALLERY_OVERLAYS__ || [])
   const deep = await p.evaluate(() => window.__GALLERY_DEEP_STATES__ || [])
   const seeded = await p.evaluate(() => window.__GALLERY_SEEDED__ || [])
+  // Interaction recipes ({slug,name}) drive post-mount actions (open a menu,
+  // expand a panel) so interaction-gated states get scanned too — else A9's
+  // menu-item check / A11 etc. never see e.g. the composer "+" dropdown.
+  const interactions = await p.evaluate(() => window.__GALLERY_INTERACTIONS__ || [])
   await p.close()
   const special = new Set([...overlays, ...deep, ...seeded])
-  return { pages: pages.filter(x => !special.has(x)), overlays, deep, seeded }
+  return { pages: pages.filter(x => !special.has(x)), overlays, deep, seeded, interactions }
 }
 
 async function main() {
   const browser = await chromium.launch({
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
   })
-  const { pages, overlays, deep, seeded } = await enumerateSurfaces(browser)
+  const { pages, overlays, deep, seeded, interactions } = await enumerateSurfaces(browser)
 
   // Optional surface filter (substring match) for fast iteration on a few surfaces.
   const surfaceFilter = arg('surfaces', '').split(',').map(s => s.trim()).filter(Boolean)
@@ -1087,11 +1145,14 @@ async function main() {
   for (const s of pages) if (keep(s)) for (const st of PAGE_STATES) cells.push({ surface: s, state: st })
   for (const s of [...seeded, ...deep]) if (keep(s)) cells.push({ surface: s, state: 'seeded' })
   for (const s of overlays) if (keep(s)) cells.push({ surface: s, state: 'open' })
+  // Interaction-gated states: one cell per recipe, driven post-mount (open a menu,
+  // expand a panel). state='loaded' + the `interact` slug the frame runs on mount.
+  for (const it of interactions) if (keep(it.slug)) cells.push({ surface: it.slug, state: 'interact', interact: it.name })
 
   const jobs = []
   for (const c of cells) for (const vp of VIEWPORTS) jobs.push({ c, vp })
   console.log(
-    `geometry-audit${PREVIEW ? ' [preview-build]' : ''}: ${pages.length} pages×${PAGE_STATES.length} + ${seeded.length + deep.length} seeded + ${overlays.length} overlays = ${cells.length} cells × ${VIEWPORTS.length} viewports = ${jobs.length} renders\n`,
+    `geometry-audit${PREVIEW ? ' [preview-build]' : ''}: ${pages.length} pages×${PAGE_STATES.length} + ${seeded.length + deep.length} seeded + ${overlays.length} overlays + ${interactions.length} interactions = ${cells.length} cells × ${VIEWPORTS.length} viewports = ${jobs.length} renders\n`,
   )
 
   const findings = []
@@ -1105,9 +1166,15 @@ async function main() {
   }
   async function runJob({ c, vp }) {
     const p = await browser.newPage({ viewport: { width: vp.width, height: vp.height } })
-    const url = `${BASE}?surface=${c.surface}&state=${c.state === 'seeded' || c.state === 'open' ? 'loaded' : c.state}&theme=light`
+    const stateParam = c.state === 'seeded' || c.state === 'open' || c.state === 'interact' ? 'loaded' : c.state
+    const url = `${BASE}?surface=${c.surface}&state=${stateParam}&theme=light${c.interact ? `&interact=${c.interact}` : ''}`
     try {
       await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 25_000 })
+      // Interaction cells: wait for the frame to finish driving the recipe (it
+      // stamps body[data-gallery-interact-done]) before scanning the open state.
+      if (c.interact) {
+        await p.waitForSelector('body[data-gallery-interact-done]', { timeout: 12_000 }).catch(() => {})
+      }
       await p.waitForTimeout(c.state === 'error' ? 1100 : 900)
       const { findings: raw, actionSides: sides } = await p.evaluate(inPageGeometry, inPageArg)
       for (const f of raw) {

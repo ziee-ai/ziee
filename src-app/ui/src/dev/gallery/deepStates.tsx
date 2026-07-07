@@ -116,6 +116,22 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         }
       })
     },
+    interactions: [
+      {
+        // The composer "+" dropdown menu renders its items ONLY while open
+        // (a Popover). Mount-only capture never shows them, so the A9 peer-icon
+        // check couldn't scan the menu — where the "Skills in this chat" item's
+        // BookOpen icon renders at lucide's 24px default (className="text-base"
+        // doesn't resize an svg) vs the 16px (size-4) icons of its peers. This
+        // recipe opens the menu so geometry + crop review see the item rows.
+        name: 'open-plus-menu',
+        note: 'click the composer "+" button → the open tools/files dropdown (mcp / skills / assistant menu-item rows)',
+        steps: async d => {
+          await d.click('chat-input-add-btn')
+          await d.wait(400)
+        },
+      },
+    ],
   },
   {
     slug: 'deep-chat-tool-running',
