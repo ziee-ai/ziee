@@ -57,8 +57,9 @@ test.describe('File viewer — find in document', () => {
     await input.press('Escape')
     await expect(drawer.getByTestId('file-find-bar')).toHaveCount(0)
 
-    // Ctrl-F re-opens it (region-scoped shortcut).
-    await drawer.getByTestId('raw-code-view').click()
+    // Ctrl-F re-opens it (region-scoped shortcut). close() restored focus to the
+    // findable region, so the document-level handler opens find without needing to
+    // click the shiki-rehighlighting body (which detaches mid-click).
     await page.keyboard.press('Control+f')
     await expect(drawer.getByTestId('file-find-input')).toBeVisible()
   })
