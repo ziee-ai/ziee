@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useState } from 'react'
+import { memo, useEffect, useId, useRef, useState } from 'react'
 import { Copy, Download } from 'lucide-react'
 import { Button, Segmented, message } from '@/components/ui'
 import { useThemeOptional } from '@/components/ui/kit/theme'
@@ -42,22 +42,27 @@ export const MermaidBlock = memo(function MermaidBlock({
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const isDark = useThemeOptional()?.isDark ?? false
-  // A DOM-id-safe, per-instance render id (useId yields `:r0:`-style ids that are
-  // invalid CSS ids / break mermaid's temp element).
-  const renderId = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  // A DOM-id-safe, per-instance base for mermaid's temp element (useId yields
+  // `:r0:`-style ids that are invalid CSS ids / break mermaid). A per-render
+  // sequence suffix makes each render's id unique so a stale in-flight render
+  // can't collide on the same temp DOM id as its successor.
+  const baseId = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  const renderSeq = useRef(0)
   const source = code.replace(/\n$/, '')
+  const isEmpty = source.trim().length === 0
 
   // Render the diagram whenever the fence is complete — independent of `mode`
   // (DEC-6) so switching is instant and download works in source mode too. Lazy
   // `import('mermaid')` keeps the heavy dep off the main chat bundle (mirrors
   // Streamdown's own lazy mermaid chunk).
   useEffect(() => {
-    if (isIncomplete || !source.trim()) {
+    if (isIncomplete || isEmpty) {
       setSvg(null)
       setError(null)
       return
     }
     let cancelled = false
+    const renderId = `${baseId}-${(renderSeq.current += 1)}`
     void (async () => {
       try {
         const mermaid = (await import('mermaid')).default
@@ -72,8 +77,10 @@ export const MermaidBlock = memo(function MermaidBlock({
           setError(null)
         }
       } catch (e) {
-        // On a parse failure mermaid can leave a `#d<id>` node in <body>; clean it up.
-        document.querySelector(`#d${renderId}`)?.remove()
+        // On a parse failure mermaid can leave a stray temp node in <body>
+        // (named `d<id>` or `<id>`); clean up both.
+        document.getElementById(`d${renderId}`)?.remove()
+        document.getElementById(renderId)?.remove()
         if (!cancelled) {
           setSvg(null)
           setError(e instanceof Error ? e.message : String(e))
@@ -83,7 +90,7 @@ export const MermaidBlock = memo(function MermaidBlock({
     return () => {
       cancelled = true
     }
-  }, [source, isDark, isIncomplete, renderId])
+  }, [source, isDark, isIncomplete, isEmpty, baseId])
 
   const copySource = async () => {
     try {
@@ -102,7 +109,9 @@ export const MermaidBlock = memo(function MermaidBlock({
     a.href = url
     a.download = 'mermaid-diagram.svg'
     a.click()
-    URL.revokeObjectURL(url)
+    // Defer revoke: revoking synchronously right after click() can abort the
+    // download before the browser has read the blob (observed in Firefox).
+    setTimeout(() => URL.revokeObjectURL(url), 0)
   }
 
   return (
@@ -150,15 +159,23 @@ export const MermaidBlock = memo(function MermaidBlock({
           <pre className="overflow-x-auto text-sm" data-testid="mermaid-source-view">
             <code className="font-mono">{source}</code>
           </pre>
+        ) : isEmpty ? (
+          <div
+            className="flex items-center justify-center py-6 text-muted-foreground text-sm"
+            data-testid="mermaid-empty"
+          >
+            Empty diagram
+          </div>
         ) : isIncomplete ? (
           <div
             className="flex items-center justify-center py-6 text-muted-foreground text-sm"
+            role="status"
             data-testid="mermaid-rendering"
           >
             Rendering diagram…
           </div>
         ) : error ? (
-          <div className="text-destructive text-sm" data-testid="mermaid-error">
+          <div className="text-destructive text-sm" role="alert" data-testid="mermaid-error">
             <p className="font-medium">Failed to render diagram</p>
             <p className="mt-1 break-words font-mono text-xs">{error}</p>
             <p className="mt-2 text-muted-foreground">Switch to Source to view the code.</p>
@@ -166,6 +183,8 @@ export const MermaidBlock = memo(function MermaidBlock({
         ) : svg ? (
           <div
             className="flex justify-center [&_svg]:h-auto [&_svg]:max-w-full"
+            role="img"
+            aria-label="Mermaid diagram"
             data-testid="mermaid-diagram"
             // Trusted output of mermaid's strict-mode sanitizer (DEC-8): scripts
             // and HTML labels are stripped by mermaid before we inject.
@@ -174,6 +193,7 @@ export const MermaidBlock = memo(function MermaidBlock({
         ) : (
           <div
             className="flex items-center justify-center py-6 text-muted-foreground text-sm"
+            role="status"
             data-testid="mermaid-rendering"
           >
             Rendering diagram…

@@ -7,6 +7,7 @@
  * Closes AFFORDANCE_MATRIX G1 (source⇄render toggle) + G2 (copy source) + the
  * download-SVG rider. Lifecycle: .lifecycle/mermaid-toggle (TEST-1..6).
  */
+import { readFile } from 'node:fs/promises'
 import { test, expect } from '@playwright/test'
 import { openGallery } from './_gallery'
 
@@ -104,6 +105,10 @@ test.describe('Mermaid code⇄render toggle', () => {
       dlBtn.click(),
     ])
     expect(download.suggestedFilename()).toMatch(/\.svg$/)
+    // Prove the download carries the real rendered SVG, not an empty/broken blob.
+    const path = await download.path()
+    const bytes = await readFile(path, 'utf8')
+    expect(bytes).toContain('<svg')
   })
 
   test('TEST-6: all four cases reach their expected terminal state', async ({ page }) => {
