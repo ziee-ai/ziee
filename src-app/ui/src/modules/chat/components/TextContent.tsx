@@ -5,11 +5,7 @@ import { Stores } from '@/core/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
-<<<<<<< HEAD
-import { mermaidRenderers } from '@/modules/chat/core/utils/mermaidRenderers'
-=======
-import { streamdownPlugins } from '@/modules/chat/core/utils/streamdownPlugins'
->>>>>>> origin/feat/html-iframe-render
+import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
 
 interface TextContentProps {
   content: MessageContent
@@ -41,11 +37,7 @@ export const TextContent = memo(function TextContent({
           isAnimating={isStreaming}
           shikiTheme={['github-light', 'github-dark']}
           components={components}
-<<<<<<< HEAD
-          plugins={mermaidRenderers}
-=======
-          plugins={streamdownPlugins}
->>>>>>> origin/feat/html-iframe-render
+          plugins={chatMarkdownPlugins}
           urlTransform={streamdownUrlTransform}
         >
           {textData.text}
