@@ -3,7 +3,11 @@ import { useState, useEffect } from 'react'
 import { Empty, Spin, Text, Title } from '@/components/ui'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
-import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
+import {
+  DownloadButton,
+  FullPageButton,
+  OpenInNewTabButton,
+} from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { Stores } from '@/core/stores'
 
@@ -35,6 +39,9 @@ interface FilePanelProps {
    *  pinned to the version that existed when it was sent). `undefined`/head =
    *  show the latest. */
   initialVersion?: number
+  /** Forwarded to the header actions — hide "Open full page" (set by the
+   *  full-page view, which is already at that route). */
+  showFullPage?: boolean
 }
 
 /**
@@ -44,10 +51,25 @@ interface FilePanelProps {
  * (FilePreviewDrawer) can place these actions next to the filename
  * without duplicating the viewer-registry lookup.
  */
-export function FilePanelHeaderActions({ file }: { file: FileEntity }) {
+export function FilePanelHeaderActions({
+  file,
+  showFullPage = true,
+}: {
+  file: FileEntity
+  /** Hide the "Open full page" button — set on the full-page view itself, where
+   *  it would navigate to the same route. Open-in-new-tab stays (still useful). */
+  showFullPage?: boolean
+}) {
   const handler = getViewer(file.filename, file.mime_type ?? undefined)
   const HeaderActions = handler?.headerActions
-  return HeaderActions ? <HeaderActions file={file} /> : <DownloadButton file={file} />
+  return (
+    <>
+      {HeaderActions ? <HeaderActions file={file} /> : <DownloadButton file={file} />}
+      {/* Shell-level affordances shared by every file type. */}
+      <OpenInNewTabButton file={file} />
+      {showFullPage ? <FullPageButton file={file} /> : null}
+    </>
+  )
 }
 
 /**
@@ -55,7 +77,7 @@ export function FilePanelHeaderActions({ file }: { file: FileEntity }) {
  * inside the panel body (and the action area to the right of the title) to
  * the matching viewer's `body` and optional `headerActions` slot components.
  */
-export function FilePanel({ file, hideHeader = false, initialVersion }: FilePanelProps) {
+export function FilePanel({ file, hideHeader = false, initialVersion, showFullPage = true }: FilePanelProps) {
   const handler = getViewer(file.filename, file.mime_type ?? undefined)
   const Body = handler?.body
   const tooLarge = file.file_size > PREVIEW_SIZE_LIMIT_BYTES
@@ -99,7 +121,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion }: FilePane
           {/* Too-large files always get plain Download — viewer-specific
               actions (PDF page nav, CSV controls, etc.) need the body
               loaded to be meaningful. */}
-          {tooLarge ? <DownloadButton file={file} /> : <FilePanelHeaderActions file={file} />}
+          {tooLarge ? <DownloadButton file={file} /> : <FilePanelHeaderActions file={file} showFullPage={showFullPage} />}
         </div>
       )}
 

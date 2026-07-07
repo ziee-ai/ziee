@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 316 surfaces carry renderable-state signals; 1749 signals total.
+// 316 surfaces carry renderable-state signals; 1754 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -391,26 +391,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/table",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "v == null || typeof v === 'boolean'", line: 116 },
-      { kind: "branch", condition: "!active", line: 148 },
-      { kind: "branch", condition: "view.sort!.dir === 'asc'", line: 149 },
-      { kind: "branch", condition: "meta.sortable", line: 152 },
-      { kind: "branch", condition: "props.filterable", line: 220 },
-      { kind: "branch", condition: "props.columnChooser && hideable.length > 0", line: 232 },
-      { kind: "branch", condition: "target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'", line: 310 },
-      { kind: "branch", condition: "!tsv", line: 312 },
-      { kind: "branch", condition: "showVirtual", line: 323 },
-      { kind: "branch", condition: "hasToolbar", line: 334 },
-      { kind: "branch", condition: "idx == null || idx < 0 || idx >= rows.length", line: 365 },
-      { kind: "branch", condition: "caption != null", line: 375 },
-      { kind: "branch", condition: "resizableTable", line: 376 },
-      { kind: "branch", condition: "meta.resizable", line: 396 },
-      { kind: "branch", condition: "busy", line: 403 },
-      { kind: "empty", condition: "rows.length === 0", line: 411 },
-      { kind: "branch", condition: "meta.resizable", line: 522 },
-      { kind: "branch", condition: "mode === 'none'", line: 572 },
-      { kind: "branch", condition: "(props.selectionMode ?? 'none') === 'none'", line: 577 },
-      { kind: "branch", condition: "!selectionActive(props, col)", line: 584 },
+      { kind: "branch", condition: "v == null || typeof v === 'boolean'", line: 53 },
+      { kind: "branch", condition: "props.virtualized && !busy && (props.dataSource?.length ?? 0) > 0", line: 63 },
+      { kind: "branch", condition: "caption != null", line: 74 },
+      { kind: "branch", condition: "busy", line: 85 },
+      { kind: "empty", condition: "dataSource.length === 0", line: 93 },
     ],
   },
   "components/ui/kit/tabs": {
@@ -1319,13 +1304,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 50 },
-      { kind: "branch", condition: "!hideHeader", line: 92 },
-      { kind: "branch", condition: "tooLarge", line: 102 },
-      { kind: "branch", condition: "isViewingOld", line: 118 },
-      { kind: "branch", condition: "oldVersionText === null", line: 120 },
-      { kind: "branch", condition: "tooLarge", line: 135 },
-      { kind: "branch", condition: "Body", line: 159 },
+      { kind: "branch", condition: "HeaderActions", line: 67 },
+      { kind: "branch", condition: "showFullPage", line: 70 },
+      { kind: "branch", condition: "!hideHeader", line: 114 },
+      { kind: "branch", condition: "tooLarge", line: 124 },
+      { kind: "branch", condition: "isViewingOld", line: 140 },
+      { kind: "branch", condition: "oldVersionText === null", line: 142 },
+      { kind: "branch", condition: "tooLarge", line: 157 },
+      { kind: "branch", condition: "Body", line: 181 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {
@@ -1344,6 +1330,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "versions.length <= 1", line: 42 },
       { kind: "branch", condition: "isViewingOld", line: 89 },
+    ],
+  },
+  "modules/file/components/FileViewPage": {
+    surface: "modules/file/components/FileViewPage",
+    requiredStates: ["delayed"],
+    signals: [
+      { kind: "branch", condition: "!fileId", line: 25 },
+      { kind: "branch", condition: "state.status === 'ready'", line: 54 },
+      { kind: "loading", condition: "state.status === 'loading'", line: 64 },
+      { kind: "branch", condition: "state.status === 'not-found'", line: 68 },
     ],
   },
   "modules/file/project-extension/components/ProjectFilesInlinePreview": {
@@ -1385,50 +1381,62 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/image/body",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!file", line: 19 },
-      { kind: "branch", condition: "errored", line: 20 },
-      { kind: "branch", condition: "!thumbnailUrl", line: 56 },
+      { kind: "branch", condition: "!file", line: 20 },
+      { kind: "branch", condition: "errored", line: 21 },
+      { kind: "branch", condition: "view.mode === 'fit'", line: 98 },
+      { kind: "branch", condition: "view.mode === 'fit'", line: 111 },
+      { kind: "branch", condition: "!c || typeof ResizeObserver === 'undefined'", line: 113 },
+      { kind: "branch", condition: "!thumbnailUrl", line: 126 },
+      { kind: "branch", condition: "view.mode === 'fit'", line: 135 },
+      { kind: "branch", condition: "o.x <= 0 && o.y <= 0", line: 157 },
+      { kind: "branch", condition: "!d", line: 172 },
+      { kind: "branch", condition: "rafRef.current", line: 179 },
+      { kind: "branch", condition: "!d", line: 187 },
+      { kind: "branch", condition: "!d", line: 207 },
+      { kind: "branch", condition: "o.x <= 0 && o.y <= 0", line: 211 },
     ],
   },
   "modules/file/viewers/image/header": {
     surface: "modules/file/viewers/image/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 9 },
+      { kind: "branch", condition: "!('file' in props)", line: 13 },
     ],
   },
   "modules/file/viewers/markdown/body": {
     surface: "modules/file/viewers/markdown/body",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "!url", line: 22 },
-      { kind: "branch", condition: "url.startsWith('data:')", line: 24 },
-      { kind: "branch", condition: "!isLocalImageUrl(src)", line: 40 },
-      { kind: "branch", condition: "href?.startsWith('#')", line: 65 },
-      { kind: "error", condition: "!(err instanceof Error)", line: 91 },
-      { kind: "error", condition: "this.state.error", line: 136 },
-      { kind: "branch", condition: "content === '__error__'", line: 186 },
-      { kind: "branch", condition: "content === null", line: 193 },
-      { kind: "branch", condition: "file && mode === 'raw'", line: 196 },
+      { kind: "branch", condition: "!url", line: 24 },
+      { kind: "branch", condition: "url.startsWith('data:')", line: 26 },
+      { kind: "branch", condition: "!isLocalImageUrl(src)", line: 42 },
+      { kind: "branch", condition: "href?.startsWith('#')", line: 67 },
+      { kind: "error", condition: "!(err instanceof Error)", line: 93 },
+      { kind: "error", condition: "this.state.error", line: 138 },
+      { kind: "branch", condition: "content === '__error__'", line: 189 },
+      { kind: "branch", condition: "content === null", line: 196 },
+      { kind: "branch", condition: "file", line: 203 },
+      { kind: "branch", condition: "file && mode === 'raw'", line: 205 },
     ],
   },
   "modules/file/viewers/markdown/header": {
     surface: "modules/file/viewers/markdown/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 8 },
+      { kind: "branch", condition: "!('file' in props)", line: 16 },
+      { kind: "branch", condition: "isRaw", line: 24 },
     ],
   },
   "modules/file/viewers/pdf/body": {
     surface: "modules/file/viewers/pdf/body",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 17 },
-      { kind: "empty", condition: "!root || file.preview_page_count === 0", line: 52 },
-      { kind: "empty", condition: "file.preview_page_count === 0", line: 79 },
-      { kind: "branch", condition: "truncated", line: 91 },
-      { kind: "branch", condition: "url", line: 124 },
-      { kind: "branch", condition: "pageErrors?.has(i + 1)", line: 131 },
+      { kind: "branch", condition: "!('file' in props)", line: 12 },
+      { kind: "empty", condition: "!root || file.preview_page_count === 0", line: 47 },
+      { kind: "empty", condition: "file.preview_page_count === 0", line: 74 },
+      { kind: "branch", condition: "truncated", line: 86 },
+      { kind: "branch", condition: "url", line: 119 },
+      { kind: "branch", condition: "pageErrors?.has(i + 1)", line: 126 },
     ],
   },
   "modules/file/viewers/pdf/header": {
@@ -1438,66 +1446,59 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!('file' in props)", line: 5 },
     ],
   },
-  "modules/file/viewers/pdf/pdfjs-body": {
-    surface: "modules/file/viewers/pdf/pdfjs-body",
-    requiredStates: ["delayed","error"],
-    signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 30 },
-      { kind: "branch", condition: "status !== 'ready' || !doc || !api", line: 49 },
-      { kind: "branch", condition: "!container || !viewer", line: 52 },
-      { kind: "branch", condition: "!c", line: 93 },
-      { kind: "branch", condition: "!c", line: 101 },
-      { kind: "branch", condition: "findOpen", line: 227 },
-      { kind: "loading", condition: "status === 'loading'", line: 276 },
-      { kind: "error", condition: "status === 'error'", line: 281 },
-      { kind: "error", condition: "error", line: 290 },
-    ],
-  },
   "modules/file/viewers/shared/RawCodeView": {
     surface: "modules/file/viewers/shared/RawCodeView",
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!filename", line: 47 },
-      { kind: "branch", condition: "cancelled", line: 149 },
-      { kind: "branch", condition: "cancelled", line: 155 },
-      { kind: "branch", condition: "truncated", line: 179 },
+      { kind: "branch", condition: "cancelled", line: 153 },
+      { kind: "branch", condition: "cancelled", line: 159 },
+      { kind: "branch", condition: "truncated", line: 184 },
     ],
   },
   "modules/file/viewers/shared/chrome": {
     surface: "modules/file/viewers/shared/chrome",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "file.text_page_count === 0", line: 29 },
-      { kind: "branch", condition: "text === undefined || text === ''", line: 97 },
+      { kind: "empty", condition: "file.text_page_count === 0", line: 41 },
+      { kind: "branch", condition: "text === undefined || text === ''", line: 109 },
+      { kind: "branch", condition: "!isHighlightSupported()", line: 179 },
+      { kind: "branch", condition: "text.trim() === '' || !inViewer", line: 235 },
+      { kind: "branch", condition: "inRouter", line: 291 },
+    ],
+  },
+  "modules/file/viewers/shared/find/FindableRegion": {
+    surface: "modules/file/viewers/shared/find/FindableRegion",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "docListener", line: 43 },
+      { kind: "branch", condition: "!(e.ctrlKey || e.metaKey)", line: 45 },
+      { kind: "branch", condition: "e.key !== 'f' && e.key !== 'F'", line: 46 },
+      { kind: "branch", condition: "unfocused || r.host.contains(active)", line: 54 },
+      { kind: "branch", condition: "!supported", line: 133 },
+      { kind: "branch", condition: "!el", line: 135 },
+      { kind: "branch", condition: "supported", line: 146 },
+      { kind: "branch", condition: "active", line: 152 },
     ],
   },
   "modules/file/viewers/tabular/DelimitedTable": {
     surface: "modules/file/viewers/tabular/DelimitedTable",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 155 },
-      { kind: "branch", condition: "truncated", line: 194 },
-    ],
-  },
-  "modules/file/viewers/tabular/ExpandableCell": {
-    surface: "modules/file/viewers/tabular/ExpandableCell",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "value.length <= EXPAND_THRESHOLD", line: 14 },
+      { kind: "branch", condition: "truncated", line: 114 },
     ],
   },
   "modules/file/viewers/tabular/XlsxBody": {
     surface: "modules/file/viewers/tabular/XlsxBody",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 117 },
-      { kind: "branch", condition: "sheet.truncated", line: 153 },
-      { kind: "branch", condition: "!fileBinaryContent", line: 208 },
-      { kind: "branch", condition: "!file", line: 258 },
-      { kind: "error", condition: "loadError", line: 260 },
-      { kind: "loading", condition: "!fileBinaryContent || loading", line: 269 },
-      { kind: "empty", condition: "sheets.length === 0", line: 273 },
-      { kind: "branch", condition: "sheets.length === 1", line: 277 },
+      { kind: "branch", condition: "!fileBinaryContent", line: 42 },
+      { kind: "branch", condition: "!file", line: 92 },
+      { kind: "error", condition: "loadError", line: 94 },
+      { kind: "loading", condition: "!fileBinaryContent || loading", line: 103 },
+      { kind: "empty", condition: "sheets.length === 0", line: 107 },
+      { kind: "branch", condition: "sheet.truncated", line: 157 },
+      { kind: "branch", condition: "sheets.length === 1", line: 177 },
     ],
   },
   "modules/file/viewers/tabular/body": {
@@ -1521,31 +1522,35 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/text/body",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "content === '__error__'", line: 14 },
-      { kind: "branch", condition: "content === null", line: 21 },
+      { kind: "branch", condition: "content === '__error__'", line: 18 },
+      { kind: "branch", condition: "content === null", line: 25 },
+      { kind: "branch", condition: "file", line: 31 },
     ],
   },
   "modules/file/viewers/text/header": {
     surface: "modules/file/viewers/text/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 6 },
+      { kind: "branch", condition: "!('file' in props)", line: 12 },
     ],
   },
   "modules/file/viewers/web/body": {
     surface: "modules/file/viewers/web/body",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 9 },
-      { kind: "branch", condition: "content === null", line: 14 },
-      { kind: "branch", condition: "mode === 'raw'", line: 17 },
+      { kind: "branch", condition: "!('file' in props)", line: 11 },
+      { kind: "branch", condition: "content === null", line: 17 },
+      { kind: "branch", condition: "mode === 'raw'", line: 20 },
     ],
   },
   "modules/file/viewers/web/header": {
     surface: "modules/file/viewers/web/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 6 },
+      { kind: "branch", condition: "!('file' in props)", line: 14 },
+      { kind: "branch", condition: "isRaw", line: 22 },
+      { kind: "branch", condition: "isRaw", line: 23 },
+      { kind: "branch", condition: "isRaw", line: 24 },
     ],
   },
   "modules/hardware/HardwareMonitor": {
@@ -2576,9 +2581,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["error"],
     signals: [
       { kind: "branch", condition: "row.is_built_in", line: 59 },
-      { kind: "error", condition: "error", line: 110 },
-      { kind: "branch", condition: "expandedCall", line: 132 },
-      { kind: "branch", condition: "expandedCall.error_message", line: 147 },
+      { kind: "error", condition: "error", line: 109 },
+      { kind: "branch", condition: "expandedCall", line: 125 },
+      { kind: "branch", condition: "expandedCall.error_message", line: 140 },
     ],
   },
   "modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer": {
@@ -2686,7 +2691,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error && entries.length === 0", line: 52 },
       { kind: "loading", condition: "loading", line: 60 },
       { kind: "empty", condition: "entries.length === 0", line: 64 },
-      { kind: "branch", condition: "v", line: 138 },
+      { kind: "branch", condition: "v", line: 135 },
     ],
   },
   "modules/memory/components/sections/CoreMemorySection": {
@@ -3731,7 +3736,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 316 keys.
+ * 315 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3829,12 +3834,11 @@ export type RequiredState =
   | "modules/file/components/FileCard:error"
   | "modules/file/components/FileCard:open"
   | "modules/file/components/FilePreviewDrawer:open"
+  | "modules/file/components/FileViewPage:delayed"
   | "modules/file/project-extension/components/ProjectFilesInlinePreview:empty"
   | "modules/file/project-extension/components/ProjectFilesManagePanel:empty"
   | "modules/file/viewers/markdown/body:error"
   | "modules/file/viewers/pdf/body:empty"
-  | "modules/file/viewers/pdf/pdfjs-body:delayed"
-  | "modules/file/viewers/pdf/pdfjs-body:error"
   | "modules/file/viewers/shared/chrome:empty"
   | "modules/file/viewers/tabular/XlsxBody:delayed"
   | "modules/file/viewers/tabular/XlsxBody:empty"
@@ -4148,12 +4152,11 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/components/FileCard:error",
   "modules/file/components/FileCard:open",
   "modules/file/components/FilePreviewDrawer:open",
+  "modules/file/components/FileViewPage:delayed",
   "modules/file/project-extension/components/ProjectFilesInlinePreview:empty",
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty",
   "modules/file/viewers/markdown/body:error",
   "modules/file/viewers/pdf/body:empty",
-  "modules/file/viewers/pdf/pdfjs-body:delayed",
-  "modules/file/viewers/pdf/pdfjs-body:error",
   "modules/file/viewers/shared/chrome:empty",
   "modules/file/viewers/tabular/XlsxBody:delayed",
   "modules/file/viewers/tabular/XlsxBody:empty",
