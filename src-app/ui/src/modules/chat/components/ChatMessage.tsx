@@ -85,14 +85,23 @@ export const ChatMessage = memo(function ChatMessage({
       data-message-id={message.id}
     >
       {/* User attachments: a single horizontal row above the bubble that
-          x-scrolls (via the app's overlay ScrollArea) when it overflows. */}
+          x-scrolls (via the app's overlay ScrollArea) when it overflows.
+          max-w-full (not w-full): the outer container is a flex column with
+          items-end, so a content-width strip shrinks-to-fit and pins to the
+          RIGHT edge — matching the right-aligned user bubble — instead of
+          spanning full width and stranding the files on the left. The cap keeps
+          it inside the bubble's max width, so a long list still x-scrolls. */}
       {attachmentBlocks.length > 0 && (
         <ScrollArea
           axis="x"
-          className="w-full mb-2"
+          className="max-w-full mb-2"
           data-testid="message-attachments"
         >
-          <div className="flex gap-2 w-max py-0.5">
+          {/* ml-auto: right-align the file row inside the scroll viewport so a
+              short list packs against the bubble's right edge (matching the
+              right-aligned user message); a no-op once the row overflows (it just
+              scrolls). */}
+          <div className="flex gap-2 w-max py-0.5 ml-auto">
             {attachmentBlocks.map((content, index) => (
               <ContentRenderer
                 key={`${content.id || `att-${index}`}`}
