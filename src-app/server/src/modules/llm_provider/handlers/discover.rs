@@ -211,6 +211,22 @@ pub async fn discover_models(
     ))
 }
 
+/// SSRF policy for the live `/v1/models` fetch. `PUBLIC_HTTP_OR_HTTPS` in
+/// release builds. A debug-only env seam (`LLM_DISCOVER_ALLOW_LOOPBACK`) relaxes
+/// it to `DEV_LOCAL` so integration tests can point a provider at a 127.0.0.1
+/// mock `/models` — compiled out of release builds via `cfg!(debug_assertions)`,
+/// mirroring `web_search`'s `WEB_SEARCH_FETCH_ALLOW_LOOPBACK`. RFC1918 /
+/// link-local / IMDS stay blocked even under `DEV_LOCAL`.
+fn discovery_url_policy() -> crate::utils::url_validator::OutboundUrlPolicy {
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("LLM_DISCOVER_ALLOW_LOOPBACK").is_ok() {
+            return crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL;
+        }
+    }
+    crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+}
+
 /// Best-effort fetch of the provider's `/v1/models`-shaped response, parsed into
 /// [`LiveModel`]s. Most OpenAI-compatible providers list IDs only; OpenRouter
 /// (and Gemini/Groq) carry structured context/capability fields we surface when
@@ -228,7 +244,7 @@ pub(crate) async fn fetch_live_models(
     //     169.254.169.254 / loopback / RFC1918 before connect) — blocked by the
     //     connect-time GuardingResolver baked into `validated_client_builder`,
     //   * an ambient proxy tunnelling/seeing the secret — blocked by `no_proxy()`.
-    let policy = crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS;
+    let policy = discovery_url_policy();
     crate::utils::url_validator::validate_outbound_url(&url, &policy)
         .map_err(|e| format!("blocked url: {e}"))?;
     let client = crate::utils::url_validator::validated_client_builder(policy)

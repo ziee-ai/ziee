@@ -6,6 +6,7 @@ use ziee::UserKeyRepository;
 
 // Integration tests for LLM Provider module
 
+mod discover_models_test;
 mod sync_emit_test;
 
 // =====================================================
