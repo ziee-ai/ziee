@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Tooltip, Dropdown } from '@/components/ui'
+import { Tooltip, Dropdown, Tag } from '@/components/ui'
 import { message } from '@/components/ui'
 import { EyeOff, Lightbulb } from 'lucide-react'
 import { Stores } from '@/core/stores'
@@ -94,6 +94,13 @@ export function MemoryStatusPill() {
     on: 'Memory: on',
     off: 'Memory: off',
   }
+  // Mirror the Summary pill's tone mapping so the two composer-footer chips are
+  // structurally identical peers (A9).
+  const toneByMode: Record<Mode, Parameters<typeof Tag>[0]['tone']> = {
+    inherit: undefined,
+    on: 'success',
+    off: 'error',
+  }
 
   return (
     <Tooltip content="Per-conversation memory retrieval override">
@@ -103,16 +110,21 @@ export function MemoryStatusPill() {
         onSelect={(key) => setRemote(key as Mode)}
         disabled={loading}
       >
-        <span
+        {/* Route through the shared kit <Tag> (same as SummarizationStatusPill) so
+            the icon size (Tag forces [&_svg]:size-3) + chip metrics are INHERITED,
+            not per-set — the two footer chips were mismatched because this pill
+            hand-rolled the markup and rendered a raw, unsized (24px) lucide icon. */}
+        <Tag
+          variant="outline"
           data-testid="memory-status-pill"
           data-mode={mode}
+          tone={toneByMode[mode]}
+          icon={mode === 'off' ? <EyeOff /> : <Lightbulb />}
           aria-label={`Memory mode: ${labelByMode[mode]}`}
-          className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium"
-          style={{ cursor: 'pointer' }}
+          className="cursor-pointer m-0"
         >
-          {mode === 'off' ? <EyeOff /> : <Lightbulb />}
           {labelByMode[mode]}
-        </span>
+        </Tag>
       </Dropdown>
     </Tooltip>
   )
