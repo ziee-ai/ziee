@@ -1,6 +1,6 @@
-import { Search } from 'lucide-react'
+import { Eraser, Search, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Text, MultiSelect, Input } from '@/components/ui'
+import { MultiSelect, Input, Button, Empty } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
@@ -87,15 +87,34 @@ export function SkillsHubTab() {
             <SkillHubCard key={item.name} item={item} />
           ))}
         </div>
-        {filtered.length === 0 && (
-          <div className="text-center py-12">
-            <Text type="secondary">
-              {items.length === 0
-                ? 'No skills in the hub yet'
-                : 'No skills match your search'}
-            </Text>
-          </div>
-        )}
+        {filtered.length === 0 &&
+          (searchTerm || selectedTags.length > 0 ? (
+            <Empty
+              data-testid="hub-skills-empty"
+              icon={<Sparkles />}
+              title="No skills match your search"
+              description="Try a different search term or clear the active filters."
+            >
+              <Button
+                variant="outline"
+                icon={<Eraser />}
+                onClick={() => {
+                  setSearchTerm('')
+                  setSelectedTags([])
+                }}
+                data-testid="hub-skills-empty-clear-btn"
+              >
+                Clear filters
+              </Button>
+            </Empty>
+          ) : (
+            <Empty
+              data-testid="hub-skills-empty"
+              icon={<Sparkles />}
+              title="No skills in the hub yet"
+              description="The hub catalog has no skills to show right now — check back after a hub refresh."
+            />
+          ))}
       </div>
     </div>
   )

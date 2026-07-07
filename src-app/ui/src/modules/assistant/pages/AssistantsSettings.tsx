@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { Bot, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
@@ -158,9 +158,23 @@ export function AssistantsSettings() {
                 data-testid="template-assistants-error"
               />
             ) : (
-              <div>
-                <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
-              </div>
+              <Empty
+                data-testid="template-assistants-empty"
+                icon={<Bot />}
+                title="No assistant templates yet"
+                description="Templates are cloned into every new user's account. Create one to get started."
+              >
+                <Can permission={Permissions.AssistantsTemplateCreate}>
+                  <Button
+                    variant="default"
+                    icon={<Plus />}
+                    onClick={handleCreate}
+                    data-testid="template-assistants-empty-create-btn"
+                  >
+                    Create assistant
+                  </Button>
+                </Can>
+              </Empty>
             )
           ) : (
             <div>

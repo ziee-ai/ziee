@@ -1,6 +1,6 @@
-import { Eraser, Search } from 'lucide-react'
+import { Eraser, LayoutGrid, Search } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { MultiSelect, Select, Text, Button, Input, ErrorState } from '@/components/ui'
+import { MultiSelect, Select, Text, Button, Input, ErrorState, Empty } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
@@ -183,15 +183,31 @@ export function ModelsHubTab() {
                   <ModelHubCard key={model.name} model={model} />
                 ))}
               </div>
-              {visibleModels.length === 0 && (
-                <div className="text-center py-12" data-testid="hub-models-empty">
-                  <Text type="secondary">
-                    {models.length === 0
-                      ? 'No models yet'
-                      : 'No models match your search'}
-                  </Text>
-                </div>
-              )}
+              {visibleModels.length === 0 &&
+                (searchTerm || selectedTags.length > 0 ? (
+                  <Empty
+                    data-testid="hub-models-empty"
+                    icon={<LayoutGrid />}
+                    title="No models match your search"
+                    description="Try a different search term or clear the active filters."
+                  >
+                    <Button
+                      variant="outline"
+                      icon={<Eraser />}
+                      onClick={clearAllFilters}
+                      data-testid="hub-models-empty-clear-btn"
+                    >
+                      Clear filters
+                    </Button>
+                  </Empty>
+                ) : (
+                  <Empty
+                    data-testid="hub-models-empty"
+                    icon={<LayoutGrid />}
+                    title="No models yet"
+                    description="The hub catalog has no models to show right now — check back after a hub refresh."
+                  />
+                ))}
             </>
           )
         })()}

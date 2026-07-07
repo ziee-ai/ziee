@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **309** surfaces carry at least one renderable-state signal.
-- **1710** signals total: 1328 branch, 109 empty, 94 error, 93 loading, 84 overlay, 2 panel.
+- **310** surfaces carry at least one renderable-state signal.
+- **1715** signals total: 1334 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -84,10 +84,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `icon != null` | 46 |
-| branch | `title != null` | 47 |
-| branch | `(description != null \|\| children != null)` | 48 |
-| branch | `onClose` | 51 |
+| branch | `icon != null` | 54 |
+| branch | `title != null` | 55 |
+| branch | `(description != null \|\| children != null)` | 56 |
+| branch | `onClose` | 59 |
 
 ### `components/ui/kit/avatar`
 
@@ -708,10 +708,10 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && assistants.length === 0` | 138 |
 | empty | `assistants.length === 0` | 146 |
 | error | `error` | 147 |
-| branch | `assistant.is_default && assistants.length > 1` | 185 |
-| branch | `!assistant.enabled` | 188 |
-| branch | `index < assistants.length - 1` | 211 |
-| branch | `assistants.length > 0` | 219 |
+| branch | `assistant.is_default && assistants.length > 1` | 199 |
+| branch | `!assistant.enabled` | 202 |
+| branch | `index < assistants.length - 1` | 225 |
+| branch | `assistants.length > 0` | 233 |
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
@@ -760,13 +760,13 @@ Required states: `delayed`, `empty`, `error`, `open`
 |---|---|---|
 | branch | `row.last_test_ok === null \|\| row.last_test_ok === undefined` | 85 |
 | branch | `!row.last_test_ok` | 95 |
-| loading | `loading && providers.length === 0` | 172 |
-| empty | `providers.length === 0` | 176 |
-| error | `error` | 177 |
-| branch | `!row.enabled` | 211 |
-| branch | `row.last_test_ok === false` | 234 |
-| branch | `index < providers.length - 1` | 253 |
-| overlay | `<AuthProviderEditDrawer open>` | 263 |
+| loading | `loading && providers.length === 0` | 177 |
+| empty | `providers.length === 0` | 181 |
+| error | `error` | 182 |
+| branch | `!row.enabled` | 216 |
+| branch | `row.last_test_ok === false` | 239 |
+| branch | `index < providers.length - 1` | 258 |
+| overlay | `<AuthProviderEditDrawer open>` | 268 |
 
 ### `modules/auth/AuthCallbackPage`
 
@@ -1129,9 +1129,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canManage` | 67 |
-| branch | `meta` | 89 |
-| branch | `entry.doi` | 90 |
+| branch | `canManage` | 71 |
+| branch | `meta` | 95 |
+| branch | `entry.doi` | 96 |
 
 ### `modules/citations/components/ImportCitationsModal`
 
@@ -1547,10 +1547,11 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `!('file' in props)` | 12 |
-| empty | `!root \|\| file.preview_page_count === 0` | 44 |
-| empty | `file.preview_page_count === 0` | 71 |
-| branch | `truncated` | 83 |
-| branch | `url` | 116 |
+| empty | `!root \|\| file.preview_page_count === 0` | 47 |
+| empty | `file.preview_page_count === 0` | 74 |
+| branch | `truncated` | 86 |
+| branch | `url` | 119 |
+| branch | `pageErrors?.has(i + 1)` | 126 |
 
 ### `modules/file/viewers/pdf/header`
 
@@ -1695,40 +1696,41 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canMonitor` | 38 |
-| branch | `hardwareLoading` | 54 |
-| branch | `hardwareError && !hardwareInfo` | 62 |
-| branch | `hardwareInfo?.operating_system.kernel_version` | 94 |
-| branch | `hardwareInfo?.cpu.threads` | 120 |
-| branch | `hardwareInfo?.cpu.base_frequency` | 123 |
-| branch | `hardwareInfo?.cpu.max_frequency` | 130 |
-| branch | `currentUsage` | 138 |
-| branch | `currentUsage.cpu.temperature` | 151 |
-| branch | `currentUsage.cpu.frequency` | 156 |
-| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 180 |
-| branch | `currentUsage` | 192 |
-| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 219 |
-| branch | `gpu.memory` | 249 |
-| branch | `gpu.vendor?.includes('Apple')` | 258 |
-| branch | `gpu.driver_version` | 266 |
-| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 276 |
-| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 313 |
-| branch | `gpuUsage` | 324 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 326 |
-| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 341 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 348 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 358 |
-| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 377 |
-| branch | `gpu.vendor?.includes('Apple')` | 389 |
-| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 400 |
-| branch | `gpuUsage.utilization_percentage !== undefined` | 410 |
-| branch | `gpuUsage.memory_usage_percentage !== undefined` | 423 |
-| branch | `gpuUsage.memory_used !== undefined` | 436 |
-| branch | `gpuUsage.temperature !== undefined` | 446 |
-| branch | `gpuUsage.power_usage !== undefined` | 456 |
-| branch | `canMonitor && !sseConnected && !usageLoading` | 501 |
-| branch | `usageLoading` | 506 |
-| branch | `currentUsage` | 512 |
+| branch | `!text \|\| text === 'Unknown'` | 26 |
+| branch | `!canMonitor` | 47 |
+| branch | `hardwareLoading` | 63 |
+| branch | `hardwareError && !hardwareInfo` | 71 |
+| branch | `hardwareInfo?.operating_system.kernel_version` | 105 |
+| branch | `hardwareInfo?.cpu.threads` | 133 |
+| branch | `hardwareInfo?.cpu.base_frequency` | 136 |
+| branch | `hardwareInfo?.cpu.max_frequency` | 143 |
+| branch | `currentUsage` | 151 |
+| branch | `currentUsage.cpu.temperature` | 164 |
+| branch | `currentUsage.cpu.frequency` | 169 |
+| branch | `hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0` | 193 |
+| branch | `currentUsage` | 205 |
+| empty | `!hardwareInfo?.gpu_devices \|\| hardwareInfo.gpu_devices.length === 0` | 232 |
+| branch | `gpu.memory` | 271 |
+| branch | `gpu.vendor?.includes('Apple')` | 280 |
+| branch | `gpu.driver_version` | 288 |
+| branch | `gpu.vendor?.includes('Apple') && hardwareInfo?.memory` | 299 |
+| branch | `gpu.compute_capabilities.vulkan_support !== undefined` | 336 |
+| branch | `gpuUsage` | 347 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 349 |
+| branch | `(gpuUsage.memory_usage_percentage !== undefined \|\| (gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined))` | 364 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 371 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 381 |
+| branch | `gpuUsage.memory_used !== undefined && gpuUsage.memory_total !== undefined` | 400 |
+| branch | `gpu.vendor?.includes('Apple')` | 412 |
+| branch | `gpuUsage && (gpuUsage.utilization_percentage !== undefined \|\| gpuUsage.memory_used !== undefined \|\| gpuUsage.temperature !== undefined \|\| gpuUsage.power_usage !` | 423 |
+| branch | `gpuUsage.utilization_percentage !== undefined` | 433 |
+| branch | `gpuUsage.memory_usage_percentage !== undefined` | 446 |
+| branch | `gpuUsage.memory_used !== undefined` | 459 |
+| branch | `gpuUsage.temperature !== undefined` | 469 |
+| branch | `gpuUsage.power_usage !== undefined` | 479 |
+| branch | `canMonitor && !sseConnected && !usageLoading` | 524 |
+| branch | `usageLoading` | 529 |
+| branch | `currentUsage` | 535 |
 
 ### `modules/hub/HubPage`
 
@@ -1791,6 +1793,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && assistants.length === 0` | 75 |
 | branch | `(searchTerm \|\| selectedTags.length > 0)` | 136 |
 | empty | `visible.length === 0` | 180 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 181 |
 
 ### `modules/hub/modules/installed/components/InstalledHubTab`
 
@@ -1883,6 +1886,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && models.length === 0` | 80 |
 | branch | `(searchTerm \|\| selectedTags.length > 0)` | 139 |
 | empty | `visibleModels.length === 0` | 186 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 187 |
 
 ### `modules/hub/modules/llm-models/hooks/useHubModelDownloadGate`
 
@@ -1948,6 +1952,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && servers.length === 0` | 91 |
 | branch | `(searchTerm \|\| selectedTags.length > 0)` | 152 |
 | empty | `visible.length === 0` | 191 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 192 |
 
 ### `modules/hub/modules/skill/components/SkillDetailsDrawer`
 
@@ -1985,6 +1990,7 @@ Required states: `delayed`, `empty`
 |---|---|---|
 | loading | `loading && items.length === 0` | 51 |
 | empty | `filtered.length === 0` | 90 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 91 |
 
 ### `modules/hub/modules/workflow/components/WorkflowDetailsDrawer`
 
@@ -2022,6 +2028,7 @@ Required states: `delayed`, `empty`
 |---|---|---|
 | loading | `loading && items.length === 0` | 49 |
 | empty | `filtered.length === 0` | 90 |
+| branch | `searchTerm \|\| selectedTags.length > 0` | 91 |
 
 ### `modules/layouts/app-layout/AppLayout`
 
@@ -2609,14 +2616,23 @@ Required states: `empty`
 |---|---|---|
 | empty | `visibleServerIds.length === 0` | 23 |
 
+### `modules/mcp/chat-extension/components/ToolCallPendingApprovalCancelContent`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `serverLabel` | 33 |
+
 ### `modules/mcp/chat-extension/components/ToolCallPendingApprovalContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `toolCall.input !== undefined` | 180 |
-| branch | `!isControlWrite` | 202 |
+| branch | `mcpServerParenLabel(toolCall.server)` | 170 |
+| branch | `toolCall.input !== undefined` | 183 |
+| branch | `!isControlWrite` | 205 |
 
 ### `modules/mcp/chat-extension/extension`
 
@@ -2624,33 +2640,29 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `toolCall.status === 'pending_approval'` | 35 |
-| branch | `toolCall.server && !looksLikeId(toolCall.server)` | 61 |
-| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 69 |
-| branch | `toolCall.status === 'started' && toolCall.progress` | 87 |
-| branch | `toolCall.progress.message` | 89 |
-| branch | `isExpanded` | 112 |
-| branch | `toolCall.input !== undefined` | 114 |
-| branch | `toolCall.result !== undefined` | 123 |
-| error | `toolCall.error` | 132 |
-| branch | `!toolUseData.id` | 158 |
-| branch | `toolCall` | 165 |
-| branch | `toolResultData?.is_error` | 187 |
-| branch | `toolResultData` | 189 |
-| branch | `server?.display_name` | 195 |
-| branch | `toolResultData` | 200 |
-| branch | `hasDetails` | 208 |
-| branch | `isExpanded` | 219 |
-| branch | `!!toolUseData.input` | 221 |
-| branch | `toolResultData` | 229 |
-| branch | `toolResultData.is_error` | 232 |
-| error | `hasError` | 293 |
-| branch | `!allDone` | 295 |
-| branch | `isExpanded` | 317 |
-| branch | `!run \|\| countToolUses(run) < 2` | 342 |
-| branch | `!mcpStore` | 372 |
-| branch | `!streamingMessage` | 709 |
-| branch | `!toolUseId` | 724 |
+| branch | `toolCall.status === 'pending_approval'` | 31 |
+| branch | `serverLabel` | 47 |
+| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 55 |
+| branch | `toolCall.status === 'started' && toolCall.progress` | 73 |
+| branch | `toolCall.progress.message` | 75 |
+| branch | `isExpanded` | 98 |
+| branch | `toolCall.input !== undefined` | 100 |
+| branch | `toolCall.result !== undefined` | 109 |
+| error | `toolCall.error` | 118 |
+| branch | `!toolUseData.id` | 144 |
+| branch | `toolCall` | 151 |
+| branch | `mcpServerParenLabel(server?.display_name)` | 177 |
+| branch | `toolResultData` | 182 |
+| branch | `hasDetails` | 190 |
+| branch | `isExpanded` | 201 |
+| branch | `!!toolUseData.input` | 203 |
+| branch | `toolResultData` | 211 |
+| branch | `toolResultData.is_error` | 214 |
+| branch | `isExpanded` | 295 |
+| branch | `!run \|\| countToolUses(run) < 2` | 320 |
+| branch | `!mcpStore` | 350 |
+| branch | `!streamingMessage` | 687 |
+| branch | `!toolUseId` | 702 |
 
 ### `modules/mcp/components/McpConfigModal`
 
@@ -2745,10 +2757,10 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `row.is_built_in` | 60 |
-| error | `error` | 110 |
-| branch | `expandedCall` | 126 |
-| branch | `expandedCall.error_message` | 141 |
+| branch | `row.is_built_in` | 59 |
+| error | `error` | 109 |
+| branch | `expandedCall` | 125 |
+| branch | `expandedCall.error_message` | 140 |
 
 ### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer`
 
@@ -2945,11 +2957,11 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 70 |
-| error | `error && !settings` | 74 |
-| loading | `loading \|\| !settings` | 88 |
-| branch | `adminDisabled` | 116 |
-| branch | `canWrite` | 127 |
+| branch | `!canRead` | 111 |
+| error | `error && !settings` | 115 |
+| loading | `loading \|\| !settings` | 129 |
+| branch | `adminDisabled` | 157 |
+| branch | `canWrite` | 168 |
 
 ### `modules/memory/components/sections/RebuildStatusSection`
 

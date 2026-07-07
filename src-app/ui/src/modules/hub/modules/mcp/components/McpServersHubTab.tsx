@@ -1,7 +1,7 @@
 import { useState, useMemo, lazy, Suspense, ChangeEvent } from 'react'
-import { Button, Input, MultiSelect, Combobox, Text, ErrorState } from '@/components/ui'
+import { Button, Input, MultiSelect, Combobox, Text, ErrorState, Empty } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
-import { Search, Eraser } from 'lucide-react'
+import { Plug, Search, Eraser } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
@@ -188,15 +188,31 @@ export function McpServersHubTab() {
                   <McpServerHubCard key={server.name} server={server} />
                 ))}
               </div>
-              {visible.length === 0 && (
-                <div className="text-center py-12">
-                  <Text tone="secondary">
-                    {servers.length === 0
-                      ? 'No MCP servers yet'
-                      : 'No MCP servers match your search'}
-                  </Text>
-                </div>
-              )}
+              {visible.length === 0 &&
+                (searchTerm || selectedTags.length > 0 ? (
+                  <Empty
+                    data-testid="hub-mcp-empty"
+                    icon={<Plug />}
+                    title="No MCP servers match your search"
+                    description="Try a different search term or clear the active filters."
+                  >
+                    <Button
+                      variant="outline"
+                      icon={<Eraser />}
+                      onClick={clearAllFilters}
+                      data-testid="hub-mcp-empty-clear-btn"
+                    >
+                      Clear filters
+                    </Button>
+                  </Empty>
+                ) : (
+                  <Empty
+                    data-testid="hub-mcp-empty"
+                    icon={<Plug />}
+                    title="No MCP servers yet"
+                    description="The hub catalog has no MCP servers to show right now — check back after a hub refresh."
+                  />
+                ))}
             </>
           )
         })()}

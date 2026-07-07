@@ -1,6 +1,6 @@
-import { Search, Eraser } from 'lucide-react'
+import { Bot, Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { Combobox, MultiSelect, Text, Button, Input, ErrorState } from '@/components/ui'
+import { Combobox, MultiSelect, Text, Button, Input, ErrorState, Empty } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
@@ -177,15 +177,31 @@ export function AssistantsHubTab() {
                   <AssistantHubCard key={assistant.name} assistant={assistant} />
                 ))}
               </div>
-              {visible.length === 0 && (
-                <div className="text-center py-12">
-                  <Text type="secondary">
-                    {assistants.length === 0
-                      ? 'No assistants yet'
-                      : 'No assistants match your search'}
-                  </Text>
-                </div>
-              )}
+              {visible.length === 0 &&
+                (searchTerm || selectedTags.length > 0 ? (
+                  <Empty
+                    data-testid="hub-assistants-empty"
+                    icon={<Bot />}
+                    title="No assistants match your search"
+                    description="Try a different search term or clear the active filters."
+                  >
+                    <Button
+                      variant="outline"
+                      icon={<Eraser />}
+                      onClick={clearAllFilters}
+                      data-testid="hub-assistants-empty-clear-btn"
+                    >
+                      Clear filters
+                    </Button>
+                  </Empty>
+                ) : (
+                  <Empty
+                    data-testid="hub-assistants-empty"
+                    icon={<Bot />}
+                    title="No assistants yet"
+                    description="The hub catalog has no assistants to show right now — check back after a hub refresh."
+                  />
+                ))}
             </>
           )
         })()}
