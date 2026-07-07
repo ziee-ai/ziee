@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 311 surfaces carry renderable-state signals; 1718 signals total.
+// 312 surfaces carry renderable-state signals; 1719 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -771,8 +771,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["empty"],
     signals: [
       { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 19 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 89 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 110 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 94 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 119 },
     ],
   },
   "modules/chat/components/ContentRenderer": {
@@ -830,6 +830,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
       { kind: "loading", condition: "(loading || isStreaming)", line: 42 },
+    ],
+  },
+  "modules/chat/components/PlusMenuItem": {
+    surface: "modules/chat/components/PlusMenuItem",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "trailing != null", line: 53 },
     ],
   },
   "modules/chat/components/TextContent": {
@@ -920,10 +927,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/export/extension",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!conversation", line: 34 },
-      { kind: "branch", condition: "!conversation", line: 69 },
-      { kind: "branch", condition: "!conversation", line: 98 },
-      { kind: "empty", condition: "messages.length === 0", line: 157 },
+      { kind: "branch", condition: "!conversation", line: 35 },
+      { kind: "branch", condition: "!conversation", line: 70 },
+      { kind: "branch", condition: "!conversation", line: 99 },
+      { kind: "empty", condition: "messages.length === 0", line: 159 },
     ],
   },
   "modules/chat/extensions/keyboard/extension": {
@@ -3030,8 +3037,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/skill/chat-extension/SkillMenuItem",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!conversation?.id", line: 18 },
-      { kind: "branch", condition: "!conversation?.id", line: 51 },
+      { kind: "branch", condition: "!conversation?.id", line: 19 },
+      { kind: "branch", condition: "!conversation?.id", line: 41 },
     ],
   },
   "modules/skill/components/ConversationSkillsPanel": {

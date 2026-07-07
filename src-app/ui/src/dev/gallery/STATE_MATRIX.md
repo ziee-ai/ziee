@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **311** surfaces carry at least one renderable-state signal.
-- **1718** signals total: 1337 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **312** surfaces carry at least one renderable-state signal.
+- **1719** signals total: 1338 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -882,8 +882,8 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | empty | `!message.contents \|\| message.contents.length === 0` | 19 |
-| branch | `attachmentBlocks.length > 0` | 89 |
-| branch | `bubbleBlocks.length > 0` | 110 |
+| branch | `attachmentBlocks.length > 0` | 94 |
+| branch | `bubbleBlocks.length > 0` | 119 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -947,6 +947,14 @@ Required states: `delayed`
 |---|---|---|
 | loading | `!loading && messagesArray.length === 0` | 19 |
 | loading | `(loading \|\| isStreaming)` | 42 |
+
+### `modules/chat/components/PlusMenuItem`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `trailing != null` | 53 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1047,10 +1055,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation` | 34 |
-| branch | `!conversation` | 69 |
-| branch | `!conversation` | 98 |
-| empty | `messages.length === 0` | 157 |
+| branch | `!conversation` | 35 |
+| branch | `!conversation` | 70 |
+| branch | `!conversation` | 99 |
+| empty | `messages.length === 0` | 159 |
 
 ### `modules/chat/extensions/keyboard/extension`
 
@@ -3327,8 +3335,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation?.id` | 18 |
-| branch | `!conversation?.id` | 51 |
+| branch | `!conversation?.id` | 19 |
+| branch | `!conversation?.id` | 41 |
 
 ### `modules/skill/components/ConversationSkillsPanel`
 
