@@ -7,20 +7,20 @@
 
 ## Summary
 
-- **315** surfaces carry at least one renderable-state signal.
-- **1740** signals total: 1359 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
-- **2** right-panel renderers registered (each a right-panel-open state).
+- **318** surfaces carry at least one renderable-state signal.
+- **1747** signals total: 1363 branch, 110 empty, 93 error, 94 loading, 84 overlay, 3 panel.
+- **3** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 82 |
-| `empty` | 86 |
+| `delayed` | 83 |
+| `empty` | 87 |
 | `error` | 73 |
 | `open` | 71 |
-| `panel-open` | 2 |
+| `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
 
@@ -32,6 +32,7 @@ conversation page.
 |---|---|
 | `file` | `modules/file/chat-extension/extension`:122 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
+| `office-bridge` | `modules/office-bridge/chat-extension/extension`:25 |
 
 ## Slot registrations
 
@@ -3070,6 +3071,34 @@ Required states: `delayed`, `error`
 |---|---|---|
 | error | `error && !settings` | 38 |
 | loading | `loading && !settings` | 47 |
+
+### `modules/office-bridge/chat-extension/extension`
+
+Required states: `panel-open`
+
+| kind | condition | line |
+|---|---|---|
+| panel | `registerPanelRenderer('office-bridge')` | 25 |
+
+### `modules/office-bridge/components/OpenDocumentsPanel`
+
+Required states: `delayed`, `empty`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && documents.length === 0` | 30 |
+| empty | `documents.length === 0` | 41 |
+| branch | `doc.path` | 80 |
+| branch | `doc.active` | 89 |
+
+### `modules/office-bridge/components/OpenDocumentsToolResultCard`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `content.content_type !== 'tool_result'` | 22 |
+| branch | `documents.length > 0` | 64 |
 
 ### `modules/onboarding/OnboardingPage`
 

@@ -20,7 +20,7 @@ use crate::modules::permissions::{RequirePermissions, with_permission};
 
 use super::models::{ConnectReadiness, OfficeBridgeSettings, UpdateOfficeBridgeSettingsRequest};
 use super::permissions::{OfficeBridgeAdminRead, OfficeBridgeManage, OfficeBridgeUse};
-use super::platform::{self, DocOp, OfficeApp, OfficePlatform};
+use super::platform::{self, DocOp, OfficeApp, OfficePlatform, OpenDoc};
 
 // ─────────────────────────── JSON-RPC MCP endpoint ───────────────────────────
 
@@ -472,6 +472,46 @@ pub fn connect_docs(op: TransformOperation) -> TransformOperation {
         .tag("OfficeBridge")
         .summary("Run the [Connect] installer flow (trust cert, sideload add-in, report readiness)")
         .response::<200, Json<ConnectReadiness>>()
+}
+
+// ──────────────────── User REST: open-document list (panel) ─────────────────
+
+/// `GET /api/office-bridge/documents` — the open-Office-document list the
+/// frontend "Open Office documents" panel refetches on every
+/// `sync:office_document` notify (notify-and-refetch: the SSE frame carries no
+/// row data, only `{entity, action, id}`, so the client re-reads here).
+///
+/// Gated on `office_bridge::use` — deliberately the SAME read perm the client
+/// store self-gates its refetch on (the no-403 rule): a permitted user's refetch
+/// never 403s, and an unpermitted store returns early without ever calling this.
+///
+/// **Best-effort**: enumerating open documents can fail on a non-desktop /
+/// headless host (no COM, no Office) or transiently. Rather than 500 the panel we
+/// log and return an empty list, so a box without Office simply renders the
+/// "No open Office documents" empty state.
+#[debug_handler]
+pub async fn list_documents(
+    _auth: RequirePermissions<(OfficeBridgeUse,)>,
+) -> ApiResult<Json<Vec<OpenDoc>>> {
+    let docs = match platform::active().list_open_documents().await {
+        Ok(docs) => docs,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "office_bridge: list_open_documents failed; returning an empty list"
+            );
+            Vec::new()
+        }
+    };
+    Ok((StatusCode::OK, Json(docs)))
+}
+
+pub fn list_documents_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(OfficeBridgeUse,)>(op)
+        .id("OfficeBridge.listDocuments")
+        .tag("OfficeBridge")
+        .summary("List the user's currently-open Office documents")
+        .response::<200, Json<Vec<OpenDoc>>>()
 }
 
 // ─────────────────────────────────── Tests ──────────────────────────────────

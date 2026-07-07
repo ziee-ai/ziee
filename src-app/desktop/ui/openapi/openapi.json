@@ -19378,6 +19378,59 @@
         ]
       }
     },
+    "/api/office-bridge/documents": {
+      "get": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "List the user's currently-open Office documents",
+        "description": "\n\n**Required Permission:** `office_bridge::use`\n\nUse the office-bridge tools for open Office documents.",
+        "operationId": "OfficeBridge.listDocuments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the office-bridge tools for open Office documents.",
+                        "name": "OfficeBridgeUse",
+                        "value": "office_bridge::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpenDoc"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/office-bridge/connect": {
       "post": {
         "tags": [
@@ -31011,6 +31064,15 @@
           "ok"
         ]
       },
+      "OfficeApp": {
+        "description": "Which Office application a document belongs to.",
+        "type": "string",
+        "enum": [
+          "word",
+          "excel",
+          "power_point"
+        ]
+      },
       "OfficeBridgeSettings": {
         "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
         "type": "object",
@@ -31065,6 +31127,55 @@
         "required": [
           "completed_guide_ids",
           "completed_step_ids"
+        ]
+      },
+      "OpenDoc": {
+        "description": "One currently-open Office document, as enumerated by the platform.\n\n `full_name` is the app's own fully-qualified document identifier (path +\n name for a saved doc, or just the name for an unsaved one) — it is the\n stable handle callers pass back to [`OfficePlatform::act_on_document`].",
+        "type": "object",
+        "properties": {
+          "active": {
+            "description": "Whether this is the app's currently-active document.",
+            "type": "boolean"
+          },
+          "app": {
+            "description": "The owning application (Word/Excel/PowerPoint).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OfficeApp"
+              }
+            ]
+          },
+          "attach_method": {
+            "description": "How the platform attached to this doc (e.g. `\"com_get_active_object\"`,\n `\"accessible_object_from_window\"`, `\"enum_windows_presence\"`). Purely\n diagnostic; opaque to callers.",
+            "type": "string"
+          },
+          "full_name": {
+            "description": "App-qualified full name — the handle for `act_on_document`.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Short document name (e.g. `Report.docx`).",
+            "type": "string"
+          },
+          "path": {
+            "description": "Filesystem path of the containing folder, if the doc has been saved.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "saved": {
+            "description": "Whether the document has no unsaved changes (`Document.Saved`).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app",
+          "name",
+          "full_name",
+          "saved",
+          "active",
+          "attach_method"
         ]
       },
       "OperatingSystemInfo": {

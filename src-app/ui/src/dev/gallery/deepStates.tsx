@@ -19,6 +19,7 @@ import { Loading } from '@/core/components/Loading'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
+import { OFFICE_DOCS_PANEL_ID } from '@/modules/office-bridge/stores/officeBridgeSync'
 import { type InteractionRecipe, useRunInteraction } from './interactions'
 import { holdForever } from './seeded/helpers'
 import { ModelPicker } from '@/modules/user-llm-providers/ModelPicker.store'
@@ -314,6 +315,42 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         title: 'Literature screening',
         type: 'literature',
         data: literaturePanelData,
+      })
+    },
+  },
+  {
+    slug: 'deep-chat-right-panel-office-bridge',
+    title: 'Conversation — right panel open (open Office documents)',
+    conversationId: SHOWCASE_CONVERSATION_ID,
+    note: 'an open-Office-documents tab (registerPanelRenderer("office-bridge"))',
+    setup: async () => {
+      await whenLoaded(SHOWCASE_CONVERSATION_ID)
+      chat().displayInRightPanel({
+        id: OFFICE_DOCS_PANEL_ID,
+        title: 'Open Office documents',
+        type: 'office-bridge',
+        data: {
+          documents: [
+            {
+              app: 'word',
+              name: 'Q3-Report.docx',
+              full_name: 'C:/Users/analyst/Q3-Report.docx',
+              path: 'C:/Users/analyst',
+              saved: true,
+              active: true,
+              attach_method: 'com_get_active_object',
+            },
+            {
+              app: 'excel',
+              name: 'Budget.xlsx',
+              full_name: 'C:/Users/analyst/Budget.xlsx',
+              path: 'C:/Users/analyst',
+              saved: false,
+              active: false,
+              attach_method: 'accessible_object_from_window',
+            },
+          ],
+        },
       })
     },
   },

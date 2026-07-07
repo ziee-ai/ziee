@@ -3613,6 +3613,9 @@ export interface MutationResponse {
   ok: boolean
 }
 
+/** Which Office application a document belongs to. */
+export type OfficeApp = 'word' | 'excel' | 'power_point'
+
 /** Deployment-wide office-bridge settings (singleton row). Returned by GET. */
 export interface OfficeBridgeSettings {
   /** Public fingerprint of the locally-trusted bridge cert (not a secret). */
@@ -3633,6 +3636,34 @@ export interface OfficeBridgeSettings {
 export interface OnboardingProgress {
   completed_guide_ids: string[]
   completed_step_ids: string[]
+}
+
+/**
+ * One currently-open Office document, as enumerated by the platform.
+ *
+ *  `full_name` is the app's own fully-qualified document identifier (path +
+ *  name for a saved doc, or just the name for an unsaved one) — it is the
+ *  stable handle callers pass back to [`OfficePlatform::act_on_document`].
+ */
+export interface OpenDoc {
+  /** Whether this is the app's currently-active document. */
+  active: boolean
+  /** The owning application (Word/Excel/PowerPoint). */
+  app: OfficeApp
+  /**
+   * How the platform attached to this doc (e.g. `"com_get_active_object"`,
+   *  `"accessible_object_from_window"`, `"enum_windows_presence"`). Purely
+   *  diagnostic; opaque to callers.
+   */
+  attach_method: string
+  /** App-qualified full name — the handle for `act_on_document`. */
+  full_name: string
+  /** Short document name (e.g. `Report.docx`). */
+  name: string
+  /** Filesystem path of the containing folder, if the doc has been saved. */
+  path?: string
+  /** Whether the document has no unsaved changes (`Document.Saved`). */
+  saved: boolean
 }
 
 export interface OperatingSystemInfo {
@@ -6263,6 +6294,7 @@ export enum Permissions {
   MessagesRead = 'messages::read',
   OfficeBridgeAdminRead = 'office_bridge::admin::read',
   OfficeBridgeManage = 'office_bridge::admin::manage',
+  OfficeBridgeUse = 'office_bridge::use',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
   ProjectsCreate = 'projects::create',
@@ -6396,6 +6428,7 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesRead: 'Read messages in conversations',
   OfficeBridgeAdminRead: 'Read office-bridge settings (enable, port, connection state).',
   OfficeBridgeManage: 'Update office-bridge settings (enable, port).',
+  OfficeBridgeUse: 'Use the office-bridge tools for open Office documents.',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
   ProjectsCreate: 'Create chat projects',
@@ -6686,6 +6719,7 @@ export const ApiEndpoints = {
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'OfficeBridge.connect': 'POST /api/office-bridge/connect',
   'OfficeBridge.getSettings': 'GET /api/office-bridge/settings',
+  'OfficeBridge.listDocuments': 'GET /api/office-bridge/documents',
   'OfficeBridge.updateSettings': 'PUT /api/office-bridge/settings',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
@@ -7039,6 +7073,7 @@ export type ApiEndpointParameters = {
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'OfficeBridge.connect': void
   'OfficeBridge.getSettings': void
+  'OfficeBridge.listDocuments': void
   'OfficeBridge.updateSettings': UpdateOfficeBridgeSettingsRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
@@ -7392,6 +7427,7 @@ export type ApiEndpointResponses = {
   'Message.stopGeneration': void
   'OfficeBridge.connect': ConnectReadiness
   'OfficeBridge.getSettings': OfficeBridgeSettings
+  'OfficeBridge.listDocuments': OpenDoc[]
   'OfficeBridge.updateSettings': OfficeBridgeSettings
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
