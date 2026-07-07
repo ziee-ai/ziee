@@ -1,11 +1,8 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { seedProjectFile, openPreviewDrawer } from './helpers'
+import { seedProjectImage, openPreviewDrawer } from './helpers'
 
 // TEST-5 (ITEM-1, ITEM-2, ITEM-3): image zoom / fit-mode / pan.
-// A 2×2 red PNG (base64) — small but real, so the backend thumbnails it.
-const PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP8z8Dwn4EIwDiqEAAlwQMFvA0kCwAAAABJRU5ErkJggg=='
 
 test.describe('File viewer — image zoom', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -13,14 +10,14 @@ test.describe('File viewer — image zoom', () => {
   })
 
   test('zoom controls flip fit-mode and scale the body', async ({ page, testInfra }) => {
-    const content = atob(PNG_BASE64)
-    await seedProjectFile(page, testInfra.baseURL, {
+    // A sizeable image so a zoom reliably overflows the drawer body (pannable).
+    await seedProjectImage(page, testInfra.baseURL, {
       projectName: `Img ${Date.now()}`,
-      filename: 'pixel.png',
-      content,
-      mime: 'image/png',
+      filename: 'picture.png',
+      width: 640,
+      height: 480,
     })
-    const drawer = await openPreviewDrawer(page, 'pixel.png')
+    const drawer = await openPreviewDrawer(page, 'picture.png')
 
     // Zoom controls render in the header for the right-panel image viewer.
     const zoomIn = drawer.getByTestId('file-viewer-zoom-in-btn')

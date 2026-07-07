@@ -8,7 +8,7 @@
 ## Summary
 
 - **316** surfaces carry at least one renderable-state signal.
-- **1749** signals total: 1367 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
+- **1753** signals total: 1371 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1553,13 +1553,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!file` | 20 |
 | branch | `errored` | 21 |
-| branch | `view.mode === 'fit'` | 100 |
-| branch | `!thumbnailUrl` | 110 |
-| branch | `view.mode === 'fit'` | 119 |
-| branch | `o.x <= 0 && o.y <= 0` | 141 |
-| branch | `!d` | 156 |
-| branch | `!d` | 178 |
-| branch | `o.x <= 0 && o.y <= 0` | 181 |
+| branch | `view.mode === 'fit'` | 98 |
+| branch | `view.mode === 'fit'` | 111 |
+| branch | `!c \|\| typeof ResizeObserver === 'undefined'` | 113 |
+| branch | `!thumbnailUrl` | 126 |
+| branch | `view.mode === 'fit'` | 135 |
+| branch | `o.x <= 0 && o.y <= 0` | 157 |
+| branch | `!d` | 172 |
+| branch | `rafRef.current` | 179 |
+| branch | `!d` | 187 |
+| branch | `!d` | 207 |
+| branch | `o.x <= 0 && o.y <= 0` | 211 |
 
 ### `modules/file/viewers/image/header`
 
@@ -1644,14 +1648,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `docListener` | 26 |
-| branch | `!(e.ctrlKey \|\| e.metaKey)` | 28 |
-| branch | `e.key !== 'f' && e.key !== 'F'` | 29 |
-| branch | `isVisible(openRegions[i].el)` | 32 |
-| branch | `!supported` | 104 |
-| branch | `!el` | 106 |
-| branch | `supported` | 117 |
-| branch | `active` | 123 |
+| branch | `docListener` | 40 |
+| branch | `!(e.ctrlKey \|\| e.metaKey)` | 42 |
+| branch | `e.key !== 'f' && e.key !== 'F'` | 43 |
+| branch | `unfocused \|\| r.host.contains(active)` | 51 |
+| branch | `!supported` | 130 |
+| branch | `!el` | 132 |
+| branch | `supported` | 143 |
+| branch | `active` | 149 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 

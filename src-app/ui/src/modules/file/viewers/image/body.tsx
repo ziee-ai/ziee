@@ -88,10 +88,8 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
     }
   }
 
-  const applyTransform = (t: { x: number; y: number }) => {
-    const img = imgRef.current
-    if (img) img.style.transform = `translate(${t.x}px, ${t.y}px) scale(${view.scale})`
-  }
+  // rAF handle coalescing pointermove → one setState per frame.
+  const rafRef = useRef(0)
 
   // Re-clamp pan whenever the mode/scale changes: fit has nothing to pan (→ 0);
   // a zoom-OUT shrinks the overflow so a prior translate must be pulled back
@@ -106,6 +104,24 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
     // fileId included so a reused panel resets for a different file.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.mode, view.scale, fileId])
+
+  // Re-clamp on container resize too (drawer/window resize shrinks the overflow
+  // and would otherwise strand a panned image off-screen). Actual mode only.
+  useEffect(() => {
+    if (view.mode === 'fit') return
+    const c = containerRef.current
+    if (!c || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      const o = overflow()
+      setTranslate(prev => clampTranslate(prev.x, prev.y, o.x, o.y))
+    })
+    ro.observe(c)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.mode, view.scale])
+
+  // Cancel any pending rAF on unmount.
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
 
   if (!thumbnailUrl) {
     return (
@@ -154,17 +170,30 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current
     if (!d) return
-    // Use the dims measured at pointerdown (no per-move reflow) and write the
-    // transform straight to the DOM (no per-move React re-render).
+    // Dims measured once at pointerdown (no per-move reflow). Commit through
+    // React state, but COALESCED to one setState per animation frame so a fast
+    // pointer stream doesn't re-render per event — and React stays the source of
+    // truth for the transform (a direct style write would be reverted by any
+    // interleaved re-render, snapping the image back mid-drag).
     d.latest = clampTranslate(d.tx + (e.clientX - d.x), d.ty + (e.clientY - d.y), d.ox, d.oy)
-    applyTransform(d.latest)
+    if (rafRef.current) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0
+      if (drag.current) setTranslate(drag.current.latest)
+    })
   }
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current
+    if (!d) return // not an active drag (e.g. pointerleave with no drag) — no-op
     drag.current = null
     setDragging(false)
-    if (d) setTranslate(d.latest) // commit the final position to state
-    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    cancelAnimationFrame(rafRef.current)
+    rafRef.current = 0
+    setTranslate(d.latest) // commit the final position
+    const el = e.target as HTMLElement
+    // Only release if this element still holds the capture (a prior pointerup may
+    // already have released it — releasing a stale pointerId throws).
+    if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId)
   }
   const onKeyDown = (e: React.KeyboardEvent) => {
     const STEP = 40
@@ -176,23 +205,28 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
     }
     const d = delta[e.key]
     if (!d) return
-    e.preventDefault()
+    // Check overflow BEFORE preventing default — if there's nothing to pan, let
+    // the key do its normal thing instead of swallowing it (no scroll trap).
     const o = overflow()
     if (o.x <= 0 && o.y <= 0) return
+    e.preventDefault()
     setTranslate(prev => clampTranslate(prev.x + d[0], prev.y + d[1], o.x, o.y))
   }
 
   return (
     <div
       ref={containerRef}
-      className="flex items-center justify-center h-full w-full overflow-hidden touch-none select-none outline-none"
+      className="flex items-center justify-center h-full w-full overflow-hidden touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       style={{ cursor: dragging ? 'grabbing' : 'grab' }}
       data-testid="image-viewer-body"
       data-view-mode="actual"
       data-scale={view.scale}
-      // Focusable so keyboard users can pan; the label announces the affordance.
+      // Focusable pannable region — role=group (not img: img would make the
+      // subtree presentational and hide that it's an operable widget). The
+      // roledescription + label announce the arrow-key affordance.
       tabIndex={0}
-      role="img"
+      role="group"
+      aria-roledescription="Pannable image"
       aria-label={`${filename} — zoomed; use arrow keys to pan`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

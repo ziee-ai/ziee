@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { FindBar } from './FindBar'
 import { useFindInDocument, type HighlightNames } from './useFindInDocument'
@@ -6,13 +6,17 @@ import { isHighlightSupported } from './highlightSupported'
 
 // ── Module-level open-find registry ──────────────────────────────────────────
 // A single document-level Ctrl/Cmd-F listener drives whichever mounted region is
-// topmost AND visible. A per-region onKeyDown would only fire when focus already
-// sits inside the region — but a text/markdown body has no focusable descendants,
-// so on a freshly-opened drawer focus stays on <body> and native find would win.
-// This registry makes Ctrl-F open the in-app bar regardless of focus, while a
-// hidden (inactive right-panel tab) region never steals the shortcut.
+// the current FOCUS CONTEXT. A per-region onKeyDown would only fire when focus
+// already sits inside the region — but a text/markdown body has no focusable
+// descendants, so on a freshly-opened drawer focus stays on <body> and native
+// find would win. The listener therefore also handles the "focus on body/host"
+// case, but ONLY intercepts when focus is genuinely inside this viewer's surface
+// (the region, or its host dialog/full-page container, or nowhere) — so pressing
+// Ctrl-F while typing in an unrelated field (chat composer, sidebar) still gets
+// the browser's native find.
 interface RegionEntry {
   el: HTMLElement
+  host: HTMLElement
   open: () => void
 }
 const openRegions: RegionEntry[] = []
@@ -22,18 +26,36 @@ function isVisible(el: HTMLElement): boolean {
   return el.offsetParent !== null && el.getClientRects().length > 0
 }
 
+/** The surface a region belongs to (its dialog / full-page container), used to
+ *  decide whether focus is "inside this viewer". Falls back to the region. */
+function hostOf(el: HTMLElement): HTMLElement {
+  return (
+    (el.closest(
+      '[role="dialog"],[data-testid="file-view-page"]',
+    ) as HTMLElement | null) ?? el
+  )
+}
+
 function ensureDocListener() {
   if (docListener) return
   docListener = (e: KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey)) return
     if (e.key !== 'f' && e.key !== 'F') return
-    // Topmost (last-registered) VISIBLE region wins.
+    const active = document.activeElement
+    // Focus is "unclaimed" (body/null) → the topmost visible viewer may take it.
+    const unfocused = !active || active === document.body
+    // Topmost (last-registered) VISIBLE region whose surface owns focus wins.
     for (let i = openRegions.length - 1; i >= 0; i--) {
-      if (isVisible(openRegions[i].el)) {
+      const r = openRegions[i]
+      if (!isVisible(r.el)) continue
+      if (unfocused || r.host.contains(active)) {
         e.preventDefault()
-        openRegions[i].open()
+        r.open()
         return
       }
+      // A visible viewer exists but focus is elsewhere (composer/sidebar): do NOT
+      // hijack — fall through to the browser's native find.
+      return
     }
   }
   document.addEventListener('keydown', docListener)
@@ -74,12 +96,16 @@ export function FindableRegion({
   const contentRef = useRef<HTMLDivElement>(null)
   const regionRef = useRef<HTMLDivElement>(null)
 
-  // Namespace the process-global highlight registry per file so two mounted
-  // regions never clobber each other's highlights.
-  const names: HighlightNames = useMemo(
-    () => ({ all: `file-find-${fileId}`, active: `file-find-active-${fileId}` }),
-    [fileId],
-  )
+  // Namespace the process-global highlight registry per INSTANCE (not per fileId —
+  // the same file can be open in two regions at once, e.g. the preview drawer +
+  // the /files/:id full page — which would otherwise clobber each other). An
+  // ident-safe random suffix so `::highlight(<name>)` is valid CSS.
+  const namesRef = useRef<HighlightNames | null>(null)
+  if (!namesRef.current) {
+    const uid = Math.random().toString(36).slice(2, 10)
+    namesRef.current = { all: `file-find-${uid}`, active: `file-find-active-${uid}` }
+  }
+  const names = namesRef.current!
 
   const active = supported && open
   const { count, activeIndex, next, prev } = useFindInDocument(
@@ -104,7 +130,7 @@ export function FindableRegion({
     if (!supported) return
     const el = regionRef.current
     if (!el) return
-    return registerRegion({ el, open: openFind })
+    return registerRegion({ el, host: hostOf(el), open: openFind })
   }, [supported, openFind])
 
   return (
