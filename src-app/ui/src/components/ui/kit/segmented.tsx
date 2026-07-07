@@ -10,6 +10,8 @@ export interface SegmentedOption {
   label: React.ReactNode
   value: string
   disabled?: boolean
+  /** Accessible name for an icon-only option (the label has no text of its own). */
+  'aria-label'?: string
 }
 
 interface SegmentedBase {
@@ -66,6 +68,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(functi
             key={o.value}
             value={o.value}
             disabled={o.disabled || s.disabled || s.readOnly}
+            aria-label={o['aria-label']}
             data-testid={`${testid}-opt-${o.value}`}
             // Stable, primitive-independent selected-state hook. Base UI marks the
             // active tab with a bare `data-active`; we additionally emit an explicit

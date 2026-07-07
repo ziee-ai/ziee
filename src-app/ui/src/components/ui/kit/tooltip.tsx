@@ -24,12 +24,19 @@ export const Tooltip = React.forwardRef<HTMLElement, TooltipProps>(function Tool
   ref,
 ) {
   const body = content ?? title
+  // When the body is a plain string, carry it in the marker so a wrapped
+  // icon-only kit <Button> can adopt it as its accessible name (aria-label)
+  // — an outer <Tooltip content="X"> is otherwise the ONLY label an icon
+  // button has, yet it never reached the DOM as a name (a11y-name failures).
+  // Empty string still marks "wrapped" (presence, not value, suppresses the
+  // Button's own auto-tooltip); a non-empty value additionally names it.
+  const marker = typeof body === 'string' ? body : ''
   // Merge any parent-injected props (e.g. an asChild trigger's onClick/ref)
   // onto the child so composition works regardless of nesting order.
   const child = (
     // Mark the child so a wrapped kit <Button> suppresses its own aria-label
     // auto-tooltip — this <Tooltip> already owns the tooltip (no double popup).
-    <Slot data-tooltip-wrapped="" ref={ref as React.Ref<HTMLElement>} {...rest}>
+    <Slot data-tooltip-wrapped={marker} ref={ref as React.Ref<HTMLElement>} {...rest}>
       {children}
     </Slot>
   )

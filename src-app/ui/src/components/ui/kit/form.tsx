@@ -227,6 +227,7 @@ export function FormField(props: FormFieldProps) {
   const beside = layout === 'horizontal' || layout === 'inline'
   const uid = React.useId()
   const fieldId = `${uid}-field`
+  const labelId = `${uid}-label`
   const descId = `${uid}-desc`
   const errId = `${uid}-err`
   const childProps = children.props as {
@@ -263,11 +264,18 @@ export function FormField(props: FormFieldProps) {
         }
         if (showError) injected.invalid = true
         if (required) injected['aria-required'] = true
+        // Accessible name. With a visible label, point the control at it via
+        // aria-labelledby (in ADDITION to the label's htmlFor) — a bare
+        // htmlFor/id pair names <input> for AT but some controls/checkers only
+        // resolve a name via aria-label(ledby); aria-labelledby to the visible
+        // label is the gold-standard association and names textarea/select too.
+        if (label != null) injected['aria-labelledby'] = ariaLabelledby ?? labelId
         // No visible label → the explicit name goes on the control itself.
         if (label == null && ariaLabel) injected['aria-label'] = ariaLabel
         if (label == null && ariaLabelledby) injected['aria-labelledby'] = ariaLabelledby
         const labelEl = label != null && (
           <FieldLabel
+            id={labelId}
             htmlFor={fieldId}
             // fixed label column for horizontal layout (legacy labelCol). Internal style
             // is allowed inside the kit; the style-guard only gates CONSUMER style props.

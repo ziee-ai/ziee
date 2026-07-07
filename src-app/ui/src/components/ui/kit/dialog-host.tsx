@@ -71,7 +71,9 @@ export const dialog = {
 }
 
 const toneIcon = { success: CheckCircle2, warning: AlertTriangle, error: XCircle, default: Info } as const
-const toneColor = { success: 'text-green-600', warning: 'text-amber-600', error: 'text-destructive', default: 'text-blue-600' } as const
+// Semantic status tokens (WCAG-AA on the dialog surface in both themes) — never
+// raw palette classes like text-amber-600 (rgb 227,98,9 → 3.49:1 on white, fails AA).
+const toneColor = { success: 'text-success', warning: 'text-warning', error: 'text-destructive', default: 'text-info' } as const
 
 // Mount ONCE at the app root, alongside <Toaster/>.
 export function DialogHost() {

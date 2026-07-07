@@ -38,11 +38,13 @@ export function RawToggle({ file }: { file: FileEntity }) {
       options={[
         {
           value: 'compiled',
+          // aria-label on the option names the interactive tab itself (the inner
+          // icon span's label doesn't propagate up to the role=tab element).
+          'aria-label': 'Rendered view',
           label: (
             <Tooltip title="Rendered view">
               <span
                 className="flex items-center"
-                aria-label="Rendered view"
                 data-testid="file-viewer-rendered-btn"
               >
                 <Eye />
@@ -52,11 +54,11 @@ export function RawToggle({ file }: { file: FileEntity }) {
         },
         {
           value: 'raw',
+          'aria-label': 'Raw view',
           label: (
             <Tooltip title="Raw view">
               <span
                 className="flex items-center"
-                aria-label="Raw view"
                 data-testid="file-viewer-raw-btn"
               >
                 <Code />

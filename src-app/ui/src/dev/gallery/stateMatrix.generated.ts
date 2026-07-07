@@ -77,9 +77,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed"],
     signals: [
       { kind: "branch", condition: "regionLoading", line: 72 },
-      { kind: "loading", condition: "loading", line: 95 },
-      { kind: "branch", condition: "icon != null", line: 95 },
-      { kind: "branch", condition: "linkHref && !isDisabled", line: 102 },
+      { kind: "loading", condition: "loading", line: 106 },
+      { kind: "branch", condition: "icon != null", line: 106 },
+      { kind: "branch", condition: "linkHref && !isDisabled", line: 113 },
     ],
   },
   "components/ui/kit/card": {
@@ -146,12 +146,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/dialog-host",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "!items.some((x) => x.id === it.id)", line: 82 },
-      { kind: "branch", condition: "it == null", line: 90 },
-      { kind: "overlay", condition: "<AlertDialog open>", line: 94 },
-      { kind: "branch", condition: "Icon != null", line: 98 },
-      { kind: "branch", condition: "it.description != null", line: 101 },
-      { kind: "branch", condition: "it.cancelText != null", line: 104 },
+      { kind: "branch", condition: "!items.some((x) => x.id === it.id)", line: 84 },
+      { kind: "branch", condition: "it == null", line: 92 },
+      { kind: "overlay", condition: "<AlertDialog open>", line: 96 },
+      { kind: "branch", condition: "Icon != null", line: 100 },
+      { kind: "branch", condition: "it.description != null", line: 103 },
+      { kind: "branch", condition: "it.cancelText != null", line: 106 },
     ],
   },
   "components/ui/kit/dropdown": {
@@ -190,11 +190,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!el || layout !== 'horizontal'", line: 157 },
-      { kind: "branch", condition: "label != null", line: 269 },
-      { kind: "branch", condition: "required", line: 277 },
-      { kind: "branch", condition: "description != null", line: 281 },
-      { kind: "branch", condition: "showError", line: 283 },
-      { kind: "branch", condition: "beside", line: 285 },
+      { kind: "branch", condition: "label != null", line: 276 },
+      { kind: "branch", condition: "required", line: 285 },
+      { kind: "branch", condition: "description != null", line: 289 },
+      { kind: "branch", condition: "showError", line: 291 },
+      { kind: "branch", condition: "beside", line: 293 },
     ],
   },
   "components/ui/kit/image": {
@@ -309,8 +309,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/result",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "subtitle != null", line: 34 },
-      { kind: "branch", condition: "extra != null", line: 35 },
+      { kind: "branch", condition: "subtitle != null", line: 35 },
+      { kind: "branch", condition: "extra != null", line: 36 },
     ],
   },
   "components/ui/kit/section-header": {
@@ -325,8 +325,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/segmented",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "loading", condition: "s.loading", line: 45 },
-      { kind: "branch", condition: "name != null", line: 49 },
+      { kind: "loading", condition: "s.loading", line: 47 },
+      { kind: "branch", condition: "name != null", line: 51 },
     ],
   },
   "components/ui/kit/select": {
@@ -1438,7 +1438,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["empty"],
     signals: [
       { kind: "empty", condition: "file.text_page_count === 0", line: 29 },
-      { kind: "branch", condition: "text === undefined || text === ''", line: 95 },
+      { kind: "branch", condition: "text === undefined || text === ''", line: 97 },
     ],
   },
   "modules/file/viewers/tabular/DelimitedTable": {
@@ -3063,7 +3063,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading && !available", line: 43 },
       { kind: "error", condition: "error && !available", line: 49 },
       { kind: "empty", condition: "allRows.length === 0", line: 68 },
-      { kind: "branch", condition: "skill.description", line: 111 },
+      { kind: "branch", condition: "skill.description", line: 119 },
     ],
   },
   "modules/skill/components/ImportSkillDialog": {

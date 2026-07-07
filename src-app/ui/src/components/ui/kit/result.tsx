@@ -10,7 +10,8 @@ const codeAlias: Record<string, 'success' | 'error' | 'warning' | 'info'> = {
   '403': 'warning', '404': 'info', '500': 'error',
 }
 const icons = { success: CheckCircle2, error: XCircle, warning: AlertTriangle, info: Info }
-const colors = { success: 'text-green-600', error: 'text-destructive', warning: 'text-amber-600', info: 'text-blue-600' }
+// Semantic status tokens (WCAG-AA in both themes) — never raw palette classes.
+const colors = { success: 'text-success', error: 'text-destructive', warning: 'text-warning', info: 'text-info' }
 
 export interface ResultProps {
   status?: ResultStatus

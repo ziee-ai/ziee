@@ -97,17 +97,25 @@ export function ConversationSkillsPanel({
             key={skill.id || index}
             className="flex items-center justify-between py-2"
           >
-            <div className="flex-1">
-              <Button
-                variant="link"
-                data-testid={`skill-conversation-open-${skill.id}`}
-                className="h-auto p-0 font-medium text-inherit"
-                // Thread conversationId so the detail drawer's "Hide in
-                // this conversation" checkbox is reachable from chat.
-                onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
-              >
-                {skill.display_name || skill.name}
-              </Button>
+            {/* min-w-0 lets this flex child shrink below its content so the
+                description below can truncate instead of overrunning the
+                Switch; the name sits in its own block so the description
+                drops to the next line and ellipsis-clips within the bound. */}
+            <div className="flex-1 min-w-0">
+              <div>
+                <Button
+                  variant="link"
+                  data-testid={`skill-conversation-open-${skill.id}`}
+                  className="h-auto max-w-full p-0 font-medium text-inherit"
+                  // Thread conversationId so the detail drawer's "Hide in
+                  // this conversation" checkbox is reachable from chat.
+                  onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
+                >
+                  <span className="truncate">
+                    {skill.display_name || skill.name}
+                  </span>
+                </Button>
+              </div>
               {skill.description ? (
                 <Text type="secondary" ellipsis>
                   {skill.description}
@@ -117,6 +125,7 @@ export function ConversationSkillsPanel({
             <Switch
               tooltip="Toggle this skill for the conversation"
               size="sm"
+              className="shrink-0"
               data-testid={`skill-conversation-switch-${skill.id}`}
               checked={visible}
               onChange={next => void handleToggle(skill.id, next)}

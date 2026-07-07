@@ -111,7 +111,10 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* Darkened from 0.556 so muted text (text-xs) clears WCAG-AA 4.5:1 even on the
+   * muted/secondary surface (oklch 0.97): grayscale luminance = L³, so on that bg
+   * 0.556→4.34:1 (fails) while 0.52→5.05:1. Still AA on white (5.5:1). */
+  --muted-foreground: oklch(0.52 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   /* Darkened from 0.577 so `text-destructive` clears WCAG-AA 4.5:1 as small

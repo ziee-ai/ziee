@@ -77,17 +77,28 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
     // aria-disabled + block activation, so `aria-busy` is announced and focus isn't lost.
     const nativeDisabled = surfaceDisabled
     const isDisabled = surfaceDisabled || loading
-    // a string tooltip becomes the accessible name (unless an explicit aria-label is given).
     const ariaLabelProp = (props as { 'aria-label'?: string })['aria-label']
-    const ariaLabel = ariaLabelProp ?? (typeof tooltip === 'string' ? tooltip : undefined)
+    // Suppressed when an outer kit <Tooltip> already wraps this button (it injects
+    // data-tooltip-wrapped via Slot) — avoids a double tooltip popup. When that
+    // marker carries a string, it is the outer tooltip's label.
+    const tooltipWrapMarker = (props as Record<string, unknown>)['data-tooltip-wrapped']
+    const tooltipWrapped = tooltipWrapMarker != null
+    const iconOnly = icon != null && children == null
+    // Adopt the wrapping <Tooltip content="X">'s label as the accessible name for
+    // an otherwise-unnamed icon-only button — otherwise it has none (the visible
+    // tooltip is not an accessible name). Only for icon-only; a text button keeps
+    // its visible label as the name.
+    const wrappedLabel =
+      iconOnly && typeof tooltipWrapMarker === 'string' && tooltipWrapMarker.length > 0
+        ? tooltipWrapMarker
+        : undefined
+    // a string tooltip becomes the accessible name (unless an explicit aria-label is given).
+    const ariaLabel =
+      ariaLabelProp ?? (typeof tooltip === 'string' ? tooltip : undefined) ?? wrappedLabel
     // Icon-only buttons (an icon, no visible text) should surface their accessible
     // name as a hover/focus tooltip too. If the caller gave an aria-label but no
     // explicit tooltip, reuse it — so every icon button has a tooltip without
     // per-call-site wiring.
-    // Suppressed when an outer kit <Tooltip> already wraps this button (it injects
-    // data-tooltip-wrapped via Slot) — avoids a double tooltip popup.
-    const tooltipWrapped = (props as Record<string, unknown>)['data-tooltip-wrapped'] != null
-    const iconOnly = icon != null && children == null
     const effectiveTooltip =
       tooltip ?? (iconOnly && !tooltipWrapped && typeof ariaLabelProp === 'string' ? ariaLabelProp : undefined)
     const inner = (

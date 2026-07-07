@@ -464,6 +464,7 @@ export function McpConfigModal() {
               value={loopSettings.max_iteration ?? 10}
               onChange={(value) => mcpStore.setLoopSettings(currentConversationId, { max_iteration: value ?? 10 })}
               className="w-[100px]"
+              aria-label="Max iterations"
               data-testid="mcp-config-max-iter-input"
             />
             <Text type="secondary" className="text-xs">(0 = unlimited)</Text>

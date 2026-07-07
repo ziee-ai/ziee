@@ -117,9 +117,9 @@ Required states: `delayed`
 | kind | condition | line |
 |---|---|---|
 | branch | `regionLoading` | 72 |
-| loading | `loading` | 95 |
-| branch | `icon != null` | 95 |
-| branch | `linkHref && !isDisabled` | 102 |
+| loading | `loading` | 106 |
+| branch | `icon != null` | 106 |
+| branch | `linkHref && !isDisabled` | 113 |
 
 ### `components/ui/kit/card`
 
@@ -194,12 +194,12 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!items.some((x) => x.id === it.id)` | 82 |
-| branch | `it == null` | 90 |
-| overlay | `<AlertDialog open>` | 94 |
-| branch | `Icon != null` | 98 |
-| branch | `it.description != null` | 101 |
-| branch | `it.cancelText != null` | 104 |
+| branch | `!items.some((x) => x.id === it.id)` | 84 |
+| branch | `it == null` | 92 |
+| overlay | `<AlertDialog open>` | 96 |
+| branch | `Icon != null` | 100 |
+| branch | `it.description != null` | 103 |
+| branch | `it.cancelText != null` | 106 |
 
 ### `components/ui/kit/dropdown`
 
@@ -242,11 +242,11 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!el \|\| layout !== 'horizontal'` | 157 |
-| branch | `label != null` | 269 |
-| branch | `required` | 277 |
-| branch | `description != null` | 281 |
-| branch | `showError` | 283 |
-| branch | `beside` | 285 |
+| branch | `label != null` | 276 |
+| branch | `required` | 285 |
+| branch | `description != null` | 289 |
+| branch | `showError` | 291 |
+| branch | `beside` | 293 |
 
 ### `components/ui/kit/image`
 
@@ -372,8 +372,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `subtitle != null` | 34 |
-| branch | `extra != null` | 35 |
+| branch | `subtitle != null` | 35 |
+| branch | `extra != null` | 36 |
 
 ### `components/ui/kit/section-header`
 
@@ -390,8 +390,8 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `s.loading` | 45 |
-| branch | `name != null` | 49 |
+| loading | `s.loading` | 47 |
+| branch | `name != null` | 51 |
 
 ### `components/ui/kit/select`
 
@@ -1614,7 +1614,7 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | empty | `file.text_page_count === 0` | 29 |
-| branch | `text === undefined \|\| text === ''` | 95 |
+| branch | `text === undefined \|\| text === ''` | 97 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 
@@ -3364,7 +3364,7 @@ Required states: `delayed`, `empty`, `error`
 | loading | `loading && !available` | 43 |
 | error | `error && !available` | 49 |
 | empty | `allRows.length === 0` | 68 |
-| branch | `skill.description` | 111 |
+| branch | `skill.description` | 119 |
 
 ### `modules/skill/components/ImportSkillDialog`
 
