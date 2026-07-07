@@ -78,6 +78,14 @@ test.describe('Template Assistants - Settings Page', () => {
     await assertSuccessMessage(page, 'Assistant created successfully')
     await assertTemplateAssistantExists(page, 'Full Template Assistant')
 
+    // A second (non-default) template so the list has >1 rows — the "Default"
+    // tag is redundant on a single-row list and only renders to disambiguate
+    // among multiple templates.
+    await openCreateAssistantDrawer(page, false)
+    await fillAssistantForm(page, { name: 'Second Template Assistant', description: 'peer row' })
+    await submitAssistantForm(page)
+    await assertSuccessMessage(page, 'Assistant created successfully')
+
     // Verify Default tag
     const row = await getTemplateAssistantRow(page, 'Full Template Assistant')
     const id = await row.getAttribute('data-test-assistant-id')
@@ -132,6 +140,12 @@ test.describe('Template Assistants - Settings Page', () => {
       name: 'Default Template Test',
       isDefault: true,
     })
+    await submitAssistantForm(page)
+
+    // A second (non-default) template so the list has >1 rows — "Default" only
+    // renders when there is more than one template to disambiguate.
+    await openCreateAssistantDrawer(page, false)
+    await fillAssistantForm(page, { name: 'Peer Template Test', description: 'peer row' })
     await submitAssistantForm(page)
 
     const row = await getTemplateAssistantRow(page, 'Default Template Test')

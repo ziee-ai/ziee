@@ -164,13 +164,17 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           label={selected.size > 0 ? `${selected.size} selected` : 'Select all'}
           data-testid="lit-screening-select-all-checkbox"
         />
-        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
+        {/* Bulk-decision buttons echo their result badge's tone (Spec B):
+            Include = green (success), Exclude = red (danger), Unscreen = muted.
+            Outline pills tinted with the SAME semantic tokens as the outcome
+            tags above, so the action visually predicts its result. */}
+        <Button size="default" variant="outline" className="border-success/45 text-success hover:bg-success/10 hover:text-success" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
           Include
         </Button>
-        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
+        <Button size="default" variant="outline" className="border-destructive/45 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
           Exclude
         </Button>
-        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
+        <Button size="default" variant="outline" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
           Unscreen
         </Button>
         <Dropdown

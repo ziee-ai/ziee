@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **308** surfaces carry at least one renderable-state signal.
-- **1709** signals total: 1327 branch, 109 empty, 94 error, 93 loading, 84 overlay, 2 panel.
+- **309** surfaces carry at least one renderable-state signal.
+- **1710** signals total: 1328 branch, 109 empty, 94 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -116,10 +116,10 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `regionLoading` | 51 |
-| loading | `loading` | 74 |
-| branch | `icon != null` | 74 |
-| branch | `linkHref && !isDisabled` | 81 |
+| branch | `regionLoading` | 68 |
+| loading | `loading` | 91 |
+| branch | `icon != null` | 91 |
+| branch | `linkHref && !isDisabled` | 98 |
 
 ### `components/ui/kit/card`
 
@@ -207,9 +207,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 67 |
-| branch | `'type' in it && it.type === 'label'` | 69 |
-| branch | `(it as { icon?: React.ReactNode }).icon != null` | 87 |
+| branch | `'type' in it && it.type === 'divider'` | 72 |
+| branch | `'type' in it && it.type === 'label'` | 74 |
+| branch | `(it as { icon?: React.ReactNode }).icon != null` | 92 |
 
 ### `components/ui/kit/empty`
 
@@ -345,8 +345,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `hover` | 38 |
-| branch | `title != null` | 41 |
+| branch | `hover` | 45 |
+| branch | `title != null` | 48 |
 
 ### `components/ui/kit/progress`
 
@@ -520,8 +520,8 @@ Required states: `delayed`
 | loading | `loading` | 241 |
 | branch | `hasKids` | 243 |
 | branch | `checkable` | 246 |
-| branch | `virtualStyle` | 273 |
-| branch | `!virtual` | 278 |
+| branch | `virtualStyle` | 261 |
+| branch | `!virtual` | 266 |
 
 ### `components/ui/kit/typography`
 
@@ -708,10 +708,10 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && assistants.length === 0` | 138 |
 | empty | `assistants.length === 0` | 146 |
 | error | `error` | 147 |
-| branch | `assistant.is_default` | 181 |
-| branch | `!assistant.enabled` | 184 |
-| branch | `index < assistants.length - 1` | 207 |
-| branch | `assistants.length > 0` | 215 |
+| branch | `assistant.is_default && assistants.length > 1` | 185 |
+| branch | `!assistant.enabled` | 188 |
+| branch | `index < assistants.length - 1` | 211 |
+| branch | `assistants.length > 0` | 219 |
 
 ### `modules/assistant/pages/UserAssistantsSettings`
 
@@ -880,9 +880,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!message.contents \|\| message.contents.length === 0` | 18 |
-| branch | `attachmentBlocks.length > 0` | 80 |
-| branch | `bubbleBlocks.length > 0` | 101 |
+| empty | `!message.contents \|\| message.contents.length === 0` | 19 |
+| branch | `attachmentBlocks.length > 0` | 89 |
+| branch | `bubbleBlocks.length > 0` | 110 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -945,7 +945,7 @@ Required states: `delayed`
 | kind | condition | line |
 |---|---|---|
 | loading | `!loading && messagesArray.length === 0` | 19 |
-| loading | `(loading \|\| isStreaming)` | 44 |
+| loading | `(loading \|\| isStreaming)` | 42 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1103,12 +1103,12 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 49 |
-| branch | `!conversationId` | 75 |
-| loading | `loading && !conversation` | 101 |
-| loading | `!loading && !conversation` | 110 |
-| error | `error` | 113 |
-| error | `error` | 156 |
+| branch | `!sentinel` | 50 |
+| branch | `!conversationId` | 76 |
+| loading | `loading && !conversation` | 102 |
+| loading | `!loading && !conversation` | 111 |
+| error | `error` | 114 |
+| error | `error` | 157 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -1129,9 +1129,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canManage` | 63 |
-| branch | `meta` | 85 |
-| branch | `entry.doi` | 86 |
+| branch | `canManage` | 67 |
+| branch | `meta` | 89 |
+| branch | `entry.doi` | 90 |
 
 ### `modules/citations/components/ImportCitationsModal`
 
@@ -1409,23 +1409,23 @@ Required states: `error`, `open`
 | branch | `onClick` | 117 |
 | branch | `uploadProgress && variant === 'row'` | 124 |
 | error | `isError` | 138 |
-| error | `isError && onRetry` | 164 |
-| branch | `onRemove` | 177 |
-| branch | `uploadProgress` | 196 |
-| error | `isError` | 208 |
-| branch | `onRetry` | 209 |
-| branch | `showFileName` | 227 |
-| branch | `onRemove` | 237 |
-| branch | `!file` | 257 |
-| branch | `variant === 'row'` | 266 |
-| branch | `selectable` | 284 |
-| branch | `hasImage` | 296 |
-| branch | `actions !== undefined` | 311 |
-| branch | `canDownload` | 314 |
-| branch | `hasImage` | 358 |
-| branch | `showFileName` | 365 |
-| branch | `(canDelete \|\| canRemove) && onRemove` | 374 |
-| overlay | `<Confirm open>` | 386 |
+| error | `isError && onRetry` | 163 |
+| branch | `onRemove` | 176 |
+| branch | `uploadProgress` | 195 |
+| error | `isError` | 207 |
+| branch | `onRetry` | 208 |
+| branch | `showFileName` | 226 |
+| branch | `onRemove` | 236 |
+| branch | `!file` | 256 |
+| branch | `variant === 'row'` | 265 |
+| branch | `selectable` | 283 |
+| branch | `hasImage` | 295 |
+| branch | `actions !== undefined` | 310 |
+| branch | `canDownload` | 313 |
+| branch | `hasImage` | 357 |
+| branch | `showFileName` | 364 |
+| branch | `(canDelete \|\| canRemove) && onRemove` | 373 |
+| overlay | `<Confirm open>` | 385 |
 
 ### `modules/file/components/FilePanel`
 
@@ -2134,10 +2134,10 @@ Required states: `empty`
 | empty | `selected.size === 0` | 92 |
 | branch | `degradedSources.length > 0` | 144 |
 | branch | `completeness` | 150 |
-| branch | `record.is_preprint` | 221 |
-| branch | `(record.doi \|\| record.pmid)` | 229 |
-| branch | `record.abstract_text` | 236 |
-| branch | `decision === 'exclude'` | 257 |
+| branch | `record.is_preprint` | 225 |
+| branch | `(record.doi \|\| record.pmid)` | 233 |
+| branch | `record.abstract_text` | 238 |
+| branch | `decision === 'exclude'` | 259 |
 
 ### `modules/literature/components/LiteratureToolResultCard`
 
@@ -3282,6 +3282,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!useMobileLayout` | 287 |
 | branch | `forbiddenSection` | 325 |
 
+### `modules/settings/components/SettingsFormActions`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `saveDisabled && saveDisabledReason` | 50 |
+
 ### `modules/settings/components/SettingsPageContainer`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -3519,8 +3527,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `advanced` | 168 |
 | branch | `advanced` | 202 |
 | branch | `jsonError` | 214 |
-| branch | `treeData.length > 0` | 225 |
-| branch | `extra.length > 0` | 245 |
+| branch | `treeData.length > 0` | 223 |
+| branch | `extra.length > 0` | 243 |
 
 ### `modules/user/components/group/EditUserGroupDrawer`
 
@@ -3538,8 +3546,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.is_system` | 142 |
-| branch | `registeredWidgets.length > 0` | 172 |
+| branch | `group.is_system` | 141 |
+| branch | `registeredWidgets.length > 0` | 176 |
 
 ### `modules/user/components/group/GroupMembersDrawer`
 

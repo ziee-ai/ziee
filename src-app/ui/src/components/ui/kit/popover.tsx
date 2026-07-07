@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Popover as Root, PopoverTrigger, PopoverContent } from '../shadcn/popover'
+import { Button } from './button'
 
 export interface PopoverProps {
   content: React.ReactNode
@@ -27,10 +28,16 @@ export function Popover({ content, title, children, open, onOpenChange, side, al
     : {}
   // Base UI's trigger defaults to nativeButton=true and warns if the rendered
   // element isn't a real <button>. The hover wrapper is a <span>; otherwise the
-  // caller's child may be a <button>, a component (assumed to render one), or a
-  // non-button intrinsic. Only a non-'button' intrinsic needs nativeButton=false.
+  // caller's child may be a native <button>, the kit <Button> (renders one), or a
+  // non-button element/component. Only a real <button> wants nativeButton=true —
+  // a component child can't be introspected for its rendered tag, so we key off
+  // identity: the kit Button is the one component known to render a native button.
   const childType = (children as React.ReactElement)?.type
-  const nativeButton = hover ? false : typeof childType === 'string' ? childType === 'button' : true
+  const nativeButton = hover
+    ? false
+    : typeof childType === 'string'
+      ? childType === 'button'
+      : childType === Button
   return (
     <Root open={isOpen} onOpenChange={setOpen}>
       <PopoverTrigger

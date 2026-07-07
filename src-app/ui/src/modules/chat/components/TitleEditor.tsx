@@ -132,6 +132,7 @@ export function TitleEditor() {
       <Title
         level={5}
         className="!m-0 !leading-tight truncate"
+        data-testid="conversation-title"
       >
         {conversation?.title || 'Untitled Conversation'}
       </Title>

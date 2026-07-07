@@ -31,6 +31,27 @@ type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
   'data-testid': string
 }
 
+// ─── Variant policy (Spec B — control-variant consistency) ────────────────────
+// The design-critic pass repeatedly flagged buttons that pick their variant ad
+// hoc. Pick a variant by ROLE, not by taste:
+//
+//   • Peer icon-only buttons in one chrome cluster (a viewer header, a card
+//     toolbar, a drawer footer) MUST share ONE variant — default to `ghost`.
+//     Don't mix `outline` + `ghost` side by side (e.g. the file-viewer header:
+//     Copy/Download are `ghost` to match the drawer's `ghost` close button).
+//   • A semantic action is colored to match the badge/outcome it produces:
+//     Include → success (green), Exclude/remove → danger (red, `destructive`),
+//     Unscreen / neutral reset → muted (`outline`/`ghost`). The action should
+//     visually predict its result tag.
+//   • The primary Save/submit is ALWAYS the saturated accent (`default`
+//     variant) — never a weak `secondary`/`ghost` look. If it must be disabled
+//     (e.g. a pristine form), keep the accent variant and add a tooltip that
+//     explains WHY (see modules/settings SettingsFormActions.saveDisabledReason);
+//     a greyed accent that explains itself reads as intentional, a greyed weak
+//     variant reads as broken.
+//   • A destructive singleton (a lone Delete) is `ghost` + danger tone, not a
+//     filled red block that dominates the row.
+//
 // Icon-only buttons have no text → no accessible name. The type FORCES a `tooltip`
 // when size="icon" (which also becomes the aria-label and shows on hover + focus).
 export type ButtonProps =

@@ -36,7 +36,7 @@ export function FilePreviewDrawer() {
       placement="right"
       title={titleNode}
       // All viewer actions (rendered/raw toggle, copy, download, …) live in the
-      // footer now — outline icon buttons, out of the title row.
+      // footer now — ghost icon buttons, out of the title row.
       footer={
         file ? (
           <div className="flex items-center justify-end gap-2">

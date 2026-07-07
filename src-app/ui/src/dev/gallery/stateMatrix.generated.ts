@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 308 surfaces carry renderable-state signals; 1709 signals total.
+// 309 surfaces carry renderable-state signals; 1710 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -76,10 +76,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/button",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "branch", condition: "regionLoading", line: 51 },
-      { kind: "loading", condition: "loading", line: 74 },
-      { kind: "branch", condition: "icon != null", line: 74 },
-      { kind: "branch", condition: "linkHref && !isDisabled", line: 81 },
+      { kind: "branch", condition: "regionLoading", line: 68 },
+      { kind: "loading", condition: "loading", line: 91 },
+      { kind: "branch", condition: "icon != null", line: 91 },
+      { kind: "branch", condition: "linkHref && !isDisabled", line: 98 },
     ],
   },
   "components/ui/kit/card": {
@@ -158,9 +158,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/dropdown",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 67 },
-      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 69 },
-      { kind: "branch", condition: "(it as { icon?: React.ReactNode }).icon != null", line: 87 },
+      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 72 },
+      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 74 },
+      { kind: "branch", condition: "(it as { icon?: React.ReactNode }).icon != null", line: 92 },
     ],
   },
   "components/ui/kit/empty": {
@@ -285,8 +285,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/popover",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "hover", line: 38 },
-      { kind: "branch", condition: "title != null", line: 41 },
+      { kind: "branch", condition: "hover", line: 45 },
+      { kind: "branch", condition: "title != null", line: 48 },
     ],
   },
   "components/ui/kit/progress": {
@@ -443,8 +443,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading", line: 241 },
       { kind: "branch", condition: "hasKids", line: 243 },
       { kind: "branch", condition: "checkable", line: 246 },
-      { kind: "branch", condition: "virtualStyle", line: 273 },
-      { kind: "branch", condition: "!virtual", line: 278 },
+      { kind: "branch", condition: "virtualStyle", line: 261 },
+      { kind: "branch", condition: "!virtual", line: 266 },
     ],
   },
   "components/ui/kit/typography": {
@@ -611,10 +611,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error && assistants.length === 0", line: 138 },
       { kind: "empty", condition: "assistants.length === 0", line: 146 },
       { kind: "error", condition: "error", line: 147 },
-      { kind: "branch", condition: "assistant.is_default", line: 181 },
-      { kind: "branch", condition: "!assistant.enabled", line: 184 },
-      { kind: "branch", condition: "index < assistants.length - 1", line: 207 },
-      { kind: "branch", condition: "assistants.length > 0", line: 215 },
+      { kind: "branch", condition: "assistant.is_default && assistants.length > 1", line: 185 },
+      { kind: "branch", condition: "!assistant.enabled", line: 188 },
+      { kind: "branch", condition: "index < assistants.length - 1", line: 211 },
+      { kind: "branch", condition: "assistants.length > 0", line: 219 },
     ],
   },
   "modules/assistant/pages/UserAssistantsSettings": {
@@ -769,9 +769,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ChatMessage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 18 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 80 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 101 },
+      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 19 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 89 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 110 },
     ],
   },
   "modules/chat/components/ContentRenderer": {
@@ -828,7 +828,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed"],
     signals: [
       { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 44 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 42 },
     ],
   },
   "modules/chat/components/TextContent": {
@@ -970,12 +970,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 49 },
-      { kind: "branch", condition: "!conversationId", line: 75 },
-      { kind: "loading", condition: "loading && !conversation", line: 101 },
-      { kind: "loading", condition: "!loading && !conversation", line: 110 },
-      { kind: "error", condition: "error", line: 113 },
-      { kind: "error", condition: "error", line: 156 },
+      { kind: "branch", condition: "!sentinel", line: 50 },
+      { kind: "branch", condition: "!conversationId", line: 76 },
+      { kind: "loading", condition: "loading && !conversation", line: 102 },
+      { kind: "loading", condition: "!loading && !conversation", line: 111 },
+      { kind: "error", condition: "error", line: 114 },
+      { kind: "error", condition: "error", line: 157 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -994,9 +994,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/citations/components/CitationCard",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "canManage", line: 63 },
-      { kind: "branch", condition: "meta", line: 85 },
-      { kind: "branch", condition: "entry.doi", line: 86 },
+      { kind: "branch", condition: "canManage", line: 67 },
+      { kind: "branch", condition: "meta", line: 89 },
+      { kind: "branch", condition: "entry.doi", line: 90 },
     ],
   },
   "modules/citations/components/ImportCitationsModal": {
@@ -1250,23 +1250,23 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "onClick", line: 117 },
       { kind: "branch", condition: "uploadProgress && variant === 'row'", line: 124 },
       { kind: "error", condition: "isError", line: 138 },
-      { kind: "error", condition: "isError && onRetry", line: 164 },
-      { kind: "branch", condition: "onRemove", line: 177 },
-      { kind: "branch", condition: "uploadProgress", line: 196 },
-      { kind: "error", condition: "isError", line: 208 },
-      { kind: "branch", condition: "onRetry", line: 209 },
-      { kind: "branch", condition: "showFileName", line: 227 },
-      { kind: "branch", condition: "onRemove", line: 237 },
-      { kind: "branch", condition: "!file", line: 257 },
-      { kind: "branch", condition: "variant === 'row'", line: 266 },
-      { kind: "branch", condition: "selectable", line: 284 },
-      { kind: "branch", condition: "hasImage", line: 296 },
-      { kind: "branch", condition: "actions !== undefined", line: 311 },
-      { kind: "branch", condition: "canDownload", line: 314 },
-      { kind: "branch", condition: "hasImage", line: 358 },
-      { kind: "branch", condition: "showFileName", line: 365 },
-      { kind: "branch", condition: "(canDelete || canRemove) && onRemove", line: 374 },
-      { kind: "overlay", condition: "<Confirm open>", line: 386 },
+      { kind: "error", condition: "isError && onRetry", line: 163 },
+      { kind: "branch", condition: "onRemove", line: 176 },
+      { kind: "branch", condition: "uploadProgress", line: 195 },
+      { kind: "error", condition: "isError", line: 207 },
+      { kind: "branch", condition: "onRetry", line: 208 },
+      { kind: "branch", condition: "showFileName", line: 226 },
+      { kind: "branch", condition: "onRemove", line: 236 },
+      { kind: "branch", condition: "!file", line: 256 },
+      { kind: "branch", condition: "variant === 'row'", line: 265 },
+      { kind: "branch", condition: "selectable", line: 283 },
+      { kind: "branch", condition: "hasImage", line: 295 },
+      { kind: "branch", condition: "actions !== undefined", line: 310 },
+      { kind: "branch", condition: "canDownload", line: 313 },
+      { kind: "branch", condition: "hasImage", line: 357 },
+      { kind: "branch", condition: "showFileName", line: 364 },
+      { kind: "branch", condition: "(canDelete || canRemove) && onRemove", line: 373 },
+      { kind: "overlay", condition: "<Confirm open>", line: 385 },
     ],
   },
   "modules/file/components/FilePanel": {
@@ -1925,10 +1925,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "empty", condition: "selected.size === 0", line: 92 },
       { kind: "branch", condition: "degradedSources.length > 0", line: 144 },
       { kind: "branch", condition: "completeness", line: 150 },
-      { kind: "branch", condition: "record.is_preprint", line: 221 },
-      { kind: "branch", condition: "(record.doi || record.pmid)", line: 229 },
-      { kind: "branch", condition: "record.abstract_text", line: 236 },
-      { kind: "branch", condition: "decision === 'exclude'", line: 257 },
+      { kind: "branch", condition: "record.is_preprint", line: 225 },
+      { kind: "branch", condition: "(record.doi || record.pmid)", line: 233 },
+      { kind: "branch", condition: "record.abstract_text", line: 238 },
+      { kind: "branch", condition: "decision === 'exclude'", line: 259 },
     ],
   },
   "modules/literature/components/LiteratureToolResultCard": {
@@ -2991,6 +2991,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "forbiddenSection", line: 325 },
     ],
   },
+  "modules/settings/components/SettingsFormActions": {
+    surface: "modules/settings/components/SettingsFormActions",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "saveDisabled && saveDisabledReason", line: 50 },
+    ],
+  },
   "modules/settings/components/SettingsPageContainer": {
     surface: "modules/settings/components/SettingsPageContainer",
     requiredStates: [],
@@ -3207,8 +3214,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "advanced", line: 168 },
       { kind: "branch", condition: "advanced", line: 202 },
       { kind: "branch", condition: "jsonError", line: 214 },
-      { kind: "branch", condition: "treeData.length > 0", line: 225 },
-      { kind: "branch", condition: "extra.length > 0", line: 245 },
+      { kind: "branch", condition: "treeData.length > 0", line: 223 },
+      { kind: "branch", condition: "extra.length > 0", line: 243 },
     ],
   },
   "modules/user/components/group/EditUserGroupDrawer": {
@@ -3224,8 +3231,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/user/components/group/GroupListItem",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "group.is_system", line: 142 },
-      { kind: "branch", condition: "registeredWidgets.length > 0", line: 172 },
+      { kind: "branch", condition: "group.is_system", line: 141 },
+      { kind: "branch", condition: "registeredWidgets.length > 0", line: 176 },
     ],
   },
   "modules/user/components/group/GroupMembersDrawer": {

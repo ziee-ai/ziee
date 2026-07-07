@@ -48,8 +48,11 @@ export function CitationCard({
     <Card size="sm" className="mb-2" data-testid={`cite-card-${entry.id}`}>
       <Space direction="vertical" size={2} className="w-full">
         <Space align="center" className="justify-between w-full">
+          {/* Key-then-badge reading order (Spec C): the citation key is the
+              identity the user scans for, the verification badge qualifies it —
+              e.g. "vaswani2017attention (verified)". Badge tones stay in the
+              success / danger / muted family (see VerificationBadge). */}
           <Space size={8}>
-            <VerificationBadge status={entry.verification_status} />
             <Text
               code
               copyable={{
@@ -59,6 +62,7 @@ export function CitationCard({
             >
               {entry.citation_key}
             </Text>
+            <VerificationBadge status={entry.verification_status} />
           </Space>
           {canManage && (
             <Confirm
