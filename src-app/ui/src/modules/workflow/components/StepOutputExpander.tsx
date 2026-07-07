@@ -1,6 +1,6 @@
 import { Spin, Accordion, Paragraph, message } from '@/components/ui'
 import { useState } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { ApiClient } from '@/api-client'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 

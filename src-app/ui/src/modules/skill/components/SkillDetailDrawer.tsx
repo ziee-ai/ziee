@@ -11,7 +11,7 @@ import {
 } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { ApiClient } from '@/api-client'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
