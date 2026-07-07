@@ -280,6 +280,7 @@ export const GALLERY_COVERAGE = {
   "modules/file/viewers/markdown/body": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/markdown/header": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/pdf/body": { kind: 'via', reason: 'rendered within the file module page' },
+  "modules/file/viewers/pdf/pdfjs-body": { kind: 'via', reason: 'PDF.js viewer rendered within the file preview drawer' },
   "modules/file/viewers/pdf/header": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/shared/RawCodeView": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/viewers/shared/chrome": { kind: 'via', reason: 'rendered within the file module page' },

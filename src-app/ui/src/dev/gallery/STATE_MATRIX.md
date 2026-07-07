@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **314** surfaces carry at least one renderable-state signal.
-- **1722** signals total: 1341 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **315** surfaces carry at least one renderable-state signal.
+- **1731** signals total: 1347 branch, 109 empty, 95 error, 94 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,9 +16,9 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 82 |
+| `delayed` | 83 |
 | `empty` | 86 |
-| `error` | 73 |
+| `error` | 74 |
 | `open` | 71 |
 | `panel-open` | 2 |
 
@@ -1581,12 +1581,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 12 |
-| empty | `!root \|\| file.preview_page_count === 0` | 47 |
-| empty | `file.preview_page_count === 0` | 74 |
-| branch | `truncated` | 86 |
-| branch | `url` | 119 |
-| branch | `pageErrors?.has(i + 1)` | 126 |
+| branch | `!('file' in props)` | 17 |
+| empty | `!root \|\| file.preview_page_count === 0` | 52 |
+| empty | `file.preview_page_count === 0` | 79 |
+| branch | `truncated` | 91 |
+| branch | `url` | 124 |
+| branch | `pageErrors?.has(i + 1)` | 131 |
 
 ### `modules/file/viewers/pdf/header`
 
@@ -1595,6 +1595,22 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!('file' in props)` | 5 |
+
+### `modules/file/viewers/pdf/pdfjs-body`
+
+Required states: `delayed`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!('file' in props)` | 30 |
+| branch | `status !== 'ready' \|\| !doc \|\| !api` | 49 |
+| branch | `!container \|\| !viewer` | 52 |
+| branch | `!c` | 80 |
+| branch | `!c` | 88 |
+| branch | `findOpen` | 214 |
+| loading | `status === 'loading'` | 249 |
+| error | `status === 'error'` | 254 |
+| error | `error` | 263 |
 
 ### `modules/file/viewers/shared/RawCodeView`
 

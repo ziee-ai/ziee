@@ -88,6 +88,58 @@ pub async fn get_preview(
     Ok((StatusCode::OK, (headers, image_data).into_response()))
 }
 
+/// Get a file's original bytes inline (for client-side rendering, e.g. PDF.js).
+///
+/// Distinct from `download_file`: this is gated by `FilesPreview` (the perm that
+/// gates *viewing*) and serves `Content-Disposition: inline` so the browser
+/// hands the bytes to an in-page renderer rather than triggering a download.
+/// The PDF viewer loads real PDFs from here (canvas + text layer client-side),
+/// which is what removes the 50-page preview cap.
+pub async fn get_raw(
+    auth: RequirePermissions<(FilesPreview,)>,
+    Path(file_id): Path<Uuid>,
+) -> ApiResult<Response> {
+    let user_id = auth.user.id;
+
+    // Verify ownership + resolve the head blob (cross-user → 404).
+    let file = Repos.file
+        .get_by_id_and_user(file_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
+
+    // Extract extension (storage keys originals by extension), mirroring
+    // download_file.
+    let extension = file
+        .filename
+        .rsplit('.')
+        .next()
+        .unwrap_or("bin")
+        .to_lowercase();
+
+    let storage = get_file_storage();
+    let file_data = storage
+        .load_original(user_id, file.blob_version_id, &extension)
+        .await
+        .map_err(|_| AppError::not_found("File").to_api_error())?;
+
+    // Inline disposition + the same private, bounded cache as preview/download
+    // so reloads reuse bytes without a round-trip.
+    let headers = [
+        (
+            header::CONTENT_TYPE,
+            file.mime_type
+                .as_deref()
+                .unwrap_or("application/octet-stream")
+                .to_string(),
+        ),
+        (header::CONTENT_DISPOSITION, "inline".to_string()),
+        (header::CONTENT_LENGTH, file_data.len().to_string()),
+        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+    ];
+
+    Ok((StatusCode::OK, (headers, file_data).into_response()))
+}
+
 /// Get file thumbnail (300px, single thumbnail from first page)
 pub async fn get_thumbnail(
     auth: RequirePermissions<(FilesPreview,)>,
@@ -237,6 +289,22 @@ pub fn get_preview_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<BlobType>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("File or preview not found"))
+}
+
+pub fn get_raw_docs(op: TransformOperation) -> TransformOperation {
+    use crate::modules::file::types::BlobType;
+
+    with_permission::<(FilesPreview,)>(op)
+        .id("File.getRaw")
+        .tag("Files")
+        .summary("Get raw file bytes (inline)")
+        .description(
+            "Get a file's original bytes inline for client-side rendering \
+             (e.g. PDF.js). Gated by files::preview; Content-Disposition: inline.",
+        )
+        .response::<200, Json<BlobType>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("File not found"))
 }
 
 /// Get thumbnail OpenAPI documentation

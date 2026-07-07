@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 314 surfaces carry renderable-state signals; 1722 signals total.
+// 315 surfaces carry renderable-state signals; 1731 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1408,12 +1408,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/pdf/body",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 12 },
-      { kind: "empty", condition: "!root || file.preview_page_count === 0", line: 47 },
-      { kind: "empty", condition: "file.preview_page_count === 0", line: 74 },
-      { kind: "branch", condition: "truncated", line: 86 },
-      { kind: "branch", condition: "url", line: 119 },
-      { kind: "branch", condition: "pageErrors?.has(i + 1)", line: 126 },
+      { kind: "branch", condition: "!('file' in props)", line: 17 },
+      { kind: "empty", condition: "!root || file.preview_page_count === 0", line: 52 },
+      { kind: "empty", condition: "file.preview_page_count === 0", line: 79 },
+      { kind: "branch", condition: "truncated", line: 91 },
+      { kind: "branch", condition: "url", line: 124 },
+      { kind: "branch", condition: "pageErrors?.has(i + 1)", line: 131 },
     ],
   },
   "modules/file/viewers/pdf/header": {
@@ -1421,6 +1421,21 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!('file' in props)", line: 5 },
+    ],
+  },
+  "modules/file/viewers/pdf/pdfjs-body": {
+    surface: "modules/file/viewers/pdf/pdfjs-body",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "branch", condition: "!('file' in props)", line: 30 },
+      { kind: "branch", condition: "status !== 'ready' || !doc || !api", line: 49 },
+      { kind: "branch", condition: "!container || !viewer", line: 52 },
+      { kind: "branch", condition: "!c", line: 80 },
+      { kind: "branch", condition: "!c", line: 88 },
+      { kind: "branch", condition: "findOpen", line: 214 },
+      { kind: "loading", condition: "status === 'loading'", line: 249 },
+      { kind: "error", condition: "status === 'error'", line: 254 },
+      { kind: "error", condition: "error", line: 263 },
     ],
   },
   "modules/file/viewers/shared/RawCodeView": {
@@ -3692,7 +3707,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 314 keys.
+ * 316 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3794,6 +3809,8 @@ export type RequiredState =
   | "modules/file/project-extension/components/ProjectFilesManagePanel:empty"
   | "modules/file/viewers/markdown/body:error"
   | "modules/file/viewers/pdf/body:empty"
+  | "modules/file/viewers/pdf/pdfjs-body:delayed"
+  | "modules/file/viewers/pdf/pdfjs-body:error"
   | "modules/file/viewers/shared/chrome:empty"
   | "modules/file/viewers/tabular/XlsxBody:delayed"
   | "modules/file/viewers/tabular/XlsxBody:empty"
@@ -4111,6 +4128,8 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty",
   "modules/file/viewers/markdown/body:error",
   "modules/file/viewers/pdf/body:empty",
+  "modules/file/viewers/pdf/pdfjs-body:delayed",
+  "modules/file/viewers/pdf/pdfjs-body:error",
   "modules/file/viewers/shared/chrome:empty",
   "modules/file/viewers/tabular/XlsxBody:delayed",
   "modules/file/viewers/tabular/XlsxBody:empty",

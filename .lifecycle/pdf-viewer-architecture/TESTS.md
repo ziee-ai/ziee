@@ -14,8 +14,7 @@ the e2e specs drive the real renderer end-to-end (real PDF bytes → real pdfjs)
 
 - **TEST-3** (tier: unit) [covers: ITEM-7] file: `src-app/ui/src/modules/file/viewers/pdf/zoom.test.ts` — asserts: the discrete zoom-step ladder — `nextZoomStep(current, +1)` returns the next-larger step, `nextZoomStep(current, -1)` the next-smaller, both clamped to `[0.25, 4.0]`; a scale between steps snaps to the correct neighbour; actual-size step = 1.0 is present.
 - **TEST-5** (tier: unit) [covers: ITEM-6] file: `src-app/ui/src/modules/file/viewers/pdf/nav.test.ts` — asserts: `clampPage(n, numPages)` clamps to `[1, numPages]`, and `parseJump(input, numPages)` parses a user-typed page string (ignoring non-numeric / out-of-range → clamped or null), used by the jump-to-page input.
-- **TEST-6** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/dev/gallery/mockApi.binary.test.ts` — asserts: a binary cassette entry for `/files/{id}/raw` produces a `Response` with `application/pdf` content-type whose `arrayBuffer()` equals the fixture bytes (proves the new binary-response path returns bytes, not JSON).
-- **TEST-7** (tier: unit) [covers: ITEM-10] file: `src-app/ui/src/modules/file/viewers/pdf/module.test.ts` — asserts: the exported `viewers[]` maps the `application/pdf`/`pdf` entry's `body` to `PdfJsBody` and the DOCX/RTF/ODT entry's `body` to the legacy `PdfBody` (module split routes correctly).
+- **TEST-6** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/dev/gallery/mockApi-binary.test.ts` — asserts: `makeBinaryResponse(bytes, 'application/pdf')` (the pure helper backing the `/files/{id}/raw` cassette route) produces a `Response` with `application/pdf` content-type whose `arrayBuffer()` equals the fixture bytes (proves the new binary-response path returns bytes, not JSON). Standalone alias-/JSX-free module so `node --test` can load it.
 
 ## Frontend — e2e (Playwright, real app)
 
@@ -36,5 +35,5 @@ the e2e specs drive the real renderer end-to-end (real PDF bytes → real pdfjs)
 - ITEM-7 → TEST-3, TEST-10
 - ITEM-8 → TEST-11
 - ITEM-9 → TEST-8
-- ITEM-10 → TEST-7, TEST-8
+- ITEM-10 → TEST-8 (routing proven end-to-end; the JSX `module.tsx` can't be unit-loaded by `node --test`, which strips TS types but not JSX)
 - ITEM-11 → TEST-6, TEST-12
