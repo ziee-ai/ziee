@@ -120,6 +120,11 @@ Detector legend: [G] deterministic DOM-geometry rule (gallery runtime pass — C
 - M3 [V] affordance works but loses user state (toggle resets on rerender, scroll position lost on expand)
 - M4 [V] jobs-to-be-done review question: "as a user of THIS block/surface, what would I try to do next — and can I?" (quote/reply-to a message, re-run a tool call, open a file from its attachment card, copy a table as CSV/markdown)
 
+## N. RTL & directionality readiness
+- N1 [L] **physical direction utility in new/changed code** — Tailwind physical-direction classes (`pl-`/`pr-`/`ml-`/`mr-`/`left-`/`right-`/`text-left`/`text-right`) added on this branch, where the logical equivalent (`ps`/`pe`/`ms`/`me`/`start`/`end`/`text-start`/`text-end`) would flip correctly under `dir="rtl"`. ACTIVE source lint, **diff-scoped** (only lines ADDED vs the origin/main merge-base — legacy code isn't punished, and touching a legacy file doesn't fail on its old lines) and AST-scoped to `className` strings (prose/URLs never false-flagged). Gating (exit 1). Genuine physical needs (transform/keyframe anchor, a deliberately LTR-locked scrubber, an icon that must NOT mirror) opt out with an inline `rtl-ok` marker on the line. Detector: `scripts/lint-logical-direction.mjs` (`npm run lint:logical-direction`). *(RTL-readiness by default: keep new components RTL-clean so an eventual i18n/RTL pass is a config flip, not a rewrite.)*
+- N2 [T] **`dir="rtl"` render matrix** — render key surfaces under `dir="rtl"` and diff against the LTR baseline for clipping / overlap / mirrored-affordance failures. **DORMANT** until an RTL locale ships (i18n not yet landed) — documented here, deliberately NOT wired.
+- N3 [V] **mirrored-crop review** — vision review of RTL crops for icons/affordances that MUST flip (chevrons, back/forward, progress, send) vs. must-NOT (logos, code, media scrubbers, numerals). **DORMANT** until an RTL locale ships — documented here, deliberately NOT wired.
+
 ## Process rules
 1. **Feedback loop**: every human-caught miss = new taxonomy entry + [G] detector if geometrically expressible, else named [V] rubric line. PRs to this file are cheap; misses recurring is not.
 2. **[G] classes gate** (`gate:ui` fails); [V] classes are named lines in the crop-review rubric; [L] classes block commit; [T] run in the runtime pass.

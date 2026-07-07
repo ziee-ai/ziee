@@ -124,6 +124,12 @@ Stay on the scale; never `gap-[7px]`. House conventions (what the codebase actua
 - `gap-3`/`gap-4` (12/16px) — between fields, and between stacked sections.
 - `gap-6` (24px) — between major page blocks. `gap-1` — tight icon/label pairs only.
 - Prefer flex/grid `gap-*` over margins on children for even, direction-agnostic rhythm.
+- **Logical direction only (RTL-ready)** — new components use logical direction properties only
+  (`ps/pe`, `ms/me`, `start/end`, `text-start/text-end`), never the physical `pl/pr`, `ml/mr`,
+  `left/right`, `text-left/text-right`; directional icons (chevrons, back/forward) must flip under
+  RTL. Enforced on new/changed code by `scripts/lint-logical-direction.mjs`
+  (`npm run lint:logical-direction`, taxonomy N1); a genuine physical need opts out with an inline
+  `rtl-ok` marker.
 
 ## Form & settings layout — use `Field`, not raw flex-gap
 
