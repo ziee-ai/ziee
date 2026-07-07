@@ -33,6 +33,17 @@ src-app/server/tests/llm_model/deprecation_sweep_test.rs	1	201	tests-quality,cor
 src-app/server/tests/llm_model/mod.rs	3	4	tests-quality,correctness,patterns-conformance
 src-app/server/tests/llm_provider/discover_models_test.rs	1	116	tests-quality,correctness,patterns-conformance,api-contract
 src-app/server/tests/llm_provider/mod.rs	9	9	tests-quality,correctness,patterns-conformance
+src-app/ui/src/components/ui/testIds.generated.ts	2	2	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/components/ui/testIds.generated.ts	619	619	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/components/ui/testIds.generated.ts	655	661	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	11	11	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	2439	2464	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	2472	2474	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	2613	2619	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	7	7	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	2208	2233	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	2240	2242	state-management,a11y,i18n,patterns-conformance,api-contract,perf
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	2371	2377	state-management,a11y,i18n,patterns-conformance,api-contract,perf
 src-app/ui/src/modules/llm-provider/components/LlmModelsSection.tsx	1	1	state-management,a11y,i18n,patterns-conformance,api-contract,perf
 src-app/ui/src/modules/llm-provider/components/LlmModelsSection.tsx	3	3	state-management,a11y,i18n,patterns-conformance,api-contract,perf
 src-app/ui/src/modules/llm-provider/components/LlmModelsSection.tsx	159	178	state-management,a11y,i18n,patterns-conformance,api-contract,perf

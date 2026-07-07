@@ -21,6 +21,7 @@ import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
+import { mapDiscoveredModelToForm } from '@/modules/llm-provider/components/llm-models/discoveredModelForm'
 
 // The picker sources its options from `GET /discover-models` (catalog + live
 // /v1/models). display_name + description reuse BASIC_MODEL_FIELDS (minus the
@@ -88,12 +89,13 @@ export function AddRemoteLlmModelDrawer() {
     form.setValue('name', id, { shouldValidate: true })
     const m = (discovered || []).find(x => x.id === id)
     if (!m) return
-    form.setValue('display_name', m.display_name || m.id)
-    form.setValue('vision', Boolean(m.supports_vision))
-    form.setValue('tools', Boolean(m.supports_tool_use))
-    form.setValue('text_embedding', Boolean(m.supports_embeddings))
-    form.setValue('chat', m.supports_chat)
-    form.setValue('context_length', m.context_length ?? undefined)
+    const fields = mapDiscoveredModelToForm(m)
+    form.setValue('display_name', fields.display_name)
+    form.setValue('vision', fields.vision)
+    form.setValue('tools', fields.tools)
+    form.setValue('text_embedding', fields.text_embedding)
+    form.setValue('chat', fields.chat)
+    form.setValue('context_length', fields.context_length ?? undefined)
   }
 
   const resetAll = () => {
