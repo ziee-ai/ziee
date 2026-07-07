@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **309** surfaces carry at least one renderable-state signal.
-- **1710** signals total: 1328 branch, 109 empty, 94 error, 93 loading, 84 overlay, 2 panel.
+- **310** surfaces carry at least one renderable-state signal.
+- **1709** signals total: 1328 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -84,10 +84,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `icon != null` | 46 |
-| branch | `title != null` | 47 |
-| branch | `(description != null \|\| children != null)` | 48 |
-| branch | `onClose` | 51 |
+| branch | `icon != null` | 54 |
+| branch | `title != null` | 55 |
+| branch | `(description != null \|\| children != null)` | 56 |
+| branch | `onClose` | 59 |
 
 ### `components/ui/kit/avatar`
 
@@ -520,8 +520,8 @@ Required states: `delayed`
 | loading | `loading` | 241 |
 | branch | `hasKids` | 243 |
 | branch | `checkable` | 246 |
-| branch | `virtualStyle` | 273 |
-| branch | `!virtual` | 278 |
+| branch | `virtualStyle` | 278 |
+| branch | `!virtual` | 283 |
 
 ### `components/ui/kit/typography`
 
@@ -1547,10 +1547,11 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `!('file' in props)` | 12 |
-| empty | `!root \|\| file.preview_page_count === 0` | 44 |
-| empty | `file.preview_page_count === 0` | 71 |
-| branch | `truncated` | 83 |
-| branch | `url` | 116 |
+| empty | `!root \|\| file.preview_page_count === 0` | 47 |
+| empty | `file.preview_page_count === 0` | 74 |
+| branch | `truncated` | 86 |
+| branch | `url` | 119 |
+| branch | `pageErrors?.has(i + 1)` | 126 |
 
 ### `modules/file/viewers/pdf/header`
 
@@ -2609,14 +2610,23 @@ Required states: `empty`
 |---|---|---|
 | empty | `visibleServerIds.length === 0` | 23 |
 
+### `modules/mcp/chat-extension/components/ToolCallPendingApprovalCancelContent`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `serverLabel` | 33 |
+
 ### `modules/mcp/chat-extension/components/ToolCallPendingApprovalContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `toolCall.input !== undefined` | 180 |
-| branch | `!isControlWrite` | 202 |
+| branch | `mcpServerParenLabel(toolCall.server)` | 170 |
+| branch | `toolCall.input !== undefined` | 183 |
+| branch | `!isControlWrite` | 205 |
 
 ### `modules/mcp/chat-extension/extension`
 
@@ -2624,33 +2634,29 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `toolCall.status === 'pending_approval'` | 35 |
-| branch | `toolCall.server && !looksLikeId(toolCall.server)` | 61 |
-| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 69 |
-| branch | `toolCall.status === 'started' && toolCall.progress` | 87 |
-| branch | `toolCall.progress.message` | 89 |
-| branch | `isExpanded` | 112 |
-| branch | `toolCall.input !== undefined` | 114 |
-| branch | `toolCall.result !== undefined` | 123 |
-| error | `toolCall.error` | 132 |
-| branch | `!toolUseData.id` | 158 |
-| branch | `toolCall` | 165 |
-| branch | `toolResultData?.is_error` | 187 |
-| branch | `toolResultData` | 189 |
-| branch | `server?.display_name` | 195 |
-| branch | `toolResultData` | 200 |
-| branch | `hasDetails` | 208 |
-| branch | `isExpanded` | 219 |
-| branch | `!!toolUseData.input` | 221 |
-| branch | `toolResultData` | 229 |
-| branch | `toolResultData.is_error` | 232 |
-| error | `hasError` | 293 |
-| branch | `!allDone` | 295 |
-| branch | `isExpanded` | 317 |
-| branch | `!run \|\| countToolUses(run) < 2` | 342 |
-| branch | `!mcpStore` | 372 |
-| branch | `!streamingMessage` | 709 |
-| branch | `!toolUseId` | 724 |
+| branch | `toolCall.status === 'pending_approval'` | 31 |
+| branch | `serverLabel` | 47 |
+| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 55 |
+| branch | `toolCall.status === 'started' && toolCall.progress` | 73 |
+| branch | `toolCall.progress.message` | 75 |
+| branch | `isExpanded` | 98 |
+| branch | `toolCall.input !== undefined` | 100 |
+| branch | `toolCall.result !== undefined` | 109 |
+| error | `toolCall.error` | 118 |
+| branch | `!toolUseData.id` | 144 |
+| branch | `toolCall` | 151 |
+| branch | `mcpServerParenLabel(server?.display_name)` | 177 |
+| branch | `toolResultData` | 182 |
+| branch | `hasDetails` | 190 |
+| branch | `isExpanded` | 201 |
+| branch | `!!toolUseData.input` | 203 |
+| branch | `toolResultData` | 211 |
+| branch | `toolResultData.is_error` | 214 |
+| branch | `isExpanded` | 295 |
+| branch | `!run \|\| countToolUses(run) < 2` | 320 |
+| branch | `!mcpStore` | 350 |
+| branch | `!streamingMessage` | 687 |
+| branch | `!toolUseId` | 702 |
 
 ### `modules/mcp/components/McpConfigModal`
 
@@ -2745,10 +2751,10 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `row.is_built_in` | 60 |
-| error | `error` | 110 |
-| branch | `expandedCall` | 126 |
-| branch | `expandedCall.error_message` | 141 |
+| branch | `row.is_built_in` | 59 |
+| error | `error` | 109 |
+| branch | `expandedCall` | 125 |
+| branch | `expandedCall.error_message` | 140 |
 
 ### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer`
 
