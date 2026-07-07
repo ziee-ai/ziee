@@ -91,7 +91,7 @@ export function CitationCard({
             </div>
           )}
         </div>
-        <Text strong className=\"[overflow-wrap:anywhere]\">{entry.title || '(untitled)'}</Text>
+        <Text strong className="[overflow-wrap:anywhere]">{entry.title || '(untitled)'}</Text>
         {meta && <Text type="secondary">{meta}</Text>}
         {entry.doi && (
           <Paragraph className="m-0">
