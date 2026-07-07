@@ -131,7 +131,13 @@ export const ChatMessage = memo(function ChatMessage({
         >
           <div
             className={
-              'flex flex-1 w-full overflow-x-hidden flex-col'
+              // px-0.5: the bubble inner is overflow-x-hidden (it clips wide code
+              // blocks), and the assistant body has no padding, so a full-width
+              // child Card (MCP tool-call / tool-group card) sits FLUSH against the
+              // clip edge — its border + rounded corners get shaved on the left/
+              // right. A 2px inset gives every card edge room to render fully while
+              // the overflow clip still contains wide content.
+              'flex flex-1 w-full overflow-x-hidden flex-col px-0.5'
             }
           >
             <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
