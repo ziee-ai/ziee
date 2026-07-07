@@ -51,7 +51,7 @@ export const PlusMenuItem = forwardRef<HTMLDivElement, PlusMenuItemProps>(
         <span className="shrink-0 inline-flex items-center [&_svg]:size-4">{icon}</span>
         <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
         {trailing != null && (
-          <span className="ml-auto shrink-0 inline-flex items-center pl-2">
+          <span className="ms-auto shrink-0 inline-flex items-center ps-2">
             {trailing}
           </span>
         )}

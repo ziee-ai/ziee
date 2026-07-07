@@ -24,6 +24,7 @@
     "modules/assistant/pages/UserAssistantsSettings": "Inline delete-Confirm on a user-assistant row. Page rendered in the gallery; reached via a row delete-button interaction. Tracked.",
     "modules/auth-providers/components/AuthProvidersListSection": "Inline delete-Confirm on an auth-provider row. Section rendered on the auth-providers page; reached via a row action. Tracked.",
     "modules/chat/components/ConversationList": "Inline delete-Confirm on a conversation list row. List rendered in the gallery; reached via a row action. Tracked.",
+    "modules/chat/extensions/export/extension": "Composer export-format Popover — opens on a click on the 'Export conversation' row in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
     "modules/citations/components/CitationCard": "Inline remove-Confirm on a citation card. Card rendered on the citations page; reached via a card action. Tracked.",
     "modules/code-sandbox/components/RootfsVersionGroup": "Inline evict-Confirm on a cached rootfs version row. Rendered on the sandbox settings page; reached via a row action. Tracked.",
     "modules/file/project-extension/components/ProjectFilesManagePanel": "Inline detach-Confirm on a project-file row. Panel rendered on the project detail page; reached via a row action. Tracked.",

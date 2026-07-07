@@ -101,7 +101,7 @@ export const ChatMessage = memo(function ChatMessage({
               short list packs against the bubble's right edge (matching the
               right-aligned user message); a no-op once the row overflows (it just
               scrolls). */}
-          <div className="flex gap-2 w-max py-0.5 ml-auto">
+          <div className="flex gap-2 w-max py-0.5 ms-auto">
             {attachmentBlocks.map((content, index) => (
               <ContentRenderer
                 key={`${content.id || `att-${index}`}`}

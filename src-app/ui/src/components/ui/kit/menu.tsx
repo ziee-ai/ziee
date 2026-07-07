@@ -122,7 +122,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
             </button>
             {hasActions && (
-              <div className="shrink-0 flex items-center pr-1">{item.actions}</div>
+              <div className="shrink-0 flex items-center pe-1">{item.actions}</div>
             )}
           </li>
         )

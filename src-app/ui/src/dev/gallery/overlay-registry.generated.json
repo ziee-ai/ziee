@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 70,
+    "total": 71,
     "hosts": 53,
-    "triggers": 17,
+    "triggers": 18,
     "wiredOpen": 37
   },
   "hosts": [
@@ -811,6 +811,19 @@
       "occurrences": [
         {
           "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/chat/extensions/export/extension",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
           "mode": "trigger"
         }
       ]
