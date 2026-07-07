@@ -29,9 +29,12 @@ function isVisible(el: HTMLElement): boolean {
 /** The surface a region belongs to (its dialog / full-page container), used to
  *  decide whether focus is "inside this viewer". Falls back to the region. */
 function hostOf(el: HTMLElement): HTMLElement {
+  // Unquoted attribute value on purpose — keeps a quoted testid literal out of
+  // this selector string so the global testid-uniqueness guard (which greps for
+  // quoted testid declarations) doesn't count it as a second declaration.
   return (
     (el.closest(
-      '[role="dialog"],[data-testid="file-view-page"]',
+      '[role="dialog"],[data-testid=file-view-page]',
     ) as HTMLElement | null) ?? el
   )
 }

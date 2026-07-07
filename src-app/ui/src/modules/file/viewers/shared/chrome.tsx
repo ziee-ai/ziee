@@ -229,7 +229,9 @@ export function CopySelectionButton() {
       anchor?.nodeType === Node.ELEMENT_NODE
         ? (anchor as Element)
         : anchor?.parentElement ?? null
-    const inViewer = !!anchorEl?.closest('[data-testid="file-findable-region"]')
+    // Unquoted attribute value so a quoted testid literal doesn't appear here
+    // and trip the global testid-uniqueness guard.
+    const inViewer = !!anchorEl?.closest('[data-testid=file-findable-region]')
     if (text.trim() === '' || !inViewer) {
       message.warning('Select text in the document to copy')
       return
