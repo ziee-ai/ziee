@@ -985,9 +985,10 @@ const integratorSeeded: SeededSurfaceEntry[] = [
   {
     slug: 'seeded-defect-repro',
     title: 'Defect repro — detection-system known positives',
-    note: 'A1 zero-gap (hardware Disconnected/Connect) — intentional fixture',
+    note: 'every geometric/runtime taxonomy miss (#1-21) as an intentional fixture cell',
     path: '/',
     initialPath: '/',
+    fullHeight: true,
     component: lazyNamed(() => import('./DefectRepro'), 'DefectRepro'),
   },
 ]
@@ -1037,8 +1038,12 @@ export function SeededSurfaceFrame({
         </Text>
       </div>
       <div
-        className="w-full overflow-hidden rounded-md border border-border bg-background"
-        style={{ height: 720 }}
+        className={
+          entry.fullHeight
+            ? 'w-full rounded-md border border-border bg-background'
+            : 'w-full overflow-hidden rounded-md border border-border bg-background'
+        }
+        style={entry.fullHeight ? undefined : { height: 720 }}
       >
         <AppErrorBoundary label={`seeded-${entry.slug}`} fallback={() => null}>
           <MemoryRouter initialEntries={[entry.initialPath]}>

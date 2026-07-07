@@ -196,7 +196,9 @@
 				"**/*.{ts,tsx,jsx}",
 				"!**/components/ui/kit/**",
 				"!**/components/ui/shadcn/**",
-				"!**/tests/**"
+				"!**/tests/**",
+				"!**/dev/gallery/DefectRepro.tsx",
+				"!**/dev/gallery/__detector_fixtures__/**"
 			],
 			"plugins": ["./biome-plugins/no-raw-interactive-elements.grit"]
 		}

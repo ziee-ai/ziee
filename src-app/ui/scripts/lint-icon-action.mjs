@@ -21,7 +21,13 @@ import fs from 'node:fs'
 const require = createRequire(import.meta.url)
 const ts = require('typescript')
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const ROOTS = [path.resolve(HERE, '../src'), path.resolve(HERE, '../../desktop/ui/src')]
+// `--root=<dir>` scans ONLY that dir and bypasses the allowlist — used by
+// scripts/detector-acceptance.mjs to point the lint at the intentionally-bad
+// __detector_fixtures__ dir (which the default scan excludes).
+const ROOT_ARG = (process.argv.find(a => a.startsWith('--root=')) || '').split('=').slice(1).join('=')
+const ROOTS = ROOT_ARG
+  ? [path.resolve(process.cwd(), ROOT_ARG)]
+  : [path.resolve(HERE, '../src'), path.resolve(HERE, '../../desktop/ui/src')]
 const ALLOWLIST = path.resolve(HERE, '../src/dev/gallery/icon-action-allowlist.json')
 const OPT_OUT = 'data-allow-icon'
 
@@ -44,7 +50,8 @@ const MAP = {
 const KEYS = Object.keys(MAP)
 
 const allow = fs.existsSync(ALLOWLIST) ? JSON.parse(fs.readFileSync(ALLOWLIST, 'utf8')) : { entries: [] }
-const allowEntries = Array.isArray(allow) ? allow : allow.entries || []
+// When targeting a fixture dir, the intentional defect must always report.
+const allowEntries = ROOT_ARG ? [] : (Array.isArray(allow) ? allow : allow.entries || [])
 
 function findFiles(dir, acc = []) {
   if (!fs.existsSync(dir)) return acc
@@ -52,7 +59,7 @@ function findFiles(dir, acc = []) {
     const full = path.join(dir, e)
     const st = fs.statSync(full)
     if (st.isDirectory()) {
-      if (!['node_modules', 'dist', 'build', '.git', 'tests'].includes(e) &&
+      if (!['node_modules', 'dist', 'build', '.git', 'tests', '__detector_fixtures__'].includes(e) &&
         !full.endsWith(path.join('components', 'ui', 'kit')) &&
         !full.endsWith(path.join('components', 'ui', 'shadcn')))
         findFiles(full, acc)

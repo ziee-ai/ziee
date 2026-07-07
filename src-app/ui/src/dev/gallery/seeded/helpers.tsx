@@ -40,6 +40,11 @@ export interface SeededSurfaceEntry {
   /** Interaction recipes driven after the seeded surface mounts (click-to-edit
    *  inline forms, expand). Driven via `?surface=<slug>&interact=<name>`. */
   interactions?: InteractionRecipe[]
+  /** Render at natural height instead of the fixed 720px overflow-hidden frame.
+   *  Use for tall fixtures (e.g. the defect-repro cell suite) where the frame's
+   *  own clip would spuriously trip clip-detecting rules (A11/G7) on any cell
+   *  below the fold. */
+  fullHeight?: boolean
 }
 
 /** Lazy-load a named export as the surface component. */
