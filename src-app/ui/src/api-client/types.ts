@@ -6456,6 +6456,7 @@ export const ApiEndpoints = {
   'File.get': 'GET /api/files/{file_id}',
   'File.getHeadVersion': 'GET /api/files/{file_id}/head',
   'File.getPreview': 'GET /api/files/{file_id}/preview',
+  'File.getRaw': 'GET /api/files/{file_id}/raw',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
@@ -6806,6 +6807,7 @@ export type ApiEndpointParameters = {
   'File.get': { file_id: string }
   'File.getHeadVersion': { file_id: string }
   'File.getPreview': { file_id: string; page?: number }
+  'File.getRaw': { file_id: string }
   'File.getTextContent': { file_id: string; page?: number }
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
@@ -7156,6 +7158,7 @@ export type ApiEndpointResponses = {
   'File.get': File
   'File.getHeadVersion': FileVersion
   'File.getPreview': Blob
+  'File.getRaw': Blob
   'File.getTextContent': Blob
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion

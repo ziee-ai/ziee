@@ -5,6 +5,11 @@ import { Alert, Button, ScrollArea, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
+// NOTE: since the PDF.js viewer (`pdfjs-body.tsx`) took over the
+// `application/pdf` entry, `PdfBody` is the **office/image** path — it renders
+// the backend's pre-rasterized preview images for DOCX/DOC/RTF/ODT (which are
+// converted to PDF→images server-side and have no client-side PDF to feed
+// PDF.js). Real PDFs no longer reach this component.
 export function PdfBody(props: FileViewerSlotProps) {
   // PDF viewer is not inline-capable (its module declares no `inline:`).
   // The chat dispatcher won't call this in source context, but guard for

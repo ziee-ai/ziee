@@ -18,6 +18,8 @@ import {
   type ApiEndpoint,
   type GetResponseType,
 } from '@/api-client/types'
+import { SAMPLE_PDF_BASE64 } from '@/modules/file/viewers/pdf/pdf-fixture'
+import { base64ToBytes, makeBinaryResponse } from './mockApi-binary'
 
 /** Context handed to a cassette resolver function for one request. */
 export interface MockRequestContext {
@@ -117,6 +119,9 @@ export interface SseFrame {
 // Endpoints answered as a replayed event-stream rather than a JSON route.
 const SSE_STREAM = /\/api\/chat\/stream$/
 const SSE_SUBSCRIPTION = /\/api\/chat\/stream\/subscription$/
+// Raw file bytes: the PDF.js viewer fetches `/files/{id}/raw` as binary. Answer
+// with the sample PDF fixture so the viewer renders a real document offline.
+const FILE_RAW = /^\/api\/files\/[^/]+\/raw$/
 let sseCassette: SseFrame[] = []
 /** Register the frame sequence the next `/api/chat/stream` request replays. */
 export function setSseCassette(frames: SseFrame[]): void {
@@ -294,6 +299,19 @@ export function installMockApi(cassette?: Cassette): void {
     }
     if (SSE_STREAM.test(parsed.pathname) && method === 'GET') {
       return sseResponse(sseCassette)
+    }
+
+    // Binary raw-file bytes (PDF viewer). Not a JSON route — serve the fixture
+    // PDF so the offline gallery renders a real document. `error` mode still
+    // yields a 500 so the viewer's error state is reachable in the gallery.
+    if (FILE_RAW.test(parsed.pathname) && method === 'GET') {
+      if (activeMode === 'error') {
+        return jsonResponse(
+          { error: 'Internal server error', error_code: 'GALLERY_ERROR' },
+          500,
+        )
+      }
+      return makeBinaryResponse(base64ToBytes(SAMPLE_PDF_BASE64), 'application/pdf')
     }
 
     // Apply the data-state mode. GET reads carry the state; mutations (POST/PUT/

@@ -153,6 +153,8 @@ export const STATE_COVERAGE = {
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/markdown/body:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/pdf/body:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
+  "modules/file/viewers/pdf/pdfjs-body:delayed": { skip: true, reason: "via surface — rendered within the file preview drawer; 'delayed' (PDF loading) branch proven by Part 2 runtime coverage + the pdf-viewer e2e" },
+  "modules/file/viewers/pdf/pdfjs-body:error": { skip: true, reason: "via surface — rendered within the file preview drawer; 'error' branch proven by Part 2 runtime coverage + the pdf-viewer e2e" },
   "modules/file/viewers/shared/chrome:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/tabular/XlsxBody:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/file/viewers/tabular/XlsxBody:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
