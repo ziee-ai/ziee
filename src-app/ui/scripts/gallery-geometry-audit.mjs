@@ -205,6 +205,19 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
     }
     return false
   }
+  // True iff some ancestor is an ACTUALLY horizontally-scrolling container: its
+  // overflow-x is auto/scroll AND its content genuinely overflows it. Used to
+  // treat scroll-afforded spill (code blocks, wide tables) as non-defects while
+  // NOT suppressing genuine protrusions clipped only by a page-level hidden root.
+  const hasScrollingAncestorX = el => {
+    let n = el.parentElement
+    while (n && n !== document.body) {
+      const ox = cs(n).overflowX
+      if ((ox === 'auto' || ox === 'scroll') && n.scrollWidth - n.clientWidth > 2) return true
+      n = n.parentElement
+    }
+    return false
+  }
   const clippingAncestor = (el, axis) => {
     let n = el.parentElement
     while (n && n !== document.body && n !== document.documentElement) {
@@ -212,6 +225,20 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
       n = n.parentElement
     }
     return null
+  }
+  // Visually-hidden / decorative-clipped elements (sr-only headings, a11y text
+  // mirrors, the Base-UI progress `role=presentation` value span with a
+  // clip-path inset) are INTENTIONALLY clipped — they are never a real
+  // "truncated-with-room" (D1) defect. Detect the standard hiding signatures.
+  const isVisuallyHidden = el => {
+    if (/\bsr-only\b/.test(clsOf(el))) return true
+    const s = cs(el)
+    if (s.clip === 'rect(0px, 0px, 0px, 0px)') return true
+    if (s.clipPath && s.clipPath !== 'none' && /inset\(/.test(s.clipPath) &&
+      (el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true')) return true
+    const r = rectOf(el)
+    if (s.position === 'absolute' && (r.width <= 1 || r.height <= 1)) return true
+    return false
   }
 
   // A "content pill" for A1 = badge/tag/chip/button/link leaf carrying content.
@@ -345,6 +372,13 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
       if (!parent || isChrome(parent) || inSvg(parent)) continue
       if (['absolute', 'fixed'].includes(cs(el).position)) continue
       if (clipAxes(parent).x) continue
+      // A3 = protrusion WITHOUT an overflow affordance. If an ancestor is an
+      // ACTUALLY horizontally-scrolling container (overflow-x auto/scroll AND its
+      // content genuinely overflows — e.g. a code block's `overflow-x-auto`
+      // wrapping long Shiki lines), the spill is scrollable, not a visual break.
+      // Guarded on scrollWidth>clientWidth so a page-level `overflow-x:hidden`
+      // root never suppresses genuine button/row protrusions.
+      if (hasScrollingAncestorX(el)) continue
       // display:contents / layout roots have no real box → child "protrudes"
       // spuriously. Skip contents parents and page-layout containers.
       const pd = cs(parent).display
@@ -450,10 +484,18 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
           const r = rectOf(el)
           const icon = el.querySelector('svg,img')
           const ir = icon ? icon.getBoundingClientRect() : null
-          return { h: Math.round(r.height), ih: ir ? Math.round(ir.height) : 0, iw: ir ? Math.round(ir.width) : 0 }
+          return { h: Math.round(r.height), w: Math.round(r.width), ih: ir ? Math.round(ir.height) : 0, iw: ir ? Math.round(ir.width) : 0 }
         }
         const ms = peers.map(metric)
+        // The A9 target is uniform CHIP/toolbar-button/stat-pill peers (user miss
+        // #15). Comparing the "first icon" across large heterogeneous containers
+        // (e.g. `chat-message` rows, where a text message's inline 16px icon is
+        // measured against a tool-call row's 24px status icon) is a false
+        // positive — different roles legitimately carry different icons. Only
+        // judge icon-box metrics when the peers are themselves chip/control-sized.
+        const chipLike = ms.every(m => m.h > 0 && m.h <= 48) && ms.every(m => m.w <= 320)
         for (const field of ['h', 'ih', 'iw']) {
+          if ((field === 'ih' || field === 'iw') && !chipLike) continue
           const vals = ms.map(m => m[field]).filter(v => v > 0)
           if (vals.length < 3) continue
           const freq = {}
@@ -461,8 +503,7 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
           const mode = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]
           if (freq[mode] < peers.length / 2) continue // no clear mode → skip
           // element-height legitimately varies by content for CARDS/rows; only
-          // judge it for chip/button-sized peers (mode < 48px). Icon box metrics
-          // (ih/iw) must match regardless — that's the composer-chip defect.
+          // judge it for chip/button-sized peers (mode < 48px).
           if (field === 'h' && mode >= 48) continue
           peers.forEach((p, i) => {
             const v = ms[i][field]
@@ -687,6 +728,7 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
   // ── D1 truncated with room ───────────────────────────────────────────────
   if (run('D1')) {
     for (const el of pool) {
+      if (isVisuallyHidden(el)) continue
       const s = cs(el)
       const ellipsis = s.textOverflow === 'ellipsis'
       const clipped = (s.overflow === 'hidden' || s.overflowX === 'hidden') && s.whiteSpace === 'nowrap'

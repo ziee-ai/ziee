@@ -98,7 +98,11 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               className={cn(
                 'flex w-full min-w-0 items-center gap-2 rounded-md text-sm',
                 collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
-                'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50',
+                // Inset focus ring: menu items live in scrollable rails (settings
+                // nav, sidebar) and sit flush to the viewport edge, where an OUTSET
+                // ring gets clipped by the scroll container's overflow. Drawing the
+                // ring inside the border-box keeps it fully visible everywhere.
+                'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 disabled:opacity-50',
                 selected ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-accent/60',
               )}
             >
