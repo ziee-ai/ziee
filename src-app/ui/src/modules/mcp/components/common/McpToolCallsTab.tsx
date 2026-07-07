@@ -12,13 +12,12 @@ import {
 import { ListPagination } from '@/components/common/ListPagination'
 import { Stores } from '@/core/stores'
 import { type McpToolCall } from '@/api-client/types'
+import { toolStatusOf } from '@/modules/chat/core/tool-status'
 
-const STATUS_TONE: Record<string, TagTone> = {
-  completed: 'success',
-  failed: 'error',
-  timeout: 'warning',
-  cancelled: 'default',
-}
+// Status badge tone is derived per-row from the single TOOL_STATUS source
+// (`toolStatusOf(row.status, row.is_error).tone`) so the drawer's chips can never
+// drift from the chat cards' colors — in particular `cancelled` stays neutral,
+// never the red `error` of `failed`.
 
 const SOURCE_TONE: Record<string, TagTone> = {
   chat: 'info',
@@ -70,7 +69,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       key: 'status',
       width: 110,
       render: row => (
-        <Tag variant="outline" tone={row.is_error ? 'error' : (STATUS_TONE[row.status] ?? 'default')} data-testid={`mcp-tool-call-status-${row.id}`}>
+        <Tag variant="outline" tone={toolStatusOf(row.status, row.is_error).tone} data-testid={`mcp-tool-call-status-${row.id}`}>
           {row.status}
         </Tag>
       ),
