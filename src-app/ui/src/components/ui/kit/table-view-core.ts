@@ -22,6 +22,9 @@ export interface CoreColumn {
   sorter?: (a: unknown, b: unknown) => number
   /** Custom text used for filtering (defaults to the stringified cell value). */
   filterText?: (record: unknown) => string
+  /** Row-selector gutter column — excluded from filtering (as it is from
+   *  copy/export/column-chooser/numeric detection). */
+  rowHeader?: boolean
 }
 
 /** Selection model (see DEC-8): none, a single cell, or a set of whole rows.
@@ -121,13 +124,16 @@ export function applyFilter<T>(rows: T[], columns: CoreColumn[], query: string):
   return rows.filter(r => matchesFilter(r, columns, query))
 }
 
-/** Derive the view: filter FIRST (over visible columns), then sort (DEC-6/9). */
+/** Derive the view: filter FIRST, then sort (DEC-6/9). Filtering runs over the
+ *  visible NON-gutter columns (a rowHeader gutter's row numbers must not match a
+ *  numeric query), while sort resolves its key against all visible columns. */
 export function deriveView<T>(
   rows: T[],
   visibleColumns: CoreColumn[],
   opts: { sort: SortState | null; query: string },
 ): T[] {
-  return applySort(applyFilter(rows, visibleColumns, opts.query), visibleColumns, opts.sort)
+  const filterColumns = visibleColumns.filter(c => !c.rowHeader)
+  return applySort(applyFilter(rows, filterColumns, opts.query), visibleColumns, opts.sort)
 }
 
 export const NUMERIC_SAMPLE_CAP = 50

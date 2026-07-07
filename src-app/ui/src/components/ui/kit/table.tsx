@@ -289,7 +289,7 @@ export function Table<T>(props: TableProps<T>) {
   const onViewChangeRef = React.useRef(props.onViewChange)
   onViewChangeRef.current = props.onViewChange
   const visibleKeys = copyColumns.map(c => c.key)
-  const visibleKeysSig = visibleKeys.join('')
+  const visibleKeysSig = JSON.stringify(visibleKeys)
   React.useEffect(() => {
     onViewChangeRef.current?.(view.viewData, { visibleColumns: visibleKeys })
     // eslint-disable-next-line react-hooks/exhaustive-deps

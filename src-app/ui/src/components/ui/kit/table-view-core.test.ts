@@ -116,6 +116,28 @@ test('deriveView filters then sorts (filter narrows, then order applies)', () =>
   assert.deepEqual(out.map(r => r.id), ['1', '2'])
 })
 
+// deriveView excludes a rowHeader gutter from filtering
+test('deriveView filter ignores the rowHeader gutter column', () => {
+  const withGutter: Row[] = [
+    { id: '1', name: 'Banana', qty: '10', note: '' },
+    { id: '2', name: 'apple', qty: '2', note: '' },
+  ]
+  const gutterCols: CoreColumn[] = [
+    { key: '__rn', dataIndex: '__rn', rowHeader: true },
+    { key: 'name', dataIndex: 'name' },
+  ]
+  const rowsWithRn = withGutter.map((r, i) => ({ ...r, __rn: String(i + 1) }))
+  // Query "2" would match row #2's gutter number if the gutter were filtered;
+  // it must instead match only real data (apple's qty is '2' but qty isn't in
+  // these columns, so → no data match → empty).
+  assert.deepEqual(deriveView(rowsWithRn, gutterCols, { sort: null, query: '2' }), [])
+  // A real name match still works.
+  assert.deepEqual(
+    deriveView(rowsWithRn, gutterCols, { sort: null, query: 'apple' }).map(r => r.id),
+    ['2'],
+  )
+})
+
 // TEST-7 — selection serialisation: cell / row / multi-row range
 test('serializeSelectionTsv renders cell, row, and multi-row selections', () => {
   const cell: TableSelection = { kind: 'cell', row: 0, col: 'name' }
