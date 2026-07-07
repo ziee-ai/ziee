@@ -59,7 +59,20 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
         editable
         hideAdd
         size="sm"
-        className="flex-1 min-w-0"
+        // Quiet UNDERLINE tabs (J5): a boxed/segmented strip reads as heavy in this
+        // narrow side panel — `line` drops the box/fill and marks the active tab with
+        // an underline bar + stronger text, inactive tabs are muted text.
+        variant="line"
+        // Single-row HORIZONTAL scroll only (I5): DivScrollX is overflow-x auto +
+        // overflow-y hidden with the app's overlay scrollbar, and its inner row is
+        // `items-center` so the tabs are vertically centered in the strip (A8).
+        scrollX
+        // !gap-0: the kit Tabs root is `flex flex-col gap-2`, which separates the
+        // strip from its content panels. We render the strip ONLY (the panel body
+        // is drawn separately, so the TabsContent panels are empty) — that 8px gap
+        // otherwise shows as dead space below the tabs AND pushes the strip above
+        // the items-center close button, so the tabs and the × misalign.
+        className="flex-1 min-w-0 !gap-0"
         value={activeId ?? undefined}
         items={tabs.map(tab => {
           const resolved = resolvePanelRenderer(tab)
