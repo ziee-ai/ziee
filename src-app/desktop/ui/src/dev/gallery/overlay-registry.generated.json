@@ -1,0 +1,25 @@
+{
+  "generatedBy": "scripts/gen-overlay-registry.mjs",
+  "counts": {
+    "total": 1,
+    "hosts": 1,
+    "triggers": 0,
+    "wiredOpen": 0
+  },
+  "hosts": [
+    {
+      "surface": "modules/host-mount/conversation-extension/components/ConversationMountsControl",
+      "class": "host",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
+          "mode": "controlled"
+        }
+      ]
+    }
+  ],
+  "triggers": []
+}

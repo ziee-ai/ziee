@@ -13,6 +13,9 @@ if (!process.env.TEST_RUN_ID) {
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Gallery specs run backend-free under playwright.gallery.config.ts (no
+  // Postgres global-setup) — keep them out of the real-backend run here.
+  testIgnore: /gallery-desktop-.*\.spec\.ts$/,
 
   // Organize test artifacts by test run ID
   outputDir,

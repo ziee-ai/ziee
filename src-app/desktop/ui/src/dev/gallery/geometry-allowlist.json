@@ -1,0 +1,4 @@
+{
+  "__doc__": "Allow-list for the Layer-1 geometry audit (scripts/gallery-geometry-audit.mjs), desktop mirror. Each entry excuses a HIGH-severity finding that is a known, intentional, or unfixable-by-design pattern; the finding is still REPORTED (marked `allowed`) but does not fail `--gate`. Match fields: class (required), surface ('*' = any), selector (substring, optional), viewport (optional). Keep every reason specific + defensible — an allow-list entry is an accepted defect, not a silenced detector.",
+  "entries": []
+}

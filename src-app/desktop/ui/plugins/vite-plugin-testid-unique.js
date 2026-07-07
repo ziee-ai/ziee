@@ -36,6 +36,15 @@ import path from 'node:path'
 // form "data-testid": "literal" (spread props). NOT data-testid={expr}.
 const TESTID_LITERAL = /data-testid\s*[=:]\s*["']([^"']+)["']/g
 
+// The detector-acceptance fixture INTENTIONALLY reuses the real app testids the
+// detectors key on (e.g. K1 matches the literal `conversation-title`, so its
+// known-bad repro cell must carry exactly that id) — so it is exempt from the
+// cross-file uniqueness gate. It never renders in the real app. The desktop
+// build scans the shared web tree (fallback alias), which contains
+// `dev/gallery/DefectRepro.tsx`, so it needs the SAME exemption the web plugin
+// has (kept in parity — the two plugins scan the same web source).
+const TESTID_EXEMPT = /[/\\]dev[/\\]gallery[/\\]DefectRepro\.tsx$/
+
 function findSourceFiles(dir, fileList = []) {
   if (!fs.existsSync(dir)) return fileList
   for (const entry of fs.readdirSync(dir)) {
@@ -45,7 +54,7 @@ function findSourceFiles(dir, fileList = []) {
       if (!['node_modules', 'dist', 'build', '.git', 'tests'].includes(entry)) {
         findSourceFiles(full, fileList)
       }
-    } else if (/\.(tsx|jsx|ts)$/.test(entry)) {
+    } else if (/\.(tsx|jsx|ts)$/.test(entry) && !TESTID_EXEMPT.test(full)) {
       fileList.push(full)
     }
   }
