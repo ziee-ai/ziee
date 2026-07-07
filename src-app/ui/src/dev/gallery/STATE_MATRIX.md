@@ -974,11 +974,11 @@ Required states: `empty`
 | branch | `!activeTab` | 14 |
 | branch | `!resolved` | 17 |
 | empty | `tabs.length === 0` | 50 |
-| branch | `e.key === 'Escape'` | 101 |
-| empty | `focusable.length === 0` | 110 |
-| branch | `isMobile` | 155 |
-| branch | `!showDrawer` | 156 |
-| branch | `isOpen` | 196 |
+| branch | `e.key === 'Escape'` | 114 |
+| empty | `focusable.length === 0` | 123 |
+| branch | `isMobile` | 168 |
+| branch | `!showDrawer` | 169 |
+| branch | `isOpen` | 209 |
 
 ### `modules/chat/core/extensions/registry`
 
@@ -1047,10 +1047,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation` | 33 |
-| branch | `!conversation` | 68 |
-| branch | `!conversation` | 97 |
-| empty | `messages.length === 0` | 150 |
+| branch | `!conversation` | 34 |
+| branch | `!conversation` | 69 |
+| branch | `!conversation` | 98 |
+| empty | `messages.length === 0` | 157 |
 
 ### `modules/chat/extensions/keyboard/extension`
 
@@ -2863,7 +2863,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!conversation?.id` | 58 |
 | branch | `adminSettings?.enabled === false` | 59 |
 | branch | `!conversation?.id` | 62 |
-| branch | `mode === 'off'` | 113 |
+| branch | `mode === 'off'` | 122 |
 
 ### `modules/memory/components/CoreMemoryBlocksEditor`
 
@@ -3328,7 +3328,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!conversation?.id` | 18 |
-| branch | `!conversation?.id` | 63 |
+| branch | `!conversation?.id` | 51 |
 
 ### `modules/skill/components/ConversationSkillsPanel`
 

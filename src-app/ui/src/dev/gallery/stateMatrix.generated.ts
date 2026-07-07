@@ -854,11 +854,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!activeTab", line: 14 },
       { kind: "branch", condition: "!resolved", line: 17 },
       { kind: "empty", condition: "tabs.length === 0", line: 50 },
-      { kind: "branch", condition: "e.key === 'Escape'", line: 101 },
-      { kind: "empty", condition: "focusable.length === 0", line: 110 },
-      { kind: "branch", condition: "isMobile", line: 155 },
-      { kind: "branch", condition: "!showDrawer", line: 156 },
-      { kind: "branch", condition: "isOpen", line: 196 },
+      { kind: "branch", condition: "e.key === 'Escape'", line: 114 },
+      { kind: "empty", condition: "focusable.length === 0", line: 123 },
+      { kind: "branch", condition: "isMobile", line: 168 },
+      { kind: "branch", condition: "!showDrawer", line: 169 },
+      { kind: "branch", condition: "isOpen", line: 209 },
     ],
   },
   "modules/chat/core/extensions/registry": {
@@ -920,10 +920,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/export/extension",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!conversation", line: 33 },
-      { kind: "branch", condition: "!conversation", line: 68 },
-      { kind: "branch", condition: "!conversation", line: 97 },
-      { kind: "empty", condition: "messages.length === 0", line: 150 },
+      { kind: "branch", condition: "!conversation", line: 34 },
+      { kind: "branch", condition: "!conversation", line: 69 },
+      { kind: "branch", condition: "!conversation", line: 98 },
+      { kind: "empty", condition: "messages.length === 0", line: 157 },
     ],
   },
   "modules/chat/extensions/keyboard/extension": {
@@ -2603,7 +2603,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!conversation?.id", line: 58 },
       { kind: "branch", condition: "adminSettings?.enabled === false", line: 59 },
       { kind: "branch", condition: "!conversation?.id", line: 62 },
-      { kind: "branch", condition: "mode === 'off'", line: 113 },
+      { kind: "branch", condition: "mode === 'off'", line: 122 },
     ],
   },
   "modules/memory/components/CoreMemoryBlocksEditor": {
@@ -3031,7 +3031,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!conversation?.id", line: 18 },
-      { kind: "branch", condition: "!conversation?.id", line: 63 },
+      { kind: "branch", condition: "!conversation?.id", line: 51 },
     ],
   },
   "modules/skill/components/ConversationSkillsPanel": {
