@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 316 surfaces carry renderable-state signals; 1753 signals total.
+// 316 surfaces carry renderable-state signals; 1754 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1463,21 +1463,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "empty", condition: "file.text_page_count === 0", line: 41 },
       { kind: "branch", condition: "text === undefined || text === ''", line: 109 },
       { kind: "branch", condition: "!isHighlightSupported()", line: 179 },
-      { kind: "branch", condition: "text.trim() === '' || !inViewer", line: 233 },
+      { kind: "branch", condition: "text.trim() === '' || !inViewer", line: 235 },
+      { kind: "branch", condition: "inRouter", line: 291 },
     ],
   },
   "modules/file/viewers/shared/find/FindableRegion": {
     surface: "modules/file/viewers/shared/find/FindableRegion",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "docListener", line: 40 },
-      { kind: "branch", condition: "!(e.ctrlKey || e.metaKey)", line: 42 },
-      { kind: "branch", condition: "e.key !== 'f' && e.key !== 'F'", line: 43 },
-      { kind: "branch", condition: "unfocused || r.host.contains(active)", line: 51 },
-      { kind: "branch", condition: "!supported", line: 130 },
-      { kind: "branch", condition: "!el", line: 132 },
-      { kind: "branch", condition: "supported", line: 143 },
-      { kind: "branch", condition: "active", line: 149 },
+      { kind: "branch", condition: "docListener", line: 43 },
+      { kind: "branch", condition: "!(e.ctrlKey || e.metaKey)", line: 45 },
+      { kind: "branch", condition: "e.key !== 'f' && e.key !== 'F'", line: 46 },
+      { kind: "branch", condition: "unfocused || r.host.contains(active)", line: 54 },
+      { kind: "branch", condition: "!supported", line: 133 },
+      { kind: "branch", condition: "!el", line: 135 },
+      { kind: "branch", condition: "supported", line: 146 },
+      { kind: "branch", condition: "active", line: 152 },
     ],
   },
   "modules/file/viewers/tabular/DelimitedTable": {

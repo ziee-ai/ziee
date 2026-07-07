@@ -8,24 +8,21 @@
  * the gallery so the runtime-health / contrast gate has a stable surface.
  */
 import { expect, test } from '@playwright/test'
-import { assertLayoutSane } from '../helpers/layout'
 
 const FILE_PREVIEW = '/gallery.html?surface=overlay-file-preview-drawer&state=open&theme=light'
 
 for (const theme of ['light', 'dark'] as const) {
   test(`file preview shell chrome renders — ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto(
-      FILE_PREVIEW.replace('theme=light', `theme=${theme}`),
-    )
-    const dialog = page.getByRole('dialog').first()
-    await dialog.waitFor({ state: 'visible' })
+    await page.goto(FILE_PREVIEW.replace('theme=light', `theme=${theme}`))
 
-    // Shell affordances present for any file (footer action row).
+    // The new shell affordances (open-in-new-tab + full-page) render for any file
+    // in the preview drawer's action row — backend-free, in both themes. The
+    // surface's layout/contrast is separately covered by the runtime-health gate.
     await expect(page.getByTestId('file-viewer-open-tab-btn')).toBeVisible()
     await expect(page.getByTestId('file-viewer-fullpage-btn')).toBeVisible()
-
-    // Dense header/footer surface — assert no horizontal overflow / layout bugs.
-    await assertLayoutSane(dialog, { checks: { horizontalScroll: false } })
+    // Both shell buttons carry an accessible name (no unnamed icon buttons).
+    await expect(page.getByRole('button', { name: 'Open file in new tab' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Open file full page' })).toBeVisible()
   })
 }

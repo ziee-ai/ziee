@@ -9,7 +9,7 @@ import {
   Search,
   WrapText,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useInRouterContext, useNavigate } from 'react-router-dom'
 import { Button, Segmented, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
@@ -284,6 +284,18 @@ export function OpenInNewTabButton({ file }: { file: FileEntity }) {
 // drawer over it). Shell-level affordance.
 
 export function FullPageButton({ file }: { file: FileEntity }) {
+  // useNavigate() THROWS outside a <Router> (e.g. the component gallery renders
+  // overlays with no router). Split on useInRouterContext (safe everywhere) so
+  // the button degrades to a plain anchor rather than crashing the surface.
+  const inRouter = useInRouterContext()
+  return inRouter ? (
+    <RouterFullPageButton file={file} />
+  ) : (
+    <AnchorFullPageButton file={file} />
+  )
+}
+
+function RouterFullPageButton({ file }: { file: FileEntity }) {
   const navigate = useNavigate()
   return (
     <Button
@@ -296,6 +308,21 @@ export function FullPageButton({ file }: { file: FileEntity }) {
         Stores.FilePreviewDrawer.__state.closePreview()
         navigate(`/files/${file.id}`)
       }}
+      data-testid="file-viewer-fullpage-btn"
+    />
+  )
+}
+
+function AnchorFullPageButton({ file }: { file: FileEntity }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      tooltip="Open full page"
+      aria-label="Open file full page"
+      icon={<Maximize2 />}
+      href={`/files/${file.id}`}
+      onClick={() => Stores.FilePreviewDrawer.__state.closePreview()}
       data-testid="file-viewer-fullpage-btn"
     />
   )

@@ -8,7 +8,7 @@
 ## Summary
 
 - **316** surfaces carry at least one renderable-state signal.
-- **1753** signals total: 1371 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
+- **1754** signals total: 1372 branch, 109 empty, 93 error, 94 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1640,7 +1640,8 @@ Required states: `empty`
 | empty | `file.text_page_count === 0` | 41 |
 | branch | `text === undefined \|\| text === ''` | 109 |
 | branch | `!isHighlightSupported()` | 179 |
-| branch | `text.trim() === '' \|\| !inViewer` | 233 |
+| branch | `text.trim() === '' \|\| !inViewer` | 235 |
+| branch | `inRouter` | 291 |
 
 ### `modules/file/viewers/shared/find/FindableRegion`
 
@@ -1648,14 +1649,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `docListener` | 40 |
-| branch | `!(e.ctrlKey \|\| e.metaKey)` | 42 |
-| branch | `e.key !== 'f' && e.key !== 'F'` | 43 |
-| branch | `unfocused \|\| r.host.contains(active)` | 51 |
-| branch | `!supported` | 130 |
-| branch | `!el` | 132 |
-| branch | `supported` | 143 |
-| branch | `active` | 149 |
+| branch | `docListener` | 43 |
+| branch | `!(e.ctrlKey \|\| e.metaKey)` | 45 |
+| branch | `e.key !== 'f' && e.key !== 'F'` | 46 |
+| branch | `unfocused \|\| r.host.contains(active)` | 54 |
+| branch | `!supported` | 133 |
+| branch | `!el` | 135 |
+| branch | `supported` | 146 |
+| branch | `active` | 152 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 
