@@ -123,7 +123,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.RECEIVER_PAT }}
-          repository: phibya/ziee-chat-new
+          repository: ziee-ai/ziee
           event-type: llm-runtime-release
           client-payload: |
             { "engine": "llamacpp", "tag": "${{ github.ref_name }}" }

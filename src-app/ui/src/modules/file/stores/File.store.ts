@@ -62,6 +62,11 @@ interface FileExtensionStore {
   previewPageRequested: Map<string, Set<number>>
   // Pending page numbers to fetch per file, drained ONE AT A TIME (sequential).
   previewPageQueue: Map<string, number[]>
+  // Pages whose fetch SETTLED in failure, per file. A failed page stays
+  // `requested` (so it isn't auto-retried into an infinite spinner) and lands
+  // here so the viewer can render an explicit error/retry slot instead of a
+  // spinner that never resolves. `retryPreviewPage` clears the entry.
+  previewPageErrors: Map<string, Set<number>>
 
   // Actions
   uploadFiles: (files: File[]) => Promise<void>
@@ -177,6 +182,10 @@ interface FileExtensionStore {
    */
   requestPreviewPage: (file: FileEntity, page: number) => void
 
+  /** Clear a page's error + requested state and re-request it (manual retry
+   *  from the viewer's error slot). */
+  retryPreviewPage: (file: FileEntity, page: number) => void
+
   /** Internal: drains a file's page queue one request at a time. */
   processPreviewQueue: (file: FileEntity) => Promise<void>
 
@@ -233,6 +242,7 @@ export const File = defineStore('File', {
     previewPageLoadingSet: new Set(),
     previewPageRequested: new Map(),
     previewPageQueue: new Map(),
+    previewPageErrors: new Map(),
     // Per-ID content cache for right panel tabs
     fileTextContents: new Map(),
     fileTextLoadingSet: new Set(),
@@ -254,6 +264,7 @@ export const File = defineStore('File', {
     | 'previewPageLoadingSet'
     | 'previewPageRequested'
     | 'previewPageQueue'
+    | 'previewPageErrors'
     | 'fileTextContents'
     | 'fileTextLoadingSet'
     | 'fileBinaryContents'
@@ -707,7 +718,14 @@ export const File = defineStore('File', {
         const fileInfo = await ApiClient.File.get({ file_id: fileId })
         set((state) => {
           const newCache = new Map(state.messageFilesCache)
-          newCache.set(fileId, fileInfo)
+          // Only cache a well-formed entity. A malformed response (missing id
+          // — e.g. a transient backend hiccup) must not poison the cache over
+          // the caller-supplied fallback (the content-block-derived entity that
+          // already carries filename + size); caching it would surface blanks /
+          // "NaN" size in its place.
+          if (fileInfo && (fileInfo as { id?: string }).id) {
+            newCache.set(fileId, fileInfo)
+          }
           const newSet = new Set(state.messageFilesLoadingSet)
           newSet.delete(fileId)
           state.messageFilesCache = newCache
@@ -776,6 +794,25 @@ export const File = defineStore('File', {
       void get().processPreviewQueue(file)
     },
 
+    retryPreviewPage: (file: FileEntity, page: number): void => {
+      // Clear the settled error + the requested/loaded mark so requestPreviewPage
+      // enqueues a fresh attempt.
+      set((state) => {
+        const errMap = new Map(state.previewPageErrors)
+        const errSet = new Set(errMap.get(file.id) ?? [])
+        errSet.delete(page)
+        errMap.set(file.id, errSet)
+        state.previewPageErrors = errMap
+
+        const reqMap = new Map(state.previewPageRequested)
+        const reqSet = new Set(reqMap.get(file.id) ?? [])
+        reqSet.delete(page)
+        reqMap.set(file.id, reqSet)
+        state.previewPageRequested = reqMap
+      })
+      get().requestPreviewPage(file, page)
+    },
+
     processPreviewQueue: async (file: FileEntity): Promise<void> => {
       // One drain per file — a running drain picks up newly-enqueued pages.
       if (get().previewPageLoadingSet.has(file.id)) return
@@ -809,13 +846,16 @@ export const File = defineStore('File', {
               state.previewPageUrls = m
             })
           } catch (error) {
-            // Un-mark so a later scroll can retry this page.
+            // Record the failure so the viewer renders an explicit error/retry
+            // slot instead of a spinner that never resolves (the page stays
+            // `requested`, so a scroll-triggered re-request won't spin it
+            // forever; `retryPreviewPage` is the deliberate re-attempt path).
             set((state) => {
-              const reqMap = new Map(state.previewPageRequested)
-              const reqSet = new Set(reqMap.get(file.id) ?? [])
-              reqSet.delete(page)
-              reqMap.set(file.id, reqSet)
-              state.previewPageRequested = reqMap
+              const errMap = new Map(state.previewPageErrors)
+              const errSet = new Set(errMap.get(file.id) ?? [])
+              errSet.add(page)
+              errMap.set(file.id, errSet)
+              state.previewPageErrors = errMap
             })
             console.debug(
               `[FileStore] Failed to load preview page ${page} for ${file.id}:`,

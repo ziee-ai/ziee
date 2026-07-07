@@ -20,7 +20,7 @@ const STATUS_AVAILABLE = {
   current_version: '0.1.0',
   latest_version: '0.2.0',
   update_available: true,
-  release_url: 'https://github.com/phibya/ziee-chat-new/releases/tag/v0.2.0',
+  release_url: 'https://github.com/ziee-ai/ziee/releases/tag/v0.2.0',
   notes: 'New release',
   checked_at: '2026-06-12T00:00:00Z',
   enabled: true,

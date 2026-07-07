@@ -3,6 +3,7 @@ import { Trash2, Pencil } from 'lucide-react'
 import {
   Button,
   Card,
+  SectionHeader,
   Descriptions,
   Separator,
   Empty,
@@ -115,19 +116,24 @@ export function UserAssistantsSettings() {
       subtitle="Create and manage your personal assistants."
     >
       <div>
-        <Card
-          data-testid="user-assistants-card"
-          title="My Assistants"
-          extra={
-            <Can permission={Permissions.AssistantsCreate}>
-              <AddButton
-                label="Create assistant"
-                onClick={handleCreate}
-                data-testid="user-assistants-create-btn"
-              />
-            </Can>
-          }
-        >
+        <Card data-testid="user-assistants-card">
+          {/* SectionHeader (never-wrap-with-room) instead of Card title/extra
+              — fixes the mobile premature-stack of the title above the `+`
+              button (taxonomy B1). */}
+          <SectionHeader
+            title="My Assistants"
+            data-testid="user-assistants-header"
+            className="mb-4"
+            actions={
+              <Can permission={Permissions.AssistantsCreate}>
+                <AddButton
+                  label="Create assistant"
+                  onClick={handleCreate}
+                  data-testid="user-assistants-create-btn"
+                />
+              </Can>
+            }
+          />
           {error && assistants.length === 0 ? (
             <ErrorState
               resource="assistants"

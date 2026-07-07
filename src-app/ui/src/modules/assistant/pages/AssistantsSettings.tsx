@@ -1,7 +1,8 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { Bot, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Button,
   Card,
+  SectionHeader,
   Descriptions,
   Separator,
   Empty,
@@ -114,19 +115,24 @@ export function AssistantsSettings() {
       subtitle="Manage template assistants. Default assistants are automatically cloned for new users."
     >
       <div>
-        <Card
-          data-testid="template-assistants-card"
-          title="Template Assistants"
-          extra={
-            <Can permission={Permissions.AssistantsTemplateCreate}>
-              <AddButton
-                label="Create assistant"
-                onClick={handleCreate}
-                data-testid="template-assistants-create-btn"
-              />
-            </Can>
-          }
-        >
+        <Card data-testid="template-assistants-card">
+          {/* SectionHeader (never-wrap-with-room) instead of Card title/extra:
+              the kit Card header stacked this short title above the `+` button on
+              mobile even though both trivially fit one row (taxonomy B1). */}
+          <SectionHeader
+            title="Template Assistants"
+            data-testid="template-assistants-header"
+            className="mb-4"
+            actions={
+              <Can permission={Permissions.AssistantsTemplateCreate}>
+                <AddButton
+                  label="Create assistant"
+                  onClick={handleCreate}
+                  data-testid="template-assistants-create-btn"
+                />
+              </Can>
+            }
+          />
           {loading ? (
             <Loading />
           ) : error && assistants.length === 0 ? (
@@ -152,9 +158,23 @@ export function AssistantsSettings() {
                 data-testid="template-assistants-error"
               />
             ) : (
-              <div>
-                <Empty data-testid="template-assistants-empty" description="No assistants yet — use the New Assistant button above to create one." />
-              </div>
+              <Empty
+                data-testid="template-assistants-empty"
+                icon={<Bot />}
+                title="No assistant templates yet"
+                description="Templates are cloned into every new user's account. Create one to get started."
+              >
+                <Can permission={Permissions.AssistantsTemplateCreate}>
+                  <Button
+                    variant="default"
+                    icon={<Plus />}
+                    onClick={handleCreate}
+                    data-testid="template-assistants-empty-create-btn"
+                  >
+                    Create assistant
+                  </Button>
+                </Can>
+              </Empty>
             )
           ) : (
             <div>
@@ -172,7 +192,11 @@ export function AssistantsSettings() {
                             <Text className="font-medium">
                               {assistant.name}
                             </Text>
-                            {assistant.is_default && (
+                            {/* "Default" only distinguishes among several
+                                templates — on a single-row list it's redundant
+                                chrome, so render it only when there's more than
+                                one to disambiguate. */}
+                            {assistant.is_default && assistants.length > 1 && (
                               <Tag variant="outline" data-testid={`template-assistant-${assistant.id}-default-tag`} tone="success">Default</Tag>
                             )}
                             {!assistant.enabled && (

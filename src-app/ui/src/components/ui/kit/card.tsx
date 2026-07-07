@@ -39,7 +39,13 @@ export function Card({ title, extra, footer, loading, size = 'default', hoverabl
       {(title != null || extra != null) && (
         <CardHeader className={cn('flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between', pad)}>
           {title != null ? (
-            <CardTitle className="min-w-0 [overflow-wrap:anywhere]">{title}</CardTitle>
+            // `sm:flex-1` (row layout only): let the title claim the header's
+            // free width instead of shrinking to its min-content next to a
+            // right-aligned `extra` — a shrink-to-fit title wraps "with room"
+            // (e.g. a short project name breaking mid-phrase on tablet). Scoped
+            // to `sm:` so the mobile `flex-col` header doesn't stretch the title
+            // vertically.
+            <CardTitle className="min-w-0 sm:flex-1 [overflow-wrap:anywhere]">{title}</CardTitle>
           ) : (
             <span />
           )}

@@ -4,7 +4,7 @@
   "generated_at": "2026-06-15T04:23:16Z",
   "items": [
     {
-      "name": "io.github.phibya/code-reviewer",
+      "name": "io.github.ziee-ai/code-reviewer",
       "category": "assistant",
       "title": "Code Reviewer",
       "summary": "Expert code reviewer with a security-and-best-practices focus.",
@@ -18,10 +18,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "assistants/io.github.phibya/code-reviewer/1.0.0.json"
+      "manifest_path": "assistants/io.github.ziee-ai/code-reviewer/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/creative-writer",
+      "name": "io.github.ziee-ai/creative-writer",
       "category": "assistant",
       "title": "Creative Writer",
       "summary": "Professional creative writer for stories, articles, and content.",
@@ -35,10 +35,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "assistants/io.github.phibya/creative-writer/1.0.0.json"
+      "manifest_path": "assistants/io.github.ziee-ai/creative-writer/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/deep-researcher",
+      "name": "io.github.ziee-ai/deep-researcher",
       "category": "assistant",
       "title": "Deep Researcher",
       "summary": "Multi-step research assistant. Pinned to a future ziee that ships the parallel sub-agent runtime.",
@@ -51,10 +51,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": "99.0.0",
       "version": "1.0.0",
-      "manifest_path": "assistants/io.github.phibya/deep-researcher/1.0.0.json"
+      "manifest_path": "assistants/io.github.ziee-ai/deep-researcher/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/sql-helper",
+      "name": "io.github.ziee-ai/sql-helper",
       "category": "assistant",
       "title": "SQL Helper",
       "summary": "Writes, explains, and optimizes SQL across Postgres, MySQL, and SQLite dialects.",
@@ -67,10 +67,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "assistants/io.github.phibya/sql-helper/1.0.0.json"
+      "manifest_path": "assistants/io.github.ziee-ai/sql-helper/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/vision-analyst",
+      "name": "io.github.ziee-ai/vision-analyst",
       "category": "assistant",
       "title": "Vision Analyst",
       "summary": "Specialized assistant for image and visual content analysis.",
@@ -84,7 +84,7 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "assistants/io.github.phibya/vision-analyst/1.0.0.json"
+      "manifest_path": "assistants/io.github.ziee-ai/vision-analyst/1.0.0.json"
     },
     {
       "name": "app.linear/mcp",
@@ -194,7 +194,7 @@
       "manifest_path": "mcp-servers/io.github.modelcontextprotocol/postgres/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/deepseek-r1-70b",
+      "name": "io.github.ziee-ai/deepseek-r1-70b",
       "category": "model",
       "title": "DeepSeek-R1 70B",
       "summary": "Large reasoning model. Flagged as requiring a future ziee for its tensor-parallel runtime support.",
@@ -207,10 +207,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": "99.0.0",
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/deepseek-r1-70b/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/deepseek-r1-70b/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/llama-3-1-8b-instruct",
+      "name": "io.github.ziee-ai/llama-3-1-8b-instruct",
       "category": "model",
       "title": "Llama 3.1 8B",
       "summary": "Meta's Llama 3.1 8B instruction-tuned model with improved capabilities.",
@@ -224,10 +224,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/llama-3-1-8b-instruct/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/llama-3-1-8b-instruct/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/llama-3-2-3b-instruct-gguf",
+      "name": "io.github.ziee-ai/llama-3-2-3b-instruct-gguf",
       "category": "model",
       "title": "Llama 3.2 3B",
       "summary": "Meta's Llama 3.2 3B instruction-tuned model in GGUF format. Multiple quantizations available.",
@@ -243,10 +243,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/llama-3-2-3b-instruct-gguf/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/llama-3-2-3b-instruct-gguf/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/nomic-embed-text-v1-5-gguf",
+      "name": "io.github.ziee-ai/nomic-embed-text-v1-5-gguf",
       "category": "model",
       "title": "Nomic Embed Text v1.5",
       "summary": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp.",
@@ -263,10 +263,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/nomic-embed-text-v1-5-gguf/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/nomic-embed-text-v1-5-gguf/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/phi-3-mini-4k-instruct",
+      "name": "io.github.ziee-ai/phi-3-mini-4k-instruct",
       "category": "model",
       "title": "Phi-3 Mini",
       "summary": "Microsoft's small but capable instruction-tuned model. Great for low-resource setups.",
@@ -280,10 +280,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/phi-3-mini-4k-instruct/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/phi-3-mini-4k-instruct/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/qwen2.5-coder-7b-instruct",
+      "name": "io.github.ziee-ai/qwen2.5-coder-7b-instruct",
       "category": "model",
       "title": "Qwen2.5-Coder 7B",
       "summary": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
@@ -297,10 +297,10 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/qwen2.5-coder-7b-instruct/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/qwen2.5-coder-7b-instruct/1.0.0.json"
     },
     {
-      "name": "io.github.phibya/qwen2.5-vl-3b-instruct",
+      "name": "io.github.ziee-ai/qwen2.5-vl-3b-instruct",
       "category": "model",
       "title": "Qwen2.5-VL 3B",
       "summary": "Qwen2.5-VL 3B instruction-tuned vision-language model. Supports image understanding plus tool use.",
@@ -315,7 +315,7 @@
       "added_at": "2026-05-29",
       "min_ziee_version": null,
       "version": "1.0.0",
-      "manifest_path": "models/io.github.phibya/qwen2.5-vl-3b-instruct/1.0.0.json"
+      "manifest_path": "models/io.github.ziee-ai/qwen2.5-vl-3b-instruct/1.0.0.json"
     },
     {
       "name": "io.github.ziee/answer-with-citations",

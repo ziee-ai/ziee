@@ -1,7 +1,9 @@
 import { Fragment, useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@/components/ui'
-import { Wrench, CircleCheck, CircleX, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ToolStatusIcon } from '@/modules/chat/core/ToolStatusIcon'
+import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 import {
   createExtension,
   chatExtensionRegistry,
@@ -18,12 +20,6 @@ import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusR
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
 
-// The tool-call header shows a human server name in parens — never a raw id.
-// (`server_id` is used as a fallback when the server row isn't loaded; that's a
-// meaningless UUID to the user, so we suppress it rather than display it.)
-const looksLikeId = (s?: string | null): boolean =>
-  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(s)
-
 /**
  * MCP Tool Call UI Component
  * Shows approval UI when status is 'pending_approval'
@@ -36,17 +32,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
     return <ToolCallPendingApprovalContent toolCall={toolCall} />
   }
 
-  const getStatusIcon = () => {
-    switch (toolCall.status) {
-      case 'started':
-        return <Wrench className="text-primary animate-spin" />
-      case 'completed':
-        return <CircleCheck className="text-success" />
-      case 'error':
-        return <CircleX className="text-destructive" />
-    }
-  }
-
+  const serverLabel = mcpServerParenLabel(toolCall.server)
 
   return (
     <Card
@@ -55,12 +41,12 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
       data-testid={`mcp-toolcall-card-${toolCall.tool_use_id}`}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {getStatusIcon()}
-          <Text strong>{toolCall.tool_name}</Text>
-          {toolCall.server && !looksLikeId(toolCall.server) && (
-            <Text type="secondary" className="text-xs">
-              ({toolCall.server})
+        <div className="flex items-center gap-2 min-w-0">
+          <ToolStatusIcon status={toolCall.status} />
+          <Text strong className="truncate">{toolCall.tool_name}</Text>
+          {serverLabel && (
+            <Text type="secondary" className="text-xs whitespace-nowrap">
+              {serverLabel}
             </Text>
           )}
           {/* Status is conveyed by the icon (check / x / wrench) — no text. A
@@ -188,17 +174,13 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
   return (
     <Card size="sm" className="mb-2 bg-black/2" data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {toolResultData?.is_error ? (
-            <CircleX className="text-destructive" />
-          ) : toolResultData ? (
-            <CircleCheck className="text-success" />
-          ) : (
-            <Wrench className="text-primary" />
-          )}
-          <Text strong>{toolUseData.name || 'Tool Call'}</Text>
-          {server?.display_name && (
-            <Text type="secondary" className="text-xs">({server.display_name})</Text>
+        <div className="flex items-center gap-2 min-w-0">
+          <ToolStatusIcon
+            status={toolResultData ? (toolResultData.is_error ? 'failed' : 'success') : 'running'}
+          />
+          <Text strong className="truncate">{toolUseData.name || 'Tool Call'}</Text>
+          {mcpServerParenLabel(server?.display_name) && (
+            <Text type="secondary" className="text-xs whitespace-nowrap">{mcpServerParenLabel(server?.display_name)}</Text>
           )}
           {/* Status is conveyed by the icon (check / x / wrench) — no text. A
               hidden marker keeps the completed/failed signal available to tests. */}
@@ -295,12 +277,8 @@ function McpToolGroupCard({
   const allDone = toolUses.every(u =>
     resultByUseId.has((u.content as MessageContentDataToolUse).id),
   )
-  const icon = hasError ? (
-    <CircleX className="text-destructive" />
-  ) : !allDone ? (
-    <Wrench className="text-primary animate-spin" />
-  ) : (
-    <CircleCheck className="text-success" />
+  const icon = (
+    <ToolStatusIcon status={hasError ? 'failed' : !allDone ? 'running' : 'success'} />
   )
 
   return (

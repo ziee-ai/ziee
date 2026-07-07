@@ -23,10 +23,35 @@ type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
   target?: string
   /** Tooltip shown on hover AND keyboard focus. Doubles as the accessible name when a string. */
   tooltip?: React.ReactNode
+  /** Side the built-in tooltip opens toward (default 'top'). Use 'bottom' for
+   *  icon buttons in a panel/header top row so the tooltip drops into the body
+   *  instead of clipping at the top edge or obscuring an adjacent control. */
+  tooltipSide?: 'top' | 'right' | 'bottom' | 'left'
   /** Test selector — REQUIRED, forwarded onto the rendered button/anchor via {...props} (i18n-safe). */
   'data-testid': string
 }
 
+// ─── Variant policy (Spec B — control-variant consistency) ────────────────────
+// The design-critic pass repeatedly flagged buttons that pick their variant ad
+// hoc. Pick a variant by ROLE, not by taste:
+//
+//   • Peer icon-only buttons in one chrome cluster (a viewer header, a card
+//     toolbar, a drawer footer) MUST share ONE variant — default to `ghost`.
+//     Don't mix `outline` + `ghost` side by side (e.g. the file-viewer header:
+//     Copy/Download are `ghost` to match the drawer's `ghost` close button).
+//   • A semantic action is colored to match the badge/outcome it produces:
+//     Include → success (green), Exclude/remove → danger (red, `destructive`),
+//     Unscreen / neutral reset → muted (`outline`/`ghost`). The action should
+//     visually predict its result tag.
+//   • The primary Save/submit is ALWAYS the saturated accent (`default`
+//     variant) — never a weak `secondary`/`ghost` look. If it must be disabled
+//     (e.g. a pristine form), keep the accent variant and add a tooltip that
+//     explains WHY (see modules/settings SettingsFormActions.saveDisabledReason);
+//     a greyed accent that explains itself reads as intentional, a greyed weak
+//     variant reads as broken.
+//   • A destructive singleton (a lone Delete) is `ghost` + danger tone, not a
+//     filled red block that dominates the row.
+//
 // Icon-only buttons have no text → no accessible name. The type FORCES a `tooltip`
 // when size="icon" (which also becomes the aria-label and shows on hover + focus).
 export type ButtonProps =
@@ -39,7 +64,7 @@ const skeletonH = (size?: BaseButtonProps['size']) =>
   size === 'lg' ? 'h-9' : 'h-8'
 
 export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
-  ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {
+  ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, tooltipSide, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {
     const { disabled: surfaceDisabled, loading: regionLoading, size: ambientSize } = useSurface({ disabled })
     const size = ownSize ?? ambientSize
     const className = cn(block && 'w-full', classNameProp)
@@ -119,7 +144,7 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
       <TooltipProvider delay={300}>
         <Tooltip>
           <TooltipTrigger render={node} />
-          <TooltipContent>{effectiveTooltip}</TooltipContent>
+          <TooltipContent side={tooltipSide}>{effectiveTooltip}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     )

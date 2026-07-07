@@ -19,13 +19,16 @@ import { Loading } from '@/core/components/Loading'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
-import { setSseCassette } from './mockApi'
+import { type InteractionRecipe, useRunInteraction } from './interactions'
 import {
+  BRANCHED_ANCHOR_MESSAGE_ID,
+  BRANCHED_BRANCH_IDS,
   CHAT_DEEP_CONVERSATION_IDS,
+  RENDERING_SHOWCASE_ID,
   SHOWCASE_CONVERSATION_ID,
   STREAMING_MESSAGE_ID,
   literaturePanelData,
-  pendingElicitation,
+  liveElicitation,
   rightPanelFile,
   streamingCassette,
 } from './fixtures/chat-deep'
@@ -45,6 +48,10 @@ export interface DeepStateEntry {
   note: string
   /** Seed the transient state through the real store (runs after mount). */
   setup?: () => void | Promise<void>
+  /** Interaction recipes: drive real user actions after mount to render the
+   *  interaction-gated states (click-to-edit, expand, hover) this surface hides
+   *  behind a click. Driven via `?surface=<slug>&interact=<name>`. */
+  interactions?: InteractionRecipe[]
 }
 
 const chat = () => useChatStore.getState()
@@ -64,21 +71,50 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     slug: 'deep-chat-streaming',
     title: 'Conversation — streaming (live generation)',
     conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'mid-generation: streamingMessage assembled token-by-token via the real applyStreamFrame reducer',
+    note: 'mid-generation: a streamingMessage carrying the accumulated deltas, left visibly streaming (isStreaming)',
     setup: async () => {
-      // Register the recorded SSE frames so the mechanism is exercised/available;
-      // then drive the SAME frames through the real reducer directly (robust —
-      // the gallery does not boot the auth-gated ChatStreamClient).
-      setSseCassette(
-        streamingCassette.map(f => ({ event: f.type, data: { conversationId: SHOWCASE_CONVERSATION_ID, event: f } })),
-      )
       await whenLoaded(SHOWCASE_CONVERSATION_ID)
-      for (const frame of streamingCassette) {
-        await chat().applyStreamFrame(SHOWCASE_CONVERSATION_ID, frame)
-        await tick(250)
+      // Build the mid-generation state DIRECTLY (idempotent `setState` replace)
+      // rather than replaying the recorded frames token-by-token through
+      // `applyStreamFrame`. React StrictMode invokes effects twice in dev, and
+      // the reducer's APPEND semantics double/interleave under a concurrent
+      // re-invocation → garbled, duplicated text. A single deterministic replace
+      // produces the same visible mid-stream state and is re-invocation-safe.
+      const fullText = streamingCassette
+        .filter(f => f.type === 'content')
+        .flatMap(f => f.content ?? [])
+        .map(c => c.delta)
+        .join('')
+      const now = new Date().toISOString()
+      const streamingMessage = {
+        id: STREAMING_MESSAGE_ID,
+        role: 'assistant' as const,
+        contents: [
+          {
+            id: `${STREAMING_MESSAGE_ID}-c0`,
+            message_id: STREAMING_MESSAGE_ID,
+            content_type: 'text',
+            content: { type: 'text', text: fullText },
+            sequence_order: 0,
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+        originated_from_id: '',
+        edit_count: 0,
+        created_at: now,
+        model_id: 'claude-opus-4-8',
       }
-      // Leave it mid-stream (no `complete`) so isStreaming stays true.
-      useChatStore.setState({ isStreaming: true, streamingMessageId: STREAMING_MESSAGE_ID })
+      useChatStore.setState(s => {
+        const messages = new Map(s.messages)
+        messages.set(STREAMING_MESSAGE_ID, streamingMessage as never)
+        return {
+          messages,
+          streamingMessage: streamingMessage as never,
+          streamingMessageId: STREAMING_MESSAGE_ID,
+          isStreaming: true,
+        }
+      })
     },
   },
   {
@@ -132,6 +168,43 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         error: 'Tool call failed: exit code 1.',
       })
     },
+    interactions: [
+      {
+        // The tool-call card's error Alert + expanded detail panel render ONLY
+        // inside `{isExpanded && …}` (mcp/chat-extension/extension.tsx:112) — a
+        // click on the details chevron. This is exactly the interaction the
+        // coverage-allowlist excused for extension.tsx:132/133; the recipe drives
+        // it so the branch is exercised (de-allowlisted) + the expanded state shot.
+        name: 'expand-details',
+        note: 'click the tool-call details chevron → the expanded error Alert + arguments panel (extension.tsx:112/132/133)',
+        steps: async d => {
+          await d.click('mcp-toolcall-details-btn-toolu_failed_1')
+          await d.wait(300)
+        },
+      },
+    ],
+  },
+  {
+    // Priority "must render" state: the inline tool-approval prompt. Seeding a
+    // McpComposer toolCall in `pending_approval` for the running conversation's
+    // tool_use block makes McpToolCallUI render ToolCallPendingApprovalContent —
+    // the "Tool Approval Required" Alert + approve/deny buttons (a state the
+    // mount-only pass never showed; the C9/C10 icon-alignment bug family lives here).
+    slug: 'deep-chat-tool-approval',
+    title: 'Conversation — tool approval pending',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.toolRunning,
+    note: 'McpComposer toolCall in pending_approval → the inline "Tool Approval Required" prompt (approve-once / approve-conv / deny)',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolRunning)
+      useMcpComposerStore.getState().addToolCall({
+        tool_use_id: 'toolu_running_1',
+        server: 'code_sandbox',
+        server_id: 'a1b2c3d4-0000-5000-8000-000000000001',
+        tool_name: 'execute_command',
+        status: 'pending_approval',
+        input: { command: 'ls -la /workspace' },
+      })
+    },
   },
   {
     slug: 'deep-chat-attachments',
@@ -143,11 +216,13 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
   {
     slug: 'deep-chat-elicitation',
     title: 'Conversation — elicitation prompt pending',
-    conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'the elicitation_request block flips to a live, answerable form',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.elicitation,
+    note: 'a dedicated conversation ending in a pending elicitation_request → the live, answerable form',
     setup: async () => {
-      await whenLoaded(SHOWCASE_CONVERSATION_ID)
-      useMcpComposerStore.getState().addElicitationRequest(pendingElicitation)
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.elicitation)
+      // The block's own `status: 'pending'` already renders the form; seeding the
+      // McpComposer live entry (matching id) makes it the freshest-status source too.
+      useMcpComposerStore.getState().addElicitationRequest(liveElicitation)
     },
   },
   {
@@ -186,11 +261,63 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     },
   },
   {
+    // MULTI-tab right panel: opening two tabs surfaces the real tab STRIP (a
+    // horizontal tablist with >1 tab) so the strip detectors have a target —
+    // A8 (row-child vertical centering) + I5 (wrong-scroll-axis). A single-tab
+    // panel renders no strip.
+    slug: 'deep-chat-right-panel-multi',
+    title: 'Conversation — right panel, multiple tabs',
+    conversationId: SHOWCASE_CONVERSATION_ID,
+    note: 'two right-panel tabs (file + literature) → the tab strip; drives A8/I5',
+    setup: async () => {
+      await whenLoaded(SHOWCASE_CONVERSATION_ID)
+      useFileStore.setState(s => ({
+        selectedFiles: new Map(s.selectedFiles).set(rightPanelFile.id, rightPanelFile),
+        messageFilesCache: new Map(s.messageFilesCache).set(rightPanelFile.id, rightPanelFile),
+      }))
+      chat().displayInRightPanel({
+        id: 'panel-file-1',
+        title: rightPanelFile.filename,
+        type: 'file',
+        data: { fileId: rightPanelFile.id },
+      })
+      chat().displayInRightPanel({
+        id: literaturePanelData.sessionId,
+        title: 'Literature screening',
+        type: 'literature',
+        data: literaturePanelData,
+      })
+    },
+  },
+  {
+    // RENDERING SHOWCASE: a conversation whose one assistant message carries
+    // math / mermaid / a highlighted code fence / a table. Feeds the Layer-1
+    // content-rendering detectors (L1/L2/L3/L4) so the audit reports whether each
+    // rich renderer works in the gallery or degrades to raw text.
+    slug: 'deep-chat-rendering-showcase',
+    title: 'Conversation — rendering showcase (math/mermaid/code/table)',
+    conversationId: RENDERING_SHOWCASE_ID,
+    note: 'math (KaTeX) + mermaid + highlighted code + table → drives L1/L2/L3/L4',
+    setup: async () => {
+      await whenLoaded(RENDERING_SHOWCASE_ID)
+    },
+  },
+  {
     slug: 'deep-chat-branched',
     title: 'Conversation — branched (edit/regenerate branches)',
-    conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'the showcase conversation carries edit + regenerate branches → BranchNavigator',
-    setup: () => whenLoaded(SHOWCASE_CONVERSATION_ID),
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.branched,
+    note: 'a fork point on the (visible) last assistant message → the BranchNavigator < 1 / 3 >',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.branched)
+      // `forkPoints` is normally derived by loadBranches from a parent/child branch
+      // graph; seed it directly (a store field) so the navigator renders on the
+      // visible anchor message without hand-crafting that graph.
+      useChatStore.setState(s => {
+        const forkPoints = new Map(s.forkPoints)
+        forkPoints.set(BRANCHED_ANCHOR_MESSAGE_ID, [...BRANCHED_BRANCH_IDS])
+        return { forkPoints }
+      })
+    },
   },
   {
     slug: 'deep-chat-long',
@@ -198,6 +325,32 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     conversationId: SHOWCASE_CONVERSATION_ID,
     note: '47-message showcase history — scroll + lazy-preview behavior',
     setup: () => whenLoaded(SHOWCASE_CONVERSATION_ID),
+    interactions: [
+      {
+        // THE flagship interaction bug: the conversation-header inline rename form.
+        // Clicking the pencil sets TitleEditor.isEditing → the `<Form>` swaps in.
+        // KNOWN BUG (A10): the inline rename form renders VERTICAL and the input
+        // collapses to invisible width — a state the mount-only pass never showed.
+        name: 'rename',
+        note: 'click the header edit pencil → the inline rename Form (A10: input collapses to invisible width / vertical layout)',
+        steps: async d => {
+          await d.click('chat-title-edit-btn')
+          await d.waitFor('chat-title-input', 3000)
+          await d.wait(300)
+        },
+      },
+      {
+        // MessageActions is `opacity-0 group-hover/group-focus-within:opacity-100`.
+        // A synthetic pointer event can't fire CSS :hover, but focusing a button in
+        // the row triggers `focus-within` → the same reveal (G2 hover/G7 focus ring).
+        name: 'message-actions',
+        note: 'focus a message action → the hover/focus-revealed action row (copy / edit / regenerate) becomes visible',
+        steps: async d => {
+          await d.focus('chat-message-copy-btn')
+          await d.wait(300)
+        },
+      },
+    ],
   },
 ]
 
@@ -214,6 +367,9 @@ export function DeepStateFrame({ entry }: { entry: DeepStateEntry }): ReactNode 
   useEffect(() => {
     void entry.setup?.()
   }, [entry])
+  // Deep surfaces need their seed + the lazy ConversationPage to settle before an
+  // interaction can find its target, so give the recipe a longer settle window.
+  useRunInteraction(entry.interactions, 1200)
   return (
     <section
       data-testid={deepTestId(entry.slug)}

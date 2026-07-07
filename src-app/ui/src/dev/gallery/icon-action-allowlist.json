@@ -1,0 +1,10 @@
+{
+  "__doc__": "Allow-list for lint-icon-action.mjs (taxonomy C11). Entries: { testid?: substring, file?: substring, action?: key, reason }. A matching control is excused from the icon<->action check.",
+  "entries": [
+    {
+      "testid": "inline-file-preview-open",
+      "action": "new tab",
+      "reason": "Flagged for review by acceptance #10b: the file-viewer open-in-new-tab button renders `FileOutput` (file-export glyph), not the conventional `ExternalLink`. Allow-listed (not silently changing runtime behavior) but recorded here as a tracked C11 deviation — the crop-review rubric asks the vision reviewer to confirm the glyph communicates 'open in new tab'."
+    }
+  ]
+}

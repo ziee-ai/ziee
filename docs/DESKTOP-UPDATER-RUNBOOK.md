@@ -10,7 +10,7 @@ that require secrets / GitHub settings and therefore can't live in the repo.
   (`src-app/desktop/tauri/tauri.conf.json`) to check a **static manifest** at:
 
   ```
-  https://phibya.github.io/ziee-chat-new/latest.json
+  https://ziee-ai.github.io/ziee/latest.json
   ```
 
 - On launch the app silently checks that endpoint and, if a newer version
@@ -63,7 +63,7 @@ updater bundle.
 GitHub → repo **Settings → Pages** → Source = **Deploy from a branch** →
 Branch = **`gh-pages`** / **`/ (root)`**. The first release workflow run
 creates that branch; after that the manifest is live at
-`https://phibya.github.io/ziee-chat-new/latest.json`.
+`https://ziee-ai.github.io/ziee/latest.json`.
 
 ## Cutting a release
 

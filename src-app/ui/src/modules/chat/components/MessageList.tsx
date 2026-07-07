@@ -19,10 +19,9 @@ export function MessageList() {
   if (!loading && messagesArray.length === 0) {
     return (
       <Flex className={'flex-col gap-1 w-full h-full'} data-testid="chat-messages">
-        {/* Header extensions (e.g. the "In project" chip) are persistent
-            markers on the conversation page — keep them visible even before
-            the first message, not only once messages exist. */}
-        <ExtensionSlot name="message_list_header" />
+        {/* The "In project" chip and other persistent context markers are NOT
+            rendered here — they live in ConversationPage as PINNED chrome above
+            the message scroll container so they never scroll out of view. */}
         <div className="flex flex-1 flex-col items-center justify-center text-center py-20">
           <MessageSquare className="text-5xl mb-4" />
           <Text className="text-lg">Start your conversation</Text>
@@ -33,9 +32,8 @@ export function MessageList() {
 
   return (
     <Flex className={'flex-col gap-1 w-full'} data-testid="chat-messages">
-      {/* Extension slot: message list header */}
-      <ExtensionSlot name="message_list_header" />
-
+      {/* The message_list_header slot (project chip / context) is rendered as
+          pinned chrome in ConversationPage, above this scroll container. */}
       {messagesArray.map(msg => (
         <ChatMessage key={msg.id} message={msg} />
       ))}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { File } from 'lucide-react'
+import { File, TriangleAlert } from 'lucide-react'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
-import { Alert, ScrollArea, Spin, Text } from '@/components/ui'
+import { Alert, Button, ScrollArea, Spin, Text } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
@@ -19,6 +19,9 @@ export function PdfBody(props: FileViewerSlotProps) {
   const previewPageUrls = Stores.File.previewPageUrls
   const cachedUrls = previewPageUrls.get(file.id)
   const pageUrls = cachedUrls ?? Stores.File.getPreviewPageUrls(file)
+  // Subscribe to per-page errors so a settled failure renders an error/retry
+  // slot rather than a spinner that never resolves (finding #17).
+  const pageErrors = Stores.File.previewPageErrors.get(file.id)
 
   // Total page count of the source document, when the backend was able
   // to compute it (PDF / DOCX-via-PDF). May be undefined for
@@ -120,6 +123,26 @@ export function PdfBody(props: FileViewerSlotProps) {
               className="w-full object-contain rounded shadow"
               loading="lazy"
             />
+          ) : pageErrors?.has(i + 1) ? (
+            // Settled failure — an explicit, actionable error slot (NOT an
+            // endless spinner). Reserve the same page-sized height.
+            <div
+              className="w-full flex flex-col items-center justify-center gap-2 min-h-[800px] p-6 text-center"
+              data-testid={`file-pdf-page-error-${i + 1}`}
+            >
+              <TriangleAlert className="size-8 text-warning" />
+              <Text type="secondary" className="text-xs">
+                Couldn't load page {i + 1}.
+              </Text>
+              <Button
+                size="default"
+                variant="outline"
+                onClick={() => Stores.File.retryPreviewPage(file, i + 1)}
+                data-testid={`file-pdf-page-retry-${i + 1}`}
+              >
+                Retry
+              </Button>
+            </div>
           ) : (
             // Reserve a page-sized height so unloaded pages aren't tiny —
             // otherwise every slot would fit the viewport at once and the

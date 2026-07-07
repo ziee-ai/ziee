@@ -124,7 +124,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   }
 
   return (
-    <div className="p-3 space-y-3 overflow-y-auto" data-testid="lit-screening-panel">
+    <div className="p-3 space-y-3 overflow-y-auto overflow-x-hidden" data-testid="lit-screening-panel">
       <Title level={5} className="!mb-0">
         Screening
       </Title>
@@ -133,7 +133,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       </Text>
 
       {/* PRISMA-style counts */}
-      <Space wrap size="small">
+      <Space wrap size="small" className="w-full">
         <Tag variant="outline" data-testid="lit-screening-tag-identified">Identified: {identifiedTotal}</Tag>
         <Tag variant="outline" data-testid="lit-screening-tag-after-dedup">After dedup: {afterDedup}</Tag>
         <Tag variant="outline" tone="info" data-testid="lit-screening-tag-screened">Screened: {screened}</Tag>
@@ -142,7 +142,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       </Space>
 
       {degradedSources.length > 0 && (
-        <Text type="warning" className="text-xs block">
+        <Text type="warning" className="text-xs block [overflow-wrap:anywhere]">
           Degraded/skipped sources: {degradedSources.join(', ')}
         </Text>
       )}
@@ -150,12 +150,12 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       {completeness && (
         <div className="rounded-md bg-accent p-3 border border-border" data-testid="lit-screening-completeness">
           <Text className="text-sm font-medium text-foreground">{completeness.estimate.toUpperCase()}</Text>
-          <Paragraph className="text-xs text-muted-foreground !mb-0">{completeness.caveat}</Paragraph>
+          <Paragraph className="text-xs text-muted-foreground !mb-0 [overflow-wrap:anywhere]">{completeness.caveat}</Paragraph>
         </div>
       )}
 
       {/* Bulk-action bar (select rows → apply one decision) + export. */}
-      <Space wrap size="small">
+      <Space wrap size="small" className="w-full">
         <Checkbox
           aria-label="Select all records"
           checked={allSelected}
@@ -164,13 +164,17 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
           label={selected.size > 0 ? `${selected.size} selected` : 'Select all'}
           data-testid="lit-screening-select-all-checkbox"
         />
-        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
+        {/* Bulk-decision buttons echo their result badge's tone (Spec B):
+            Include = green (success), Exclude = red (danger), Unscreen = muted.
+            Outline pills tinted with the SAME semantic tokens as the outcome
+            tags above, so the action visually predicts its result. */}
+        <Button size="default" variant="outline" className="border-success/45 text-success hover:bg-success/10 hover:text-success" disabled={selected.size === 0} onClick={() => bulkDecide('include')} data-testid="lit-screening-bulk-include-button">
           Include
         </Button>
-        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
+        <Button size="default" variant="outline" className="border-destructive/45 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={selected.size === 0} onClick={() => bulkDecide('exclude')} data-testid="lit-screening-bulk-exclude-button">
           Exclude
         </Button>
-        <Button size="default" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
+        <Button size="default" variant="outline" disabled={selected.size === 0} onClick={() => bulkDecide('unscreened')} data-testid="lit-screening-bulk-unscreen-button">
           Unscreen
         </Button>
         <Dropdown
@@ -215,11 +219,11 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <Text strong className="text-sm">
+                <Text strong className="text-sm [overflow-wrap:anywhere]">
                   {i + 1}. {record.title}
                 </Text>
                 {record.is_preprint && <Tag variant="outline" data-testid={`lit-screening-preprint-${i}`} className="ml-1">preprint</Tag>}
-                <Paragraph type="secondary" className="text-xs !mb-0">
+                <Paragraph type="secondary" className="text-xs !mb-0 [overflow-wrap:anywhere]">
                   {record.authors?.slice(0, 3).join(', ')}
                   {record.authors?.length > 3 ? ' et al.' : ''}
                   {record.year ? ` · ${record.year}` : ''}
@@ -227,7 +231,9 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
                   {` · ${record.source}`}
                 </Paragraph>
                 {(record.doi || record.pmid) && (
-                  <Text type="secondary" className="text-xs block">
+                  // DOIs/PMIDs are opaque unbroken tokens → break-all so a long
+                  // identifier can never force horizontal scroll on a narrow panel.
+                  <Text type="secondary" className="text-xs block break-all">
                     {record.doi ? `doi:${record.doi}` : ''} {record.pmid ? `pmid:${record.pmid}` : ''}
                   </Text>
                 )}

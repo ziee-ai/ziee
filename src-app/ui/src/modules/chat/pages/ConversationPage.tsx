@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Alert, ErrorState } from '@/components/ui'
 import { Loading } from '@/core/components/Loading'
 import { MessageList } from '@/modules/chat/components/MessageList'
+import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -164,6 +165,23 @@ export default function ConversationPage() {
       <div className={cn('flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Chat column */}
         <div className={cn('flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
+          {/* Pinned conversation-context chrome (the "In project" chip and any
+              mode/model indicators registered into message_list_header). It's a
+              SIBLING above the message scroll container — never a descendant of
+              it — so it can't scroll out of view (K1/K4). Desktop: only the inner
+              list scrolls, so normal flow already pins this. Mobile (native
+              document-scroll): stick it to the top so it survives scroll-to-
+              bottom. Renders nothing (zero height) when the conversation is
+              unfiled, so there's no empty bar. */}
+          <div
+            className={cn(
+              'w-full max-w-4xl mx-auto',
+              nativeScroll ? 'sticky top-0 z-20 bg-background' : '',
+            )}
+            data-testid="conversation-context-chrome"
+          >
+            <ExtensionSlot name="message_list_header" />
+          </div>
           {/* Desktop: overlay scroll (DivScrollY / OverlayScrollbars) so the
               message history matches every other scroll surface in the app
               instead of a heavy native scrollbar. `nativeFlow` keeps the mobile
@@ -171,7 +189,8 @@ export default function ConversationPage() {
               unchanged — it renders a plain flow container when nativeScroll is
               active, exactly like the previous conditional did. The
               messagesEnd sentinel + scrollIntoView + isAtBottom observer all
-              keep working: OverlayScrollbars scrolls a real viewport element. */}
+              keep working: OverlayScrollbars scrolls a real viewport element. The
+              context chrome above stays a SIBLING of this scroller (K1/K4). */}
           <DivScrollY nativeFlow className="flex-1">
             <div className="w-full max-w-4xl mx-auto px-4 pt-4">
               <MessageList />

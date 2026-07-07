@@ -26,13 +26,14 @@
  *
  * Usage:
  *   GALLERY_COVERAGE=1 npm run dev -- --port 1466 --strictPort   # (instrumented)
- *   node scripts/gallery-coverage.mjs --url=http://localhost:1466/dev-gallery.html
+ *   node scripts/gallery-coverage.mjs --url=http://localhost:1466/gallery.html
  *   node scripts/gallery-coverage.mjs --url=… --gate              # CI gate
  */
 import { chromium } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { enumerateSurfaces } from './lib/gallery-surfaces.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const UI_DIR = path.resolve(HERE, '..')
@@ -46,7 +47,7 @@ const arg = (n, d) => {
   const a = process.argv.find(x => x.startsWith(`--${n}=`))
   return a ? a.slice(n.length + 3) : d
 }
-const BASE = arg('url', 'http://localhost:1466/dev-gallery.html')
+const BASE = arg('url', 'http://localhost:1466/gallery.html')
 const GATE = process.argv.includes('--gate')
 const STATES = ['empty', 'error', 'delayed']
 const LAUNCH = { args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] }
@@ -93,6 +94,14 @@ async function visit(holder, url, acc) {
       // (~4.5s) — a late-mounting component (slow chunk under the full pass) needs
       // the seed still asserting when it first renders, so wait 5.5s on a surface.
       await page.waitForTimeout(url.includes('surface=') ? 6500 : 5000)
+      // Interaction URLs drive a post-mount recipe; wait for its done-signal so the
+      // now-exercised branch is present in this render's __coverage__.
+      if (url.includes('interact=')) {
+        await page
+          .waitForSelector('body[data-gallery-interact-done]', { timeout: 12000 })
+          .catch(() => {})
+        await page.waitForTimeout(400)
+      }
       const cov = await page.evaluate(() => window.__coverage__ || null)
       if (!cov) throw new Error('no __coverage__ (is GALLERY_COVERAGE=1 on the server?)')
       mergeInto(acc, cov)
@@ -113,19 +122,11 @@ async function enumerateSlugs(holder) {
   const browser = await ensureBrowser(holder)
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await ctx.newPage()
-  await page.goto(BASE, { waitUntil: 'domcontentloaded' })
-  await page.waitForTimeout(5000)
-  const pages = []
-  for (const s of await page.locator('[data-testid^="gallery-page-"]').all()) {
-    const id = (await s.getAttribute('data-testid'))?.replace('gallery-page-', '')
-    if (id) pages.push(id)
-  }
-  const overlays = await page.evaluate(() => window.__GALLERY_OVERLAYS__ || [])
-  const deep = await page.evaluate(() => window.__GALLERY_DEEP_STATES__ || [])
-  const seeded = await page.evaluate(() => window.__GALLERY_SEEDED__ || [])
+  // Single-source enumeration (shared with the capture scripts) — pages minus the
+  // interaction-only classes already resolved inside `listAllSurfaces`.
+  const classes = await enumerateSurfaces(page, BASE)
   await ctx.close()
-  const special = new Set([...overlays, ...deep, ...seeded])
-  return { pages: pages.filter(p => !special.has(p)), overlays, deep, seeded }
+  return classes
 }
 
 // Part-1 cross-reference: which surface lines carry a NAMED state signal
@@ -250,16 +251,20 @@ async function main() {
   const holder = { b: null }
   const acc = {}
   console.log('=== gallery branch-coverage pass ===')
-  const { pages, overlays, deep, seeded } = await enumerateSlugs(holder)
-  console.log(`enumerated ${pages.length} pages, ${overlays.length} overlays, ${deep.length} deep states, ${seeded.length} seeded surfaces`)
+  const { pages, overlays, deep, seeded, interactions = [] } = await enumerateSlugs(holder)
+  console.log(`enumerated ${pages.length} pages, ${overlays.length} overlays, ${deep.length} deep states, ${seeded.length} seeded surfaces, ${interactions.length} interaction recipes`)
 
   let done = 0
-  const total = 1 + pages.length * STATES.length + overlays.length + deep.length + seeded.length
+  const total =
+    1 + pages.length * STATES.length + overlays.length + deep.length + seeded.length + interactions.length
   const tick = () => { if (++done % 15 === 0) console.log(`  …${done}/${total} combos`) }
   await visit(holder, BASE, acc); tick() // browse (all pages, loaded)
   for (const slug of pages)
     for (const st of STATES) { await visit(holder, `${BASE}?surface=${slug}&state=${st}`, acc); tick() }
   for (const slug of [...overlays, ...deep, ...seeded]) { await visit(holder, `${BASE}?surface=${slug}`, acc); tick() }
+  // Interaction recipes: drive the post-mount action so the interaction-gated
+  // branch is exercised (the de-allowlisted arms live here).
+  for (const it of interactions) { await visit(holder, `${BASE}?surface=${it.slug}&interact=${it.name}`, acc); tick() }
   try { await holder.b?.close() } catch {}
 
   fs.writeFileSync(OUT_RAW, JSON.stringify(acc))

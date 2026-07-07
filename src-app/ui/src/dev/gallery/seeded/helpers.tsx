@@ -19,6 +19,7 @@ import {
   type LazyExoticComponent,
   lazy,
 } from 'react'
+import type { InteractionRecipe } from '../interactions'
 
 export interface SeededSurfaceEntry {
   /** Gallery slug → `?surface=<slug>`; also the section testid. Keep it UNIQUE
@@ -36,6 +37,9 @@ export interface SeededSurfaceEntry {
   component: LazyExoticComponent<ComponentType>
   /** Seed the transient state through the real store (runs after mount). */
   setup?: () => void | Promise<void>
+  /** Interaction recipes driven after the seeded surface mounts (click-to-edit
+   *  inline forms, expand). Driven via `?surface=<slug>&interact=<name>`. */
+  interactions?: InteractionRecipe[]
 }
 
 /** Lazy-load a named export as the surface component. */

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Ziee server installer (Linux). Modeled on coder/coder's install.sh.
 #
-#   curl -fsSL https://github.com/phibya/ziee-chat-new/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/ziee-ai/ziee/releases/latest/download/install.sh | sh
 #
 # Detects your CPU arch + distro and installs ziee via the native package
 # manager (.deb / .rpm) or a standalone musl binary to /usr/local/bin (Alpine
@@ -19,7 +19,7 @@
 # The server is Linux-only. On macOS/Windows use the desktop app instead.
 set -eu
 
-REPO="phibya/ziee-chat-new"
+REPO="ziee-ai/ziee"
 APP="ziee"
 GH="https://github.com"
 

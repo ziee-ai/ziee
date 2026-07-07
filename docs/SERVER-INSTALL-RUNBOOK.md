@@ -11,7 +11,7 @@ One command — detects your CPU arch + distro and installs via the native
 package manager or a standalone binary, then sets up systemd:
 
 ```bash
-curl -fsSL https://github.com/phibya/ziee-chat-new/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ziee-ai/ziee/releases/latest/download/install.sh | sh
 ```
 
 It picks per distro: `.deb` (Debian/Ubuntu) · `.rpm` (Fedora/RHEL/openSUSE) ·
@@ -42,7 +42,7 @@ Other options:
   ```bash
   docker run -v ziee-data:/var/lib/ziee \
     -v $PWD/config.yaml:/etc/ziee/config.yaml:ro \
-    -p 9000:9000 ghcr.io/phibya/ziee:latest
+    -p 9000:9000 ghcr.io/ziee-ai/ziee:latest
   ```
   Defaults to external Postgres + sandbox disabled (see the Dockerfile header).
 - **Manual binary:** download `ziee_X.Y.Z_linux_{amd64,arm64}.tar.gz` from the
@@ -86,7 +86,7 @@ On the tag:
   `latest.json` to `gh-pages` (desktop auto-updater).
 - `server-release.yml` builds the Linux server (amd64 + arm64 static musl),
   packages it (tarball + `.deb`/`.rpm` via nfpm), pushes a multi-arch
-  image to `ghcr.io/phibya/ziee`, and uploads everything + `install.sh` to the
+  image to `ghcr.io/ziee-ai/ziee`, and uploads everything + `install.sh` to the
   same `vX.Y.Z` Release.
 
 Both workflows may run on the same tag; the server job creates the Release only
@@ -121,7 +121,7 @@ signed; pin `--version` and inspect the script first if that matters to you.
 Verify an artifact's attestation out-of-band for the strongest check:
 
 ```bash
-gh attestation verify ziee_<version>_linux_amd64.tar.gz --repo phibya/ziee-chat-new
+gh attestation verify ziee_<version>_linux_amd64.tar.gz --repo ziee-ai/ziee
 ```
 
 **Seccomp.** Release binaries are built `--no-default-features --features

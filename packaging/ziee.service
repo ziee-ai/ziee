@@ -1,6 +1,6 @@
 [Unit]
 Description=Ziee server
-Documentation=https://github.com/phibya/ziee-chat-new
+Documentation=https://github.com/ziee-ai/ziee
 After=network-online.target
 Wants=network-online.target
 

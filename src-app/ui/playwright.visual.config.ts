@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test'
  *
  * Distinct from `playwright.config.ts` (the feature E2E suite) in one decisive
  * way: the gallery is a **dev-only, backend-free** canvas, so this config boots
- * ONLY the Vite dev server (serving `/dev-gallery.html`) — no Postgres, no
+ * ONLY the Vite dev server (serving `/gallery.html`) — no Postgres, no
  * `cargo run`, no global setup. That makes the visual layers fast and
  * deterministic.
  *
@@ -35,7 +35,7 @@ export default defineConfig({
     // Pass the port through to Vite (vite.config.ts pins strictPort), so the
     // GALLERY_PORT override actually works instead of hanging on :1420.
     command: `npm run dev -- --port ${PORT} --strictPort`,
-    url: `${BASE_URL}/dev-gallery.html`,
+    url: `${BASE_URL}/gallery.html`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: 'ignore',

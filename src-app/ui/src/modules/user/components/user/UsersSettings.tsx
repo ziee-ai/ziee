@@ -54,11 +54,17 @@ export function UsersSettings() {
   const canToggleStatus = usePermission(Permissions.UsersToggleStatus)
 
   // Toast only user-action failures. A failed users LOAD renders as a
-  // persistent ErrorState below (not toast-only), so only toast a users error
-  // that occurred against already-loaded data (a mutation). groupsError always
-  // originates from a drawer mutation, so it still toasts.
+  // persistent ErrorState below (not toast-only), so only toast an error that
+  // occurred against already-loaded data (a mutation). Both `usersError` and
+  // `groupsError` can ALSO originate from the page's initial GET (the groups
+  // list loads for the assign-group flow); in a full outage that load-failure
+  // toast would stack on top of the users ErrorState. Gate BOTH on
+  // `users.length > 0` so a cold load failure is shown ONLY by the in-place
+  // ErrorState, and a drawer-mutation failure (page already populated) still
+  // toasts.
   useEffect(() => {
-    if (usersError && users.length > 0) {
+    if (users.length === 0) return
+    if (usersError) {
       message.error(usersError)
       Stores.Users.clearError()
     }

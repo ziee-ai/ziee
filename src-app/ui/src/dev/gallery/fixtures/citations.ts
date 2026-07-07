@@ -110,5 +110,12 @@ const citationsList: ListCitationsResponse = {
 }
 
 export const citationsCassette: Cassette = {
-  'Citations.list': citationsList,
+  // The library view (`/settings/citations`) calls this WITHOUT a project_id and
+  // wants the populated list. The project-scoped bibliography surfaces
+  // (`ProjectBibliographyInlinePreview` / `ManagePanel`) call it WITH a
+  // `project_id` and are the EMPTY-state gallery entries — so a project-scoped
+  // query resolves to zero entries (otherwise the "empty" surface shows the 4
+  // library rows as "4 reference(s)").
+  'Citations.list': ({ query }) =>
+    query.project_id ? { entries: [] } : citationsList,
 }

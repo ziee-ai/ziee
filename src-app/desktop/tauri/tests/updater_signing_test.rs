@@ -115,7 +115,7 @@ fn updater_signature_round_trip_verifies_and_rejects_tampering() {
             .arg(&artifacts_dir)
             .args([
                 "--base-url",
-                "https://github.com/phibya/ziee-chat-new/releases/download/v9.9.9",
+                "https://github.com/ziee-ai/ziee/releases/download/v9.9.9",
                 "--version",
                 "9.9.9",
             ])

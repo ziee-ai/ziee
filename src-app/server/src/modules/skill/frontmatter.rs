@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn preserves_unknown_fields_opaquely() {
-        let md = "---\nname: foo\ndescription: bar\nallowed-tools: Read Bash(npm:*)\nmetadata:\n  author: phibya\n---\nbody";
+        let md = "---\nname: foo\ndescription: bar\nallowed-tools: Read Bash(npm:*)\nmetadata:\n  author: ziee\n---\nbody";
         let (fm, _) = parse_skill_md_frontmatter(md).expect("parse");
         assert_eq!(
             fm.get("allowed-tools").and_then(|v| v.as_str()),
@@ -194,7 +194,7 @@ mod tests {
             fm.get("metadata")
                 .and_then(|m| m.get("author"))
                 .and_then(|v| v.as_str()),
-            Some("phibya")
+            Some("ziee")
         );
     }
 

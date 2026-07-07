@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  SectionHeader,
   Confirm,
   Empty,
   ErrorState,
@@ -109,60 +110,70 @@ export function AuthProvidersListSection() {
         onChange={next => onToggle(row, next)}
         tooltip={`Toggle ${row.name}`}
       />
-      <Button
-        data-testid={`authprov-test-button-${row.name}`}
-        variant="ghost"
-        icon={<FlaskConical />}
-        aria-label={`Test ${row.name}`}
-        loading={testingIds.has(row.id)}
-        onClick={() => onTest(row)}
-      >
-        Test
-      </Button>
-      <Button
-        data-testid={`authprov-edit-button-${row.name}`}
-        variant="ghost"
-        icon={<Pencil />}
-        aria-label={`Edit ${row.name}`}
-        onClick={() => setDrawer({ mode: 'edit', existing: row })}
-      >
-        Edit
-      </Button>
-      <Confirm
-        data-testid={`authprov-delete-confirm-${row.name}`}
-        title={`Delete ${row.name}?`}
-        description="Linked users lose this sign-in method; their accounts remain."
-        okText="Delete"
-        okButtonProps={{ danger: true }}
-        cancelText="Cancel"
-        onConfirm={() => onDelete(row)}
-      >
+      {/* Test / Edit / Delete are ONE action cluster — grouped so Delete never
+          wraps onto its own line away from Test/Edit on a narrow (mobile) row.
+          The cluster wraps below the switch as a unit instead of splitting. */}
+      <div className="flex items-center gap-1">
         <Button
-          data-testid={`authprov-delete-button-${row.name}`}
+          data-testid={`authprov-test-button-${row.name}`}
           variant="ghost"
-          icon={<Trash2 />}
-          aria-label={`Delete ${row.name}`}
+          icon={<FlaskConical />}
+          aria-label={`Test ${row.name}`}
+          loading={testingIds.has(row.id)}
+          onClick={() => onTest(row)}
         >
-          Delete
+          Test
         </Button>
-      </Confirm>
+        <Button
+          data-testid={`authprov-edit-button-${row.name}`}
+          variant="ghost"
+          icon={<Pencil />}
+          aria-label={`Edit ${row.name}`}
+          onClick={() => setDrawer({ mode: 'edit', existing: row })}
+        >
+          Edit
+        </Button>
+        <Confirm
+          data-testid={`authprov-delete-confirm-${row.name}`}
+          title={`Delete ${row.name}?`}
+          description="Linked users lose this sign-in method; their accounts remain."
+          okText="Delete"
+          okButtonProps={{ danger: true }}
+          cancelText="Cancel"
+          onConfirm={() => onDelete(row)}
+        >
+          <Button
+            data-testid={`authprov-delete-button-${row.name}`}
+            variant="ghost"
+            icon={<Trash2 />}
+            aria-label={`Delete ${row.name}`}
+          >
+            Delete
+          </Button>
+        </Confirm>
+      </div>
     </Can>
   )
 
   return (
     <>
-      <Card
-        data-testid="authprov-list-card"
-        title="Configured providers"
-        extra={
-          <Can permission={Permissions.AuthProvidersManage}>
-            <AddProviderMenu
-              existingNames={providers.map(p => p.name)}
-              onPick={template => setDrawer({ mode: 'create', template })}
-            />
-          </Can>
-        }
-      >
+      <Card data-testid="authprov-list-card">
+        {/* SectionHeader (never-wrap-with-room) instead of Card title/extra —
+            fixes the mobile premature-stack of the title above the add menu
+            (taxonomy B1). */}
+        <SectionHeader
+          title="Configured providers"
+          data-testid="authprov-list-header"
+          className="mb-4"
+          actions={
+            <Can permission={Permissions.AuthProvidersManage}>
+              <AddProviderMenu
+                existingNames={providers.map(p => p.name)}
+                onPick={template => setDrawer({ mode: 'create', template })}
+              />
+            </Can>
+          }
+        />
         {loading && providers.length === 0 ? (
           <div className="flex justify-center py-6">
             <Spin label="Loading" />

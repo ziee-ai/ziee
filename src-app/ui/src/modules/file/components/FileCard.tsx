@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Trash2, FileText, Download, RotateCw } from 'lucide-react'
+import { X, Trash2, FileText, Download, RotateCw, AlertTriangle } from 'lucide-react'
 import {
   Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage,
   Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle,
@@ -13,6 +13,9 @@ import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 
 function formatFileSize(bytes: number): string {
+  // A missing / malformed size (undefined, null, NaN) must never render as
+  // "NaN GB" — show nothing instead.
+  if (!Number.isFinite(bytes)) return ''
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -133,9 +136,10 @@ export function FileCard({
       >
         <AttachmentMedia>
           {isError ? (
-            <Text className="!text-[9px] rounded px-1 text-white bg-destructive">
-              ERROR
-            </Text>
+            // The media slot already carries the error tint (bg-destructive/10
+            // text-destructive) in error state, so a destructive glyph reads as
+            // "error" without the sub-AA white-on-solid 9px badge it replaces.
+            <AlertTriangle aria-label="Upload error" />
           ) : (
             <Progress
               shape="circle"

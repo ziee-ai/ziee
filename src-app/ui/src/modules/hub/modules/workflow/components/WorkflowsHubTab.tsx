@@ -1,5 +1,5 @@
-import { Search } from 'lucide-react'
-import { Input, MultiSelect, Text } from '@/components/ui'
+import { Eraser, Search, Workflow } from 'lucide-react'
+import { Input, MultiSelect, Button, Empty } from '@/components/ui'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
@@ -87,15 +87,34 @@ export function WorkflowsHubTab() {
             <WorkflowHubCard key={item.name} item={item} />
           ))}
         </div>
-        {filtered.length === 0 && (
-          <div className="text-center py-12">
-            <Text type="secondary">
-              {items.length === 0
-                ? 'No workflows in the hub yet'
-                : 'No workflows match your search'}
-            </Text>
-          </div>
-        )}
+        {filtered.length === 0 &&
+          (searchTerm || selectedTags.length > 0 ? (
+            <Empty
+              data-testid="hub-workflows-empty"
+              icon={<Workflow />}
+              title="No workflows match your search"
+              description="Try a different search term or clear the active filters."
+            >
+              <Button
+                variant="outline"
+                icon={<Eraser />}
+                onClick={() => {
+                  setSearchTerm('')
+                  setSelectedTags([])
+                }}
+                data-testid="hub-workflows-empty-clear-btn"
+              >
+                Clear filters
+              </Button>
+            </Empty>
+          ) : (
+            <Empty
+              data-testid="hub-workflows-empty"
+              icon={<Workflow />}
+              title="No workflows in the hub yet"
+              description="The hub catalog has no workflows to show right now — check back after a hub refresh."
+            />
+          ))}
       </div>
     </div>
   )

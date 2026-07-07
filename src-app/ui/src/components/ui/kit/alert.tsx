@@ -3,13 +3,17 @@ import { CheckCircle2, Info, AlertTriangle, XCircle, X } from 'lucide-react'
 import { Alert as Base, AlertTitle, AlertDescription } from '../shadcn/alert'
 import { cn } from '@/lib/utils'
 
-export type AlertTone = 'info' | 'success' | 'warning' | 'error'
+// `neutral` is a non-semantic, muted-gray tone for informational states that
+// must NOT read as success/warning/error — e.g. a user-cancelled action, which
+// is a choice, not a failure.
+export type AlertTone = 'info' | 'success' | 'warning' | 'error' | 'neutral'
 
 const toneIcon: Record<AlertTone, React.ComponentType<{ className?: string }>> = {
   info: Info,
   success: CheckCircle2,
   warning: AlertTriangle,
   error: XCircle,
+  neutral: Info,
 }
 // Semantic status tokens (dark-aware, AA as text on the page bg) — not raw
 // palette hues, which failed WCAG AA contrast in dark mode.
@@ -18,6 +22,7 @@ const toneCls: Record<AlertTone, string> = {
   success: 'border-success/35 text-success [&>svg]:text-success',
   warning: 'border-warning/35 text-warning [&>svg]:text-warning',
   error: 'border-destructive/40 text-destructive [&>svg]:text-destructive',
+  neutral: 'border-border text-muted-foreground [&>svg]:text-muted-foreground',
 }
 
 interface AlertCommon {
@@ -43,7 +48,10 @@ export function Alert({ tone = 'info', title, description, icon, className, chil
   const closeLabel = (rest as { closeLabel?: string }).closeLabel
   return (
     <Base role={role} className={cn(toneCls[tone], onClose && 'pe-10', 'relative', className)} data-testid={testid}>
-      {icon != null ? <span aria-hidden>{icon}</span> : <Icon className="size-4" aria-hidden />}
+      {/* Size a caller-supplied icon to match the tone-default (size-4) so a bare
+          lucide icon doesn't render at its 24px default and break the grid /
+          oversize the row. Only unsized svgs are constrained (mirrors Button). */}
+      {icon != null ? <span aria-hidden className="[&_svg:not([class*='size-'])]:size-4">{icon}</span> : <Icon className="size-4" aria-hidden />}
       {title != null && <AlertTitle>{title}</AlertTitle>}
       {(description != null || children != null) && (
         <AlertDescription>{description}{children}</AlertDescription>

@@ -98,6 +98,7 @@ export function TitleEditor() {
           variant="ghost"
           size="default"
           icon={<Check />}
+          aria-label="Save title"
           className="!p-1"
         />
         <Button
@@ -107,6 +108,7 @@ export function TitleEditor() {
           size="default"
           icon={<X />}
           onClick={handleCancel}
+          aria-label="Cancel editing title"
           className="!p-1"
         />
       </form>
@@ -127,6 +129,7 @@ export function TitleEditor() {
       <Title
         level={5}
         className="!m-0 !leading-tight truncate"
+        data-testid="conversation-title"
       >
         {conversation?.title || 'Untitled Conversation'}
       </Title>

@@ -57,7 +57,7 @@ const galleryUp = async port => {
   try {
     const ac = new AbortController()
     const t = setTimeout(() => ac.abort(), 1500)
-    const r = await fetch(`http://localhost:${port}/dev-gallery.html`, {
+    const r = await fetch(`http://localhost:${port}/gallery.html`, {
       signal: ac.signal,
     })
     clearTimeout(t)

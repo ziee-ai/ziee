@@ -11,9 +11,10 @@ use once_cell::sync::Lazy;
 
 use super::types::UpdateStatusResponse;
 
-/// The GitHub repo whose releases we poll. (The repo URL is the one place
-/// `ziee-chat` legitimately survives — see CLAUDE.md naming convention.)
-const REPO: &str = "phibya/ziee-chat-new";
+/// The GitHub repo whose releases we poll (the `origin` remote backing the
+/// app). Renamed from `phibya/ziee-chat-new` in the org migration; GitHub
+/// redirects the old slug, so older binaries keep polling successfully.
+const REPO: &str = "ziee-ai/ziee";
 
 /// Process-lifetime cache, seeded with the running version.
 static CACHE: Lazy<RwLock<UpdateStatusResponse>> = Lazy::new(|| {
@@ -207,7 +208,7 @@ mod tests {
     fn extract_release_full_shape() {
         let v = serde_json::json!({
             "tag_name": "v99.0.0",
-            "html_url": "https://github.com/phibya/ziee-chat-new/releases/tag/v99.0.0",
+            "html_url": "https://github.com/ziee-ai/ziee/releases/tag/v99.0.0",
             "body": "Release notes"
         });
         let (tag, url, body) = extract_release(&v).expect("has tag");

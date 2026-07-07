@@ -24,6 +24,47 @@ import { SettingsFormActions } from '@/modules/settings/components/SettingsFormA
 const READ_PERM = Permissions.MemoryRead
 const WRITE_PERM = Permissions.MemoryWrite
 
+// Retention control: the days InputNumber and its "Forever" (clear = null) escape
+// hatch rendered as ONE grouped row instead of a Forever button orphaned on a
+// separate right-aligned line. It's the single child FormField clones, so it
+// receives the injected value/onChange binding and forwards it to the input;
+// "Forever" clears the value the same way typing an empty field would.
+function RetentionControl({
+  value,
+  onChange,
+  ...rest
+}: {
+  value?: number | null
+  onChange?: (v: number | null) => void
+} & Record<string, unknown>) {
+  return (
+    <Flex align="center" gap="small">
+      <InputNumber
+        {...rest}
+        value={value ?? undefined}
+        onChange={v => onChange?.(v as number | null)}
+        min={1}
+        max={3650}
+        suffix="days"
+        className="w-40"
+        // This IS a form field — it's rendered as the single child of a
+        // <FormField> at the call site (which owns the label + Field gap). The
+        // settings-field linter can't see through this component boundary
+        // (it "can't introspect JSX ancestry"), so flag the known blind spot.
+        data-standalone-control
+        data-testid="memory-prefs-retention-input"
+      />
+      <Button
+        variant="outline"
+        onClick={() => onChange?.(null)}
+        data-testid="memory-prefs-forever-btn"
+      >
+        Forever
+      </Button>
+    </Flex>
+  )
+}
+
 const schema = z.object({
   extraction_enabled: z.boolean(),
   retrieval_enabled: z.boolean(),
@@ -180,18 +221,8 @@ export function PreferencesSection() {
           label="Retention"
           description="Empty = forever. Older memories are soft-deleted by the nightly reaper."
         >
-          <InputNumber min={1} max={3650} suffix="days" className="w-40" data-testid="memory-prefs-retention-input" />
+          <RetentionControl />
         </FormField>
-        <Flex justify="end" className="-mt-2">
-          <Button
-            variant="outline"
-            disabled={!canWrite}
-            onClick={() => form.setValue('retention_days', null)}
-            data-testid="memory-prefs-forever-btn"
-          >
-            Forever
-          </Button>
-        </Flex>
       </Form>
       </Card>
     </>

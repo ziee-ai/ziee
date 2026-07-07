@@ -186,12 +186,12 @@ jobs:
           case "${GITHUB_REF_NAME}" in
             *-*)
               docker buildx build --push --platform linux/amd64,linux/arm64 \
-                -t "ghcr.io/phibya/ziee:${VERSION}" \
+                -t "ghcr.io/ziee-ai/ziee:${VERSION}" \
                 --metadata-file /tmp/meta.json . ;;
             *)
               docker buildx build --push --platform linux/amd64,linux/arm64 \
-                -t "ghcr.io/phibya/ziee:${VERSION}" \
-                -t "ghcr.io/phibya/ziee:latest" \
+                -t "ghcr.io/ziee-ai/ziee:${VERSION}" \
+                -t "ghcr.io/ziee-ai/ziee:latest" \
                 --metadata-file /tmp/meta.json . ;;
           esac
           digest=$(jq -r '."containerimage.digest"' /tmp/meta.json)
@@ -202,6 +202,6 @@ jobs:
       - name: Attest image provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/phibya/ziee
+          subject-name: ghcr.io/ziee-ai/ziee
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true

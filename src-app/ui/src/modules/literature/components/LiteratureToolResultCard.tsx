@@ -73,7 +73,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
         </Text>
       ) : (
         <>
-          <ul className="text-xs pl-4 mb-2">
+          <ul className="text-xs pl-4 mb-2 [overflow-wrap:anywhere]">
             {sc.records.slice(0, 3).map((r, i) => (
               <li key={i}>
                 {r.title}

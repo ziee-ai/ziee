@@ -149,7 +149,7 @@ Or manually:
 Verify the signature with:
     cosign verify-blob \\
         --bundle ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${ARCH}-minimal.squashfs.cosign.bundle \\
-        --certificate-identity-regexp 'https://github.com/phibya/ziee-chat/.+' \\
+        --certificate-identity-regexp 'https://github.com/(phibya/ziee-chat|ziee-ai/ziee)/.+' \\
         --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
         ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${ARCH}-minimal.squashfs
 EOF

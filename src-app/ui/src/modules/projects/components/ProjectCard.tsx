@@ -100,7 +100,7 @@ export function ProjectCard({
               <Button
                 data-testid={`project-card-edit-button-${project.id}`}
                 variant="outline"
-                size="default"
+                size="icon"
                 icon={<Pencil />}
                 aria-label={`Edit ${project.name}`}
                 onClick={(e: React.MouseEvent) => {
@@ -115,7 +115,7 @@ export function ProjectCard({
               <Button
                 data-testid={`project-card-duplicate-button-${project.id}`}
                 variant="outline"
-                size="default"
+                size="icon"
                 icon={<Copy />}
                 loading={duplicating}
                 aria-label={`Duplicate ${project.name}`}
@@ -132,7 +132,7 @@ export function ProjectCard({
                 <Button
                   data-testid={`project-card-delete-button-${project.id}`}
                   variant="outline"
-                  size="default"
+                  size="icon"
                   icon={<Trash2 />}
                   loading={deleting}
                   aria-label={`Delete ${project.name}`}

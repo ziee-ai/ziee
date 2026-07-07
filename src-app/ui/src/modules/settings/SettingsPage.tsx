@@ -7,10 +7,10 @@ import { cn } from '@/lib/utils'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { BookOpen, Compass, ExternalLink } from 'lucide-react'
 
-// Help destination. `ziee-chat-new` is the opaque external GitHub repo
-// URL (the one place the legacy name legitimately survives per CLAUDE.md);
-// its README is the de-facto operator documentation.
-const HELP_DOCS_URL = 'https://github.com/phibya/ziee-chat-new#readme'
+// Help destination: the app's GitHub repo README is the de-facto operator
+// documentation. (`ziee-ai/ziee` — renamed from `phibya/ziee-chat-new` in the
+// org migration.)
+const HELP_DOCS_URL = 'https://github.com/ziee-ai/ziee#readme'
 import { useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
