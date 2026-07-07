@@ -226,13 +226,13 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
         <div
           className={
             viewer?.inlineFill
-              ? // inlineFill viewers (the tabular data grid) get a definite,
-                // bounded height + scroll. Small grids render as a plain table
-                // (all rows present, scrolls within this box); large grids
-                // switch to row virtualization, which needs a measurable
-                // viewport height — a bare content-sized box collapses to 0 and
-                // renders no data rows.
-                'overflow-auto h-[min(360px,55vh)]'
+              ? // inlineFill viewers (the tabular data grid) cap + scroll here,
+                // but only via MAX height — a short table (2-3 rows) hugs its
+                // content instead of sitting in a tall empty box. The grid body
+                // itself supplies a DEFINITE height when it virtualizes a large
+                // dataset (see DelimitedTable / XlsxBody), so virtualization
+                // still measures a real viewport.
+                'overflow-auto max-h-[min(360px,55vh)]'
               : 'overflow-auto max-h-[600px]'
           }
           data-testid="inline-file-preview-body"

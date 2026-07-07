@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Alert } from '@/components/ui'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
+import { cn } from '@/lib/utils'
 
 /** Cap on rendered rows. Above this, the table is truncated to the
  *  first N and a banner offers Download for full content. The wider 8
@@ -96,8 +97,20 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
     return { columns, dataSource, truncated }
   }, [text, delimiter])
 
+  const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
+
   return (
-    <div className="flex flex-col h-full w-full">
+    // A PLAIN (small) grid hugs its content so a 2-3 row table doesn't sit in a
+    // tall empty box (no h-full). A VIRTUALIZED (large) grid needs a definite,
+    // measurable scroll height or it renders its header but 0 data rows, so it
+    // supplies its own bounded height rather than relying on the container (the
+    // inline preview box only caps via max-height).
+    <div
+      className={cn(
+        'flex flex-col w-full',
+        virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
+      )}
+    >
       {truncated && (
         <Alert
           tone="warning"
@@ -107,13 +120,11 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
         />
       )}
       {/* Virtualize only large grids. Row virtualization needs a definite,
-          measurable scroll-viewport height; in a content-sized container (e.g.
-          the chat inline file preview) that measurement resolves to 0 and the
-          grid renders its header but NO data rows. A plain table has no such
-          dependency, so small grids (the overwhelming majority — and every
-          inline preview) render all rows in any container. */}
+          measurable scroll-viewport height (supplied by this root above); a
+          plain table has no such dependency, so small grids (the overwhelming
+          majority — and most inline previews) render all rows and hug content. */}
       <Table
-        virtualized={dataSource.length > VIRTUALIZE_ROW_THRESHOLD}
+        virtualized={virtualized}
         columns={columns}
         dataSource={dataSource}
         rowKey="key"

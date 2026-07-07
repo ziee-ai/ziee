@@ -4,7 +4,13 @@ import { Tabs } from '@/components/ui/kit/tabs'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
 import { Stores } from '@/core/stores'
+import { cn } from '@/lib/utils'
 import type { FileViewerSlotProps } from '../../types/viewer'
+
+/** Above this row count a sheet switches to row virtualization (needs a definite
+ *  scroll height); at/below it renders a plain table that hugs its content, so a
+ *  2-3 row sheet doesn't sit in a tall empty box. Mirrors DelimitedTable. */
+const VIRTUALIZE_ROW_THRESHOLD = 200
 
 /** Per-sheet cap on rendered rows. Above this, each sheet is truncated
  *  to the first N and a banner offers Download. The wider 10 MB
@@ -138,8 +144,16 @@ export function XlsxBody(props: FileViewerSlotProps) {
       }
       return record
     })
+    const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
     return (
-      <div className="flex flex-col h-full w-full">
+      // Plain (small) sheet hugs its content; a virtualized (large) sheet
+      // supplies its own definite scroll height (see DelimitedTable).
+      <div
+        className={cn(
+          'flex flex-col w-full',
+          virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
+        )}
+      >
         {sheet.truncated && (
           <Alert
             tone="warning"
@@ -150,7 +164,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
         )}
         {/* The virtualized Table owns its own OverlayScrollbars scroll box. */}
         <Table
-          virtualized
+          virtualized={virtualized}
           columns={columns}
           dataSource={dataSource}
           rowKey="key"
@@ -166,14 +180,17 @@ export function XlsxBody(props: FileViewerSlotProps) {
     // locates the xlsx surface whether or not tabs are shown. (The kit Tabs
     // root already forwards this testid in the multi-sheet branch below.)
     return (
-      <div className="flex flex-col h-full w-full" data-testid="file-xlsx-tabs">
+      <div className="flex flex-col w-full" data-testid="file-xlsx-tabs">
         {renderSheet(sheets[0])}
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full w-full">
+    // Multi-sheet: the Tabs `fill` layout needs a definite height for the grid
+    // panel, so cap at the same bounded height (small multi-sheet books keep the
+    // tab chrome; the single-sheet path above hugs content).
+    <div className="flex flex-col h-[min(360px,55vh)] w-full">
       <Tabs
         data-testid="file-xlsx-tabs"
         fill
