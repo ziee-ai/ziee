@@ -28,9 +28,9 @@ src-app/ui/src/dev/gallery/stateMatrix.generated.ts	888	895	correctness,patterns
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	949	949	correctness,patterns-conformance,tests-quality
 src-app/ui/src/modules/chat/components/TextContent.tsx	8	8	correctness,patterns-conformance,security,state-management
 src-app/ui/src/modules/chat/components/TextContent.tsx	40	40	correctness,patterns-conformance,security,state-management
-src-app/ui/src/modules/chat/core/utils/HtmlBlock.tsx	1	99	security,correctness,state-management,a11y,patterns-conformance,error-handling
-src-app/ui/src/modules/chat/core/utils/htmlBlockSandbox.ts	1	76	security,correctness,patterns-conformance,error-handling
-src-app/ui/src/modules/chat/core/utils/streamdownPlugins.ts	1	19	correctness,patterns-conformance,security
+src-app/ui/src/modules/chat/core/utils/HtmlBlock.tsx	1	103	security,correctness,state-management,a11y,patterns-conformance,error-handling
+src-app/ui/src/modules/chat/core/utils/htmlBlockSandbox.ts	1	78	security,correctness,patterns-conformance,error-handling
+src-app/ui/src/modules/chat/core/utils/streamdownPlugins.ts	1	21	correctness,patterns-conformance,security
 src-app/ui/src/modules/chat/extensions/text/components/TextContent.tsx	8	8	correctness,patterns-conformance,security,state-management
 src-app/ui/src/modules/chat/extensions/text/components/TextContent.tsx	37	37	correctness,patterns-conformance,security,state-management
-src-app/ui/tests/e2e/chat/html-iframe-render.spec.ts	1	270	tests-quality,security,correctness
+src-app/ui/tests/e2e/chat/html-iframe-render.spec.ts	1	300	tests-quality,security,correctness

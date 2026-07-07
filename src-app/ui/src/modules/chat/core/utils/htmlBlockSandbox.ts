@@ -16,13 +16,25 @@
  *     the frame delete its own sandbox (the canonical bypass). No
  *     top-navigation (anti-clickjacking/phishing), no popups, no forms, no
  *     modals, no downloads.
- *  2. `CSP` — injected as the first `<head>` child of the srcdoc. The sandbox
- *     attribute alone does NOT restrict network; this CSP severs it. It allows
- *     inline script/style + `data:` images/fonts so the HTML renders and is
- *     interactive, but blocks ALL external network (fetch/XHR/WebSocket via
- *     `connect-src`→`default-src 'none'`, external scripts/styles/images/media,
- *     nested external frames, form submission, `<base>` hijack). Conservative
- *     default: no phone-home / no exfiltration.
+ *  2. `CSP` — prepended as the srcdoc's literal first bytes. The sandbox
+ *     attribute alone does NOT restrict network; this CSP severs external
+ *     RESOURCE LOADS. It allows inline script/style + `data:` images/fonts so
+ *     the HTML renders and is interactive, but blocks every external-origin
+ *     resource: fetch/XHR/WebSocket (`connect-src`→`default-src 'none'`),
+ *     external scripts/styles/images/fonts/media, nested external frames, form
+ *     submission (`form-action 'none'`), and `<base>` hijack. So the preview
+ *     cannot LOAD from or POST to any external origin.
+ *
+ *     RESIDUAL (documented, accepted): neither CSP nor `sandbox` can stop the
+ *     frame from NAVIGATING ITSELF away — `location = 'http://x/?d=…'` or
+ *     `<meta http-equiv="refresh">`. No current platform primitive covers
+ *     same-frame navigation (`navigate-to` was removed from CSP; sandbox's
+ *     `allow-top-navigation`, which we withhold, only governs the TOP frame).
+ *     Such a self-navigation is a beacon, but it can carry ONLY data the
+ *     attacker already authored into the HTML: the frame is a NULL origin with
+ *     no cookies, storage, or parent/DOM access, so there is nothing sensitive
+ *     to exfiltrate (the same "nothing to steal" posture as the server-side
+ *     code_sandbox — the guarantee is isolation, not an egress block).
  */
 
 /**
@@ -32,10 +44,11 @@
 export const SANDBOX = 'allow-scripts'
 
 /**
- * Conservative Content-Security-Policy for the preview document. Blocks all
- * external network; permits inline script/style + data: media so the block
- * renders. `default-src 'none'` makes every unlisted directive (connect-src,
- * frame-src, object-src, …) fall back to "nothing".
+ * Conservative Content-Security-Policy for the preview document. Blocks external
+ * resource loads (see module doc for the self-navigation residual); permits
+ * inline script/style + data: media so the block renders. `default-src 'none'`
+ * makes every unlisted directive (connect-src, frame-src, object-src, …) fall
+ * back to "nothing".
  */
 export const CSP =
   "default-src 'none'; " +

