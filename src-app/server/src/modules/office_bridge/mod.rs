@@ -1,0 +1,126 @@
+//! Built-in MCP server bridging open Microsoft Office documents.
+//!
+//! Registers `office_bridge.ziee.internal` as a row in `mcp_servers`
+//! (`is_built_in=true`, `transport_type='http'`), pointing at a loopback URL on
+//! the same axum app, and serves JSON-RPC at `/api/office-bridge/mcp`. The MCP
+//! client at `mcp/client/manager.rs` injects the JWT for built-in servers.
+//!
+//! This is the FIRST increment (ITEM-1/2/3): the module skeleton, permissions,
+//! settings surface, and the built-in-server upsert. The bridge listener,
+//! COM/`OfficePlatform` seam, MCP tool dispatch, sync, and frontend land in
+//! later items. Structure mirrors `web_search/`.
+
+use std::error::Error;
+use std::sync::Arc;
+
+use aide::axum::ApiRouter;
+use linkme::distributed_slice;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
+
+pub mod handlers;
+pub mod models;
+pub mod permissions;
+pub mod repository;
+pub mod routes;
+pub mod tools;
+
+pub use repository::OfficeBridgeRepository;
+
+/// Deterministic UUID for the built-in office_bridge MCP server row.
+/// Stable across deployments (mirrors `web_search_server_id`).
+pub fn office_bridge_server_id() -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"office_bridge.ziee.internal")
+}
+
+#[distributed_slice(MODULE_ENTRIES)]
+static OFFICE_BRIDGE_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "office_bridge",
+    // After mcp (65) so mcp_servers exists. 97 is the next free order
+    // (96=web_search, then 100/102/103).
+    order: 97,
+    description:
+        "Built-in MCP server bridging open Microsoft Office documents (Word/Excel/PowerPoint)",
+    constructor: || Box::new(OfficeBridgeModule::new()),
+};
+
+pub struct OfficeBridgeModule {
+    // Module handle retained for parity with other modules; not read yet.
+    #[allow(dead_code)]
+    pool: Option<Arc<PgPool>>,
+}
+
+impl OfficeBridgeModule {
+    pub fn new() -> Self {
+        Self { pool: None }
+    }
+}
+
+impl Default for OfficeBridgeModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppModule for OfficeBridgeModule {
+    fn name(&self) -> &'static str {
+        "office_bridge"
+    }
+
+    fn description(&self) -> &'static str {
+        "Built-in MCP server bridging open Microsoft Office documents"
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+        self.pool = Some(ctx.db_pool.clone());
+
+        // Deploy-level kill switch — ON by default (an absent `office_bridge:`
+        // config section means enabled). Operators opt OUT with
+        // `office_bridge: { enabled: false }`; an admin cannot re-enable it
+        // (distinct from the runtime `office_bridge_settings.enabled` toggle —
+        // DEC-12: two independent levels). Mirrors web_search.
+        //
+        // NOTE: full runtime probe-gating (supported desktop OS + Office
+        // present, so a headless/Linux server never binds 44300 or attempts
+        // COM) is wired in ITEM-6; for now we honour only the config switch.
+        let enabled = ctx
+            .config
+            .office_bridge
+            .as_ref()
+            .map(|c| c.enabled)
+            .unwrap_or(true);
+        if !enabled {
+            tracing::info!("office_bridge: disabled in config; skipping registration");
+            return Ok(());
+        }
+
+        // Pin loopback regardless of the configured server host (same helper
+        // code_sandbox/web_search use) so the built-in MCP URL can never be
+        // redirected to a non-loopback host.
+        let host = crate::modules::code_sandbox::loopback_host(&ctx.config.server.host);
+        let loopback_url = format!(
+            "http://{host}:{port}/api/office-bridge/mcp",
+            port = ctx.config.server.port,
+        );
+
+        let server_id = office_bridge_server_id();
+        let pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            let repo = repository::OfficeBridgeRepository::new((*pool).clone());
+            match repo.upsert_builtin_server(server_id, &loopback_url).await {
+                Ok(()) => tracing::info!(
+                    "office_bridge: built-in server {server_id} registered at {loopback_url}"
+                ),
+                Err(e) => tracing::error!("office_bridge: upsert_builtin_server failed: {e:?}"),
+            }
+        });
+
+        Ok(())
+    }
+
+    fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        router.merge(routes::office_bridge_router())
+    }
+}

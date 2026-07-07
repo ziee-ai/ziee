@@ -19,6 +19,8 @@ pub struct Config {
     #[serde(default)]
     pub web_search: Option<WebSearchConfig>,
     #[serde(default)]
+    pub office_bridge: Option<OfficeBridgeConfig>,
+    #[serde(default)]
     pub control_mcp: Option<ControlMcpConfig>,
     #[serde(default)]
     pub secrets: Option<SecretsConfig>,
@@ -262,6 +264,34 @@ impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
             enabled: default_web_search_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `office_bridge` built-in MCP server (bridge to open
+/// Microsoft Office documents). Desktop-only: on a headless/server deploy the
+/// module self-disables via runtime probing (wired in ITEM-6). Operators can
+/// hard-disable it per deployment with `office_bridge: { enabled: false }` — a
+/// **deploy-level** kill switch an admin cannot re-enable (distinct from the
+/// runtime `office_bridge_settings.enabled` row; DEC-12). When false, `init()`
+/// returns before the MCP row upsert, so the tools are never registered.
+/// Mirrors [`WebSearchConfig`].
+#[derive(Debug, Deserialize, Clone)]
+pub struct OfficeBridgeConfig {
+    /// Master switch. When false, the module's `init()` returns early (no MCP
+    /// row upsert). Defaults to true.
+    #[serde(default = "default_office_bridge_enabled")]
+    pub enabled: bool,
+}
+
+fn default_office_bridge_enabled() -> bool {
+    true
+}
+
+impl Default for OfficeBridgeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_office_bridge_enabled(),
         }
     }
 }
