@@ -1,6 +1,7 @@
 import { Alert, Text } from '@/components/ui'
-import { Ban } from 'lucide-react'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import { TOOL_STATUS } from '@/modules/chat/core/tool-status'
+import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 
 interface ToolCallPendingApprovalCancelContentProps {
   toolCall: McpToolCall
@@ -15,18 +16,25 @@ interface ToolCallPendingApprovalCancelContentProps {
 export function ToolCallPendingApprovalCancelContent({
   toolCall,
 }: ToolCallPendingApprovalCancelContentProps) {
+  // A cancel is a user choice, not a failure — render it NEUTRAL (the shared
+  // `cancelled` status: a slashed circle in muted gray), never the red X / error
+  // tone reserved for a genuinely failed tool call (finding #2).
+  const CancelIcon = TOOL_STATUS.cancelled.icon
+  const serverLabel = mcpServerParenLabel(toolCall.server)
   return (
     <div className="my-2">
       <Alert
-        tone="error"
+        tone="neutral"
         data-testid="mcp-tool-approval-cancel-alert"
-        icon={<Ban />}
+        icon={<CancelIcon className={TOOL_STATUS.cancelled.color} />}
         title={
-          <div>
-            <Text strong>Tool Call Cancelled: {toolCall.tool_name}</Text>
-            <Text type="secondary" className="ml-2 text-xs">
-              ({toolCall.server})
-            </Text>
+          <div className="flex items-center gap-2 min-w-0">
+            <Text strong className="truncate">Tool Call Cancelled: {toolCall.tool_name}</Text>
+            {serverLabel && (
+              <Text type="secondary" className="text-xs whitespace-nowrap">
+                {serverLabel}
+              </Text>
+            )}
           </div>
         }
         description={

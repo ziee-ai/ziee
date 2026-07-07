@@ -3,6 +3,7 @@ import { Alert, Button, Space, Text } from '@/components/ui'
 import { Clock, Check, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 
 interface ToolCallPendingApprovalContentProps {
   toolCall: McpToolCall
@@ -166,9 +167,11 @@ export function ToolCallPendingApprovalContent({
         title={
           <div>
             <Text strong>Tool Approval Required: {toolCall.tool_name}</Text>
-            <Text type="secondary" className="ml-2 text-xs">
-              ({toolCall.server})
-            </Text>
+            {mcpServerParenLabel(toolCall.server) && (
+              <Text type="secondary" className="ml-2 text-xs whitespace-nowrap">
+                {mcpServerParenLabel(toolCall.server)}
+              </Text>
+            )}
           </div>
         }
         description={
