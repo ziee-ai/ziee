@@ -82,6 +82,13 @@ const RULES = [
     allowlistKey: 'mermaid-toggle',
   },
   {
+    name: 'html-render',
+    label: 'HTML block has a source⇄render (Code/Preview) toggle control',
+    container: '[data-testid="html-block"]',
+    control: '[data-testid="html-block-toggle"]',
+    // No allowlistKey: the feature ships, so this rule GUARDS the toggle.
+  },
+  {
     name: 'toolcall-expand',
     label: 'tool-call card has an expand/details control',
     container: '[data-testid^="mcp-toolcall-card-"]',

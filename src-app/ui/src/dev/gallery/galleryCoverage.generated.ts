@@ -151,6 +151,7 @@ export const GALLERY_SURFACES = [
   "modules/chat/core/extensions/registry",
   "modules/chat/core/extensions/slots",
   "modules/chat/core/extensions/utils",
+  "modules/chat/core/utils/HtmlBlock",
   "modules/chat/core/utils/StreamdownErrorBoundary",
   "modules/chat/core/utils/useStreamdownComponents",
   "modules/chat/extensions/export/extension",

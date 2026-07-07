@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 310 surfaces carry renderable-state signals; 1715 signals total.
+// 311 surfaces carry renderable-state signals; 1717 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -244,8 +244,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!collapsed", line: 68 },
       { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 76 },
       { kind: "branch", condition: "!(collapsed)", line: 77 },
-      { kind: "branch", condition: "item.icon != null", line: 105 },
-      { kind: "branch", condition: "!collapsed", line: 107 },
+      { kind: "branch", condition: "item.icon != null", line: 109 },
+      { kind: "branch", condition: "!collapsed", line: 111 },
     ],
   },
   "components/ui/kit/multi-select": {
@@ -835,8 +835,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 23 },
-      { kind: "branch", condition: "isUser", line: 28 },
+      { kind: "branch", condition: "!textData.text", line: 27 },
+      { kind: "branch", condition: "isUser", line: 32 },
     ],
   },
   "modules/chat/components/TitleEditor": {
@@ -883,6 +883,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!match", line: 203 },
+    ],
+  },
+  "modules/chat/core/utils/HtmlBlock": {
+    surface: "modules/chat/core/utils/HtmlBlock",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "copied", line: 72 },
+      { kind: "branch", condition: "effectiveMode === 'preview'", line: 81 },
     ],
   },
   "modules/chat/core/utils/StreamdownErrorBoundary": {
@@ -938,7 +946,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/text/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 24 },
+      { kind: "branch", condition: "!textData.text", line: 28 },
     ],
   },
   "modules/chat/extensions/text/components/ThinkingContent": {

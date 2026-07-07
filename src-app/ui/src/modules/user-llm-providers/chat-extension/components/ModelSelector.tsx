@@ -114,7 +114,7 @@ export function ModelSelector() {
             onClick={() => void Stores.ModelPicker.loadProviders()}
             loading={loading}
             data-testid="ullm-model-retry"
-            className="text-[15px] max-w-[160px] text-destructive"
+            className="text-[15px] max-w-[200px] text-destructive"
           >
             Models unavailable
           </Button>
