@@ -108,7 +108,11 @@ export const MermaidBlock = memo(function MermaidBlock({
     const a = document.createElement('a')
     a.href = url
     a.download = 'mermaid-diagram.svg'
+    // Attach before click: some engines ignore a programmatic click on a
+    // detached anchor for downloads. Remove it right after.
+    document.body.appendChild(a)
     a.click()
+    a.remove()
     // Defer revoke: revoking synchronously right after click() can abort the
     // download before the browser has read the blob (observed in Firefox).
     setTimeout(() => URL.revokeObjectURL(url), 0)
