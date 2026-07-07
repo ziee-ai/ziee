@@ -136,7 +136,7 @@ export function TitleEditor() {
       <Tooltip title="Edit title">
         <Button
           data-testid="chat-title-edit-btn"
-          variant="outline"
+          variant="ghost"
           icon={<Pencil />}
           onClick={handleEditClick}
           aria-label="Edit conversation title"

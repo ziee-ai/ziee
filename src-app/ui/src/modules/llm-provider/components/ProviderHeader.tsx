@@ -136,7 +136,7 @@ export function ProviderHeader() {
           <Button
             type="button"
             size="icon"
-            variant="outline"
+            variant="ghost"
             icon={<X aria-hidden="true" />}
             onClick={() => setIsEditingName(false)}
             tooltip="Cancel editing provider name"
@@ -159,7 +159,7 @@ export function ProviderHeader() {
           <div className={'flex items-center'}>
             {canEdit && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 icon={<Pencil aria-hidden="true" />}
                 onClick={() => {
@@ -181,7 +181,7 @@ export function ProviderHeader() {
                 data-testid="llm-provider-delete-confirm"
               >
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   icon={<Trash2 aria-hidden="true" />}
                   tooltip="Delete provider"
