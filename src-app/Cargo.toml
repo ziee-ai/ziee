@@ -155,6 +155,15 @@ lazy_static = "1.4"
 libc = "0.2"
 include_dir = "0.7"
 
+# Office bridge (office_bridge module) — self-signed localhost cert mint +
+# the rustls stack that serves the task pane over https://localhost:44300.
+# `rustls` pins the `ring` crypto provider (no aws-lc-rs C toolchain dep) to
+# match the rest of the tree's ring usage (ldap3 tls-rustls-ring). `rcgen`
+# mints the CN=localhost / SAN localhost+127.0.0.1+::1 trust anchor.
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pemfile = "2"
+
 # Remote access tunnel — embedded ngrok client (Remote Access feature).
 # `ngrok` provides the agent that connects to ngrok's edge from inside
 # the desktop process and forwards traffic to the local backend; we

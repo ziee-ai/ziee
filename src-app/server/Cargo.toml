@@ -53,6 +53,11 @@ rand.workspace = true
 clap.workspace = true
 hex.workspace = true
 include_dir.workspace = true
+# office_bridge (ITEM-4): mint the self-signed localhost bridge cert + load it
+# into a rustls ServerConfig (the ITEM-5 listener serves the task pane with it).
+rcgen.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
 base64.workspace = true
 sha2.workspace = true
 semver.workspace = true
@@ -273,3 +278,6 @@ postgresql_embedded.workspace = true
 testcontainers = "0.27.3"
 wiremock = "0.6"
 rsa = { version = "0.9", features = ["pem"] }
+# office_bridge TEST-6: parse the minted cert DER to assert its SAN
+# (localhost + 127.0.0.1 + ::1) and CN.
+x509-parser = "0.16"

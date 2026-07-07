@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>ziee office bridge</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<script>
+  // ---------------------------------------------------------------------------
+  // PER-SESSION TOKEN INJECTION POINT (ITEM-5).
+  //
+  // The bridge listener serves this file over rustls and, at request time,
+  // replaces the placeholder value below with a fresh per-session token
+  // (DEC-6). The task pane then presents that token when it opens the WSS
+  // connection. Until ITEM-5 lands, the literal placeholder is served verbatim
+  // and the pane connects without a real token (dev only).
+  //
+  // The listener does a literal string replace of __ZIEE_BRIDGE_TOKEN__ with the
+  // minted token; DO NOT rename this constant without updating that serve path.
+  // ---------------------------------------------------------------------------
+  window.__ZIEE_BRIDGE_TOKEN__ = "__ZIEE_BRIDGE_TOKEN__";
+</script>
+</head>
+<body style="font-family:Segoe UI,sans-serif;padding:8px">
+<h3 id="h">ziee office bridge</h3>
+<pre id="log" style="font-size:11px;white-space:pre-wrap"></pre>
+<script src="taskpane.js"></script>
+</body>
+</html>
