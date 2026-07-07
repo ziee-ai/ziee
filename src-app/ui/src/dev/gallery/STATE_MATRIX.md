@@ -8,7 +8,7 @@
 ## Summary
 
 - **318** surfaces carry at least one renderable-state signal.
-- **1747** signals total: 1363 branch, 110 empty, 93 error, 94 loading, 84 overlay, 3 panel.
+- **1748** signals total: 1363 branch, 110 empty, 94 error, 94 loading, 84 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 83 |
 | `empty` | 87 |
-| `error` | 73 |
+| `error` | 74 |
 | `open` | 71 |
 | `panel-open` | 3 |
 
@@ -3082,14 +3082,15 @@ Required states: `panel-open`
 
 ### `modules/office-bridge/components/OpenDocumentsPanel`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && documents.length === 0` | 30 |
-| empty | `documents.length === 0` | 41 |
-| branch | `doc.path` | 80 |
-| branch | `doc.active` | 89 |
+| error | `error && documents.length === 0` | 31 |
+| loading | `loading && documents.length === 0` | 46 |
+| empty | `documents.length === 0` | 57 |
+| branch | `doc.path` | 96 |
+| branch | `doc.active` | 105 |
 
 ### `modules/office-bridge/components/OpenDocumentsToolResultCard`
 

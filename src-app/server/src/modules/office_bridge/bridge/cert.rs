@@ -73,6 +73,13 @@ pub fn mint_localhost_cert() -> Result<MintedCert, AppError> {
     let mut ca_dn = DistinguishedName::new();
     ca_dn.push(DnType::CommonName, "ziee Office Bridge Local CA");
     ca_params.distinguished_name = ca_dn;
+    // SECURITY: this CA is minted `BasicConstraints::Unconstrained` and installed
+    // into the OS Root store, so anything it signs would be machine-trusted for
+    // any host. The safeguard is that the CA private key is DISCARDED right after
+    // minting the single `localhost` leaf below — it is never persisted (see
+    // `load_or_mint`, which caches only the leaf key + certs and writes an empty
+    // CA-key marker) and nothing re-signs in-process, so no further certificate
+    // can ever be issued under this anchor. Do not persist or reuse `ca_key`.
     ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     ca_params.key_usages = vec![
         KeyUsagePurpose::KeyCertSign,

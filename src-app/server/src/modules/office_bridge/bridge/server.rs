@@ -231,6 +231,17 @@ fn serve_static(name: &str) -> Response {
     }
 }
 
+/// Whether the request's `Origin` header is on the allowlist. Shared by the
+/// `/bridge` WSS upgrade and the POST sinks so both enforce the SAME allowlist
+/// (a token-bearing but cross-origin caller is rejected at either surface).
+fn origin_allowed(state: &BridgeState, headers: &HeaderMap) -> bool {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    state.allowed_origins.iter().any(|o| o == origin)
+}
+
 /// `GET /bridge` — enforce Origin + token, then upgrade to a WSS echo socket.
 async fn bridge_ws(
     State(state): State<BridgeState>,
@@ -238,11 +249,8 @@ async fn bridge_ws(
     ws: WebSocketUpgrade,
 ) -> Response {
     // Origin allowlist (DEC-6) — reject BEFORE the upgrade.
-    let origin = headers
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !state.allowed_origins.iter().any(|o| o == origin) {
+    if !origin_allowed(&state, &headers) {
+        let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok());
         tracing::warn!("office_bridge: /bridge rejected — disallowed origin {origin:?}");
         return (StatusCode::FORBIDDEN, "forbidden origin").into_response();
     }
@@ -314,7 +322,16 @@ fn post_token_ok(headers: &HeaderMap) -> bool {
 
 /// Token-guarded dev/diagnostic sink: accept a JSON body and 200. Shared by
 /// `/report`, `/caps`, `/selection`, `/comment`.
-async fn post_sink(headers: HeaderMap, body: Bytes) -> Response {
+///
+/// Enforces the SAME Origin allowlist as the `/bridge` WSS upgrade (in addition
+/// to the session token) so a token-bearing but cross-origin caller is rejected
+/// with 403 here too — the token alone is not sufficient.
+async fn post_sink(State(state): State<BridgeState>, headers: HeaderMap, body: Bytes) -> Response {
+    if !origin_allowed(&state, &headers) {
+        let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok());
+        tracing::warn!("office_bridge: POST sink rejected — disallowed origin {origin:?}");
+        return (StatusCode::FORBIDDEN, "forbidden origin").into_response();
+    }
     if !post_token_ok(&headers) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }

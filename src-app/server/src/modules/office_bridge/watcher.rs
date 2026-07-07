@@ -51,23 +51,52 @@ impl OpenCloseDelta {
     }
 }
 
+/// The `attach_method` stamped on a presence-only fallback entry (enumerated
+/// from a window title when COM attach failed). Such an entry's `full_name` is a
+/// window title, NOT the app's COM full path, so it does not share identity with
+/// the same document's COM entry.
+const TITLE_ONLY_ATTACH: &str = "window_enum_presence";
+
+/// True when a doc was attached via a real COM identity (its `full_name` is the
+/// app-qualified full path). A title-only presence fallback is excluded — see
+/// [`diff_open_docs`].
+fn has_com_identity(d: &OpenDoc) -> bool {
+    d.attach_method != TITLE_ONLY_ATTACH
+}
+
 /// Diff two open-document snapshots by `full_name` (the app-qualified stable
 /// identity). A document appearing → `opened`; disappearing → `closed`; present
 /// in both (identity unchanged) → neither. Pure + allocation-only, so it's
 /// directly unit-testable without a live platform or DB.
+///
+/// Only docs with a **real COM identity** participate in the open/close emission:
+/// a `window_enum_presence` (title-only) fallback entry keys on a window title,
+/// not the COM full path, so a transient COM-attach failure on one poll would
+/// otherwise flip an already-known doc's identity and emit a spurious close+open
+/// pair. Excluding the title-only entries from the diff keeps identity stable
+/// across a flaky poll (the fallback is diagnostic-only; the panel's own refetch
+/// still surfaces it in the list).
 pub fn diff_open_docs(prev: &[OpenDoc], now: &[OpenDoc]) -> OpenCloseDelta {
-    let prev_by_name: HashMap<&str, &OpenDoc> =
-        prev.iter().map(|d| (d.full_name.as_str(), d)).collect();
-    let now_by_name: HashMap<&str, &OpenDoc> =
-        now.iter().map(|d| (d.full_name.as_str(), d)).collect();
+    let prev_by_name: HashMap<&str, &OpenDoc> = prev
+        .iter()
+        .filter(|d| has_com_identity(d))
+        .map(|d| (d.full_name.as_str(), d))
+        .collect();
+    let now_by_name: HashMap<&str, &OpenDoc> = now
+        .iter()
+        .filter(|d| has_com_identity(d))
+        .map(|d| (d.full_name.as_str(), d))
+        .collect();
 
     let opened = now
         .iter()
+        .filter(|d| has_com_identity(d))
         .filter(|d| !prev_by_name.contains_key(d.full_name.as_str()))
         .cloned()
         .collect();
     let closed = prev
         .iter()
+        .filter(|d| has_com_identity(d))
         .filter(|d| !now_by_name.contains_key(d.full_name.as_str()))
         .cloned()
         .collect();
@@ -250,6 +279,43 @@ mod tests {
         let closed = diff_open_docs(std::slice::from_ref(&a), &[]);
         assert!(closed.opened.is_empty());
         assert_eq!(closed.closed.len(), 1);
+    }
+
+    /// TEST-14 (b cont.) — a title-only `window_enum_presence` fallback NEVER
+    /// participates in the open/close emission, so it can't create a ghost,
+    /// title-keyed `OfficeDocument` entity that flips against the same doc's real
+    /// COM identity (the documented spurious close+open). Only docs with a real
+    /// COM identity ever drive opened/closed.
+    #[test]
+    fn test14_title_only_fallback_never_emits() {
+        let a_com = doc(r"C:\U\A.docx", OfficeApp::Word);
+        let mut b_title = doc("B - Excel", OfficeApp::Excel);
+        b_title.attach_method = "window_enum_presence".to_string();
+
+        // A title-only entry appearing (from empty) emits nothing — no ghost open.
+        let appeared = diff_open_docs(&[], std::slice::from_ref(&b_title));
+        assert!(appeared.is_empty(), "a title-only entry must not open: {appeared:?}");
+
+        // A title-only entry disappearing emits nothing — no ghost close.
+        let vanished = diff_open_docs(std::slice::from_ref(&b_title), &[]);
+        assert!(vanished.is_empty(), "a title-only entry must not close: {vanished:?}");
+
+        // A COM doc alongside a title-only entry: only the COM doc is authoritative.
+        // Adding the title-only entry to `now` must NOT register as an open, and
+        // the stable COM doc registers as neither.
+        let prev = vec![a_com.clone()];
+        let now = vec![a_com.clone(), b_title.clone()];
+        let delta = diff_open_docs(&prev, &now);
+        assert!(
+            delta.is_empty(),
+            "a new title-only entry beside a stable COM doc must emit nothing: {delta:?}"
+        );
+
+        // The COM doc still drives real open/close when it genuinely comes/goes.
+        let opened = diff_open_docs(std::slice::from_ref(&b_title), std::slice::from_ref(&a_com));
+        assert_eq!(opened.opened.len(), 1, "the COM doc opening is still emitted");
+        assert_eq!(opened.opened[0].full_name, a_com.full_name);
+        assert!(opened.closed.is_empty(), "the title-only entry leaving is not a close");
     }
 
     /// TEST-14 (c) — the emit path constructs `SyncEntity::OfficeDocument` with

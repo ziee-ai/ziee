@@ -122,6 +122,23 @@ struct ToolCallParams {
 /// mapped to the client-class JSON-RPC error the LLM should see, never a raw
 /// server crash.
 async fn dispatch_tool_call(params: &Value) -> Result<Value, (StatusCode, JsonRpcError)> {
+    // Defense-in-depth (mirrors the chat-attach path's `settings.enabled` gate):
+    // re-check the runtime admin toggle before executing so an admin who has
+    // runtime-disabled the module gets a typed "disabled" error instead of the
+    // tools running, even though `office_bridge::use` is still granted. A cheap
+    // DB read like the other settings reads.
+    let settings = Repos
+        .office_bridge
+        .get_settings()
+        .await
+        .map_err(|e| (StatusCode::OK, JsonRpcError::from_app_error(&e)))?;
+    if !settings.enabled {
+        return Err((
+            StatusCode::OK,
+            JsonRpcError::from_app_error(&office_bridge_disabled_err()),
+        ));
+    }
+
     let call: ToolCallParams = serde_json::from_value(params.clone()).map_err(|e| {
         (
             StatusCode::OK,
@@ -133,6 +150,18 @@ async fn dispatch_tool_call(params: &Value) -> Result<Value, (StatusCode, JsonRp
         Ok(value) => Ok(value),
         Err(e) => Err((StatusCode::OK, JsonRpcError::from_app_error(&e))),
     }
+}
+
+/// The typed error `tools/call` returns when the module is runtime-disabled by
+/// an admin (`office_bridge_settings.enabled == false`). 403 keeps it distinct
+/// from a client's malformed request.
+const OFFICE_BRIDGE_DISABLED: &str = "OFFICE_BRIDGE_DISABLED";
+fn office_bridge_disabled_err() -> AppError {
+    AppError::new(
+        StatusCode::FORBIDDEN,
+        OFFICE_BRIDGE_DISABLED,
+        "the office bridge is disabled by the administrator; office tools are not available",
+    )
 }
 
 /// The distinct error code for a tool that needs an open Office.js task pane —
@@ -204,7 +233,18 @@ pub async fn dispatch_tool(
             let a: EditDocumentArgs = parse_args(args)?;
             match a.op.as_str() {
                 "append_paragraph" => {
-                    let text = a.text.unwrap_or_default();
+                    // `text` is schema-required for this op; reject a missing or
+                    // blank value with a typed invalid-args error rather than
+                    // silently appending an empty paragraph.
+                    let text = a
+                        .text
+                        .filter(|t| !t.trim().is_empty())
+                        .ok_or_else(|| {
+                            AppError::bad_request(
+                                "INVALID_ARGS",
+                                "`edit_document` op `append_paragraph` requires a non-empty `text` argument",
+                            )
+                        })?;
                     let res = platform
                         .act_on_document(&a.doc_full_name, &DocOp::AppendParagraph { text })
                         .await?;
@@ -462,7 +502,16 @@ pub async fn connect(
     let minted = super::bridge::cert::load_or_mint(&data_dir)?;
     let manifest_path = materialize_manifest(&data_dir, port)?;
 
-    let readiness = run_connect(platform::active(), &minted.ca_der, &manifest_path, port);
+    // `run_connect` makes blocking platform calls (a ToolHelp process-snapshot in
+    // `office_is_elevated`, elevated `certutil`, HKCU registry writes), so offload
+    // it to a blocking thread rather than stalling a tokio worker. `platform::active()`
+    // is `&'static`; the CA bytes + manifest path are moved in owned.
+    let ca_der = minted.ca_der.clone();
+    let readiness = tokio::task::spawn_blocking(move || {
+        run_connect(platform::active(), &ca_der, &manifest_path, port)
+    })
+    .await
+    .map_err(|e| AppError::internal_error(format!("office_bridge: connect task join: {e}")))?;
     Ok((StatusCode::OK, Json(readiness)))
 }
 
@@ -584,6 +633,36 @@ mod tests {
         .expect("edit_document succeeds");
         assert_eq!(out["structuredContent"]["ok"], true);
         assert_eq!(out["structuredContent"]["read_back"], "hello world");
+    }
+
+    /// TEST-12 (b cont.) — `edit_document`(append_paragraph) with a missing or
+    /// blank `text` returns a typed invalid-args error (schema marks `text`
+    /// required) instead of silently appending an empty paragraph.
+    #[tokio::test]
+    async fn test12_edit_document_append_empty_text_is_invalid_args() {
+        let mock = seeded_mock();
+        // Missing `text` entirely.
+        let err = dispatch_tool(
+            &mock,
+            "edit_document",
+            &json!({ "doc_full_name": r"C:\Users\test\Report.docx", "op": "append_paragraph" }),
+        )
+        .await
+        .expect_err("missing text is invalid");
+        assert_eq!(err.error_code(), "INVALID_ARGS");
+        // Present but blank/whitespace-only `text`.
+        let err = dispatch_tool(
+            &mock,
+            "edit_document",
+            &json!({
+                "doc_full_name": r"C:\Users\test\Report.docx",
+                "op": "append_paragraph",
+                "text": "   ",
+            }),
+        )
+        .await
+        .expect_err("blank text is invalid");
+        assert_eq!(err.error_code(), "INVALID_ARGS");
     }
 
     /// TEST-12 (c) — `add_comment` on a PowerPoint doc returns the distinct

@@ -11,21 +11,43 @@
 //! plaintext beyond the mint/inject moment), and verify with a constant-time
 //! compare so a wrong token can't leak a per-byte timing differential. The one
 //! structural difference: these are per-SESSION tokens (one minted per served
-//! task-pane load) held in an in-memory `HashSet<TokenHash>`, not a map to a DB
+//! task-pane load) held in an in-memory FIFO-bounded set, not a map to a DB
 //! row — there is no persistent identity behind a bridge session.
+//!
+//! ## Bounded store (memory-leak fix)
+//! A fresh token is minted on every `taskpane.html` GET and `revoke` is not
+//! guaranteed (a WebView2 pane can be torn down without a clean WSS close), so an
+//! unbounded set would grow for the process lifetime — a slow leak plus an
+//! ever-widening set of forever-valid tokens. We cap it at [`MAX_TOKENS`] with
+//! FIFO eviction: minting the (N+1)th token evicts the oldest, so at most the N
+//! most-recent panes' tokens are ever live. N is generous relative to the number
+//! of task panes a user realistically opens between reloads.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::{LazyLock, RwLock};
 
 /// SHA-256 of a session token (32 bytes). The set key, so the plaintext is
 /// never retained past `insert`.
 pub type TokenHash = [u8; 32];
 
-/// In-memory set of live session-token hashes. Read-mostly (a `verify` per WSS
+/// Upper bound on live session tokens. FIFO eviction past this keeps the store
+/// from growing unboundedly across many task-pane loads (see module docs).
+const MAX_TOKENS: usize = 64;
+
+/// FIFO-bounded set of live session-token hashes: `set` is the O(1) membership
+/// index the verify hot-path scans, `order` records insertion order so the
+/// oldest hash is evicted first once the store is full.
+#[derive(Default)]
+struct TokenStore {
+    set: HashSet<TokenHash>,
+    order: VecDeque<TokenHash>,
+}
+
+/// In-memory store of live session-token hashes. Read-mostly (a `verify` per WSS
 /// upgrade / POST; writes only on serve-page / revoke), so an `RwLock` keeps
 /// the verify hot-path cheap. Poison-recovering like the rest of the tree.
-static SESSION_TOKENS: LazyLock<RwLock<HashSet<TokenHash>>> =
-    LazyLock::new(|| RwLock::new(HashSet::new()));
+static SESSION_TOKENS: LazyLock<RwLock<TokenStore>> =
+    LazyLock::new(|| RwLock::new(TokenStore::default()));
 
 /// SHA-256 a plaintext token → 32 bytes (mirrors `proxy::hash_token`).
 fn hash_token(token: &str) -> TokenHash {
@@ -48,13 +70,21 @@ pub fn generate_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-/// Register a token's hash as a live session. Idempotent.
+/// Register a token's hash as a live session. Idempotent; FIFO-evicts the oldest
+/// hash once the store would exceed [`MAX_TOKENS`], so the store stays bounded.
 pub fn insert(token: &str) {
     let hash = hash_token(token);
-    SESSION_TOKENS
-        .write()
-        .unwrap_or_else(|p| p.into_inner())
-        .insert(hash);
+    let mut store = SESSION_TOKENS.write().unwrap_or_else(|p| p.into_inner());
+    // Idempotent: a re-inserted live token doesn't reorder or grow the store.
+    if !store.set.insert(hash) {
+        return;
+    }
+    store.order.push_back(hash);
+    while store.order.len() > MAX_TOKENS {
+        if let Some(oldest) = store.order.pop_front() {
+            store.set.remove(&oldest);
+        }
+    }
 }
 
 /// Mint a fresh session token, register it, and hand back the plaintext to
@@ -71,8 +101,8 @@ pub fn new_session_token() -> String {
 /// the one-way hash — mirrors `proxy::lookup_token`).
 pub fn verify(presented: &str) -> bool {
     let presented_hash = hash_token(presented);
-    let set = SESSION_TOKENS.read().unwrap_or_else(|p| p.into_inner());
-    for stored in set.iter() {
+    let store = SESSION_TOKENS.read().unwrap_or_else(|p| p.into_inner());
+    for stored in store.set.iter() {
         if constant_time_eq(stored, &presented_hash) {
             return true;
         }
@@ -83,10 +113,10 @@ pub fn verify(presented: &str) -> bool {
 /// Revoke a session token (e.g. on socket close). No-op if unknown.
 pub fn revoke(token: &str) {
     let hash = hash_token(token);
-    SESSION_TOKENS
-        .write()
-        .unwrap_or_else(|p| p.into_inner())
-        .remove(&hash);
+    let mut store = SESSION_TOKENS.write().unwrap_or_else(|p| p.into_inner());
+    if store.set.remove(&hash) {
+        store.order.retain(|h| *h != hash);
+    }
 }
 
 /// Constant-time array equality (no `subtle` dependency; mirrors proxy.rs).
@@ -130,5 +160,32 @@ mod tests {
         insert(&t);
         assert!(verify(&t));
         revoke(&t);
+    }
+
+    /// The store is FIFO-bounded: minting well past `MAX_TOKENS` never grows it
+    /// beyond the cap (the memory-leak guard), and the OLDEST tokens are the ones
+    /// evicted first. Both assertions are race-safe against other tests sharing
+    /// the process-global store — a bounded cap holds regardless, and additional
+    /// concurrent mints can only push the oldest tokens *further* out, never
+    /// resurrect them.
+    #[test]
+    fn store_is_bounded_and_evicts_oldest_first() {
+        // Mint 3× the cap so the earliest tokens are guaranteed evicted even if
+        // no other test contends.
+        let minted: Vec<String> = (0..MAX_TOKENS * 3).map(|_| new_session_token()).collect();
+
+        // The store never exceeds the cap.
+        let len = SESSION_TOKENS
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .set
+            .len();
+        assert!(len <= MAX_TOKENS, "store bounded at {MAX_TOKENS}, got {len}");
+
+        // The oldest 2× cap tokens are all evicted (they precede at least
+        // `MAX_TOKENS` later mints from this test alone).
+        for t in &minted[..MAX_TOKENS * 2] {
+            assert!(!verify(t), "an evicted (oldest) token must not verify");
+        }
     }
 }

@@ -25,6 +25,9 @@ export const OfficeBridge = defineStore('OfficeBridge', {
   state: {
     documents: [] as OpenDoc[],
     loading: false,
+    // Last refetch error message, surfaced by the panel's error branch. Cleared
+    // on the next successful load so a recovered fetch drops the banner.
+    error: null as string | null,
   },
   actions: set => {
     // Push the fresh list into the open right-panel tab (if any) so an
@@ -44,12 +47,21 @@ export const OfficeBridge = defineStore('OfficeBridge', {
         setDocuments: docs =>
           set(s => {
             s.documents = docs
+            // A successful load clears any prior error.
+            s.error = null
           }),
         setLoading: loading =>
           set(s => {
             s.loading = loading
           }),
         pushToOpenPanel,
+        onError: err =>
+          set(s => {
+            s.error =
+              err instanceof Error
+                ? err.message
+                : 'Failed to load open Office documents.'
+          }),
       })
 
     return { load }

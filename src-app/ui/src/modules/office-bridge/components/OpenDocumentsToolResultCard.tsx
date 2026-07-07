@@ -52,7 +52,7 @@ export function OpenDocumentsToolResultCard(props: ContentRendererProps) {
   return (
     <Card size="sm" className="my-2" data-testid="office-docs-tool-result-card">
       <Text strong>
-        <FileText /> Open Office documents
+        <FileText aria-hidden /> Open Office documents
       </Text>
       <Text
         type="secondary"

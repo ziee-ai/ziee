@@ -15,8 +15,13 @@
   // connection. Until ITEM-5 lands, the literal placeholder is served verbatim
   // and the pane connects without a real token (dev only).
   //
-  // The listener does a literal string replace of __ZIEE_BRIDGE_TOKEN__ with the
-  // minted token; DO NOT rename this constant without updating that serve path.
+  // The listener replaces the QUOTED literal `"__ZIEE_BRIDGE_TOKEN__"` (the
+  // string VALUE on the right-hand side below) with the quoted minted token —
+  // NOT a bare replace of every `__ZIEE_BRIDGE_TOKEN__` occurrence. The
+  // `window.__ZIEE_BRIDGE_TOKEN__` accessor name contains the same substring
+  // unquoted and MUST be left intact, or token pickup silently breaks. DO NOT
+  // rename this constant, and keep the value quoted, without updating that serve
+  // path (bridge/server.rs::serve_taskpane).
   // ---------------------------------------------------------------------------
   window.__ZIEE_BRIDGE_TOKEN__ = "__ZIEE_BRIDGE_TOKEN__";
 </script>

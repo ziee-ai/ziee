@@ -1,5 +1,5 @@
 import { FileText } from 'lucide-react'
-import { Card, Empty, ScrollArea, Spinner, Tag, Text, Title } from '@/components/ui'
+import { Alert, Card, Empty, ScrollArea, Spinner, Tag, Text, Title } from '@/components/ui'
 import type { OfficeApp, OpenDoc } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 
@@ -22,8 +22,24 @@ const APP_LABELS: Record<OfficeApp, string> = {
 const APP_ORDER: OfficeApp[] = ['word', 'excel', 'power_point']
 
 export function OpenDocumentsPanel({ documents: snapshot = [] }: { documents?: OpenDoc[] }) {
-  const { documents: live, loading } = Stores.OfficeBridge
+  const { documents: live, loading, error } = Stores.OfficeBridge
   const documents = live.length > 0 ? live : snapshot
+
+  // A refetch that failed with nothing to fall back on → surface the error
+  // rather than silently degrading to the empty state. A failure that still has
+  // documents (a stale-but-usable list) keeps them visible.
+  if (error && documents.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center p-6" data-testid="office-docs-panel-error">
+        <Alert
+          tone="error"
+          title="Couldn't load open Office documents"
+          description={error}
+          data-testid="office-docs-error"
+        />
+      </div>
+    )
+  }
 
   // First load with nothing to show yet → spinner (a refetch that already has
   // documents keeps the list visible instead of flashing to a spinner).
@@ -72,7 +88,7 @@ export function OpenDocumentsPanel({ documents: snapshot = [] }: { documents?: O
                 data-testid={`office-doc-card-${group.app}-${i}`}
               >
                 <div className="flex items-start gap-2">
-                  <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <Text strong className="block truncate text-sm">
                       {doc.name}

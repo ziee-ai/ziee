@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 318 surfaces carry renderable-state signals; 1747 signals total.
+// 318 surfaces carry renderable-state signals; 1748 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2805,12 +2805,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/office-bridge/components/OpenDocumentsPanel": {
     surface: "modules/office-bridge/components/OpenDocumentsPanel",
-    requiredStates: ["delayed","empty"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading && documents.length === 0", line: 30 },
-      { kind: "empty", condition: "documents.length === 0", line: 41 },
-      { kind: "branch", condition: "doc.path", line: 80 },
-      { kind: "branch", condition: "doc.active", line: 89 },
+      { kind: "error", condition: "error && documents.length === 0", line: 31 },
+      { kind: "loading", condition: "loading && documents.length === 0", line: 46 },
+      { kind: "empty", condition: "documents.length === 0", line: 57 },
+      { kind: "branch", condition: "doc.path", line: 96 },
+      { kind: "branch", condition: "doc.active", line: 105 },
     ],
   },
   "modules/office-bridge/components/OpenDocumentsToolResultCard": {
@@ -3742,7 +3743,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 317 keys.
+ * 318 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3968,6 +3969,7 @@ export type RequiredState =
   | "modules/office-bridge/chat-extension/extension:panel-open"
   | "modules/office-bridge/components/OpenDocumentsPanel:delayed"
   | "modules/office-bridge/components/OpenDocumentsPanel:empty"
+  | "modules/office-bridge/components/OpenDocumentsPanel:error"
   | "modules/onboarding/OnboardingRedirect:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty"
@@ -4288,6 +4290,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/office-bridge/chat-extension/extension:panel-open",
   "modules/office-bridge/components/OpenDocumentsPanel:delayed",
   "modules/office-bridge/components/OpenDocumentsPanel:empty",
+  "modules/office-bridge/components/OpenDocumentsPanel:error",
   "modules/onboarding/OnboardingRedirect:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty",
