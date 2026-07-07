@@ -889,8 +889,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/utils/HtmlBlock",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "copied", line: 68 },
-      { kind: "branch", condition: "effectiveMode === 'preview'", line: 77 },
+      { kind: "branch", condition: "copied", line: 72 },
+      { kind: "branch", condition: "effectiveMode === 'preview'", line: 81 },
     ],
   },
   "modules/chat/core/utils/StreamdownErrorBoundary": {

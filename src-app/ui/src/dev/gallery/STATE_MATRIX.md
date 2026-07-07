@@ -1013,8 +1013,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `copied` | 68 |
-| branch | `effectiveMode === 'preview'` | 77 |
+| branch | `copied` | 72 |
+| branch | `effectiveMode === 'preview'` | 81 |
 
 ### `modules/chat/core/utils/StreamdownErrorBoundary`
 
