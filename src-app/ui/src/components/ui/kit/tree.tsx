@@ -244,8 +244,18 @@ export function Tree({
             ? <ChevronRight className={cn('size-4 shrink-0 transition-transform', open && 'rotate-90')} aria-hidden />
             : <span className="inline-block size-4 shrink-0" aria-hidden />}
         {checkable && (
-          <span onClick={(e) => e.stopPropagation()}>
+          // Row-height, ≥40px-wide flex cell so the checkbox has a comfortable
+          // touch target on mobile (the visual box stays 16px; Checkbox's own
+          // `::after` expands the precise hit-test area further).
+          <span
+            className="flex min-h-9 min-w-9 shrink-0 items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Checkbox
+              // 24px visual box on phones (16px from `sm` up) so the tap target
+              // is comfortable on touch; combines with the cell + Checkbox's
+              // `::after` for a >=40px hit area.
+              className="size-6 sm:size-4"
               data-testid={`${testid}-check-${n.key}`}
               checked={checkedSet.has(n.key)}
               indeterminate={halfSet.has(n.key)}
@@ -255,7 +265,9 @@ export function Tree({
             />
           </span>
         )}
-        <span id={titleIdFor(n.key)} className="truncate">{n.title}</span>
+        {/* Wrap (not truncate) so long perm tokens + descriptions stay fully
+            legible — a truncated-with-room row is a D1 defect. */}
+        <span id={titleIdFor(n.key)} className="min-w-0 flex-1 [overflow-wrap:anywhere]">{n.title}</span>
       </div>
     )
     return virtualStyle

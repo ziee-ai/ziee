@@ -23,6 +23,10 @@ type ButtonCommon = Omit<BaseButtonProps, 'size'> & {
   target?: string
   /** Tooltip shown on hover AND keyboard focus. Doubles as the accessible name when a string. */
   tooltip?: React.ReactNode
+  /** Side the built-in tooltip opens toward (default 'top'). Use 'bottom' for
+   *  icon buttons in a panel/header top row so the tooltip drops into the body
+   *  instead of clipping at the top edge or obscuring an adjacent control. */
+  tooltipSide?: 'top' | 'right' | 'bottom' | 'left'
   /** Test selector — REQUIRED, forwarded onto the rendered button/anchor via {...props} (i18n-safe). */
   'data-testid': string
 }
@@ -39,7 +43,7 @@ const skeletonH = (size?: BaseButtonProps['size']) =>
   size === 'lg' ? 'h-9' : 'h-8'
 
 export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
-  ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {
+  ({ loading, disabled, href, target, size: ownSize, type = 'button', tooltip, tooltipSide, icon, block, children, className: classNameProp, onClick, ...props }, ref) => {
     const { disabled: surfaceDisabled, loading: regionLoading, size: ambientSize } = useSurface({ disabled })
     const size = ownSize ?? ambientSize
     const className = cn(block && 'w-full', classNameProp)
@@ -119,7 +123,7 @@ export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, Bu
       <TooltipProvider delay={300}>
         <Tooltip>
           <TooltipTrigger render={node} />
-          <TooltipContent>{effectiveTooltip}</TooltipContent>
+          <TooltipContent side={tooltipSide}>{effectiveTooltip}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     )

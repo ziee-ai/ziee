@@ -102,11 +102,15 @@ export function PermissionsField({
       title: prettifyGroup(group),
       children: opts.map(o => ({
         key: o.value,
+        // Stack value + description as blocks (not inline siblings): once the
+        // row wraps, two inline spans' bounding rects share the same lines and
+        // read as overlapping (A2). A flex column keeps each on its own rows and
+        // lets long tokens/descriptions wrap freely.
         title: (
-          <span>
-            <Text className="font-mono text-xs">{o.value}</Text>
+          <span className="flex flex-col">
+            <Text className="font-mono text-xs [overflow-wrap:anywhere]">{o.value}</Text>
             {o.description && (
-              <Text type="secondary" className="ml-2 text-xs">
+              <Text type="secondary" className="text-xs [overflow-wrap:anywhere]">
                 {o.description}
               </Text>
             )}
@@ -219,7 +223,9 @@ export function PermissionsField({
         </>
       ) : (
         <>
-          <div className="max-h-80 overflow-auto p-1 border rounded">
+          {/* p-2 + scroll-py-2 keep each row's 3px focus ring off the scroll
+              clip edge (G7) rather than the flush p-1 that shaved it. */}
+          <div className="max-h-80 overflow-auto p-2 scroll-py-2 border rounded">
             {treeData.length > 0 ? (
               <Tree
                 checkable

@@ -116,10 +116,10 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `regionLoading` | 47 |
-| loading | `loading` | 70 |
-| branch | `icon != null` | 70 |
-| branch | `linkHref && !isDisabled` | 77 |
+| branch | `regionLoading` | 51 |
+| loading | `loading` | 74 |
+| branch | `icon != null` | 74 |
+| branch | `linkHref && !isDisabled` | 81 |
 
 ### `components/ui/kit/card`
 
@@ -520,8 +520,8 @@ Required states: `delayed`
 | loading | `loading` | 241 |
 | branch | `hasKids` | 243 |
 | branch | `checkable` | 246 |
-| branch | `virtualStyle` | 261 |
-| branch | `!virtual` | 266 |
+| branch | `virtualStyle` | 273 |
+| branch | `!virtual` | 278 |
 
 ### `components/ui/kit/typography`
 
@@ -1409,23 +1409,23 @@ Required states: `error`, `open`
 | branch | `onClick` | 117 |
 | branch | `uploadProgress && variant === 'row'` | 124 |
 | error | `isError` | 138 |
-| error | `isError && onRetry` | 163 |
-| branch | `onRemove` | 176 |
-| branch | `uploadProgress` | 195 |
-| error | `isError` | 207 |
-| branch | `onRetry` | 208 |
-| branch | `showFileName` | 226 |
-| branch | `onRemove` | 236 |
-| branch | `!file` | 256 |
-| branch | `variant === 'row'` | 265 |
-| branch | `selectable` | 283 |
-| branch | `hasImage` | 295 |
-| branch | `actions !== undefined` | 310 |
-| branch | `canDownload` | 313 |
-| branch | `hasImage` | 357 |
-| branch | `showFileName` | 364 |
-| branch | `(canDelete \|\| canRemove) && onRemove` | 373 |
-| overlay | `<Confirm open>` | 385 |
+| error | `isError && onRetry` | 164 |
+| branch | `onRemove` | 177 |
+| branch | `uploadProgress` | 196 |
+| error | `isError` | 208 |
+| branch | `onRetry` | 209 |
+| branch | `showFileName` | 227 |
+| branch | `onRemove` | 237 |
+| branch | `!file` | 257 |
+| branch | `variant === 'row'` | 266 |
+| branch | `selectable` | 284 |
+| branch | `hasImage` | 296 |
+| branch | `actions !== undefined` | 311 |
+| branch | `canDownload` | 314 |
+| branch | `hasImage` | 358 |
+| branch | `showFileName` | 365 |
+| branch | `(canDelete \|\| canRemove) && onRemove` | 374 |
+| overlay | `<Confirm open>` | 386 |
 
 ### `modules/file/components/FilePanel`
 
@@ -2136,8 +2136,8 @@ Required states: `empty`
 | branch | `completeness` | 150 |
 | branch | `record.is_preprint` | 221 |
 | branch | `(record.doi \|\| record.pmid)` | 229 |
-| branch | `record.abstract_text` | 234 |
-| branch | `decision === 'exclude'` | 255 |
+| branch | `record.abstract_text` | 236 |
+| branch | `decision === 'exclude'` | 257 |
 
 ### `modules/literature/components/LiteratureToolResultCard`
 
@@ -3519,8 +3519,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `advanced` | 168 |
 | branch | `advanced` | 202 |
 | branch | `jsonError` | 214 |
-| branch | `treeData.length > 0` | 223 |
-| branch | `extra.length > 0` | 243 |
+| branch | `treeData.length > 0` | 225 |
+| branch | `extra.length > 0` | 245 |
 
 ### `modules/user/components/group/EditUserGroupDrawer`
 

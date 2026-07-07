@@ -89,6 +89,7 @@ export function TitleEditor() {
         >
           <Input
             data-testid="chat-title-input"
+            aria-label="Conversation title"
             placeholder="Enter conversation title"
             autoFocus
             size="sm"
@@ -101,6 +102,7 @@ export function TitleEditor() {
           variant="ghost"
           size="default"
           icon={<Check />}
+          aria-label="Save title"
           className="!p-1"
         />
         <Button
@@ -109,6 +111,7 @@ export function TitleEditor() {
           size="default"
           icon={<X />}
           onClick={handleCancel}
+          aria-label="Cancel editing title"
           className="!p-1"
         />
       </Form>

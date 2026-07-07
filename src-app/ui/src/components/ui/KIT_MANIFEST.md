@@ -186,7 +186,7 @@ _No always-required props._
 |---|---|---|
 | `data-testid` | `string` | Test selector — REQUIRED, forwarded onto the rendered button/anchor via {...props} (i18n-safe). |
 
-<details><summary>Optional props (9)</summary>
+<details><summary>Optional props (10)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -198,6 +198,7 @@ _No always-required props._
 | `size` | `"default" | "lg" | "icon" | undefined` |  |
 | `target` | `string | undefined` |  |
 | `tooltip` | `string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstruct…` | Tooltip shown on hover AND keyboard focus. Doubles as the accessible name when a string. |
+| `tooltipSide` | `"top" | "right" | "bottom" | "left" | undefined` | Side the built-in tooltip opens toward (default 'top'). Use 'bottom' for icon buttons in a panel/header top row so the tooltip drops into… |
 | `variant` | `"link" | "default" | "outline" | "secondary" | "ghost" | "destructive" | null | undefined` |  |
 
 </details>
@@ -428,7 +429,7 @@ _No always-required props._
 | `onOpenChange` | `((open: boolean) => void) | undefined` | Fires when the menu requests an open-state change (pairs with `open`). |
 | `onSelect` | `((key: string) => void) | undefined` | Global selection handler receiving the activated item's `key` (legacy `menu.onClick`). Fires in addition to a per-item `onClick`. |
 | `open` | `boolean | undefined` | Controlled open state. Omit for the default uncontrolled behavior. |
-| `side` | `"left" | "right" | "top" | "bottom" | undefined` |  |
+| `side` | `"top" | "right" | "bottom" | "left" | undefined` |  |
 
 </details>
 
@@ -875,7 +876,7 @@ _No always-required props._
 | `className` | `string | undefined` |  |
 | `onOpenChange` | `((open: boolean) => void) | undefined` |  |
 | `open` | `boolean | undefined` |  |
-| `side` | `"left" | "right" | "top" | "bottom" | undefined` |  |
+| `side` | `"top" | "right" | "bottom" | "left" | undefined` |  |
 | `title` | `ReactNode` | Optional header inside the popover (legacy `title`). |
 | `trigger` | `"click" | "hover" | undefined` | 'click' (default) or 'hover'. legacy defaults to hover; Radix is click-native, so hover is emulated via pointer/focus on the trigger (unc… |
 
@@ -1068,7 +1069,7 @@ _No always-required props._
 | `children` | `ReactNode` |  |
 | `className` | `string | undefined` |  |
 | `orientation` | `"vertical" | "horizontal" | undefined` |  |
-| `titlePlacement` | `"center" | "left" | "right" | undefined` | Position of the label text on a labeled divider (legacy `titlePlacement`). Default 'center'. |
+| `titlePlacement` | `"center" | "right" | "left" | undefined` | Position of the label text on a labeled divider (legacy `titlePlacement`). Default 'center'. |
 
 </details>
 
@@ -1099,7 +1100,7 @@ _No always-required props._
 | `open` | `boolean | undefined` |  |
 | `resizable` | `boolean | undefined` |  |
 | `resizeLabel` | `string | undefined` |  |
-| `side` | `"left" | "right" | "top" | "bottom" | undefined` |  |
+| `side` | `"top" | "right" | "bottom" | "left" | undefined` |  |
 | `trigger` | `ReactElement<unknown, string | JSXElementConstructor<any>> | undefined` |  |
 
 </details>
@@ -1402,7 +1403,7 @@ _No always-required props._
 | `className` | `string | undefined` |  |
 | `content` | `ReactNode` | Tooltip body. `title` is an accepted alias (legacy uses `title`). |
 | `delay` | `number | undefined` |  |
-| `side` | `"left" | "right" | "top" | "bottom" | undefined` |  |
+| `side` | `"top" | "right" | "bottom" | "left" | undefined` |  |
 | `title` | `ReactNode` |  |
 
 </details>

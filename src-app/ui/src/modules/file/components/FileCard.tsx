@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Trash2, FileText, Download, RotateCw } from 'lucide-react'
+import { X, Trash2, FileText, Download, RotateCw, AlertTriangle } from 'lucide-react'
 import {
   Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage,
   Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle,
@@ -136,9 +136,10 @@ export function FileCard({
       >
         <AttachmentMedia>
           {isError ? (
-            <Text className="!text-[9px] rounded px-1 text-white bg-destructive">
-              ERROR
-            </Text>
+            // The media slot already carries the error tint (bg-destructive/10
+            // text-destructive) in error state, so a destructive glyph reads as
+            // "error" without the sub-AA white-on-solid 9px badge it replaces.
+            <AlertTriangle aria-label="Upload error" />
           ) : (
             <Progress
               shape="circle"
