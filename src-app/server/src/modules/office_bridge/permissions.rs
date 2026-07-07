@@ -29,3 +29,45 @@ impl PermissionCheck for OfficeBridgeManage {
     const DESCRIPTION: &'static str = "Update office-bridge settings (enable, port).";
     const MODULE: &'static str = "office_bridge";
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// TEST-4 — the three `PermissionCheck` impls expose the exact permission
+    /// strings the migrations (132/133) and the handlers gate on. Drift here
+    /// would leave the migration granting / the extractor checking a string
+    /// nobody else uses.
+    #[test]
+    fn permission_strings_are_exact() {
+        assert_eq!(OfficeBridgeUse::PERMISSION, "office_bridge::use");
+        assert_eq!(OfficeBridgeAdminRead::PERMISSION, "office_bridge::admin::read");
+        assert_eq!(OfficeBridgeManage::PERMISSION, "office_bridge::admin::manage");
+    }
+
+    /// TEST-4 — every office_bridge permission reports the `office_bridge` module.
+    #[test]
+    fn permission_modules_are_office_bridge() {
+        for module in [
+            OfficeBridgeUse::MODULE,
+            OfficeBridgeAdminRead::MODULE,
+            OfficeBridgeManage::MODULE,
+        ] {
+            assert_eq!(module, "office_bridge");
+        }
+    }
+
+    /// TEST-4 — the `NAME` constants are distinct (each impl is a separate key).
+    #[test]
+    fn permission_names_are_distinct() {
+        let names = [
+            OfficeBridgeUse::NAME,
+            OfficeBridgeAdminRead::NAME,
+            OfficeBridgeManage::NAME,
+        ];
+        let mut sorted = names.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), names.len(), "permission NAME constants must be distinct");
+    }
+}
