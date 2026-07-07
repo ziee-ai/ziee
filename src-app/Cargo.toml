@@ -110,7 +110,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # that need extra capabilities (json, multipart, blocking, stream) add
 # them on their own dep line.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "http2"] }
-axum = { version = "0.8.4", features = ["macros", "multipart"] }
+axum = { version = "0.8.4", features = ["macros", "multipart", "ws"] }
+# office_bridge (ITEM-5): standalone dual-stack HTTPS+WSS listener served over
+# rustls. `axum-server`'s `from_tcp_rustls` binds our pre-opened TCP sockets
+# (one per address for dual-stack) with a rustls ServerConfig we build with the
+# ring provider (matching cert.rs), and its `Handle` gives a shutdown seam.
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 aide = { version = "0.15", features = ["axum", "axum-json", "axum-extra-json-deserializer", "axum-extra-query", "axum-extra", "axum-extra-headers", "axum-multipart", "axum-query", "macros", "redoc"] }
 schemars = { version = "0.9.0", features = ["chrono04", "uuid1"] }
 tower = "0.5"

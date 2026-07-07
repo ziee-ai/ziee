@@ -141,6 +141,43 @@ impl AppModule for OfficeBridgeModule {
             }
         });
 
+        // Spawn the standalone HTTPS + WSS bridge listener (ITEM-5). Fire-and-
+        // forget: the `axum_server` accept loops run independently of the handle
+        // returned by `start` (dropping it does NOT stop them), so we log
+        // start/failure and never block `init`. The runtime port comes from the
+        // settings row (default 44300); a runtime `enabled = false` skips it
+        // (DEC-12 — the second, admin-facing kill level below the config gate).
+        let bridge_pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            let repo = repository::OfficeBridgeRepository::new((*bridge_pool).clone());
+            let settings = match repo.get_settings().await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!(
+                        "office_bridge: reading settings for bridge start failed: {e:?}; \
+                         not starting listener"
+                    );
+                    return;
+                }
+            };
+            if !settings.enabled {
+                tracing::info!(
+                    "office_bridge: runtime settings.enabled = false; not starting bridge listener"
+                );
+                return;
+            }
+            let port = u16::try_from(settings.port).unwrap_or(44300);
+            let data_dir = crate::core::get_app_data_dir();
+            match bridge::server::start(port, data_dir).await {
+                Ok(handle) => tracing::info!(
+                    "office_bridge: bridge listener started on {} (port {})",
+                    handle.origin,
+                    handle.port
+                ),
+                Err(e) => tracing::error!("office_bridge: bridge listener failed to start: {e:?}"),
+            }
+        });
+
         Ok(())
     }
 

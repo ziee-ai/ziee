@@ -58,6 +58,8 @@ include_dir.workspace = true
 rcgen.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
+# office_bridge (ITEM-5): serve the rustls Router on both 127.0.0.1 + [::1].
+axum-server.workspace = true
 base64.workspace = true
 sha2.workspace = true
 semver.workspace = true
@@ -281,3 +283,7 @@ rsa = { version = "0.9", features = ["pem"] }
 # office_bridge TEST-6: parse the minted cert DER to assert its SAN
 # (localhost + 127.0.0.1 + ::1) and CN.
 x509-parser = "0.16"
+# office_bridge TEST-7: a WSS client that trusts the minted bridge cert (via a
+# rustls ClientConfig with the cert added as a root) to drive the /bridge echo
+# round-trip + origin/token rejection. Uses the ring provider to match cert.rs.
+tokio-tungstenite = { version = "0.27", features = ["rustls-tls-webpki-roots"] }
