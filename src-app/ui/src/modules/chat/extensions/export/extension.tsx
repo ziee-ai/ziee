@@ -1,4 +1,4 @@
-import { Dropdown, message } from '@/components/ui'
+import { Popover, message } from '@/components/ui'
 import { Download, ChevronRight } from 'lucide-react'
 import {
   createExtension,
@@ -145,10 +145,11 @@ function getExportMenuItems() {
 /**
  * Export entry INSIDE the "+" dropdown. Renders a row visually identical to its
  * sibling "+" menu items (Attach files / Skills / MCP / Assistant): same
- * `flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-muted` wrapper, a
- * `size-4` leading icon, and a `text-sm` label (A9 peer-metric consistency). The
- * export FORMAT choice (JSON / Text / Markdown) opens as a nested Dropdown; picking
- * one exports and closes the "+" menu.
+ * PlusMenuItem wrapper + a trailing chevron. The export FORMAT choice
+ * (JSON / Text / Markdown) opens to the RIGHT as a nested Popover — the SAME
+ * mechanism the "Select assistant" item uses. A Popover (z-[70]) is used rather
+ * than a Dropdown (z-[60]) so the format panel layers ABOVE the "+" Popover
+ * instead of behind it; picking a format exports and closes the "+" menu.
  */
 function ExportMenuItem() {
   const messages = Array.from(Stores.Chat.messages.values())
@@ -159,18 +160,37 @@ function ExportMenuItem() {
     return null
   }
 
-  const items = getExportMenuItems().map(it => ({
-    ...it,
-    onClick: () => {
-      it.onClick()
-      close()
-    },
-  }))
+  const formatMenu = (
+    <div className="flex flex-col">
+      {getExportMenuItems().map(it => (
+        <div
+          key={it.key}
+          role="button"
+          tabIndex={0}
+          data-testid={`chat-export-format-${it.key}`}
+          className="cursor-pointer rounded-md px-3 py-1.5 text-sm text-foreground whitespace-nowrap hover:bg-muted focus-visible:outline focus-visible:outline-2"
+          onClick={() => {
+            it.onClick()
+            close()
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              it.onClick()
+              close()
+            }
+          }}
+        >
+          {it.label}
+        </div>
+      ))}
+    </div>
+  )
 
   return (
-    <Dropdown data-testid="chat-export-dropdown" items={items} side="right" align="start">
-      {/* Trailing chevron marks this as opening a submenu — same affordance as the
-          "Select assistant" item. */}
+    <Popover content={formatMenu} side="right" align="start" className="w-auto">
+      {/* Trailing chevron marks this as opening a submenu — same affordance +
+          mechanism as the "Select assistant" item. */}
       <PlusMenuItem
         data-testid="chat-export-menu-item"
         aria-label="Export conversation"
@@ -178,7 +198,7 @@ function ExportMenuItem() {
         label="Export conversation"
         trailing={<ChevronRight className="size-3 opacity-45" />}
       />
-    </Dropdown>
+    </Popover>
   )
 }
 

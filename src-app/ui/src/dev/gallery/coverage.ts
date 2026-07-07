@@ -215,6 +215,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/MessageActions": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/components/MessageList": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/components/ModelSelector": { kind: 'via', reason: 'rendered within the chat module page' },
+  "modules/chat/components/PlusMenuItem": { kind: 'via', reason: 'shared row rendered as items in the chat composer + dropdown' },
   "modules/chat/components/TextContent": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/components/TitleEditor": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/core/MessageContext": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
