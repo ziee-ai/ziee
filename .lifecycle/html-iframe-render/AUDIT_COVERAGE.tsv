@@ -11,6 +11,8 @@ src-app/ui/docs/AFFORDANCE_MATRIX.md	256	256	i18n,api-contract,patterns-conforma
 src-app/ui/scripts/affordance-audit.mjs	84	90	correctness,api-contract,patterns-conformance
 src-app/ui/src/components/ui/testIds.generated.ts	2	2	correctness,patterns-conformance,tests-quality
 src-app/ui/src/components/ui/testIds.generated.ts	372	376	correctness,patterns-conformance,tests-quality
+src-app/ui/src/dev/gallery/AFFORDANCE_FINDINGS.jsonl	1	1	correctness,patterns-conformance,tests-quality
+src-app/ui/src/dev/gallery/AFFORDANCE_FINDINGS.md	1	10	correctness,patterns-conformance,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	10	11	correctness,patterns-conformance,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	956	957	correctness,patterns-conformance,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1010	1018	correctness,patterns-conformance,tests-quality
