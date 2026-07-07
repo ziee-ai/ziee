@@ -59,8 +59,19 @@ test.describe('Chat — jump to latest', () => {
     // Initial load jumps to the bottom → button hidden.
     await expect(jumpBtn).toBeHidden()
 
-    // Scroll up to the first message → button appears.
-    await page.locator('[data-message-id="jm0"]').scrollIntoViewIfNeeded()
+    // Scroll the message list to the top (the list scrolls inside an
+    // OverlayScrollbars viewport on desktop), so the bottom sentinel leaves the
+    // viewport and the observer flips atBottom → false.
+    await page.evaluate(() => {
+      document.querySelectorAll<HTMLElement>('*').forEach(el => {
+        if (el.scrollHeight > el.clientHeight + 8 && getComputedStyle(el).overflowY !== 'visible') {
+          el.scrollTop = 0
+        }
+      })
+      window.scrollTo(0, 0)
+    })
+
+    // Scrolled up → the jump button appears.
     await expect(jumpBtn).toBeVisible()
 
     // Click → returns to the latest message and hides again.

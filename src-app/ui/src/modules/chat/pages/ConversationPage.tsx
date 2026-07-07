@@ -64,6 +64,10 @@ export default function ConversationPage() {
   // show/hide. The ref stays the source of truth for the scroll effects.
   const [atBottom, setAtBottom] = useState(true)
 
+  // Re-attach when the conversation becomes available: on first mount the
+  // Loading / ErrorState early-returns render NO sentinel, so an empty-dep
+  // effect would bail once and never observe. Keying on the loaded conversation
+  // id re-runs the effect when the main view (and the sentinel) actually mounts.
   useEffect(() => {
     const sentinel = messagesEndRef.current
     if (!sentinel) return
@@ -77,7 +81,7 @@ export default function ConversationPage() {
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [])
+  }, [conversation?.id])
 
   // Cmd/Ctrl-F opens the in-conversation find bar, overriding the browser's
   // native find (our find covers the same rendered message content — DEC-5).
