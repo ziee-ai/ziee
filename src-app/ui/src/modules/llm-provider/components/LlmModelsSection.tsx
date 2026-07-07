@@ -373,7 +373,7 @@ export function LlmModelsSection() {
                         <Tooltip content="This model is no longer offered by the provider (or is deprecated). Calls to it may fail.">
                           <Badge
                             tone="warning"
-                            className="ml-2 align-middle"
+                            className="ms-2 align-middle"
                             data-testid={`llm-model-deprecated-badge-${llmModel.id}`}
                           >
                             Deprecated

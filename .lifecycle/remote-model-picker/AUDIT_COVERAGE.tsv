@@ -29,7 +29,7 @@ src-app/server/src/modules/llm_provider/handlers/discover.rs	296	297	correctness
 src-app/server/src/modules/llm_provider/handlers/discover.rs	301	437	correctness,security,error-handling,concurrency,perms-authz,api-contract,patterns-conformance,perf
 src-app/server/src/modules/llm_provider/utils.rs	19	19	correctness,security,error-handling,concurrency,perms-authz,api-contract,patterns-conformance,perf
 src-app/server/tests/llm_model/create_deprecated_test.rs	1	92	tests-quality,correctness,patterns-conformance,api-contract
-src-app/server/tests/llm_model/deprecation_sweep_test.rs	1	200	tests-quality,correctness,patterns-conformance,api-contract
+src-app/server/tests/llm_model/deprecation_sweep_test.rs	1	201	tests-quality,correctness,patterns-conformance,api-contract
 src-app/server/tests/llm_model/mod.rs	3	4	tests-quality,correctness,patterns-conformance
 src-app/server/tests/llm_provider/discover_models_test.rs	1	116	tests-quality,correctness,patterns-conformance,api-contract
 src-app/server/tests/llm_provider/mod.rs	9	9	tests-quality,correctness,patterns-conformance

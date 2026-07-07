@@ -8,7 +8,7 @@
 ## Summary
 
 - **318** surfaces carry at least one renderable-state signal.
-- **1781** signals total: 1396 branch, 109 empty, 95 error, 95 loading, 84 overlay, 2 panel.
+- **1788** signals total: 1403 branch, 109 empty, 95 error, 95 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2436,29 +2436,32 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!currentProvider` | 43 |
-| branch | `!currentProvider` | 101 |
-| branch | `!currentProvider \|\| currentProvider.provider_type !== 'local'` | 115 |
-| branch | `!currentProvider` | 139 |
-| branch | `!currentProvider` | 154 |
-| branch | `!currentProvider` | 230 |
-| branch | `!canCreateModels` | 231 |
-| branch | `currentProvider.provider_type === 'local'` | 233 |
-| branch | `!currentProvider` | 294 |
-| loading | `loading` | 300 |
-| empty | `llmModels.length === 0` | 302 |
-| branch | `llmModel.is_deprecated` | 318 |
-| branch | `llmModel.is_active && llmModel.port` | 339 |
-| branch | `llmModel.description` | 351 |
-| branch | `llmModel.capabilities` | 356 |
-| branch | `llmModel.capabilities.vision` | 358 |
-| branch | `llmModel.capabilities.audio` | 363 |
-| branch | `llmModel.capabilities.tools` | 368 |
-| branch | `llmModel.capabilities.code_interpreter` | 373 |
-| branch | `llmModel.capabilities.chat` | 378 |
-| branch | `llmModel.capabilities.text_embedding` | 383 |
-| branch | `llmModel.capabilities.image_generator` | 388 |
-| branch | `index < llmModels.length - 1` | 398 |
+| branch | `!currentProvider` | 44 |
+| branch | `!currentProvider` | 102 |
+| branch | `!currentProvider \|\| currentProvider.provider_type !== 'local'` | 116 |
+| branch | `!currentProvider` | 140 |
+| branch | `!currentProvider` | 155 |
+| branch | `!currentProvider` | 162 |
+| branch | `!currentProvider` | 251 |
+| branch | `!canCreateModels` | 252 |
+| branch | `currentProvider.provider_type === 'local'` | 254 |
+| branch | `!currentProvider \|\| currentProvider.provider_type === 'local'` | 317 |
+| branch | `!canEditModels` | 320 |
+| branch | `!currentProvider` | 348 |
+| loading | `loading` | 354 |
+| empty | `llmModels.length === 0` | 356 |
+| branch | `llmModel.is_deprecated` | 372 |
+| branch | `llmModel.is_active && llmModel.port` | 393 |
+| branch | `llmModel.description` | 405 |
+| branch | `llmModel.capabilities` | 410 |
+| branch | `llmModel.capabilities.vision` | 412 |
+| branch | `llmModel.capabilities.audio` | 417 |
+| branch | `llmModel.capabilities.tools` | 422 |
+| branch | `llmModel.capabilities.code_interpreter` | 427 |
+| branch | `llmModel.capabilities.chat` | 432 |
+| branch | `llmModel.capabilities.text_embedding` | 437 |
+| branch | `llmModel.capabilities.image_generator` | 442 |
+| branch | `index < llmModels.length - 1` | 452 |
 
 ### `modules/llm-provider/components/LlmProviderDrawer`
 
@@ -2466,9 +2469,9 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| overlay | `<Drawer open>` | 119 |
-| branch | `canSave` | 128 |
-| branch | `providerType === 'local'` | 175 |
+| overlay | `<Drawer open>` | 120 |
+| branch | `canSave` | 129 |
+| branch | `providerType === 'local'` | 176 |
 
 ### `modules/llm-provider/components/LlmProviderSettings`
 
@@ -2607,9 +2610,13 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!providerId` | 28 |
-| overlay | `<Drawer open>` | 74 |
-| branch | `canCreate` | 82 |
+| branch | `!m` | 90 |
+| branch | `!providerId` | 105 |
+| branch | `!name` | 107 |
+| overlay | `<Drawer open>` | 153 |
+| branch | `canCreate` | 161 |
+| branch | `!useCustomId` | 178 |
+| branch | `notes && notes.length > 0` | 209 |
 
 ### `modules/llm-provider/components/llm-models/EditLlmModelDrawer`
 
