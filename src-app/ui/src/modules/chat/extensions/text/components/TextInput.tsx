@@ -4,7 +4,7 @@ import { Stores } from '@/core/stores'
 import {
   getDraft,
   setDraft,
-  NEW_DRAFT_KEY,
+  makeDraftKey,
 } from '@/modules/chat/extensions/text/chatDrafts'
 
 /**
@@ -31,7 +31,9 @@ export function TextInput() {
   // as, or clobbered by, a draft (DEC-7).
   const conversationId = Stores.Chat.conversation?.id
   const isEditing = Stores.Chat.editingMessage != null
-  const draftKey = conversationId ?? NEW_DRAFT_KEY
+  // Namespace the draft by the current user so a shared browser never surfaces
+  // another user's unsent text (esp. the fixed `new` bucket) — see makeDraftKey.
+  const draftKey = makeDraftKey(Stores.Auth.user?.id, conversationId)
 
   // Keep the latest key/editing flag in refs so the DOM-driven save handler and
   // the registered clearer read current values without re-subscribing.

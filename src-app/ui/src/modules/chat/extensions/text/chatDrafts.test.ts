@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { getDraft, setDraft, clearDraft, NEW_DRAFT_KEY } from './chatDrafts.ts'
+import { getDraft, setDraft, clearDraft, makeDraftKey, NEW_DRAFT_KEY } from './chatDrafts.ts'
 
 // Minimal in-memory localStorage stub (node:test has no DOM).
 function installStorage() {
@@ -56,6 +56,20 @@ test('clearDraft on the new key clears only new', () => {
   clearDraft(NEW_DRAFT_KEY)
   assert.equal(getDraft(NEW_DRAFT_KEY), '')
   assert.equal(getDraft('conv-1'), 'keep me')
+})
+
+test('makeDraftKey namespaces by user so drafts never cross-read', () => {
+  // Same conversation slot, different users → different keys (no leak).
+  assert.notEqual(makeDraftKey('userA', null), makeDraftKey('userB', null))
+  assert.equal(makeDraftKey('userA', null), `userA:${NEW_DRAFT_KEY}`)
+  assert.equal(makeDraftKey('userA', 'conv-1'), 'userA:conv-1')
+  // A missing user id falls back to a defensive anon namespace.
+  assert.equal(makeDraftKey(undefined, 'conv-1'), 'anon:conv-1')
+
+  // End-to-end: user A's new-chat draft is invisible to user B.
+  setDraft(makeDraftKey('userA', null), "A's secret")
+  assert.equal(getDraft(makeDraftKey('userB', null)), '')
+  assert.equal(getDraft(makeDraftKey('userA', null)), "A's secret")
 })
 
 test('storage failures degrade to no-op', () => {

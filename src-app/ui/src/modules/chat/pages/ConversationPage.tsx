@@ -227,7 +227,7 @@ export default function ConversationPage() {
             jump-to-latest button (ITEM-2). */}
         <div className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
           {/* Floating find bar, top-right of the chat column. */}
-          <div className="pointer-events-none absolute right-3 top-3 z-30 flex justify-end">
+          <div className="pointer-events-none absolute end-3 top-3 z-30 flex justify-end">
             <div className="pointer-events-auto">
               <ConversationFindBar
                 open={findOpen}

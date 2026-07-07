@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 314 surfaces carry renderable-state signals; 1722 signals total.
+// 319 surfaces carry renderable-state signals; 1742 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -770,9 +770,21 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ChatMessage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 19 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 94 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 119 },
+      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 46 },
+      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 54 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 132 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 157 },
+      { kind: "branch", condition: "offerCollapse", line: 181 },
+    ],
+  },
+  "modules/chat/components/CollapsibleBlock": {
+    surface: "modules/chat/components/CollapsibleBlock",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!el", line: 40 },
+      { kind: "branch", condition: "!el || typeof ResizeObserver === 'undefined'", line: 51 },
+      { kind: "branch", condition: "overflowing", line: 86 },
+      { kind: "branch", condition: "collapsed", line: 91 },
     ],
   },
   "modules/chat/components/ContentRenderer": {
@@ -792,18 +804,28 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "onSelect", line: 209 },
     ],
   },
+  "modules/chat/components/ConversationFindBar": {
+    surface: "modules/chat/components/ConversationFindBar",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!open", line: 55 },
+      { kind: "branch", condition: "!open", line: 72 },
+      { kind: "empty", condition: "total === 0", line: 76 },
+    ],
+  },
   "modules/chat/components/ConversationList": {
     surface: "modules/chat/components/ConversationList",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!getSearchBoxContainer", line: 127 },
-      { kind: "branch", condition: "selectedIds.size > 0", line: 132 },
-      { kind: "branch", condition: "canDelete", line: 157 },
-      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 181 },
-      { kind: "error", condition: "error", line: 182 },
-      { kind: "loading", condition: "loading && !isInitialized", line: 206 },
-      { kind: "branch", condition: "visibleConversations.length > 0", line: 231 },
-      { kind: "branch", condition: "hasMore && !searchQuery", line: 239 },
+      { kind: "branch", condition: "!getSearchBoxContainer", line: 135 },
+      { kind: "loading", condition: "(visibleConversations.length > 0 || loading)", line: 142 },
+      { kind: "branch", condition: "selectedIds.size > 0", line: 158 },
+      { kind: "branch", condition: "canDelete", line: 183 },
+      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 207 },
+      { kind: "error", condition: "error", line: 208 },
+      { kind: "loading", condition: "loading && !isInitialized", line: 232 },
+      { kind: "branch", condition: "visibleConversations.length > 0", line: 257 },
+      { kind: "branch", condition: "hasMore", line: 265 },
     ],
   },
   "modules/chat/components/EditingMessageBanner": {
@@ -811,6 +833,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!editingMessage", line: 17 },
+    ],
+  },
+  "modules/chat/components/JumpToLatestButton": {
+    surface: "modules/chat/components/JumpToLatestButton",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!visible", line: 24 },
     ],
   },
   "modules/chat/components/MessageActions": {
@@ -829,7 +858,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed"],
     signals: [
       { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 42 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 52 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -972,6 +1001,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!textData.text", line: 24 },
     ],
   },
+  "modules/chat/extensions/text/components/TextInput": {
+    surface: "modules/chat/extensions/text/components/TextInput",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!el", line: 68 },
+      { kind: "branch", condition: "isEditing", line: 69 },
+      { kind: "branch", condition: "restoredKeyRef.current === draftKey", line: 77 },
+      { kind: "branch", condition: "isEditingRef.current", line: 85 },
+    ],
+  },
   "modules/chat/extensions/text/components/ThinkingContent": {
     surface: "modules/chat/extensions/text/components/ThinkingContent",
     requiredStates: [],
@@ -990,23 +1029,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ChatHistoryPage",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "!isNarrow", line: 89 },
-      { kind: "branch", condition: "isNarrow", line: 99 },
-      { kind: "branch", condition: "isNarrow && searchOpenInNarrow", line: 133 },
-      { kind: "error", condition: "(conversations.length > 0 || loading || error)", line: 142 },
-      { kind: "error", condition: "!loading && conversations.length === 0 && !error", line: 154 },
+      { kind: "branch", condition: "!isNarrow", line: 95 },
+      { kind: "branch", condition: "isNarrow", line: 105 },
+      { kind: "branch", condition: "isNarrow && searchOpenInNarrow", line: 139 },
+      { kind: "error", condition: "(conversations.length > 0 || loading || error || hasSearch)", line: 148 },
+      { kind: "error", condition: "!loading && conversations.length === 0 && !error && !hasSearch", line: 160 },
     ],
   },
   "modules/chat/pages/ConversationPage": {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 51 },
-      { kind: "branch", condition: "!conversationId", line: 77 },
-      { kind: "loading", condition: "loading && !conversation", line: 103 },
-      { kind: "loading", condition: "!loading && !conversation", line: 112 },
-      { kind: "error", condition: "error", line: 115 },
-      { kind: "error", condition: "error", line: 158 },
+      { kind: "branch", condition: "!sentinel", line: 73 },
+      { kind: "branch", condition: "!Stores.Chat.__state.conversation", line: 94 },
+      { kind: "branch", condition: "!conversationId", line: 123 },
+      { kind: "loading", condition: "loading && !conversation", line: 149 },
+      { kind: "loading", condition: "!loading && !conversation", line: 158 },
+      { kind: "error", condition: "error", line: 161 },
+      { kind: "error", condition: "error", line: 218 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -1199,6 +1239,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading && !settings", line: 44 },
     ],
   },
+  "modules/file/chat-extension/components/FilePasteHandler": {
+    surface: "modules/file/chat-extension/components/FilePasteHandler",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!el", line: 33 },
+      { kind: "branch", condition: "!canUploadRef.current", line: 36 },
+      { kind: "branch", condition: "!dt", line: 38 },
+      { kind: "empty", condition: "collected.length === 0", line: 57 },
+    ],
+  },
   "modules/file/chat-extension/components/FilePreviewList": {
     surface: "modules/file/chat-extension/components/FilePreviewList",
     requiredStates: [],
@@ -1265,12 +1315,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/chat-extension/extension",
     requiredStates: ["empty","panel-open"],
     signals: [
-      { kind: "branch", condition: "!fileData?.file_id || !fileData?.filename", line: 40 },
-      { kind: "panel", condition: "registerPanelRenderer('file')", line: 122 },
-      { kind: "branch", condition: "!file", line: 127 },
-      { kind: "branch", condition: "!fileStore", line: 152 },
-      { kind: "empty", condition: "fileContents.length === 0", line: 272 },
-      { kind: "branch", condition: "!fileStore", line: 276 },
+      { kind: "branch", condition: "!fileData?.file_id || !fileData?.filename", line: 56 },
+      { kind: "panel", condition: "registerPanelRenderer('file')", line: 138 },
+      { kind: "branch", condition: "!file", line: 143 },
+      { kind: "branch", condition: "!fileStore", line: 168 },
+      { kind: "empty", condition: "fileContents.length === 0", line: 288 },
+      { kind: "branch", condition: "!fileStore", line: 292 },
     ],
   },
   "modules/file/components/FileCard": {
@@ -3646,7 +3696,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
 
 /** Right-panel renderers — each is a distinct right-panel-open state to render. */
 export const PANEL_RENDERERS: PanelRegistration[] = [
-  { type: "file", surface: "modules/file/chat-extension/extension", line: 122 },
+  { type: "file", surface: "modules/file/chat-extension/extension", line: 138 },
   { type: "literature", surface: "modules/literature/chat-extension/extension", line: 27 },
 ]
 
@@ -3692,7 +3742,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 314 keys.
+ * 316 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3744,6 +3794,7 @@ export type RequiredState =
   | "modules/chat/components/ChatInput:open"
   | "modules/chat/components/ChatMessage:empty"
   | "modules/chat/components/ConversationCard:open"
+  | "modules/chat/components/ConversationFindBar:empty"
   | "modules/chat/components/ConversationList:delayed"
   | "modules/chat/components/ConversationList:error"
   | "modules/chat/components/MessageList:delayed"
@@ -3783,6 +3834,7 @@ export type RequiredState =
   | "modules/file-rag/components/sections/MaintenanceSection:error"
   | "modules/file-rag/pages/FileRagAdminPage:delayed"
   | "modules/file-rag/pages/FileRagAdminPage:error"
+  | "modules/file/chat-extension/components/FilePasteHandler:empty"
   | "modules/file/chat-extension/components/FileUploadArea:empty"
   | "modules/file/chat-extension/components/MessageFilesView:empty"
   | "modules/file/chat-extension/extension:empty"
@@ -4061,6 +4113,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/components/ChatInput:open",
   "modules/chat/components/ChatMessage:empty",
   "modules/chat/components/ConversationCard:open",
+  "modules/chat/components/ConversationFindBar:empty",
   "modules/chat/components/ConversationList:delayed",
   "modules/chat/components/ConversationList:error",
   "modules/chat/components/MessageList:delayed",
@@ -4100,6 +4153,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file-rag/components/sections/MaintenanceSection:error",
   "modules/file-rag/pages/FileRagAdminPage:delayed",
   "modules/file-rag/pages/FileRagAdminPage:error",
+  "modules/file/chat-extension/components/FilePasteHandler:empty",
   "modules/file/chat-extension/components/FileUploadArea:empty",
   "modules/file/chat-extension/components/MessageFilesView:empty",
   "modules/file/chat-extension/extension:empty",

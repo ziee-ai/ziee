@@ -19,6 +19,21 @@ function storageKey(key: string): string {
   return `${PREFIX}${key}`
 }
 
+/**
+ * Build the per-conversation draft key, NAMESPACED BY USER ID. Namespacing is a
+ * security requirement on shared browsers: without it, the fixed `new` bucket
+ * would let the next user who logs in see the previous user's unsent new-chat
+ * draft (localStorage survives logout). A different user id yields a different
+ * key, so drafts are never cross-read. `anon` is a defensive fallback (the
+ * composer is only reachable while authenticated).
+ */
+export function makeDraftKey(
+  userId: string | null | undefined,
+  conversationId: string | null | undefined,
+): string {
+  return `${userId ?? 'anon'}:${conversationId ?? NEW_DRAFT_KEY}`
+}
+
 /** Read the saved draft for a conversation key (or `''` if none / unavailable). */
 export function getDraft(key: string): string {
   try {

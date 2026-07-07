@@ -9,7 +9,7 @@ import { TextContent } from '@/modules/chat/extensions/text/components/TextConte
 import { ThinkingContent } from '@/modules/chat/extensions/text/components/ThinkingContent'
 import { TextInput } from '@/modules/chat/extensions/text/components/TextInput'
 import { createTextStore } from '@/modules/chat/extensions/text/Text.store'
-import { clearDraft, getDraft, NEW_DRAFT_KEY } from '@/modules/chat/extensions/text/chatDrafts'
+import { clearDraft, getDraft, makeDraftKey } from '@/modules/chat/extensions/text/chatDrafts'
 import type { MessageContent } from '@/api-client/types'
 
 // The composer draft key captured at send START (before a new-chat conversation
@@ -150,7 +150,12 @@ const textExtension: ChatExtension = createExtension({
     // Capture the draft key NOW, before a new-chat send creates the conversation
     // (which would flip the composer's key to the new id). For an existing
     // conversation it's that id; for a new chat it's the shared `new` bucket.
-    capturedDraftKey = Stores.Chat.__state.conversation?.id ?? NEW_DRAFT_KEY
+    // Must match TextInput's user-namespaced draftKey so onMessageSent clears the
+    // right entry. `__state` (non-render access from an async hook).
+    capturedDraftKey = makeDraftKey(
+      Stores.Auth.__state.user?.id,
+      Stores.Chat.__state.conversation?.id,
+    )
 
     return { cancel: false }
   },

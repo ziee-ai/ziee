@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **314** surfaces carry at least one renderable-state signal.
-- **1722** signals total: 1341 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **319** surfaces carry at least one renderable-state signal.
+- **1742** signals total: 1358 branch, 111 empty, 93 error, 94 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 82 |
-| `empty` | 86 |
+| `empty` | 88 |
 | `error` | 73 |
 | `open` | 71 |
 | `panel-open` | 2 |
@@ -30,7 +30,7 @@ conversation page.
 
 | panel type | registered in |
 |---|---|
-| `file` | `modules/file/chat-extension/extension`:122 |
+| `file` | `modules/file/chat-extension/extension`:138 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
 
 ## Slot registrations
@@ -881,9 +881,22 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!message.contents \|\| message.contents.length === 0` | 19 |
-| branch | `attachmentBlocks.length > 0` | 94 |
-| branch | `bubbleBlocks.length > 0` | 119 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 46 |
+| empty | `!message.contents \|\| message.contents.length === 0` | 54 |
+| branch | `attachmentBlocks.length > 0` | 132 |
+| branch | `bubbleBlocks.length > 0` | 157 |
+| branch | `offerCollapse` | 181 |
+
+### `modules/chat/components/CollapsibleBlock`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!el` | 40 |
+| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 51 |
+| branch | `overflowing` | 86 |
+| branch | `collapsed` | 91 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -904,20 +917,31 @@ Required states: `open`
 | overlay | `<Confirm open>` | 191 |
 | branch | `onSelect` | 209 |
 
+### `modules/chat/components/ConversationFindBar`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!open` | 55 |
+| branch | `!open` | 72 |
+| empty | `total === 0` | 76 |
+
 ### `modules/chat/components/ConversationList`
 
 Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 127 |
-| branch | `selectedIds.size > 0` | 132 |
-| branch | `canDelete` | 157 |
-| loading | `visibleConversations.length === 0 && !loading` | 181 |
-| error | `error` | 182 |
-| loading | `loading && !isInitialized` | 206 |
-| branch | `visibleConversations.length > 0` | 231 |
-| branch | `hasMore && !searchQuery` | 239 |
+| branch | `!getSearchBoxContainer` | 135 |
+| loading | `(visibleConversations.length > 0 \|\| loading)` | 142 |
+| branch | `selectedIds.size > 0` | 158 |
+| branch | `canDelete` | 183 |
+| loading | `visibleConversations.length === 0 && !loading` | 207 |
+| error | `error` | 208 |
+| loading | `loading && !isInitialized` | 232 |
+| branch | `visibleConversations.length > 0` | 257 |
+| branch | `hasMore` | 265 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -926,6 +950,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!editingMessage` | 17 |
+
+### `modules/chat/components/JumpToLatestButton`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!visible` | 24 |
 
 ### `modules/chat/components/MessageActions`
 
@@ -946,7 +978,7 @@ Required states: `delayed`
 | kind | condition | line |
 |---|---|---|
 | loading | `!loading && messagesArray.length === 0` | 19 |
-| loading | `(loading \|\| isStreaming)` | 42 |
+| loading | `(loading \|\| isStreaming)` | 52 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1104,6 +1136,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!textData.text` | 24 |
 
+### `modules/chat/extensions/text/components/TextInput`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!el` | 68 |
+| branch | `isEditing` | 69 |
+| branch | `restoredKeyRef.current === draftKey` | 77 |
+| branch | `isEditingRef.current` | 85 |
+
 ### `modules/chat/extensions/text/components/ThinkingContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -1126,11 +1169,11 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isNarrow` | 89 |
-| branch | `isNarrow` | 99 |
-| branch | `isNarrow && searchOpenInNarrow` | 133 |
-| error | `(conversations.length > 0 \|\| loading \|\| error)` | 142 |
-| error | `!loading && conversations.length === 0 && !error` | 154 |
+| branch | `!isNarrow` | 95 |
+| branch | `isNarrow` | 105 |
+| branch | `isNarrow && searchOpenInNarrow` | 139 |
+| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 148 |
+| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 160 |
 
 ### `modules/chat/pages/ConversationPage`
 
@@ -1138,12 +1181,13 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 51 |
-| branch | `!conversationId` | 77 |
-| loading | `loading && !conversation` | 103 |
-| loading | `!loading && !conversation` | 112 |
-| error | `error` | 115 |
-| error | `error` | 158 |
+| branch | `!sentinel` | 73 |
+| branch | `!Stores.Chat.__state.conversation` | 94 |
+| branch | `!conversationId` | 123 |
+| loading | `loading && !conversation` | 149 |
+| loading | `!loading && !conversation` | 158 |
+| error | `error` | 161 |
+| error | `error` | 218 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -1353,6 +1397,17 @@ Required states: `delayed`, `error`
 | error | `error && !settings` | 34 |
 | loading | `loading && !settings` | 44 |
 
+### `modules/file/chat-extension/components/FilePasteHandler`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!el` | 33 |
+| branch | `!canUploadRef.current` | 36 |
+| branch | `!dt` | 38 |
+| empty | `collected.length === 0` | 57 |
+
 ### `modules/file/chat-extension/components/FilePreviewList`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -1427,12 +1482,12 @@ Required states: `empty`, `panel-open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!fileData?.file_id \|\| !fileData?.filename` | 40 |
-| panel | `registerPanelRenderer('file')` | 122 |
-| branch | `!file` | 127 |
-| branch | `!fileStore` | 152 |
-| empty | `fileContents.length === 0` | 272 |
-| branch | `!fileStore` | 276 |
+| branch | `!fileData?.file_id \|\| !fileData?.filename` | 56 |
+| panel | `registerPanelRenderer('file')` | 138 |
+| branch | `!file` | 143 |
+| branch | `!fileStore` | 168 |
+| empty | `fileContents.length === 0` | 288 |
+| branch | `!fileStore` | 292 |
 
 ### `modules/file/components/FileCard`
 
