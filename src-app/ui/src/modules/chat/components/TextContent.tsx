@@ -5,6 +5,7 @@ import { Stores } from '@/core/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
+import { mermaidRenderers } from '@/modules/chat/core/utils/mermaidRenderers'
 
 interface TextContentProps {
   content: MessageContent
@@ -36,6 +37,7 @@ export const TextContent = memo(function TextContent({
           isAnimating={isStreaming}
           shikiTheme={['github-light', 'github-dark']}
           components={components}
+          plugins={mermaidRenderers}
           urlTransform={streamdownUrlTransform}
         >
           {textData.text}

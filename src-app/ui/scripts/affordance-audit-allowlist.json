@@ -1,11 +1,4 @@
 {
   "_comment": "Known REQUIRED-but-absent affordances. A rule listed here reports as an ALLOWED gap (documented, non-gating) instead of failing the run. Each entry MUST reference a backlog item in docs/AFFORDANCE_MATRIX.md §7 and be REMOVED when that feature ships (at which point the detector flips from tracking the gap to guarding the new control). Any missing control NOT listed here fails the audit.",
-  "allowed": [
-    {
-      "rule": "mermaid-toggle",
-      "gap": "G1",
-      "backlog": "7(a) Mermaid code<->render toggle (+ copy source)",
-      "reason": "Streamdown renders + downloads mermaid but ships no source toggle / copy-source; scheduled as feature-lifecycle work."
-    }
-  ]
+  "allowed": []
 }
