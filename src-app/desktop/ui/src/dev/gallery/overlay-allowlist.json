@@ -1,0 +1,7 @@
+{
+  "$comment": "Overlay-render gate allow-list (desktop). Every overlay HOST (controlled Dialog/Drawer/Sheet/Popover) and self-opening TRIGGER under desktop/ui/src/modules must be EITHER rendered open in overlays.tsx OR listed here with a reason. A new overlay that is neither wired nor listed fails `npm run check` (node scripts/gen-overlay-registry.mjs --check). Mirrors the web workspace's overlay-allowlist.json. Prefer wiring an open-state entry; use this list only for overlays that are structurally hard to render standalone.",
+  "hosts": {
+    "modules/host-mount/conversation-extension/components/ConversationMountsControl": "'Mounted folders' Popover — local open-state, opens on a click on the conversation composer's mounts control button. Reached only via the live chat composer context (same interaction-gated pattern as the web workspace's chat composer popovers). Standalone open needs the full composer context; tracked for a future composer interaction recipe."
+  },
+  "triggers": {}
+}
