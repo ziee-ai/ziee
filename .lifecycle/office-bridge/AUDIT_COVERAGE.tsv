@@ -64,7 +64,7 @@ src-app/server/src/modules/office_bridge/platform/windows.rs	1	948	correctness,s
 src-app/server/src/modules/office_bridge/repository.rs	1	224	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/src/modules/office_bridge/routes.rs	1	31	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/src/modules/office_bridge/tools.rs	1	164	correctness,security,perms-authz,api-contract,error-handling
-src-app/server/src/modules/office_bridge/watcher.rs	1	365	correctness,security,concurrency,error-handling,perf
+src-app/server/src/modules/office_bridge/watcher.rs	1	359	correctness,security,concurrency,error-handling,perf
 src-app/server/src/modules/sync/event.rs	138	146	correctness,security,perms-authz,api-contract,error-handling
 src-app/server/tests/integration_tests.rs	29	29	tests-quality,correctness,security
 src-app/server/tests/office_bridge/bridge_test.rs	1	188	tests-quality,correctness,security
