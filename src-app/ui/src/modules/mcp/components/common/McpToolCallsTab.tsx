@@ -86,6 +86,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
       title: 'Duration',
       key: 'duration_ms',
       width: 100,
+      numeric: true,
       render: row => (row.duration_ms == null ? '—' : `${row.duration_ms} ms`),
     },
   ]
@@ -117,6 +118,9 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
         loading={loading}
         dataSource={calls}
         columns={columns}
+        sortable
+        filterable
+        filterPlaceholder="Filter tool calls…"
         empty={<Empty description="No tool calls recorded yet" data-testid="mcp-tool-calls-empty" />}
         onRowClick={row =>
           setExpandedId(id => (id === row.id ? null : row.id))

@@ -991,6 +991,103 @@ const integratorSeeded: SeededSurfaceEntry[] = [
     fullHeight: true,
     component: lazyNamed(() => import('./DefectRepro'), 'DefectRepro'),
   },
+  // ── McpToolCallsTab: LOADED with tool-call rows (kit-Table sort/filter). The
+  //    grid refetches on mount, so holdPatch re-asserts the seeded rows against
+  //    the (empty) cassette. Drives the F1 data-grid sort/filter e2e. ──────────
+  {
+    slug: 'seeded-mcp-tool-calls-loaded',
+    title: 'MCP tool calls — loaded',
+    note: 'Stores.McpToolCalls.calls → sortable/filterable grid rows',
+    path: '/',
+    initialPath: '/',
+    component: lazyProps(
+      () => import('@/modules/mcp/components/common/McpToolCallsTab'),
+      'McpToolCallsTab',
+      { serverId: 'srv-1' },
+    ),
+    setup: async () => {
+      const { McpToolCalls } = await import(
+        '@/modules/mcp/stores/McpToolCalls.store'
+      )
+      const mk = (
+        id: string,
+        tool_name: string,
+        status: string,
+        source: string,
+        duration_ms: number,
+      ) => ({
+        id,
+        tool_name,
+        status,
+        source,
+        duration_ms,
+        is_built_in: false,
+        is_error: status === 'failed',
+        created_at: `2026-01-0${id}T10:00:00Z`,
+        started_at: `2026-01-0${id}T10:00:00Z`,
+        updated_at: `2026-01-0${id}T10:00:00Z`,
+        server_name: 'srv-1',
+        content_kinds: [] as string[],
+        result_bytes: 0,
+        arguments_json: { q: tool_name },
+        user_id: 'u-1',
+      })
+      await holdPatch(() =>
+        McpToolCalls.store.setState({
+          calls: [
+            mk('1', 'search', 'completed', 'chat', 120),
+            mk('2', 'fetch', 'failed', 'approval', 40),
+            mk('3', 'remember', 'completed', 'chat', 8),
+          ],
+          total: 3,
+          currentPage: 1,
+          pageSize: 20,
+          loading: false,
+          hideBuiltIn: false,
+          error: null,
+        } as never),
+      )
+    },
+  },
+  // ── AuditLogSection: LOADED with memory-audit rows (kit-Table sort/filter). ──
+  {
+    slug: 'seeded-memory-audit-loaded',
+    title: 'Memory audit log — loaded',
+    note: 'Stores.MemoryAudit.entries → sortable/filterable grid rows',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/memory/components/sections/AuditLogSection'),
+      'AuditLogSection',
+    ),
+    setup: async () => {
+      const { MemoryAudit } = await import(
+        '@/modules/memory/stores/MemoryAudit.store'
+      )
+      const mk = (id: number, op: string, source: string, snapshot: string) => ({
+        id,
+        op,
+        source,
+        actor_kind: 'user',
+        content_snapshot: snapshot,
+        created_at: `2026-01-0${id}T10:00:00Z`,
+        metadata: {},
+        user_id: 'u-1',
+      })
+      await holdPatch(() =>
+        MemoryAudit.store.setState({
+          entries: [
+            mk(1, 'ADD', 'manual', 'Likes espresso'),
+            mk(2, 'UPDATE', 'extraction', 'Works at Acme'),
+            mk(3, 'DELETE', 'mcp_tool', 'Old preference'),
+          ],
+          loading: false,
+          limit: 100,
+          error: null,
+        } as never),
+      )
+    },
+  },
 ]
 
 export const SEEDED_SURFACE_ENTRIES: SeededSurfaceEntry[] = [

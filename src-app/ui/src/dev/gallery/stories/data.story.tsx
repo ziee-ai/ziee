@@ -4,6 +4,7 @@
 import { Home, Search, Settings } from 'lucide-react'
 import { useState } from 'react'
 import {
+  Button,
   Descriptions,
   List,
   Menu,
@@ -13,6 +14,8 @@ import {
   Tree,
 } from '@/components/ui'
 import type { TableColumn } from '@/components/ui'
+import { DelimitedTable } from '@/modules/file/viewers/tabular/DelimitedTable'
+import { XlsxSheet } from '@/modules/file/viewers/tabular/XlsxBody'
 import type { GalleryStory } from '../story'
 
 interface Row {
@@ -59,6 +62,141 @@ const tableStory: GalleryStory = {
             columns={columns}
             dataSource={rows}
             rowKey="id"
+          />
+        </div>
+      ),
+    },
+  ],
+}
+
+// ── kit Table actions (sort / filter / resize / column-chooser / numeric /
+//    ellipsis / selection) — the F1 capability surface for e2e. ───────────────
+interface ARow {
+  id: string
+  name: string
+  qty: string
+  note: string
+}
+const actionRows: ARow[] = [
+  { id: '1', name: 'Banana', qty: '10', note: 'A short note' },
+  { id: '2', name: 'apple', qty: '2', note: 'This is a deliberately long cell value that must be clipped and expandable via a popover in the tabular viewer' },
+  { id: '3', name: 'Cherry', qty: '30', note: 'Another note' },
+]
+const actionColumns: TableColumn<ARow>[] = [
+  { key: 'name', title: 'Name', dataIndex: 'name', hideable: true },
+  { key: 'qty', title: 'Qty', dataIndex: 'qty', hideable: true },
+  { key: 'note', title: 'Note', dataIndex: 'note', ellipsis: true, hideable: true },
+]
+const tableActionsStory: GalleryStory = {
+  id: 'table-actions',
+  title: 'Table — actions',
+  cases: [
+    {
+      key: 'actions',
+      label: 'Sort / filter / resize / columns / numeric',
+      render: () => (
+        <div className="w-[34rem]">
+          <Table
+            data-testid="g-table-actions"
+            columns={actionColumns}
+            dataSource={actionRows}
+            rowKey="id"
+            sortable
+            filterable
+            resizable
+            columnChooser
+            detectNumericColumns
+            selectionMode="cell"
+            filterPlaceholder="Filter rows…"
+          />
+        </div>
+      ),
+    },
+  ],
+}
+
+// Virtualized scroll-to-index case (jump-to-row mechanic).
+function ScrollDemo() {
+  const [scrollTo, setScrollTo] = useState<number | null>(null)
+  const rows = Array.from({ length: 500 }, (_, i) => ({
+    id: String(i),
+    name: `Row ${i}`,
+    value: String(i * 3),
+  }))
+  const cols: TableColumn<{ id: string; name: string; value: string }>[] = [
+    { key: 'name', title: 'Name', dataIndex: 'name' },
+    { key: 'value', title: 'Value', dataIndex: 'value', numeric: true },
+  ]
+  return (
+    <div className="w-96 flex flex-col gap-2">
+      <Button data-testid="g-table-scroll-btn" onClick={() => setScrollTo(400)}>
+        Scroll to row 400
+      </Button>
+      <div className="h-64">
+        <Table
+          data-testid="g-table-scroll"
+          columns={cols}
+          dataSource={rows}
+          rowKey="id"
+          virtualized
+          scrollToIndex={scrollTo}
+        />
+      </div>
+    </div>
+  )
+}
+const tableScrollStory: GalleryStory = {
+  id: 'table-scroll',
+  title: 'Table — scroll-to-index',
+  cases: [{ key: 'scroll', label: 'Virtualized jump', render: () => <ScrollDemo /> }],
+}
+
+// The real tabular file viewer, prop-driven (no store/binary needed).
+const CSV_TEXT = [
+  'Name,Qty,Note',
+  'Banana,10,A short note',
+  'apple,2,This is a deliberately long cell value that must be clipped and expandable via a popover in the tabular viewer',
+  'Cherry,30,Another note',
+  'Date,7,Yet another',
+].join('\n')
+const delimitedStory: GalleryStory = {
+  id: 'delimited-viewer',
+  title: 'Tabular viewer — CSV',
+  cases: [
+    {
+      key: 'csv',
+      label: 'CSV with toolbar',
+      render: () => (
+        <div className="w-[36rem]">
+          <DelimitedTable text={CSV_TEXT} delimiter="," fileName="data.csv" />
+        </div>
+      ),
+    },
+  ],
+}
+
+// The real XLSX per-sheet grid, prop-driven.
+const xlsxSheetStory: GalleryStory = {
+  id: 'xlsx-viewer',
+  title: 'Tabular viewer — XLSX sheet',
+  cases: [
+    {
+      key: 'sheet',
+      label: 'Sheet with toolbar',
+      render: () => (
+        <div className="w-[36rem]">
+          <XlsxSheet
+            fileName="book.xlsx"
+            sheet={{
+              name: 'Sheet1',
+              headers: ['Name', 'Qty', 'Note'],
+              rows: [
+                ['Banana', '10', 'A short note'],
+                ['apple', '2', 'Another'],
+                ['Cherry', '30', 'Third'],
+              ],
+              truncated: false,
+            }}
           />
         </div>
       ),
@@ -266,6 +404,10 @@ const paginationStory: GalleryStory = {
 
 export const dataStories: GalleryStory[] = [
   tableStory,
+  tableActionsStory,
+  tableScrollStory,
+  delimitedStory,
+  xlsxSheetStory,
   listStory,
   descriptionsStory,
   treeStory,

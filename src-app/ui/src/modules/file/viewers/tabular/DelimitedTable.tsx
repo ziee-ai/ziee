@@ -1,8 +1,18 @@
-import { useMemo } from 'react'
-import { Alert } from '@/components/ui'
+import { useMemo, useRef, useState } from 'react'
+import { Alert, message } from '@/components/ui'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
+import { detectNumericColumns } from '@/components/ui/kit/table-view-core'
 import { cn } from '@/lib/utils'
+import { ExpandableCell } from './ExpandableCell'
+import { TabularToolbar } from './TabularToolbar'
+import {
+  type ExportColumn,
+  type TabularRecord,
+  downloadDelimited,
+  exportFilename,
+  rowsToDelimited,
+} from './tableView'
 
 /** Cap on rendered rows. Above this, the table is truncated to the
  *  first N and a banner offers Download for full content. The wider 8
@@ -48,27 +58,28 @@ function parseDelimitedText(text: string, delimiter: string): { headers: string[
   return { headers, rows, truncated }
 }
 
-export function DelimitedTable({ text, delimiter }: { text: string; delimiter: string }) {
+export function DelimitedTable({ text, delimiter, fileName }: { text: string; delimiter: string; fileName?: string }) {
   // Parse + column/dataSource construction is the entire cost of this
   // component. Memoize on (text, delimiter) so panel re-renders for
   // unrelated reasons (resize, drawer, sibling state) don't re-parse the
   // whole file.
-  const { columns, dataSource, truncated } = useMemo(() => {
+  const { columns, dataSource, truncated, exportColumns } = useMemo(() => {
     const { headers, rows, truncated } = parseDelimitedText(text, delimiter)
     const ROW_NUM_WIDTH = 56
     const COL_WIDTH = 240
     // Row-number gutter column. Width fits a 5-digit count (10,000 cap).
-    // kit Table has no fixed/sticky column support, so the gutter scrolls
-    // with the rest of the table.
+    // It is a `rowHeader` (clicking selects the whole row) and is excluded
+    // from the column-chooser + copy/export.
     //
     // kit column render signature is (record, index) — no leading value arg.
-    const rowNumberColumn: TableColumn<Record<string, string>> = {
+    const rowNumberColumn: TableColumn<TabularRecord> = {
       title: '#',
       dataIndex: '__rn',
       key: '__rn',
       width: ROW_NUM_WIDTH,
       align: 'right',
-      render: (record: Record<string, string>) => (
+      rowHeader: true,
+      render: (record: TabularRecord) => (
         <span style={{ opacity: 0.5, fontVariantNumeric: 'tabular-nums' }}>
           {record.__rn}
         </span>
@@ -77,15 +88,8 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
     // Pre-compute column keys once — building 7k rows × N cols would
     // otherwise call `String(i)` 7k×N times in the dataSource loop.
     const colKeys = headers.map((_, i) => String(i))
-    const dataColumns: TableColumn<Record<string, string>>[] = headers.map((h, i) => ({
-      title: h || `Column ${i + 1}`,
-      dataIndex: colKeys[i],
-      key: colKeys[i],
-      width: COL_WIDTH,
-    }))
-    const columns = [rowNumberColumn, ...dataColumns]
-    const dataSource = rows.map((row, ri) => {
-      const record: Record<string, string> = {
+    const dataSource: TabularRecord[] = rows.map((row, ri) => {
+      const record: TabularRecord = {
         key: String(ri),
         __rn: String(ri + 1),
       }
@@ -94,10 +98,75 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
       }
       return record
     })
-    return { columns, dataSource, truncated }
+    // Numeric type detection (ITEM-7): a column is numeric when every sampled
+    // non-empty cell parses as a number → right-align + tabular-nums (via the
+    // kit's `numeric` flag). Non-numeric columns get click-to-expand cells.
+    const numericKeys = detectNumericColumns(
+      dataSource,
+      colKeys.map(k => ({ key: k, dataIndex: k })),
+    )
+    const dataColumns: TableColumn<TabularRecord>[] = headers.map((h, i) => {
+      const key = colKeys[i]
+      const numeric = numericKeys.has(key)
+      const col: TableColumn<TabularRecord> = {
+        title: h || `Column ${i + 1}`,
+        dataIndex: key,
+        key,
+        width: COL_WIDTH,
+        sortable: true,
+        hideable: true,
+        numeric,
+        ellipsis: numeric,
+      }
+      if (!numeric) {
+        col.render = (record: TabularRecord) => (
+          <ExpandableCell value={record[key] ?? ''} testid={`file-delimited-cell-${key}`} />
+        )
+      }
+      return col
+    })
+    const columns = [rowNumberColumn, ...dataColumns]
+    const exportColumns: ExportColumn[] = headers.map((h, i) => ({
+      key: colKeys[i],
+      title: h || `Column ${i + 1}`,
+    }))
+    return { columns, dataSource, truncated, exportColumns }
   }, [text, delimiter])
 
   const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
+
+  // View state surfaced from the kit Table for the body-local toolbar.
+  const viewRef = useRef<TabularRecord[]>(dataSource)
+  const [viewCount, setViewCount] = useState(dataSource.length)
+  const selectionRef = useRef('')
+  const [scrollTo, setScrollTo] = useState<number | null>(null)
+
+  const onJump = (rowNumber: number) => {
+    const idx = viewRef.current.findIndex(r => r.__rn === String(rowNumber))
+    if (idx < 0) {
+      message.error(`Row ${rowNumber} is not in the current view`)
+      return
+    }
+    // Force a change even when jumping to the same index twice.
+    setScrollTo(null)
+    requestAnimationFrame(() => setScrollTo(idx))
+  }
+
+  const onCopy = async () => {
+    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, exportColumns, '\t')
+    try {
+      await navigator.clipboard.writeText(tsv)
+      message.success('Copied to clipboard')
+    } catch {
+      message.error('Failed to copy')
+    }
+  }
+
+  const onExport = () => {
+    const ext = delimiter === '\t' ? 'tsv' : 'csv'
+    const csv = rowsToDelimited(viewRef.current, exportColumns, delimiter)
+    downloadDelimited(csv, exportFilename(fileName, ext), delimiter)
+  }
 
   return (
     // A PLAIN (small) grid hugs its content so a 2-3 row table doesn't sit in a
@@ -119,6 +188,15 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
           data-testid="file-delimited-truncated-alert"
         />
       )}
+      <TabularToolbar
+        testidPrefix="file-delimited"
+        total={dataSource.length}
+        viewCount={viewCount}
+        onJump={onJump}
+        onCopy={onCopy}
+        onExport={onExport}
+        exportLabel={delimiter === '\t' ? 'Export TSV' : 'Export CSV'}
+      />
       {/* Virtualize only large grids. Row virtualization needs a definite,
           measurable scroll-viewport height (supplied by this root above); a
           plain table has no such dependency, so small grids (the overwhelming
@@ -128,6 +206,15 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
         columns={columns}
         dataSource={dataSource}
         rowKey="key"
+        sortable
+        filterable
+        resizable
+        columnChooser
+        selectionMode="cell"
+        filterPlaceholder="Filter rows…"
+        onViewChange={rows => { viewRef.current = rows; setViewCount(rows.length) }}
+        onSelectionChange={tsv => { selectionRef.current = tsv }}
+        scrollToIndex={scrollTo}
         data-testid="file-delimited-table"
       />
     </div>

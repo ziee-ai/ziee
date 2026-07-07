@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 71,
+    "total": 72,
     "hosts": 53,
-    "triggers": 18,
+    "triggers": 19,
     "wiredOpen": 37
   },
   "hosts": [
@@ -863,6 +863,19 @@
       "occurrences": [
         {
           "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/file/viewers/tabular/ExpandableCell",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
           "mode": "trigger"
         }
       ]

@@ -1,0 +1,79 @@
+// Export / copy helpers for the tabular file viewer. Kept dependency-free and
+// erasable-TS so `node --test "src/**/*.test.ts"` can exercise the pure
+// serialisers; the XLSX build + the DOM download run only in the browser.
+
+/** A column to export: the record key to read + the header title to write. */
+export interface ExportColumn {
+  key: string
+  title: string
+}
+
+/** Tabular row record — the DelimitedTable/XlsxBody shape (colKey → cell value,
+ *  plus `__rn` gutter + `key`). Only the ExportColumn keys are read. */
+export type TabularRecord = Record<string, string>
+
+// RFC-4180 field quoting: wrap in double quotes and double any embedded quote
+// when the value contains the delimiter, a quote, or a newline/CR.
+function quoteField(v: string, delimiter: string): string {
+  if (v.includes(delimiter) || v.includes('"') || v.includes('\n') || v.includes('\r')) {
+    return `"${v.replace(/"/g, '""')}"`
+  }
+  return v
+}
+
+/** Serialise rows to delimited text (CSV/TSV) with a header row, honouring the
+ *  active delimiter, RFC-4180 quoting, and the caller-supplied column subset +
+ *  order (so filtered/sorted views and hidden-column exclusion round-trip). */
+export function rowsToDelimited(rows: TabularRecord[], columns: ExportColumn[], delimiter: string): string {
+  const header = columns.map(c => quoteField(c.title, delimiter)).join(delimiter)
+  const body = rows.map(r => columns.map(c => quoteField(r[c.key] ?? '', delimiter)).join(delimiter))
+  return [header, ...body].join('\r\n')
+}
+
+/** Rows → a 2-D array-of-arrays (header + data) for xlsx `aoa_to_sheet`. */
+export function rowsToAoa(rows: TabularRecord[], columns: ExportColumn[]): string[][] {
+  return [columns.map(c => c.title), ...rows.map(r => columns.map(c => r[c.key] ?? ''))]
+}
+
+/** Build an .xlsx Blob from the current view (dynamic-imports `xlsx`, mirroring
+ *  XlsxBody's parse-side import). */
+export async function viewToXlsxBlob(
+  rows: TabularRecord[],
+  columns: ExportColumn[],
+  sheetName = 'Sheet1',
+): Promise<Blob> {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet(rowsToAoa(rows, columns))
+  const wb = XLSX.utils.book_new()
+  // Excel sheet names are capped at 31 chars and disallow a few characters.
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.replace(/[\\/?*[\]:]/g, '_').slice(0, 31) || 'Sheet1')
+  const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  return new Blob([out], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+}
+
+/** Trigger a browser download of a Blob (object-URL + transient anchor). */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoke on the next tick so the click's navigation has committed.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+/** Download delimited text as a file. */
+export function downloadDelimited(text: string, filename: string, delimiter: string): void {
+  const mime = delimiter === '\t' ? 'text/tab-separated-values' : 'text/csv'
+  downloadBlob(new Blob([text], { type: `${mime};charset=utf-8` }), filename)
+}
+
+/** Derive an export filename from the original file name + a `-view` suffix. */
+export function exportFilename(original: string | undefined, ext: string): string {
+  const stem = (original ?? 'export').replace(/\.[^./\\]+$/, '')
+  return `${stem || 'export'}-view.${ext}`
+}

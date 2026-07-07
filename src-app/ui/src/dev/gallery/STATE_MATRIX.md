@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **314** surfaces carry at least one renderable-state signal.
-- **1722** signals total: 1341 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
+- **315** surfaces carry at least one renderable-state signal.
+- **1740** signals total: 1359 branch, 109 empty, 93 error, 93 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -463,11 +463,26 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 53 |
-| branch | `props.virtualized && !busy && (props.dataSource?.length ?? 0) > 0` | 63 |
-| branch | `caption != null` | 74 |
-| branch | `busy` | 85 |
-| empty | `dataSource.length === 0` | 93 |
+| branch | `v == null \|\| typeof v === 'boolean'` | 112 |
+| branch | `!active` | 138 |
+| branch | `view.sort!.dir === 'asc'` | 139 |
+| branch | `meta.sortable` | 142 |
+| branch | `props.filterable` | 205 |
+| branch | `props.columnChooser && hideable.length > 0` | 217 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 282 |
+| branch | `!tsv` | 284 |
+| branch | `showVirtual` | 295 |
+| branch | `hasToolbar` | 306 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 334 |
+| branch | `caption != null` | 344 |
+| branch | `resizableTable` | 345 |
+| branch | `meta.resizable` | 365 |
+| branch | `busy` | 372 |
+| empty | `rows.length === 0` | 380 |
+| branch | `meta.resizable` | 486 |
+| branch | `mode === 'none'` | 534 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 539 |
+| branch | `!selectionActive(props, col)` | 546 |
 
 ### `components/ui/kit/tabs`
 
@@ -1622,7 +1637,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `truncated` | 114 |
+| branch | `idx < 0` | 146 |
+| branch | `truncated` | 183 |
+
+### `modules/file/viewers/tabular/ExpandableCell`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `value.length <= EXPAND_THRESHOLD` | 14 |
 
 ### `modules/file/viewers/tabular/XlsxBody`
 
@@ -1630,13 +1654,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!fileBinaryContent` | 42 |
-| branch | `!file` | 92 |
-| error | `loadError` | 94 |
-| loading | `!fileBinaryContent \|\| loading` | 103 |
-| empty | `sheets.length === 0` | 107 |
-| branch | `sheet.truncated` | 157 |
-| branch | `sheets.length === 1` | 177 |
+| branch | `idx < 0` | 110 |
+| branch | `sheet.truncated` | 146 |
+| branch | `!fileBinaryContent` | 200 |
+| branch | `!file` | 250 |
+| error | `loadError` | 252 |
+| loading | `!fileBinaryContent \|\| loading` | 261 |
+| empty | `sheets.length === 0` | 265 |
+| branch | `sheets.length === 1` | 269 |
 
 ### `modules/file/viewers/tabular/body`
 
@@ -2793,9 +2818,9 @@ Required states: `error`
 | kind | condition | line |
 |---|---|---|
 | branch | `row.is_built_in` | 59 |
-| error | `error` | 109 |
-| branch | `expandedCall` | 125 |
-| branch | `expandedCall.error_message` | 140 |
+| error | `error` | 110 |
+| branch | `expandedCall` | 129 |
+| branch | `expandedCall.error_message` | 144 |
 
 ### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer`
 
@@ -2912,7 +2937,7 @@ Required states: `delayed`, `empty`, `error`
 | error | `error && entries.length === 0` | 52 |
 | loading | `loading` | 60 |
 | empty | `entries.length === 0` | 64 |
-| branch | `v` | 135 |
+| branch | `v` | 138 |
 
 ### `modules/memory/components/sections/CoreMemorySection`
 
