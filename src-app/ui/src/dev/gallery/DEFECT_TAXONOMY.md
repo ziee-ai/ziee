@@ -12,7 +12,7 @@ Detector legend: [G] deterministic DOM-geometry rule (gallery runtime pass — C
 - A2 [G] element boxes **overlap** (non-ancestor pairs, both visible, intersection area > threshold)
 - A3 [G] element **protrudes** outside its container/viewport (clip without overflow affordance)
 - A4 [G] **uneven spacing between like siblings** — list rows/cards in one container with differing gaps
-- A5 [V] padding asymmetric where design implies symmetry (card L≠R, modal header vs footer)
+- A5 [G/V] padding asymmetric where design implies symmetry (card L≠R, modal header vs footer). **[G] form:** a box wrapping an input/editable region (the input dominating it vertically) whose TOP padding differs from its BOTTOM padding by >3px while horizontal padding stays symmetric → the content renders vertically off-center / uncomfortable. *(the chat composer input area `px-3 pt-2.5 pb-1` = 10px top vs 4px bottom around the text input.)*
 - A6 [V] insufficient whitespace between unrelated sections / crowding
 - A7 [G] spacing values off the 4px grid (computed margins/paddings/gaps % 4 ≠ 0)
 - A10 [G] **interactive control at zero/unusable size** — a form control (input/select/textarea) rendered with zero or near-zero width/height while visible-intent (in an open edit form): the "input disappears" class. *(user miss #16: inline rename form renders vertical, input collapses)*

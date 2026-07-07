@@ -93,6 +93,7 @@ const CLASS_SEVERITY = {
   A2: 'MEDIUM',
   A3: 'MEDIUM',
   A4: 'LOW',
+  A5: 'MEDIUM', // asymmetric vertical padding around input content (off-center)
   A7: 'LOW',
   A8: 'MEDIUM',
   A9: 'MEDIUM',
@@ -923,6 +924,36 @@ function inPageGeometry({ classesArg, contextTestids, actionTokens, preview }) {
           }
         }
       }
+    }
+  }
+
+  // ── A5 asymmetric vertical padding around input content (off-center) ─────
+  // [G] form of A5 (was vision-only): a box wrapping an input / editable region
+  // whose TOP padding differs from its BOTTOM padding renders the content
+  // vertically off-center — it reads uncomfortable/unbalanced. Horizontal padding
+  // must be ~symmetric (else it's a deliberate directional layout, not a centering
+  // bug). *(the chat composer input area `px-3 pt-2.5 pb-1` = 10px top vs 4px
+  // bottom around the text input.)*
+  if (run('A5')) {
+    const INPUTISH = 'textarea,input:not([type="hidden"]),[contenteditable="true"],[role="textbox"]'
+    for (const el of pool) {
+      const s = cs(el)
+      const pt = parseFloat(s.paddingTop) || 0, pb = parseFloat(s.paddingBottom) || 0
+      const pl = parseFloat(s.paddingLeft) || 0, pr = parseFloat(s.paddingRight) || 0
+      if (Math.abs(pt - pb) <= 3) continue // symmetric enough
+      if (Math.abs(pl - pr) > 3) continue // horizontally asymmetric → directional layout, not centering
+      if (pt < 1 && pb < 1) continue
+      const input = el.querySelector(INPUTISH)
+      if (!input || !visible(input) || inSvg(el)) continue
+      const r = rectOf(el)
+      if (r.height < 12 || r.height > 260) continue // input row, not a page section
+      // The input must DOMINATE the box vertically — else the padding isn't what
+      // offsets it (excludes a toolbar/row that merely nests some unrelated input).
+      const contentH = r.height - pt - pb
+      if (rectOf(input).height < 0.5 * contentH) continue
+      push('A5', selectorFor(el),
+        `asymmetric vertical padding (top ${Math.round(pt)}px vs bottom ${Math.round(pb)}px) around input content — reads vertically off-center`,
+        { pt: Math.round(pt), pb: Math.round(pb) })
     }
   }
 
