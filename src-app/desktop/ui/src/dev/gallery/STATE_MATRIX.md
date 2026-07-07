@@ -103,12 +103,12 @@ Required states: `empty`
 | branch | `Array.isArray(footer)` | 204 |
 | branch | `showOverlay` | 230 |
 | branch | `title != null` | 249 |
-| branch | `closable` | 261 |
-| branch | `typeof title === 'string'` | 266 |
-| branch | `extra != null` | 267 |
-| empty | `noBodyScrollWrap` | 272 |
-| branch | `footerNode != null` | 275 |
-| branch | `title == null` | 282 |
+| branch | `typeof title === 'string'` | 261 |
+| branch | `extra != null` | 266 |
+| branch | `closable` | 267 |
+| empty | `noBodyScrollWrap` | 277 |
+| branch | `footerNode != null` | 280 |
+| branch | `title == null` | 287 |
 
 ### `modules/layouts/app-layout/components/HeaderBarContainer`
 

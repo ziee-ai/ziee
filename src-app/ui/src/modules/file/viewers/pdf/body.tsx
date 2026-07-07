@@ -125,9 +125,13 @@ export function PdfBody(props: FileViewerSlotProps) {
             />
           ) : pageErrors?.has(i + 1) ? (
             // Settled failure — an explicit, actionable error slot (NOT an
-            // endless spinner). Reserve the same page-sized height.
+            // endless spinner). A settled error hugs its content (a modest
+            // floor centers the card) instead of reserving a full page-height
+            // band of dead space; the transient loading slot below still
+            // reserves the page height to avoid a scroll jump while the image
+            // decodes. Retry re-expands the slot to the loaded page.
             <div
-              className="w-full flex flex-col items-center justify-center gap-2 min-h-[800px] p-6 text-center"
+              className="w-full flex flex-col items-center justify-center gap-2 min-h-[160px] p-6 text-center"
               data-testid={`file-pdf-page-error-${i + 1}`}
             >
               <TriangleAlert className="size-8 text-warning" />

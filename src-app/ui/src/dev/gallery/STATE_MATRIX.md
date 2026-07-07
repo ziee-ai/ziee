@@ -2108,12 +2108,12 @@ Required states: `empty`
 | branch | `Array.isArray(footer)` | 187 |
 | branch | `showOverlay` | 218 |
 | branch | `title != null` | 264 |
-| branch | `closable` | 269 |
-| branch | `typeof title === 'string'` | 274 |
+| branch | `typeof title === 'string'` | 269 |
 | branch | `extra != null` | 288 |
-| empty | `noBodyScrollWrap` | 293 |
-| branch | `footerNode != null` | 296 |
-| branch | `title == null` | 313 |
+| branch | `closable` | 289 |
+| empty | `noBodyScrollWrap` | 299 |
+| branch | `footerNode != null` | 302 |
+| branch | `title == null` | 319 |
 
 ### `modules/layouts/app-layout/components/HeaderBarContainer`
 
