@@ -464,25 +464,25 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `v == null \|\| typeof v === 'boolean'` | 112 |
-| branch | `!active` | 138 |
-| branch | `view.sort!.dir === 'asc'` | 139 |
-| branch | `meta.sortable` | 142 |
-| branch | `props.filterable` | 205 |
-| branch | `props.columnChooser && hideable.length > 0` | 217 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 282 |
-| branch | `!tsv` | 284 |
-| branch | `showVirtual` | 295 |
-| branch | `hasToolbar` | 306 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 334 |
-| branch | `caption != null` | 344 |
-| branch | `resizableTable` | 345 |
-| branch | `meta.resizable` | 365 |
-| branch | `busy` | 372 |
-| empty | `rows.length === 0` | 380 |
-| branch | `meta.resizable` | 486 |
-| branch | `mode === 'none'` | 534 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 539 |
-| branch | `!selectionActive(props, col)` | 546 |
+| branch | `!active` | 144 |
+| branch | `view.sort!.dir === 'asc'` | 145 |
+| branch | `meta.sortable` | 148 |
+| branch | `props.filterable` | 216 |
+| branch | `props.columnChooser && hideable.length > 0` | 228 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 298 |
+| branch | `!tsv` | 300 |
+| branch | `showVirtual` | 311 |
+| branch | `hasToolbar` | 322 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 353 |
+| branch | `caption != null` | 363 |
+| branch | `resizableTable` | 364 |
+| branch | `meta.resizable` | 384 |
+| branch | `busy` | 391 |
+| empty | `rows.length === 0` | 399 |
+| branch | `meta.resizable` | 510 |
+| branch | `mode === 'none'` | 560 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 565 |
+| branch | `!selectionActive(props, col)` | 572 |
 
 ### `components/ui/kit/tabs`
 

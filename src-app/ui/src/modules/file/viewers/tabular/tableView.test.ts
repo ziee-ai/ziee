@@ -53,6 +53,22 @@ test('the row-number gutter is excluded from exported data columns', () => {
   assert.equal(aoa[1].length, 2)
 })
 
+// CSV/formula-injection neutralization (security fix)
+test('rowsToDelimited neutralizes formula-leading cells but leaves real numbers', () => {
+  const r: TabularRecord[] = [
+    { key: '0', '0': '=SUM(A1:A9)', '1': '10' },
+    { key: '1', '0': '-5', '1': '@cmd' },
+    { key: '2', '0': '+3', '1': '-2-3' },
+  ]
+  const csv = rowsToDelimited(r, columns, ',')
+  const lines = csv.split('\r\n')
+  // =SUM… and @cmd get a leading apostrophe; the quote-wrapping still applies.
+  assert.ok(lines[1].startsWith("'=SUM(A1:A9)"))
+  assert.ok(lines[1].includes('10')) // plain number untouched
+  assert.equal(lines[2], "-5,'@cmd") // -5 is a real number (kept); @cmd neutralized
+  assert.equal(lines[3], "+3,'-2-3") // +3 real number kept; "-2-3" is not a number → neutralized
+})
+
 test('exportFilename swaps the extension and appends -view', () => {
   assert.equal(exportFilename('data.csv', 'csv'), 'data-view.csv')
   assert.equal(exportFilename('sheet.xlsx', 'xlsx'), 'sheet-view.xlsx')

@@ -12,6 +12,23 @@ export interface ExportColumn {
  *  plus `__rn` gutter + `key`). Only the ExportColumn keys are read. */
 export type TabularRecord = Record<string, string>
 
+// True when a string parses as a plain finite number (so a legit negative like
+// "-5" or "+3" is NOT treated as a formula below).
+function isPlainNumber(v: string): boolean {
+  const s = v.trim()
+  return s !== '' && Number.isFinite(Number(s))
+}
+
+// CSV/formula-injection neutralization: a spreadsheet evaluates a cell that
+// begins with = + - @ (or a leading tab/CR) as a formula. Since the exported
+// data may come from an untrusted viewed file, prefix such a cell with a single
+// quote so Excel/Sheets treat it as literal text — but leave real numbers alone.
+function neutralizeFormula(v: string): string {
+  if (v === '') return v
+  if (/^[=+\-@\t\r]/.test(v) && !isPlainNumber(v)) return `'${v}`
+  return v
+}
+
 // RFC-4180 field quoting: wrap in double quotes and double any embedded quote
 // when the value contains the delimiter, a quote, or a newline/CR.
 function quoteField(v: string, delimiter: string): string {
@@ -23,10 +40,13 @@ function quoteField(v: string, delimiter: string): string {
 
 /** Serialise rows to delimited text (CSV/TSV) with a header row, honouring the
  *  active delimiter, RFC-4180 quoting, and the caller-supplied column subset +
- *  order (so filtered/sorted views and hidden-column exclusion round-trip). */
+ *  order (so filtered/sorted views and hidden-column exclusion round-trip).
+ *  Cells that would be interpreted as spreadsheet formulas are neutralized. */
 export function rowsToDelimited(rows: TabularRecord[], columns: ExportColumn[], delimiter: string): string {
   const header = columns.map(c => quoteField(c.title, delimiter)).join(delimiter)
-  const body = rows.map(r => columns.map(c => quoteField(r[c.key] ?? '', delimiter)).join(delimiter))
+  const body = rows.map(r =>
+    columns.map(c => quoteField(neutralizeFormula(r[c.key] ?? ''), delimiter)).join(delimiter),
+  )
   return [header, ...body].join('\r\n')
 }
 

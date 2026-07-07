@@ -29,12 +29,13 @@ export function TabularToolbar({
 }) {
   const [jump, setJump] = useState<number | null>(null)
   const filtered = viewCount !== total
+  const noun = (n: number) => (n === 1 ? 'row' : 'rows')
   return (
     <div className="mb-2 flex flex-wrap items-center gap-2" data-testid={`${testidPrefix}-toolbar`}>
       <Text type="secondary" className="text-xs whitespace-nowrap" data-testid={`${testidPrefix}-readout`}>
         {filtered
-          ? `Showing ${viewCount.toLocaleString()} of ${total.toLocaleString()} rows`
-          : `${total.toLocaleString()} rows`}
+          ? `Showing ${viewCount.toLocaleString()} of ${total.toLocaleString()} ${noun(total)}`
+          : `${total.toLocaleString()} ${noun(total)}`}
       </Text>
       <div className="flex items-center gap-1">
         <Text type="secondary" className="text-xs whitespace-nowrap">

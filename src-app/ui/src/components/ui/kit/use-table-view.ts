@@ -79,13 +79,14 @@ export function useTableView<T>(opts: UseTableViewOptions<T>): TableView<T> {
     [dataSource, visibleColumns, sort, query],
   )
 
-  // Selection indices are view-relative; a filter/sort change can invalidate
-  // them, so clear the selection whenever the view identity changes.
-  const viewLen = viewData.length
+  // Selection indices are view-relative and reference a specific column, so
+  // clear the selection whenever the view identity (sort/filter/dataSource) OR
+  // the visible-column set changes — hiding a selected cell's column must not
+  // leave an orphaned selection.
   React.useEffect(() => {
     setSelection({ kind: 'none' })
     anchorRef.current = null
-  }, [sort, query, viewLen])
+  }, [viewData, visibleColumns])
 
   const toggleSort = React.useCallback((key: string) => {
     setSort(prev => nextSort(prev, key))
@@ -127,19 +128,26 @@ export function useTableView<T>(opts: UseTableViewOptions<T>): TableView<T> {
   }, [])
 
   const selectRow = React.useCallback((row: number, mode: 'replace' | 'toggle' | 'range') => {
-    setSelection(prev => {
-      if (mode === 'range' && anchorRef.current != null) {
-        return { kind: 'rows', rows: rowRange(anchorRef.current, row) }
-      }
-      if (mode === 'toggle' && prev.kind === 'rows') {
-        const has = prev.rows.includes(row)
-        const rows = has ? prev.rows.filter(r => r !== row) : [...prev.rows, row]
-        anchorRef.current = row
-        return rows.length === 0 ? { kind: 'none' } : { kind: 'rows', rows }
-      }
-      anchorRef.current = row
-      return { kind: 'rows', rows: [row] }
-    })
+    // Anchor is updated OUTSIDE the state updater (a render-phase updater must be
+    // side-effect-free; StrictMode double-invokes it).
+    if (mode === 'range' && anchorRef.current != null) {
+      const anchor = anchorRef.current
+      setSelection({ kind: 'rows', rows: rowRange(anchor, row) })
+      return
+    }
+    anchorRef.current = row
+    if (mode === 'toggle') {
+      setSelection(prev => {
+        if (prev.kind === 'rows') {
+          const has = prev.rows.includes(row)
+          const rows = has ? prev.rows.filter(r => r !== row) : [...prev.rows, row]
+          return rows.length === 0 ? { kind: 'none' } : { kind: 'rows', rows }
+        }
+        return { kind: 'rows', rows: [row] }
+      })
+      return
+    }
+    setSelection({ kind: 'rows', rows: [row] })
   }, [])
 
   const clearSelection = React.useCallback(() => {

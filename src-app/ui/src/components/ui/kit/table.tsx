@@ -14,7 +14,7 @@ import { Button } from './button'
 import { Checkbox } from './checkbox'
 import { Popover } from './popover'
 import { useTableView, type TableView } from './use-table-view'
-import { cellString, serializeSelectionTsv, type CoreColumn, type SortState } from './table-view-core'
+import { serializeSelectionTsv, type CoreColumn, type SortState } from './table-view-core'
 import { cn } from '@/lib/utils'
 
 // legacy Table (common subset): columns + dataSource. Column.render gets (record, index).
@@ -122,6 +122,12 @@ interface ColMeta {
   resizable: boolean
   width: number | string | undefined
 }
+// Accessible label for a column: a string title verbatim, else the column key
+// (never the `[object Object]` you'd get from stringifying a ReactNode title).
+function colLabel<T>(col: TableColumn<T>): string {
+  return typeof col.title === 'string' ? col.title : col.key
+}
+
 function colMeta<T>(col: TableColumn<T>, props: TableProps<T>, view: TableView<T>): ColMeta {
   const numeric = view.numericKeys.has(col.key)
   // explicit align wins; else numeric → right (routed through the UNCHANGED
@@ -133,7 +139,7 @@ function colMeta<T>(col: TableColumn<T>, props: TableProps<T>, view: TableView<T
 }
 
 // ── shared header inner (sort button) ─────────────────────────────────────────
-function HeaderInner<T>({ col, meta, view }: { col: TableColumn<T>; meta: ColMeta; view: TableView<T> }) {
+function HeaderInner<T>({ col, meta, view, testid }: { col: TableColumn<T>; meta: ColMeta; view: TableView<T>; testid: string }) {
   const active = view.sort?.key === col.key
   const glyph = !active ? <ChevronsUpDown className="size-3.5 opacity-50" aria-hidden /> :
     view.sort!.dir === 'asc' ? <ArrowUp className="size-3.5" aria-hidden /> : <ArrowDown className="size-3.5" aria-hidden />
@@ -144,7 +150,7 @@ function HeaderInner<T>({ col, meta, view }: { col: TableColumn<T>; meta: ColMet
           type="button"
           onClick={() => view.toggleSort(col.key)}
           className="inline-flex items-center gap-1 -mx-1 px-1 rounded-sm hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          data-testid={`sort-${col.key}`}
+          data-testid={`${testid}-sort-${col.key}`}
         >
           <span className="truncate">{col.title}</span>
           {glyph}
@@ -158,7 +164,7 @@ function HeaderInner<T>({ col, meta, view }: { col: TableColumn<T>; meta: ColMet
 
 // Resize handle: a keyboard-focusable separator at the trailing edge of a header
 // cell. Pointer drag updates the column width; double-click resets it.
-function ResizeHandle<T>({ col, view }: { col: TableColumn<T>; view: TableView<T> }) {
+function ResizeHandle<T>({ col, view, testid, width }: { col: TableColumn<T>; view: TableView<T>; testid: string; width?: number }) {
   const onPointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
     e.preventDefault()
     e.stopPropagation()
@@ -183,12 +189,14 @@ function ResizeHandle<T>({ col, view }: { col: TableColumn<T>; view: TableView<T
     <span
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize column ${cellString(col.title as unknown)}`}
+      aria-label={`Resize column ${colLabel(col)}`}
+      aria-valuenow={typeof width === 'number' ? Math.round(width) : undefined}
+      aria-valuemin={col.minWidth ?? 64}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={(e) => { e.stopPropagation(); view.resetWidth(col.key) }}
-      data-testid={`resize-${col.key}`}
+      data-testid={`${testid}-resize-${col.key}`}
       className="absolute inset-y-0 end-0 w-2 cursor-col-resize select-none touch-none hover:bg-border focus-visible:outline-none focus-visible:bg-ring/40"
     />
   )
@@ -200,6 +208,9 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
   const hideable = props.columnChooser
     ? props.columns.filter(c => !c.rowHeader && (c.hideable ?? true))
     : []
+  // Count ALL currently-visible columns (incl. rowHeader/non-hideable) so the
+  // last visible column's toggle is DISABLED (matches the hook's hide guard).
+  const visibleCount = props.columns.filter(c => !view.isHidden(c.key)).length
   return (
     <div className="flex items-center gap-2 pb-2" data-testid={`${testid}-toolbar`}>
       {props.filterable && (
@@ -222,9 +233,10 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
                 <Checkbox
                   key={c.key}
                   checked={!view.isHidden(c.key)}
+                  disabled={!view.isHidden(c.key) && visibleCount <= 1}
                   onCheckedChange={() => view.toggleHidden(c.key)}
                   label={<span className="truncate">{c.title}</span>}
-                  aria-label={`Toggle column ${cellString(c.title as unknown)}`}
+                  aria-label={`Toggle column ${colLabel(c)}`}
                   data-testid={`${testid}-col-toggle-${c.key}`}
                 />
               ))}
@@ -256,11 +268,14 @@ export function Table<T>(props: TableProps<T>) {
     defaultHidden: props.columns.filter(c => c.defaultHidden).map(c => c.key),
   })
 
-  // Fire onViewChange from an effect (never during render) — ITEM-10.
-  const onViewChange = props.onViewChange
+  // Fire onViewChange from an effect (never during render) — ITEM-10. The
+  // callback is held in a ref so an inline-arrow prop (the common case) does not
+  // re-run the effect every render; it fires only when the view actually changes.
+  const onViewChangeRef = React.useRef(props.onViewChange)
+  onViewChangeRef.current = props.onViewChange
   React.useEffect(() => {
-    onViewChange?.(view.viewData)
-  }, [onViewChange, view.viewData])
+    onViewChangeRef.current?.(view.viewData)
+  }, [view.viewData])
 
   const selecting = (props.selectionMode ?? 'none') !== 'none'
   // Copy columns exclude any rowHeader gutter (DEC-8).
@@ -269,10 +284,11 @@ export function Table<T>(props: TableProps<T>) {
     [view.visibleColumns],
   )
   // Surface the current selection (empty when none) to an external Copy button.
-  const onSelectionChange = props.onSelectionChange
+  const onSelectionChangeRef = React.useRef(props.onSelectionChange)
+  onSelectionChangeRef.current = props.onSelectionChange
   React.useEffect(() => {
-    onSelectionChange?.(serializeSelectionTsv(view.selection, view.viewData, copyColumns))
-  }, [onSelectionChange, view.selection, view.viewData, copyColumns])
+    onSelectionChangeRef.current?.(serializeSelectionTsv(view.selection, view.viewData, copyColumns))
+  }, [view.selection, view.viewData, copyColumns])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // Only handle copy when the table itself is focused (DEC-3: never hijack
@@ -324,6 +340,9 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
   const cols = view.visibleColumns as TableColumn<T>[]
   const rows = view.viewData
   const resizableTable = !!props.resizable
+  // Column presentation computed ONCE per visible column (reused across header +
+  // every body cell) rather than rows×cols times.
+  const metas = new Map(cols.map(c => [c.key, colMeta(c, props, view)] as const))
   const rootRef = React.useRef<HTMLTableElement>(null)
   const keyOf = (record: T, i: number) =>
     typeof rowKey === 'function' ? rowKey(record, i) : String((record as Record<string, unknown>)[rowKey])
@@ -353,7 +372,7 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
       <TableHeader>
         <TableRow>
           {cols.map((c) => {
-            const meta = colMeta(c, props, view)
+            const meta = metas.get(c.key)!
             return (
               <TableHead
                 key={c.key}
@@ -361,8 +380,8 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
                 aria-sort={meta.sortable ? (view.sort?.key === c.key ? (view.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                 className={cn(alignCls[meta.align], meta.resizable && 'relative')}
               >
-                <HeaderInner col={c} meta={meta} view={view} />
-                {meta.resizable && <ResizeHandle col={c} view={view} />}
+                <HeaderInner col={c} meta={meta} view={view} testid={testid} />
+                {meta.resizable && <ResizeHandle col={c} view={view} testid={testid} width={typeof meta.width === 'number' ? meta.width : undefined} />}
               </TableHead>
             )
           })}
@@ -401,16 +420,20 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
               className={onRowClick ? 'cursor-pointer focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50' : undefined}
             >
               {cols.map((c) => {
-                const meta = colMeta(c, props, view)
+                const meta = metas.get(c.key)!
                 const pres = cellPresentation(c, meta, record)
                 const sel = cellSelected(props, view, i, c)
+                const selectable = selectionActive(props, c)
                 return (
                   <TableCell
                     key={c.key}
                     title={pres.title}
                     data-selected={sel || undefined}
+                    // Focusable in selection mode so a keyboard user can select +
+                    // the Ctrl/Cmd+C keydown bubbles to the wrapper's handler.
+                    tabIndex={selectable ? 0 : undefined}
                     onClick={selectionHandler(props, view, i, c)}
-                    className={cn(pres.className, sel && 'ring-2 ring-inset ring-ring/60', selectionActive(props, c) && 'cursor-cell')}
+                    className={cn(pres.className, sel && 'ring-2 ring-inset ring-ring/60', selectable && 'cursor-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50')}
                   >
                     {c.render ? c.render(record, i) : defaultCell((record as Record<string, unknown>)[c.dataIndex ?? c.key])}
                   </TableCell>
@@ -432,6 +455,7 @@ function VirtualTable<T>(props: TableProps<T> & { view: TableView<T> }) {
   } = props
   const cols = view.visibleColumns as TableColumn<T>[]
   const dataSource = view.viewData
+  const metas = new Map(cols.map(c => [c.key, colMeta(c, props, view)] as const))
   const osRef = React.useRef<OverlayScrollbarsComponentRef>(null)
   const getScrollElement = React.useCallback(
     () => osRef.current?.osInstance()?.elements().viewport ?? null,
@@ -474,7 +498,7 @@ function VirtualTable<T>(props: TableProps<T> & { view: TableView<T> }) {
         <thead className="sticky top-0 z-[1] bg-muted/80" style={{ display: 'grid' }}>
           <tr className="border-b border-border" style={{ display: 'flex', width: '100%' }}>
             {cols.map((c) => {
-              const meta = colMeta(c, props, view)
+              const meta = metas.get(c.key)!
               return (
                 <th
                   key={c.key}
@@ -482,8 +506,8 @@ function VirtualTable<T>(props: TableProps<T> & { view: TableView<T> }) {
                   aria-sort={meta.sortable ? (view.sort?.key === c.key ? (view.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                   className={cn('px-4 py-2 font-semibold', justifyFor[meta.align], meta.resizable && 'relative')}
                 >
-                  <HeaderInner col={c} meta={meta} view={view} />
-                  {meta.resizable && <ResizeHandle col={c} view={view} />}
+                  <HeaderInner col={c} meta={meta} view={view} testid={testid} />
+                  {meta.resizable && <ResizeHandle col={c} view={view} testid={testid} width={typeof meta.width === 'number' ? meta.width : undefined} />}
                 </th>
               )
             })}
@@ -503,17 +527,19 @@ function VirtualTable<T>(props: TableProps<T> & { view: TableView<T> }) {
                 style={{ display: 'flex', position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
               >
                 {cols.map((c) => {
-                  const meta = colMeta(c, props, view)
+                  const meta = metas.get(c.key)!
                   const pres = cellPresentation(c, meta, record)
                   const sel = cellSelected(props, view, vi.index, c)
+                  const selectable = selectionActive(props, c)
                   return (
                     <td
                       key={c.key}
                       title={pres.title}
                       data-selected={sel || undefined}
+                      tabIndex={selectable ? 0 : undefined}
                       onClick={selectionHandler(props, view, vi.index, c)}
                       style={{ ...colStyle(c), minWidth: 0 }}
-                      className={cn('px-4 py-2', justifyFor[meta.align], meta.numeric && 'tabular-nums', c.ellipsis && 'truncate', sel && 'ring-2 ring-inset ring-ring/60', selectionActive(props, c) && 'cursor-cell')}
+                      className={cn('px-4 py-2', justifyFor[meta.align], meta.numeric && 'tabular-nums', c.ellipsis && 'truncate', sel && 'ring-2 ring-inset ring-ring/60', selectable && 'cursor-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50')}
                     >
                       {c.render ? c.render(record, vi.index) : defaultCell((record as Record<string, unknown>)[c.dataIndex ?? c.key])}
                     </td>
