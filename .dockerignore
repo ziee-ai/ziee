@@ -57,6 +57,10 @@ rcpa-mcpserver*
 # ─── Documentation only used by humans, not the build ──────────────
 **/*.md
 !**/README.md
+# Built-in skills are baked into the server binary via include_dir! at compile
+# time (server/src/modules/skill/builtin.rs) and each is a lone SKILL.md — they
+# MUST survive the *.md exclusion above or the image ships with zero skills.
+!**/resources/builtin-skills/**
 .claude
 .plans
 .sec-audits

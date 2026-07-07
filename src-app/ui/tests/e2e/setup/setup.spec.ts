@@ -114,6 +114,26 @@ test.describe('App Setup', () => {
 
   })
 
+  test('should accept a valid email with a 3+char TLD', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await page.goto(`${baseURL}/setup`)
+
+    // Wait for form to be visible
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
+
+    // A valid `.com` address (the reported regression) must NOT be flagged
+    await byTestId(page, 'app-setup-username-input').fill('admin')
+    await byTestId(page, 'app-setup-email-input').fill('khoi@gmail.com')
+    await byTestId(page, 'app-setup-password-input').fill('password123')
+
+    // Trigger validation by blurring the email field
+    await byTestId(page, 'app-setup-password-input').click()
+
+    // No email validation error should appear
+    await expect(byTestId(page, 'field-error-email')).toHaveCount(0)
+
+  })
+
   test('should show validation error for short password', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)

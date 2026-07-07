@@ -53,7 +53,7 @@ export function MessageActions() {
    * useChatStore.subscribe() in their initialize() hooks to restore their state.
    */
   const handleEdit = () => {
-    Stores.Chat.__state.startEditMessage(msg.id)
+    Stores.Chat.startEditMessage(msg.id)
   }
 
   /**
@@ -69,7 +69,7 @@ export function MessageActions() {
     setIsRegenerating(true)
 
     try {
-      await Stores.Chat.__state.startRegenerateMessage(msg.id)
+      await Stores.Chat.startRegenerateMessage(msg.id)
     } catch (err: any) {
       message.error(err?.message || 'Regenerate failed')
     } finally {

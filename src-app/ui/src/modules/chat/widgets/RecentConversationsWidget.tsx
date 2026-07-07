@@ -38,7 +38,7 @@ export function RecentConversationsWidget() {
 
   useEffect(() => {
     if (!isInitialized) {
-      Stores.ChatHistory.__state.loadConversations()
+      Stores.ChatHistory.loadConversations()
     }
   }, [isInitialized])
 
@@ -181,7 +181,7 @@ function ConversationRowActions({
     if (ok) {
       setDeleting(true)
       try {
-        await Stores.ChatHistory.__state.deleteConversation(conversation.id)
+        await Stores.ChatHistory.deleteConversation(conversation.id)
       } finally {
         setDeleting(false)
       }

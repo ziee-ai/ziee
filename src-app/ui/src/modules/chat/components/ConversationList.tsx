@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
+import { Card, Button, Select, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
+import type { ConversationSort } from '@/modules/chat/stores/ChatHistory.store'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
+
+const SORT_OPTIONS: { value: ConversationSort; label: string }[] = [
+  { value: 'recent', label: 'Most recent' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'alpha', label: 'Title A–Z' },
+  { value: 'most_messages', label: 'Most messages' },
+]
 
 interface ConversationListProps {
   /**
@@ -29,8 +37,8 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
   const {
     conversations,
-    filteredConversations,
     searchQuery,
+    sort,
     selectedIds,
     loading,
     loadingMore,
@@ -51,7 +59,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // Debounce search query
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      Stores.ChatHistory.__state.setSearchQuery(localSearchQuery)
+      Stores.ChatHistory.setSearchQuery(localSearchQuery)
     }, 500)
 
     return () => clearTimeout(timeoutId)
@@ -68,12 +76,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // internal `loading/loadingMore` in-flight check, so unconditional
   // refetch is safe.
   useEffect(() => {
-    Stores.ChatHistory.__state.loadConversations()
+    Stores.ChatHistory.loadConversations()
   }, [])
 
   const handleLoadMore = async () => {
     try {
-      await Stores.ChatHistory.__state.loadNextPage()
+      await Stores.ChatHistory.loadNextPage()
     } catch (error) {
       console.error('Failed to load more conversations:', error)
     }
@@ -81,7 +89,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
   const handleDeleteSelected = async () => {
     try {
-      await Stores.ChatHistory.__state.bulkDelete()
+      await Stores.ChatHistory.bulkDelete()
       message.success(`${selectedIds.size} conversations deleted successfully`)
     } catch (error) {
       console.error('Failed to delete selected conversations:', error)
@@ -89,15 +97,15 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   }
 
   const handleToggleSelection = (id: string) => {
-    Stores.ChatHistory.__state.toggleSelection(id)
+    Stores.ChatHistory.toggleSelection(id)
   }
 
   const handleDeleteConversation = async (id: string) => {
-    await Stores.ChatHistory.__state.deleteConversation(id)
+    await Stores.ChatHistory.deleteConversation(id)
   }
 
-  // Determine which conversations to show
-  const visibleConversations = searchQuery ? filteredConversations : conversations
+  // The list is the server-filtered/sorted result set directly.
+  const visibleConversations = conversations
   const isSelectionMode = selectedIds.size > 0
 
   // Search box component
@@ -128,6 +136,24 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
           <div className="flex justify-end items-center w-full">{searchBox}</div>
         )}
 
+        {/* Sort control (ITEM-6). Body-level toolbar so it's visible in both the
+            wide (header-portaled search) and narrow layouts. Hidden until there
+            is a list to sort. */}
+        {(visibleConversations.length > 0 || loading) && (
+          <div className="max-w-4xl w-full self-center px-3 flex justify-end">
+            <Select
+              data-testid="chat-history-sort-select"
+              aria-label="Sort conversations"
+              value={sort}
+              onChange={value =>
+                Stores.ChatHistory.setSort(value as ConversationSort)
+              }
+              options={SORT_OPTIONS}
+              className="w-40"
+            />
+          </div>
+        )}
+
         {/* Bulk actions bar */}
         {selectedIds.size > 0 && (
           <div className="max-w-4xl w-full self-center px-3 pt-3">
@@ -144,13 +170,13 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                   <Button
                     data-testid="chat-bulk-deselect-btn"
                     icon={<CircleX />}
-                    onClick={() => Stores.ChatHistory.__state.deselectAll()}
+                    onClick={() => Stores.ChatHistory.deselectAll()}
                   >
                     Deselect All
                   </Button>
                   <Button
                     data-testid="chat-bulk-select-all-btn"
-                    onClick={() => Stores.ChatHistory.__state.selectAll()}
+                    onClick={() => Stores.ChatHistory.selectAll()}
                   >
                     Select All
                   </Button>
@@ -236,7 +262,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                         <Text type="secondary" aria-live="polite" role="status">
                           Showing {visibleConversations.length} of {total} conversations
                         </Text>
-                        {hasMore && !searchQuery && (
+                        {hasMore && (
                           <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
                             Load More
                           </Button>

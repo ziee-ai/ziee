@@ -44,7 +44,7 @@ function applyTokens(authData: AutoLoginResponse): void {
 }
 
 async function runAutoLoginWithRetry(): Promise<void> {
-  const bootstrap = Stores.Bootstrap.__state
+  const bootstrap = Stores.Bootstrap.$
   const startedAt = Date.now()
   let attempt = 0
 
@@ -65,7 +65,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
         attempt > 0 ? `(after ${attempt} retries)` : '',
       )
       applyTokens(authData)
-      Stores.Bootstrap.__state.setStatus('succeeded')
+      Stores.Bootstrap.setStatus('succeeded')
       return
     } catch (error) {
       attempt += 1
@@ -80,7 +80,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
           'attempts. Last error:',
           msg,
         )
-        Stores.Bootstrap.__state.setStatus(
+        Stores.Bootstrap.setStatus(
           'failed',
           'Backend failed to start. Try restarting Ziee.',
         )
@@ -91,7 +91,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
       console.warn(
         `[Desktop] Auto-login attempt ${attempt} failed (${msg}); retrying in ${wait}ms`,
       )
-      Stores.Bootstrap.__state.setAttempt(attempt)
+      Stores.Bootstrap.setAttempt(attempt)
       await new Promise(resolve => setTimeout(resolve, wait))
     }
   }
@@ -145,7 +145,7 @@ const desktopBaseModule: AppModule = createModule({
   cleanup: async () => {
     cleanupRequested = true
     Stores.Auth.setRefreshFallback(null)
-    Stores.Bootstrap.__state.reset()
+    Stores.Bootstrap.reset()
     console.log('[Desktop] Desktop base module cleaned up')
   },
 })

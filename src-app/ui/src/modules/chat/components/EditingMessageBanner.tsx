@@ -33,7 +33,7 @@ export function EditingMessageBanner() {
           variant="ghost"
           size="default"
           icon={<X />}
-          onClick={() => Stores.Chat.__state.cancelEdit()}
+          onClick={() => Stores.Chat.cancelEdit()}
           aria-label="Cancel edit"
         />
       </Tooltip>

@@ -8,12 +8,17 @@ import {
   LINK_CLASS,
 } from '@/components/common/markdownHeadings'
 import { cn } from '@/lib/utils'
+import { renderGfmAlert } from '@/components/common/gfmAlert'
+import { BlockedImage } from '@/components/common/BlockedImage'
+import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { Component, createElement, type ComponentProps, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
+import { Stores } from '@/core/stores'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
 import { RawCodeView } from '../shared/RawCodeView'
+import { FindableRegion } from '../shared/find/FindableRegion'
 import { getSource } from '../shared/source'
 import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
 // ----- Inlined from @/modules/chat/core/utils/ (generic utilities, no chat deps) -----
@@ -37,7 +42,10 @@ export function streamdownUrlTransform(url: string, key: string): string {
 
 export function SafeImg(props: JSX.IntrinsicElements['img']) {
   const src = typeof props.src === 'string' ? props.src : ''
-  if (!isLocalImageUrl(src)) return null
+  // Blocked (non-same-origin / data:) — placeholder instead of nothing.
+  if (!isLocalImageUrl(src)) {
+    return <BlockedImage src={src} alt={typeof props.alt === 'string' ? props.alt : undefined} />
+  }
   return createElement('img', props)
 }
 
@@ -151,10 +159,17 @@ export class StreamdownErrorBoundary extends Component<StreamdownErrorBoundaryPr
 // `table` uses our wrapper too, so tables in the file viewer get OverlayScrollbars
 // + an in-page fullscreen at z-[1200] (above the file drawer's z-1050) instead of
 // Streamdown's native scroller + z-50 fullscreen (which hid behind the drawer).
+// `> [!NOTE]`-style GFM alerts render as styled callouts; other blockquotes
+// stay as plain blockquotes (the file viewer has no "Cited excerpt" chrome).
+function MdBlockquote(props: JSX.IntrinsicElements['blockquote']) {
+  return renderGfmAlert(props.children) ?? <blockquote {...props} />
+}
+
 const SAFE_IMG_COMPONENTS = {
   img: SafeImg,
   table: MarkdownTable,
   a: MdAnchor,
+  blockquote: MdBlockquote,
   h1: makeHeading(1),
   h2: makeHeading(2),
   h3: makeHeading(3),
@@ -182,6 +197,7 @@ export function MarkdownBody(props: FileViewerSlotProps) {
   const inlineContent = useResourceLinkContent(url, !!file)
   const content = file ? rightPanelContent : inlineContent
   const mode = useFileViewMode(file?.id ?? '')
+  const wordWrap = file ? Stores.File.fileWordWrap.get(file.id) ?? false : false
 
   if (content === '__error__') {
     return (
@@ -193,10 +209,18 @@ export function MarkdownBody(props: FileViewerSlotProps) {
   if (content === null) {
     return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
   }
+
+  // Find-in-document wraps the content in the right-panel context (needs a fileId
+  // to coordinate the header toggle); the inline preview renders directly.
+  const wrapFind = (node: ReactNode) =>
+    file ? <FindableRegion fileId={file.id}>{node}</FindableRegion> : node
+
   if (file && mode === 'raw') {
-    return <RawCodeView text={content} filename={file.filename} />
+    return wrapFind(
+      <RawCodeView text={content} filename={file.filename} wordWrap={wordWrap} />,
+    )
   }
-  return (
+  return wrapFind(
     <ScrollArea axis="both" className="h-full">
       <div className="p-4">
         <StreamdownErrorBoundary fallbackText={content}>
@@ -206,10 +230,10 @@ export function MarkdownBody(props: FileViewerSlotProps) {
             urlTransform={streamdownUrlTransform}
             components={SAFE_IMG_COMPONENTS}
           >
-            {content}
+            {preprocessMarkdown(content)}
           </Streamdown>
         </StreamdownErrorBoundary>
       </div>
-    </ScrollArea>
+    </ScrollArea>,
   )
 }

@@ -200,7 +200,10 @@
 				"!**/dev/gallery/DefectRepro.tsx",
 				"!**/dev/gallery/__detector_fixtures__/**"
 			],
-			"plugins": ["./biome-plugins/no-raw-interactive-elements.grit"]
+			"plugins": [
+				"./biome-plugins/no-raw-interactive-elements.grit",
+				"./biome-plugins/no-store-internal-state.grit"
+			]
 		}
 	],
 	"assist": {

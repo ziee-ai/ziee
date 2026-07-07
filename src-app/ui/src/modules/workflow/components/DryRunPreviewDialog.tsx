@@ -29,7 +29,7 @@ export function DryRunPreviewDialog({
     setLoading(true)
     setError(null)
     setResult(null)
-    Stores.Workflow.__state
+    Stores.Workflow
       .dryRun(workflow.id, {})
       .then(r => {
         if (!cancelled) setResult(r)

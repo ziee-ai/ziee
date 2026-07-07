@@ -12,6 +12,7 @@ import {
   zodResolver,
 } from '@/components/ui'
 import { z } from 'zod'
+import { EMAIL_RE } from '@/lib/validation'
 import { Lock, Mail, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -37,7 +38,7 @@ const schema = z
     email: z
       .string()
       .min(1, 'Please input your email!')
-      .email('Please enter a valid email address!'),
+      .regex(EMAIL_RE, 'Please enter a valid email address!'),
     password: z
       .string()
       .min(1, 'Please input your password!')

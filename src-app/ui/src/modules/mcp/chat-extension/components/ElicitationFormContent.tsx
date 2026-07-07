@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { z } from 'zod'
+import { EMAIL_RE } from '@/lib/validation'
 import {
-  Alert,
   Button,
+  Card,
   DatePicker,
   Descriptions,
   Form,
@@ -12,7 +13,6 @@ import {
   InputNumber,
   MultiSelect,
   Select,
-  Space,
   Switch,
   Text,
   useForm,
@@ -165,7 +165,7 @@ function buildFieldZodSchema(fieldSchema: FieldSchema, required: boolean): z.Zod
       // Server sent a malformed regex — skip the constraint rather than crashing.
     }
   }
-  if (fieldSchema.format === 'email') s = s.email('Enter a valid email address')
+  if (fieldSchema.format === 'email') s = s.regex(EMAIL_RE, 'Enter a valid email address')
   if (fieldSchema.format === 'uri') s = s.url('Enter a valid URL')
 
   // A required field left untouched holds `undefined` (its default), which would
@@ -430,6 +430,35 @@ export function ElicitationFormContent({
     }
   }
 
+  // Accept handler — extracted so the Card FOOTER's Submit button (which sits
+  // OUTSIDE the <Form>) can trigger the in-body form via form.handleSubmit.
+  const onValid = async (values: Record<string, unknown>) => {
+    setIsSubmitting(true)
+    try {
+      await Stores.McpComposer.resolveElicitation(
+        elicitation.elicitation_id,
+        'accept',
+        values,
+      )
+    } catch (e) {
+      // The store rolls status back to 'pending' on POST failure so the user can
+      // retry; swallow here so it doesn't bubble to the chat error boundary.
+      console.warn('mcp.elicitation resolve failed', e)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Shared card header — a status icon + server name + short state label, matching
+  // the tool-call Card's header row (both are chat "status cards").
+  const cardHeader = (icon: ReactNode, label: string) => (
+    <div className="flex items-center gap-2 min-w-0">
+      {icon}
+      <Text strong className="truncate">{elicitation.server}</Text>
+      <Text type="secondary" className="text-xs whitespace-nowrap">{label}</Text>
+    </div>
+  )
+
   // --- Resolved states ---
 
   if (status === 'accepted') {
@@ -452,30 +481,25 @@ export function ElicitationFormContent({
         className="my-2"
         data-testid={`elicitation-accepted-${elicitation.elicitation_id}`}
       >
-        <Alert
-          tone="success"
-          data-testid="mcp-elicitation-accepted-alert"
-          icon={<CircleCheck />}
-          title={
-            <div>
-              <Text strong>{elicitation.server}</Text>
-              <Text type="secondary" className="ml-2 text-xs">
-                — form submitted
-              </Text>
-            </div>
-          }
-          description={
-            items.length > 0 ? (
-              <Descriptions
-                size="sm"
-                column={1}
-                items={items}
-                className="mt-2"
-                data-testid="mcp-elicitation-summary"
-              />
-            ) : null
-          }
-        />
+        <Card
+          size="sm"
+          className="mb-2"
+          data-testid="mcp-elicitation-accepted-card"
+        >
+          {cardHeader(
+            <CircleCheck className="size-4 shrink-0 text-success" />,
+            '— form submitted',
+          )}
+          {items.length > 0 && (
+            <Descriptions
+              size="sm"
+              column={1}
+              items={items}
+              className="mt-2"
+              data-testid="mcp-elicitation-summary"
+            />
+          )}
+        </Card>
       </div>
     )
   }
@@ -486,19 +510,16 @@ export function ElicitationFormContent({
         className="my-2"
         data-testid={`elicitation-declined-${elicitation.elicitation_id}`}
       >
-        <Alert
-          tone="warning"
-          data-testid="mcp-elicitation-declined-alert"
-          icon={<CircleX />}
-          title={
-            <div>
-              <Text strong>{elicitation.server}</Text>
-              <Text type="secondary" className="ml-2 text-xs">
-                — request declined
-              </Text>
-            </div>
-          }
-        />
+        <Card
+          size="sm"
+          className="mb-2 py-2.5"
+          data-testid="mcp-elicitation-declined-card"
+        >
+          {cardHeader(
+            <CircleX className="size-4 shrink-0 text-warning" />,
+            '— request declined',
+          )}
+        </Card>
       </div>
     )
   }
@@ -509,20 +530,19 @@ export function ElicitationFormContent({
         className="my-2"
         data-testid={`elicitation-cancelled-${elicitation.elicitation_id}`}
       >
-        <Alert
-          tone="error"
-          data-testid="mcp-elicitation-cancelled-alert"
-          icon={<Ban />}
-          title={
-            <div>
-              <Text strong>{elicitation.server}</Text>
-              <Text type="secondary" className="ml-2 text-xs">
-                — session expired
-              </Text>
-            </div>
-          }
-          description="This form can no longer be submitted — the request expired or was cancelled."
-        />
+        <Card
+          size="sm"
+          className="mb-2"
+          data-testid="mcp-elicitation-cancelled-card"
+        >
+          {cardHeader(
+            <Ban className="size-4 shrink-0 text-destructive" />,
+            '— session expired',
+          )}
+          <Text type="secondary" className="text-sm mt-2 block">
+            This form can no longer be submitted — the request expired or was cancelled.
+          </Text>
+        </Card>
       </div>
     )
   }
@@ -533,79 +553,60 @@ export function ElicitationFormContent({
       className="my-2"
       data-testid={`elicitation-pending-${elicitation.elicitation_id}`}
     >
-      <Alert
-        tone="info"
-        data-testid="mcp-elicitation-pending-alert"
-        icon={<SquarePen />}
-        title={
-          <div>
-            <Text strong>{elicitation.server}</Text>
-            <Text type="secondary" className="ml-2 text-xs">
-              is requesting input
-            </Text>
-          </div>
-        }
-        description={
-          <div className="mt-2">
-            <Text className="text-sm">{elicitation.message}</Text>
-            <Form
-              form={form}
-              layout="vertical"
-              className="mt-3"
-              disabled={isSubmitting}
-              data-testid="mcp-elicitation-form"
-              onSubmit={async (values) => {
-                setIsSubmitting(true)
-                try {
-                  await Stores.McpComposer.resolveElicitation(
-                    elicitation.elicitation_id,
-                    'accept',
-                    values as Record<string, unknown>,
-                  )
-                } catch (e) {
-                  // The store rolls status back to 'pending' on POST failure so the
-                  // user can retry; swallow here so the error doesn't bubble to the
-                  // chat error boundary.
-                  console.warn('mcp.elicitation resolve failed', e)
-                } finally {
-                  // On success the resolved card replaces this form (no-op); on
-                  // failure the catch above kept us interactive — either way,
-                  // make sure the submit button is re-enabled.
-                  setIsSubmitting(false)
-                }
-              }}
+      <Card
+        size="sm"
+        className="mb-2"
+        data-testid="mcp-elicitation-pending-card"
+        footer={
+          <div className="flex w-full justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDecline}
+              loading={isSubmitting}
+              size="default"
+              data-testid="elicitation-decline"
             >
-              {Object.entries(properties).map(([name, fieldSchema]) =>
-                renderField(
-                  name,
-                  fieldSchema as FieldSchema,
-                  requiredFields.has(name),
-                ),
-              )}
-              <Space className="mt-2">
-                <Button
-                  type="submit"
-                  loading={isSubmitting}
-                  size="default"
-                  data-testid="elicitation-submit"
-                >
-                  Submit
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleDecline}
-                  loading={isSubmitting}
-                  size="default"
-                  data-testid="elicitation-decline"
-                >
-                  Decline
-                </Button>
-              </Space>
-            </Form>
+              Decline
+            </Button>
+            <Button
+              loading={isSubmitting}
+              size="default"
+              onClick={() => form.handleSubmit(onValid)()}
+              data-testid="elicitation-submit"
+            >
+              Submit
+            </Button>
           </div>
         }
-      />
+      >
+        {cardHeader(
+          <SquarePen className="size-4 shrink-0 text-primary" />,
+          'is requesting input',
+        )}
+        <div className="mt-2">
+          <Text className="text-sm">{elicitation.message}</Text>
+          {/* Submit lives in the Card FOOTER (outside this form) and triggers it
+              via form.handleSubmit(onValid); Enter within a field still submits
+              through the form's own onSubmit. */}
+          <Form
+            form={form}
+            layout="vertical"
+            className="mt-3"
+            disabled={isSubmitting}
+            data-testid="mcp-elicitation-form"
+            onSubmit={onValid}
+          >
+            {Object.entries(properties).map(([name, fieldSchema]) =>
+              renderField(
+                name,
+                fieldSchema as FieldSchema,
+                requiredFields.has(name),
+              ),
+            )}
+          </Form>
+        </div>
+      </Card>
     </div>
   )
 }

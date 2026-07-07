@@ -156,9 +156,9 @@ export function useHubModelDownloadGate() {
 
   const runGates = async (model: HubModel): Promise<GateRunResult> => {
     // The LlmRepository store loads via `__init__.repositories` on
-    // FIRST proxy access, but this gate hook reads via `__state` (we
+    // FIRST proxy access, but this gate hook reads via `$` (we
     // run from event handlers — see `feedback_stores_state_in_handlers`).
-    // `__state` doesn't trigger the lazy load, so if no other surface
+    // `$` doesn't trigger the lazy load, so if no other surface
     // has touched the store yet (e.g. a fresh session that goes
     // straight from /setup to /hub without visiting LLM Repositories),
     // `repositories` is `[]` and every gate check 404s with "Repository
@@ -167,13 +167,13 @@ export function useHubModelDownloadGate() {
     // via the store's `isInitialized` guard, so it's a no-op when the
     // store is already populated.
     await Stores.LlmRepository.loadLlmRepositories()
-    // Snapshot the current repositories list via `.__state` — this
+    // Snapshot the current repositories list via `.$` — this
     // function is invoked from event handlers (Download click in the
     // hub card, Retry click in the download widget), NOT from a React
     // render path. The bare proxy access would call React hooks
     // outside render. See `feedback_stores_state_in_handlers` in
     // project memory.
-    const { repositories } = Stores.LlmRepository.__state
+    const { repositories } = Stores.LlmRepository.$
 
     // ── Resolve repo ────────────────────────────────────────────────
     // v2 Phase 7: derive the registry URL from sources[0] rather than
@@ -218,7 +218,7 @@ export function useHubModelDownloadGate() {
     // modal with a misleading error. Skip the duplicate probe and
     // surface a brief info toast — the user can re-click once the
     // other surface settles.
-    if (Stores.LlmRepository.__state.testing) {
+    if (Stores.LlmRepository.$.testing) {
       message.info(
         'Connection test already running — try again in a moment.',
       )

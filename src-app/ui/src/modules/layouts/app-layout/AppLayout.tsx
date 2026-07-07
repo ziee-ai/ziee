@@ -56,7 +56,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // navigated. The ref stays for fast drag-time writes (no React
   // re-renders), and we sync back to the store on drag end so the
   // next mount picks up the same width.
-  const currentWidth = useRef(Stores.AppLayout.__state.sidebarWidth)
+  const currentWidth = useRef(Stores.AppLayout.$.sidebarWidth)
 
   const MIN_WIDTH = 200
   const MAX_WIDTH = 400

@@ -5,8 +5,8 @@ import { Stores } from '@/core/stores'
 import { Title, Paragraph, Text } from '@/components/ui'
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {
-  // Read the REACTIVE field (not `.__state`) in render so the count re-renders
-  // when the selection changes — `.__state` reads via getState() and does not
+  // Read the REACTIVE field (not `.$`) in render so the count re-renders
+  // when the selection changes — `.$` reads via getState() and does not
   // subscribe, leaving a stale MCP count.
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
   const enteredApiKeys = Stores.ApiKeysStep.enteredApiKeys

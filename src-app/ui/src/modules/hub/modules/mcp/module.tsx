@@ -48,7 +48,7 @@ export default createModule({
         // (who can install as system) keep the tab regardless of
         // policy so they can install for the system from the hub.
         //
-        // Read `policy` via `__state` because shouldRender is invoked
+        // Read `policy` via `$` because shouldRender is invoked
         // from HubPage's useMemo callback (not directly inside the
         // component render body), so the function-typed proxy path
         // wouldn't subscribe anyway. HubPage's useMemo deps include
@@ -58,7 +58,7 @@ export default createModule({
           if (hasPermissionNow(Permissions.McpServersAdminCreate)) {
             return true
           }
-          const policy = Stores.McpUserPolicy.__state.policy
+          const policy = Stores.McpUserPolicy.$.policy
           return !!policy && policy.allowed_transports.length > 0
         },
         refresh: async () => {

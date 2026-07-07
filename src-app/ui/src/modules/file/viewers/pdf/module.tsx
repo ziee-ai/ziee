@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
 import { PdfBody } from './body'
 import { PdfHeader } from './header'
+import { PdfJsBody } from './pdfjs-body'
 
 // PPTX intentionally not registered. Backend can't convert PPTX to
 // PDF: pandoc doesn't read PowerPoint, and `office2pdf` (the only
@@ -11,9 +12,14 @@ import { PdfHeader } from './header'
 
 export const viewers: FileViewerModule[] = [
   {
+    // Real PDFs render client-side via PDF.js's PDFViewer component
+    // (PdfJsBody) — native page-nav / zoom / find / text-selection, no
+    // 50-page cap. The original bytes come from `/files/{id}/raw`. The
+    // toolbar lives inside PdfJsBody (header keeps only Download), because
+    // the header/body are independent components (see DEC-6/DEC-11).
     supportedTypes: [{ mime: 'application/pdf' }, { ext: 'pdf' }],
     entry: {
-      body: PdfBody,
+      body: PdfJsBody,
       headerActions: PdfHeader,
       label: 'PDF',
       icon: <FileText />,

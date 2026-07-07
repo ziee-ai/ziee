@@ -201,7 +201,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!token` | 71 |
 | branch | `exchangingToken === token && !exchangeError` | 84 |
 | branch | `exchangeError` | 93 |
-| branch | `Stores.Auth.__state.isAuthenticated` | 99 |
+| branch | `Stores.Auth.$.isAuthenticated` | 99 |
 
 ### `modules/tunnel-auth/PhoneAuthPage`
 

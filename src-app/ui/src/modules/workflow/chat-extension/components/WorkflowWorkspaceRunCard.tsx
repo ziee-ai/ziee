@@ -29,7 +29,7 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
   const block = toolResultBlock(props.content)
   const sc = (block?.structured_content ?? null) as { workspace_dir?: string } | null
   const dir = sc?.workspace_dir
-  const conversationId = Stores.Chat.__state.conversation?.id
+  const conversationId = Stores.Chat.$.conversation?.id
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [saved, setSaved] = useState(false)

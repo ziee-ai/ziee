@@ -40,7 +40,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
       decisions: {},
       reasons: {},
     }
-    Stores.Chat.__state.displayInRightPanel({
+    Stores.Chat.displayInRightPanel({
       id: sessionId,
       title: `Screening: ${sc.query}`.slice(0, 60),
       type: 'literature',

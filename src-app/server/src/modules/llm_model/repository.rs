@@ -92,6 +92,17 @@ impl LlmModelRepository {
             .await
             .map_err(AppError::database_error)
     }
+
+    /// Set a model's deprecated flag; returns true if the row actually changed.
+    pub async fn set_deprecated(
+        &self,
+        model_id: Uuid,
+        is_deprecated: bool,
+    ) -> Result<bool, AppError> {
+        set_model_deprecated(&self.pool, model_id, is_deprecated)
+            .await
+            .map_err(AppError::database_error)
+    }
 }
 
 // =====================================================
@@ -604,6 +615,25 @@ pub async fn set_model_validation_status(
     .await?;
 
     Ok(())
+}
+
+/// Flip a model's `is_deprecated` flag. Returns whether a row changed (so
+/// callers only emit a sync event / log on an actual transition). Used by the
+/// deprecation sweep and the create-time catalog flag.
+pub async fn set_model_deprecated(
+    pool: &PgPool,
+    model_id: Uuid,
+    is_deprecated: bool,
+) -> Result<bool, sqlx::Error> {
+    let res = sqlx::query!(
+        "UPDATE llm_models SET is_deprecated = $1, updated_at = NOW() \
+         WHERE id = $2 AND is_deprecated <> $1",
+        is_deprecated,
+        model_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected() > 0)
 }
 
 // ==================== Download Instance Repository Functions ====================

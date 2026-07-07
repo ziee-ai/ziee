@@ -82,6 +82,10 @@ export interface TableProps<T> {
   resizable?: boolean
   /** Toolbar column-chooser (show/hide hideable columns). */
   columnChooser?: boolean
+  /** Extra content rendered on the trailing (right) edge of the toolbar row —
+   *  e.g. a row-count readout + jump-to-row control — so callers don't stack a
+   *  second toolbar above this one. */
+  toolbarExtra?: React.ReactNode
   /** Auto-detect all-numeric columns → right-align + tabular-nums. */
   detectNumericColumns?: boolean
   /** Cell/row selection + copy. `'cell'` selects single cells + rows (via a
@@ -216,7 +220,7 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
   // last visible column's toggle is DISABLED (matches the hook's hide guard).
   const visibleCount = props.columns.filter(c => !view.isHidden(c.key)).length
   return (
-    <div className="flex items-center gap-2 pb-2" data-testid={`${testid}-toolbar`}>
+    <div className="flex flex-wrap items-center gap-2 pb-2" data-testid={`${testid}-toolbar`}>
       {props.filterable && (
         <Input
           size="sm"
@@ -256,6 +260,9 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
             Columns
           </Button>
         </Popover>
+      )}
+      {props.toolbarExtra && (
+        <div className="ms-auto flex items-center gap-2">{props.toolbarExtra}</div>
       )}
     </div>
   )
@@ -318,7 +325,7 @@ export function Table<T>(props: TableProps<T>) {
   // Virtualize only when there's real data to window — loading/empty states use
   // the plain path (their skeleton/empty rows don't need a virtualizer).
   const showVirtual = props.virtualized && !busy && view.viewData.length > 0
-  const hasToolbar = !!(props.filterable || props.columnChooser)
+  const hasToolbar = !!(props.filterable || props.columnChooser || props.toolbarExtra)
 
   const body = showVirtual
     ? <VirtualTable {...props} view={view} />

@@ -34,8 +34,18 @@ export function MessageList() {
     <Flex className={'flex-col gap-1 w-full'} data-testid="chat-messages">
       {/* The message_list_header slot (project chip / context) is rendered as
           pinned chrome in ConversationPage, above this scroll container. */}
-      {messagesArray.map(msg => (
-        <ChatMessage key={msg.id} message={msg} />
+      {messagesArray.map((msg, i) => (
+        <ChatMessage
+          key={msg.id}
+          message={msg}
+          // The streaming message is the last assistant message while a stream
+          // is in flight — never collapse it (DEC-6).
+          isStreaming={
+            isStreaming &&
+            i === messagesArray.length - 1 &&
+            msg.role === 'assistant'
+          }
+        />
       ))}
 
       {/* Streaming indicator */}

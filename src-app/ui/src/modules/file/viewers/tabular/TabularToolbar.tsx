@@ -1,20 +1,23 @@
-import { useState } from 'react'
-import { Copy, Download } from 'lucide-react'
+import { Fragment, useState } from 'react'
 import { Button, InputNumber, Text } from '@/components/ui'
 
 /**
- * Body-local toolbar for the tabular viewer (DEC-15): a "row X of Y" readout, a
- * jump-to-row input, and Copy + Export-view actions. Rendered ABOVE the kit
- * Table (which owns its own search + column-chooser toolbar).
+ * The tabular viewer's "N rows" readout + jump-to-row control. Rendered INTO the
+ * kit Table's own toolbar via its `toolbarExtra` slot (trailing edge), NOT as a
+ * second stacked row — the kit toolbar wraps this in a `flex items-center gap-2`,
+ * so this returns the controls as a fragment (no row wrapper / margins of its own).
+ *
+ * Copy / Export are intentionally NOT rendered here — the file-viewer header
+ * (chrome.tsx) already owns the copy + download/export affordances, and a second
+ * pair in this toolbar was a confusing duplicate. The `onCopy`/`onExport`/
+ * `exportLabel` props are retained (unused) so the callers' handlers stay wired
+ * for a future header-driven hookup without a churny signature change.
  */
 export function TabularToolbar({
   testidPrefix,
   total,
   viewCount,
   onJump,
-  onCopy,
-  onExport,
-  exportLabel,
 }: {
   testidPrefix: string
   /** Total parsed rows (pre-filter). */
@@ -31,7 +34,7 @@ export function TabularToolbar({
   const filtered = viewCount !== total
   const noun = (n: number) => (n === 1 ? 'row' : 'rows')
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2" data-testid={`${testidPrefix}-toolbar`}>
+    <Fragment>
       <Text type="secondary" className="text-xs whitespace-nowrap" data-testid={`${testidPrefix}-readout`}>
         {filtered
           ? `Showing ${viewCount.toLocaleString()} of ${total.toLocaleString()} ${noun(total)}`
@@ -42,6 +45,9 @@ export function TabularToolbar({
           Jump to row
         </Text>
         <InputNumber
+          // size="sm" matches the sibling filter Input (also size="sm") sharing
+          // this toolbar row.
+          size="sm"
           data-standalone-control
           data-testid={`${testidPrefix}-jump-input`}
           aria-label="Jump to row number"
@@ -61,24 +67,6 @@ export function TabularToolbar({
           Go
         </Button>
       </div>
-      <div className="ms-auto flex items-center gap-1">
-        <Button
-          variant="outline"
-          icon={<Copy />}
-          data-testid={`${testidPrefix}-copy`}
-          onClick={onCopy}
-        >
-          Copy
-        </Button>
-        <Button
-          variant="outline"
-          icon={<Download />}
-          data-testid={`${testidPrefix}-export`}
-          onClick={onExport}
-        >
-          {exportLabel}
-        </Button>
-      </div>
-    </div>
+    </Fragment>
   )
 }

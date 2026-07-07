@@ -32,10 +32,10 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   // stale snapshot. The updater receives the current data and returns a patch.
   const persist = (update: (cur: LiteratureScreeningData) => Partial<LiteratureScreeningData>) => {
     const current =
-      (Stores.Chat.__state.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
+      (Stores.Chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
         | LiteratureScreeningData
         | undefined) ?? data
-    Stores.Chat.__state.updateRightPanelTab<'literature'>(data.sessionId, {
+    Stores.Chat.updateRightPanelTab<'literature'>(data.sessionId, {
       ...current,
       ...update(current),
     })
@@ -53,7 +53,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       // Read the fresh snapshot to decide; only persist on an ACTUAL change so a
       // no-op blur doesn't rewrite the whole tab snapshot to localStorage.
       const cur =
-        (Stores.Chat.__state.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
+        (Stores.Chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
           | LiteratureScreeningData
           | undefined) ?? data
       if (draft !== (cur.reasons[key] ?? '')) {

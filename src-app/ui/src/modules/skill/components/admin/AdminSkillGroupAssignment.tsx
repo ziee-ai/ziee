@@ -22,8 +22,8 @@ export function AdminSkillGroupAssignment({
   const canAssign = usePermission(Permissions.SkillsAssignToGroups)
 
   useEffect(() => {
-    // Effect context → use `.__state` (the `Stores.X.*` proxy is render-only).
-    const state = Stores.SystemSkill.__state
+    // Effect context → use `.$` (the `Stores.X.*` proxy is render-only).
+    const state = Stores.SystemSkill.$
     if (state.groups[skillId]) return
     void state.loadGroups(skillId)
   }, [skillId])

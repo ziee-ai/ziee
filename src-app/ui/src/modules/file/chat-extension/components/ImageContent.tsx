@@ -1,5 +1,6 @@
 import { Spin } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { AttachedFileCard } from '@/modules/file/chat-extension/components/AttachedFileCard'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import type {
   MessageContentDataImage,
@@ -63,10 +64,25 @@ function Img({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-export function ImageContent({ content }: ContentRendererProps) {
+export function ImageContent({ content, isUser }: ContentRendererProps) {
   const data = content.content as MessageContentDataImage
   const source = data.source
   const alt = data.alt_text || 'image'
+
+  // A user-attached image is a stored file (source.type === 'file'). Render it
+  // as the SAME compact FileCard every other user attachment uses — not a
+  // full-width inline preview — so the attachment row is uniform (and edit
+  // restores it to the composer). Assistant/tool images (url / base64, or
+  // file-source images the model returned) keep the inline preview below.
+  if (isUser && source.type === 'file') {
+    return (
+      <AttachedFileCard
+        fileId={source.file_id}
+        filename={data.alt_text || 'image'}
+        isUser={isUser}
+      />
+    )
+  }
 
   if (source.type === 'url') {
     return isSameOriginUrl(source.url) ? <Img src={source.url} alt={alt} /> : null

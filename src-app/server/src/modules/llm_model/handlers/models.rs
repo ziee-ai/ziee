@@ -16,6 +16,7 @@ use crate::{
     core::{events::EventBus, repository::Repos},
     modules::llm_model::permissions::LlmModelsRead,
     modules::llm_provider::permissions::UserLlmProvidersRead,
+    modules::llm_provider::repositories::admin::get_llm_provider_by_id,
     modules::permissions::{RequirePermissions, with_permission},
     modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
@@ -152,7 +153,20 @@ pub async fn create_model(
     utils::validate_create_request(&request)?;
 
     // Create model
-    let model = Repos.llm_model.create(request).await?;
+    let mut model = Repos.llm_model.create(request).await?;
+
+    // Flag a known-deprecated pick immediately (the periodic deprecation sweep
+    // in `prune.rs` is the backstop for models that get deprecated later). The
+    // request carries only `provider_id`, so resolve the provider to get its
+    // type for the catalog lookup. Best-effort: a lookup miss leaves it enabled.
+    if let Ok(Some(provider)) = Repos.llm_provider.get_by_id(model.provider_id).await
+        && ai_providers::registry_lookup(&provider.provider_type, &model.name)
+            .map(|c| c.deprecated)
+            .unwrap_or(false)
+        && matches!(Repos.llm_model.set_deprecated(model.id, true).await, Ok(true))
+    {
+        model.is_deprecated = true;
+    }
 
     // Emit event
     event_bus.emit_async(LlmModelEvent::created(model.clone()).into());
@@ -171,6 +185,56 @@ pub fn create_model_docs(op: TransformOperation) -> TransformOperation {
         .response::<201, Json<LlmModel>>()
         .response_with::<400, (), _>(|res| res.description("Invalid input"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Refresh a remote provider's models against its live `/v1/models` list,
+/// flipping `is_deprecated` on any that vanished (or the catalog marks
+/// deprecated) and clearing it on any that reappeared. Returns the refreshed
+/// model list.
+///
+/// Requires `llm_models::edit` (NOT merely `llm_providers::read`): unlike the
+/// read-only discover-models, this MUTATES model rows and makes an api_key-bearing
+/// outbound call, so it takes the same write perm as `update_model`.
+///
+/// Best-effort: a discovery failure leaves the flags untouched and still returns
+/// the current list — see `prune::sweep_provider_once` for the DEC-5 no-op guard.
+#[debug_handler]
+pub async fn refresh_provider_models(
+    _auth: RequirePermissions<(LlmModelsEdit,)>,
+    Extension(pool): Extension<sqlx::PgPool>,
+    Path(provider_id): Path<Uuid>,
+) -> ApiResult<Json<Vec<LlmModel>>> {
+    let provider = get_llm_provider_by_id(&pool, provider_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("refresh_provider_models: get provider: {e}");
+            AppError::internal_error("Database operation failed")
+        })?
+        .ok_or_else(|| AppError::not_found("Provider"))?;
+
+    if let Err(e) =
+        crate::modules::llm_model::prune::sweep_provider_once(&pool, &provider).await
+    {
+        tracing::warn!("refresh_provider_models: sweep for {provider_id} failed: {e}");
+    }
+
+    let models = Repos.llm_model.list_by_provider(provider_id).await?;
+    Ok((StatusCode::OK, Json(models)))
+}
+
+pub fn refresh_provider_models_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmModelsEdit,)>(op)
+        .id("LlmProvider.refreshModels")
+        .tag("LLM Providers")
+        .summary("Refresh a provider's models against its live list; flags deprecated/removed ones.")
+        .description(concat!(
+            "Runs the deprecation reconcile for one remote provider: re-fetches ",
+            "its live /v1/models set and flips is_deprecated on saved models that ",
+            "vanished or that the curated catalog marks deprecated (clearing it on ",
+            "reappearance). No-op on a failed/empty fetch. Returns the refreshed models."
+        ))
+        .response::<200, Json<Vec<LlmModel>>>()
+        .response_with::<404, (), _>(|r| r.description("Provider not found"))
 }
 
 /// Update an existing LLM model (requires llm_models::edit permission)

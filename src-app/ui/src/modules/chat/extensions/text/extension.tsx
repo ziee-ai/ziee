@@ -9,7 +9,13 @@ import { TextContent } from '@/modules/chat/extensions/text/components/TextConte
 import { ThinkingContent } from '@/modules/chat/extensions/text/components/ThinkingContent'
 import { TextInput } from '@/modules/chat/extensions/text/components/TextInput'
 import { createTextStore } from '@/modules/chat/extensions/text/Text.store'
+import { clearDraft, getDraft, makeDraftKey } from '@/modules/chat/extensions/text/chatDrafts'
 import type { MessageContent } from '@/api-client/types'
+
+// The composer draft key captured at send START (before a new-chat conversation
+// is created), so onMessageSent — which runs AFTER creation — clears exactly the
+// key the text was authored under, never an unrelated conversation's draft.
+let capturedDraftKey: string | null = null
 
 /**
  * Text Extension
@@ -122,7 +128,7 @@ const textExtension: ChatExtension = createExtension({
    */
   composeRequestFields: async () => {
     const { Stores } = await import('@/core/stores')
-    const content = Stores.Chat.__state.TextStore.getText()
+    const content = Stores.Chat.$.TextStore.getText()
     return { content: content?.trim() || '' }
   },
 
@@ -132,7 +138,7 @@ const textExtension: ChatExtension = createExtension({
    */
   beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
-    const content = Stores.Chat.__state.TextStore.getText()
+    const content = Stores.Chat.$.TextStore.getText()
 
     if (!content || !content.trim()) {
       return {
@@ -140,6 +146,16 @@ const textExtension: ChatExtension = createExtension({
         errorMessage: 'Message cannot be empty',
       }
     }
+
+    // Capture the draft key NOW, before a new-chat send creates the conversation
+    // (which would flip the composer's key to the new id). For an existing
+    // conversation it's that id; for a new chat it's the shared `new` bucket.
+    // Must match TextInput's user-namespaced draftKey so onMessageSent clears the
+    // right entry. Read via `$` snapshot (non-render access from an async hook).
+    capturedDraftKey = makeDraftKey(
+      Stores.Auth.$.user?.id,
+      Stores.Chat.$.conversation?.id,
+    )
 
     return { cancel: false }
   },
@@ -151,14 +167,34 @@ const textExtension: ChatExtension = createExtension({
    */
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.__state.TextStore
+    const textStore = Stores.Chat.$.TextStore
 
     // Backup text before clearing
     const currentText = textStore.getText()
     textStore.setBackupMessage(currentText)
 
-    // Clear text
+    // Clear the visible composer text.
     textStore.clearText()
+
+    // A normal send's composer text IS the draft → clear the persisted draft
+    // (the captured pre-creation key). An edit/regen submit instead OVERWROTE
+    // the composer via programmatic setText, so the user's real unsent draft
+    // still sits in localStorage — restore it into the now-cleared composer.
+    // (onMessageSent fires while pendingBranchFromMessageId is still set —
+    // cleared right after — so we can tell the two apart. Restoring here also
+    // covers regenerate, which sets no editingMessage and so wouldn't trigger
+    // the TextInput restore-on-edit-end effect.)
+    const isBranchSend =
+      Stores.Chat.$.pendingBranchFromMessageId != null
+    if (capturedDraftKey) {
+      if (isBranchSend) {
+        const draft = getDraft(capturedDraftKey)
+        if (draft) textStore.setText(draft)
+      } else {
+        clearDraft(capturedDraftKey)
+      }
+    }
+    capturedDraftKey = null
     console.log('[TextExtension] Backed up and cleared text after message sent')
     return {}
   },
@@ -169,7 +205,7 @@ const textExtension: ChatExtension = createExtension({
    */
   onStreamError: async (_error: Error) => {
     const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.__state.TextStore
+    const textStore = Stores.Chat.$.TextStore
 
     // Restore text from backup
     textStore.restoreFromBackup()
@@ -185,7 +221,7 @@ const textExtension: ChatExtension = createExtension({
    */
   afterStreamComplete: async (_message) => {
     const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.__state.TextStore
+    const textStore = Stores.Chat.$.TextStore
 
     // Clear backup since message was sent successfully
     textStore.setBackupMessage(null)

@@ -152,7 +152,7 @@ export function SummarizationSettingsSection() {
       return
     }
     try {
-      await Stores.SummarizationAdmin.__state.update({
+      await Stores.SummarizationAdmin.update({
         enabled: values.enabled,
         default_summarization_model_id:
           values.default_summarization_model_id ?? null,

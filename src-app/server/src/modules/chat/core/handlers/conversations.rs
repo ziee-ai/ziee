@@ -37,10 +37,29 @@ pub struct PaginationQuery {
     /// Items per page (max 100)
     #[serde(default = "default_limit", alias = "per_page")]
     pub limit: i64,
+
+    /// Optional case-insensitive search term. Matches a conversation's title
+    /// OR the text of any of its messages (substring). Omit for no filter.
+    #[serde(default)]
+    pub search: Option<String>,
+
+    /// Optional sort order: `recent` (default, most-recently updated first),
+    /// `oldest`, `alpha` (by title A→Z), or `most_messages`. Unknown values
+    /// fall back to `recent`.
+    #[serde(default)]
+    pub sort: Option<String>,
 }
 
 fn default_page() -> i64 {
     1
+}
+
+/// Escape LIKE/ILIKE metacharacters so a search term matches literally.
+/// Backslash first (it's the default ESCAPE char), then the wildcards.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 fn default_limit() -> i64 {
     20
@@ -126,13 +145,30 @@ pub async fn list_conversations(
     let page = params.page.max(1);
     let offset = (page - 1) * limit;
 
+    // Treat a blank/whitespace search as "no filter" so an empty box doesn't
+    // ILIKE '%%' every row through the content-search path. Escape LIKE
+    // metacharacters (\ % _) so the term is matched as a LITERAL substring
+    // (matching the client-side plain-substring find), not as SQL wildcards —
+    // ILIKE's default ESCAPE is backslash.
+    let search: Option<String> = params
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(escape_like);
+    let sort = params.sort.as_deref();
+
     let conversations = Repos
         .chat
         .core
-        .list_conversations(auth.user.id, limit, offset)
+        .list_conversations(auth.user.id, limit, offset, search.as_deref(), sort)
         .await?;
 
-    let total = Repos.chat.core.count_conversations(auth.user.id).await?;
+    let total = Repos
+        .chat
+        .core
+        .count_conversations(auth.user.id, search.as_deref())
+        .await?;
 
     Ok((StatusCode::OK, Json(ConversationListResponse { conversations, total })))
 }

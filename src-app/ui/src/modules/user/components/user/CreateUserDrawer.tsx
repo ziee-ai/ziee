@@ -6,10 +6,11 @@ import { usePermission } from '@/core/permissions'
 import type { CreateUserRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
+import { EMAIL_RE } from '@/lib/validation'
 
 const createUserSchema = z.object({
   username: z.string().min(1, 'Please enter username'),
-  email: z.string().min(1, 'Please enter valid email').email('Please enter valid email'),
+  email: z.string().min(1, 'Please enter valid email').regex(EMAIL_RE, 'Please enter valid email'),
   password: z.string().min(1, 'Please enter password').min(6, 'Password must be at least 6 characters'),
   display_name: z.string().optional(),
   permissions: z.array(z.string()).optional(),

@@ -1,4 +1,4 @@
-import { FaServer, FaWrench } from 'react-icons/fa'
+import { FaServer, FaWrench, FaRoute } from 'react-icons/fa'
 import { RiOpenaiFill, RiAnthropicFill, RiGeminiFill } from 'react-icons/ri'
 import { BsFillLightningChargeFill } from 'react-icons/bs'
 import { SiHuggingface } from 'react-icons/si'
@@ -13,6 +13,7 @@ export const PROVIDER_ICONS: Record<string, any> = {
   mistral: Mistral,
   deepseek: DeepSeek,
   huggingface: SiHuggingface,
+  openrouter: FaRoute,
   custom: FaWrench,
 }
 

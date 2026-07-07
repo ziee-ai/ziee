@@ -42,7 +42,13 @@ export default function ChatHistoryPage() {
   // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
   useNativeScroll(true)
   const { nativeScroll } = Stores.AppLayout
-  const { conversations, loading, error } = Stores.ChatHistory
+  const { conversations, loading, error, searchQuery } = Stores.ChatHistory
+  // A non-empty search must keep ConversationList mounted even when it returns
+  // zero rows: search is server-side now, so `conversations` becomes empty on a
+  // no-match — but the list owns the search box and the "no results matching
+  // your search" empty state, and unmounting it would strand the user with the
+  // wrong "No chat history yet" page state and no way to edit the query.
+  const hasSearch = searchQuery.trim().length > 0
 
   // Refetch on mount. The sidebar's RecentConversationsWidget may have
   // eager-primed the store with an empty list at login (before any
@@ -52,7 +58,7 @@ export default function ChatHistoryPage() {
   // useEffect never fires. Trigger the refetch here so newly-created
   // conversations always appear.
   useEffect(() => {
-    Stores.ChatHistory.__state.loadConversations()
+    Stores.ChatHistory.loadConversations()
   }, [])
 
   // Closing the body search affordance when the page grows back to
@@ -139,7 +145,7 @@ export default function ChatHistoryPage() {
          * load error to surface — ConversationList owns the persistent
          * ErrorState, so it must mount on error even when the list is empty
          * (otherwise a failed load silently falls through to the empty state). */}
-        {(conversations.length > 0 || loading || error) && (
+        {(conversations.length > 0 || loading || error || hasSearch) && (
           <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
             <DivScrollY nativeFlow className={cn('flex flex-col', nativeScroll ? '' : 'h-full')}>
               <ConversationList
@@ -151,7 +157,7 @@ export default function ChatHistoryPage() {
 
         {/* Empty State — suppressed on error so the error Alert (rendered by
          * ConversationList above) isn't shadowed by a duplicate empty panel. */}
-        {!loading && conversations.length === 0 && !error && (
+        {!loading && conversations.length === 0 && !error && !hasSearch && (
           <div className="text-center py-12 m-auto">
             <MessageSquare className="size-16 mx-auto mb-4" />
             <Title level={3}>

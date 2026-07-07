@@ -33,7 +33,7 @@ export function BranchNavigator() {
     if (index < 0 || index >= total) return
     const branchId = branchIds[index]
     if (!branchId || branchId === activeBranchId) return
-    await Stores.Chat.__state.activateBranch(conversation.id, branchId)
+    await Stores.Chat.activateBranch(conversation.id, branchId)
   }
 
   return (

@@ -102,11 +102,11 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
 
   const handleOpenInPanel = () => {
     if (!file) return
-    // `__state` (not the render-only proxy) — the proxy fires React hooks on
-    // access, a Rules-of-Hooks violation inside an event handler.
+    // displayInRightPanel is an action — callable directly from an event
+    // handler (actions are hook-free, no Rules-of-Hooks concern).
     // Pin the panel to the version this resource_link referenced (head if the
     // link carried no version) so a historical tool result opens its own bytes.
-    Stores.Chat.__state.displayInRightPanel({
+    Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
       type: 'file',

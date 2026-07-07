@@ -48,10 +48,24 @@ export function Alert({ tone = 'info', title, description, icon, className, chil
   const closeLabel = (rest as { closeLabel?: string }).closeLabel
   return (
     <Base role={role} className={cn(toneCls[tone], onClose && 'pe-10', 'relative', className)} data-testid={testid}>
-      {/* Size a caller-supplied icon to match the tone-default (size-4) so a bare
-          lucide icon doesn't render at its 24px default and break the grid /
-          oversize the row. Only unsized svgs are constrained (mirrors Button). */}
-      {icon != null ? <span aria-hidden className="[&_svg:not([class*='size-'])]:size-4">{icon}</span> : <Icon className="size-4" aria-hidden />}
+      {/* Render the caller's icon as a DIRECT child (an <svg>), never wrapped in
+          a <span>: the shadcn Alert base switches to its 2-column icon layout via
+          `has-[>svg]` + `*:[svg]:row-span-2`, which only matches a direct svg. A
+          wrapper span breaks that detection and the icon stacks ABOVE the title.
+          We clone to force size-4 (so a bare lucide icon isn't its 24px default)
+          + aria-hidden, keeping it a direct svg child. */}
+      {icon != null ? (
+        React.isValidElement<React.SVGProps<SVGSVGElement>>(icon) ? (
+          React.cloneElement(icon, {
+            'aria-hidden': true,
+            className: cn('size-4', icon.props.className),
+          })
+        ) : (
+          icon
+        )
+      ) : (
+        <Icon className="size-4" aria-hidden />
+      )}
       {title != null && <AlertTitle>{title}</AlertTitle>}
       {(description != null || children != null) && (
         <AlertDescription>{description}{children}</AlertDescription>

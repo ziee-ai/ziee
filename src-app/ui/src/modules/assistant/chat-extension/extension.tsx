@@ -59,7 +59,7 @@ const assistantExtension: ChatExtension = createExtension({
         if (editingMessage) {
           // Save the assistant the user had selected before initiating
           // the edit, so we can restore it afterwards.
-          preEditAssistantId = picker.__state.selectedAssistantId
+          preEditAssistantId = picker.$.selectedAssistantId
 
           // Per-message assistant attribution moved off the Message
           // row into the assistant bridge's own message_assistant
@@ -105,9 +105,9 @@ const assistantExtension: ChatExtension = createExtension({
   },
 
   composeRequestFields: async (): Promise<ExtensionRequestFields> => {
-    // Use __state to access raw state outside React component context.
+    // Read via `$` (hook-free snapshot) outside a React component context.
     const selectedAssistantId =
-      Stores.AssistantPicker.__state.selectedAssistantId
+      Stores.AssistantPicker.$.selectedAssistantId
 
     if (selectedAssistantId) {
       return {

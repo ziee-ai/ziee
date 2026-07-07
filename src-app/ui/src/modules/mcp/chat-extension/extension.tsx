@@ -37,7 +37,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
   return (
     <Card
       size="sm"
-      className="mb-2 bg-black/2"
+      className={cn('mb-2', !isExpanded && 'py-2.5')}
       data-testid={`mcp-toolcall-card-${toolCall.tool_use_id}`}
     >
       <div className="flex items-center justify-between">
@@ -172,7 +172,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
 
   // Historical view for tool calls loaded from DB (store is empty after reload)
   return (
-    <Card size="sm" className="mb-2 bg-black/2" data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
+    <Card size="sm" className={cn('mb-2', !isExpanded && 'py-2.5')} data-testid={`mcp-tooluse-card-${toolUseData.id}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <ToolStatusIcon
@@ -282,7 +282,7 @@ function McpToolGroupCard({
   )
 
   return (
-    <Card size="sm" className="mb-2 bg-black/2" data-testid="mcp-toolgroup-card">
+    <Card size="sm" className={cn('mb-2', !isExpanded && 'py-2.5')} data-testid="mcp-toolgroup-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {icon}
@@ -388,7 +388,8 @@ const mcpExtension: ChatExtension = createExtension({
   sseEventHandlers: {
     mcpToolStart: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpToolStartData
-      // Access store via __state to avoid triggering React hooks outside component context
+      // addToolCall is an action — callable directly on the store proxy
+      // (actions are hook-free, safe outside a React component context).
       const mcpStore = Stores.McpComposer
 
       mcpStore.addToolCall({
@@ -830,8 +831,8 @@ const mcpExtension: ChatExtension = createExtension({
       )
 
       // Get available servers to compute selectedServers from disabledServers
-      // Access __state directly on the McpServer store (outside React context)
-      const mcpServerState = Stores.McpServer.__state
+      // Read via `$` snapshot on the McpServer store (outside React context)
+      const mcpServerState = Stores.McpServer.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const availableServerIds = new Set(availableServers.map(s => s.id))
 
@@ -894,7 +895,7 @@ const mcpExtension: ChatExtension = createExtension({
       }
     } catch {
       // If settings don't exist yet, create default config with all servers enabled
-      const mcpServerState = Stores.McpServer.__state
+      const mcpServerState = Stores.McpServer.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
       for (const server of availableServers) {
@@ -940,9 +941,9 @@ const mcpExtension: ChatExtension = createExtension({
   // Clear approval decisions after message is sent
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    // Use __state on McpStore too since it's also a proxy
-    const mcpStore = Stores.McpComposer.__state
-    const chatStore = Stores.Chat.__state
+    // Read via `$` snapshot (state fields + actions both live on getState())
+    const mcpStore = Stores.McpComposer.$
+    const chatStore = Stores.Chat.$
 
     // Get current conversation from chat store
     const conversation = chatStore.conversation
@@ -956,7 +957,7 @@ const mcpExtension: ChatExtension = createExtension({
       mcpStore.setCurrentConversation(conversation.id)
 
       // Get available server IDs for proper disabled_servers computation
-      const mcpServerState = Stores.McpServer.__state
+      const mcpServerState = Stores.McpServer.$
       const availableServerIds = (mcpServerState?.servers || [])
         .filter(s => s.enabled)
         .map(s => s.id)

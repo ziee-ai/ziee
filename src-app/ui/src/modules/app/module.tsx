@@ -65,7 +65,7 @@ export default createModule({
   initialize: async () => {
     // Check setup status on app initialization
     await Stores.App.checkSetupStatus()
-    if (Stores.App.__state.needsSetup) {
+    if (Stores.App.$.needsSetup) {
       console.log('Application needs setup')
     } else {
       console.log('Application is already set up')

@@ -272,7 +272,11 @@ function createLocalProxy<S extends object>(
 ): LocalStoreInstance<S> {
   return new Proxy({} as LocalStoreInstance<S>, {
     get: (_, prop) => {
-      if (prop === '$' || prop === '__state') return api.getState()
+      // `$` is the sole hook-free snapshot escape (state reads in handlers);
+      // the `__state` alias was removed. Actions (function-valued props) are
+      // returned resolved from getState(), hook-free — callable in render AND
+      // handlers with no `$`.
+      if (prop === '$') return api.getState()
       const value = (api.getState() as any)[prop]
       if (typeof value === 'function') return value
       // eslint-disable-next-line react-hooks/rules-of-hooks
