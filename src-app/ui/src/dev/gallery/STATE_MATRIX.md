@@ -953,8 +953,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 22 |
-| branch | `isUser` | 27 |
+| branch | `!textData.text` | 23 |
+| branch | `isUser` | 28 |
 
 ### `modules/chat/components/TitleEditor`
 
@@ -1067,7 +1067,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 23 |
+| branch | `!textData.text` | 24 |
 
 ### `modules/chat/extensions/text/components/ThinkingContent`
 
