@@ -1494,7 +1494,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `versions.length <= 1` | 42 |
-| branch | `isViewingOld` | 89 |
+| branch | `isViewingOld` | 88 |
 
 ### `modules/file/project-extension/components/ProjectFilesInlinePreview`
 
@@ -2696,8 +2696,8 @@ Required states: `error`
 | branch | `isExpanded` | 300 |
 | branch | `!run \|\| countToolUses(run) < 2` | 325 |
 | branch | `!mcpStore` | 355 |
-| branch | `!streamingMessage` | 692 |
-| branch | `!toolUseId` | 707 |
+| branch | `!streamingMessage` | 693 |
+| branch | `!toolUseId` | 708 |
 
 ### `modules/mcp/components/McpConfigModal`
 

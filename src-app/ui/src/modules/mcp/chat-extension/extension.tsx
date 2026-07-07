@@ -388,7 +388,8 @@ const mcpExtension: ChatExtension = createExtension({
   sseEventHandlers: {
     mcpToolStart: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpToolStartData
-      // Access store via __state to avoid triggering React hooks outside component context
+      // addToolCall is an action — callable directly on the store proxy
+      // (actions are hook-free, safe outside a React component context).
       const mcpStore = Stores.McpComposer
 
       mcpStore.addToolCall({
@@ -830,7 +831,7 @@ const mcpExtension: ChatExtension = createExtension({
       )
 
       // Get available servers to compute selectedServers from disabledServers
-      // Access __state directly on the McpServer store (outside React context)
+      // Read via `$` snapshot on the McpServer store (outside React context)
       const mcpServerState = Stores.McpServer.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const availableServerIds = new Set(availableServers.map(s => s.id))
@@ -940,7 +941,7 @@ const mcpExtension: ChatExtension = createExtension({
   // Clear approval decisions after message is sent
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    // Use __state on McpStore too since it's also a proxy
+    // Read via `$` snapshot (state fields + actions both live on getState())
     const mcpStore = Stores.McpComposer.$
     const chatStore = Stores.Chat.$
 

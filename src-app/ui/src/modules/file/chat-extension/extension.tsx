@@ -69,8 +69,8 @@ function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps)
   // is mounted inside ConversationPage). Without this explicit onClick,
   // FileCard's default falls back to opening the global preview drawer.
   const openInRightPanel = () => {
-    // `__state` (not the render-only `Stores.X` proxy) for store access inside an
-    // event handler — the proxy fires React hooks on access (Rules-of-Hooks).
+    // displayInRightPanel is an action — callable directly from an event
+    // handler (actions are hook-free; only state *reads* in a handler need `$`).
     Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,

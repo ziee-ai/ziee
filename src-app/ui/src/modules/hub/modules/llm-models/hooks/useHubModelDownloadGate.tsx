@@ -156,9 +156,9 @@ export function useHubModelDownloadGate() {
 
   const runGates = async (model: HubModel): Promise<GateRunResult> => {
     // The LlmRepository store loads via `__init__.repositories` on
-    // FIRST proxy access, but this gate hook reads via `__state` (we
+    // FIRST proxy access, but this gate hook reads via `$` (we
     // run from event handlers — see `feedback_stores_state_in_handlers`).
-    // `__state` doesn't trigger the lazy load, so if no other surface
+    // `$` doesn't trigger the lazy load, so if no other surface
     // has touched the store yet (e.g. a fresh session that goes
     // straight from /setup to /hub without visiting LLM Repositories),
     // `repositories` is `[]` and every gate check 404s with "Repository

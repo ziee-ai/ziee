@@ -105,7 +105,7 @@ const assistantExtension: ChatExtension = createExtension({
   },
 
   composeRequestFields: async (): Promise<ExtensionRequestFields> => {
-    // Use __state to access raw state outside React component context.
+    // Read via `$` (hook-free snapshot) outside a React component context.
     const selectedAssistantId =
       Stores.AssistantPicker.$.selectedAssistantId
 

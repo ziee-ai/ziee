@@ -55,7 +55,7 @@ export function SkillDetailDrawer() {
 
   // Read the REACTIVE available map so the effect below re-runs when
   // the conversation's available listing loads — reading
-  // `__state.available` (non-reactive) meant the checkbox stayed false
+  // `$.available` (non-reactive) meant the checkbox stayed false
   // for an actually-hidden skill if `available` wasn't loaded yet.
   const availableMap = Stores.ConversationSkills.available
   const conversationAvailable = conversationId

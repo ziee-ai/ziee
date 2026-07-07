@@ -78,8 +78,8 @@ export function FilePreviewList() {
                 // right panel beats the global drawer for the
                 // "review while chatting" flow.
                 onClick={() =>
-                  // `__state` (not the render-only proxy) for store access from
-                  // an event handler — the proxy fires React hooks on access.
+                  // displayInRightPanel is an action — callable directly from
+                  // an event handler (actions are hook-free).
                   Stores.Chat.displayInRightPanel({
                     id: file.id,
                     title: file.filename,

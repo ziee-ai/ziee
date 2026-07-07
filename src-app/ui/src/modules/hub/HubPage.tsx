@@ -97,8 +97,8 @@ export function HubPage() {
       await Stores.HubCatalog.refresh()
       // The refresh handler returns an updated/new_version tuple,
       // but the user just needs a success toast.
-      // Read via `__state` (not the render-only `Stores.HubCatalog.*`
-      // proxy, which calls a hook — illegal inside this async handler
+      // Read via `$` snapshot (not the render-only `Stores.HubCatalog.*`
+      // reactive read, which calls a hook — illegal inside this async handler
       // and throws React #321, swallowing the success toast).
       message.success(`Hub catalog refreshed to v${Stores.HubCatalog.$.hubVersion ?? '?'}`)
       // Trigger each visible tab's own refresh hook so per-tab lists

@@ -1328,7 +1328,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "versions.length <= 1", line: 42 },
-      { kind: "branch", condition: "isViewingOld", line: 89 },
+      { kind: "branch", condition: "isViewingOld", line: 88 },
     ],
   },
   "modules/file/project-extension/components/ProjectFilesInlinePreview": {
@@ -2445,8 +2445,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "isExpanded", line: 300 },
       { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 325 },
       { kind: "branch", condition: "!mcpStore", line: 355 },
-      { kind: "branch", condition: "!streamingMessage", line: 692 },
-      { kind: "branch", condition: "!toolUseId", line: 707 },
+      { kind: "branch", condition: "!streamingMessage", line: 693 },
+      { kind: "branch", condition: "!toolUseId", line: 708 },
     ],
   },
   "modules/mcp/components/McpConfigModal": {
