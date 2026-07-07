@@ -10,6 +10,8 @@ src-app/server/src/modules/file/handlers/management.rs	298	315	correctness,secur
 src-app/server/src/modules/file/routes.rs	28	28	correctness,security,perms-authz,api-contract,error-handling,patterns-conformance
 src-app/server/tests/file/mod.rs	14	14	correctness,tests-quality,security,api-contract
 src-app/server/tests/file/pdf_raw_test.rs	1	121	correctness,tests-quality,security,api-contract
+src-app/server/vendor/pgvector	0	0	correctness,concurrency,state-management,resource-lifecycle,a11y,perf,error-handling
+src-app/server/vendor/pgvector	1	1	correctness,concurrency,state-management,resource-lifecycle,a11y,perf,error-handling
 src-app/ui/package.json	52	52	security,correctness,patterns-conformance
 src-app/ui/src/components/ui/testIds.generated.ts	2	2	patterns-conformance,correctness,tests-quality
 src-app/ui/src/components/ui/testIds.generated.ts	274	291	patterns-conformance,correctness,tests-quality
@@ -47,4 +49,4 @@ src-app/ui/src/modules/file/viewers/pdf/pdfjs.ts	1	195	correctness,concurrency,s
 src-app/ui/src/modules/file/viewers/pdf/usePdfDocument.ts	1	80	correctness,concurrency,state-management,resource-lifecycle,a11y,perf,error-handling
 src-app/ui/src/modules/file/viewers/pdf/zoom.test.ts	1	32	tests-quality,correctness,patterns-conformance
 src-app/ui/src/modules/file/viewers/pdf/zoom.ts	1	34	correctness,concurrency,state-management,resource-lifecycle,a11y,perf,error-handling
-src-app/ui/tests/e2e/visual/pdf-viewer.spec.ts	1	115	tests-quality,correctness,a11y,patterns-conformance
+src-app/ui/tests/e2e/visual/pdf-viewer.spec.ts	1	115	tests-quality,correctness,a11y
