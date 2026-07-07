@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 309 surfaces carry renderable-state signals; 1710 signals total.
+// 310 surfaces carry renderable-state signals; 1712 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -835,8 +835,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 22 },
-      { kind: "branch", condition: "isUser", line: 27 },
+      { kind: "branch", condition: "!textData.text", line: 23 },
+      { kind: "branch", condition: "isUser", line: 28 },
     ],
   },
   "modules/chat/components/TitleEditor": {
@@ -883,6 +883,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!match", line: 203 },
+    ],
+  },
+  "modules/chat/core/utils/HtmlBlock": {
+    surface: "modules/chat/core/utils/HtmlBlock",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "copied", line: 68 },
+      { kind: "branch", condition: "effectiveMode === 'preview'", line: 77 },
     ],
   },
   "modules/chat/core/utils/StreamdownErrorBoundary": {
@@ -938,7 +946,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/text/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 23 },
+      { kind: "branch", condition: "!textData.text", line: 24 },
     ],
   },
   "modules/chat/extensions/text/components/ThinkingContent": {

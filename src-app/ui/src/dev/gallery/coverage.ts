@@ -222,6 +222,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/core/extensions/registry": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
   "modules/chat/core/extensions/slots": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/core/extensions/utils": { kind: 'via', reason: 'rendered within the chat module page' },
+  "modules/chat/core/utils/HtmlBlock": { kind: 'via', reason: 'rendered within the chat module page (html block toggle/preview)' },
   "modules/chat/core/utils/StreamdownErrorBoundary": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
   "modules/chat/core/utils/useStreamdownComponents": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/extensions/export/extension": { kind: 'via', reason: 'rendered within the chat module page' },

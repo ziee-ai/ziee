@@ -5,6 +5,7 @@ import { Stores } from '@/core/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
+import { streamdownPlugins } from '@/modules/chat/core/utils/streamdownPlugins'
 
 interface TextContentProps {
   content: MessageContent
@@ -33,6 +34,7 @@ export const TextContent = memo(function TextContent({
           isAnimating={!isUser && isStreaming}
           shikiTheme={['github-light', 'github-dark']}
           components={components}
+          plugins={streamdownPlugins}
           urlTransform={streamdownUrlTransform}
         >
           {textData.text}

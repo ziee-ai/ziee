@@ -295,12 +295,26 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     // content-rendering detectors (L1/L2/L3/L4) so the audit reports whether each
     // rich renderer works in the gallery or degrades to raw text.
     slug: 'deep-chat-rendering-showcase',
-    title: 'Conversation — rendering showcase (math/mermaid/code/table)',
+    title: 'Conversation — rendering showcase (math/mermaid/code/html/table)',
     conversationId: RENDERING_SHOWCASE_ID,
-    note: 'math (KaTeX) + mermaid + highlighted code + table → drives L1/L2/L3/L4',
+    note: 'math (KaTeX) + mermaid + highlighted code + html block + table → drives L1/L2/L3/L4',
     setup: async () => {
       await whenLoaded(RENDERING_SHOWCASE_ID)
     },
+    interactions: [
+      {
+        // The ```html block defaults to the CODE view; clicking the toggle's
+        // Preview option flips it to the sandboxed-iframe render — captures the
+        // render-mode combo (the mount-only pass only shows the default CODE mode).
+        name: 'html-preview',
+        note: 'click the HTML block Code⇄Preview toggle → the sandboxed-iframe live render (default is CODE)',
+        steps: async d => {
+          await d.click('html-block-toggle-opt-preview')
+          await d.waitFor('html-block-preview', 3000)
+          await d.wait(300)
+        },
+      },
+    ],
   },
   {
     slug: 'deep-chat-branched',

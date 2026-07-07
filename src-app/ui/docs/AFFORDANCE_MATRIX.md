@@ -41,7 +41,7 @@ matrix is the spec; the gap table is the delta.
 |---|---|---|
 | 1 | **Code block** (```` ```lang ````) | Streamdown → `[data-streamdown="code-block"]` |
 | 2 | **Mermaid block** (```` ```mermaid ````) | Streamdown `@streamdown/mermaid` → `[data-streamdown="mermaid-block"]` |
-| 3 | **HTML block** (```` ```html ````) | Streamdown code block (raw HTML is **sanitized**, never live-rendered) |
+| 3 | **HTML block** (```` ```html ````) | `HtmlBlock` custom renderer → `[data-testid="html-block"]` (Code/Preview toggle; Preview = sandboxed-iframe live render) |
 | 4 | **Math** (`$…$`, `$$…$$`) | Streamdown KaTeX |
 | 5 | **Table** (GFM pipe table) | `MarkdownTable` override → `[data-streamdown="table-wrapper"]` |
 | 6 | **Image** (markdown `![]()`) | `img` override in `useStreamdownComponents` |
@@ -161,6 +161,7 @@ deep-states (`deep-chat-streaming`, `deep-chat-long`,
 | Type | Affordances present |
 |---|---|
 | Code block | copy, download, wrap toggle, line numbers, language label *(all Streamdown-native)* |
+| HTML block | live render (sandboxed iframe), source⇄render toggle, copy source, language label *(`HtmlBlock` — guarded by the `html-render` detector rule)* |
 | Table | copy (md/CSV), download, fullscreen *(`MarkdownTable` + Streamdown dropdowns)* |
 | Attachment card | expand/collapse, open-new-tab, open-side-panel, viewer download, a11y label |
 | Tool-call block | expand/collapse (args + result), progress |
@@ -178,7 +179,7 @@ deep-states (`deep-chat-streaming`, `deep-chat-long`,
 |---|---|---|---|---|
 | G1 | **Mermaid block** | source⇄render **toggle** | R | **HIGH** |
 | G2 | **Mermaid block** | **copy source** | R | **HIGH** |
-| G3 | **HTML block** | sandboxed-iframe **live render** + toggle | R | **HIGH** |
+| ~~G3~~ | ~~**HTML block**~~ | ~~sandboxed-iframe **live render** + toggle~~ | R | **SHIPPED** — `HtmlBlock` (§7(b)); guarded by the `html-render` detector rule |
 | G4 | **Tool-call block** | **copy result** | R | **MED** |
 | G5 | **Image (md)** | **lightbox / expand** | R | **MED** |
 | G6 | **Image (md)** | alt is passed but not surfaced on broken/hover | R | **LOW** |
@@ -192,12 +193,16 @@ deep-states (`deep-chat-streaming`, `deep-chat-long`,
 | G14 | **Code block** | explicit collapse for very-long (height-capped only) | N | LOW |
 | G15 | **Conversation list** | bulk select / multi-delete | N | LOW |
 
-**Severity counts:** HIGH = 3 · MED = 3 · LOW (incl. NICE) = 9. **Total = 15.**
+**Severity counts (open):** HIGH = 2 · MED = 3 · LOW (incl. NICE) = 9.
+**Total open = 14.** (G3 shipped — see §7(b).)
 
 > **Note on G1–G3:** Streamdown *renders* mermaid and gives it a download
 > control (`mermaid-block-actions`), but ships **no source toggle and no
-> copy-source**; and it **sanitizes** raw HTML rather than rendering it. These
-> are the two user-named backlog features (§7 a/b) plus the copy-source rider.
+> copy-source** (G1/G2, still open). **G3 is SHIPPED**: the `HtmlBlock` custom
+> renderer now gives ```` ```html ```` blocks a Code⇄Preview toggle whose Preview
+> is a strictly-sandboxed iframe (`sandbox="allow-scripts"`, no
+> `allow-same-origin`; injected CSP blocks external network) — the raw HTML is no
+> longer merely sanitized. The `html-render` detector rule guards the toggle.
 
 ---
 
@@ -214,14 +219,17 @@ Playwright and, for every rendered content-type container, asserts its
 | table-copy | `[data-streamdown="table-wrapper"]` ⊃ `TableCopyDropdown` control |
 | table-fullscreen | `[data-streamdown="table-wrapper"]` ⊃ `[data-testid="markdown-table-fullscreen-btn"]` |
 | mermaid-toggle | `[data-streamdown="mermaid-block"]` ⊃ a source-toggle control ← **allowlisted gap (G1)** |
+| html-render | `[data-testid="html-block"]` ⊃ `[data-testid="html-block-toggle"]` (Code⇄Preview toggle) ← **guarding (G3 shipped)** |
 | toolcall-expand | `[data-testid^="mcp-toolcall-card-"]` ⊃ `[data-testid^="mcp-toolcall-details-btn-"]` |
 | message-copy | `[data-testid="chat-message"]` ⊃ `[data-testid="chat-message-copy-btn"]` |
 | attachment-newtab | `[data-testid="inline-file-preview"]` ⊃ `[data-testid="inline-file-preview-open"]` |
 
 **Allowlist gating** (`scripts/affordance-audit-allowlist.json`): a rule listed
 there reports as an **ALLOWED** gap (documented, non-gating) instead of failing —
-so the two known backlog gaps (mermaid toggle, HTML render) keep the detector
-green while remaining tracked. **Any NEW missing control** — e.g. someone deletes
+so the one remaining backlog gap (mermaid toggle) keeps the detector green while
+tracked. The HTML-render toggle has SHIPPED, so its `html-render` rule is
+**guarding** (not allowlisted) — a missing HTML toggle now fails the run.
+**Any NEW missing control** — e.g. someone deletes
 the code-copy button — is **not** allowlisted and **fails** the run
 (non-zero exit). This makes the detector simultaneously a *regression guard* for
 shipped affordances and a *tracker* for the backlog.
@@ -237,14 +245,15 @@ node scripts/affordance-audit.mjs --report-only   # never exits non-zero
 
 ## 7. Backlog (implement AFTER this matrix lands, as feature-lifecycle work)
 
-Prioritized. **(a)** and **(b)** are the two user-named, confirmed gaps and are
-**NOT** implemented on this branch — this branch is matrix + audit + detector
-only.
+Prioritized. **(a)** and **(b)** were the two user-named, confirmed gaps.
+**(b) has since SHIPPED** (the `HtmlBlock` sandboxed-iframe render + toggle,
+delivered as feature-lifecycle work; its `html-render` detector rule now guards
+it). **(a)** (mermaid toggle) remains open and allowlisted.
 
 | Rank | Feature | Addresses | Grade |
 |---|---|---|---|
 | 1 | **(a) Mermaid code⇄render toggle** (+ copy source) | G1, G2 | HIGH |
-| 2 | **(b) HTML block sandboxed-iframe render + toggle** | G3 | HIGH |
+| ~~2~~ | ✅ **(b) HTML block sandboxed-iframe render + toggle** — SHIPPED (`HtmlBlock`; `html-render` rule guards it) | G3 | HIGH |
 | 3 | Tool-call **copy result** button | G4 | MED |
 | 4 | Markdown-image **lightbox / expand** | G5 | MED |
 | 5 | Conversation **jump-to-bottom** button | G7 | MED |
