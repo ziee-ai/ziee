@@ -46,7 +46,7 @@ export interface TableView<T> {
   selectRow: (row: number, mode: 'replace' | 'toggle' | 'range') => void
   clearSelection: () => void
   /** Serialise the current selection (or the whole view when empty) to TSV. */
-  selectionText: (dataColumns?: CoreColumn[]) => string
+  selectionText: (dataColumns?: CoreColumn[], sanitize?: boolean) => string
   // derived
   viewData: T[]
   visibleColumns: CoreColumn[]
@@ -156,12 +156,12 @@ export function useTableView<T>(opts: UseTableViewOptions<T>): TableView<T> {
   }, [])
 
   const selectionText = React.useCallback(
-    (dataColumns?: CoreColumn[]) => {
+    (dataColumns?: CoreColumn[], sanitize?: boolean) => {
       const cols = dataColumns ?? visibleColumns
       if (selection.kind === 'none' || (selection.kind === 'rows' && selection.rows.length === 0)) {
-        return serializeTsv(viewData, cols)
+        return serializeTsv(viewData, cols, { sanitize })
       }
-      return serializeSelectionTsv(selection, viewData, cols)
+      return serializeSelectionTsv(selection, viewData, cols, { sanitize })
     },
     [selection, viewData, visibleColumns],
   )

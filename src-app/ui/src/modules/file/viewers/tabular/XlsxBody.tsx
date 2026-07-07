@@ -104,6 +104,13 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
   const [viewCount, setViewCount] = useState(dataSource.length)
   const selectionRef = useRef('')
   const [scrollTo, setScrollTo] = useState<number | null>(null)
+  const titleByKey = useMemo(
+    () => new Map(exportColumns.map(c => [c.key, c.title])),
+    [exportColumns],
+  )
+  const visibleKeysRef = useRef<string[]>(exportColumns.map(c => c.key))
+  const activeColumns = (): ExportColumn[] =>
+    visibleKeysRef.current.map(k => ({ key: k, title: titleByKey.get(k) ?? k }))
 
   const onJump = (rowNumber: number) => {
     const idx = viewRef.current.findIndex(r => r.__rn === String(rowNumber))
@@ -116,7 +123,7 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
   }
 
   const onCopy = async () => {
-    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, exportColumns, '\t')
+    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, activeColumns(), '\t')
     try {
       await navigator.clipboard.writeText(tsv)
       message.success('Copied to clipboard')
@@ -127,7 +134,7 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
 
   const onExport = async () => {
     try {
-      const blob = await viewToXlsxBlob(viewRef.current, exportColumns, sheet.name)
+      const blob = await viewToXlsxBlob(viewRef.current, activeColumns(), sheet.name)
       downloadBlob(blob, exportFilename(fileName, 'xlsx'))
     } catch {
       message.error('Failed to export sheet')
@@ -171,8 +178,9 @@ export function XlsxSheet({ sheet, fileName }: { sheet: Sheet; fileName?: string
         resizable
         columnChooser
         selectionMode="cell"
+        sanitizeClipboard
         filterPlaceholder="Filter rows…"
-        onViewChange={rows => { viewRef.current = rows; setViewCount(rows.length) }}
+        onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns }}
         onSelectionChange={tsv => { selectionRef.current = tsv }}
         scrollToIndex={scrollTo}
         data-testid={`file-xlsx-table-${sheet.name}`}

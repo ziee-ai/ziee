@@ -168,14 +168,41 @@ export function canHideColumn(currentlyVisibleKeys: string[], key: string): bool
   return currentlyVisibleKeys.includes(key) && currentlyVisibleKeys.length > 1
 }
 
+/** Options for TSV serialisers. `sanitize` neutralizes spreadsheet formulas so
+ *  a copied/exported cell can't execute when pasted into Excel/Sheets. */
+export interface TsvOptions {
+  sanitize?: boolean
+}
+
+/** True when a string parses as a plain finite number (so a legit negative like
+ *  "-5" is not treated as a formula). */
+function isPlainNumber(v: string): boolean {
+  const s = v.trim()
+  return s !== '' && Number.isFinite(Number(s))
+}
+
+/** Formula/CSV-injection neutralization: a spreadsheet evaluates a cell that
+ *  begins with = + - @ (or a leading tab/CR) as a formula. Prefix such a cell
+ *  (that is not a real number) with a single quote so it stays literal text. */
+export function neutralizeSpreadsheetCell(v: string): string {
+  if (v === '') return v
+  if (/^[=+\-@\t\r]/.test(v) && !isPlainNumber(v)) return `'${v}`
+  return v
+}
+
+function fieldOf(v: unknown, sanitize: boolean): string {
+  const s = cellString(v)
+  return sanitize ? neutralizeSpreadsheetCell(s) : s
+}
+
 /** A row's visible cells as a tab-joined line. */
-function rowToTsvLine<T>(record: T, columns: CoreColumn[]): string {
-  return columns.map(c => cellString(getCellValue(record, c))).join('\t')
+function rowToTsvLine<T>(record: T, columns: CoreColumn[], sanitize: boolean): string {
+  return columns.map(c => fieldOf(getCellValue(record, c), sanitize)).join('\t')
 }
 
 /** Serialise the whole view (no header) to newline-joined TSV. */
-export function serializeTsv<T>(rows: T[], columns: CoreColumn[]): string {
-  return rows.map(r => rowToTsvLine(r, columns)).join('\n')
+export function serializeTsv<T>(rows: T[], columns: CoreColumn[], opts: TsvOptions = {}): string {
+  return rows.map(r => rowToTsvLine(r, columns, !!opts.sanitize)).join('\n')
 }
 
 /** Serialise the current selection to TSV (DEC-8):
@@ -188,20 +215,22 @@ export function serializeSelectionTsv<T>(
   selection: TableSelection,
   viewRows: T[],
   columns: CoreColumn[],
+  opts: TsvOptions = {},
 ): string {
+  const sanitize = !!opts.sanitize
   if (selection.kind === 'none') return ''
   if (selection.kind === 'cell') {
     const record = viewRows[selection.row]
     if (record == null) return ''
     const col = columns.find(c => c.key === selection.col)
     if (!col) return ''
-    return cellString(getCellValue(record, col))
+    return fieldOf(getCellValue(record, col), sanitize)
   }
   const ordered = [...selection.rows].sort((a, b) => a - b)
   return ordered
     .map(i => viewRows[i])
     .filter((r): r is T => r != null)
-    .map(r => rowToTsvLine(r, columns))
+    .map(r => rowToTsvLine(r, columns, sanitize))
     .join('\n')
 }
 

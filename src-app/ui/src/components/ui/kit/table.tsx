@@ -89,13 +89,17 @@ export interface TableProps<T> {
   selectionMode?: 'none' | 'cell' | 'row'
   /** Called with the copied TSV after a selection copy. */
   onCopy?: (tsv: string) => void
+  /** Neutralize spreadsheet formulas (=,+,-,@) in copied/serialised TSV so an
+   *  untrusted cell can't execute when pasted into Excel/Sheets. */
+  sanitizeClipboard?: boolean
   /** Called (from an effect) with the current selection serialised to TSV
    *  (empty string when nothing is selected) — lets an external "Copy" button
    *  copy the selection. */
   onSelectionChange?: (tsv: string) => void
   /** Called (from an effect) with the current filtered+sorted view whenever it
-   *  changes — for external readout / export / jump-to-row. */
-  onViewChange?: (view: T[]) => void
+   *  changes, plus the currently-visible (non-gutter) column keys — for external
+   *  readout / export / jump-to-row (export honours column-chooser visibility). */
+  onViewChange?: (view: T[], meta: { visibleColumns: string[] }) => void
   /** View-relative index to scroll into view (virtual: scrollToIndex; plain:
    *  scrollIntoView). Change the value to trigger a scroll. */
   scrollToIndex?: number | null
@@ -268,27 +272,35 @@ export function Table<T>(props: TableProps<T>) {
     defaultHidden: props.columns.filter(c => c.defaultHidden).map(c => c.key),
   })
 
-  // Fire onViewChange from an effect (never during render) — ITEM-10. The
-  // callback is held in a ref so an inline-arrow prop (the common case) does not
-  // re-run the effect every render; it fires only when the view actually changes.
-  const onViewChangeRef = React.useRef(props.onViewChange)
-  onViewChangeRef.current = props.onViewChange
-  React.useEffect(() => {
-    onViewChangeRef.current?.(view.viewData)
-  }, [view.viewData])
-
   const selecting = (props.selectionMode ?? 'none') !== 'none'
-  // Copy columns exclude any rowHeader gutter (DEC-8).
+  const sanitizeClipboard = !!props.sanitizeClipboard
+  // Copy/export columns exclude any rowHeader gutter (DEC-8), and reflect the
+  // CURRENT column-chooser visibility so hidden columns drop out of both.
   const copyColumns = React.useMemo(
     () => view.visibleColumns.filter(c => !(c as TableColumn<T>).rowHeader),
     [view.visibleColumns],
   )
+
+  // Fire onViewChange from an effect (never during render) — ITEM-10. The
+  // callback is held in a ref so an inline-arrow prop (the common case) does not
+  // re-run the effect every render; it fires only when the view actually changes.
+  // It reports the currently-visible (non-gutter) column keys so an external
+  // export/copy excludes column-chooser-hidden columns.
+  const onViewChangeRef = React.useRef(props.onViewChange)
+  onViewChangeRef.current = props.onViewChange
+  const visibleKeys = copyColumns.map(c => c.key)
+  const visibleKeysSig = visibleKeys.join('')
+  React.useEffect(() => {
+    onViewChangeRef.current?.(view.viewData, { visibleColumns: visibleKeys })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.viewData, visibleKeysSig])
+
   // Surface the current selection (empty when none) to an external Copy button.
   const onSelectionChangeRef = React.useRef(props.onSelectionChange)
   onSelectionChangeRef.current = props.onSelectionChange
   React.useEffect(() => {
-    onSelectionChangeRef.current?.(serializeSelectionTsv(view.selection, view.viewData, copyColumns))
-  }, [view.selection, view.viewData, copyColumns])
+    onSelectionChangeRef.current?.(serializeSelectionTsv(view.selection, view.viewData, copyColumns, { sanitize: sanitizeClipboard }))
+  }, [view.selection, view.viewData, copyColumns, sanitizeClipboard])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // Only handle copy when the table itself is focused (DEC-3: never hijack
@@ -296,7 +308,7 @@ export function Table<T>(props: TableProps<T>) {
     if ((e.key === 'c' || e.key === 'C') && (e.metaKey || e.ctrlKey)) {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
-      const tsv = view.selectionText(copyColumns)
+      const tsv = view.selectionText(copyColumns, sanitizeClipboard)
       if (!tsv) return
       e.preventDefault()
       void navigator.clipboard?.writeText(tsv).then(() => props.onCopy?.(tsv)).catch(() => {})

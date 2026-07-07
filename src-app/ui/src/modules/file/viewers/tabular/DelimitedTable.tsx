@@ -140,6 +140,15 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
   const [viewCount, setViewCount] = useState(dataSource.length)
   const selectionRef = useRef('')
   const [scrollTo, setScrollTo] = useState<number | null>(null)
+  // Currently-visible (non-gutter) column keys, reported by the kit Table, so
+  // Export/Copy honour the column-chooser. Seeded with the full data set.
+  const titleByKey = useMemo(
+    () => new Map(exportColumns.map(c => [c.key, c.title])),
+    [exportColumns],
+  )
+  const visibleKeysRef = useRef<string[]>(exportColumns.map(c => c.key))
+  const activeColumns = (): ExportColumn[] =>
+    visibleKeysRef.current.map(k => ({ key: k, title: titleByKey.get(k) ?? k }))
 
   const onJump = (rowNumber: number) => {
     const idx = viewRef.current.findIndex(r => r.__rn === String(rowNumber))
@@ -153,7 +162,9 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
   }
 
   const onCopy = async () => {
-    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, exportColumns, '\t')
+    // selectionRef is already formula-neutralized by the kit (sanitizeClipboard);
+    // the whole-view fallback goes through rowsToDelimited (also neutralized).
+    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, activeColumns(), '\t')
     try {
       await navigator.clipboard.writeText(tsv)
       message.success('Copied to clipboard')
@@ -164,7 +175,7 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
 
   const onExport = () => {
     const ext = delimiter === '\t' ? 'tsv' : 'csv'
-    const csv = rowsToDelimited(viewRef.current, exportColumns, delimiter)
+    const csv = rowsToDelimited(viewRef.current, activeColumns(), delimiter)
     downloadDelimited(csv, exportFilename(fileName, ext), delimiter)
   }
 
@@ -211,8 +222,9 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
         resizable
         columnChooser
         selectionMode="cell"
+        sanitizeClipboard
         filterPlaceholder="Filter rows…"
-        onViewChange={rows => { viewRef.current = rows; setViewCount(rows.length) }}
+        onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns }}
         onSelectionChange={tsv => { selectionRef.current = tsv }}
         scrollToIndex={scrollTo}
         data-testid="file-delimited-table"

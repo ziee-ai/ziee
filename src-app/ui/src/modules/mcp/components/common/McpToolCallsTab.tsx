@@ -118,9 +118,12 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
         loading={loading}
         dataSource={calls}
         columns={columns}
+        // Sort reorders the loaded page (safe). NO client-side `filterable`
+        // here: this grid is SERVER-paginated, so filtering only the current
+        // page would hide matches on other pages and contradict the pager
+        // (DEC-5). Server-side filtering is a follow-up. The memory audit log,
+        // which loads all ≤limit rows at once, DOES enable filterable.
         sortable
-        filterable
-        filterPlaceholder="Filter tool calls…"
         empty={<Empty description="No tool calls recorded yet" data-testid="mcp-tool-calls-empty" />}
         onRowClick={row =>
           setExpandedId(id => (id === row.id ? null : row.id))

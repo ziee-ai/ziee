@@ -135,6 +135,17 @@ test('serializeSelectionTsv renders cell, row, and multi-row selections', () => 
   assert.equal(serializeTsv(rows, cols).split('\n').length, 3)
 })
 
+// clipboard formula-injection neutralization (opt-in sanitize)
+test('serialize sanitize option neutralizes formula cells but keeps numbers', () => {
+  const r: Row[] = [{ id: '1', name: '=SUM(A1)', qty: '-5', note: '@x' }]
+  const raw = serializeSelectionTsv({ kind: 'rows', rows: [0] }, r, cols)
+  assert.equal(raw, '=SUM(A1)\t-5\t@x') // unsanitized (default)
+  const safe = serializeSelectionTsv({ kind: 'rows', rows: [0] }, r, cols, { sanitize: true })
+  assert.equal(safe, "'=SUM(A1)\t-5\t'@x") // = and @ neutralized; -5 is a real number
+  // single-cell selection sanitized too
+  assert.equal(serializeSelectionTsv({ kind: 'cell', row: 0, col: 'name' }, r, cols, { sanitize: true }), "'=SUM(A1)")
+})
+
 // TEST-8 — width clamp never below minWidth (default 64), honours explicit min
 test('clampWidth floors at the minimum width', () => {
   assert.equal(clampWidth(10), 64) // default floor

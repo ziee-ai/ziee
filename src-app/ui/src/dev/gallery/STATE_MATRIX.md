@@ -463,26 +463,26 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 112 |
-| branch | `!active` | 144 |
-| branch | `view.sort!.dir === 'asc'` | 145 |
-| branch | `meta.sortable` | 148 |
-| branch | `props.filterable` | 216 |
-| branch | `props.columnChooser && hideable.length > 0` | 228 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 298 |
-| branch | `!tsv` | 300 |
-| branch | `showVirtual` | 311 |
-| branch | `hasToolbar` | 322 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 353 |
-| branch | `caption != null` | 363 |
-| branch | `resizableTable` | 364 |
-| branch | `meta.resizable` | 384 |
-| branch | `busy` | 391 |
-| empty | `rows.length === 0` | 399 |
-| branch | `meta.resizable` | 510 |
-| branch | `mode === 'none'` | 560 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 565 |
-| branch | `!selectionActive(props, col)` | 572 |
+| branch | `v == null \|\| typeof v === 'boolean'` | 116 |
+| branch | `!active` | 148 |
+| branch | `view.sort!.dir === 'asc'` | 149 |
+| branch | `meta.sortable` | 152 |
+| branch | `props.filterable` | 220 |
+| branch | `props.columnChooser && hideable.length > 0` | 232 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 310 |
+| branch | `!tsv` | 312 |
+| branch | `showVirtual` | 323 |
+| branch | `hasToolbar` | 334 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 365 |
+| branch | `caption != null` | 375 |
+| branch | `resizableTable` | 376 |
+| branch | `meta.resizable` | 396 |
+| branch | `busy` | 403 |
+| empty | `rows.length === 0` | 411 |
+| branch | `meta.resizable` | 522 |
+| branch | `mode === 'none'` | 572 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 577 |
+| branch | `!selectionActive(props, col)` | 584 |
 
 ### `components/ui/kit/tabs`
 
@@ -1637,8 +1637,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 146 |
-| branch | `truncated` | 183 |
+| branch | `idx < 0` | 155 |
+| branch | `truncated` | 194 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1654,14 +1654,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 110 |
-| branch | `sheet.truncated` | 146 |
-| branch | `!fileBinaryContent` | 200 |
-| branch | `!file` | 250 |
-| error | `loadError` | 252 |
-| loading | `!fileBinaryContent \|\| loading` | 261 |
-| empty | `sheets.length === 0` | 265 |
-| branch | `sheets.length === 1` | 269 |
+| branch | `idx < 0` | 117 |
+| branch | `sheet.truncated` | 153 |
+| branch | `!fileBinaryContent` | 208 |
+| branch | `!file` | 258 |
+| error | `loadError` | 260 |
+| loading | `!fileBinaryContent \|\| loading` | 269 |
+| empty | `sheets.length === 0` | 273 |
+| branch | `sheets.length === 1` | 277 |
 
 ### `modules/file/viewers/tabular/body`
 
@@ -2819,8 +2819,8 @@ Required states: `error`
 |---|---|---|
 | branch | `row.is_built_in` | 59 |
 | error | `error` | 110 |
-| branch | `expandedCall` | 129 |
-| branch | `expandedCall.error_message` | 144 |
+| branch | `expandedCall` | 132 |
+| branch | `expandedCall.error_message` | 147 |
 
 ### `modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer`
 

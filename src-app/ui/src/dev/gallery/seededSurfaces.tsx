@@ -991,6 +991,41 @@ const integratorSeeded: SeededSurfaceEntry[] = [
     fullHeight: true,
     component: lazyNamed(() => import('./DefectRepro'), 'DefectRepro'),
   },
+  // ── kit-Table + tabular-viewer demos as ISOLATED single surfaces (no overlay
+  //    backdrops) so the interactive F1 e2e can click sort/filter/resize/columns/
+  //    selection/expand. Store-free → no setup. ──────────────────────────────
+  {
+    slug: 'seeded-kit-table-actions',
+    title: 'kit Table — actions (interactive)',
+    note: 'sortable/filterable/resizable/columnChooser/selection demo',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'TableActionsDemo'),
+  },
+  {
+    slug: 'seeded-kit-table-scroll',
+    title: 'kit Table — scroll-to-index (interactive)',
+    note: 'virtualized jump-to-row demo',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'TableScrollDemo'),
+  },
+  {
+    slug: 'seeded-delimited-viewer',
+    title: 'Tabular viewer — CSV (interactive)',
+    note: 'real DelimitedTable with sort/filter/export/copy/jump/expand',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'DelimitedViewerDemo'),
+  },
+  {
+    slug: 'seeded-xlsx-viewer',
+    title: 'Tabular viewer — XLSX sheet (interactive)',
+    note: 'real XlsxSheet with sort/filter',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'XlsxViewerDemo'),
+  },
   // ── McpToolCallsTab: LOADED with tool-call rows (kit-Table sort/filter). The
   //    grid refetches on mount, so holdPatch re-asserts the seeded rows against
   //    the (empty) cassette. Drives the F1 data-grid sort/filter e2e. ──────────

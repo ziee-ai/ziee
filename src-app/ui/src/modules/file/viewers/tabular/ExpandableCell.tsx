@@ -21,7 +21,10 @@ export function ExpandableCell({ value, testid }: { value: string; testid: strin
   return (
     <Popover
       content={
-        <div className="max-w-md max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm p-1">
+        <div
+          className="max-w-md max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm p-1"
+          data-testid={`${testid}-popover`}
+        >
           {value}
         </div>
       }
