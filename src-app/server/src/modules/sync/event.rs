@@ -135,6 +135,15 @@ pub enum SyncEntity {
     /// Owner-scoped; notify-only — the client refetches `/api/citations`.
     BibliographyEntry,
 
+    /// An open Office document was opened or closed on the user's desktop
+    /// (the `office_bridge` watch loop diffs successive `list_open_documents`
+    /// snapshots). Owner-scoped (DEC-7 — `Audience::owner(user_id)`, never
+    /// `everyone()`); notify-only — the client refetches the open-documents
+    /// list (self-gated on `office_bridge::use`). `id` is a stable
+    /// `Uuid::new_v5` derived from the document's `full_name`, so
+    /// open/close of the same document address the same entity id.
+    OfficeDocument,
+
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
     // group-scoped, sanitized view; the only disclosure is "something

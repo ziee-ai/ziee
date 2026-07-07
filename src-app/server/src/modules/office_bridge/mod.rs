@@ -29,6 +29,7 @@ pub mod platform;
 pub mod repository;
 pub mod routes;
 pub mod tools;
+pub mod watcher;
 
 pub use repository::OfficeBridgeRepository;
 
@@ -177,6 +178,44 @@ impl AppModule for OfficeBridgeModule {
                 ),
                 Err(e) => tracing::error!("office_bridge: bridge listener failed to start: {e:?}"),
             }
+        });
+
+        // Spawn the live open/close document watch loop (ITEM-11). Fire-and-
+        // forget, non-blocking: it polls the native platform, diffs successive
+        // snapshots, and emits owner-scoped `SyncEntity::OfficeDocument` events
+        // so the frontend panel updates live. Owner audience (DEC-7) needs the
+        // desktop's single interactive user — resolved here (async) and passed
+        // into the watcher, which never resolves it itself. If no user exists
+        // yet (pre-setup), we skip: nothing to scope events to.
+        let watch_pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            let repo = repository::OfficeBridgeRepository::new((*watch_pool).clone());
+            let user_id = match repo.resolve_primary_user_id().await {
+                Ok(Some(uid)) => uid,
+                Ok(None) => {
+                    tracing::info!(
+                        "office_bridge: no active user to scope open/close sync to; \
+                         not starting watch loop"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "office_bridge: resolving primary user for watch loop failed: {e:?}; \
+                         not starting watch loop"
+                    );
+                    return;
+                }
+            };
+            // Process-lifetime loop (mirrors the local-runtime reaper): no
+            // discrete shutdown signal is threaded through module init, so pass
+            // a never-resolving future; the task ends when the process does.
+            watcher::watch_open_documents(
+                platform::active(),
+                user_id,
+                std::future::pending::<()>(),
+            )
+            .await;
         });
 
         Ok(())

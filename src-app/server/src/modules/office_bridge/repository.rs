@@ -60,6 +60,32 @@ impl OfficeBridgeRepository {
         Ok(())
     }
 
+    /// Resolve the target user for owner-scoped `SyncEntity::OfficeDocument`
+    /// events (ITEM-11 / DEC-7). ziee-desktop runs one server for one
+    /// interactive user, but there is no first-class "current desktop user"
+    /// record, so we pick the **oldest active admin** (the account created at
+    /// first-run setup — the interactive desktop user), falling back to the
+    /// oldest active user if somehow no admin exists. `None` when the users
+    /// table is empty (pre-setup) — the watcher then simply isn't spawned.
+    ///
+    /// Owner-scope is required (never `everyone()`); this resolver is the
+    /// single, documented place that maps the single-user desktop context to
+    /// that owner id.
+    pub async fn resolve_primary_user_id(&self) -> Result<Option<Uuid>, AppError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id FROM users
+            WHERE is_active = true
+            ORDER BY is_admin DESC, created_at ASC
+            LIMIT 1
+            "#
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.map(|r| r.id))
+    }
+
     pub async fn get_settings(&self) -> Result<OfficeBridgeSettings, AppError> {
         let row = sqlx::query_as!(
             OfficeBridgeSettings,
