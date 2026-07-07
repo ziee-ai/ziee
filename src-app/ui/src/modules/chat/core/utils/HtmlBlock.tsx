@@ -12,8 +12,12 @@ type ViewMode = 'code' | 'preview'
  * (registered via `plugins.renderers` — see `streamdownPlugins.ts`).
  *
  * Gives each HTML block a **Code | Preview** toggle:
- *   - **Code** (the DEFAULT — for safety): the highlighted-ish source. The user
- *     opts INTO rendering per block; untrusted HTML never auto-executes.
+ *   - **Code** (the DEFAULT — for safety): the raw HTML source as plain,
+ *     copyable text (a plain `<pre><code>`, mirroring the reference
+ *     `extensions/syntax` CodeBlock; Streamdown's Shiki `CodeBlock` reads its
+ *     controls from context, so embedding it here would double the header
+ *     chrome). The user opts INTO rendering per block; untrusted HTML never
+ *     auto-executes.
  *   - **Preview**: the HTML rendered inside a STRICTLY SANDBOXED iframe
  *     (`sandbox="allow-scripts"`, no `allow-same-origin`; `srcdoc`; injected CSP
  *     that blocks external network; no top-navigation/popups/forms). All posture

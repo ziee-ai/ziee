@@ -51,26 +51,28 @@ const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`
 
 /**
  * Wrap untrusted HTML into a document string suitable for `<iframe srcDoc>`,
- * with the CSP `<meta>` injected as the FIRST thing the browser parses so it is
- * in force before any user markup/script is evaluated.
+ * with the CSP `<meta>` as the LITERAL first bytes of the document — before any
+ * user-supplied markup — so it is in force before any user script/tag is parsed.
  *
- * The result is passed to React's `srcDoc` prop, which HTML-attribute-escapes
- * it — the raw HTML is never concatenated into a live DOM via innerHTML here, so
- * the host page has no HTML-injection surface; all execution is confined to the
+ * We do NOT splice the meta into the untrusted HTML (e.g. after a matched
+ * `<head>`). String-splicing is defeatable two ways, both of which would let a
+ * script run with NO CSP (external network re-opened):
+ *   - a `<script>` placed BEFORE the user's `<head>` parses before an
+ *     after-`<head>` meta would install;
+ *   - a decoy `<!-- <head> -->` comment captures a naive `<head>` regex, trapping
+ *     the meta inside a comment (inert).
+ * Prepending instead makes both impossible: nothing user-provided can precede
+ * our meta. A `<meta http-equiv=CSP>` before `<html>`/`<head>` is parsed into the
+ * implicit `<head>` and governs the whole document; a second (user) doctype/head
+ * is merged/ignored by the parser. CSP policies are additive, so a looser CSP the
+ * user injects LATER cannot relax ours.
+ *
+ * The result is passed to React's `srcDoc` prop, which HTML-attribute-escapes it
+ * — the raw HTML is never concatenated into a live DOM via innerHTML here, so the
+ * host page has no HTML-injection surface; all execution is confined to the
  * null-origin frame.
- *
- * Placement rules:
- *  - If the document has a `<head>`, insert the meta immediately after the
- *    opening `<head ...>` tag (before any user `<meta>`/`<script>`/`<base>`).
- *  - Otherwise prepend a full `<head>` wrapper so a fragment (`<div>…`) or a
- *    doc that starts at `<body>`/`<html>` still gets the CSP first.
  */
 export function buildSandboxedSrcdoc(html: string): string {
   const src = typeof html === 'string' ? html : ''
-  const headOpen = /<head\b[^>]*>/i
-  if (headOpen.test(src)) {
-    return src.replace(headOpen, (m) => `${m}${CSP_META}`)
-  }
-  // No <head>: put the CSP in its own head ahead of whatever the doc/fragment is.
-  return `<head>${CSP_META}</head>${src}`
+  return `<!DOCTYPE html>${CSP_META}<meta charset="utf-8">\n${src}`
 }

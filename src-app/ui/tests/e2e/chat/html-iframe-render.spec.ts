@@ -65,13 +65,17 @@ async function seedAssistantWithText(page: Page, baseURL: string, markdown: stri
 const assistantBubble = (page: Page) =>
   page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
 
-// A representative HTML doc whose inline <script> ALSO attempts to escape the
-// sandbox — used by the isolation test. Kept as a fence body.
+// A representative HTML doc whose inline <script> (a) writes a sentinel into its
+// own DOM — a POSITIVE control proving the script actually EXECUTED (not merely
+// that static markup painted), and (b) attempts to escape the sandbox. Used by
+// the isolation test.
 const PWN_HTML = [
   '<!doctype html>',
   '<html><head><title>t</title></head><body>',
-  '<h1 id="hh">hello from sandbox</h1>',
+  '<h1 id="hh">static-markup</h1>',
   '<script>',
+  '  // positive control: only a RUNNING script can flip this text.',
+  '  document.getElementById("hh").textContent = "SCRIPT_EXECUTED"',
   '  try { window.parent.__HTML_PWNED = true } catch (e) {}',
   '  try { top.__HTML_PWNED = true } catch (e) {}',
   '  try { top.location = "https://evil.test/" } catch (e) {}',
@@ -142,21 +146,45 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     expect(srcdoc).toContain('preview me')
   })
 
-  // TEST-3: srcdoc carries the injected CSP; iframe carries no-referrer.
-  test('preview injects a CSP that blocks external network', async ({
+  // TEST-3: the injected CSP actually BLOCKS external network — proven by
+  // observed effect (no request ever leaves), not just mechanism-presence.
+  test('preview CSP blocks external network (no request leaves the frame)', async ({
     page,
     testInfra,
   }) => {
-    await seedAssistantWithText(page, testInfra.baseURL, fence('<p>x</p>'))
+    const SENTINEL = 'blocked-sentinel-xyz'
+    // Any external request the frame ATTEMPTS surfaces here (Playwright fires
+    // `request` on attempt, before DNS/connect). A CSP-blocked request is never
+    // attempted → never seen. So an empty `seen` proves the CSP severed network.
+    const seen: string[] = []
+    page.on('request', r => {
+      if (r.url().includes(SENTINEL)) seen.push(r.url())
+    })
+    const html = [
+      '<!doctype html><html><body>',
+      // external image (img-src is data: only) …
+      `<img src="http://${SENTINEL}.invalid/beacon.png">`,
+      // … and an external fetch (connect-src falls back to default-src 'none').
+      `<script>fetch("http://${SENTINEL}.invalid/exfil").catch(function(){})</script>`,
+      '</body></html>',
+    ].join('\n')
+    await seedAssistantWithText(page, testInfra.baseURL, fence(html))
     const bubble = assistantBubble(page)
     const block = bubble.locator('[data-testid="html-block"]')
     await block.locator('[data-testid="html-block-toggle-opt-preview"]').click()
     const iframe = block.locator('[data-testid="html-block-preview"]')
     await expect(iframe).toBeVisible({ timeout: 5000 })
+
+    // Mechanism present …
     const srcdoc = (await iframe.getAttribute('srcdoc')) || ''
     expect(srcdoc).toContain('Content-Security-Policy')
     expect(srcdoc).toContain("default-src 'none'")
     expect(await iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
+
+    // … and effect observed: the frame's img + fetch were both blocked, so no
+    // request to the sentinel host was ever attempted.
+    await page.waitForTimeout(800)
+    expect(seen).toEqual([])
   })
 
   // TEST-4: SECURITY — sandbox script runs but cannot reach the parent.
@@ -174,10 +202,12 @@ test.describe('Tier 3 — HTML block sandboxed-iframe render', () => {
     const iframe = block.locator('[data-testid="html-block-preview"]')
     await expect(iframe).toBeVisible({ timeout: 5000 })
 
-    // Prove the script actually RAN inside the frame (so the negative below is
-    // meaningful): the frame's own DOM was built from our HTML.
+    // POSITIVE CONTROL — prove the inline <script> actually EXECUTED (not merely
+    // that static markup painted): the script rewrites #hh to "SCRIPT_EXECUTED".
+    // If a regression dropped `allow-scripts`, this stays "static-markup" and the
+    // test FAILS here — so the isolation assertion below can't pass vacuously.
     const frame = page.frameLocator('[data-testid="html-block-preview"]')
-    await expect(frame.locator('#hh')).toHaveText('hello from sandbox', {
+    await expect(frame.locator('#hh')).toHaveText('SCRIPT_EXECUTED', {
       timeout: 5000,
     })
 
