@@ -3428,31 +3428,11 @@
           "Files"
         ],
         "summary": "Get raw file bytes (inline)",
-        "description": "Get a file's original bytes inline for client-side rendering (e.g. PDF.js). Gated by files::preview; Content-Disposition: inline.",
+        "description": "Get a file's original bytes inline for client-side rendering (e.g. PDF.js). Gated by files::download (serves the exact original bytes); Content-Disposition: inline.",
         "operationId": "File.getRaw",
         "responses": {
           "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View file thumbnails and previews",
-                        "name": "FilesPreview",
-                        "value": "files::preview"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: files::preview",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
+            "description": "Missing files::download"
           },
           "200": {
             "description": "Helper type for documenting binary responses in OpenAPI",

@@ -176,6 +176,20 @@ export function createPdfController(
       eventBus.off('updatefindmatchescount', onMatches)
       eventBus.off('updatefindcontrolstate', onMatches)
       eventBus.off('scalechanging', onScaleChanging)
+      // Cancel in-flight page renders, then RESET the viewer: setDocument(null)
+      // empties the `.pdfViewer` element (removes rendered canvases) and drops
+      // pagesCount to 0, which makes any scroll/resize listener pdf.js attached
+      // to the container inert. Without this, a document swap or React
+      // StrictMode remount would construct a second PDFViewer over a
+      // non-emptied element → stacked handlers + orphaned canvases + a leak.
+      try {
+        pdfViewer.cleanup()
+        // setDocument's type wants a PDFDocumentProxy; passing null is the
+        // documented reset path (pdf.js clears the viewer).
+        pdfViewer.setDocument(null as unknown as PDFDocumentProxy)
+      } catch {
+        // best-effort teardown; the container is being unmounted anyway
+      }
     },
   }
 }

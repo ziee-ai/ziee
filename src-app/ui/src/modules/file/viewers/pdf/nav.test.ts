@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clampPage, parseJump } from './nav.ts'
+import { canNextPage, canPrevPage, clampPage, parseJump } from './nav.ts'
 
 // TEST-5 (covers ITEM-6): jump-to-page clamp/parse.
 
@@ -25,4 +25,14 @@ test('parseJump rejects non-integer input with null', () => {
   assert.equal(parseJump('', 10), null)
   assert.equal(parseJump('1.5', 10), null)
   assert.equal(parseJump('-2', 10), null)
+})
+
+test('canPrevPage / canNextPage guard the toolbar boundaries', () => {
+  // prev disabled on page 1, enabled after
+  assert.equal(canPrevPage(1), false)
+  assert.equal(canPrevPage(2), true)
+  // next disabled on the last page and when there are no pages
+  assert.equal(canNextPage(10, 10), false)
+  assert.equal(canNextPage(9, 10), true)
+  assert.equal(canNextPage(1, 0), false)
 })

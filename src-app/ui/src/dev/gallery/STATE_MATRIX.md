@@ -1605,12 +1605,12 @@ Required states: `delayed`, `error`
 | branch | `!('file' in props)` | 30 |
 | branch | `status !== 'ready' \|\| !doc \|\| !api` | 49 |
 | branch | `!container \|\| !viewer` | 52 |
-| branch | `!c` | 80 |
-| branch | `!c` | 88 |
-| branch | `findOpen` | 214 |
-| loading | `status === 'loading'` | 249 |
-| error | `status === 'error'` | 254 |
-| error | `error` | 263 |
+| branch | `!c` | 93 |
+| branch | `!c` | 101 |
+| branch | `findOpen` | 227 |
+| loading | `status === 'loading'` | 276 |
+| error | `status === 'error'` | 281 |
+| error | `error` | 290 |
 
 ### `modules/file/viewers/shared/RawCodeView`
 

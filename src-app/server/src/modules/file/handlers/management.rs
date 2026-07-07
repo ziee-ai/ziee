@@ -10,7 +10,7 @@ use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::file::handlers::download::FILE_CONTENT_CACHE_CONTROL;
 use crate::modules::file::models::File;
-use crate::modules::file::permissions::{FilesDelete, FilesPreview, FilesRead};
+use crate::modules::file::permissions::{FilesDelete, FilesDownload, FilesPreview, FilesRead};
 use crate::modules::file::storage::manager::get_file_storage;
 use crate::modules::file::types::{FileListResponse, PaginationQuery, PreviewQuery, TextPageQuery};
 use crate::modules::permissions::extractors::RequirePermissions;
@@ -90,13 +90,17 @@ pub async fn get_preview(
 
 /// Get a file's original bytes inline (for client-side rendering, e.g. PDF.js).
 ///
-/// Distinct from `download_file`: this is gated by `FilesPreview` (the perm that
-/// gates *viewing*) and serves `Content-Disposition: inline` so the browser
-/// hands the bytes to an in-page renderer rather than triggering a download.
-/// The PDF viewer loads real PDFs from here (canvas + text layer client-side),
-/// which is what removes the 50-page preview cap.
+/// Gated by `FilesDownload` — same permission as `download_file`, because this
+/// serves the EXACT original bytes (byte-identical to a download); it differs
+/// only in `Content-Disposition: inline` so the browser hands the bytes to an
+/// in-page renderer instead of triggering a save. Gating on `FilesDownload`
+/// (not `FilesPreview`) means an admin who withholds download from a group also
+/// withholds raw-byte access here — `FilesPreview` still governs the rendered
+/// preview *images* (`get_preview`), which reveal visual content without handing
+/// over the source file. The PDF viewer loads real PDFs from here (client-side
+/// render), which is what removes the 50-page preview cap.
 pub async fn get_raw(
-    auth: RequirePermissions<(FilesPreview,)>,
+    auth: RequirePermissions<(FilesDownload,)>,
     Path(file_id): Path<Uuid>,
 ) -> ApiResult<Response> {
     let user_id = auth.user.id;
@@ -294,16 +298,18 @@ pub fn get_preview_docs(op: TransformOperation) -> TransformOperation {
 pub fn get_raw_docs(op: TransformOperation) -> TransformOperation {
     use crate::modules::file::types::BlobType;
 
-    with_permission::<(FilesPreview,)>(op)
+    with_permission::<(FilesDownload,)>(op)
         .id("File.getRaw")
         .tag("Files")
         .summary("Get raw file bytes (inline)")
         .description(
             "Get a file's original bytes inline for client-side rendering \
-             (e.g. PDF.js). Gated by files::preview; Content-Disposition: inline.",
+             (e.g. PDF.js). Gated by files::download (serves the exact original \
+             bytes); Content-Disposition: inline.",
         )
         .response::<200, Json<BlobType>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing files::download"))
         .response_with::<404, (), _>(|res| res.description("File not found"))
 }
 

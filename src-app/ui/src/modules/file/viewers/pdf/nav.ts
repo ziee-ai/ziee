@@ -23,3 +23,13 @@ export function parseJump(input: string, numPages: number): number | null {
   if (Number.isNaN(n)) return null
   return clampPage(n, numPages)
 }
+
+/** Whether the "previous page" control should be enabled. */
+export function canPrevPage(page: number): boolean {
+  return page > 1
+}
+
+/** Whether the "next page" control should be enabled. */
+export function canNextPage(page: number, numPages: number): boolean {
+  return numPages > 0 && page < numPages
+}

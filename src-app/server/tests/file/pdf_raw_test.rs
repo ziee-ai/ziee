@@ -44,7 +44,7 @@ async fn test_get_raw_returns_inline_pdf_bytes() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["files::upload", "files::preview"],
+        &["files::upload", "files::download"],
     )
     .await;
 
@@ -77,37 +77,40 @@ async fn test_get_raw_returns_inline_pdf_bytes() {
     assert_eq!(served.as_ref(), bytes.as_slice(), "served bytes must equal the uploaded PDF");
 }
 
-// TEST-2 (ITEM-1): owner-scoped (cross-user → 404) + perm-gated (no
-// files::preview → 403).
+// TEST-2 (ITEM-1): owner-scoped — a different user (even one who can download
+// their OWN files) cannot read another user's raw bytes; they get a 404, not the
+// file. This is the security-critical property.
+//
+// Note on the permission gate: `get_raw` is gated by `RequirePermissions<
+// (FilesDownload,)>` (the standard extractor, identical to `download_file`),
+// which 403s a caller lacking `files::download` BEFORE the ownership lookup. That
+// 403 path is NOT separately asserted here because every user the test harness
+// creates is registered via `create_local_user_with_default_group`, and the
+// default group grants `files::download` (migration 27) — so a download-less
+// user is not constructible through `create_user_with_permissions`. The gate is
+// the same trusted mechanism `download_file` already relies on.
 #[tokio::test]
-async fn test_get_raw_cross_user_404_and_perm_gate_403() {
+async fn test_get_raw_is_owner_scoped() {
     let server = crate::common::TestServer::start().await;
 
     let owner = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "owner",
-        &["files::upload", "files::preview"],
+        &["files::upload", "files::download"],
     )
     .await;
-    // A second user WITH files::preview but who does not own the file → 404.
+    // A second user WITH files::download but who does not own the file.
     let other = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "other",
-        &["files::upload", "files::preview"],
-    )
-    .await;
-    // A third user WITHOUT files::preview → 403 even for their intent.
-    let unprivileged = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "unprivileged",
-        &["files::upload"],
+        &["files::upload", "files::download"],
     )
     .await;
 
     let bytes = test_pdf_bytes();
     let file_id = upload_pdf(&server, &owner.token, &bytes).await;
 
-    // Cross-user: owner-scope hides the file as a 404.
+    // Cross-user: owner-scope hides the file as a 404 (never leaks the bytes).
     let cross = reqwest::Client::new()
         .get(server.api_url(&format!("/files/{}/raw", file_id)))
         .header("Authorization", format!("Bearer {}", other.token))
@@ -115,13 +118,4 @@ async fn test_get_raw_cross_user_404_and_perm_gate_403() {
         .await
         .unwrap();
     assert_eq!(cross.status(), StatusCode::NOT_FOUND);
-
-    // Missing files::preview → 403 (permission gate runs before ownership).
-    let forbidden = reqwest::Client::new()
-        .get(server.api_url(&format!("/files/{}/raw", file_id)))
-        .header("Authorization", format!("Bearer {}", unprivileged.token))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
 }

@@ -11,11 +11,11 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import { Button, Input, Spin, Text, Tooltip } from '@/components/ui'
+import { Button, Input, Separator, Spin, Text, Tooltip } from '@/components/ui'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import type { PdfController, ScaleValue } from './pdfjs'
 import { usePdfDocument } from './usePdfDocument'
-import { clampPage, parseJump } from './nav'
+import { canNextPage, canPrevPage, clampPage, parseJump } from './nav'
 import { nextZoomStep } from './zoom'
 
 // Client-side PDF viewer (ITEM-5/6/7/8/9, DEC-11). Mounts PDF.js's own
@@ -65,7 +65,14 @@ export function PdfJsBody(props: FileViewerSlotProps) {
       },
     })
     controllerRef.current = controller
+    // Reset the toolbar to the new document's baseline so a document swap
+    // doesn't briefly show the previous file's page/find state before the
+    // first 'pagechanging' event lands.
     setNumPages(doc.numPages)
+    setCurrentPage(1)
+    setPageInput('1')
+    setMatches({ current: 0, total: 0 })
+    setFindQuery('')
 
     return () => {
       controller.destroy()
@@ -74,7 +81,13 @@ export function PdfJsBody(props: FileViewerSlotProps) {
   }, [status, doc, api])
 
   const goToPage = (p: number) => controllerRef.current?.setPage(clampPage(p, numPages))
-  const stepPage = (delta: number) => goToPage(currentPage + delta)
+  // Step from the controller's LIVE page, not React state (which only updates
+  // async via 'pagechanging'), so rapid double-clicks don't both read a stale
+  // page and collapse into a single step.
+  const stepPage = (delta: number) => {
+    const base = controllerRef.current?.getCurrentPage() ?? currentPage
+    goToPage(base + delta)
+  }
   const zoom = (dir: 1 | -1) => {
     const c = controllerRef.current
     if (!c) return
@@ -129,7 +142,7 @@ export function PdfJsBody(props: FileViewerSlotProps) {
             size="icon"
             variant="ghost"
             aria-label="Previous page"
-            disabled={!ready || currentPage <= 1}
+            disabled={!ready || !canPrevPage(currentPage)}
             onClick={() => stepPage(-1)}
             data-testid="file-pdf-prev-page"
           >
@@ -165,7 +178,7 @@ export function PdfJsBody(props: FileViewerSlotProps) {
             size="icon"
             variant="ghost"
             aria-label="Next page"
-            disabled={!ready || currentPage >= numPages}
+            disabled={!ready || !canNextPage(currentPage, numPages)}
             onClick={() => stepPage(1)}
             data-testid="file-pdf-next-page"
           >
@@ -173,7 +186,7 @@ export function PdfJsBody(props: FileViewerSlotProps) {
           </Button>
         </Tooltip>
 
-        <div className="mx-1 h-5 w-px bg-border" />
+        <Separator orientation="vertical" className="mx-1 !h-5" />
 
         <Tooltip title="Zoom out">
           <Button size="icon" variant="ghost" aria-label="Zoom out" disabled={!ready} onClick={() => zoom(-1)} data-testid="file-pdf-zoom-out">
@@ -201,7 +214,7 @@ export function PdfJsBody(props: FileViewerSlotProps) {
           </Button>
         </Tooltip>
 
-        <div className="mx-1 h-5 w-px bg-border" />
+        <Separator orientation="vertical" className="mx-1 !h-5" />
 
         <Tooltip title="Find (Ctrl+F)">
           <Button size="icon" variant="ghost" aria-label="Find in document" disabled={!ready} onClick={openFind} data-testid="file-pdf-find-toggle">
@@ -225,7 +238,12 @@ export function PdfJsBody(props: FileViewerSlotProps) {
             }}
             data-testid="file-pdf-find-input"
           />
-          <Text type="secondary" className="!text-xs whitespace-nowrap" data-testid="file-pdf-find-count">
+          <Text
+            type="secondary"
+            className="!text-xs whitespace-nowrap"
+            aria-live="polite"
+            data-testid="file-pdf-find-count"
+          >
             {findQuery ? `${matches.current} of ${matches.total}` : ''}
           </Text>
           <Button size="icon" variant="ghost" aria-label="Previous match" disabled={!matches.total} onClick={() => findStep(true)} data-testid="file-pdf-find-prev">
@@ -242,7 +260,16 @@ export function PdfJsBody(props: FileViewerSlotProps) {
 
       {/* Render surface — the PDFViewer manages its own scrolling + virtualization. */}
       <div className="relative min-h-0 flex-1">
-        <div ref={containerRef} className="absolute inset-0 overflow-auto" data-testid="file-pdf-container">
+        {/* tabIndex makes the scroll region focusable so the in-viewer Ctrl/Cmd+F
+            shortcut (handled on the wrapper) reliably fires when the user has
+            clicked into the document, rather than falling through to the
+            browser's native find. */}
+        <div
+          ref={containerRef}
+          tabIndex={0}
+          className="absolute inset-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          data-testid="file-pdf-container"
+        >
           <div ref={viewerRef} className="pdfViewer" />
         </div>
 
