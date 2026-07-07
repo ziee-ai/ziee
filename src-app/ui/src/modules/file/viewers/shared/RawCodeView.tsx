@@ -128,7 +128,7 @@ export function RawCodeView({
     // swap wouldn't reflect manual light/dark toggles.
     codeToHtml(source, {
       lang: lang ?? 'text',
-      theme: isDarkMode ? 'github-dark' : 'github-light',
+      theme: isDarkMode ? 'github-dark-high-contrast' : 'github-light-high-contrast',
       transformers: [lineNumberTransformer],
     })
       .then(out => {

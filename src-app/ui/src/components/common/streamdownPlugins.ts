@@ -1,4 +1,4 @@
-import { code } from '@streamdown/code'
+import { createCodePlugin } from '@streamdown/code'
 import { math } from '@streamdown/math'
 import { MermaidBlock } from '@/components/common/MermaidBlock'
 import type { ComponentProps } from 'react'
@@ -23,7 +23,13 @@ import type { Streamdown } from 'streamdown'
 export const STREAMDOWN_PLUGINS: NonNullable<
   ComponentProps<typeof Streamdown>['plugins']
 > = {
-  code,
+  // The @streamdown/code plugin carries its OWN theme pair and IGNORES Streamdown's
+  // `shikiTheme` prop, so the themes must be set HERE. github-light/dark's default
+  // tokens (e.g. the #E36209 orange on white, the #6A737D comment on near-black)
+  // fail WCAG AA; GitHub's high-contrast variants are the accessible equivalents.
+  code: createCodePlugin({
+    themes: ['github-light-high-contrast', 'github-dark-high-contrast'],
+  }),
   math,
   renderers: [{ language: 'mermaid', component: MermaidBlock }],
 }

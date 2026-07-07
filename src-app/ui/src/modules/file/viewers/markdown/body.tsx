@@ -167,8 +167,8 @@ const SAFE_IMG_COMPONENTS = {
 // fresh array reference on every render, defeating any prop-equality check
 // Streamdown does internally for its (expensive) shiki syntax-highlighting.
 const SHIKI_THEME: ComponentProps<typeof Streamdown>['shikiTheme'] = [
-  'github-light',
-  'github-dark',
+  'github-light-high-contrast',
+  'github-dark-high-contrast',
 ]
 
 export function MarkdownBody(props: FileViewerSlotProps) {

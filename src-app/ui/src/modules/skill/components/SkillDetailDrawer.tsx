@@ -222,7 +222,7 @@ export function SkillDetailDrawer() {
 
         <div className="overflow-auto">
           <StreamdownErrorBoundary fallbackText={markdown}>
-            <Streamdown shikiTheme={['github-light', 'github-dark']} plugins={STREAMDOWN_PLUGINS}>
+            <Streamdown shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']} plugins={STREAMDOWN_PLUGINS}>
               {markdown}
             </Streamdown>
           </StreamdownErrorBoundary>
@@ -247,7 +247,7 @@ export function SkillDetailDrawer() {
           <div className="overflow-auto" data-testid="skill-detail-body">
             <Title level={5}>Skill content (SKILL.md)</Title>
             <StreamdownErrorBoundary fallbackText={body}>
-              <Streamdown shikiTheme={['github-light', 'github-dark']} plugins={STREAMDOWN_PLUGINS}>
+              <Streamdown shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']} plugins={STREAMDOWN_PLUGINS}>
                 {body}
               </Streamdown>
             </StreamdownErrorBoundary>

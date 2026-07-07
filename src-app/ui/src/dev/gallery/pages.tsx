@@ -165,6 +165,7 @@ function PageFrame({
         </Text>
       </div>
       <div
+        data-gallery-frame
         className="w-full overflow-hidden rounded-md border border-border bg-background"
         style={{ height }}
       >

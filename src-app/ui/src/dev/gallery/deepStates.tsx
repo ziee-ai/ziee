@@ -459,6 +459,7 @@ export function DeepStateFrame({ entry }: { entry: DeepStateEntry }): ReactNode 
         </Text>
       </div>
       <div
+        data-gallery-frame
         className="w-full overflow-hidden rounded-md border border-border bg-background"
         style={{ height: 720 }}
       >

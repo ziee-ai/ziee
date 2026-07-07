@@ -35,7 +35,7 @@ export const TextContent = memo(function TextContent({
       <StreamdownErrorBoundary fallbackText={textData.text}>
         <Streamdown
           isAnimating={isStreaming}
-          shikiTheme={['github-light', 'github-dark']}
+          shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']}
           plugins={chatMarkdownPlugins}
           components={components}
           urlTransform={streamdownUrlTransform}

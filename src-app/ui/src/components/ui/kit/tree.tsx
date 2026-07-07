@@ -231,7 +231,10 @@ export function Tree({
         tabIndex={n.disabled ? undefined : isActive ? 0 : -1}
         style={{ paddingLeft: `${(r.level - 1) * 1}rem` }}
         className={cn(
-          'flex items-center gap-1 rounded px-1 py-0.5 text-sm focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+          // max-[480px]:min-h-11 → the whole row is the activation target (it has its
+          // own onClick); a 44px row on phones gives the checkbox a WCAG 2.5.5 tap
+          // target and spaces adjacent rows so their hit areas don't overlap.
+          'flex items-center gap-1 rounded px-1 py-0.5 text-sm max-[480px]:min-h-11 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
           !n.disabled && 'cursor-pointer hover:bg-accent',
           selected === n.key && 'bg-accent',
           n.disabled && 'opacity-50',

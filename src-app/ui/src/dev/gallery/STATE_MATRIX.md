@@ -517,12 +517,12 @@ Required states: `delayed`
 | branch | `node.disabled` | 181 |
 | branch | `active == null` | 187 |
 | branch | `!row` | 190 |
-| branch | `n.disabled` | 239 |
-| loading | `loading` | 241 |
-| branch | `hasKids` | 243 |
-| branch | `checkable` | 246 |
-| branch | `virtualStyle` | 278 |
-| branch | `!virtual` | 283 |
+| branch | `n.disabled` | 242 |
+| loading | `loading` | 244 |
+| branch | `hasKids` | 246 |
+| branch | `checkable` | 249 |
+| branch | `virtualStyle` | 281 |
+| branch | `!virtual` | 286 |
 
 ### `components/ui/kit/typography`
 
@@ -530,10 +530,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `done` | 47 |
-| branch | `copyable != null` | 75 |
-| branch | `copyable != null` | 130 |
-| branch | `safe == null` | 145 |
+| branch | `done` | 49 |
+| branch | `copyable != null` | 77 |
+| branch | `copyable != null` | 132 |
+| branch | `safe == null` | 147 |
 
 ### `components/ui/kit/upload`
 

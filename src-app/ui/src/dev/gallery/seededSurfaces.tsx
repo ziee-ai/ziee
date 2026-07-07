@@ -1038,6 +1038,7 @@ export function SeededSurfaceFrame({
         </Text>
       </div>
       <div
+        data-gallery-frame
         className={
           entry.fullHeight
             ? 'w-full rounded-md border border-border bg-background'

@@ -42,7 +42,9 @@ function CopyButton({ copyable }: { copyable: Copyable }) {
           timer.current = setTimeout(() => setDone(false), 1500)
         })
       }}
-      className="ml-1 inline-flex align-middle opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      // relative + mobile ::after overlay → the 14px inline copy glyph keeps its
+      // inline footprint but gains a WCAG 2.5.5 44px tap area on phones.
+      className="relative ms-1 inline-flex align-middle opacity-60 hover:opacity-100 max-[480px]:after:absolute max-[480px]:after:-inset-[15px] max-[480px]:after:content-[''] focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
     </button>

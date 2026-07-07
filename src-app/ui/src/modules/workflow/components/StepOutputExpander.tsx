@@ -89,7 +89,7 @@ export function StepOutputExpander({
     return (
       <div className="overflow-auto max-h-80 text-sm">
         <StreamdownErrorBoundary fallbackText={content}>
-          <Streamdown shikiTheme={['github-light', 'github-dark']} plugins={STREAMDOWN_PLUGINS}>
+          <Streamdown shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']} plugins={STREAMDOWN_PLUGINS}>
             {content}
           </Streamdown>
         </StreamdownErrorBoundary>

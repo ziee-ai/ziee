@@ -41,7 +41,16 @@ export const MermaidBlock = memo(function MermaidBlock({
   const [mode, setMode] = useState<Mode>(defaultMode)
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const isDark = useThemeOptional()?.isDark ?? false
+  // Follow the ACTUAL rendered theme. The ThemeProvider context is the source of
+  // truth when present, but a Streamdown/MermaidBlock can render in a subtree that
+  // lacks the provider; falling back to the `html.dark` class the provider sets
+  // keeps mermaid's palette matching the page (otherwise it renders its light
+  // 'default' theme — #333 edge labels — on a dark background, failing contrast).
+  const ctxDark = useThemeOptional()?.isDark
+  const isDark =
+    ctxDark ??
+    (typeof document !== 'undefined' &&
+      document.documentElement.classList.contains('dark'))
   // A DOM-id-safe, per-instance base for mermaid's temp element (useId yields
   // `:r0:`-style ids that are invalid CSS ids / break mermaid). A per-render
   // sequence suffix makes each render's id unique so a stale in-flight render
@@ -70,6 +79,13 @@ export const MermaidBlock = memo(function MermaidBlock({
           startOnLoad: false,
           securityLevel: 'strict',
           theme: isDark ? 'dark' : 'default',
+          // mermaid's dark-theme edge-label background is a translucent light fill
+          // (~rgb(88,88,88) composited) that leaves its light label text at 4.43:1 —
+          // a hair under WCAG AA. Pin a solid dark label background so the light text
+          // clears 4.5:1 comfortably; light theme keeps mermaid's defaults.
+          ...(isDark
+            ? { themeVariables: { edgeLabelBackground: '#1c2128' } }
+            : {}),
         })
         const { svg: out } = await mermaid.render(renderId, source)
         if (!cancelled) {

@@ -813,17 +813,87 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
   }
 
   // ── G5 tap-target < 44px (mobile) ────────────────────────────────────────
+  // WCAG 2.5.5 measures the EFFECTIVE target, not an inner visual box. A control's
+  // real hit area routinely exceeds its border-box via (a) a `::before`/`::after`
+  // absolute overlay with negative insets (the kit Checkbox/Switch expand their hit
+  // area this way — invisible to getBoundingClientRect), and (b) its associated
+  // <label> / the clickable row that activates it (a tree checkbox is toggled by
+  // clicking the whole row). Measuring only the inner box reported the fix as
+  // unfixed. WCAG 2.5.5 also EXEMPTS inline links in running text. Honour both.
   if (run('G5') && VW <= 480) {
+    const px = v => { const n = parseFloat(v); return Number.isNaN(n) ? 0 : n }
+    // Union the element rect with any negative-inset absolute pseudo overlay.
+    const withPseudo = (el, box) => {
+      let { left, top, right, bottom } = box
+      for (const pseudo of ['::before', '::after']) {
+        const ps = getComputedStyle(el, pseudo)
+        if (!ps || ps.position !== 'absolute') continue
+        const c = ps.content
+        if (!c || c === 'none' || c === 'normal') continue
+        if (ps.display === 'none' || ps.visibility === 'hidden') continue
+        // inset-based overlay: all four offsets numeric → box grows by the negatives.
+        const L = px(ps.left), R = px(ps.right), T = px(ps.top), B = px(ps.bottom)
+        if (ps.left !== 'auto' && ps.right !== 'auto' && ps.top !== 'auto' && ps.bottom !== 'auto') {
+          left -= Math.max(0, -L); right += Math.max(0, -R)
+          top -= Math.max(0, -T); bottom += Math.max(0, -B)
+        }
+      }
+      return { left, top, right, bottom, width: right - left, height: bottom - top }
+    }
+    // The <label> that activates this control (or the clickable row that wraps it):
+    // WCAG counts the whole target, so union it in.
+    const associatedTargetRect = el => {
+      const rects = []
+      const wrapLabel = el.closest?.('label')
+      if (wrapLabel && wrapLabel !== el) rects.push(rectOf(wrapLabel))
+      const labelledby = el.getAttribute?.('aria-labelledby')
+      if (labelledby) for (const id of labelledby.split(/\s+/)) {
+        const lab = id && document.getElementById(id)
+        if (lab && visible(lab)) rects.push(rectOf(lab))
+      }
+      if (el.id) {
+        const forLab = document.querySelector(`label[for="${CSS.escape(el.id)}"]`)
+        if (forLab && visible(forLab)) rects.push(rectOf(forLab))
+      }
+      // Same-activation clickable ancestors (their own onclick / cursor:pointer),
+      // within 3 hops and not a full-width page region — the tree checkbox nests a
+      // stopPropagation cell inside the real 44px clickable row, so union EVERY such
+      // ancestor (don't stop at the innermost) and let the largest satisfy the target.
+      let n = el.parentElement, hops = 0
+      while (n && n !== document.body && hops < 3) {
+        const s = cs(n)
+        if ((n.onclick || s.cursor === 'pointer') && rectOf(n).width < VW) rects.push(rectOf(n))
+        n = n.parentElement; hops++
+      }
+      return rects
+    }
+    const isInlineLink = el => {
+      if (el.tagName !== 'A') return false
+      const d = cs(el).display
+      if (!(d === 'inline' || d.startsWith('inline'))) return false
+      // inside running text: a prose/paragraph/list/heading/span context
+      return !!el.closest('p,li,dd,dt,span,h1,h2,h3,h4,h5,h6,[data-streamdown],.prose,blockquote,td,th')
+    }
     const seen = new Set()
     for (const el of document.querySelectorAll(INTERACTIVE)) {
       if (isChrome(el) || inSvg(el) || !visible(el) || el.getAttribute('aria-hidden') === 'true') continue
-      const r = rectOf(el)
-      const mn = Math.min(r.width, r.height)
+      if (isVisuallyHidden(el)) continue // sr-only / opacity-0 native input replaced by a styled control
+      if (isInlineLink(el)) continue // WCAG 2.5.5 inline exception
+      // Effective target = own box ∪ pseudo hit overlay ∪ associated label / clickable row.
+      let eff = withPseudo(el, rectOf(el))
+      for (const lr of associatedTargetRect(el)) {
+        eff = {
+          left: Math.min(eff.left, lr.left), top: Math.min(eff.top, lr.top),
+          right: Math.max(eff.right, lr.right), bottom: Math.max(eff.bottom, lr.bottom),
+        }
+        eff.width = eff.right - eff.left; eff.height = eff.bottom - eff.top
+      }
+      const mn = Math.min(eff.width, eff.height)
       if (mn < 44) {
         const sel = selectorFor(el)
         if (seen.has(sel)) continue
         seen.add(sel)
-        push('G5', sel, `tap target ${Math.round(r.width)}×${Math.round(r.height)}px < 44px (mobile)`, { w: Math.round(r.width), h: Math.round(r.height) }, mn < 24 ? 'MEDIUM' : 'LOW')
+        push('G5', sel, `tap target ${Math.round(eff.width)}×${Math.round(eff.height)}px < 44px (mobile)`, { w: Math.round(eff.width), h: Math.round(eff.height) }, mn < 24 ? 'MEDIUM' : 'LOW')
       }
     }
   }
@@ -1126,22 +1196,85 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
   }
 
   // ── A14 dead space from an over-tall min/fixed height ────────────────────
-  // A container with an explicit min-height / fixed height whose CONTENT fills
-  // far less than the box leaves a large blank band (a small table in a viewer
-  // sized for many rows, a short panel pinned to a tall min-height). Flag when
-  // (box_height − content_height) exceeds BOTH 35% of the box AND an absolute px
-  // floor. Content height = the union extent of the container's visible children.
+  // A container whose height is AUTHORED tall (a fixed-size scroll viewport, or a
+  // min-height pinned taller than its content) but whose CONTENT fills far less,
+  // leaving a large blank band (a small table in a viewer sized for many rows, a
+  // short panel pinned to a tall min-height). Flag when (box − content) exceeds
+  // BOTH 35% of the box AND an absolute px floor.
+  //
+  // CRITICAL: `getComputedStyle(el).height` returns the USED height in px for
+  // EVERY rendered block (it is never "auto"), so it CANNOT distinguish an
+  // authored `height:300px` from an auto-height flex/percentage/stretch box that
+  // merely resolved to a px value. Keying off `s.height !== 'auto'` therefore
+  // fired on essentially every fill-height container (chat panels, the gallery
+  // harness root, streamdown table/mermaid wrappers whose inner max-h ScrollArea
+  // under-measures) — a flood of false positives. Instead we require the tallness
+  // to be genuinely AUTHORED on THIS element, via one of two hard signals, and we
+  // exclude boxes whose height is inherited by FILLING their parent.
   if (run('A14')) {
     const FLOOR = 120 // px of empty band before it's worth flagging
+    // Scrollbar chrome (OverlayScrollbars tracks, scroll-area scrollbars) legitimately
+    // spans the full scroll extent while its "content" (the thumb) is tiny — never dead space.
+    const isScrollInfra = el => {
+      const c = clsOf(el)
+      if (/\bos-scrollbar(-track|-handle)?\b/.test(c) || /os-padding|os-viewport|os-content/.test(c)) return true
+      const slot = el.getAttribute?.('data-slot') || ''
+      if (/scroll-area-scrollbar|scrollbar/.test(slot)) return true
+      if (el.hasAttribute?.('data-overlayscrollbars')) return true
+      return false
+    }
+    // The element's height is inherited by filling its parent (flex-grow, height:100%,
+    // align-stretch cross-axis, absolute inset, or a grid track) — the blank band below
+    // short content is intentional fill, not an over-tall AUTHORED height. getComputedStyle
+    // resolves all of these to a px height, so detect the FILL MECHANISM structurally.
+    const fillsParent = (el, boxH) => {
+      const s = cs(el)
+      if ((parseFloat(s.flexGrow) || 0) > 0) return true
+      if (['absolute', 'fixed'].includes(s.position) && s.top !== 'auto' && s.bottom !== 'auto') return true
+      const p = el.parentElement
+      if (p && !inSvg(p)) {
+        const ph = p.clientHeight
+        // height:100% / stretch → the box exactly fills the parent's content box.
+        if (ph > 0 && boxH >= ph - 4) return true
+        const ps = cs(p)
+        if (ps.display.includes('grid')) return true
+        if (ps.display.includes('flex') && !ps.flexDirection.startsWith('column')) {
+          const alignSelf = s.alignSelf === 'auto' ? ps.alignItems : s.alignSelf
+          if (alignSelf === 'stretch' || alignSelf === 'normal') return true // cross-axis stretch in a row
+        }
+      }
+      return false
+    }
     for (const el of pool) {
+      if (isScrollInfra(el)) continue
+      // The gallery renders each surface inside a FIXED-height (720px) preview frame
+      // so it reads like an app viewport; a short surface leaves that harness frame
+      // mostly blank. That is a harness decision, not a product over-tall height — and
+      // the frame can't be marked `data-gallery-chrome` (that would exclude the real
+      // product surface INSIDE it from every detector), so A14 skips just the frame.
+      if (el.hasAttribute?.('data-gallery-frame')) continue
       const s = cs(el)
       const minH = parseFloat(s.minHeight) || 0
-      const hasFixed = s.height !== 'auto' && /px$/.test(s.height)
-      if (minH < FLOOR && !hasFixed) continue
       const r = rectOf(el)
-      if (r.height < FLOOR) continue
-      // Only when the explicit sizing is what makes it tall (content would be shorter).
       const boxH = r.height
+      if (boxH < FLOOR) continue
+      // A full-viewport-height container (min-h-screen/dvh, a page shell) centers or
+      // top-anchors its content; the blank remainder is intentional page gutter, not
+      // an authored-too-tall box for its content.
+      if (boxH >= VH - 4) continue
+      // scrollable content that's merely clipped isn't dead space
+      if (el.scrollHeight > el.clientHeight + 4) continue
+      if (fillsParent(el, boxH)) continue
+      // The tallness must be AUTHORED on this element, via one of:
+      //   (a) a fixed-size scroll VIEWPORT — overflow set on itself so it holds a
+      //       fixed/capped height while its content is shorter (the file/table viewer
+      //       body `overflow-auto h-[300px]`, the A14 acceptance repro), OR
+      //   (b) an authored min-height ≥ FLOOR that is what pins the box tall
+      //       (box height sits at/near the min-height, content is shorter).
+      const isFixedViewport = ['auto', 'scroll', 'hidden', 'clip'].includes(s.overflowY) ||
+        ['auto', 'scroll', 'hidden', 'clip'].includes(s.overflow)
+      const pinnedByMinH = minH >= FLOOR && boxH <= minH * 1.2
+      if (!isFixedViewport && !pinnedByMinH) continue
       const kids = Array.from(el.children).filter(c => visible(c) && !inSvg(c))
       if (!kids.length) continue
       let top = Infinity, bottom = -Infinity
@@ -1149,11 +1282,22 @@ export function inPageGeometry({ classesArg, contextTestids, actionTokens, previ
       const contentH = bottom - top
       if (!(contentH > 0)) continue
       const empty = boxH - contentH
-      // scrollable content that's merely clipped isn't dead space
-      if (el.scrollHeight > el.clientHeight + 4) continue
+      // A vertically-CENTERED container (min-h error/empty state with
+      // items-center/justify-center, my-auto, place-content-center …) distributes the
+      // slack as a SYMMETRIC top+bottom gutter — deliberate breathing room, not the
+      // A14 "content pinned to the top, blank band below" defect. Detect it
+      // geometrically (works for every centering mechanism): substantial, roughly
+      // equal top & bottom gutters ⇒ centered ⇒ skip. The real dead-space case
+      // (acceptance repro) top-anchors its content (topGutter ≈ 0), so it still fires.
+      const rr = rectOf(el)
+      const topGutter = top - rr.top
+      const bottomGutter = rr.bottom - bottom
+      const centered = Math.min(topGutter, bottomGutter) > 8 &&
+        Math.abs(topGutter - bottomGutter) < Math.max(24, 0.15 * boxH)
+      if (centered) continue
       if (empty > 0.35 * boxH && empty > FLOOR) {
         push('A14', selectorFor(el),
-          `dead space: content fills ${Math.round(contentH)}px of a ${Math.round(boxH)}px box (${Math.round(empty)}px / ${Math.round(100 * empty / boxH)}% blank) — the ${minH ? `min-height ${Math.round(minH)}px` : 'fixed height'} is too tall for the content`,
+          `dead space: content fills ${Math.round(contentH)}px of a ${Math.round(boxH)}px box (${Math.round(empty)}px / ${Math.round(100 * empty / boxH)}% blank) — the ${pinnedByMinH ? `min-height ${Math.round(minH)}px` : 'fixed viewport height'} is too tall for the content`,
           { empty: Math.round(empty), boxH: Math.round(boxH) })
       }
     }
