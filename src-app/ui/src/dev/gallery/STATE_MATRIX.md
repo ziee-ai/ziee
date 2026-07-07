@@ -880,9 +880,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!message.contents \|\| message.contents.length === 0` | 18 |
-| branch | `attachmentBlocks.length > 0` | 80 |
-| branch | `bubbleBlocks.length > 0` | 101 |
+| empty | `!message.contents \|\| message.contents.length === 0` | 19 |
+| branch | `attachmentBlocks.length > 0` | 89 |
+| branch | `bubbleBlocks.length > 0` | 110 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -945,7 +945,7 @@ Required states: `delayed`
 | kind | condition | line |
 |---|---|---|
 | loading | `!loading && messagesArray.length === 0` | 19 |
-| loading | `(loading \|\| isStreaming)` | 44 |
+| loading | `(loading \|\| isStreaming)` | 42 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1103,12 +1103,12 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 49 |
-| branch | `!conversationId` | 75 |
-| loading | `loading && !conversation` | 101 |
-| loading | `!loading && !conversation` | 110 |
-| error | `error` | 113 |
-| error | `error` | 156 |
+| branch | `!sentinel` | 50 |
+| branch | `!conversationId` | 76 |
+| loading | `loading && !conversation` | 102 |
+| loading | `!loading && !conversation` | 111 |
+| error | `error` | 114 |
+| error | `error` | 157 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

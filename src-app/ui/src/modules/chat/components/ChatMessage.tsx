@@ -1,5 +1,6 @@
 import { Fragment, memo, type ReactNode } from 'react'
-import { Avatar, ScrollArea } from '@/components/ui'
+import { ScrollArea } from '@/components/ui'
+import { cn } from '@/lib/utils'
 import type { MessageWithContent } from '@/api-client/types'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
@@ -70,7 +71,15 @@ export const ChatMessage = memo(function ChatMessage({
 
   return (
     <div
-      className={'w-full flex flex-col overflow-visible group'}
+      className={cn(
+        // Role is encoded in the geometry of THIS role-tagged element, not just
+        // a nested bubble: user messages shrink-to-content and pin to the right
+        // (self-end + w-fit, capped so they never span full width and read as
+        // centered); assistant messages stay flush-left and full-width. This is
+        // what lets a reader — and the C7 role-signature check — tell them apart.
+        'flex flex-col overflow-visible group',
+        isUser ? 'items-end self-end w-fit max-w-[85%]' : 'items-start w-full',
+      )}
       data-testid="chat-message"
       data-role={message.role}
       data-message-id={message.id}
@@ -101,21 +110,22 @@ export const ChatMessage = memo(function ChatMessage({
       {bubbleBlocks.length > 0 && (
         <div
           key={message.id}
-          className={`flex gap-2 rounded-lg relative min-w-36 flex-col ${
-            isUser ? 'bg-card border-border w-fit p-2' : 'bg-transparent w-full p-0'
-          }`}
+          className={cn(
+            'rounded-lg relative flex flex-col',
+            // User: a subtle token-driven tint (reads as a "bubble" in both
+            // themes) hugging its content. Assistant: flush, borderless,
+            // full-width — no avatar, no card.
+            isUser
+              ? 'bg-primary/10 w-fit max-w-full px-3 py-2'
+              : 'bg-transparent w-full p-0',
+          )}
         >
-          <div className={'flex items-start gap-2 w-full relative'}>
-            <div className={`flex ${!isUser ? 'hidden' : ''}`}>
-              <Avatar src={undefined} className="h-8 w-8" />
-            </div>
-
-            {/* Message content */}
-            <div
-              className={`${isUser ? '!pt-0.5' : ''} flex flex-1 -mt-[2px] w-full overflow-x-hidden flex-col`}
-            >
-              <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
-            </div>
+          <div
+            className={
+              'flex flex-1 w-full overflow-x-hidden flex-col'
+            }
+          >
+            <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>
           </div>
         </div>
       )}
