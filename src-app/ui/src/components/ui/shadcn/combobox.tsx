@@ -118,7 +118,11 @@ function ComboboxContent({
         anchor={anchor}
         // z-[70] so the popup renders ABOVE a Dialog it's opened inside
         // (dialog content is z-[60]); isolate keeps it a self-contained context.
-        className="isolate z-[70]"
+        // pointer-events-auto is the critical bit (same as the Select): our Drawer
+        // is a modal Radix Dialog that sets `body { pointer-events: none }`, which
+        // the body-portaled popup would otherwise inherit — making its options
+        // impossible to click.
+        className="isolate z-[70] pointer-events-auto"
       >
         <ComboboxPrimitive.Popup
           data-slot="combobox-content"
