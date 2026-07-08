@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
 import { Flex } from '@/components/ui'
 import { Text } from '@/components/ui'
 import { Loader2, MessageSquare } from 'lucide-react'
@@ -71,6 +71,8 @@ interface MessageListProps {
 /** App content column: max-w-4xl (896px) minus the px-4 gutters. */
 const MAX_CONTENT_WIDTH = 896
 const CONTENT_GUTTER = 32
+/** Stable empty seed (identity kept so an empty window doesn't churn options). */
+const EMPTY_SEED: VirtualItem[] = []
 
 /**
  * MessageList — row-virtualized (`@tanstack/react-virtual`) when an inner scroll
@@ -134,16 +136,35 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     // Seed the virtualizer with any REAL measured heights persisted from a prior
     // mount of this (or any) conversation at this width bucket, so re-opening a
     // long conversation starts rows at their true height (near-zero first-scroll
-    // correction). Rebuilds when the window changes OR the width bucket changes —
-    // never on scroll (ITEM-2, DEC-2).
+    // correction) (ITEM-2, DEC-2).
+    //
+    // `@tanstack/virtual-core` consumes `initialMeasurementsCache` EXACTLY ONCE —
+    // at the first render where the window is non-empty (its internal
+    // measurementsCache is still empty). The store clears messages on every
+    // conversation switch, so a real mount starts at count 0 and the count 0→N
+    // transition happens AFTER the layout effect corrected `widthRef` — so the
+    // one build lands at the right width bucket. We FREEZE it (seedRef) after that
+    // first non-empty build: streaming replaces the messages Map on every token,
+    // churning `messagesArray` identity, but rebuilding a seed the library has
+    // already consumed is wasted O(window) work + an impure LRU mutation during
+    // render (FIX_ROUND-2). A mid-session width change can't re-seed (the library
+    // won't re-read it) — nor does it need to: the visible rows simply re-measure
+    // at the new width via the row ResizeObservers.
+    const seedRef = useRef<VirtualItem[] | null>(null)
     const initialMeasurementsCache = useMemo(
-      () =>
-        buildInitialMeasurementsCache(
+      () => {
+        if (seedRef.current) return seedRef.current
+        if (messagesArray.length === 0) return EMPTY_SEED
+        const seed = buildInitialMeasurementsCache(
           messagesArray.map(m => m.id),
           widthRef.current,
-        ),
-      // widthBucketState (not widthRef) drives the rebuild; getScrollElement is a
-      // fresh closure each render and intentionally not a dep.
+        )
+        seedRef.current = seed
+        return seed
+      },
+      // widthBucketState is a dep only so the pre-consume (count 0) width
+      // correction is reflected in the single build; after the freeze the body
+      // short-circuits. getScrollElement is a fresh closure each render, not a dep.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [messagesArray, widthBucketState],
     )

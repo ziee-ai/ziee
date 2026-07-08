@@ -29,7 +29,7 @@ import { reservedImageBox } from '@/components/common/reservedImageBox'
  */
 
 export function ReservedImage(props: JSX.IntrinsicElements['img']) {
-  const { className, width, height, onLoad, style, ...rest } = props
+  const { className, width, height, onLoad, onError, style, ...rest } = props
   const [loaded, setLoaded] = useState(false)
 
   const { hasDims, style: wrapperStyle } = reservedImageBox(width, height, loaded)
@@ -51,6 +51,13 @@ export function ReservedImage(props: JSX.IntrinsicElements['img']) {
         onLoad={e => {
           setLoaded(true)
           onLoad?.(e)
+        }}
+        onError={e => {
+          // Release the reservation on a broken/404 image too — otherwise a
+          // dimensionless image that errors keeps its 240px min-height forever,
+          // leaving a permanent phantom gap in the message (FIX_ROUND-2).
+          setLoaded(true)
+          onError?.(e)
         }}
       />
     </span>

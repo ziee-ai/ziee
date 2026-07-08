@@ -95,13 +95,20 @@ async function scrollHeightOf(page: Page): Promise<number> {
   })
 }
 
-// Poll until the total height stops changing (measurement settled) instead of a
-// fixed sleep — deterministic across CI timing.
+// Poll until the total height is stable across SEVERAL consecutive reads
+// (deterministic across CI timing). Requiring a run of equal reads — not just
+// one repeat — guards against a transient plateau between measurement bursts
+// (e.g. async Shiki highlighting resizing a code row after a brief pause).
 async function settledScrollHeight(page: Page): Promise<number> {
   let prev = -1
-  for (let i = 0; i < 25; i++) {
+  let stable = 0
+  for (let i = 0; i < 40; i++) {
     const h = await scrollHeightOf(page)
-    if (h > 0 && h === prev) return h
+    if (h > 0 && h === prev) {
+      if (++stable >= 3) return h
+    } else {
+      stable = 0
+    }
     prev = h
     await page.waitForTimeout(120)
   }
@@ -187,10 +194,14 @@ test.describe('message-scroll-perf — geometry stability', () => {
     })
     await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
 
-    // Immediately (before a full re-scroll) the total should already be close to
-    // the measured total — the seed restored real heights on remount.
+    // Immediately (before any re-measurement) the total must be ~EXACTLY the
+    // measured total — a WORKING seed restores the real measured heights, so the
+    // ratio is ~1.0. A broken/no-op seed would fall back to the estimator total
+    // (materially off 1.0, per the sibling geometry test's 0.65..1.5 band), so a
+    // tight bound here isolates the cache path from the estimator (FIX_ROUND-2).
     const warmSH = await scrollHeightOf(page)
-    expect(warmSH / finalSH).toBeGreaterThan(0.8)
+    expect(warmSH / finalSH).toBeGreaterThan(0.95)
+    expect(warmSH / finalSH).toBeLessThan(1.05)
   })
 
   test('code-heavy conversation scrolls without runtime errors', async ({ page, testInfra }) => {

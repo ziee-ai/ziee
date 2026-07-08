@@ -107,12 +107,15 @@ const memo = new WeakMap<MessageWithContent, Map<number, number>>()
 
 /**
  * Estimate the rendered height (px) of a message row at the given content width.
- * `width` should be the scroll viewport's inner content width; callers pass the
- * app's `max-w-4xl` fallback (768) before the scroller is ready (DEC-1).
+ * `width` should be the scroll viewport's inner content width. The default
+ * matches MessageList's own fallback — the app content column is `max-w-4xl`
+ * (896px) minus the 32px px-4 gutters = 864 — so a caller relying on the default
+ * buckets/estimates at the SAME width MessageList seeds at (FIX_ROUND-2: default
+ * alignment; DEC-1).
  */
 export function estimateMessageHeight(
   message: MessageWithContent | undefined,
-  width = 768,
+  width = 864,
 ): number {
   const contents = message?.contents
   if (!message || !contents || contents.length === 0) return FLOOR
