@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **323** surfaces carry at least one renderable-state signal.
-- **1856** signals total: 1462 branch, 112 empty, 95 error, 99 loading, 86 overlay, 2 panel.
+- **325** surfaces carry at least one renderable-state signal.
+- **1883** signals total: 1488 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 86 |
 | `empty` | 90 |
-| `error` | 74 |
+| `error` | 75 |
 | `open` | 72 |
 | `panel-open` | 2 |
 
@@ -1009,22 +1009,26 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 150 |
-| branch | `!el` | 159 |
-| empty | `count === 0` | 166 |
-| branch | `!el` | 184 |
-| branch | `!item` | 187 |
-| branch | `!msg` | 189 |
-| branch | `!c` | 195 |
-| branch | `virtualize` | 200 |
-| branch | `idx < 0` | 202 |
-| branch | `!c` | 211 |
-| branch | `newTop == null` | 213 |
-| loading | `!loading && count === 0` | 222 |
-| branch | `loadingOlder` | 248 |
-| branch | `virtualize` | 258 |
-| branch | `!msg` | 273 |
-| loading | `(loading \|\| isStreaming)` | 317 |
+| branch | `!vw \|\| vw <= 0` | 115 |
+| branch | `w <= 0` | 117 |
+| branch | `!el` | 128 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 287 |
+| branch | `!el` | 296 |
+| empty | `count === 0` | 303 |
+| branch | `!el` | 321 |
+| branch | `!item` | 324 |
+| branch | `!msg` | 326 |
+| branch | `!c` | 332 |
+| branch | `virtualize` | 337 |
+| branch | `idx < 0` | 339 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 351 |
+| branch | `!c` | 357 |
+| branch | `newTop == null` | 359 |
+| loading | `!loading && count === 0` | 368 |
+| branch | `loadingOlder` | 394 |
+| branch | `virtualize` | 404 |
+| branch | `!msg` | 419 |
+| loading | `(loading \|\| isStreaming)` | 463 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1133,13 +1137,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 50 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 67 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 83 |
-| branch | `scopedHref?.startsWith('#')` | 104 |
-| empty | `typeof src !== 'string' \|\| src.length === 0` | 149 |
-| branch | `src.startsWith('/')` | 150 |
-| branch | `u.origin === window.location.origin` | 154 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 52 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 69 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 85 |
+| branch | `scopedHref?.startsWith('#')` | 106 |
+| empty | `verdict === 'empty'` | 161 |
+| branch | `verdict === 'allowed'` | 162 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1324,8 +1327,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `groups.length === 0` | 21 |
-| branch | `i > 0` | 30 |
+| empty | `groups.length === 0` | 25 |
+| branch | `i > 0` | 34 |
 
 ### `modules/code-sandbox/components/DownloadedRootfsCard`
 
@@ -1342,16 +1345,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.isDefault` | 77 |
-| branch | `anyDraining` | 82 |
-| branch | `variant === 'available'` | 90 |
-| branch | `variant === 'downloaded' && !group.isDefault` | 100 |
-| branch | `showProgress` | 121 |
-| branch | `progressMessage` | 124 |
-| branch | `canManage` | 179 |
-| branch | `f.artifact` | 198 |
-| branch | `f.live > 0` | 215 |
-| branch | `f.artifact` | 225 |
+| branch | `group.isDefault` | 81 |
+| branch | `anyDraining` | 86 |
+| branch | `variant === 'available'` | 94 |
+| branch | `variant === 'downloaded' && !group.isDefault` | 109 |
+| branch | `showProgress` | 130 |
+| branch | `progressMessage` | 133 |
+| branch | `canManage` | 188 |
+| branch | `f.artifact` | 207 |
+| branch | `f.live > 0` | 224 |
+| branch | `f.artifact` | 234 |
 
 ### `modules/code-sandbox/components/SandboxResourceLimitsSection`
 
@@ -1370,14 +1373,15 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 97 |
-| branch | `pinnedVersion` | 213 |
-| branch | `downloadedFlavors.length > 0` | 224 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 242 |
-| branch | `sseError` | 265 |
-| loading | `loading && groups.length === 0` | 274 |
-| error | `error && groups.length === 0` | 276 |
-| error | `error` | 286 |
+| branch | `!canRead` | 123 |
+| branch | `pinnedVersion` | 239 |
+| branch | `downloadedFlavors.length > 0` | 250 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 268 |
+| branch | `isDegraded` | 292 |
+| branch | `sseError` | 307 |
+| loading | `loading && groups.length === 0` | 316 |
+| error | `error && groups.length === 0` | 318 |
+| error | `error` | 328 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -1387,7 +1391,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!oldV` | 79 |
 | branch | `!name.startsWith(ASSET_PREFIX)` | 119 |
-| branch | `canManage` | 417 |
+| branch | `disabledReason` | 422 |
+| branch | `canManage` | 425 |
 
 ### `modules/file-rag/components/sections/ChunkingSection`
 
@@ -2818,23 +2823,47 @@ Required states: `empty`, `error`
 | branch | `index < repositories.length - 1` | 329 |
 | branch | `totalRepositories > 0` | 338 |
 
+### `modules/mcp/chat-extension/components/AskUserWizardContent`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `option.recommended` | 88 |
+| branch | `option.description` | 94 |
+| branch | `option.preview` | 99 |
+| branch | `multi` | 152 |
+| branch | `showOther` | 203 |
+| branch | `multi` | 213 |
+| branch | `multi` | 234 |
+| branch | `otherOn` | 250 |
+| error | `fieldState.error?.message` | 260 |
+| branch | `!mounted.current` | 331 |
+| branch | `otherErr` | 342 |
+| branch | `isSubmitting` | 355 |
+| branch | `isSubmitting` | 369 |
+| branch | `!zodOk \|\| firstBad >= 0` | 386 |
+| branch | `step > 0` | 417 |
+| branch | `isLast` | 429 |
+| branch | `total > 1` | 460 |
+| branch | `current && isChoice && currentSchema.title` | 484 |
+| branch | `current && isChoice && currentSchema.description` | 489 |
+| branch | `current` | 494 |
+| branch | `isChoice` | 495 |
+
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 215 |
-| branch | `isMultiSelect` | 217 |
-| branch | `fieldSchema.type === 'boolean'` | 255 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
-| branch | `fieldSchema.format === 'password'` | 336 |
-| branch | `status === 'accepted'` | 464 |
-| branch | `items.length > 0` | 493 |
-| branch | `status === 'declined'` | 507 |
-| branch | `status === 'cancelled'` | 527 |
+| branch | `isSelectField` | 69 |
+| branch | `isMultiSelect` | 71 |
+| branch | `status === 'accepted'` | 208 |
+| branch | `items.length > 0` | 237 |
+| branch | `status === 'declined'` | 251 |
+| branch | `status === 'cancelled'` | 271 |
+| branch | `isRichAskUser` | 302 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -2869,6 +2898,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `mcpServerParenLabel(toolCall.server)` | 170 |
 | branch | `toolCall.input !== undefined` | 183 |
 | branch | `!isControlWrite` | 205 |
+
+### `modules/mcp/chat-extension/components/elicitationFields`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `fieldSchema.type === 'boolean'` | 27 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 41 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 66 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 86 |
+| branch | `fieldSchema.format === 'password'` | 108 |
 
 ### `modules/mcp/chat-extension/extension`
 
