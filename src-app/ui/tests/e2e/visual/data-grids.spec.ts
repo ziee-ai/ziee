@@ -14,6 +14,13 @@ async function order(scope: Page | Locator, table: string): Promise<string[]> {
 async function openSeeded(page: Page, slug: string, table: string) {
   await page.goto(`/gallery.html?surface=${slug}&theme=light&accent=blue`)
   await page.getByTestId(table).waitFor({ state: 'visible' })
+  // These grids fetch their rows from the (mock) store, so the table renders
+  // empty for a tick before rows populate. Wait for the first row so an immediate
+  // `order()` can't race the async load (a cold-start flake when this runs first).
+  await page
+    .locator(`[data-testid^="${table}-row-"]`)
+    .first()
+    .waitFor({ state: 'visible' })
 }
 
 test.describe('Data grids — sort + filter', () => {

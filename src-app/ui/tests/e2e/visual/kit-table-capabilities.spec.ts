@@ -4,8 +4,9 @@
  * backend-free gallery. Lifecycle: .lifecycle/kit-table-actions (TEST-12..20).
  *
  * Click-based tests drive the ISOLATED `?surface=seeded-kit-table-*` surfaces
- * (the browse-all canvas has open-overlay backdrops that intercept clicks);
- * assert-only checks use the browse view. Backend-free.
+ * (the browse-all canvas mounts every story at once, so an isolated single-surface
+ * render is the stable, focused click target); assert-only checks use the browse
+ * view. Backend-free.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import { openGallery } from './_gallery'

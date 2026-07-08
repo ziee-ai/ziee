@@ -124,7 +124,11 @@ function InputGroupInput({
     <Input
       data-slot="input-group-control"
       className={cn(
-        "flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
+        // h-full: conform to the InputGroup's own height instead of the base
+        // Input's taller intrinsic height (h-8, and h-11 at ≤480px), which
+        // otherwise overflows the group box. The `max-[480px]:h-full` override is
+        // required to beat the base Input's responsive `max-[480px]:h-11`.
+        "h-full max-[480px]:h-full flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
         className
       )}
       {...props}
