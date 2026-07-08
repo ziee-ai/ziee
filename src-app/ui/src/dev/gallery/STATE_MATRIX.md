@@ -993,8 +993,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!msg` | 21 |
 | branch | `!text` | 41 |
 | branch | `isRegenerating \|\| isBusy` | 68 |
-| branch | `isUser` | 95 |
-| branch | `isAssistant` | 108 |
+| branch | `isUser` | 97 |
+| branch | `isAssistant` | 110 |
 
 ### `modules/chat/components/MessageList`
 

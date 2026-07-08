@@ -873,8 +873,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!msg", line: 21 },
       { kind: "branch", condition: "!text", line: 41 },
       { kind: "branch", condition: "isRegenerating || isBusy", line: 68 },
-      { kind: "branch", condition: "isUser", line: 95 },
-      { kind: "branch", condition: "isAssistant", line: 108 },
+      { kind: "branch", condition: "isUser", line: 97 },
+      { kind: "branch", condition: "isAssistant", line: 110 },
     ],
   },
   "modules/chat/components/MessageList": {
