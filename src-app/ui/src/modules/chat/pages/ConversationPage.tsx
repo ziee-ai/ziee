@@ -217,16 +217,22 @@ export default function ConversationPage() {
   // stops a smooth animation from firing during the stale A→B switch window.
   // Also suppressed while an older-page prepend is being scroll-anchored
   // (pendingAnchorRef) — otherwise the bottom-follow would fight the restore.
+  // AND suppressed when `hasMoreAfter` is true: the loaded window is anchored
+  // MID-conversation (after an around= jump), so `messagesEndRef` is not the
+  // real latest — auto-following it would re-enter the bottom-load sentinel and
+  // cascade an un-interruptible auto-scroll toward the tail. Auto-follow only
+  // makes sense once the window actually holds the newest message.
   useEffect(() => {
     if (
       !pendingAnchorRef.current &&
+      !hasMoreAfter &&
       conversation?.id === conversationId &&
       initialScrollConvIdRef.current === conversationId &&
       isAtBottomRef.current
     ) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages, conversationId, conversation])
+  }, [messages, conversationId, conversation, hasMoreAfter])
 
   // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
   // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next

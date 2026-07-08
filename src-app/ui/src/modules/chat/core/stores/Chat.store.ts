@@ -310,6 +310,8 @@ interface ChatState {
   hasMoreAfter: boolean
   /** An older-page fetch is in flight (guards the scroll trigger + shows the top spinner). */
   loadingOlder: boolean
+  /** A newer-page fetch is in flight (re-entrancy guard for the bottom sentinel). */
+  loadingNewer: boolean
 
   // Streaming message assembly
   streamingMessage: MessageWithContent | null
@@ -487,6 +489,7 @@ export const Chat = defineStore('Chat', {
     hasMoreBefore: false,
     hasMoreAfter: false,
     loadingOlder: false,
+    loadingNewer: false,
     streamingMessage: null as MessageWithContent | null,
     tempUserMessageId: null as string | null,
     streamingAbortController: null as AbortController | null,
@@ -715,6 +718,7 @@ export const Chat = defineStore('Chat', {
           hasMoreBefore: false,
           hasMoreAfter: false,
           loadingOlder: false,
+          loadingNewer: false,
         })
       }
 
@@ -814,6 +818,7 @@ export const Chat = defineStore('Chat', {
           hasMoreBefore: page.has_more_before,
           hasMoreAfter: page.has_more_after,
           loadingOlder: false,
+          loadingNewer: false,
           loading: false,
         })
       } catch (error: any) {
@@ -868,10 +873,20 @@ export const Chat = defineStore('Chat', {
     loadNewerMessages: async () => {
       const state = get()
       const conversationId = state.conversation?.id
-      if (!conversationId || !state.hasMoreAfter || state.isStreaming) return
+      // Re-entrancy guard (`loadingNewer`) mirrors `loadingOlder`: the bottom
+      // sentinel can fire repeatedly, so drop overlapping same-cursor fetches.
+      if (
+        !conversationId ||
+        !state.hasMoreAfter ||
+        state.isStreaming ||
+        state.loadingNewer
+      ) {
+        return
+      }
       const newestId = lastMessageId(state.messages)
       if (!newestId) return
 
+      set({ loadingNewer: true })
       try {
         const page = await ApiClient.Message.getHistory({
           id: conversationId,
@@ -882,11 +897,15 @@ export const Chat = defineStore('Chat', {
         set(s => ({
           messages: appendWindow(s.messages, page.messages),
           hasMoreAfter: page.has_more_after,
+          loadingNewer: false,
         }))
         await get().computeForkPoints()
       } catch (error: any) {
         if (get().conversation?.id === conversationId) {
-          set({ error: error.message || 'Failed to load newer messages' })
+          set({
+            error: error.message || 'Failed to load newer messages',
+            loadingNewer: false,
+          })
         }
       }
     },
@@ -911,6 +930,7 @@ export const Chat = defineStore('Chat', {
           hasMoreBefore: page.has_more_before,
           hasMoreAfter: page.has_more_after,
           loadingOlder: false,
+          loadingNewer: false,
         })
         await get().computeForkPoints()
         return get().messages.has(messageId)
@@ -939,6 +959,7 @@ export const Chat = defineStore('Chat', {
             hasMoreBefore: page.has_more_before,
             hasMoreAfter: page.has_more_after,
             loadingOlder: false,
+            loadingNewer: false,
           })
         } else {
           // Window already includes the tail: merge so loaded older pages stay
@@ -1942,6 +1963,7 @@ export const Chat = defineStore('Chat', {
         hasMoreBefore: false,
         hasMoreAfter: false,
         loadingOlder: false,
+        loadingNewer: false,
         streamingMessage: null,
         tempUserMessageId: null,
         streamingMessageId: null,

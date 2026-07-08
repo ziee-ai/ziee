@@ -1209,23 +1209,23 @@ Required states: `delayed`, `error`
 | branch | `!sentinel` | 136 |
 | branch | `!Stores.Chat.$.conversation` | 157 |
 | branch | `!conversationId` | 199 |
-| branch | `!sentinel` | 238 |
-| branch | `!entries[0]?.isIntersecting` | 242 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 245 |
-| branch | `!sentinel` | 280 |
-| branch | `!entries[0]?.isIntersecting` | 284 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 285 |
-| loading | `!pending` | 299 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 302 |
-| branch | `!c \|\| !v` | 308 |
-| branch | `newTop == null` | 310 |
-| branch | `!conversation?.id` | 355 |
-| branch | `!m` | 359 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 362 |
-| loading | `loading && !conversation` | 383 |
-| loading | `!loading && !conversation` | 392 |
-| error | `error` | 395 |
-| error | `error` | 452 |
+| branch | `!sentinel` | 244 |
+| branch | `!entries[0]?.isIntersecting` | 248 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 251 |
+| branch | `!sentinel` | 286 |
+| branch | `!entries[0]?.isIntersecting` | 290 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 291 |
+| loading | `!pending` | 305 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 308 |
+| branch | `!c \|\| !v` | 314 |
+| branch | `newTop == null` | 316 |
+| branch | `!conversation?.id` | 361 |
+| branch | `!m` | 365 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 368 |
+| loading | `loading && !conversation` | 389 |
+| loading | `!loading && !conversation` | 398 |
+| error | `error` | 401 |
+| error | `error` | 458 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

@@ -29,6 +29,10 @@ Every confirmed finding was fixed; two were rejected with rationale.
 
 ## Re-audit (fresh blind round over the fixed diff)
 
-Two fresh blind agents (angles: correctness/concurrency/state-management; a11y/patterns-conformance/security) reviewed `git diff origin/main...HEAD` with the fixes applied, focusing on fix-correctness + fix-introduced regressions.
+Two fresh blind agents (angles: correctness/concurrency/state-management; a11y/patterns-conformance/security) reviewed `git diff origin/main...HEAD` with the fixes applied, focusing on fix-correctness + fix-introduced regressions. They confirmed every round-1 fix correct/complete, but surfaced THREE not-previously-caught defects (carried into FIX_ROUND-2):
 
-**New confirmed findings:** 0
+- **E1 (state, med)** `loadNewerMessages` was implemented but never wired to a bottom sentinel, and `jumpToLatest` didn't snap to the real tail after an around= jump → the user couldn't scroll DOWN to newer messages / "Jump to latest" reached only the loaded mid-window bottom.
+- **E2 (correctness, low)** `build_snippet` sliced the original string with a byte offset from the lowercased copy → mis-centered snippet or a panic (500) on length-changing lowercasing (Turkish `İ`, etc.).
+- **F1 (a11y, low)** the MessageList "loading older" aria-live region was conditionally mounted already-populated → screen readers wouldn't announce it.
+
+**New confirmed findings:** 3
