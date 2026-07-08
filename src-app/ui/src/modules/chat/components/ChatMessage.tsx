@@ -191,6 +191,7 @@ export const ChatMessage = memo(function ChatMessage({
             {offerCollapse ? (
               <CollapsibleBlock
                 className="w-full"
+                messageId={message.id}
                 data-testid="chat-message-collapsible"
               >
                 <div className={'w-full flex flex-col gap-2'}>{bubbleNodes}</div>

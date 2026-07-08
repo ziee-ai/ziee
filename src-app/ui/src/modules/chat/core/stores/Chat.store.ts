@@ -1,5 +1,6 @@
 import { type ComponentType, memo, type ReactNode } from 'react'
 import { defineStore } from '@/core/store-kit'
+import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
 import type {
   Branch,
@@ -721,6 +722,12 @@ export const Chat = defineStore('Chat', {
           loadingOlder: false,
           loadingNewer: false,
         })
+        // Drop the outgoing conversation's ephemeral per-row view state
+        // (show-more collapse, inline-file collapse/seen/height) so the
+        // incoming conversation starts clean — message ids are globally unique,
+        // so this is a memory-bound + correctness measure, not required for
+        // isolation (message-scroll-stability, ITEM-6 / DEC-4).
+        useMessageViewStateStore.getState().resetViewState()
       }
 
       get().cancelCacheClear(id)
@@ -2144,6 +2151,7 @@ export const Chat = defineStore('Chat', {
 
       state.conversationStateCache.clear()
       state.cacheClearTimers.clear()
+      useMessageViewStateStore.getState().resetViewState()
 
       console.log('[Chat.store] Destroyed successfully')
     })
