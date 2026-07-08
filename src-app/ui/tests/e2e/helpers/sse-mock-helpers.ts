@@ -520,10 +520,149 @@ export async function mockGetMessages(
       if (req.method() !== 'GET') {
         return route.fallback()
       }
+      // GET /messages now returns a PaginatedMessages envelope. This helper
+      // serves the whole set as a single page (no lazy-load boundaries) so
+      // existing specs are unchanged; use `mockPaginatedMessages` to exercise
+      // before/after/around windowing.
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(fullMessages),
+        body: JSON.stringify({
+          messages: fullMessages,
+          has_more_before: false,
+          has_more_after: false,
+        }),
+      })
+    },
+  )
+}
+
+/**
+ * Pagination-aware mock for `GET /api/conversations/:id/messages`. Serves a
+ * keyset window over `allMessages` (assumed chronological ascending) honoring
+ * `before` / `after` / `around` / `limit` query params + a `PaginatedMessages`
+ * envelope, so lazy-load / reverse-infinite-scroll / jump flows can be driven
+ * deterministically. Also exposes a per-request counter of the query strings
+ * seen (for asserting "no `before=` request fired").
+ */
+export async function mockPaginatedMessages(
+  page: Page,
+  allMessages: MockMessageWithContent[],
+  opts: { pageSize?: number } = {},
+): Promise<{ queries: string[] }> {
+  const pageSize = opts.pageSize ?? 30
+  const queries: string[] = []
+  const full = allMessages.map(m => ({
+    id: m.id,
+    role: m.role,
+    contents: m.contents.map((c, idx) => ({
+      id: c.id ?? `${m.id}-content-${idx}`,
+      message_id: c.message_id ?? m.id,
+      content_type: c.content_type,
+      content: c.content,
+      sequence_order: c.sequence_order ?? idx,
+      created_at: c.created_at ?? new Date().toISOString(),
+      updated_at: c.updated_at ?? new Date().toISOString(),
+    })),
+    originated_from_id: m.originated_from_id ?? '',
+    edit_count: m.edit_count ?? 0,
+    created_at: m.created_at ?? new Date().toISOString(),
+  }))
+  const idx = (id: string | null) =>
+    id == null ? -1 : full.findIndex(m => m.id === id)
+
+  await page.route(
+    /\/api\/conversations\/[^/]+\/messages(\?|$)/,
+    async (route, req) => {
+      if (req.method() !== 'GET') return route.fallback()
+      const url = new URL(req.url())
+      queries.push(url.search)
+      const before = url.searchParams.get('before')
+      const after = url.searchParams.get('after')
+      const around = url.searchParams.get('around')
+      const limit = Number(url.searchParams.get('limit') ?? pageSize)
+
+      let slice: typeof full
+      let hasBefore = false
+      let hasAfter = false
+      if (around) {
+        const a = idx(around)
+        const half = Math.max(1, Math.floor(limit / 2))
+        const start = Math.max(0, a - half)
+        const end = Math.min(full.length, a + half + 1)
+        slice = full.slice(start, end)
+        hasBefore = start > 0
+        hasAfter = end < full.length
+      } else if (before) {
+        const b = idx(before)
+        const start = Math.max(0, b - limit)
+        slice = full.slice(start, b)
+        hasBefore = start > 0
+        hasAfter = true
+      } else if (after) {
+        const a = idx(after)
+        const end = Math.min(full.length, a + 1 + limit)
+        slice = full.slice(a + 1, end)
+        hasBefore = true
+        hasAfter = end < full.length
+      } else {
+        // tail
+        const start = Math.max(0, full.length - limit)
+        slice = full.slice(start)
+        hasBefore = start > 0
+        hasAfter = false
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          messages: slice,
+          has_more_before: hasBefore,
+          has_more_after: hasAfter,
+        }),
+      })
+    },
+  )
+  return { queries }
+}
+
+/**
+ * Mock `GET /api/conversations/:id/messages/search`. Serves paginated matches
+ * over the supplied `matches` (already in match order) honoring `q`/`page`/
+ * `per_page`, with global 1-based `ordinal`s and the full `total`.
+ */
+export async function mockConversationSearch(
+  page: Page,
+  matches: { message_id: string; snippet: string; role?: string }[],
+): Promise<void> {
+  await page.route(
+    /\/api\/conversations\/[^/]+\/messages\/search(\?|$)/,
+    async (route, req) => {
+      if (req.method() !== 'GET') return route.fallback()
+      const url = new URL(req.url())
+      const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+      const pageNum = Number(url.searchParams.get('page') ?? 1)
+      const perPage = Number(url.searchParams.get('per_page') ?? 25)
+      const hits = q
+        ? matches.filter(m => m.snippet.toLowerCase().includes(q))
+        : []
+      const start = (pageNum - 1) * perPage
+      const slice = hits.slice(start, start + perPage)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          matches: slice.map((m, i) => ({
+            message_id: m.message_id,
+            role: m.role ?? 'user',
+            created_at: new Date().toISOString(),
+            snippet: m.snippet,
+            ordinal: start + i + 1,
+          })),
+          total: hits.length,
+          page: pageNum,
+          per_page: perPage,
+        }),
       })
     },
   )

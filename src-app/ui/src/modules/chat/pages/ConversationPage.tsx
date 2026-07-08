@@ -517,13 +517,21 @@ export default function ConversationPage() {
             >
               {/* Top sentinel: intersecting (with an 800px rootMargin) triggers
                   loading the next older page (reverse infinite scroll). */}
-              <div ref={topSentinelRef} aria-hidden="true" />
+              <div
+                ref={topSentinelRef}
+                aria-hidden="true"
+                data-testid="chat-top-sentinel"
+              />
               <ConversationFindContext.Provider value={findContextValue}>
                 <MessageList />
               </ConversationFindContext.Provider>
               {/* Bottom-load sentinel: triggers loading NEWER messages when the
                   window is anchored mid-conversation (after an around= jump). */}
-              <div ref={bottomLoadSentinelRef} aria-hidden="true" />
+              <div
+                ref={bottomLoadSentinelRef}
+                aria-hidden="true"
+                data-testid="chat-bottom-load-sentinel"
+              />
               <div ref={messagesEndRef} />
             </div>
           </DivScrollY>

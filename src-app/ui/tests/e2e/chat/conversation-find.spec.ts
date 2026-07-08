@@ -1,33 +1,32 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
-import { mockGetMessages, mockUserMessage } from '../helpers/sse-mock-helpers'
+import {
+  mockConversationSearch,
+  mockPaginatedMessages,
+  mockUserMessage,
+} from '../helpers/sse-mock-helpers'
 
 /**
- * ITEM-1 / TEST-8 — find-within-open-conversation.
- *
- * Seeds a conversation (REST) and renders deterministic messages via the mocked
- * getHistory endpoint, then drives the find bar: open, type a term present in
- * two messages, assert the "X of Y" readout, and that Next moves the active
- * highlight to the next match. Only the message-history boundary is mocked; the
- * find UI runs for real.
+ * TEST-16 (feature: lazy-load-conversation-messages) — server-side
+ * find-in-conversation. Under lazy-load the client holds only a WINDOW, so find
+ * queries the backend; a match in an UNLOADED older message still surfaces in
+ * the results list, and selecting it JUMPS to the message (around=), centering +
+ * highlighting it. Only the search + paginated-history boundaries are mocked;
+ * the find UI + jump + windowing run for real.
  */
 
-async function seedConversation(
-  apiURL: string,
-  token: string,
-  title: string,
-): Promise<string> {
+async function seedConversation(apiURL: string, token: string, title: string) {
   const res = await fetch(`${apiURL}/api/conversations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ title }),
   })
-  if (!res.ok) throw new Error(`seed failed: ${res.status} ${await res.text()}`)
+  if (!res.ok) throw new Error(`seed failed: ${res.status}`)
   return (await res.json()).id as string
 }
 
-test.describe('Chat — find in conversation', () => {
-  test('finds matches, shows count, and navigates between them', async ({
+test.describe('Chat — find in conversation (server-side)', () => {
+  test('surfaces a match in an unloaded message and jumps to it', async ({
     page,
     testInfra,
   }) => {
@@ -36,36 +35,51 @@ test.describe('Chat — find in conversation', () => {
     const token = await getAdminToken(apiURL)
     const convId = await seedConversation(apiURL, token, 'Find test conversation')
 
-    await mockGetMessages(page, [
-      mockUserMessage({ id: 'fm1', text: 'The first message talks about apples' }),
-      mockUserMessage({ id: 'fm2', text: 'The second message is about oranges' }),
-      mockUserMessage({ id: 'fm3', text: 'A third message mentions apples again' }),
+    // 40 messages; only msg-5 (unloaded — outside the tail window) contains the
+    // unique term.
+    const all = Array.from({ length: 40 }, (_, i) =>
+      mockUserMessage({
+        id: `msg-${i}`,
+        text: i === 5 ? 'a very special-marker message' : `Message number ${i}`,
+      }),
+    )
+    await mockPaginatedMessages(page, all, { pageSize: 30 })
+    await mockConversationSearch(page, [
+      { message_id: 'msg-5', snippet: 'a very special-marker message' },
     ])
 
     await page.goto(`${baseURL}/chat/${convId}`)
     await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 30000 })
 
-    // Open the find bar via the header toggle.
+    // The match's message is NOT loaded initially.
+    await expect(page.locator('[data-message-id="msg-5"]')).toHaveCount(0)
+
+    // Open find + search the unique term.
     await page.getByTestId('conversation-find-toggle-btn').click()
     const input = page.getByTestId('conversation-find-input')
     await expect(input).toBeVisible()
+    await input.fill('special-marker')
 
-    await input.fill('apples')
+    // Server-backed count + a results-list row with the snippet.
+    await expect(page.getByTestId('conversation-find-count')).toHaveText('1 of 1')
+    await expect(page.getByTestId('conversation-find-result')).toContainText(
+      'special-marker',
+    )
 
-    // Two matches; the first is active.
-    await expect(page.getByTestId('conversation-find-count')).toHaveText('1 of 2')
-    await expect(page.locator('[data-message-id="fm1"][data-find-active]')).toBeVisible()
-
-    // Next → second match becomes active.
-    await page.getByTestId('conversation-find-next').click()
-    await expect(page.getByTestId('conversation-find-count')).toHaveText('2 of 2')
-    await expect(page.locator('[data-message-id="fm3"][data-find-active]')).toBeVisible()
+    // Activating the match jumped to it (around=): now loaded, centered, and
+    // highlighted with the find ring.
+    await expect(page.locator('[data-message-id="msg-5"]')).toBeVisible({
+      timeout: 10000,
+    })
+    await expect(
+      page.locator('[data-message-id="msg-5"][data-find-active]'),
+    ).toBeVisible()
 
     // A non-matching term reports no results.
     await input.fill('zzz-not-here')
     await expect(page.getByTestId('conversation-find-count')).toHaveText('No results')
 
-    // Esc closes the bar.
+    // Esc closes.
     await input.press('Escape')
     await expect(input).toBeHidden()
   })
