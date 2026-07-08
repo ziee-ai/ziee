@@ -2446,8 +2446,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!name", line: 109 },
       { kind: "overlay", condition: "<Drawer open>", line: 155 },
       { kind: "branch", condition: "canCreate", line: 163 },
-      { kind: "branch", condition: "!useCustomId", line: 180 },
-      { kind: "branch", condition: "notes && notes.length > 0", line: 211 },
+      { kind: "branch", condition: "!useCustomId", line: 184 },
+      { kind: "branch", condition: "notes && notes.length > 0", line: 215 },
     ],
   },
   "modules/llm-provider/components/llm-models/EditLlmModelDrawer": {
