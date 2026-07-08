@@ -6,7 +6,8 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::modules::chat::core::models::Message;
 use crate::modules::chat::core::types::{
-    EditMessageRequest, EditMessageResponse, MessageWithContent,
+    EditMessageRequest, EditMessageResponse, MessageSearchMatch, MessageSearchResults,
+    MessageWindowMode, MessageWithContent, PaginatedMessages, build_snippet,
 };
 
 use super::contents::{get_message_contents, get_message_contents_batch};
@@ -161,6 +162,346 @@ pub async fn get_conversation_history(
         .collect();
 
     Ok(history)
+}
+
+// =====================================================
+// Keyset windowed history (lazy-load) + in-conversation search
+//
+// NOTE: `get_conversation_history` above (full branch load) is intentionally
+// left untouched — it is the AI-context path (summarization / memory / mcp /
+// title / streaming all need the COMPLETE branch history). The functions below
+// serve ONLY the HTTP/UI display path, which paginates.
+// =====================================================
+
+/// Rows for one message-history window, chronological ascending.
+struct WindowRows {
+    messages: Vec<Message>,
+    has_more_before: bool,
+    has_more_after: bool,
+}
+
+/// Resolve a cursor message's junction `created_at` within a branch. `None`
+/// means the message is not in this branch (handler maps to 404).
+async fn resolve_cursor_created_at(
+    pool: &PgPool,
+    branch_id: Uuid,
+    message_id: Uuid,
+) -> Result<Option<time::OffsetDateTime>, AppError> {
+    let ca = sqlx::query_scalar!(
+        r#"
+        SELECT created_at
+        FROM branch_messages
+        WHERE branch_id = $1 AND message_id = $2
+        "#,
+        branch_id,
+        message_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(ca)
+}
+
+/// Newest `limit` messages of a branch (DESC; caller reverses to ASC).
+async fn fetch_tail_desc(
+    pool: &PgPool,
+    branch_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Message>, AppError> {
+    sqlx::query_as!(
+        Message,
+        r#"
+        SELECT m.id, m.role,
+               m.originated_from_id as "originated_from_id!",
+               m.edit_count,
+               m.model_id as "model_id: _",
+               m.created_at as "created_at: _"
+        FROM messages m
+        INNER JOIN branch_messages bm ON m.id = bm.message_id
+        WHERE bm.branch_id = $1
+        ORDER BY bm.created_at DESC, bm.message_id DESC
+        LIMIT $2
+        "#,
+        branch_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// Up to `limit` messages strictly OLDER than the `(cursor_created_at,
+/// cursor_id)` position (DESC; caller reverses to ASC).
+async fn fetch_before_desc(
+    pool: &PgPool,
+    branch_id: Uuid,
+    cursor_created_at: time::OffsetDateTime,
+    cursor_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Message>, AppError> {
+    sqlx::query_as!(
+        Message,
+        r#"
+        SELECT m.id, m.role,
+               m.originated_from_id as "originated_from_id!",
+               m.edit_count,
+               m.model_id as "model_id: _",
+               m.created_at as "created_at: _"
+        FROM messages m
+        INNER JOIN branch_messages bm ON m.id = bm.message_id
+        WHERE bm.branch_id = $1
+          AND (bm.created_at < $2 OR (bm.created_at = $2 AND bm.message_id < $3))
+        ORDER BY bm.created_at DESC, bm.message_id DESC
+        LIMIT $4
+        "#,
+        branch_id,
+        cursor_created_at,
+        cursor_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// Up to `limit` messages strictly NEWER than the `(cursor_created_at,
+/// cursor_id)` position (already ASC).
+async fn fetch_after_asc(
+    pool: &PgPool,
+    branch_id: Uuid,
+    cursor_created_at: time::OffsetDateTime,
+    cursor_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Message>, AppError> {
+    sqlx::query_as!(
+        Message,
+        r#"
+        SELECT m.id, m.role,
+               m.originated_from_id as "originated_from_id!",
+               m.edit_count,
+               m.model_id as "model_id: _",
+               m.created_at as "created_at: _"
+        FROM messages m
+        INNER JOIN branch_messages bm ON m.id = bm.message_id
+        WHERE bm.branch_id = $1
+          AND (bm.created_at > $2 OR (bm.created_at = $2 AND bm.message_id > $3))
+        ORDER BY bm.created_at ASC, bm.message_id ASC
+        LIMIT $4
+        "#,
+        branch_id,
+        cursor_created_at,
+        cursor_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// Keyset window over the active branch path. `Ok(None)` when a cursor id is not
+/// in the branch. Uses the fetch-`limit+1` idiom to compute `has_more_*`.
+async fn list_message_window(
+    pool: &PgPool,
+    branch_id: Uuid,
+    mode: MessageWindowMode,
+    limit: i64,
+) -> Result<Option<WindowRows>, AppError> {
+    match mode {
+        MessageWindowMode::Tail => {
+            let mut rows = fetch_tail_desc(pool, branch_id, limit + 1).await?;
+            let has_more_before = rows.len() as i64 > limit;
+            rows.truncate(limit as usize);
+            rows.reverse(); // → ASC
+            Ok(Some(WindowRows {
+                messages: rows,
+                has_more_before,
+                has_more_after: false,
+            }))
+        }
+        MessageWindowMode::Before(id) => {
+            let Some(ca) = resolve_cursor_created_at(pool, branch_id, id).await? else {
+                return Ok(None);
+            };
+            let mut rows = fetch_before_desc(pool, branch_id, ca, id, limit + 1).await?;
+            let has_more_before = rows.len() as i64 > limit;
+            rows.truncate(limit as usize);
+            rows.reverse(); // → ASC
+            Ok(Some(WindowRows {
+                messages: rows,
+                has_more_before,
+                // The cursor and everything newer than it exist by definition.
+                has_more_after: true,
+            }))
+        }
+        MessageWindowMode::After(id) => {
+            let Some(ca) = resolve_cursor_created_at(pool, branch_id, id).await? else {
+                return Ok(None);
+            };
+            let mut rows = fetch_after_asc(pool, branch_id, ca, id, limit + 1).await?;
+            let has_more_after = rows.len() as i64 > limit;
+            rows.truncate(limit as usize);
+            // already ASC
+            Ok(Some(WindowRows {
+                messages: rows,
+                // The cursor and everything older than it exist by definition.
+                has_more_before: true,
+                has_more_after,
+            }))
+        }
+        MessageWindowMode::Around(id) => {
+            let Some(ca) = resolve_cursor_created_at(pool, branch_id, id).await? else {
+                return Ok(None);
+            };
+            let half = (limit / 2).max(1);
+
+            let mut older = fetch_before_desc(pool, branch_id, ca, id, half + 1).await?;
+            let has_more_before = older.len() as i64 > half;
+            older.truncate(half as usize);
+            older.reverse(); // → ASC
+
+            let mut newer = fetch_after_asc(pool, branch_id, ca, id, half + 1).await?;
+            let has_more_after = newer.len() as i64 > half;
+            newer.truncate(half as usize);
+
+            // The cursor message itself (guaranteed in-branch by the resolve above).
+            let mut messages = older;
+            if let Some(cursor_msg) = get_message(pool, id).await? {
+                messages.push(cursor_msg);
+            }
+            messages.extend(newer);
+
+            Ok(Some(WindowRows {
+                messages,
+                has_more_before,
+                has_more_after,
+            }))
+        }
+    }
+}
+
+/// Public: a page of the active branch's messages WITH content blocks (batched),
+/// or `None` when a supplied cursor id is not in the branch (→ 404).
+pub async fn get_message_window(
+    pool: &PgPool,
+    branch_id: Uuid,
+    mode: MessageWindowMode,
+    limit: i64,
+) -> Result<Option<PaginatedMessages>, AppError> {
+    let Some(window) = list_message_window(pool, branch_id, mode, limit).await? else {
+        return Ok(None);
+    };
+
+    let message_ids: Vec<Uuid> = window.messages.iter().map(|m| m.id).collect();
+    let mut contents_map = get_message_contents_batch(pool, &message_ids).await?;
+
+    let messages = window
+        .messages
+        .into_iter()
+        .map(|message| {
+            let contents = contents_map.remove(&message.id).unwrap_or_default();
+            MessageWithContent { message, contents }
+        })
+        .collect();
+
+    Ok(Some(PaginatedMessages {
+        messages,
+        has_more_before: window.has_more_before,
+        has_more_after: window.has_more_after,
+    }))
+}
+
+/// In-conversation message search over the ACTIVE branch, paginated. Mirrors the
+/// active-branch text-match join in `conversations::list_conversations`, scoped
+/// to one branch. `term` must be pre-trimmed and non-empty (caller returns an
+/// empty result for a blank query without calling this).
+///
+/// NOTE: matches `list_conversations`' un-escaped `ILIKE` semantics for
+/// consistency — a term containing `%`/`_` acts as a wildcard.
+pub async fn search_messages_in_conversation(
+    pool: &PgPool,
+    branch_id: Uuid,
+    term: &str,
+    page: i64,
+    per_page: i64,
+) -> Result<MessageSearchResults, AppError> {
+    let offset = (page - 1).max(0) * per_page;
+
+    let total: i64 = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM messages m
+        INNER JOIN branch_messages bm ON bm.message_id = m.id
+        WHERE bm.branch_id = $1
+          AND EXISTS (
+            SELECT 1 FROM message_contents mc
+            WHERE mc.message_id = m.id
+              AND mc.content_type = 'text'
+              AND mc.content->>'text' ILIKE '%' || $2 || '%'
+          )
+        "#,
+        branch_id,
+        term
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT m.id as "id!", m.role as "role!",
+               m.created_at as "created_at!: chrono::DateTime<chrono::Utc>",
+               (
+                 SELECT mc2.content->>'text'
+                 FROM message_contents mc2
+                 WHERE mc2.message_id = m.id
+                   AND mc2.content_type = 'text'
+                   AND mc2.content->>'text' ILIKE '%' || $2 || '%'
+                 ORDER BY mc2.sequence_order ASC
+                 LIMIT 1
+               ) as snippet_text
+        FROM messages m
+        INNER JOIN branch_messages bm ON bm.message_id = m.id
+        WHERE bm.branch_id = $1
+          AND EXISTS (
+            SELECT 1 FROM message_contents mc
+            WHERE mc.message_id = m.id
+              AND mc.content_type = 'text'
+              AND mc.content->>'text' ILIKE '%' || $2 || '%'
+          )
+        ORDER BY bm.created_at ASC, m.id ASC
+        LIMIT $3 OFFSET $4
+        "#,
+        branch_id,
+        term,
+        per_page,
+        offset,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let matches = rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let raw = row.snippet_text.unwrap_or_default();
+            MessageSearchMatch {
+                message_id: row.id,
+                role: row.role,
+                created_at: row.created_at,
+                snippet: build_snippet(&raw, term),
+                ordinal: offset + i as i64 + 1,
+            }
+        })
+        .collect();
+
+    Ok(MessageSearchResults {
+        matches,
+        total,
+        page,
+        per_page,
+    })
 }
 
 /// Create a new branch from a message (for unified streaming endpoint)

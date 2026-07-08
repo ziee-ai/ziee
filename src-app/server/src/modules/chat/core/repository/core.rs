@@ -154,6 +154,28 @@ impl ChatCoreRepository {
         messages::get_conversation_history(&self.pool, branch_id).await
     }
 
+    /// Get one paginated (keyset) window of a branch's messages with content.
+    /// `Ok(None)` when a supplied cursor id is not in the branch (→ 404).
+    pub async fn get_message_window(
+        &self,
+        branch_id: Uuid,
+        mode: crate::modules::chat::core::types::MessageWindowMode,
+        limit: i64,
+    ) -> Result<Option<crate::modules::chat::core::types::PaginatedMessages>, AppError> {
+        messages::get_message_window(&self.pool, branch_id, mode, limit).await
+    }
+
+    /// Paginated in-conversation message search over a branch's active path.
+    pub async fn search_messages_in_conversation(
+        &self,
+        branch_id: Uuid,
+        term: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<crate::modules::chat::core::types::MessageSearchResults, AppError> {
+        messages::search_messages_in_conversation(&self.pool, branch_id, term, page, per_page).await
+    }
+
     /// Verify that a message exists and user owns the conversation containing it
     pub async fn verify_message_ownership(
         &self,
