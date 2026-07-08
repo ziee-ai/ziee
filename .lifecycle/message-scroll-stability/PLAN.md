@@ -55,7 +55,7 @@ fighting the virtualizer.
 - **ITEM-4**: Lift the show-more collapse state out of `CollapsibleBlock`/`ChatMessage` into the per-conversation view-state store keyed by message id, so expanding a long message survives virtualization unmount/remount (scroll away + back stays expanded).
 - **ITEM-5**: Lift `InlineFilePreview`'s ephemeral state (collapsed, has-been-seen, resized-height) into the same store keyed by file key, so remount renders the body immediately at the same reserved height (zero delta, no re-fetch) and preserves the user's expand/collapse + resize choices.
 - **ITEM-6**: Add the per-conversation `MessageViewState` store (`defineStore`, message-id→{collapsed} and file-key→{collapsed,seen,heightPx} maps), reset on conversation switch, mirroring `Chat.store`'s `conversationStateCache` lifecycle. Single source of truth for ITEM-3/4/5.
-- **ITEM-7**: Expand/resize-in-place reconciliation in MessageList: expose an imperative "anchor a row's viewport-top across an intentional height change" method; `CollapsibleBlock`'s toggle and the ITEM-3 resize call it so the change grows DOWNWARD without the viewport jumping, serialized against (and cancelling) the reassert/anchor-restore paths so they don't double-adjust on the same frame.
+- **ITEM-7**: Expand/resize-in-place reconciliation: a self-contained `useInPlaceAnchor` hook (backed by the pure `inPlaceAnchorDelta` in scrollAnchor.utils) that `CollapsibleBlock`'s toggle and the ITEM-3 resize call so the change grows DOWNWARD without the viewport jumping. The pure guard makes it defer to `@tanstack/react-virtual`'s own above-fold size-change adjustment (and no-op below the fold), so the two mechanisms never double-adjust on the same frame. (Implemented as a hook the height-owning child components call directly — not a MessageList imperative method — because the height change originates in `CollapsibleBlock`/`InlineFilePreview`, and a self-contained hook avoids threading a MessageList ref/context across the chat↔file module boundary. See DRIFT-1.2.)
 
 ## Files to touch
 
@@ -63,12 +63,14 @@ fighting the virtualizer.
 - `src-app/ui/src/modules/chat/core/stores/messageViewState.helpers.ts` (NEW — pure key/reset helpers, unit-testable)
 - `src-app/ui/src/modules/chat/components/CollapsibleBlock.tsx` (ITEM-4, ITEM-7: read/write collapsed from store; expand-in-place)
 - `src-app/ui/src/modules/chat/components/ChatMessage.tsx` (ITEM-4: thread message id / collapse persistence)
-- `src-app/ui/src/modules/chat/components/MessageList.tsx` (ITEM-1 instrumentation; ITEM-7 in-place anchor method)
-- `src-app/ui/src/modules/chat/core/utils/scrollAnchor.utils.ts` (ITEM-7: pure in-place-anchor helper)
+- `src-app/ui/src/modules/chat/components/MessageList.tsx` (ITEM-1 DEV-only correction instrumentation)
+- `src-app/ui/src/modules/chat/core/utils/scrollAnchor.utils.ts` (ITEM-7: pure `inPlaceAnchorDelta` + `findScrollParent`)
+- `src-app/ui/src/modules/chat/core/utils/useInPlaceAnchor.ts` (NEW — ITEM-7 hook wrapping the pure helper; DRIFT-1.2)
 - `src-app/ui/src/modules/file/chat-extension/components/InlineFilePreview.tsx` (ITEM-2 fixed height + skeleton; ITEM-3 resize handle; ITEM-5 lifted state)
 - `src-app/ui/src/modules/file/chat-extension/components/inlineFileHeight.ts` (NEW — pure reserved-height + clamp helpers, unit-testable)
-- `src-app/ui/src/modules/chat/core/stores/Chat.store.ts` (ITEM-6: reset MessageViewState on conversation switch, at the existing clear-window site)
-- `src-app/ui/src/dev/gallery/seeded/shard5.tsx` (or a new shard) + `src-app/ui/src/dev/gallery/stateCoverage.ts` (ITEM-1: 500-msg mixed gallery cell + state registration)
+- `src-app/ui/src/modules/chat/core/stores/Chat.store.ts` (ITEM-6: reset MessageViewState on conversation switch + on store destroy)
+- `src-app/ui/src/modules/chat/module.tsx` + `src-app/ui/src/modules/chat/types.ts` (ITEM-6: register + type the new store)
+- `src-app/ui/src/dev/gallery/MessageListLongDemo.tsx` (NEW) + `src-app/ui/src/dev/gallery/seededSurfaces.tsx` (ITEM-1: 500-msg mixed gallery surface)
 - `src-app/ui/tests/e2e/…` chat scroll-stability spec (Phase 3/8)
 
 ## Patterns to follow

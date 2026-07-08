@@ -1,11 +1,25 @@
 import { ChevronRight, ChevronDown, File, PanelRight } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { Button, Tooltip } from '@/components/ui'
+import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
 import { isInlineCapable } from '@/modules/file/viewers/shared/source'
 import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
+import { resolveFileState } from '@/modules/chat/core/stores/messageViewState.helpers'
+import {
+  clampReservedPx,
+  resolveBodyHeightPx,
+} from '@/modules/file/chat-extension/components/inlineFileHeight'
+import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
 
 interface InlineFilePreviewProps {
   /** Viewer matched by `getViewer(name, mimeType)`. `undefined` when no
@@ -29,50 +43,60 @@ function formatFileSize(bytes: number | undefined): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
+const KEY_STEP_PX = 24
+const viewportH = () =>
+  typeof window === 'undefined' ? 800 : window.innerHeight
+
 /**
  * Collapsible wrapper around a single tool-result file.
  *
  * - **Header** (always visible): viewer icon + filename + label + size +
- *   the viewer's `headerActions` + "Open in new tab" link + chevron.
- * - **Body** (when expanded AND viewer is inline-capable for this MIME):
- *   the viewer's `body` rendered with the `{source}` variant of
- *   `FileViewerSlotProps`. Otherwise no body — the header link is the
- *   entire UI.
+ *   the viewer's `headerActions` + side-panel button + collapse chevron.
+ * - **Body** (when expanded AND viewer is inline-capable for this MIME): the
+ *   viewer's `body` in a FIXED-HEIGHT, internally-scrolling box. The height is
+ *   definite (not content-driven) so the virtualized message row's height stops
+ *   changing after mount — image decode / table parse / Shiki highlight all
+ *   settle inside the box (message-scroll-stability ITEM-2). Until the preview
+ *   has been SEEN once, a same-height skeleton stands in, so the lazy body-mount
+ *   is a zero-delta swap.
  *
- * The chevron is the ONLY collapse toggle — clicking the body itself
- * does nothing. This matches the right-panel UX where the body is the
- * content, not a button.
+ * All ephemeral per-preview state (collapsed, seen, resized height) is LIFTED
+ * into the per-conversation `MessageViewState` store keyed by the resource_link
+ * URI (ITEM-5), so it survives the virtualizer unmounting/remounting this row.
+ * A bottom drag-resize handle (ITEM-3) lets the user grow/shrink one preview;
+ * the chosen height persists there.
  */
 export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const key = source.url
+  const rootRef = useRef<HTMLDivElement>(null)
+  const anchorBeforeChange = useInPlaceAnchor(rootRef)
 
-  // Viewport-gate the body: a conversation can hold many inline files, and the
-  // body is where the cost lives (image thumbnail fetch+decode, text fetch).
-  // Mount the body only once this preview scrolls within ~800px of the
-  // viewport, then keep it mounted (mount-once: scrolling away does not unmount
-  // / refetch). The header is always cheap and always rendered. Combined with
-  // the conversation page's instant initial scroll, off-screen files on reload
-  // never enter the viewport, so they never fetch.
-  //
-  // Intentional: a file produced mid-stream while the user has scrolled up
-  // shows its header immediately but defers its body until they scroll back
-  // within range — same lazy contract as any other off-screen preview. We do
-  // NOT special-case the streaming turn here, since that would require the
-  // file module to read chat-streaming state (cross-module coupling).
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [inView, setInView] = useState(false)
+  // Lifted state (survives remount). Reading the maps + resolving keeps the
+  // app's proxy-read convention; the defaults match the pre-lift local state
+  // (expanded, unseen, reserved-default height).
+  const { files } = Stores.MessageViewState
+  const view = resolveFileState(files, key)
+  const collapsed = view.collapsed
+
+  // Viewport-gate the body ONCE per conversation session: mount its body when it
+  // scrolls within ~800px of the viewport, then remember it in the store
+  // (`seen`) so any later remount mounts the body immediately at the SAME fixed
+  // height — no re-fetch, no re-lazy-mount height churn (ITEM-5, DEC-10). On the
+  // very first load every preview starts `seen:false`, so off-screen bodies
+  // still defer their fetch (the conversation page's instant initial scroll
+  // keeps them off-screen).
   useEffect(() => {
-    if (inView) return
+    if (view.seen) return
     if (typeof IntersectionObserver === 'undefined') {
-      setInView(true)
+      Stores.MessageViewState.markFileSeen(key)
       return
     }
-    const el = containerRef.current
+    const el = rootRef.current
     if (!el) return
     const observer = new IntersectionObserver(
       entries => {
         if (entries.some(e => e.isIntersecting)) {
-          setInView(true)
+          Stores.MessageViewState.markFileSeen(key)
           observer.disconnect()
         }
       },
@@ -80,7 +104,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [inView])
+  }, [view.seen, key])
 
   // Prefer the resolved File's metadata (authoritative) over the link's.
   const displayName = file?.filename ?? source.name
@@ -89,24 +113,32 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
 
   const canInline = isInlineCapable(viewer, displayName, displayMime ?? undefined)
   const Body = canInline ? viewer?.body : undefined
-  // Only show the viewer's headerActions when the body itself renders
-  // inline. Non-inline viewers (pdf / web / unknown) don't get header
-  // chrome here — their existing headers would just return null otherwise.
+  // Only show the viewer's headerActions when the body itself renders inline.
   const HeaderActions = canInline ? viewer?.headerActions : undefined
   const Icon = viewer?.icon ?? <File />
   const label = viewer?.label
+  const inlineFill = viewer?.inlineFill ?? false
 
-  const showBody = canInline && !collapsed && Body !== undefined && inView
+  // Fixed body height: the persisted resized px (during a drag, the live local
+  // value) or the per-viewer default. The skeleton uses the SAME value so the
+  // seen→body swap is zero-delta.
+  const [dragHeight, setDragHeight] = useState<number | null>(null)
+  const bodyHeightPx =
+    dragHeight ?? resolveBodyHeightPx(inlineFill, view.heightPx, viewportH())
+
+  const hasBody = canInline && Body !== undefined
+  const showBodyRegion = hasBody && !collapsed
   // Render the body via the authenticated `{file}` path when this is a
   // backend-owned artifact; otherwise the URL-based `{source}` path.
   const slotProps: FileViewerSlotProps = file ? { file } : { source }
 
+  const setCollapsed = (next: boolean) => {
+    anchorBeforeChange()
+    Stores.MessageViewState.setFileCollapsed(key, next)
+  }
+
   const handleOpenInPanel = () => {
     if (!file) return
-    // displayInRightPanel is an action — callable directly from an event
-    // handler (actions are hook-free, no Rules-of-Hooks concern).
-    // Pin the panel to the version this resource_link referenced (head if the
-    // link carried no version) so a historical tool result opens its own bytes.
     Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
@@ -115,27 +147,61 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     })
   }
 
+  // ── Drag-resize handle (ITEM-3). Bottom-edge drag grows the box downward, so
+  // the row top never moves (in-place). Held in local state DURING the drag so
+  // only THIS preview re-renders per pointermove; committed to the store on
+  // release so it persists across remount. Keyboard-resizable for a11y (DEC-6).
+  const dragStart = useRef<{ y: number; h: number } | null>(null)
+  const onHandlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    dragStart.current = { y: e.clientY, h: bodyHeightPx }
+    setDragHeight(bodyHeightPx)
+  }
+  const onHandlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = dragStart.current
+    if (!start) return
+    setDragHeight(clampReservedPx(start.h + (e.clientY - start.y), viewportH()))
+  }
+  const commitDrag = useCallback(() => {
+    if (dragStart.current == null) return
+    dragStart.current = null
+    setDragHeight(prev => {
+      if (prev != null) Stores.MessageViewState.setFileHeight(key, prev)
+      return null
+    })
+  }, [key])
+  const onHandlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    commitDrag()
+  }
+  const onHandleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    let next: number | null = null
+    if (e.key === 'ArrowUp') next = bodyHeightPx - KEY_STEP_PX
+    else if (e.key === 'ArrowDown') next = bodyHeightPx + KEY_STEP_PX
+    else if (e.key === 'Home') next = 0 // clamp → min
+    else if (e.key === 'End') next = Number.MAX_SAFE_INTEGER // clamp → max
+    if (next == null) return
+    e.preventDefault()
+    anchorBeforeChange()
+    Stores.MessageViewState.setFileHeight(key, clampReservedPx(next, viewportH()))
+  }
+
   return (
     <div
-      ref={containerRef}
+      ref={rootRef}
       data-testid="inline-file-preview"
       data-file-uri={source.url}
       data-file-id={file?.id}
       className="flex flex-col rounded-md overflow-hidden border border-border bg-card"
     >
-      {/* Header row. flex-wrap so on a NARROW inline width (mobile / a narrow
-          chat panel) the actions drop to a clean second row instead of the
-          viewer's action group wrapping into vertically-centred fragments (the
-          Space in the viewer headers is nowrap now, and this whole group wraps
-          as a UNIT). On a wide header everything stays on one line. */}
+      {/* Header row (see original: flex-wrap for narrow inline widths). */}
       <div
         className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 bg-muted/60"
         style={{
-          borderBottom: showBody ? '1px solid var(--border)' : 'none',
+          borderBottom: showBodyRegion ? '1px solid var(--border)' : 'none',
         }}
       >
-        {/* Meta group — takes the row (flex-1) so the actions wrap below it when
-            they can't fit; the name truncates, the type/size stays intact. */}
         <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
           <span
             className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
@@ -155,17 +221,9 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
           </span>
         </div>
-        {/* Actions group — one non-wrapping row, right-aligned (ms-auto), wraps
-            to the second line as a whole. */}
         <div className="flex items-center gap-0.5 flex-shrink-0 ms-auto">
           {HeaderActions ? <HeaderActions {...slotProps} /> : null}
-          {/* Download — MCP resource links are ingested into the file store
-              (persist_links), so a chat preview is always backed by a real file;
-              Download is store-driven so it carries the bearer token. No
-              open-in-new-tab anywhere. */}
           {file ? <DownloadButton file={file} /> : null}
-          {/* Open in side panel — only for backend-owned files (need a File id
-              to drive the panel renderer). */}
           {file ? (
             <Tooltip content="Open in side panel">
               <Button
@@ -178,52 +236,67 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
               />
             </Tooltip>
           ) : null}
-          {/* Expand/collapse toggle — trailing (right) edge, matching the app
-              convention used by the execute_command / MCP tool-call cards (chevron
-              on the right). Only render when the viewer actually has an inline body
-              to toggle; otherwise the header is the whole UI and it would be a noop. */}
-          {canInline && Body && (
+          {hasBody && (
             <Button
               variant="ghost"
               size="default"
               aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
               aria-expanded={!collapsed}
               icon={collapsed ? <ChevronRight /> : <ChevronDown />}
-              onClick={() => setCollapsed(c => !c)}
+              onClick={() => setCollapsed(!collapsed)}
               data-testid="inline-file-preview-chevron"
             />
           )}
         </div>
       </div>
 
-      {/* Body — viewer's existing component, called with the source variant.
-          Body click does NOTHING; only the chevron in the header toggles.
-
-          Both branches are content-sized boxes with a max cap, so a SHORT table
-          (or any short body) shrinks to fit instead of leaving empty space. The
-          `inlineFill` viewers (the tabular data grid) own their own
-          OverlayScrollbars scroll region (`max-h-full` inside), which caps +
-          scrolls a tall grid within this box — no fixed height needed (the kit
-          Table isn't virtualized, so the old "needs a definite height for
-          measurement" constraint no longer applies). */}
-      {showBody && Body ? (
-        <div
-          className={
-            viewer?.inlineFill
-              ? // inlineFill viewers (the tabular data grid) cap + scroll here,
-                // but only via MAX height — a short table (2-3 rows) hugs its
-                // content instead of sitting in a tall empty box. The grid body
-                // itself supplies a DEFINITE height when it virtualizes a large
-                // dataset (see DelimitedTable / XlsxBody), so virtualization
-                // still measures a real viewport.
-                'overflow-auto max-h-[min(360px,55vh)]'
-              : 'overflow-auto max-h-[600px]'
-          }
-          data-testid="inline-file-preview-body"
-        >
-          <Body {...slotProps} />
-        </div>
-      ) : null}
+      {/* Body region — FIXED height + internal scroll (ITEM-2). Until the preview
+          has been seen, a same-height skeleton stands in so the body-mount is
+          zero-delta to the virtualizer. A short body scrolls within the box; the
+          drag handle below lets the user shrink it. */}
+      {showBodyRegion && (
+        <>
+          <div
+            className="overflow-auto"
+            style={{ height: bodyHeightPx }}
+            data-testid="inline-file-preview-body"
+            data-body-height={bodyHeightPx}
+          >
+            {view.seen && Body ? (
+              <Body {...slotProps} />
+            ) : (
+              <div
+                className="h-full w-full animate-pulse bg-muted/40"
+                data-testid="inline-file-preview-skeleton"
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          {/* Bottom drag-resize handle (ITEM-3). role=separator + keyboard. */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize file preview"
+            aria-valuenow={Math.round(bodyHeightPx)}
+            aria-valuemin={160}
+            aria-valuemax={Math.round(viewportH() * 0.8)}
+            tabIndex={0}
+            data-testid="inline-file-preview-resize"
+            onPointerDown={onHandlePointerDown}
+            onPointerMove={onHandlePointerMove}
+            onPointerUp={onHandlePointerUp}
+            onKeyDown={onHandleKeyDown}
+            className={cn(
+              'h-2 w-full shrink-0 cursor-row-resize touch-none select-none',
+              'bg-muted/60 hover:bg-muted focus-visible:outline-none',
+              'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+            )}
+          >
+            {/* Grip cue */}
+            <div className="mx-auto mt-[3px] h-0.5 w-8 rounded-full bg-border" />
+          </div>
+        </>
+      )}
     </div>
   )
 }

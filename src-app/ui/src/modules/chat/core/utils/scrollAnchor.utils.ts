@@ -85,6 +85,57 @@ export function anchorRestoreNeeded(
   return Math.abs(currentOffset - targetOffset) > tolerance
 }
 
+/**
+ * Pure (message-scroll-stability ITEM-7): the scroll delta that keeps a row's
+ * top edge visually fixed across an INTENTIONAL in-place height change (a
+ * show-more expand or an inline-file drag-resize), given the row's top relative
+ * to the scroll viewport BEFORE and AFTER the change and the viewport height.
+ *
+ * The whole point is to NOT fight `@tanstack/react-virtual`'s own size-change
+ * adjustment (angle C): the virtualizer already re-pins rows whose top is ABOVE
+ * the viewport fold (`itemStart < scrollOffset`), and an in-view row's growth
+ * naturally pushes content DOWN without moving that row's top. So this returns:
+ *   - 0 when the row started ABOVE the fold (`topBefore < 0`) — the virtualizer
+ *     owns that correction; layering ours would double-adjust into a jump;
+ *   - 0 when the row started entirely BELOW the fold (`topBefore >= viewport`) —
+ *     nothing visible moved;
+ *   - `topAfter - topBefore` only when the row's top was VISIBLE, so a residual
+ *     drift (sub-pixel measure timing) is trimmed to hold the top exactly.
+ */
+export function inPlaceAnchorDelta(
+  topBefore: number,
+  topAfter: number,
+  viewportHeight: number,
+): number {
+  if (topBefore < 0 || topBefore >= viewportHeight) return 0
+  return topAfter - topBefore
+}
+
+/**
+ * Walk up from `el` to the nearest scrollable ancestor (vertical overflow
+ * auto/scroll with real overflow), or `null` if none before the document. Used
+ * by the in-place anchor so `CollapsibleBlock` / `InlineFilePreview` can pin
+ * their own row's top WITHOUT the MessageList having to thread its scroll
+ * element down — works for both the desktop OverlayScrollbars viewport and any
+ * inner scroll box. (Window/native-scroll returns null → caller falls back to
+ * the document scrolling element.)
+ */
+export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null
+  while (node) {
+    const style = getComputedStyle(node)
+    const oy = style.overflowY
+    if (
+      (oy === 'auto' || oy === 'scroll') &&
+      node.scrollHeight > node.clientHeight
+    ) {
+      return node
+    }
+    node = node.parentElement
+  }
+  return null
+}
+
 // ── DOM readers (thin; the pure math above is what tests exercise) ───────────
 
 /** Read every `[data-message-id]` box under `container`, in document order. */

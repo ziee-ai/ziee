@@ -3,32 +3,65 @@ import { Button } from '@/components/ui'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { COLLAPSE_MAX_HEIGHT_PX } from '@/modules/chat/components/collapsible'
+import { Stores } from '@/core/stores'
+import { resolveMessageCollapsed } from '@/modules/chat/core/stores/messageViewState.helpers'
+import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
 
 interface CollapsibleBlockProps {
   children: ReactNode
   /** Clamp height when collapsed (px). Defaults to `COLLAPSE_MAX_HEIGHT_PX`. */
   maxHeightPx?: number
+  /** Stable message id. When present the collapsed flag is read from / written
+   *  to the per-conversation `MessageViewState` store so it SURVIVES the
+   *  virtualizer unmounting + remounting this row (message-scroll-stability
+   *  ITEM-4). Absent → falls back to component-local state (uncontrolled). */
+  messageId?: string
   className?: string
   'data-testid'?: string
 }
 
 /**
- * CollapsibleBlock (ITEM-3) — clamps tall content to `maxHeightPx`, fading the
- * bottom edge, and reveals a "Show more / Show less" toggle. The toggle only
- * appears when the content ACTUALLY overflows the clamp (measured at runtime via
- * a ResizeObserver), so content that fits renders untouched. Collapsed by
- * default.
+ * CollapsibleBlock (chat-power-features ITEM-3) — clamps tall content to
+ * `maxHeightPx`, fading the bottom edge, and reveals a "Show more / Show less"
+ * toggle. The toggle only appears when the content ACTUALLY overflows the clamp
+ * (measured at runtime via a ResizeObserver), so content that fits renders
+ * untouched. Collapsed by default.
+ *
+ * The collapsed flag is LIFTED into the `MessageViewState` store (keyed by
+ * `messageId`) so expanding a long message persists across the virtualized
+ * row's unmount/remount — scrolling away and back keeps it expanded
+ * (message-scroll-stability ITEM-4). Toggling routes through `useInPlaceAnchor`
+ * so the expand grows downward without the viewport jumping (ITEM-7).
  */
 export function CollapsibleBlock({
   children,
   maxHeightPx = COLLAPSE_MAX_HEIGHT_PX,
+  messageId,
   className,
   'data-testid': dataTestid = 'collapsible-block',
 }: CollapsibleBlockProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const regionId = useId()
-  const [collapsed, setCollapsed] = useState(true)
   const [overflowing, setOverflowing] = useState(false)
+
+  // Collapsed source of truth: the lifted store when we have a message id
+  // (survives remount), else local state (uncontrolled fallback for a
+  // CollapsibleBlock used without an id). Reading the whole `collapsed` map and
+  // indexing keeps the app's proxy-read convention; a toggle re-renders only the
+  // few long-message collapsibles (rare user action).
+  const { collapsed: collapsedMap } = Stores.MessageViewState
+  const [localCollapsed, setLocalCollapsed] = useState(true)
+  const collapsed = messageId
+    ? resolveMessageCollapsed(collapsedMap, messageId)
+    : localCollapsed
+
+  const anchorBeforeChange = useInPlaceAnchor(rootRef)
+  const setCollapsed = (next: boolean) => {
+    anchorBeforeChange()
+    if (messageId) Stores.MessageViewState.setMessageCollapsed(messageId, next)
+    else setLocalCollapsed(next)
+  }
 
   // Measure whether the full content is taller than the clamp. `scrollHeight`
   // reflects the full (unclamped) height even while a `max-height` is applied,
@@ -58,7 +91,7 @@ export function CollapsibleBlock({
   const isClamped = overflowing && collapsed
 
   return (
-    <div className={cn('flex flex-col', className)} data-testid={dataTestid}>
+    <div ref={rootRef} className={cn('flex flex-col', className)} data-testid={dataTestid}>
       <div
         ref={contentRef}
         id={regionId}
@@ -89,7 +122,7 @@ export function CollapsibleBlock({
           variant="ghost"
           className="mt-1 self-start h-auto px-2 py-1 text-xs text-muted-foreground"
           icon={collapsed ? <ChevronDown /> : <ChevronUp />}
-          onClick={() => setCollapsed(c => !c)}
+          onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
           aria-controls={regionId}
         >

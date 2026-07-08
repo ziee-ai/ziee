@@ -1087,6 +1087,22 @@ const integratorSeeded: SeededSurfaceEntry[] = [
     initialPath: '/',
     component: lazyNamed(() => import('./TableDemos'), 'LargeRawCodeViewDemo'),
   },
+  // ── MessageList: a ~500-message MIXED conversation driving the REAL
+  //    virtualizer in a scroll box. Reproduces the jitter root cause (variable-
+  //    height inline content) so the scroll-stability e2e can measure the
+  //    correction counter + assert show-more/resize persistence
+  //    (message-scroll-stability ITEM-1). ───────────────────────────────────────
+  {
+    slug: 'seeded-message-list-long',
+    title: 'Message list — long mixed conversation (interactive)',
+    note: '500 mixed messages (long collapsible, tables, images, inline files) → virtualizer scroll-stability surface',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('./MessageListLongDemo'),
+      'MessageListLongDemo',
+    ),
+  },
   // ── McpToolCallsTab: LOADED with tool-call rows (kit-Table sort/filter). The
   //    grid refetches on mount, so holdPatch re-asserts the seeded rows against
   //    the (empty) cassette. Drives the F1 data-grid sort/filter e2e. ──────────

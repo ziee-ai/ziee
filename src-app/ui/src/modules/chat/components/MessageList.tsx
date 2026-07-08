@@ -182,6 +182,11 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     // the whole itemSizeCache there per event would be O(n²) over a scroll-
     // through. Instead, coalesce into ONE trailing flush ~after measurements
     // settle (FIX_ROUND-1: O(n²) write-back).
+    // DEV-only virtualizer-correction metrics (ITEM-1). Kept in a ref so counting
+    // never triggers a render; surfaced on `window.__MSGLIST_METRICS__` by the
+    // effect below for the scroll-stability e2e.
+    const metricsRef = useRef({ corrections: 0 })
+
     const flushTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
     const scheduleFlush = () => {
       if (flushTimer.current) clearTimeout(flushTimer.current)
@@ -213,7 +218,14 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       // sync=false is a measurement/layout change — coalesce those into one
       // trailing flush (never per scroll frame; O(n) once per settle) (ITEM-2).
       onChange: (_instance, sync) => {
-        if (!sync) scheduleFlush()
+        if (!sync) {
+          scheduleFlush()
+          // ITEM-1 instrumentation: a non-sync onChange is a size/layout
+          // RECORRECTION (an item re-measured → total-size recompute), which is
+          // exactly the scrollbar-jump signal. Count them so the e2e can assert
+          // they settle to ~0 after a scroll pause. DEV-only (tree-shaken out).
+          if (import.meta.env.DEV) metricsRef.current.corrections++
+        }
       },
       // Stable per-message keys so the measurement cache survives prepend /
       // append / window-reset (a message keeps its measured height when its
@@ -232,6 +244,33 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // DEV-only: surface the correction counter + live total size so the
+    // scroll-stability e2e (TEST-6) can reset, scroll, and assert the count
+    // settles to ~0 after each pause. Compiled out of production builds.
+    useEffect(() => {
+      if (!import.meta.env.DEV) return
+      const w = window as unknown as {
+        __MSGLIST_METRICS__?: {
+          corrections: number
+          reset: () => void
+          totalSize: () => number
+        }
+      }
+      w.__MSGLIST_METRICS__ = {
+        get corrections() {
+          return metricsRef.current.corrections
+        },
+        reset: () => {
+          metricsRef.current.corrections = 0
+        },
+        totalSize: () => virt.getTotalSize(),
+      }
+      return () => {
+        delete w.__MSGLIST_METRICS__
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [virt])
 
     // Live handle to the current array + the plain-path container for the
     // imperative methods.

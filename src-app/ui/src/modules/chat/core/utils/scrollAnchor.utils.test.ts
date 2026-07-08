@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   anchorRestoreNeeded,
+  inPlaceAnchorDelta,
   indexRestoreOffset,
   pickTopAnchor,
   restoreDelta,
@@ -97,4 +98,27 @@ test('anchorRestoreNeeded is idempotent: after a restore to target it is a no-op
 test('anchorRestoreNeeded honors a custom tolerance', () => {
   assert.equal(anchorRestoreNeeded(790, 780, 5), true)
   assert.equal(anchorRestoreNeeded(783, 780, 5), false)
+})
+
+// TEST-3 (message-scroll-stability ITEM-7): in-place anchor across an
+// intentional height change (show-more / resize) — pins a VISIBLE row's top and
+// defers to the virtualizer for above/below-fold rows so the two never fight.
+test('inPlaceAnchorDelta pins a visible row: corrects residual drift', () => {
+  // Row top was 200px below the viewport top; after the change it drifted to
+  // 206 → correct by +6 to hold it at 200.
+  assert.equal(inPlaceAnchorDelta(200, 206, 600), 6)
+  // No drift → no correction.
+  assert.equal(inPlaceAnchorDelta(200, 200, 600), 0)
+})
+
+test('inPlaceAnchorDelta is a no-op above the fold (virtualizer owns it)', () => {
+  // Row started above the viewport top (negative) → the virtualizer already
+  // adjusts scroll for above-fold size changes; layering ours would double-jump.
+  assert.equal(inPlaceAnchorDelta(-30, 10, 600), 0)
+})
+
+test('inPlaceAnchorDelta is a no-op entirely below the fold', () => {
+  // Row top at/below the viewport bottom → nothing visible moved.
+  assert.equal(inPlaceAnchorDelta(600, 640, 600), 0)
+  assert.equal(inPlaceAnchorDelta(720, 900, 600), 0)
 })
