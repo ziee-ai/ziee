@@ -155,8 +155,9 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
               // paints the row's own highlight over the label's tail so it
               // dissolves cleanly under the kebab; pointer-events-none lets clicks
               // on the masked strip fall through to the row button below (the kebab
-              // re-enables its own pointer events when revealed).
-              <div className="absolute inset-y-0 end-0 flex items-center pe-1 ps-6 rounded-e-md bg-inherit pointer-events-none">
+              // re-enables its own pointer events when revealed). ps-1: the mask is
+              // only ~the kebab's own width — it must NOT eat a wide strip of label.
+              <div className="absolute inset-y-0 end-0 flex items-center pe-1 ps-1 rounded-e-md bg-inherit pointer-events-none">
                 {item.actions}
               </div>
             )}
