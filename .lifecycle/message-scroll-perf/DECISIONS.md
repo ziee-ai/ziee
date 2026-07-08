@@ -63,14 +63,18 @@ between 240 and natural height — and the virtualizer's above-viewport adjustme
 image term for consistency.
 
 ### DEC-5: What overscan value (ITEM-5)?
-**Resolution:** Reduce `overscan` from 8 to **4**. With heavy variable rows, 4
-each direction is enough to prevent visible pop-in at normal scroll speed while
-roughly halving the number of heavy off-screen tables/images mounted per frame.
-The value is asserted-bounded (not exact) by TEST-7's mounted-count check; if the
-gallery/e2e runtime shows pop-in at 4, DEC-5 is revised in a drift entry with the
-measured value — the plan does not hard-commit to 4 beyond "small, measured".
-**Basis:** convention — react-virtual's default overscan is small (1–3); 4 is a
-conservative bump above default for tall rows, well below the current 8.
+**Resolution:** (revised — see DRIFT-2) Keep `overscan` at **8** (main's original
+value). The initial plan dropped it to 4 to halve heavy off-screen mounts, but
+phase-8 e2e (`lazy-load-messages` anchor invariant) showed overscan 4 regressed
+the reverse-infinite-scroll anchor by ~120px (vs the <80px tolerance): with fewer
+off-screen rows measured above the viewport, the prepend anchor-restore leans on
+the coarser estimate and the view drifts. Anchor precision outweighs the marginal
+off-screen-mount saving, especially since `ChatMessage` is memoized (extra
+overscan rows don't re-render on scroll — the perf cost is only their one-time
+mount). The other perf wins (content-aware estimate, measured-height seed,
+reserved images) are unaffected, and the user's lag was never overscan-driven.
+**Basis:** codebase + e2e measurement — the anchor invariant is the objective
+gate; DEC-5's own "revise via a drift entry if a regression shows" clause fired.
 
 ### DEC-6: What is the ITEM-6 anchor-reconcile mechanism, and may it be a no-op?
 **Resolution:** Default mechanism: in `restoreAnchor`, after computing the
