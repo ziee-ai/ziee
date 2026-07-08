@@ -231,10 +231,11 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
         <Input
           size="sm"
           allowClear
-          // flex-1 min-w-0 (basis-0) so the filter SHRINKS to keep the Columns
-          // button on the same row on a narrow toolbar instead of the button
-          // wrapping below it; max-w-64 still caps its width on a wide toolbar.
-          className="flex-1 min-w-0 max-w-64"
+          // flex-1 (basis-0) so the filter shrinks to keep the Columns button on
+          // the same row instead of wrapping below it; min-w-40 keeps the input
+          // usable (never collapses to an unreadable sliver) and max-w-64 caps it
+          // on a wide toolbar.
+          className="flex-1 min-w-40 max-w-64"
           aria-label="Filter rows"
           placeholder={props.filterPlaceholder ?? 'Filter…'}
           value={view.query}
