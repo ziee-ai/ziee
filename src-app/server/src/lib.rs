@@ -70,14 +70,16 @@ pub use common::{ApiResult, AppError};
 // definition; this only widens the crate-root reachability. ---
 pub use modules::sync::{Audience, SyncAction, SyncEntity, publish};
 pub mod chat_extension {
-    //! Chat-extension authoring surface for downstream built-in modules that
-    //! register a `#[distributed_slice(ziee::chat_extension::CHAT_EXTENSIONS)]`.
+    //! Chat-extension authoring surface for downstream (desktop-only) built-in
+    //! modules. Register at boot via `ziee::chat_extension::register_chat_extension`
+    //! (a runtime handoff mirroring `register_sandbox_mount_provider`).
+    pub use crate::modules::chat::core::extension::registry::register_chat_extension;
     pub use crate::modules::chat::core::extension::{
         BeforeLlmAction, CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
-        SendMessageRequest, StreamContext,
+        SendMessageRequest, StreamContext, runtime_chat_extensions,
     };
 }
-pub use modules::mcp::chat_extension::mcp::{AUTO_ATTACH_BUILTINS, AutoAttachEntry};
+pub use modules::mcp::chat_extension::mcp::{AutoAttachEntry, register_auto_attach_builtin};
 // Re-export the at-rest secret helpers so out-of-crate consumers
 // (notably the desktop tauri crate's remote_access module) can
 // encrypt/decrypt rows without re-implementing pgcrypto plumbing.

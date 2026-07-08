@@ -8,7 +8,6 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
-use linkme::distributed_slice;
 use uuid::Uuid;
 
 use ai_providers::{ChatRequest, ContentBlock};
@@ -134,10 +133,29 @@ pub struct AutoAttachEntry {
     pub server_id: fn() -> Uuid,
 }
 
-/// Distributed slice of auto-attach registrations contributed by (possibly
-/// downstream) built-in MCP modules. Iterated by `auto_attach_builtin_ids`.
-#[distributed_slice]
-pub static AUTO_ATTACH_BUILTINS: [AutoAttachEntry] = [..];
+/// Runtime registry of auto-attach registrations contributed by (possibly
+/// downstream/desktop-only) built-in MCP modules — mirrors
+/// `code_sandbox::register_sandbox_mount_provider` (a runtime handoff, NOT a
+/// link-time `linkme` slice: the desktop crate links this server as a lib and
+/// the proven desktop→server injection idiom is explicit runtime registration).
+/// Iterated by `auto_attach_builtin_ids`.
+fn auto_attach_registry() -> &'static std::sync::RwLock<Vec<AutoAttachEntry>> {
+    static REG: std::sync::OnceLock<std::sync::RwLock<Vec<AutoAttachEntry>>> =
+        std::sync::OnceLock::new();
+    REG.get_or_init(|| std::sync::RwLock::new(Vec::new()))
+}
+
+/// Register an auto-attach built-in. Call once at boot (typically from the
+/// desktop crate's `office_bridge` module). A standalone/remote-web server never
+/// calls this, so the seam is inert there and `auto_attach_builtin_ids` behaves
+/// exactly as before.
+#[allow(dead_code)]
+pub fn register_auto_attach_builtin(entry: AutoAttachEntry) {
+    auto_attach_registry()
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(entry);
+}
 
 fn auto_attach_builtin_ids(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
@@ -188,7 +206,11 @@ fn auto_attach_builtin_ids(
     // Same `{flag → server_id}` contract as the hardcoded arms above; NOT
     // approval-bypassed (absent from `is_builtin_server_id`), so mutating office
     // tools stay behind per-call approval.
-    for entry in AUTO_ATTACH_BUILTINS {
+    for entry in auto_attach_registry()
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+    {
         if flag(entry.flag) {
             ids.push((entry.server_id)());
         }
@@ -3090,16 +3112,17 @@ mod builtin_tests {
     fn test_auto_attach_server_id() -> Uuid {
         Uuid::new_v5(&Uuid::NAMESPACE_URL, b"test.auto.attach.builtin")
     }
-    #[distributed_slice(AUTO_ATTACH_BUILTINS)]
-    static TEST_AUTO_ATTACH: AutoAttachEntry = AutoAttachEntry {
-        flag: "attach_test_auto_builtin",
-        server_id: test_auto_attach_server_id,
-    };
 
-    /// TEST-4 — a slice-registered builtin auto-attaches on its flag (the
+    /// TEST-4 — a runtime-registered builtin auto-attaches on its flag (the
     /// inversion works); TEST-13 — and is NOT approval-bypassed.
     #[test]
-    fn auto_attach_builtins_slice_attaches_on_flag_and_is_not_approval_bypassed() {
+    fn auto_attach_builtins_runtime_attaches_on_flag_and_is_not_approval_bypassed() {
+        // Register a synthetic downstream entry the way office_bridge does from
+        // the desktop crate (runtime handoff, not a link-time slice).
+        register_auto_attach_builtin(AutoAttachEntry {
+            flag: "attach_test_auto_builtin",
+            server_id: test_auto_attach_server_id,
+        });
         let id = test_auto_attach_server_id();
 
         // Tool-capable model with NO flag → the slice entry must not attach.

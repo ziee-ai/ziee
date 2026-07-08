@@ -7,14 +7,16 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::core::config::Config;
-use crate::modules::chat::core::extension::{CHAT_EXTENSIONS, ExtensionRegistry};
+use crate::modules::chat::core::extension::{CHAT_EXTENSIONS, ExtensionEntry, ExtensionRegistry};
 
 /// Register all discovered extensions in order
 pub fn auto_register_extensions(pool: PgPool, config: Arc<Config>) -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
 
-    // Collect and sort extensions by order
-    let mut entries: Vec<_> = CHAT_EXTENSIONS.iter().collect();
+    // Collect link-time (CHAT_EXTENSIONS slice) + runtime-registered (downstream
+    // desktop-only, e.g. office_bridge) extensions and sort by order.
+    let mut entries: Vec<ExtensionEntry> = CHAT_EXTENSIONS.iter().copied().collect();
+    entries.extend(crate::modules::chat::core::extension::runtime_chat_extensions());
     entries.sort_by_key(|e| e.order);
 
     // Register each extension in order

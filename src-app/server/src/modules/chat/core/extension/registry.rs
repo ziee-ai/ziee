@@ -33,6 +33,38 @@ pub struct ExtensionEntry {
 #[distributed_slice]
 pub static CHAT_EXTENSIONS: [ExtensionEntry] = [..];
 
+/// Runtime registry of chat extensions contributed by (possibly
+/// downstream/desktop-only) crates — mirrors
+/// `code_sandbox::register_sandbox_mount_provider` (a runtime handoff, NOT a
+/// link-time `linkme` slice: the desktop crate links this server as a lib and
+/// the proven desktop→server injection idiom is explicit runtime registration).
+/// `auto_register_extensions` merges these with `CHAT_EXTENSIONS`.
+fn runtime_extensions() -> &'static std::sync::RwLock<Vec<ExtensionEntry>> {
+    static REG: std::sync::OnceLock<std::sync::RwLock<Vec<ExtensionEntry>>> =
+        std::sync::OnceLock::new();
+    REG.get_or_init(|| std::sync::RwLock::new(Vec::new()))
+}
+
+/// Register a chat extension at boot (typically from the desktop crate's
+/// `office_bridge` module). A standalone/remote-web server never calls this, so
+/// no downstream extension runs there.
+#[allow(dead_code)]
+pub fn register_chat_extension(entry: ExtensionEntry) {
+    runtime_extensions()
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(entry);
+}
+
+/// Snapshot of the runtime-registered chat extensions (merged with
+/// `CHAT_EXTENSIONS` by `auto_register_extensions`).
+pub fn runtime_chat_extensions() -> Vec<ExtensionEntry> {
+    runtime_extensions()
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
 /// Action returned by extensions after LLM call completes
 #[derive(Debug, Clone)]
 pub enum ExtensionAction {
