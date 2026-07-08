@@ -110,15 +110,18 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
             key={item.key}
             className={cn(
               'rounded-md',
-              hasActions && 'group/menu-row flex items-center',
+              // relative anchors the absolutely-overlaid actions (see below).
+              hasActions && 'group/menu-row relative',
               // Row-LEVEL highlight (not button-level) so it spans the whole row
               // incl. the trailing actions — the kebab sits INSIDE the highlighted
               // row and hovering anywhere on the row (kebab included) lights it up.
+              // Hover is OPAQUE (not /60) so the actions' `bg-inherit` mask paints
+              // the same colour without double-darkening the overlap.
               selected
                 ? 'bg-primary text-primary-foreground font-medium'
                 : ancestor
                   ? 'bg-accent text-accent-foreground font-medium'
-                  : 'hover:bg-accent/60',
+                  : 'hover:bg-accent',
             )}
           >
             <button
@@ -131,9 +134,10 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
               title={collapsed ? name : undefined}
               onClick={() => onSelect?.(item.key)}
               className={cn(
-                // Transparent: the visible highlight lives on the <li> above.
-                'flex min-w-0 items-center gap-2 rounded-md text-sm bg-transparent',
-                hasActions ? 'flex-1' : 'w-full',
+                // Transparent: the visible highlight lives on the <li> above. Always
+                // w-full so the label uses the FULL row width and ellipsizes UNDER
+                // the overlaid actions rather than reserving a gap beside them.
+                'flex w-full min-w-0 items-center gap-2 rounded-md text-sm bg-transparent',
                 collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
                 // Inset focus ring: menu items live in scrollable rails (settings
                 // nav, sidebar) and sit flush to the viewport edge, where an OUTSET
@@ -147,7 +151,14 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
               {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
             </button>
             {hasActions && (
-              <div className="shrink-0 flex items-center pe-1">{item.actions}</div>
+              // Overlay the trailing actions on the row's right edge. bg-inherit
+              // paints the row's own highlight over the label's tail so it
+              // dissolves cleanly under the kebab; pointer-events-none lets clicks
+              // on the masked strip fall through to the row button below (the kebab
+              // re-enables its own pointer events when revealed).
+              <div className="absolute inset-y-0 end-0 flex items-center pe-1 ps-6 rounded-e-md bg-inherit pointer-events-none">
+                {item.actions}
+              </div>
             )}
           </li>
         )

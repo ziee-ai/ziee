@@ -301,9 +301,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!collapsed` | 82 |
 | branch | `'type' in it && it.type === 'label'` | 90 |
 | branch | `!(collapsed)` | 91 |
-| branch | `item.icon != null` | 145 |
-| branch | `!collapsed` | 147 |
-| branch | `hasActions` | 149 |
+| branch | `item.icon != null` | 149 |
+| branch | `!collapsed` | 151 |
+| branch | `hasActions` | 153 |
 
 ### `components/ui/kit/multi-select`
 
@@ -1261,8 +1261,8 @@ Required states: `delayed`, `open`
 | loading | `!loading && recentConversations.length === 0` | 69 |
 | branch | `!c` | 134 |
 | branch | `active?.closest('[role="menu"]')` | 139 |
-| overlay | `<Dropdown open>` | 227 |
-| branch | `!open && keepMenuOpen` | 234 |
+| overlay | `<Dropdown open>` | 233 |
+| branch | `!open && keepMenuOpen` | 240 |
 
 ### `modules/citations/components/CitationCard`
 

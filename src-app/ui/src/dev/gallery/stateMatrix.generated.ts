@@ -244,9 +244,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!collapsed", line: 82 },
       { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 90 },
       { kind: "branch", condition: "!(collapsed)", line: 91 },
-      { kind: "branch", condition: "item.icon != null", line: 145 },
-      { kind: "branch", condition: "!collapsed", line: 147 },
-      { kind: "branch", condition: "hasActions", line: 149 },
+      { kind: "branch", condition: "item.icon != null", line: 149 },
+      { kind: "branch", condition: "!collapsed", line: 151 },
+      { kind: "branch", condition: "hasActions", line: 153 },
     ],
   },
   "components/ui/kit/multi-select": {
@@ -1118,8 +1118,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "!loading && recentConversations.length === 0", line: 69 },
       { kind: "branch", condition: "!c", line: 134 },
       { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 139 },
-      { kind: "overlay", condition: "<Dropdown open>", line: 227 },
-      { kind: "branch", condition: "!open && keepMenuOpen", line: 234 },
+      { kind: "overlay", condition: "<Dropdown open>", line: 233 },
+      { kind: "branch", condition: "!open && keepMenuOpen", line: 240 },
     ],
   },
   "modules/citations/components/CitationCard": {
