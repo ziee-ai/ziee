@@ -16,3 +16,4 @@ src-app/ui/src/components/ui/testIds.generated.ts	1	999999	patterns-conformance,
 src-app/ui/src/dev/gallery/galleryCoverage.generated.ts	1	999999	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	999999	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	999999	patterns-conformance,correctness,tests-quality
+src-app/server/src/modules/mcp/elicitation/models.rs	1	999999	correctness,error-handling,state-management,security,perms/authz,api-contract,concurrency,perf,a11y,patterns-conformance,tests-quality,i18n/copy

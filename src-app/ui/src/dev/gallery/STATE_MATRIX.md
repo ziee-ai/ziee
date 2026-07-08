@@ -2821,24 +2821,24 @@ Required states: `error`
 | branch | `option.recommended` | 89 |
 | branch | `option.description` | 95 |
 | branch | `option.preview` | 100 |
-| branch | `multi` | 150 |
-| branch | `showOther` | 201 |
-| branch | `multi` | 211 |
-| branch | `multi` | 232 |
-| branch | `otherOn` | 248 |
-| error | `fieldState.error?.message` | 258 |
-| branch | `!mounted.current` | 329 |
-| branch | `otherErr` | 340 |
-| branch | `isSubmitting` | 353 |
-| branch | `isSubmitting` | 367 |
-| branch | `!zodOk \|\| firstBad >= 0` | 378 |
-| branch | `step > 0` | 411 |
-| branch | `isLast` | 423 |
-| branch | `total > 1` | 453 |
-| branch | `current && isChoice && currentSchema.title` | 477 |
-| branch | `current && isChoice && currentSchema.description` | 482 |
-| branch | `current` | 487 |
-| branch | `isChoice` | 488 |
+| branch | `multi` | 153 |
+| branch | `showOther` | 204 |
+| branch | `multi` | 214 |
+| branch | `multi` | 235 |
+| branch | `otherOn` | 251 |
+| error | `fieldState.error?.message` | 261 |
+| branch | `!mounted.current` | 332 |
+| branch | `otherErr` | 343 |
+| branch | `isSubmitting` | 356 |
+| branch | `isSubmitting` | 370 |
+| branch | `!zodOk \|\| firstBad >= 0` | 387 |
+| branch | `step > 0` | 418 |
+| branch | `isLast` | 430 |
+| branch | `total > 1` | 461 |
+| branch | `current && isChoice && currentSchema.title` | 485 |
+| branch | `current && isChoice && currentSchema.description` | 490 |
+| branch | `current` | 495 |
+| branch | `isChoice` | 496 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
