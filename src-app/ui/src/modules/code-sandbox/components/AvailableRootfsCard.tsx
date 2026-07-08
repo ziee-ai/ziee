@@ -6,6 +6,9 @@ import type { VersionGroup } from './_rootfsShared'
 interface AvailableRootfsCardProps {
   groups: VersionGroup[]
   canManage: boolean
+  /** When true, the sandbox isn't initialized — the catalog is shown for
+   *  reference but Download is disabled (POST install would 503). */
+  installDisabled?: boolean
   onDownloadAll: (group: VersionGroup) => void
 }
 
@@ -14,6 +17,7 @@ interface AvailableRootfsCardProps {
 export function AvailableRootfsCard({
   groups,
   canManage,
+  installDisabled,
   onDownloadAll,
 }: AvailableRootfsCardProps) {
   return (
@@ -32,6 +36,7 @@ export function AvailableRootfsCard({
                 group={g}
                 variant="available"
                 canManage={canManage}
+                installDisabled={installDisabled}
                 onDownloadAll={onDownloadAll}
               />
             </Fragment>

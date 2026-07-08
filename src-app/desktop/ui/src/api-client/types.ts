@@ -4852,6 +4852,16 @@ export type SSEWorkflowRunEvent = {
 }
 
 /**
+ * Why `code_sandbox` is (or isn't) initialized, in machine-readable form.
+ *
+ *  `Ready` means `init()` reached the end and `get_state()` is `Some`. Every
+ *  other variant is a specific early-return reason recorded by `init()`; the
+ *  rootfs-versions admin endpoint surfaces it so the UI can degrade gracefully
+ *  (show the GitHub catalog + a precise notice) instead of a blanket error.
+ */
+export type SandboxAvailability = 'ready' | 'disabled_in_config' | 'host_unsupported' | 'cloud_imds_refused' | 'workspace_init_failed' | 'pool_missing' | 'not_initialized'
+
+/**
  * REST response for the MCP-server form's sandbox flavor picker:
  *  the selectable rootfs flavors plus the host command allowlist.
  */
@@ -6152,6 +6162,14 @@ export interface VerifyCitationsRequest {
  *  versions" page.
  */
 export interface VersionStatus {
+  /**
+   * Whether `code_sandbox` is initialized, and if not, the machine-readable
+   *  reason. `ready` when the sandbox is registered (full status); otherwise a
+   *  degraded snapshot — the GitHub `available` catalog with empty
+   *  `installed`/`pinned` — so the admin UI can explain WHY installing/mounting
+   *  is unavailable instead of showing a blanket error.
+   */
+  availability: SandboxAvailability
   /** Only populated when GitHub is reachable (best-effort). */
   available: RootfsRelease[]
   /**

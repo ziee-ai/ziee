@@ -94,6 +94,7 @@ function versionStatus(over: Partial<Record<string, unknown>> = {}) {
     conversation_count: 0,
     mcp_server_workspace_count: 0,
     last_swap: null,
+    availability: 'ready',
     ...over,
   }
 }
@@ -955,5 +956,43 @@ test.describe('Sandbox rootfs versions admin', () => {
       timeout: 10000,
     })
     expect(page.url()).toContain('/settings/sandbox')
+  })
+
+  // Graceful degrade: when code_sandbox isn't initialized the LIST endpoint
+  // returns 200 with the GitHub catalog + an `availability` reason (installed /
+  // pinned empty). The section shows a warning notice + the available card with
+  // Download disabled — NOT the destructive full-section error.
+  test('degrades gracefully when the sandbox is disabled', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await mockVersions(page, () => ({
+      pinned_version: null,
+      installed: [],
+      available: [release('0.0.6'), release('0.0.5')],
+      draining: [],
+      conversation_count: 0,
+      mcp_server_workspace_count: 0,
+      last_swap: null,
+      host_arch: 'x86_64',
+      host_package: 'squashfs',
+      availability: 'disabled_in_config',
+    }))
+    await mockInstallSse(page)
+    await gotoSandbox(page, baseURL)
+
+    // The graceful-degrade warning notice renders; the destructive error does NOT.
+    await expect(byTestId(page, 'sandbox-rootfs-degraded-alert')).toBeVisible()
+    await expect(byTestId(page, 'sandbox-rootfs-error')).toHaveCount(0)
+
+    // The GitHub catalog is still listed in the Available card.
+    await expect(availableCard(page)).toBeVisible()
+    await expect(availGroup(page, '0.0.6')).toBeVisible()
+
+    // Install is disabled while the sandbox is off (POST would 503), even for an
+    // admin who holds the manage permission.
+    await expect(byTestId(page, 'rootfs-download-0.0.6')).toBeDisabled()
   })
 })

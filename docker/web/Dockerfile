@@ -128,11 +128,20 @@ FROM debian:bookworm-slim AS runtime
 # loads Vulkan; without the OpenCL ICD loader (libOpenCL.so.1) the dynamically
 # linked binary would fail to exec on this slim base. With no real GPU/ICD
 # present, detection just returns empty — the loader lib only needs to resolve.
+#
+# bubblewrap + squashfuse + fuse3: the OPTIONAL code_sandbox host deps.
+# `bubblewrap`→bwrap (the boot probe requires it on PATH), `squashfuse`→mount the
+# rootfs, `fuse3`→fusermount3 AND a `/usr/bin/fusermount` compat symlink (which
+# runtime_mount.rs calls by that exact name). Always shipped, but inert unless
+# ZIEE_CODE_SANDBOX_ENABLED=true (see docker-compose.sandbox.yaml) — with the
+# sandbox off they add ~a few MB and are never exec'd. (This is the same set the
+# CLAUDE.md operator runtime deps list.)
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         nginx ca-certificates tini gettext-base wget \
-        ocl-icd-libopencl1 libvulkan1; \
+        ocl-icd-libopencl1 libvulkan1 \
+        bubblewrap squashfuse fuse3; \
     rm -rf /var/lib/apt/lists/*; \
     groupadd -r ziee; \
     useradd -r -g ziee -d /var/lib/ziee -s /usr/sbin/nologin ziee; \
@@ -160,6 +169,7 @@ ENV HOME=/var/lib/ziee \
     ZIEE_STORAGE_KEY=ziee-local-dev-storage-key-change-me-at-least-32-chars \
     ZIEE_CORS_ALLOW_ORIGIN=http://localhost:8080 \
     ZIEE_UPDATE_CHECK=false \
+    ZIEE_CODE_SANDBOX_ENABLED=false \
     ZIEE_LOG_LEVEL=info \
     ZIEE_LOG_FORMAT=json
 

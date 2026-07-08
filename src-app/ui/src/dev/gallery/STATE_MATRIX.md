@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1875** signals total: 1481 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1877** signals total: 1483 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1327,8 +1327,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `groups.length === 0` | 21 |
-| branch | `i > 0` | 30 |
+| empty | `groups.length === 0` | 25 |
+| branch | `i > 0` | 34 |
 
 ### `modules/code-sandbox/components/DownloadedRootfsCard`
 
@@ -1345,16 +1345,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.isDefault` | 77 |
-| branch | `anyDraining` | 82 |
-| branch | `variant === 'available'` | 90 |
-| branch | `variant === 'downloaded' && !group.isDefault` | 100 |
-| branch | `showProgress` | 121 |
-| branch | `progressMessage` | 124 |
-| branch | `canManage` | 179 |
-| branch | `f.artifact` | 198 |
-| branch | `f.live > 0` | 215 |
-| branch | `f.artifact` | 225 |
+| branch | `group.isDefault` | 81 |
+| branch | `anyDraining` | 86 |
+| branch | `variant === 'available'` | 94 |
+| branch | `variant === 'downloaded' && !group.isDefault` | 109 |
+| branch | `showProgress` | 130 |
+| branch | `progressMessage` | 133 |
+| branch | `canManage` | 188 |
+| branch | `f.artifact` | 207 |
+| branch | `f.live > 0` | 224 |
+| branch | `f.artifact` | 234 |
 
 ### `modules/code-sandbox/components/SandboxResourceLimitsSection`
 
@@ -1373,14 +1373,15 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 97 |
-| branch | `pinnedVersion` | 213 |
-| branch | `downloadedFlavors.length > 0` | 224 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 242 |
-| branch | `sseError` | 265 |
-| loading | `loading && groups.length === 0` | 274 |
-| error | `error && groups.length === 0` | 276 |
-| error | `error` | 286 |
+| branch | `!canRead` | 123 |
+| branch | `pinnedVersion` | 239 |
+| branch | `downloadedFlavors.length > 0` | 250 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 268 |
+| branch | `isDegraded` | 292 |
+| branch | `sseError` | 307 |
+| loading | `loading && groups.length === 0` | 316 |
+| error | `error && groups.length === 0` | 318 |
+| error | `error` | 328 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -1390,7 +1391,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!oldV` | 79 |
 | branch | `!name.startsWith(ASSET_PREFIX)` | 119 |
-| branch | `canManage` | 417 |
+| branch | `disabledReason` | 422 |
+| branch | `canManage` | 425 |
 
 ### `modules/file-rag/components/sections/ChunkingSection`
 

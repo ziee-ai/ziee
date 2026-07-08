@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1875 signals total.
+// 325 surfaces carry renderable-state signals; 1877 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1178,8 +1178,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/code-sandbox/components/AvailableRootfsCard",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "groups.length === 0", line: 21 },
-      { kind: "branch", condition: "i > 0", line: 30 },
+      { kind: "empty", condition: "groups.length === 0", line: 25 },
+      { kind: "branch", condition: "i > 0", line: 34 },
     ],
   },
   "modules/code-sandbox/components/DownloadedRootfsCard": {
@@ -1194,16 +1194,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/code-sandbox/components/RootfsVersionGroup",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "group.isDefault", line: 77 },
-      { kind: "branch", condition: "anyDraining", line: 82 },
-      { kind: "branch", condition: "variant === 'available'", line: 90 },
-      { kind: "branch", condition: "variant === 'downloaded' && !group.isDefault", line: 100 },
-      { kind: "branch", condition: "showProgress", line: 121 },
-      { kind: "branch", condition: "progressMessage", line: 124 },
-      { kind: "branch", condition: "canManage", line: 179 },
-      { kind: "branch", condition: "f.artifact", line: 198 },
-      { kind: "branch", condition: "f.live > 0", line: 215 },
-      { kind: "branch", condition: "f.artifact", line: 225 },
+      { kind: "branch", condition: "group.isDefault", line: 81 },
+      { kind: "branch", condition: "anyDraining", line: 86 },
+      { kind: "branch", condition: "variant === 'available'", line: 94 },
+      { kind: "branch", condition: "variant === 'downloaded' && !group.isDefault", line: 109 },
+      { kind: "branch", condition: "showProgress", line: 130 },
+      { kind: "branch", condition: "progressMessage", line: 133 },
+      { kind: "branch", condition: "canManage", line: 188 },
+      { kind: "branch", condition: "f.artifact", line: 207 },
+      { kind: "branch", condition: "f.live > 0", line: 224 },
+      { kind: "branch", condition: "f.artifact", line: 234 },
     ],
   },
   "modules/code-sandbox/components/SandboxResourceLimitsSection": {
@@ -1220,14 +1220,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/code-sandbox/components/SandboxRootfsVersionsSection",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!canRead", line: 97 },
-      { kind: "branch", condition: "pinnedVersion", line: 213 },
-      { kind: "branch", condition: "downloadedFlavors.length > 0", line: 224 },
-      { kind: "branch", condition: "lastSwap && lastSwap.draining_mounts > 0", line: 242 },
-      { kind: "branch", condition: "sseError", line: 265 },
-      { kind: "loading", condition: "loading && groups.length === 0", line: 274 },
-      { kind: "error", condition: "error && groups.length === 0", line: 276 },
-      { kind: "error", condition: "error", line: 286 },
+      { kind: "branch", condition: "!canRead", line: 123 },
+      { kind: "branch", condition: "pinnedVersion", line: 239 },
+      { kind: "branch", condition: "downloadedFlavors.length > 0", line: 250 },
+      { kind: "branch", condition: "lastSwap && lastSwap.draining_mounts > 0", line: 268 },
+      { kind: "branch", condition: "isDegraded", line: 292 },
+      { kind: "branch", condition: "sseError", line: 307 },
+      { kind: "loading", condition: "loading && groups.length === 0", line: 316 },
+      { kind: "error", condition: "error && groups.length === 0", line: 318 },
+      { kind: "error", condition: "error", line: 328 },
     ],
   },
   "modules/code-sandbox/components/_rootfsShared": {
@@ -1236,7 +1237,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "!oldV", line: 79 },
       { kind: "branch", condition: "!name.startsWith(ASSET_PREFIX)", line: 119 },
-      { kind: "branch", condition: "canManage", line: 417 },
+      { kind: "branch", condition: "disabledReason", line: 422 },
+      { kind: "branch", condition: "canManage", line: 425 },
     ],
   },
   "modules/file-rag/components/sections/ChunkingSection": {

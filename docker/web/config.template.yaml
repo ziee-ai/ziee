@@ -65,9 +65,14 @@ jwt:
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 
-# bwrap sandbox needs user namespaces / host deps — off in the container.
+# Code sandbox (bwrap-isolated code execution). OFF by default. The runtime
+# image ships the host deps (bubblewrap/squashfuse/fuse3), so enabling is just
+# ZIEE_CODE_SANDBOX_ENABLED=true — but real sandboxed exec also needs the
+# container to run with /dev/fuse + user namespaces (see the
+# docker-compose.sandbox.yaml overlay). When enabled, the admin "Rootfs
+# environments" page fetches + mounts a rootfs from GitHub on first use.
 code_sandbox:
-  enabled: false
+  enabled: ${ZIEE_CODE_SANDBOX_ENABLED}
 
 # At-rest encryption for stored credentials. Set a stable ZIEE_STORAGE_KEY
 # (>=32 chars) per deployment; losing it makes encrypted secrets unrecoverable.
