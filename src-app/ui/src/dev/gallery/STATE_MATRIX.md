@@ -1133,13 +1133,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 50 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 67 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 83 |
-| branch | `scopedHref?.startsWith('#')` | 104 |
-| empty | `typeof src !== 'string' \|\| src.length === 0` | 149 |
-| branch | `src.startsWith('/')` | 150 |
-| branch | `u.origin === window.location.origin` | 154 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 54 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 71 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 87 |
+| branch | `scopedHref?.startsWith('#')` | 108 |
+| empty | `typeof src !== 'string' \|\| src.length === 0` | 153 |
+| branch | `src.startsWith('/')` | 154 |
+| branch | `u.origin === window.location.origin` | 158 |
 
 ### `modules/chat/extensions/export/extension`
 
