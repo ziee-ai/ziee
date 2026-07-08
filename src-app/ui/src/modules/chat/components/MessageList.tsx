@@ -13,12 +13,18 @@ import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
 import { Stores } from '@/core/stores'
 import {
+  anchorRestoreNeeded,
   captureTopAnchor,
   indexRestoreOffset,
   measureMessageTop,
   restoreDelta,
 } from '@/modules/chat/core/utils/scrollAnchor.utils'
 import { indexOfMessageId } from '@/modules/chat/core/stores/messageWindow'
+import { estimateMessageHeight } from '@/modules/chat/core/utils/estimateMessageHeight'
+import {
+  buildInitialMeasurementsCache,
+  recordMeasurements,
+} from '@/modules/chat/core/utils/measuredHeightCache'
 
 /** A captured scroll anchor for reverse-infinite-scroll prepend (ITEM-4). */
 export interface MessageAnchor {
@@ -59,7 +65,9 @@ interface MessageListProps {
   virtualize?: boolean
 }
 
-const ESTIMATED_ROW_HEIGHT = 140
+/** App content column: max-w-4xl (896px) minus the px-4 gutters. */
+const MAX_CONTENT_WIDTH = 896
+const CONTENT_GUTTER = 32
 
 /**
  * MessageList — row-virtualized (`@tanstack/react-virtual`) when an inner scroll
@@ -85,16 +93,60 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     const messagesArray = useMemo(() => Array.from(messages.values()), [messages])
     const count = messagesArray.length
 
+    // The rendered content width (drives the height estimate + the width bucket
+    // of the measured-height cache). Read live from the scroll viewport, capped
+    // at the app's max-w-4xl column; falls back to the column width before the
+    // scroller mounts. Cheap (no layout thrash — clientWidth is already laid
+    // out). (message-scroll-perf ITEM-1/ITEM-2, DEC-1/DEC-2.)
+    const contentWidth = () => {
+      const vw = getScrollElement()?.clientWidth ?? MAX_CONTENT_WIDTH
+      return Math.min(vw, MAX_CONTENT_WIDTH) - CONTENT_GUTTER
+    }
+
+    // Seed the virtualizer with any REAL measured heights persisted from a prior
+    // mount of this (or any) conversation at this width bucket, so re-opening a
+    // long conversation starts rows at their true height (near-zero first-scroll
+    // correction). Rebuilds only when the message window changes — never on
+    // scroll (ITEM-2, DEC-2).
+    const initialMeasurementsCache = useMemo(
+      () => buildInitialMeasurementsCache(messagesArray.map(m => m.id), contentWidth()),
+      // contentWidth is read at compute time; getScrollElement is intentionally
+      // not a dep (a fresh closure each ConversationPage render).
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [messagesArray],
+    )
+
     const virt = useVirtualizer({
       count,
       getScrollElement,
-      estimateSize: () => ESTIMATED_ROW_HEIGHT,
-      overscan: 8,
+      // Content-aware first-pass estimate (per-message: text length + table /
+      // image / code / tool add-ons) so the estimate→measured correction — and
+      // the scrollbar-thumb jump it caused — shrinks toward zero (ITEM-1, DEC-1).
+      estimateSize: i => estimateMessageHeight(messagesArray[i], contentWidth()),
+      // Fewer heavy off-screen tables/images mounted per frame; pop-in still
+      // acceptable at normal scroll speed (ITEM-5, DEC-5).
+      overscan: 4,
+      initialMeasurementsCache,
+      // Persist real measured heights across mounts. `sync` is true on scroll
+      // and false on a measurement/layout change, so this fires only on the
+      // (bounded) measurement events — never per scroll frame — and reads the
+      // virtualizer's OWN size map (no second observer) (ITEM-2, DEC-2).
+      onChange: (instance, sync) => {
+        if (!sync) recordMeasurements(instance.itemSizeCache, contentWidth())
+      },
       // Stable per-message keys so the measurement cache survives prepend /
       // append / window-reset (a message keeps its measured height when its
       // index shifts).
       getItemKey: i => messagesArray[i]?.id ?? i,
     })
+
+    // Flush measured heights on unmount (conversation close / navigate away) so
+    // the next open seeds from them even if no measurement event fired late in
+    // the session (ITEM-2).
+    useEffect(() => {
+      return () => recordMeasurements(virt.itemSizeCache, contentWidth())
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     // Live handle to the current array + the plain-path container for the
     // imperative methods.
@@ -201,9 +253,18 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
             const idx = indexOfMessageId(arrRef.current, anchor.anchorId)
             if (idx < 0) return
             const [offsetForIndex] = virt.getOffsetForIndex(idx, 'start') ?? [0]
-            virt.scrollToOffset(
-              indexRestoreOffset(offsetForIndex ?? 0, anchor.viewportOffset),
+            const target = indexRestoreOffset(
+              offsetForIndex ?? 0,
+              anchor.viewportOffset,
             )
+            // Skip the explicit restore when the virtualizer's own
+            // above-viewport size-change adjustment already pinned the anchor
+            // (within tolerance) — avoids a redundant scroll that double-adjusts
+            // into a visible jump (ITEM-6, DEC-6). The before-paint restore is
+            // preserved for the common case where it hasn't yet.
+            const el = getScrollElement()
+            if (el && !anchorRestoreNeeded(el.scrollTop, target)) return
+            virt.scrollToOffset(target)
             return
           }
           // Plain path: re-pin by the anchor row's new position (window scroll).

@@ -98,18 +98,24 @@ of `MessageList` (main `a101c851`). User-reported symptoms:
   unit (ITEM-2).
 - `src-app/ui/src/components/common/ReservedImage.tsx` — **new**, height-reserving
   image (ITEM-3).
+- `src-app/ui/src/components/common/reservedImageBox.ts` (+ `.test.ts`) — **new**,
+  pure reservation helper split out for unit testing (ITEM-3; see DRIFT-1).
+- `src-app/ui/src/components/common/imageSrcPolicy.ts` (+ `.test.ts`) — **new**,
+  pure anti-exfil classifier extracted from the `img` override (ITEM-3; DRIFT-1).
 - `src-app/ui/src/modules/chat/core/utils/useStreamdownComponents.tsx` — route the
-  `img` override through `ReservedImage` (ITEM-3).
-- `src-app/ui/src/components/common/MarkdownTable.tsx` — only if a definite-height
-  bound is found missing (ITEM-4).
-- `src-app/ui/src/modules/chat/pages/ConversationPage.tsx` — anchor-restore
-  reconcile if ITEM-6 needs a page-side change.
+  `img` override through `classifyImageSrc` + `ReservedImage` (ITEM-3).
+- `src-app/ui/src/modules/chat/components/MessageList.tsx` +
+  `core/utils/scrollAnchor.utils.ts` (+ `.test.ts`) — anchor-reconcile guard
+  (ITEM-6).
+- `src-app/ui/src/components/common/MarkdownTable.tsx` — **NOT touched**: ITEM-4 is
+  verification-only (the table already caps at `max-h-[min(60vh,36rem)]` and
+  inline previews at `max-h-[…]`) — see DRIFT-1.
 - `src-app/ui/tests/e2e/chat/message-scroll-perf.spec.ts` — **new**, e2e perf
-  regression (ITEM-1,2,3,5).
+  regression (ITEM-1,2,4,5,7).
 - `src-app/ui/tests/e2e/chat/message-scroll-image-stability.spec.ts` — **new**,
   e2e image-load stability (ITEM-3).
-- Gallery cassette/state additions only if a new render state is introduced by
-  `ReservedImage`'s placeholder (ITEM-3) — else none.
+- Gallery cassette/state additions only if `check:state-matrix` demands a cell for
+  `ReservedImage`'s placeholder state (ITEM-3, DEC-9) — else none.
 
 Desktop (`src-app/desktop/ui`) consumes `../../ui/src` for the chat module via
 its `@/` fallback alias (no local override), so editing `src-app/ui/**` covers

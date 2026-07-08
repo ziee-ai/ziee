@@ -9,6 +9,8 @@ import {
 } from '@/components/common/markdownHeadings'
 import { renderGfmAlert } from '@/components/common/gfmAlert'
 import { BlockedImage } from '@/components/common/BlockedImage'
+import { ReservedImage } from '@/components/common/ReservedImage'
+import { classifyImageSrc } from '@/components/common/imageSrcPolicy'
 import { cn } from '@/lib/utils'
 
 /**
@@ -145,17 +147,16 @@ export function useStreamdownComponents(contentId: string) {
         // would allow this, and the `urlTransform` prop doesn't apply
         // to raw-HTML img tags (only markdown `![](url)` syntax).
         // Doing the check at the React component level catches both.
+        // NOTE (message-scroll-perf ITEM-3/DEC-3): the exfil policy is UNCHANGED
+        // — it now lives in the pure, unit-tested `classifyImageSrc` (same
+        // rules). Only ALLOWED (same-origin / root-relative) images route through
+        // ReservedImage, which reserves row height so an async image load doesn't
+        // thrash the virtualizer's row measurement. ReservedImage does NO src
+        // validation — it only ever wraps an approved image.
         const src = props.src
-        if (typeof src !== 'string' || src.length === 0) return null
-        if (src.startsWith('/')) return <img {...props} />
-        if (!src.startsWith('data:')) {
-          try {
-            const u = new URL(src, window.location.origin)
-            if (u.origin === window.location.origin) return <img {...props} />
-          } catch {
-            /* malformed → placeholder below */
-          }
-        }
+        const verdict = classifyImageSrc(src, window.location.origin)
+        if (verdict === 'empty') return null
+        if (verdict === 'allowed') return <ReservedImage {...props} />
         // Blocked (external URL or data: URI) — show a placeholder instead of
         // rendering nothing (which left a broken-looking stray caption).
         return <BlockedImage src={src} alt={typeof props.alt === 'string' ? props.alt : undefined} />
