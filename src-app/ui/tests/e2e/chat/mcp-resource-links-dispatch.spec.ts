@@ -80,9 +80,9 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     // an inline body to toggle.
     await expect(preview.locator('[data-testid="inline-file-preview-chevron"]'))
       .toHaveCount(0)
-    // External URL-only link → open-in-new-tab is the fallback access path.
+    // No open-in-new-tab anywhere; a URL-only link has no file to download.
     await expect(preview.locator('[data-testid="inline-file-preview-open"]'))
-      .toBeVisible()
+      .toHaveCount(0)
   })
 
   test('tabular viewer (inline: csv/tsv subset) inlines csv, falls back for xlsx', async ({
@@ -156,7 +156,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
     await expect(preview).toBeVisible({ timeout: 10000 })
     await expect(preview.locator('[data-testid="inline-file-preview-body"]')).toHaveCount(0)
-    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toBeVisible()
+    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toHaveCount(0)
   })
 
   test("viewer's icon and label are rendered in the inline header", async ({

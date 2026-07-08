@@ -113,7 +113,7 @@ test.describe('Inline file previews — collapse UX', () => {
     await expect(previews.nth(2).locator('[data-testid="inline-file-preview-body"]')).toBeVisible()
   })
 
-  test('header always shows filename, label, icon, open-in-new-tab', async ({
+  test('header always shows filename, label, icon', async ({
     page,
     testInfra,
   }) => {
@@ -127,25 +127,8 @@ test.describe('Inline file previews — collapse UX', () => {
     await expect(preview).toContainText('plot.png')
     await expect(preview).toContainText('Image') // viewer label
     await expect(preview.locator('[data-testid="inline-file-preview-icon"]').first()).toBeVisible() // icon
-    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toBeVisible()
     // Header still present after collapsing.
     await preview.locator('[data-testid="inline-file-preview-chevron"]').click()
     await expect(preview).toContainText('plot.png')
-  })
-
-  test('open-in-new-tab link has target=_blank and rel=noopener', async ({
-    page,
-    testInfra,
-  }) => {
-    const uri = '/api/files/coll-open/download'
-    await seedAssistantWithToolResult(page, testInfra.baseURL, {
-      resourceLinks: [{ uri, name: 'p.png', mime_type: 'image/png' }],
-    })
-    const link = page.locator('[data-testid="inline-file-preview-open"]').first()
-    await expect(link).toBeVisible({ timeout: 10000 })
-    await expect(link).toHaveAttribute('target', '_blank')
-    const rel = await link.getAttribute('rel')
-    expect(rel ?? '').toContain('noopener')
-    await expect(link).toHaveAttribute('href', uri)
   })
 })

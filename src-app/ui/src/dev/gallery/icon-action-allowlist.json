@@ -1,10 +1,4 @@
 {
   "__doc__": "Allow-list for lint-icon-action.mjs (taxonomy C11). Entries: { testid?: substring, file?: substring, action?: key, reason }. A matching control is excused from the icon<->action check.",
-  "entries": [
-    {
-      "testid": "inline-file-preview-open",
-      "action": "new tab",
-      "reason": "External (URL-only) inline resource links keep an open-in-new-tab affordance (no file bytes to download). It renders `FileOutput` (file-export glyph) rather than `ExternalLink`; allow-listed as a tracked C11 deviation. File-backed previews use Download instead (no open-in-new-tab)."
-    }
-  ]
+  "entries": []
 }

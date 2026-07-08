@@ -1492,11 +1492,11 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `label` | 154 |
 | branch | `displaySize !== undefined` | 155 |
 | branch | `HeaderActions` | 161 |
-| branch | `file` | 165 |
-| branch | `file` | 183 |
-| branch | `canInline && Body` | 199 |
-| branch | `collapsed` | 205 |
-| branch | `showBody && Body` | 223 |
+| branch | `file` | 166 |
+| branch | `file` | 169 |
+| branch | `canInline && Body` | 185 |
+| branch | `collapsed` | 191 |
+| branch | `showBody && Body` | 209 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 

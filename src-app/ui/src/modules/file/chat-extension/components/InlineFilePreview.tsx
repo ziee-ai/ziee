@@ -1,4 +1,4 @@
-import { ChevronRight, ChevronDown, FileOutput, File, PanelRight } from 'lucide-react'
+import { ChevronRight, ChevronDown, File, PanelRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
@@ -159,25 +159,11 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             to the second line as a whole. */}
         <div className="flex items-center gap-0.5 flex-shrink-0 ms-auto">
           {HeaderActions ? <HeaderActions {...slotProps} /> : null}
-          {/* Backend-owned file → Download (store-driven, carries the bearer
-              token). External URL-only link → keep open-in-new-tab, its only
-              access path (no file bytes to stream, so no download). */}
-          {file ? (
-            <DownloadButton file={file} />
-          ) : (
-            <Tooltip content="Open in new tab">
-              <Button
-                variant="ghost"
-                size="default"
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                icon={<FileOutput />}
-                aria-label="Open file in new tab"
-                data-testid="inline-file-preview-open"
-              />
-            </Tooltip>
-          )}
+          {/* Download — MCP resource links are ingested into the file store
+              (persist_links), so a chat preview is always backed by a real file;
+              Download is store-driven so it carries the bearer token. No
+              open-in-new-tab anywhere. */}
+          {file ? <DownloadButton file={file} /> : null}
           {/* Open in side panel — only for backend-owned files (need a File id
               to drive the panel renderer). */}
           {file ? (
