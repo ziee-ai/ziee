@@ -1,7 +1,7 @@
 // Core modules for modular architecture
 mod common;
 mod core;
-mod module_api;
+pub mod module_api;
 mod modules;
 mod openapi;
 mod utils;
@@ -64,6 +64,20 @@ pub mod memory_test_api {
 }
 pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 pub use common::{ApiResult, AppError};
+
+// --- Facade for downstream/desktop-only built-in modules (e.g. office_bridge,
+// which lives in the desktop crate). These are all already `pub` at their
+// definition; this only widens the crate-root reachability. ---
+pub use modules::sync::{Audience, SyncAction, SyncEntity, publish};
+pub mod chat_extension {
+    //! Chat-extension authoring surface for downstream built-in modules that
+    //! register a `#[distributed_slice(ziee::chat_extension::CHAT_EXTENSIONS)]`.
+    pub use crate::modules::chat::core::extension::{
+        BeforeLlmAction, CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
+        SendMessageRequest, StreamContext,
+    };
+}
+pub use modules::mcp::chat_extension::mcp::{AUTO_ATTACH_BUILTINS, AutoAttachEntry};
 // Re-export the at-rest secret helpers so out-of-crate consumers
 // (notably the desktop tauri crate's remote_access module) can
 // encrypt/decrypt rows without re-implementing pgcrypto plumbing.
@@ -130,7 +144,7 @@ pub use modules::office_bridge::platform as office_bridge_platform;
 // can redirect the app data root to a TempDir without going through
 // the full config-load path.
 #[doc(hidden)]
-pub use core::{set_app_data_dir, set_caches_config};
+pub use core::{get_app_data_dir, set_app_data_dir, set_caches_config};
 
 // Test-helper exports: the platform-specific sandbox backend dispatch
 // + the raw-exec result shape. Used by tests/code_sandbox/harness.rs
@@ -180,6 +194,11 @@ pub mod code_sandbox {
     };
     pub use crate::modules::code_sandbox::types::SandboxContext;
     pub use crate::modules::code_sandbox::workflow_staging::StageMode;
+    // JSON-RPC over-loopback types reused by downstream built-in MCP modules
+    // (office_bridge) so they don't re-declare the wire shapes.
+    pub use crate::modules::code_sandbox::types::{
+        ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
+    };
 }
 // Re-export elicitation_mcp surface for integration tests (built-in row
 // idempotency).
@@ -247,7 +266,9 @@ pub mod memory {
 // exercises checksum dedup through the REAL upload+attach flow.
 #[doc(hidden)]
 pub mod file_available {
-    pub use crate::modules::file::available_files::{resolve_available_files, AvailableFile};
+    pub use crate::modules::file::available_files::{
+        model_supports_tools, resolve_available_files, AvailableFile,
+    };
 }
 
 // Re-export the provider file-routing entrypoint for the integration test that
