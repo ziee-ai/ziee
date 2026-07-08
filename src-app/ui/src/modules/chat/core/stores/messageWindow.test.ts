@@ -71,6 +71,17 @@ test('mergeTailWindow keeps loaded older pages and appends the new tail', () => 
   assert.deepEqual(ids(next), ['a', 'b', 'c', 'd', 'e'])
 })
 
+test('empty page inputs are no-ops that preserve order + identity', () => {
+  const existing = toOrderedMap([msg('a'), msg('b')])
+  assert.deepEqual(ids(prependWindow(existing, [])), ['a', 'b'])
+  assert.deepEqual(ids(appendWindow(existing, [])), ['a', 'b'])
+  assert.deepEqual(ids(mergeTailWindow(existing, [])), ['a', 'b'])
+  // prepend/append onto an empty window just adopt the page.
+  const empty = new Map<string, MessageWithContent>()
+  assert.deepEqual(ids(prependWindow(empty, [msg('x')])), ['x'])
+  assert.deepEqual(ids(appendWindow(empty, [msg('y')])), ['y'])
+})
+
 test('firstMessageId / lastMessageId read the window boundaries', () => {
   const m = toOrderedMap([msg('a'), msg('b'), msg('c')])
   assert.equal(firstMessageId(m), 'a')

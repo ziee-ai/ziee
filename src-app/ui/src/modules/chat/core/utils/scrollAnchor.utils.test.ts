@@ -35,6 +35,19 @@ test('pickTopAnchor returns null when nothing qualifies', () => {
   assert.equal(pickTopAnchor([], 0), null)
 })
 
+test('pickTopAnchor boundary: bottom exactly at viewportTop is NOT visible (strict >)', () => {
+  // bottom === viewportTop → the box ends exactly at the fold → skip it, take
+  // the next one.
+  const anchor = pickTopAnchor(
+    [
+      { id: 'a', top: 50, bottom: 100 }, // bottom == viewportTop → excluded
+      { id: 'b', top: 100, bottom: 200 }, // bottom > viewportTop → chosen
+    ],
+    100,
+  )
+  assert.deepEqual(anchor, { anchorId: 'b', savedTop: 0 })
+})
+
 test('restoreDelta pins the anchor back to its saved offset', () => {
   // Content grew above by 500px: the anchor that was 40px below the viewport
   // top is now 540px below → scroll DOWN by 500 to re-pin it.

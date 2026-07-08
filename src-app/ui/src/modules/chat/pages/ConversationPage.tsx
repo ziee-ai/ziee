@@ -74,6 +74,12 @@ export default function ConversationPage() {
   // A short-lived ResizeObserver re-applies the restore as late async content
   // (images/katex/mermaid/shiki) in the prepended block resolves.
   const anchorResizeObsRef = useRef<ResizeObserver | null>(null)
+  // Flips true once the OverlayScrollbars instance is initialized (desktop
+  // inner scroll). The reverse-scroll observer keys on it so it re-creates with
+  // the correct viewport `root` instead of the window fallback captured before
+  // the scroller mounts. Never flips in mobile native-flow (no OS instance) —
+  // there the window root is correct anyway.
+  const [scrollerReady, setScrollerReady] = useState(false)
 
   // Resolve the active scroll viewport for both desktop (OverlayScrollbars) and
   // mobile (native window scroll). `viewportTop` is the client-Y of the viewport
@@ -214,7 +220,7 @@ export default function ConversationPage() {
     if (!sentinel) return
     const view = getViewport()
     const observer = new IntersectionObserver(
-      entries => {
+      async entries => {
         if (!entries[0]?.isIntersecting) return
         // Fresh store reads — the closure's `hasMoreBefore`/`loadingOlder` could
         // be stale between re-renders.
@@ -226,13 +232,26 @@ export default function ConversationPage() {
           const anchor = captureTopAnchor(container, v.viewportTop)
           if (anchor) pendingAnchorRef.current = { anchor, prevFirstId }
         }
-        void Stores.Chat.loadOlderMessages()
+        await Stores.Chat.loadOlderMessages()
+        // If NO older page landed (guard early-return, empty/duplicate page, or
+        // a conversation switch), the restore layout-effect never fires — clear
+        // the pending anchor so it can't stick truthy and permanently suppress
+        // the bottom auto-follow. `$.messages` reflects the post-`set` store.
+        const pending = pendingAnchorRef.current
+        if (
+          pending &&
+          firstMessageId(Stores.Chat.$.messages) === pending.prevFirstId
+        ) {
+          pendingAnchorRef.current = null
+        }
       },
       { root: view?.root ?? null, rootMargin: '800px 0px 0px 0px', threshold: 0 },
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [conversation?.id, hasMoreBefore, getViewport])
+    // `scrollerReady` re-creates the observer once the OverlayScrollbars
+    // viewport exists so `root` is the real scroll box, not the window fallback.
+  }, [conversation?.id, hasMoreBefore, getViewport, scrollerReady])
 
   // After an older page is PREPENDED, re-pin the captured anchor so the view
   // stays put (DEC-2). Runs before paint; a short-lived ResizeObserver re-applies
@@ -256,22 +275,34 @@ export default function ConversationPage() {
     }
     applyRestore()
 
-    // Re-apply for ≤1s as async heights settle, then disconnect.
+    // Re-apply for ≤1s as async heights settle, then disconnect. A user gesture
+    // (wheel / touch / arrow keys) STOPS the re-pin immediately so it never
+    // fights the user if they scroll away while late content is still resizing.
+    // (Gesture events fire only on real input — not on our own programmatic
+    // scrollBy — so applyRestore's scroll can't self-cancel.)
     anchorResizeObsRef.current?.disconnect()
     const container = messagesContainerRef.current
+    const view = getViewport()
+    const gestureTarget: EventTarget = view?.root ?? window
     let stopAt = 0
+    const teardown = () => {
+      if (stopAt) window.clearTimeout(stopAt)
+      anchorResizeObsRef.current?.disconnect()
+      anchorResizeObsRef.current = null
+      gestureTarget.removeEventListener('wheel', teardown)
+      gestureTarget.removeEventListener('touchmove', teardown)
+      gestureTarget.removeEventListener('keydown', teardown)
+    }
     if (container) {
       const ro = new ResizeObserver(() => applyRestore())
       ro.observe(container)
       anchorResizeObsRef.current = ro
-      stopAt = window.setTimeout(() => {
-        ro.disconnect()
-        if (anchorResizeObsRef.current === ro) anchorResizeObsRef.current = null
-      }, 1000)
+      stopAt = window.setTimeout(teardown, 1000)
+      gestureTarget.addEventListener('wheel', teardown, { passive: true })
+      gestureTarget.addEventListener('touchmove', teardown, { passive: true })
+      gestureTarget.addEventListener('keydown', teardown)
     }
-    return () => {
-      if (stopAt) window.clearTimeout(stopAt)
-    }
+    return teardown
   }, [messages, getViewport])
 
   // Clean up the anchor ResizeObserver on unmount.
@@ -427,7 +458,12 @@ export default function ConversationPage() {
               messagesEnd sentinel + scrollIntoView + isAtBottom observer all
               keep working: OverlayScrollbars scrolls a real viewport element. The
               context chrome above stays a SIBLING of this scroller (K1/K4). */}
-          <DivScrollY nativeFlow className="flex-1" ref={scrollerRef}>
+          <DivScrollY
+            nativeFlow
+            className="flex-1"
+            ref={scrollerRef}
+            events={{ initialized: () => setScrollerReady(true) }}
+          >
             {/* `overflow-anchor: none` stops the browser's own scroll anchoring
                 from fighting the manual anchor restore on prepend (DEC-2). */}
             <div

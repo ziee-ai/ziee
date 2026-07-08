@@ -1148,6 +1148,10 @@ export const Chat = defineStore('Chat', {
     },
 
     cancelEdit: async () => {
+      // Capture the edited message id BEFORE clearing so we can restore its
+      // neighborhood (not just the tail) when it was scrolled up mid-history.
+      const editedId = get().editingMessage?.id
+
       // Clear text input first
       ;(get() as any).TextStore?.clearText()
 
@@ -1158,9 +1162,16 @@ export const Chat = defineStore('Chat', {
         pendingBranchForkLevel: null,
       })
 
-      // Reload messages to restore what was trimmed by startEditMessage
+      // Restore what was trimmed by startEditMessage. If the edited message sat
+      // in the middle of a long (lazy-loaded) history, restore the window
+      // CENTERED on it (around=) rather than snapping to the tail; fall back to
+      // the tail if it can't be located on the active branch.
       const conversationId = get().conversation?.id
-      if (conversationId) {
+      if (!conversationId) return
+      if (editedId) {
+        const ok = await get().jumpToMessage(editedId)
+        if (!ok) await get().loadMessages(conversationId)
+      } else {
         await get().loadMessages(conversationId)
       }
     },
@@ -1487,16 +1498,25 @@ export const Chat = defineStore('Chat', {
           if (streamingMessage) {
             await chatExtensionRegistry.afterStreamComplete(streamingMessage)
           }
+          // Capture BEFORE clearing: an edit/regenerate created a NEW branch
+          // during this stream, so the loaded window still holds the old
+          // branch's prefix — cursors/merge would be inconsistent. Reset to the
+          // new branch's tail instead of merging.
+          const branchChanged = get().branchChangedDuringStream
           set({ branchChangedDuringStream: false })
           const conversation = get().conversation
           if (conversation) {
-            // Merge the finalized tail into the window WITHOUT discarding any
-            // older pages the user scrolled up to load (DEC-6). The sidebar
-            // message_count self-heals via the `Conversation` sync the backend
-            // emits on turn completion (streaming.rs), so we no longer emit an
-            // optimistic `messageCountChanged` here — under lazy-load
-            // `messages.size` is only the loaded window, not the true total.
-            await get().reconcileTail(conversation.id)
+            if (branchChanged) {
+              await get().loadMessages(conversation.id)
+            } else {
+              // Merge the finalized tail into the window WITHOUT discarding any
+              // older pages the user scrolled up to load (DEC-6). The sidebar
+              // message_count self-heals via the `Conversation` sync the backend
+              // emits on turn completion (streaming.rs), so we no longer emit an
+              // optimistic `messageCountChanged` here — under lazy-load
+              // `messages.size` is only the loaded window, not the true total.
+              await get().reconcileTail(conversation.id)
+            }
           }
           await get().computeForkPoints()
         } else {
@@ -1611,6 +1631,16 @@ export const Chat = defineStore('Chat', {
       }
 
       set({ sending: true, isStreaming: true, error: null })
+
+      // If the window is anchored MID-conversation (after an around=/find/
+      // deep-link jump, so `hasMoreAfter` is true), the loaded slice does not
+      // abut the real tail. Snap to the tail first so the new turn's optimistic
+      // bubble appends at the actual end instead of after a gap of unloaded
+      // messages (reconciled again on `complete`, but this fixes the optimistic
+      // render order too).
+      if (get().hasMoreAfter) {
+        await get().loadMessages(conversation.id)
+      }
 
       const userContents = await chatExtensionRegistry.provideUserContent(
         (allRequestFields.content as string) || '',

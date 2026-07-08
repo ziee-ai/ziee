@@ -427,6 +427,16 @@ pub async fn search_messages_in_conversation(
 ) -> Result<MessageSearchResults, AppError> {
     let offset = (page - 1).max(0) * per_page;
 
+    // Escape LIKE metacharacters so a term containing `%` / `_` matches
+    // literally (and `q = "%"` doesn't degrade into a match-everything scan).
+    // Backslash first so we don't double-escape the escapes we add. Paired with
+    // `ESCAPE '\'` on each ILIKE below. `term` (unescaped) is still used for the
+    // snippet window.
+    let like_term = term
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+
     let total: i64 = sqlx::query_scalar!(
         r#"
         SELECT COUNT(*) as "count!"
@@ -437,11 +447,11 @@ pub async fn search_messages_in_conversation(
             SELECT 1 FROM message_contents mc
             WHERE mc.message_id = m.id
               AND mc.content_type = 'text'
-              AND mc.content->>'text' ILIKE '%' || $2 || '%'
+              AND mc.content->>'text' ILIKE '%' || $2 || '%' ESCAPE '\'
           )
         "#,
         branch_id,
-        term
+        like_term
     )
     .fetch_one(pool)
     .await
@@ -456,7 +466,7 @@ pub async fn search_messages_in_conversation(
                  FROM message_contents mc2
                  WHERE mc2.message_id = m.id
                    AND mc2.content_type = 'text'
-                   AND mc2.content->>'text' ILIKE '%' || $2 || '%'
+                   AND mc2.content->>'text' ILIKE '%' || $2 || '%' ESCAPE '\'
                  ORDER BY mc2.sequence_order ASC
                  LIMIT 1
                ) as snippet_text
@@ -467,13 +477,13 @@ pub async fn search_messages_in_conversation(
             SELECT 1 FROM message_contents mc
             WHERE mc.message_id = m.id
               AND mc.content_type = 'text'
-              AND mc.content->>'text' ILIKE '%' || $2 || '%'
+              AND mc.content->>'text' ILIKE '%' || $2 || '%' ESCAPE '\'
           )
         ORDER BY bm.created_at ASC, m.id ASC
         LIMIT $3 OFFSET $4
         "#,
         branch_id,
-        term,
+        like_term,
         per_page,
         offset,
     )

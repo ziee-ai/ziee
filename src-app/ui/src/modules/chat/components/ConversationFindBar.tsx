@@ -34,6 +34,12 @@ export function ConversationFindBar({
   onActiveMatchChange,
 }: ConversationFindBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
+  // Monotonic search generation — bumped whenever the query/conversation
+  // changes so a late in-flight page fetch (first page OR a paginated append)
+  // can detect it's stale and discard its result instead of corrupting the
+  // current match set / total.
+  const searchGenRef = useRef(0)
   const [query, setQuery] = useState('')
   const [matches, setMatches] = useState<MessageSearchMatch[]>([])
   const [total, setTotal] = useState(0)
@@ -62,10 +68,15 @@ export function ConversationFindBar({
         if (!ok) return
       }
       // Allow the (possibly newly-jumped) window to render, then center.
+      const behavior: ScrollBehavior = window.matchMedia?.(
+        '(prefers-reduced-motion: reduce)',
+      ).matches
+        ? 'auto'
+        : 'smooth'
       requestAnimationFrame(() => {
         document
           .querySelector(`[data-message-id="${CSS.escape(id)}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          ?.scrollIntoView({ behavior, block: 'center' })
       })
     },
     [onActiveMatchChange],
@@ -74,6 +85,9 @@ export function ConversationFindBar({
   // Debounced first-page search whenever the query (or conversation) changes.
   useEffect(() => {
     if (!open) return
+    // Invalidate any in-flight fetch from a prior query/conversation.
+    searchGenRef.current += 1
+    const gen = searchGenRef.current
     const term = query.trim()
     if (!conversationId || term === '') {
       setMatches([])
@@ -93,7 +107,7 @@ export function ConversationFindBar({
           page: 1,
           per_page: SEARCH_PER_PAGE,
         })
-        if (cancelled) return
+        if (cancelled || gen !== searchGenRef.current) return
         setMatches(res.matches)
         setTotal(res.total)
         setLoadedPage(1)
@@ -124,12 +138,23 @@ export function ConversationFindBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // Keep the ACTIVE result row visible inside the scrollable results list as
+  // Next/Prev (or a jump beyond the loaded page) moves the selection — without
+  // this the active row can be off-screen within the max-height list.
+  useEffect(() => {
+    if (!open) return
+    resultsRef.current
+      ?.querySelector('[aria-current="true"]')
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, matches, open])
+
   // Append the next results page. Returns the newly-appended matches.
   const loadNextPage = useCallback(async (): Promise<MessageSearchMatch[]> => {
     if (!conversationId || loading) return []
     const term = query.trim()
     if (term === '') return []
     const nextPage = loadedPage + 1
+    const gen = searchGenRef.current
     setLoading(true)
     try {
       const res = await ApiClient.Message.searchInConversation({
@@ -138,6 +163,9 @@ export function ConversationFindBar({
         page: nextPage,
         per_page: SEARCH_PER_PAGE,
       })
+      // Discard if the query/conversation changed while this page was in flight
+      // — otherwise old-query matches would append onto the new list.
+      if (gen !== searchGenRef.current) return []
       setMatches(prev => [...prev, ...res.matches])
       setTotal(res.total)
       setLoadedPage(nextPage)
@@ -145,7 +173,7 @@ export function ConversationFindBar({
     } catch {
       return []
     } finally {
-      setLoading(false)
+      if (gen === searchGenRef.current) setLoading(false)
     }
   }, [conversationId, loadedPage, loading, query])
 
@@ -198,7 +226,7 @@ export function ConversationFindBar({
     query.trim() === ''
       ? ' '
       : loading && total === 0
-        ? '…'
+        ? 'Searching…'
         : total === 0
           ? 'No results'
           : `${activeIndex + 1} of ${total}`
@@ -258,8 +286,12 @@ export function ConversationFindBar({
 
       {matches.length > 0 && (
         <div
+          ref={resultsRef}
           className="flex max-h-64 flex-col gap-0.5 overflow-y-auto"
           data-testid="conversation-find-results"
+          role="group"
+          aria-label="Search results"
+          aria-busy={loading || undefined}
           onScroll={handleResultsScroll}
         >
           {matches.map((m, idx) => (
@@ -278,16 +310,29 @@ export function ConversationFindBar({
                 idx === activeIndex && 'bg-accent',
               )}
             >
-              <span className="line-clamp-2 text-muted-foreground">
+              <span
+                className={cn(
+                  'line-clamp-2',
+                  idx === activeIndex
+                    ? 'text-accent-foreground'
+                    : 'text-muted-foreground',
+                )}
+              >
                 {m.snippet}
               </span>
             </Button>
           ))}
-          {loading && (
-            <div className="flex justify-center py-1">
-              <Loader2 className="animate-spin" aria-label="Loading more results" />
-            </div>
-          )}
+          {/* Live region so SR users hear a further page loading. */}
+          <div aria-live="polite" className="flex justify-center">
+            {loading && (
+              <div className="py-1">
+                <Loader2
+                  className="animate-spin"
+                  aria-label="Loading more results"
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

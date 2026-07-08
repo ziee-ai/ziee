@@ -254,16 +254,6 @@ export const ChatHistory = defineStore('ChatHistory', {
         draft.recentConversations.forEach(updateTitle)
       })
     })
-    on('conversation.messageCountChanged', event => {
-      const { conversationId, messageCount } = event.data
-      set(draft => {
-        const update = (conv: ConversationResponse) => {
-          if (conv.id === conversationId) conv.message_count = messageCount
-        }
-        draft.conversations.forEach(update)
-        draft.recentConversations.forEach(update)
-      })
-    })
     // Cross-device sync: notify-and-refetch — the event carries only
     // {action, id}, so reload the first page or drop it on delete.
     on('sync:conversation', async event => {
