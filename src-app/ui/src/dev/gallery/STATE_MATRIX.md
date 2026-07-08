@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1844** signals total: 1452 branch, 112 empty, 95 error, 99 loading, 84 overlay, 2 panel.
+- **1845** signals total: 1453 branch, 112 empty, 95 error, 99 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1004,18 +1004,19 @@ Required states: `delayed`, `empty`
 | branch | `indexOfMessageId(arrRef.current, id) < 0` | 150 |
 | branch | `!el` | 159 |
 | empty | `count === 0` | 166 |
-| branch | `virtualize` | 176 |
-| branch | `!msg` | 181 |
-| branch | `!c` | 189 |
-| branch | `virtualize` | 194 |
-| branch | `idx < 0` | 196 |
-| branch | `!c` | 205 |
-| branch | `newTop == null` | 207 |
-| loading | `!loading && count === 0` | 216 |
-| branch | `loadingOlder` | 242 |
-| branch | `virtualize` | 252 |
-| branch | `!msg` | 267 |
-| loading | `(loading \|\| isStreaming)` | 311 |
+| branch | `!el` | 184 |
+| branch | `!item` | 187 |
+| branch | `!msg` | 189 |
+| branch | `!c` | 195 |
+| branch | `virtualize` | 200 |
+| branch | `idx < 0` | 202 |
+| branch | `!c` | 211 |
+| branch | `newTop == null` | 213 |
+| loading | `!loading && count === 0` | 222 |
+| branch | `loadingOlder` | 248 |
+| branch | `virtualize` | 258 |
+| branch | `!msg` | 273 |
+| loading | `(loading \|\| isStreaming)` | 317 |
 
 ### `modules/chat/components/ModelSelector`
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1844 signals total.
+// 323 surfaces carry renderable-state signals; 1845 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -884,18 +884,19 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 150 },
       { kind: "branch", condition: "!el", line: 159 },
       { kind: "empty", condition: "count === 0", line: 166 },
-      { kind: "branch", condition: "virtualize", line: 176 },
-      { kind: "branch", condition: "!msg", line: 181 },
-      { kind: "branch", condition: "!c", line: 189 },
-      { kind: "branch", condition: "virtualize", line: 194 },
-      { kind: "branch", condition: "idx < 0", line: 196 },
-      { kind: "branch", condition: "!c", line: 205 },
-      { kind: "branch", condition: "newTop == null", line: 207 },
-      { kind: "loading", condition: "!loading && count === 0", line: 216 },
-      { kind: "branch", condition: "loadingOlder", line: 242 },
-      { kind: "branch", condition: "virtualize", line: 252 },
-      { kind: "branch", condition: "!msg", line: 267 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 311 },
+      { kind: "branch", condition: "!el", line: 184 },
+      { kind: "branch", condition: "!item", line: 187 },
+      { kind: "branch", condition: "!msg", line: 189 },
+      { kind: "branch", condition: "!c", line: 195 },
+      { kind: "branch", condition: "virtualize", line: 200 },
+      { kind: "branch", condition: "idx < 0", line: 202 },
+      { kind: "branch", condition: "!c", line: 211 },
+      { kind: "branch", condition: "newTop == null", line: 213 },
+      { kind: "loading", condition: "!loading && count === 0", line: 222 },
+      { kind: "branch", condition: "loadingOlder", line: 248 },
+      { kind: "branch", condition: "virtualize", line: 258 },
+      { kind: "branch", condition: "!msg", line: 273 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 317 },
     ],
   },
   "modules/chat/components/ModelSelector": {

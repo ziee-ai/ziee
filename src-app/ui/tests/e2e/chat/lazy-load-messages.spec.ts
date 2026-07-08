@@ -72,10 +72,15 @@ test.describe('Chat — lazy-load messages', () => {
       return { scrollTop: vp.scrollTop, scrollHeight: vp.scrollHeight }
     })
 
-    // Older messages prepend + the anchor restore runs.
-    await expect(page.locator('[data-message-id="msg-0"]')).toBeVisible({
-      timeout: 10000,
-    })
+    // Wait for the older page to prepend + the anchor restore to settle. (Under
+    // virtualization the newly-prepended msg-0 is loaded but OFF-SCREEN — the
+    // anchor correctly keeps the prior content in view — so we don't assert it's
+    // visible; we assert the scroll invariant below.)
+    await page.waitForResponse(
+      r => /\/messages\?[^ ]*before=/.test(r.url()) && r.status() === 200,
+      { timeout: 10000 },
+    )
+    await page.waitForTimeout(800)
 
     // Scroll-anchor invariant: the viewport's scrollTop grew by (about) the same
     // amount as the content that was prepended above it — so the previously

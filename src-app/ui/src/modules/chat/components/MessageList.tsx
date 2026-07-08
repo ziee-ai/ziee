@@ -174,17 +174,23 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
         },
         captureAnchor: () => {
           if (virtualize) {
-            const scrollOffset = virt.scrollOffset ?? 0
-            for (const vi of virt.getVirtualItems()) {
-              if (vi.start + vi.size > scrollOffset) {
-                const msg = arrRef.current[vi.index]
-                if (!msg) return null
-                return { anchorId: msg.id, viewportOffset: vi.start - scrollOffset }
-              }
-            }
-            return null
+            // Compute the top-visible row from the REAL scrollTop + the
+            // virtualizer's FULL measurements (all item positions, independent
+            // of the rendered range) — NOT virt.scrollOffset or the DOM, both of
+            // which lag the actual scrollTop right after a programmatic scroll
+            // and yield a stale/wrong anchor → teleport. Restore stays
+            // index-based (the row may be virtualized out post-prepend).
+            const el = getScrollElement()
+            if (!el) return null
+            const scrollTop = el.scrollTop
+            const item = virt.getVirtualItemForOffset(scrollTop)
+            if (!item) return null
+            const msg = arrRef.current[item.index]
+            if (!msg) return null
+            return { anchorId: msg.id, viewportOffset: item.start - scrollTop }
           }
-          // Plain path: measure the top-visible row (window viewport top = 0).
+          // Plain path: measure the top-visible row from the DOM (window
+          // viewport top = 0).
           const c = plainContainerRef.current
           if (!c) return null
           const a = captureTopAnchor(c, 0)
