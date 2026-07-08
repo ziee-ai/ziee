@@ -68,19 +68,18 @@ function OptionCard({
 }) {
   const optId = `elicitation-field-${fieldName}-opt-${option.value}`
   return (
-    <div
-      className="flex items-start gap-3 rounded-lg border border-border p-3 transition-colors has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/40"
-      data-selected={selected || undefined}
-    >
+    <div className="flex items-start gap-3 rounded-lg border border-border p-3 transition-colors has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-accent/40">
       <div className="mt-0.5 shrink-0">{control}</div>
       {/* Label holds ONLY phrasing content (spans) so it stays valid inside
           <label> — no <div>/<pre> nesting warnings. Radios use htmlFor (forwards
           the click to the sibling control, idempotent); checkboxes use onSelect
-          (htmlFor + a sibling checkbox would double-fire the toggle). */}
+          (htmlFor + a sibling checkbox would double-fire the toggle). `data-selected`
+          rides the testid element so the selected state is directly assertable. */}
       <label
         id={labelId}
         htmlFor={htmlFor}
         data-testid={optId}
+        data-selected={selected || undefined}
         className="min-w-0 flex-1 cursor-pointer"
         onClick={onSelect}
       >
