@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
 
-use ziee::office_bridge_bridge::{cert, server};
+use ziee_desktop::modules::office_bridge::bridge::{cert, server};
 
 /// Build a rustls `ClientConfig` that trusts ONLY the minted bridge cert
 /// (added as a root), using the ring provider explicitly to match `cert.rs`.

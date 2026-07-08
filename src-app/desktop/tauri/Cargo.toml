@@ -108,6 +108,12 @@ serde_json.workspace = true
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros"] }
 portpicker.workspace = true
 url.workspace = true
+# office_bridge tests (moved from server/tests): the bridge_test WSS/TLS
+# round-trip + the module's #[cfg(test)] cert assertions.
+futures-util.workspace = true
+http.workspace = true
+x509-parser = "0.16"
+tokio-tungstenite = { version = "0.27", features = ["rustls-tls-webpki-roots"] }
 # Updater signing round-trip test (`tests/updater_signing_test.rs`):
 # verify a `tauri signer`-produced signature with the SAME crate the
 # runtime updater uses to verify downloaded updates.

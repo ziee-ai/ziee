@@ -26,7 +26,6 @@ mod llm_repository;
 mod mcp;
 mod memory;
 mod memory_mcp;
-mod office_bridge;
 mod onboarding;
 mod project;
 mod server_update;

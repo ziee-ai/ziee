@@ -24,7 +24,7 @@
 
 #![cfg(windows)]
 
-use ziee::office_bridge_platform::{self as platform, DocOp, OfficeApp};
+use ziee_desktop::modules::office_bridge::platform::{self as platform, DocOp, OfficeApp};
 
 #[tokio::test]
 #[ignore = "live: requires a non-elevated Office document open on this session"]

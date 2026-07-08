@@ -20,3 +20,4 @@ mod auto_assign_mcp;
 mod backend_lifecycle;
 mod host_mount_tests;
 mod remote_access;
+mod office_bridge;

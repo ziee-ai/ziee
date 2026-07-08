@@ -40,7 +40,7 @@ const EXPECTED_TOOLS: &[&str] = &[
 /// TEST-2 — `initialize` returns the office_bridge serverInfo + protocolVersion.
 #[tokio::test]
 async fn test2_initialize_returns_server_info_and_protocol_version() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let user = create_user_with_permissions(&server, "ob_init", &["office_bridge::use"]).await;
     let res = jsonrpc(&server, &user.token, "initialize", json!({}))
         .send()
@@ -63,7 +63,7 @@ async fn test2_initialize_returns_server_info_and_protocol_version() {
 /// TEST-2 — `tools/list` advertises all seven office tool descriptors.
 #[tokio::test]
 async fn test2_tools_list_returns_the_seven_office_tools() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let user = create_user_with_permissions(&server, "ob_list", &["office_bridge::use"]).await;
     let res = jsonrpc(&server, &user.token, "tools/list", json!({}))
         .send()
@@ -95,7 +95,7 @@ async fn test2_tools_list_returns_the_seven_office_tools() {
 /// rejects before the permission check).
 #[tokio::test]
 async fn test2_mcp_without_auth_is_401() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let res = reqwest::Client::new()
         .post(server.api_url("/office-bridge/mcp"))
         .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }))
@@ -108,7 +108,7 @@ async fn test2_mcp_without_auth_is_401() {
 /// TEST-2 (gate) — a valid token WITHOUT `office_bridge::use` → 403.
 #[tokio::test]
 async fn test2_mcp_without_use_permission_is_403() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     // Stripped from all groups → no office_bridge::use.
     let user = create_user_with_no_permissions(&server, "ob_noperm").await;
     for method in ["initialize", "tools/list"] {
@@ -126,7 +126,7 @@ async fn test2_mcp_without_use_permission_is_403() {
 /// seeded by migration 132: enabled = true, port = 44300.
 #[tokio::test]
 async fn test3_get_settings_returns_singleton_defaults() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let admin = create_user_with_permissions(&server, "ob_get_admin", admin_perms()).await;
     let res = reqwest::Client::new()
         .get(server.api_url("/office-bridge/settings"))
@@ -149,7 +149,7 @@ async fn test3_get_settings_returns_singleton_defaults() {
 /// granted the perm to the Users group; a 403 would mean the grant is missing.
 #[tokio::test]
 async fn test3_default_users_group_grants_office_bridge_use() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     // Empty perm list → registered + auto-joined to the default Users group,
     // with NO custom-group perms. Its only office_bridge::use is migration 133's.
     let user = create_user_with_permissions(&server, "ob_default_only", &[]).await;
@@ -173,7 +173,7 @@ async fn test3_default_users_group_grants_office_bridge_use() {
 /// but NOT the admin read perm, so it must be gated out of the admin surface.
 #[tokio::test]
 async fn test5_get_settings_without_admin_read_is_403() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let user = create_user_with_permissions(&server, "ob_plain_get", &["office_bridge::use"]).await;
     let res = reqwest::Client::new()
         .get(server.api_url("/office-bridge/settings"))
@@ -188,7 +188,7 @@ async fn test5_get_settings_without_admin_read_is_403() {
 /// `office_bridge::admin::manage`.
 #[tokio::test]
 async fn test5_put_settings_without_admin_manage_is_403() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let user = create_user_with_permissions(&server, "ob_plain_put", &["office_bridge::use"]).await;
     let res = reqwest::Client::new()
         .put(server.api_url("/office-bridge/settings"))
@@ -206,7 +206,7 @@ async fn test5_put_settings_without_admin_manage_is_403() {
 /// four non-secret settings fields.
 #[tokio::test]
 async fn test5_settings_body_never_contains_a_token_or_secret() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let admin = create_user_with_permissions(&server, "ob_secret_admin", admin_perms()).await;
     let client = reqwest::Client::new();
 
@@ -250,7 +250,7 @@ async fn test5_settings_body_never_contains_a_token_or_secret() {
 /// perms can GET and PUT; the PUT round-trips the port and enabled toggle.
 #[tokio::test]
 async fn test5_admin_can_get_and_update_settings() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_desktop().await;
     let admin = create_user_with_permissions(&server, "ob_rw_admin", admin_perms()).await;
     let client = reqwest::Client::new();
 

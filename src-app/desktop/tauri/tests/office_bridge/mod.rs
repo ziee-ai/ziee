@@ -14,6 +14,8 @@ use serde_json::{Value, json};
 
 mod bridge_test;
 mod settings_mcp_test;
+mod migrations_test;
+mod attach_test;
 #[cfg(windows)]
 mod windows_com_test;
 

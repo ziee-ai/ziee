@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 // Re-export types for desktop/external use
-pub use core::config::{Config, CorsConfig, JwtConfig};
+pub use core::config::{Config, CorsConfig, JwtConfig, OfficeBridgeConfig};
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
 // Re-exported so integration tests (which construct repositories directly
 // against the test DB pool) can initialise the same at-rest storage_key
