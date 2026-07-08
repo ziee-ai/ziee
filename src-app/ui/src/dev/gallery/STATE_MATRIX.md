@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1888** signals total: 1493 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1889** signals total: 1494 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1009,27 +1009,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 115 |
-| branch | `w <= 0` | 117 |
-| branch | `!el` | 128 |
-| branch | `!import.meta.env.DEV` | 252 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 326 |
-| branch | `!el` | 335 |
-| empty | `count === 0` | 342 |
-| branch | `!el` | 360 |
-| branch | `!item` | 363 |
-| branch | `!msg` | 365 |
-| branch | `!c` | 371 |
-| branch | `virtualize` | 376 |
-| branch | `idx < 0` | 378 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 390 |
-| branch | `!c` | 396 |
-| branch | `newTop == null` | 398 |
-| loading | `!loading && count === 0` | 407 |
-| branch | `loadingOlder` | 433 |
-| branch | `virtualize` | 443 |
-| branch | `!msg` | 458 |
-| loading | `(loading \|\| isStreaming)` | 502 |
+| branch | `!vw \|\| vw <= 0` | 116 |
+| branch | `w <= 0` | 118 |
+| branch | `!el` | 129 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
+| branch | `!import.meta.env.DEV` | 295 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
+| branch | `!el` | 378 |
+| empty | `count === 0` | 385 |
+| branch | `!el` | 403 |
+| branch | `!item` | 406 |
+| branch | `!msg` | 408 |
+| branch | `!c` | 414 |
+| branch | `virtualize` | 419 |
+| branch | `idx < 0` | 421 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
+| branch | `!c` | 439 |
+| branch | `newTop == null` | 441 |
+| loading | `!loading && count === 0` | 450 |
+| branch | `loadingOlder` | 476 |
+| branch | `virtualize` | 486 |
+| branch | `!msg` | 501 |
+| loading | `(loading \|\| isStreaming)` | 545 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1527,18 +1528,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `typeof IntersectionObserver === 'undefined'` | 107 |
 | branch | `!el` | 112 |
 | branch | `!file` | 155 |
-| branch | `!start` | 185 |
-| branch | `dragStart.current == null` | 189 |
-| branch | `next == null` | 205 |
-| branch | `label` | 241 |
-| branch | `displaySize !== undefined` | 242 |
-| branch | `HeaderActions` | 246 |
-| branch | `file` | 247 |
-| branch | `file` | 248 |
-| branch | `hasBody` | 260 |
-| branch | `collapsed` | 270 |
-| branch | `showBodyRegion` | 282 |
-| branch | `view.seen && Body` | 284 |
+| branch | `!start` | 192 |
+| branch | `dragStart.current == null` | 196 |
+| branch | `next == null` | 220 |
+| branch | `label` | 256 |
+| branch | `displaySize !== undefined` | 257 |
+| branch | `HeaderActions` | 261 |
+| branch | `file` | 262 |
+| branch | `file` | 263 |
+| branch | `hasBody` | 275 |
+| branch | `collapsed` | 285 |
+| branch | `showBodyRegion` | 297 |
+| branch | `view.seen && Body` | 299 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
