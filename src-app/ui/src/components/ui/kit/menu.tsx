@@ -106,7 +106,21 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
         // on row hover/focus. Suppressed on the collapsed icon rail.
         const hasActions = item.actions != null && !collapsed
         return (
-          <li key={item.key} className={cn(hasActions && 'group/menu-row flex items-center')}>
+          <li
+            key={item.key}
+            className={cn(
+              'rounded-md',
+              hasActions && 'group/menu-row flex items-center',
+              // Row-LEVEL highlight (not button-level) so it spans the whole row
+              // incl. the trailing actions — the kebab sits INSIDE the highlighted
+              // row and hovering anywhere on the row (kebab included) lights it up.
+              selected
+                ? 'bg-primary text-primary-foreground font-medium'
+                : ancestor
+                  ? 'bg-accent text-accent-foreground font-medium'
+                  : 'hover:bg-accent/60',
+            )}
+          >
             <button
               type="button"
               disabled={item.disabled || locked}
@@ -117,7 +131,8 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
               title={collapsed ? name : undefined}
               onClick={() => onSelect?.(item.key)}
               className={cn(
-                'flex min-w-0 items-center gap-2 rounded-md text-sm',
+                // Transparent: the visible highlight lives on the <li> above.
+                'flex min-w-0 items-center gap-2 rounded-md text-sm bg-transparent',
                 hasActions ? 'flex-1' : 'w-full',
                 collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
                 // Inset focus ring: menu items live in scrollable rails (settings
@@ -125,11 +140,6 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
                 // ring gets clipped by the scroll container's overflow. Drawing the
                 // ring inside the border-box keeps it fully visible everywhere.
                 'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 disabled:opacity-50',
-                selected
-                  ? 'bg-primary text-primary-foreground font-medium'
-                  : ancestor
-                    ? 'bg-accent text-accent-foreground font-medium hover:bg-accent'
-                    : 'hover:bg-accent/60',
               )}
             >
               {item.icon != null && <span aria-hidden className="shrink-0 [&_svg]:size-4">{item.icon}</span>}

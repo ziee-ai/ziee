@@ -301,9 +301,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!collapsed` | 82 |
 | branch | `'type' in it && it.type === 'label'` | 90 |
 | branch | `!(collapsed)` | 91 |
-| branch | `item.icon != null` | 135 |
-| branch | `!collapsed` | 137 |
-| branch | `hasActions` | 139 |
+| branch | `item.icon != null` | 145 |
+| branch | `!collapsed` | 147 |
+| branch | `hasActions` | 149 |
 
 ### `components/ui/kit/multi-select`
 
