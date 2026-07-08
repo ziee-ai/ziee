@@ -11,7 +11,7 @@ import { Stores } from '@/core/stores'
  */
 export function MessageList() {
   // Get data from store
-  const { messages, loading, isStreaming } = Stores.Chat
+  const { messages, loading, isStreaming, loadingOlder } = Stores.Chat
 
   // Convert Map to array for rendering
   const messagesArray = Array.from(messages.values())
@@ -32,6 +32,18 @@ export function MessageList() {
 
   return (
     <Flex className={'flex-col gap-1 w-full'} data-testid="chat-messages">
+      {/* Top affordance while an OLDER page is being fetched (reverse infinite
+          scroll). Shown only during the fetch; a fully-loaded-to-top or short
+          conversation shows nothing here. */}
+      {loadingOlder && (
+        <div
+          className="flex w-full justify-center py-3"
+          data-testid="chat-loading-older"
+          aria-live="polite"
+        >
+          <Loader2 className="text-xl animate-spin" aria-label="Loading older messages" />
+        </div>
+      )}
       {/* The message_list_header slot (project chip / context) is rendered as
           pinned chrome in ConversationPage, above this scroll container. */}
       {messagesArray.map((msg, i) => (
