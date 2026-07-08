@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test'
 // the ui-workspace context read from ui/tests/.test-configs → ENOENT. The pure
 // helpers below stay cross-workspace (no path-dependent infra).
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../../../../ui/tests/common/auth-helpers'
+import { installTauriMock } from '../helpers/tauri-mock'
 import {
   createProviderViaAPI,
   createModelViaAPI,
@@ -142,11 +142,22 @@ test.describe('Office bridge — open documents panel', () => {
   test.describe.configure({ retries: 2 })
 
   test.beforeEach(async ({ page, testInfra }) => {
-    const { baseURL, apiURL } = testInfra
-    await loginAsAdmin(page, baseURL)
-    const token = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem('auth-storage')!).state.token,
-    )
+    // office_bridge is desktop-only, so this spec drives the DESKTOP shell:
+    // inject the Tauri shim + the fixture's real tokens so the SPA auto-logins
+    // against the spawned real backend (the `desktop-real-backend-smoke`
+    // pattern), NOT the web first-run username flow. `apiURL` is the spawned
+    // backend; provider/model are created there so the model dropdown is live.
+    const apiURL = testInfra.backendURL
+    const token = testInfra.tokens.access_token
+    await installTauriMock(page, {
+      backendPort: testInfra.backendPort,
+      tokens: testInfra.tokens,
+    })
+    await page.goto('/')
+    await expect(page.getByTestId('desktop-bootstrap-starting')).toBeHidden({
+      timeout: 30_000,
+    })
+
     const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
     await assignProviderToAdministratorsGroup(apiURL, token, providerId)
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
@@ -154,9 +165,10 @@ test.describe('Office bridge — open documents panel', () => {
 
   test('the list_open_documents card opens the panel listing the documents', async ({
     page,
-    testInfra,
   }) => {
-    await seedOpenDocumentsResult(page, testInfra.baseURL, sampleDocuments())
+    // baseURL '' → helpers navigate relative to the playwright config baseURL
+    // (the desktop Vite dev server at http://localhost:1420).
+    await seedOpenDocumentsResult(page, '', sampleDocuments())
 
     // The inline tool-result card renders with its "N open documents" summary.
     const card = byTestId(page, 'office-docs-tool-result-card')
