@@ -47,27 +47,61 @@ test.describe('Chat — lazy-load messages', () => {
     await expect(page.locator('[data-message-id="msg-0"]')).toHaveCount(0)
     await expect(page.locator('[data-message-id="msg-9"]')).toHaveCount(0)
 
-    // Reference: the oldest currently-loaded message (msg-10) — record its
-    // viewport position before triggering the older-page load.
-    const refBefore = await page
-      .locator('[data-message-id="msg-10"]')
-      .boundingBox()
-    expect(refBefore).not.toBeNull()
+    // Scroll up INTO the top-sentinel trigger zone and capture the pre-prepend
+    // scroll geometry in the same tick. `findScroller` runs in the browser and
+    // locates the nearest scrollable ancestor of the message list (the
+    // OverlayScrollbars viewport on desktop).
+    const before = await page.evaluate(() => {
+      const findScroller = (): HTMLElement => {
+        const list = document.querySelector('[data-testid="chat-messages"]')
+        let n: HTMLElement | null = list?.parentElement ?? null
+        while (n) {
+          const s = getComputedStyle(n)
+          if (
+            (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+            n.scrollHeight > n.clientHeight
+          ) {
+            return n
+          }
+          n = n.parentElement
+        }
+        return document.scrollingElement as HTMLElement
+      }
+      const vp = findScroller()
+      vp.scrollTop = 200
+      return { scrollTop: vp.scrollTop, scrollHeight: vp.scrollHeight }
+    })
 
-    // Scroll to the top sentinel → triggers loadOlderMessages (prepend).
-    await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
-
-    // Older messages arrive.
+    // Older messages prepend + the anchor restore runs.
     await expect(page.locator('[data-message-id="msg-0"]')).toBeVisible({
       timeout: 10000,
     })
 
-    // Scroll anchoring: the reference message must not have teleported — its
-    // viewport y stays within a small tolerance despite content prepended above.
-    const refAfter = await page
-      .locator('[data-message-id="msg-10"]')
-      .boundingBox()
-    expect(refAfter).not.toBeNull()
-    expect(Math.abs(refAfter!.y - refBefore!.y)).toBeLessThan(80)
+    // Scroll-anchor invariant: the viewport's scrollTop grew by (about) the same
+    // amount as the content that was prepended above it — so the previously
+    // visible content stayed put instead of teleporting. Without anchoring,
+    // scrollTop would be unchanged (~200) and the delta would be the full
+    // prepended height.
+    const after = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="chat-messages"]')
+      let n: HTMLElement | null = list?.parentElement ?? null
+      while (n) {
+        const s = getComputedStyle(n)
+        if (
+          (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+          n.scrollHeight > n.clientHeight
+        ) {
+          break
+        }
+        n = n.parentElement
+      }
+      const vp = (n ?? document.scrollingElement) as HTMLElement
+      return { scrollTop: vp.scrollTop, scrollHeight: vp.scrollHeight }
+    })
+
+    const addedAbove = after.scrollHeight - before.scrollHeight
+    const scrollGrew = after.scrollTop - before.scrollTop
+    expect(addedAbove).toBeGreaterThan(50) // content really was prepended
+    expect(Math.abs(scrollGrew - addedAbove)).toBeLessThan(80) // anchored
   })
 })

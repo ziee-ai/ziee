@@ -552,29 +552,33 @@ export async function mockPaginatedMessages(
 ): Promise<{ queries: string[] }> {
   const pageSize = opts.pageSize ?? 30
   const queries: string[] = []
-  const full = allMessages.map(m => ({
-    id: m.id,
-    role: m.role,
-    contents: m.contents.map((c, idx) => ({
-      id: c.id ?? `${m.id}-content-${idx}`,
-      message_id: c.message_id ?? m.id,
-      content_type: c.content_type,
-      content: c.content,
-      sequence_order: c.sequence_order ?? idx,
-      created_at: c.created_at ?? new Date().toISOString(),
-      updated_at: c.updated_at ?? new Date().toISOString(),
-    })),
-    originated_from_id: m.originated_from_id ?? '',
-    edit_count: m.edit_count ?? 0,
-    created_at: m.created_at ?? new Date().toISOString(),
-  }))
-  const idx = (id: string | null) =>
-    id == null ? -1 : full.findIndex(m => m.id === id)
+  // Re-materialize on each request so a test that mutates `allMessages` (e.g.
+  // pushes a just-sent turn) is reflected by the reconcile-tail refetch.
+  const materialize = () =>
+    allMessages.map(m => ({
+      id: m.id,
+      role: m.role,
+      contents: m.contents.map((c, idx) => ({
+        id: c.id ?? `${m.id}-content-${idx}`,
+        message_id: c.message_id ?? m.id,
+        content_type: c.content_type,
+        content: c.content,
+        sequence_order: c.sequence_order ?? idx,
+        created_at: c.created_at ?? new Date().toISOString(),
+        updated_at: c.updated_at ?? new Date().toISOString(),
+      })),
+      originated_from_id: m.originated_from_id ?? '',
+      edit_count: m.edit_count ?? 0,
+      created_at: m.created_at ?? new Date().toISOString(),
+    }))
 
   await page.route(
     /\/api\/conversations\/[^/]+\/messages(\?|$)/,
     async (route, req) => {
       if (req.method() !== 'GET') return route.fallback()
+      const full = materialize()
+      const idx = (id: string | null) =>
+        id == null ? -1 : full.findIndex(m => m.id === id)
       const url = new URL(req.url())
       queries.push(url.search)
       const before = url.searchParams.get('before')

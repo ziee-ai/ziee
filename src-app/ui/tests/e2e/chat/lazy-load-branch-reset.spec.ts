@@ -125,7 +125,10 @@ test.describe('Chat — lazy-load branch reset', () => {
     await page.route(/\/api\/conversations\/[^/]+\/branches\/[^/]+\/activate$/, async route => {
       const m = route.request().url().match(/branches\/([^/]+)\/activate/)
       activeBranch = m?.[1] ?? activeBranch
-      await route.fulfill({ status: 204, contentType: 'application/json', body: '' })
+      // Bare 204 (no JSON content-type) — a `application/json` header on an
+      // empty body makes the api-client attempt `response.json()` and throw,
+      // which would abort activateBranch before its loadMessages reset.
+      await route.fulfill({ status: 204 })
     })
 
     // Paginated history per active branch.
@@ -160,10 +163,11 @@ test.describe('Chat — lazy-load branch reset', () => {
     await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
     await expect(page.locator('[data-message-id="a-0"]')).toBeVisible({ timeout: 10000 })
 
-    // Switch to branch B via the navigator (prev). B's tail (b-4) shows; A's
+    // Switch to branch B via the navigator (next — A is the older parent, so
+    // prev is disabled and next advances to B). B's tail (b-4) shows; A's
     // older/newer pages are gone (window reset).
     await expect(page.getByTestId('branch-navigator').first()).toBeVisible({ timeout: 10000 })
-    await page.getByTestId('chat-branch-prev-btn').first().click()
+    await page.getByTestId('chat-branch-next-btn').first().click()
 
     await expect(page.locator('[data-message-id="b-4"]')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('[data-message-id="a-39"]')).toHaveCount(0)

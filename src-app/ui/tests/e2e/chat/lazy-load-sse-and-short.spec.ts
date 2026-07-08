@@ -113,9 +113,9 @@ test.describe('Chat — lazy-load SSE + short conversation', () => {
     await expect(page.locator('[data-message-id="h-0"]')).toBeVisible()
 
     // Send a message.
-    const composer = page.getByTestId('chat-input-textarea')
+    const composer = page.getByTestId('chat-message-textarea')
     await composer.fill('A brand new question')
-    await composer.press('Enter')
+    await page.getByTestId('chat-input-send-btn').click()
 
     // The streamed reply appears at the bottom, and the earliest history message
     // is still present (older content not discarded by the new turn).
