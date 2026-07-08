@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1821** signals total: 1433 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
+- **1823** signals total: 1434 branch, 111 empty, 95 error, 96 loading, 85 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2874,18 +2874,20 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!configModalVisible \|\| !isProjectScope` | 131 |
-| branch | `selectedServers.size > 0` | 134 |
-| branch | `!selection` | 182 |
-| branch | `!selection` | 204 |
-| branch | `!isProjectScope && !currentConversationId` | 235 |
-| empty | `tools.length === 0` | 327 |
-| branch | `approvalMode === 'manual_approve'` | 342 |
-| branch | `tool.description` | 356 |
-| branch | `!isPrimaryModal` | 369 |
-| overlay | `<Dialog open>` | 372 |
+| branch | `!configModalVisible \|\| !isProjectScope` | 137 |
+| branch | `selectedServers.size > 0` | 140 |
+| branch | `!selection` | 188 |
+| branch | `!selection` | 210 |
+| branch | `!isProjectScope && !currentConversationId` | 241 |
+| empty | `tools.length === 0` | 333 |
+| branch | `approvalMode === 'manual_approve'` | 348 |
+| branch | `tool.description` | 362 |
+| branch | `!isPrimaryModal` | 375 |
 | branch | `!isProjectScope` | 382 |
 | empty | `enabledServers.length === 0` | 424 |
+| branch | `isMobile` | 550 |
+| overlay | `<Drawer open>` | 551 |
+| overlay | `<Dialog open>` | 563 |
 
 ### `modules/mcp/components/common/KeyValueSecretEditor`
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 324 surfaces carry renderable-state signals; 1821 signals total.
+// 324 surfaces carry renderable-state signals; 1823 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2612,18 +2612,20 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/components/McpConfigModal",
     requiredStates: ["empty","open"],
     signals: [
-      { kind: "branch", condition: "!configModalVisible || !isProjectScope", line: 131 },
-      { kind: "branch", condition: "selectedServers.size > 0", line: 134 },
-      { kind: "branch", condition: "!selection", line: 182 },
-      { kind: "branch", condition: "!selection", line: 204 },
-      { kind: "branch", condition: "!isProjectScope && !currentConversationId", line: 235 },
-      { kind: "empty", condition: "tools.length === 0", line: 327 },
-      { kind: "branch", condition: "approvalMode === 'manual_approve'", line: 342 },
-      { kind: "branch", condition: "tool.description", line: 356 },
-      { kind: "branch", condition: "!isPrimaryModal", line: 369 },
-      { kind: "overlay", condition: "<Dialog open>", line: 372 },
+      { kind: "branch", condition: "!configModalVisible || !isProjectScope", line: 137 },
+      { kind: "branch", condition: "selectedServers.size > 0", line: 140 },
+      { kind: "branch", condition: "!selection", line: 188 },
+      { kind: "branch", condition: "!selection", line: 210 },
+      { kind: "branch", condition: "!isProjectScope && !currentConversationId", line: 241 },
+      { kind: "empty", condition: "tools.length === 0", line: 333 },
+      { kind: "branch", condition: "approvalMode === 'manual_approve'", line: 348 },
+      { kind: "branch", condition: "tool.description", line: 362 },
+      { kind: "branch", condition: "!isPrimaryModal", line: 375 },
       { kind: "branch", condition: "!isProjectScope", line: 382 },
       { kind: "empty", condition: "enabledServers.length === 0", line: 424 },
+      { kind: "branch", condition: "isMobile", line: 550 },
+      { kind: "overlay", condition: "<Drawer open>", line: 551 },
+      { kind: "overlay", condition: "<Dialog open>", line: 563 },
     ],
   },
   "modules/mcp/components/common/KeyValueSecretEditor": {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber, message } from '@/components/ui'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { Tool } from '@/api-client/types'
@@ -30,6 +32,10 @@ import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores
 let mcpConfigModalMounts = 0
 
 export function McpConfigModal() {
+  // Below the mobile (xs) breakpoint — the same width at which the sidebar
+  // becomes an overlay Sheet — the config surface slides in as a Drawer instead
+  // of a centered Dialog (which is cramped once the viewport can't fit it).
+  const isMobile = useWindowMinSize().xs
   const [isPrimaryModal, setIsPrimaryModal] = useState(false)
   useEffect(() => {
     mcpConfigModalMounts += 1
@@ -368,29 +374,23 @@ export function McpConfigModal() {
   // mount points no-op so the same global open-flag can't show two dialogs.
   if (!isPrimaryModal) return null
 
-  return (
-    <Dialog
-      open={configModalVisible}
-      onOpenChange={(v) => { if (!v) handleClose() }}
-      className="max-w-[800px]"
-      data-testid="mcp-config-modal"
-      title={isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'}
-      footer={
-        <Space>
-          {/* "Save as Default" writes user_mcp_defaults — orthogonal to
-              project scope, hide there to avoid confusion. */}
-          {!isProjectScope && (
-            <Button onClick={handleSaveAsDefault} loading={savingDefaults} data-testid="mcp-config-save-default-btn">
-              Save as Default
-            </Button>
-          )}
-          <Button onClick={handleClose} loading={saving} data-testid="mcp-config-close-btn">
-            {isProjectScope || currentConversationId ? 'Save & Close' : 'Close'}
-          </Button>
-        </Space>
-      }
-    >
-      <div className="space-y-4 pb-2">
+  const modalTitle = isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'
+  const modalFooter = (
+    <Space>
+      {/* "Save as Default" writes user_mcp_defaults — orthogonal to
+          project scope, hide there to avoid confusion. */}
+      {!isProjectScope && (
+        <Button onClick={handleSaveAsDefault} loading={savingDefaults} data-testid="mcp-config-save-default-btn">
+          Save as Default
+        </Button>
+      )}
+      <Button onClick={handleClose} loading={saving} data-testid="mcp-config-close-btn">
+        {isProjectScope || currentConversationId ? 'Save & Close' : 'Close'}
+      </Button>
+    </Space>
+  )
+  const modalBody = (
+    <div className="space-y-4 pb-2">
         {/* Approval Mode Section */}
         <div>
           <Title level={5} className="!text-sm">Approval Mode</Title>
@@ -545,6 +545,30 @@ export function McpConfigModal() {
           </div>
         </div>
       </div>
+  )
+
+  return isMobile ? (
+    <Drawer
+      open={configModalVisible}
+      onClose={handleClose}
+      title={modalTitle}
+      footer={modalFooter}
+      placement="right"
+      size="large"
+      data-testid="mcp-config-modal"
+    >
+      {modalBody}
+    </Drawer>
+  ) : (
+    <Dialog
+      open={configModalVisible}
+      onOpenChange={(v) => { if (!v) handleClose() }}
+      className="max-w-[800px]"
+      data-testid="mcp-config-modal"
+      title={modalTitle}
+      footer={modalFooter}
+    >
+      {modalBody}
     </Dialog>
   )
 }

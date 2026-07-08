@@ -331,11 +331,16 @@
       "surface": "modules/mcp/components/McpConfigModal",
       "class": "host",
       "primitives": [
-        "Dialog"
+        "Dialog",
+        "Drawer"
       ],
       "occurrences": [
         {
           "primitive": "Dialog",
+          "mode": "controlled"
+        },
+        {
+          "primitive": "Drawer",
           "mode": "controlled"
         }
       ]
