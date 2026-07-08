@@ -1024,7 +1024,7 @@ Required states: `delayed`, `empty`
 | branch | `loadingOlder` | 248 |
 | branch | `virtualize` | 258 |
 | branch | `!msg` | 273 |
-| loading | `(loading \|\| isStreaming)` | 317 |
+| loading | `(loading \|\| isStreaming)` | 321 |
 
 ### `modules/chat/components/ModelSelector`
 

@@ -903,7 +903,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "loadingOlder", line: 248 },
       { kind: "branch", condition: "virtualize", line: 258 },
       { kind: "branch", condition: "!msg", line: 273 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 317 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 321 },
     ],
   },
   "modules/chat/components/ModelSelector": {

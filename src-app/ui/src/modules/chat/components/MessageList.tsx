@@ -284,7 +284,11 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                     transform: `translateY(${vi.start}px)`,
                   }}
                 >
-                  <div className="py-0.5">
+                  {/* flex flex-col: ChatMessage right-aligns the user bubble via
+                      `self-end`, which needs a flex-column parent (the plain path
+                      below already provides one). Without it the virtualized rows
+                      are plain blocks and user messages fall back to the left. */}
+                  <div className="py-0.5 flex flex-col">
                     <ChatMessage
                       message={msg}
                       isStreaming={
