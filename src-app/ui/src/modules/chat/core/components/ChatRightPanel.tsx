@@ -4,7 +4,6 @@ import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
-import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 function ActivePanelContent() {
   const { tabs, activeId } = Stores.Chat.rightPanel
@@ -133,11 +132,13 @@ function handleDrawerKeyDown(
   }
 }
 
-export function ChatRightPanel() {
+export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
   const { rightPanel } = Stores.Chat
-  const { sm: isMobile } = useWindowMinSize()
+  // `narrow` = the conversation PAGE is small (element-width, sidebar-aware),
+  // not the window — so an open sidebar on a wide window still gets the drawer.
+  const isMobile = narrow
 
   const isOpen = rightPanel.tabs.length > 0 && rightPanel.activeId !== null
   const panelWidth = rightPanel.panelWidth

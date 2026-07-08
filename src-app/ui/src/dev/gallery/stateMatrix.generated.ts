@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 324 surfaces carry renderable-state signals; 1817 signals total.
+// 324 surfaces carry renderable-state signals; 1818 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -919,14 +919,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/components/ChatRightPanel",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!activeTab", line: 14 },
-      { kind: "branch", condition: "!resolved", line: 17 },
-      { kind: "empty", condition: "tabs.length === 0", line: 50 },
-      { kind: "branch", condition: "e.key === 'Escape'", line: 114 },
-      { kind: "empty", condition: "focusable.length === 0", line: 123 },
-      { kind: "branch", condition: "isMobile", line: 168 },
-      { kind: "branch", condition: "!showDrawer", line: 169 },
-      { kind: "branch", condition: "isOpen", line: 209 },
+      { kind: "branch", condition: "!activeTab", line: 13 },
+      { kind: "branch", condition: "!resolved", line: 16 },
+      { kind: "empty", condition: "tabs.length === 0", line: 49 },
+      { kind: "branch", condition: "e.key === 'Escape'", line: 113 },
+      { kind: "empty", condition: "focusable.length === 0", line: 122 },
+      { kind: "branch", condition: "isMobile", line: 169 },
+      { kind: "branch", condition: "!showDrawer", line: 170 },
+      { kind: "branch", condition: "isOpen", line: 210 },
     ],
   },
   "modules/chat/core/extensions/registry": {
@@ -1065,13 +1065,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 73 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 94 },
-      { kind: "branch", condition: "!conversationId", line: 123 },
-      { kind: "loading", condition: "loading && !conversation", line: 149 },
-      { kind: "loading", condition: "!loading && !conversation", line: 158 },
-      { kind: "error", condition: "error", line: 161 },
-      { kind: "error", condition: "error", line: 218 },
+      { kind: "branch", condition: "!sentinel", line: 78 },
+      { kind: "branch", condition: "!el", line: 98 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 115 },
+      { kind: "branch", condition: "!conversationId", line: 144 },
+      { kind: "loading", condition: "loading && !conversation", line: 170 },
+      { kind: "loading", condition: "!loading && !conversation", line: 179 },
+      { kind: "error", condition: "error", line: 182 },
+      { kind: "error", condition: "error", line: 239 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {

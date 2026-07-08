@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1817** signals total: 1428 branch, 111 empty, 95 error, 96 loading, 85 overlay, 2 panel.
+- **1818** signals total: 1429 branch, 111 empty, 95 error, 96 loading, 85 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1045,14 +1045,14 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!activeTab` | 14 |
-| branch | `!resolved` | 17 |
-| empty | `tabs.length === 0` | 50 |
-| branch | `e.key === 'Escape'` | 114 |
-| empty | `focusable.length === 0` | 123 |
-| branch | `isMobile` | 168 |
-| branch | `!showDrawer` | 169 |
-| branch | `isOpen` | 209 |
+| branch | `!activeTab` | 13 |
+| branch | `!resolved` | 16 |
+| empty | `tabs.length === 0` | 49 |
+| branch | `e.key === 'Escape'` | 113 |
+| empty | `focusable.length === 0` | 122 |
+| branch | `isMobile` | 169 |
+| branch | `!showDrawer` | 170 |
+| branch | `isOpen` | 210 |
 
 ### `modules/chat/core/extensions/registry`
 
@@ -1207,13 +1207,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 73 |
-| branch | `!Stores.Chat.$.conversation` | 94 |
-| branch | `!conversationId` | 123 |
-| loading | `loading && !conversation` | 149 |
-| loading | `!loading && !conversation` | 158 |
-| error | `error` | 161 |
-| error | `error` | 218 |
+| branch | `!sentinel` | 78 |
+| branch | `!el` | 98 |
+| branch | `!Stores.Chat.$.conversation` | 115 |
+| branch | `!conversationId` | 144 |
+| loading | `loading && !conversation` | 170 |
+| loading | `!loading && !conversation` | 179 |
+| error | `error` | 182 |
+| error | `error` | 239 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

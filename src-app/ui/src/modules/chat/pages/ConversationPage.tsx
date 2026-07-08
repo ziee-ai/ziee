@@ -47,6 +47,11 @@ export default function ConversationPage() {
   // The scroll effect only fires when isAtBottomRef is true.
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
+  // Drive the right panel's drawer-vs-side-panel by the conversation area's OWN
+  // width (page size, sidebar-aware), not the window — so with the sidebar open
+  // on a wide window the (now narrow) page still gets the overlay drawer.
+  const mainAreaRef = useRef<HTMLDivElement>(null)
+  const [rightPanelNarrow, setRightPanelNarrow] = useState(false)
   // Conversation id whose initial bottom-jump we've already done.
   const initialScrollConvIdRef = useRef<string | null>(null)
 
@@ -81,6 +86,22 @@ export default function ConversationPage() {
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
+  }, [conversation?.id])
+
+  // Measure the conversation area's width for the right-panel drawer decision.
+  // Keyed on the loaded conversation id for the SAME reason as the sentinel
+  // observer above: the main area only mounts once the Loading/Error early
+  // returns clear, so an empty-dep effect would bail with a null ref and the
+  // width would stay at its (narrow) initial value.
+  useEffect(() => {
+    const el = mainAreaRef.current
+    if (!el) return
+    const measure = () =>
+      setRightPanelNarrow(el.getBoundingClientRect().width <= 640)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [conversation?.id])
 
   // Cmd/Ctrl-F opens the in-conversation find bar, overriding the browser's
@@ -222,7 +243,7 @@ export default function ConversationPage() {
       )}
 
       {/* Main area: chat column + right panel */}
-      <div className={cn('flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
+      <div ref={mainAreaRef} className={cn('flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Chat column. `relative` anchors the floating find bar (ITEM-1) and
             jump-to-latest button (ITEM-2). */}
         <div className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
@@ -307,7 +328,7 @@ export default function ConversationPage() {
         </div>
 
         {/* Right sidebar panel */}
-        <ChatRightPanel />
+        <ChatRightPanel narrow={rightPanelNarrow} />
       </div>
     </div>
   )
