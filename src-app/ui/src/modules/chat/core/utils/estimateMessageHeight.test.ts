@@ -83,7 +83,11 @@ test('adds for non-text heavy blocks (tool_use / image / file_attachment)', () =
   assert.ok(withImageBlock > base + 150, `withImageBlock=${withImageBlock} base=${base}`)
 })
 
-test('lands within a bounded ratio of representative real heights', () => {
+test('a medium answer estimates into a sane range (sanity bound, not a real-height ratio)', () => {
+  // ~600 chars at the app content width is ~8-10 rendered lines; this is a
+  // coarse sanity bound on the estimator's own output (no real measured height
+  // is available in a pure unit test — the estimate↔measured closeness is
+  // asserted end-to-end by the geometry e2e spec).
   const est = estimateMessageHeight(msg([text('word '.repeat(120))]), 736)
   assert.ok(est > 150, `est=${est}`)
   assert.ok(est < 600, `est=${est}`)

@@ -10,11 +10,12 @@ import {
  * bytes arrive, so an async image load doesn't thrash the virtualizer's row
  * measurement and jump the viewport (symptom 3, images).
  *
- * Regression this guards: markdown images rendered as a bare `<img>` (~0 height
+ * Regression guarded: markdown images rendered as a bare `<img>` (~0 height
  * until loaded); under virtualization the row measured short, the image loaded,
  * the row grew, the ResizeObserver fired and shifted scroll. `ReservedImage`
- * reserves a stable min-height up front (released on load), so the row height is
- * stable from first paint.
+ * reserves a stable min-height up front (released on load), so the row is not
+ * collapsed and the post-load growth is bounded to |natural − reserved| instead
+ * of the full natural height.
  */
 
 async function seedConversation(apiURL: string, token: string, title: string) {
@@ -30,13 +31,17 @@ async function seedConversation(apiURL: string, token: string, title: string) {
   return (await res.json()).id as string
 }
 
-// A same-origin, 240×240 SVG so the img renderer's ALLOWED branch routes it
-// through ReservedImage (root-relative src). Served with a delay so the
-// pre-load reservation is observable.
+// A same-origin, 360px-tall SVG — DELIBERATELY taller than the 240px dimensionless
+// reservation, so the "no meaningful jump" assertion is NOT trivially satisfied
+// by matching sizes. Without the reservation the row would grow from ~0 → 360
+// (a 360px jump); with it, from 240 → 360 (a bounded ~120px jump). A root-
+// relative src routes through the ALLOWED → ReservedImage branch. Served with a
+// gate so the pre-load reservation is observable.
 const IMG_PATH = '/perf-reserved-image.svg'
+const IMG_NATURAL = 360
 const SVG =
-  `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240">` +
-  `<rect width="240" height="240" fill="#4488cc"/></svg>`
+  `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="${IMG_NATURAL}">` +
+  `<rect width="480" height="${IMG_NATURAL}" fill="#4488cc"/></svg>`
 
 function assistantWithImage(id: string): MockMessageWithContent {
   return {
@@ -55,7 +60,7 @@ function assistantWithImage(id: string): MockMessageWithContent {
 }
 
 test.describe('message-scroll-perf — inline image height reservation', () => {
-  test('row reserves height before load; no jump when the image arrives', async ({
+  test('row reserves height before load; post-load growth is bounded', async ({
     page,
     testInfra,
   }) => {
@@ -65,8 +70,10 @@ test.describe('message-scroll-perf — inline image height reservation', () => {
     const convId = await seedConversation(apiURL, token, 'Perf: image reserve')
 
     // Delay the image so we can observe the reserved (pre-load) state.
-    let releaseImage: (() => void) | null = null
-    const imageGate = new Promise<void>(r => (releaseImage = r))
+    let releaseImage: () => void = () => {}
+    const imageGate = new Promise<void>(resolve => {
+      releaseImage = resolve
+    })
     await page.route(`**${IMG_PATH}`, async route => {
       await imageGate
       await route.fulfill({
@@ -76,18 +83,21 @@ test.describe('message-scroll-perf — inline image height reservation', () => {
       })
     })
 
-    // A short reference message BELOW the image message, to detect any jump.
     const win: MockMessageWithContent[] = [
       {
         id: 'ref-top',
         role: 'user',
-        contents: [{ content_type: 'text', content: { type: 'text', text: 'Show me a chart' } }],
+        contents: [
+          { content_type: 'text', content: { type: 'text', text: 'Show me a chart' } },
+        ],
       },
       assistantWithImage('img-msg'),
       {
         id: 'ref-below',
         role: 'user',
-        contents: [{ content_type: 'text', content: { type: 'text', text: 'REFERENCE ROW' } }],
+        contents: [
+          { content_type: 'text', content: { type: 'text', text: 'REFERENCE ROW' } },
+        ],
       },
     ]
     await mockPaginatedMessages(page, win)
@@ -102,26 +112,25 @@ test.describe('message-scroll-perf — inline image height reservation', () => {
     await expect(reserved).toBeVisible({ timeout: 10000 })
     await expect(reserved).not.toHaveAttribute('data-loaded', '')
 
-    // The reservation gives the placeholder a real (non-tiny) height BEFORE the
-    // bytes arrive — the row is not collapsed to ~0.
+    // PRIMARY assertion (the ITEM-3 fix): the row is NOT collapsed to ~0 before
+    // the bytes arrive — it holds its reserved height.
     const reservedH = (await reserved.boundingBox())?.height ?? 0
     expect(reservedH).toBeGreaterThan(200)
 
     // Reference row position before the image resolves.
-    const beforeY = (await page
-      .locator('[data-message-id="ref-below"]')
-      .boundingBox())?.y ?? 0
+    const beforeY =
+      (await page.locator('[data-message-id="ref-below"]').boundingBox())?.y ?? 0
 
     // Release the image; it loads into the already-reserved box.
-    releaseImage?.()
+    releaseImage()
     await expect(reserved).toHaveAttribute('data-loaded', '', { timeout: 10000 })
     await page.waitForTimeout(400)
 
-    // The reference row barely moved — the reserved height (240) matched the
-    // natural image height (240), so the load produced no meaningful jump.
-    const afterY = (await page
-      .locator('[data-message-id="ref-below"]')
-      .boundingBox())?.y ?? 0
-    expect(Math.abs(afterY - beforeY)).toBeLessThan(24)
+    // The reference row moved by at most |natural − reserved| (~120px), FAR less
+    // than the ~360px jump an unreserved (0-height) image would have produced.
+    const afterY =
+      (await page.locator('[data-message-id="ref-below"]').boundingBox())?.y ?? 0
+    const shift = Math.abs(afterY - beforeY)
+    expect(shift).toBeLessThan(IMG_NATURAL - 180) // < 180; unreserved would be ~360
   })
 })

@@ -27,6 +27,21 @@ test('external origin src → blocked (exfil beacon vector)', () => {
   assert.equal(classifyImageSrc('//evil.test/pixel.gif', ORIGIN), 'blocked')
 })
 
+test('backslash-disguised authority → blocked (the URL parser folds \\ to /)', () => {
+  // `/\evil.test` starts with a single `/` (so a naive startsWith('/') fast-path
+  // would allow it) but the WHATWG parser resolves it to https://evil.test — the
+  // origin check catches it.
+  assert.equal(classifyImageSrc('/\\evil.test/pixel.gif', ORIGIN), 'blocked')
+  assert.equal(classifyImageSrc('\\\\evil.test/pixel.gif', ORIGIN), 'blocked')
+})
+
+test('same-origin relative forms stay allowed', () => {
+  // A single leading backslash resolves same-origin (harmless) → allowed.
+  assert.equal(classifyImageSrc('\\evil.test', ORIGIN), 'allowed')
+  // Bare relative path → same origin → allowed.
+  assert.equal(classifyImageSrc('image.png', ORIGIN), 'allowed')
+})
+
 test('data: URI → blocked', () => {
   assert.equal(
     classifyImageSrc('data:image/png;base64,AAAA', ORIGIN),

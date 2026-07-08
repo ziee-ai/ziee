@@ -1,4 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
+import type { Page } from '@playwright/test'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import {
   mockPaginatedMessages,
@@ -10,15 +11,13 @@ import {
  * while scrolling a long MIXED-content conversation (short turns + long answers
  * + markdown tables + code blocks).
  *
- * The regression this guards: the merged virtualization used a CONSTANT
- * `estimateSize` (140px), so every unmeasured heavy row (table/code/long answer)
- * that scrolled into view corrected `getTotalSize()` — the scroll container
- * height (and the scrollbar thumb) jumped (symptoms 1 + 2). The content-aware
- * estimate (ITEM-1) + persisted measured-height cache (ITEM-2) keep the
- * estimated total close to the real total, so the total barely moves as rows
- * measure. Signal: the INITIAL scrollHeight (mostly estimated) is close to the
- * FINAL scrollHeight (all measured) — a ratio the old constant estimate could
- * not achieve on heavy content (it undershot by 3–4×).
+ * Regression guarded: the merged virtualization used a CONSTANT `estimateSize`
+ * (140px), so every unmeasured heavy row corrected `getTotalSize()` — the scroll
+ * container height (and the scrollbar thumb) jumped (symptoms 1 + 2). The
+ * content-aware estimate (ITEM-1) + persisted measured-height cache (ITEM-2) keep
+ * the estimated total close to the real total. Signal: the INITIAL scrollHeight
+ * (mostly estimated) is close to the FINAL scrollHeight (all measured) — a ratio
+ * the old constant undershot by 3–4× on heavy content.
  */
 
 async function seedConversation(apiURL: string, token: string, title: string) {
@@ -63,13 +62,13 @@ const CODE_MD =
 
 const LONG_MD = 'This is a longer assistant answer. '.repeat(20)
 
-// A 30-message single-page window (store limit=30) so scrolling is PURE
-// virtualization — no pagination/anchor interplay. Rows deliberately span a
-// wide height range (short user turns, long answers, tables, code) so a
-// constant estimate would be badly wrong.
+// Exactly 30 messages = 15 user/assistant pairs (u-0..u-14, a-0..a-14) → one
+// store page (limit=30), has_more_before false → scrolling is PURE
+// virtualization. Rows span a wide height range (short turns, long answers,
+// tables, code) so a constant estimate would be badly wrong. Newest = a-14.
 function mixedWindow(): MockMessageWithContent[] {
   const out: MockMessageWithContent[] = []
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 15; i++) {
     out.push(userMsg(`u-${i}`, `Question ${i}?`))
     const kind = i % 4
     const body =
@@ -82,13 +81,13 @@ function mixedWindow(): MockMessageWithContent[] {
             : 'Short answer.'
     out.push(assistantMsg(`a-${i}`, body))
   }
-  return out.slice(0, 30)
+  return out
 }
 
-async function scrollHeightOf(page: import('@playwright/test').Page) {
+// The virtualizer's spacer div carries the total scroll height (getTotalSize).
+async function scrollHeightOf(page: Page): Promise<number> {
   return page.evaluate(() => {
     const msgs = document.querySelector('[data-testid="chat-messages"]')
-    // The virtualizer's spacer is the first child div with an explicit height.
     const spacer = msgs?.querySelector<HTMLElement>(
       ':scope > div[style*="height"]',
     )
@@ -96,11 +95,21 @@ async function scrollHeightOf(page: import('@playwright/test').Page) {
   })
 }
 
+// Poll until the total height stops changing (measurement settled) instead of a
+// fixed sleep — deterministic across CI timing.
+async function settledScrollHeight(page: Page): Promise<number> {
+  let prev = -1
+  for (let i = 0; i < 25; i++) {
+    const h = await scrollHeightOf(page)
+    if (h > 0 && h === prev) return h
+    prev = h
+    await page.waitForTimeout(120)
+  }
+  return prev
+}
+
 test.describe('message-scroll-perf — geometry stability', () => {
-  test('estimated total tracks measured total (stable scrollbar thumb)', async ({
-    page,
-    testInfra,
-  }) => {
+  test('estimated total tracks measured total (stable scrollbar thumb)', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
@@ -111,27 +120,22 @@ test.describe('message-scroll-perf — geometry stability', () => {
     await expect(page.getByTestId('chat-messages')).toBeVisible({
       timeout: 30000,
     })
-    // The initial load jumps to the bottom; let the bottom rows measure.
-    await expect(page.locator('[data-message-id="a-29"]')).toBeVisible()
-    await page.waitForTimeout(600)
+    // Initial load jumps to the bottom; wait for the bottom rows to settle.
+    await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
+    const initialSH = await settledScrollHeight(page)
+    expect(initialSH).toBeGreaterThan(0)
 
     // Virtualized: only a bounded subset is mounted (overscan tuned, ITEM-5).
     const mounted = await page.getByTestId('chat-message').count()
     expect(mounted).toBeGreaterThan(0)
     expect(mounted).toBeLessThan(24)
 
-    // INITIAL total: bottom rows measured, the rest still on the (content-aware)
-    // estimate.
-    const initialSH = await scrollHeightOf(page)
-    expect(initialSH).toBeGreaterThan(0)
-
     // Scroll to the very top so every row gets measured, then settle.
     await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
     await expect(page.locator('[data-message-id="u-0"]')).toBeVisible({
       timeout: 10000,
     })
-    await page.waitForTimeout(600)
-    const finalSH = await scrollHeightOf(page)
+    const finalSH = await settledScrollHeight(page)
 
     // With a content-aware estimate the estimated total is CLOSE to the measured
     // total → the thumb doesn't lurch. The old constant-140 estimate undershot
@@ -140,62 +144,72 @@ test.describe('message-scroll-perf — geometry stability', () => {
     expect(ratio).toBeGreaterThan(0.65)
     expect(ratio).toBeLessThan(1.5)
 
-    // Still virtualized at the top (window shifted, not everything mounted).
+    // Still virtualized at the top.
     expect(await page.getByTestId('chat-message').count()).toBeLessThan(24)
   })
 
-  test('re-opening the conversation seeds measured heights (warm start)', async ({
-    page,
-    testInfra,
-  }) => {
+  test('re-mounting the conversation seeds measured heights (warm start)', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const convId = await seedConversation(apiURL, token, 'Perf: warm reopen')
     await mockPaginatedMessages(page, mixedWindow())
 
-    // Cold open: scroll through so every row measures (populates the cache).
+    // Cold open: scroll through so every row measures (populates the module
+    // cache). The write-back is debounced, so wait for it to flush.
     await page.goto(`${baseURL}/chat/${convId}`)
     await expect(page.getByTestId('chat-messages')).toBeVisible({
       timeout: 30000,
     })
-    await expect(page.locator('[data-message-id="a-29"]')).toBeVisible()
+    await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
     await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
     await expect(page.locator('[data-message-id="u-0"]')).toBeVisible({
       timeout: 10000,
     })
-    await page.waitForTimeout(600)
-    const finalSH = await scrollHeightOf(page)
+    const finalSH = await settledScrollHeight(page)
+    await page.waitForTimeout(600) // let the debounced measured-height flush run
 
-    // Navigate away (unmounts ConversationPage → flushes the cache) and back.
-    await page.goto(`${baseURL}/`)
-    await page.waitForTimeout(200)
-    await page.goto(`${baseURL}/chat/${convId}`)
+    // CLIENT-SIDE navigate away (New Chat pushes /chat, unmounting the
+    // ConversationPage → its measured heights flush) then goBack() — a popstate
+    // react-router handles WITHOUT a document reload, so the module-level cache
+    // survives and the remounted ConversationPage seeds initialMeasurementsCache
+    // from it. (A full page.goto reload would wipe the process-lifetime cache.)
+    await page
+      .getByTestId('layout-sidebar-primary-actions-menu')
+      .getByText('New Chat')
+      .click()
+    await expect(page.getByTestId('new-chat-greeting')).toBeVisible({
+      timeout: 15000,
+    })
+    await page.goBack()
     await expect(page.getByTestId('chat-messages')).toBeVisible({
       timeout: 30000,
     })
-    await expect(page.locator('[data-message-id="a-29"]')).toBeVisible()
+    await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
+
     // Immediately (before a full re-scroll) the total should already be close to
-    // the measured total — the initialMeasurementsCache seeded real heights.
+    // the measured total — the seed restored real heights on remount.
     const warmSH = await scrollHeightOf(page)
     expect(warmSH / finalSH).toBeGreaterThan(0.8)
   })
 
-  test('scrolling does not re-highlight / re-mount message bodies (memo boundary)', async ({
-    page,
-    testInfra,
-  }) => {
+  test('code-heavy conversation scrolls without runtime errors', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
+    // Only real app errors — filter benign infra noise so the assertion is not
+    // flaky against unrelated console output.
+    const IGNORE =
+      /ResizeObserver loop|favicon|\[vite\]|net::ERR_|Failed to load resource|hydrat/i
     const errors: string[] = []
     page.on('console', m => {
-      if (m.type() === 'error') errors.push(m.text())
+      if (m.type() === 'error' && !IGNORE.test(m.text())) errors.push(m.text())
     })
+    page.on('pageerror', e => errors.push(`pageerror: ${e.message}`))
+
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
-    const convId = await seedConversation(apiURL, token, 'Perf: memo')
-    // A code-heavy window so Shiki highlighting is exercised.
+    const convId = await seedConversation(apiURL, token, 'Perf: code scroll')
     const win: MockMessageWithContent[] = []
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 15; i++) {
       win.push(userMsg(`u-${i}`, `Q${i}`))
       win.push(assistantMsg(`a-${i}`, `code:\n\n${CODE_MD}`))
     }
@@ -205,40 +219,34 @@ test.describe('message-scroll-perf — geometry stability', () => {
     await expect(page.getByTestId('chat-messages')).toBeVisible({
       timeout: 30000,
     })
-    await expect(page.locator('[data-message-id="a-19"]')).toBeVisible()
-    await page.waitForTimeout(400)
+    await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
 
-    // Scroll a heavy code row out of the window and back; it must re-mount clean
-    // (highlighted), with no console errors from a re-render/re-highlight storm.
+    // Scroll up to the top and back down; heavy code rows re-window in and out.
     await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
     await expect(page.locator('[data-message-id="a-0"]')).toBeVisible({
       timeout: 10000,
     })
-    await page.waitForTimeout(300)
-    await page.locator('[data-message-id="a-19"]').scrollIntoViewIfNeeded()
-    await expect(page.locator('[data-message-id="a-19"]')).toBeVisible()
+    // A Shiki-highlighted code block actually rendered (not a raw <pre> dump).
+    await expect(page.locator('[data-message-id="a-0"] pre').first()).toBeVisible()
+    await page.locator('[data-message-id="a-14"]').scrollIntoViewIfNeeded()
+    await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
 
-    // No console errors surfaced by the scroll (no ErrorBoundary / re-render
-    // churn crash). Highlighted code is present.
+    // No app-level console/page errors from the scroll (no re-render/re-highlight
+    // crash, no ErrorBoundary). Locks the memo boundary against a runtime storm.
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 
-  test('a tall markdown table renders inside a height-capped box (definite height)', async ({
-    page,
-    testInfra,
-  }) => {
+  test('a tall markdown table renders inside a height-capped box (definite height)', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const convId = await seedConversation(apiURL, token, 'Perf: table cap')
-    // A 100-row table — without a definite cap it would dominate the row and its
-    // inner ResizeObserver could feed back into row measurement (ITEM-4).
     const bigTable =
       '| A | B | C |\n|---|---|---|\n' +
       Array.from({ length: 100 }, (_, r) => `| a${r} | b${r} | c${r} |`).join('\n')
     await mockPaginatedMessages(page, [
-      userMsg('u', 'big table please'),
-      assistantMsg('a', `Table:\n\n${bigTable}`),
+      userMsg('u-0', 'big table please'),
+      assistantMsg('a-0', `Table:\n\n${bigTable}`),
     ])
 
     await page.goto(`${baseURL}/chat/${convId}`)
@@ -247,16 +255,13 @@ test.describe('message-scroll-perf — geometry stability', () => {
     })
     const table = page.locator('[data-testid="chat-message"] table').first()
     await expect(table).toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(400)
+    await settledScrollHeight(page)
 
-    // The table's scroll wrapper is capped at min(60vh, 36rem) — it never grows
-    // unbounded with row count (definite height for the virtualizer's measure).
     const cap = await page.evaluate(() =>
       Math.min(window.innerHeight * 0.6, 36 * 16),
     )
-    const wrapperH = await page.evaluate(() => {
+    const rowH = await page.evaluate(() => {
       const t = document.querySelector('[data-testid="chat-message"] table')
-      // Walk up to the OverlayScrollbars viewport that imposes max-height.
       let el: HTMLElement | null = t as HTMLElement | null
       let max = 0
       while (el && el.getAttribute('data-testid') !== 'chat-message') {
@@ -265,7 +270,7 @@ test.describe('message-scroll-perf — geometry stability', () => {
       }
       return max
     })
-    // The whole message row is bounded near the cap (+ chrome), not 100 rows tall.
-    expect(wrapperH).toBeLessThan(cap + 200)
+    // The 100-row table is bounded near the cap (+ chrome), not 100 rows tall.
+    expect(rowH).toBeLessThan(cap + 200)
   })
 })

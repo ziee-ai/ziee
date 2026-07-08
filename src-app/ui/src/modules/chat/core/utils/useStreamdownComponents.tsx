@@ -147,12 +147,15 @@ export function useStreamdownComponents(contentId: string) {
         // would allow this, and the `urlTransform` prop doesn't apply
         // to raw-HTML img tags (only markdown `![](url)` syntax).
         // Doing the check at the React component level catches both.
-        // NOTE (message-scroll-perf ITEM-3/DEC-3): the exfil policy is UNCHANGED
-        // — it now lives in the pure, unit-tested `classifyImageSrc` (same
-        // rules). Only ALLOWED (same-origin / root-relative) images route through
-        // ReservedImage, which reserves row height so an async image load doesn't
-        // thrash the virtualizer's row measurement. ReservedImage does NO src
-        // validation — it only ever wraps an approved image.
+        // NOTE (message-scroll-perf ITEM-3/DEC-3): the exfil policy now lives in
+        // the pure, unit-tested `classifyImageSrc`, which resolves the src
+        // against the page origin (no `startsWith('/')` fast-path) — a TIGHTENING
+        // of the original inline logic that also blocks the protocol-relative
+        // `//host` and backslash `/\host` disguises the old check let through.
+        // Only ALLOWED (same-origin) images route through ReservedImage, which
+        // reserves row height so an async image load doesn't thrash the
+        // virtualizer's row measurement. ReservedImage does NO src validation —
+        // it only ever wraps an approved image.
         const src = props.src
         const verdict = classifyImageSrc(src, window.location.origin)
         if (verdict === 'empty') return null

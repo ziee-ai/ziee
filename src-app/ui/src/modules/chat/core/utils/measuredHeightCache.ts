@@ -55,12 +55,11 @@ export function getMeasuredHeight(id: string, width: number): number | undefined
 export function setMeasuredHeight(id: string, width: number, size: number): void {
   if (!(size > 0)) return
   const key = cacheKey(id, width)
-  if (store.get(key) === size) {
-    // Unchanged — still refresh recency so a stable row isn't evicted.
-    store.delete(key)
-    store.set(key, size)
-    return
-  }
+  // Delete-then-set on BOTH paths so the entry moves to the most-recent (last)
+  // position — a Map.set on an EXISTING key keeps its original insertion order,
+  // which would let a hot, frequently re-measured row be evicted as "oldest"
+  // before genuinely cold entries.
+  store.delete(key)
   store.set(key, size)
   while (store.size > MAX_ENTRIES) {
     const oldest = store.keys().next().value
