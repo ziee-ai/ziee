@@ -115,6 +115,49 @@ export async function seedProjectImage(
 }
 
 /** Click the inline FileCard for `filename` (default click → FilePreviewDrawer)
+ * Like seedProjectFile but uploads arbitrary BINARY bytes (e.g. a generated
+ * .xlsx), so the real binary-parse viewer path runs. `bytes` is a plain number[]
+ * so it survives the page.evaluate boundary. Mirrors seedProjectImage.
+ */
+export async function seedProjectBinaryFile(
+  page: Page,
+  baseURL: string,
+  opts: { projectName: string; filename: string; bytes: number[]; mime: string },
+): Promise<string> {
+  await goToProjectsPage(page, baseURL)
+  await openCreateProjectDrawer(page)
+  await fillProjectForm(page, { name: opts.projectName })
+  await submitProjectForm(page)
+  await getProjectCard(page, opts.projectName).click()
+  await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
+  const projectId = new URL(page.url()).pathname.split('/').pop()!
+  const token = await getAdminToken(baseURL)
+
+  const fileId = await page.evaluate(
+    async ([apiBase, pid, t, name, mime, bytes]) => {
+      const arr = new Uint8Array(bytes as number[])
+      const fd = new FormData()
+      fd.append('file', new Blob([arr], { type: mime as string }), name as string)
+      const r = await fetch(`${apiBase}/api/projects/${pid}/files/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}` },
+        body: fd,
+      })
+      if (r.status !== 201) throw new Error(`upload failed: ${r.status}`)
+      const body = await r.json()
+      return body.id ?? body.file?.id ?? body.files?.[0]?.id
+    },
+    [baseURL, projectId, token, opts.filename, opts.mime, opts.bytes] as const,
+  )
+
+  await page.reload()
+  await expect(
+    page.locator(`[data-testid="file-card"][data-filename="${opts.filename}"]`),
+  ).toBeVisible({ timeout: 15000 })
+  return fileId as string
+}
+
+/** Click the inline FileCard for `filename` (default click → FilePreviewDrawer)
  *  and return the opened drawer dialog locator. */
 export async function openPreviewDrawer(page: Page, filename: string) {
   await page

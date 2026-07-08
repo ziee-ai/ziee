@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1850** signals total: 1457 branch, 111 empty, 95 error, 99 loading, 86 overlay, 2 panel.
+- **1853** signals total: 1459 branch, 112 empty, 95 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 86 |
-| `empty` | 89 |
+| `empty` | 90 |
 | `error` | 74 |
 | `open` | 72 |
 | `panel-open` | 2 |
@@ -1587,14 +1587,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 68 |
-| branch | `showFullPage` | 71 |
-| branch | `!hideHeader` | 115 |
-| branch | `tooLarge` | 129 |
-| branch | `isViewingOld` | 145 |
-| branch | `oldVersionText === null` | 147 |
-| branch | `tooLarge` | 162 |
-| branch | `Body` | 186 |
+| branch | `HeaderActions` | 75 |
+| branch | `showFullPage` | 78 |
+| branch | `!hideHeader` | 122 |
+| branch | `tooLarge` | 136 |
+| branch | `isViewingOld` | 152 |
+| branch | `oldVersionText === null` | 154 |
+| branch | `tooLarge` | 169 |
+| branch | `Body` | 193 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1706,10 +1706,10 @@ Required states: `error`
 | branch | `href?.startsWith('#')` | 73 |
 | error | `!(err instanceof Error)` | 99 |
 | error | `this.state.error` | 144 |
-| branch | `content === '__error__'` | 202 |
-| branch | `content === null` | 209 |
-| branch | `file` | 216 |
-| branch | `file && mode === 'raw'` | 218 |
+| branch | `content === '__error__'` | 210 |
+| branch | `content === null` | 217 |
+| branch | `file` | 224 |
+| branch | `file && mode === 'raw'` | 226 |
 
 ### `modules/file/viewers/markdown/header`
 
@@ -1751,14 +1751,17 @@ Required states: `delayed`, `error`
 
 ### `modules/file/viewers/shared/RawCodeView`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!filename` | 47 |
-| branch | `cancelled` | 153 |
-| branch | `cancelled` | 159 |
-| branch | `truncated` | 184 |
+| branch | `!filename` | 52 |
+| branch | `!ready` | 164 |
+| branch | `index < 0 \|\| index >= chunks.length` | 165 |
+| branch | `requestedRef.current.has(index)` | 166 |
+| branch | `cancelled` | 205 |
+| empty | `!root \|\| chunks.length === 0` | 241 |
+| branch | `truncated` | 265 |
 
 ### `modules/file/viewers/shared/chrome`
 
@@ -1793,8 +1796,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 155 |
-| branch | `truncated` | 198 |
+| branch | `idx < 0` | 118 |
+| branch | `truncated` | 161 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1810,14 +1813,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 128 |
-| branch | `sheet.truncated` | 168 |
-| branch | `!fileBinaryContent` | 229 |
-| branch | `!file` | 279 |
-| error | `loadError` | 281 |
-| loading | `!fileBinaryContent \|\| loading` | 290 |
-| empty | `sheets.length === 0` | 294 |
-| branch | `sheets.length === 1` | 298 |
+| branch | `idx < 0` | 124 |
+| branch | `sheet.truncated` | 164 |
+| branch | `!fileBinaryContent` | 225 |
+| branch | `!file` | 275 |
+| error | `loadError` | 277 |
+| loading | `!fileBinaryContent \|\| loading` | 286 |
+| empty | `sheets.length === 0` | 290 |
+| branch | `sheets.length === 1` | 294 |
 
 ### `modules/file/viewers/tabular/body`
 

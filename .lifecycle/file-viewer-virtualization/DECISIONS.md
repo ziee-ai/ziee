@@ -64,16 +64,20 @@ record objects + an O(N log N) sort is well within browser budget (<~100 ms
 sort, tens of MB), and only visible rows ever hit the DOM.
 
 ### DEC-5: TABULAR — how big before client-side hurts, and where is the bound?
-**Resolution:** CSV/TSV is bounded 1:1 by the 10 MB FilePanel byte cap (DEC-7) —
-no separate row cap needed; the full file always parses. XLSX is DIFFERENT: it is
-zip-compressed, so a 10 MB xlsx can decompress to millions of rows and the byte
-cap does NOT bound row count — therefore XLSX keeps a raised per-sheet cap
-`XLSX_MAX_ROWS = 200_000` (up from 10k) as the real OOM guard, applied to BOTH
-`XLSX.read({ sheetRows: XLSX_MAX_ROWS + 1 })` and the `slice`, with the existing
-truncation banner shown only above it.
-**Basis:** codebase — the xlsx parser already accepts a `sheetRows` limit; the
-distinction between byte-bounded CSV and decompression-unbounded xlsx is the
-reason CSV can drop its cap while xlsx keeps a (raised) one.
+**Resolution:** Both CSV/TSV and XLSX keep a RAISED per-viewer OOM-backstop cap
+(up from 10k), because the 10 MB byte cap bounds *bytes*, NOT *row count* — a
+10 MB CSV of tiny rows (`a\n`) is millions of rows, which would OOM a client
+array. So: CSV/TSV → `DELIMITED_MAX_ROWS = 300_000`; XLSX → `XLSX_MAX_ROWS =
+200_000` (lower because xlsx is heavier per row: zip-decompress + per-cell object,
+and the byte cap can't bound its decompressed count at all). XLSX applies the cap
+to BOTH `XLSX.read({ sheetRows: XLSX_MAX_ROWS + 1 })` and the `slice`. For every
+REAL (wide-row) file both caps sit far above the true row count, so they never
+truncate in practice — they only bite the pathological narrow-row case. The
+existing truncation banner fires only at these raised thresholds.
+**Basis:** user constraint ("keep a sane upper bound so we never OOM") + codebase.
+Correction over the pre-ack summary, which wrongly said CSV is "byte-bounded 1:1"
+and needs no cap — bytes don't bound row count, so a raised backstop is retained.
+Strictly safer; does not change the acked client-side / no-server-paging decision.
 
 ### DEC-6: TEXT — is there still a per-viewer line cap, and at what value?
 **Resolution:** Yes, a raised OOM backstop `RAWCODE_MAX_LINES = 300_000` (up from
@@ -124,8 +128,9 @@ per-line estimate (`~44`) since wrapped lines are taller — wrap-aware
 
 ### DEC-10: Do the retired 10k constants get renamed or removed?
 **Resolution:** `MAX_LINES` (text) → replaced by `RAWCODE_MAX_LINES = 300_000`;
-`MAX_ROWS` (DelimitedTable) → removed (no CSV cap, byte-bounded); `MAX_ROWS`
-(XlsxBody) → replaced by `XLSX_MAX_ROWS = 200_000`. New windowing constants
+`MAX_ROWS` (DelimitedTable) → replaced by `DELIMITED_MAX_ROWS = 300_000` (raised,
+not removed — see DEC-5); `MAX_ROWS` (XlsxBody) → replaced by `XLSX_MAX_ROWS =
+200_000`. New windowing constants
 (`RAWCODE_CHUNK_LINES`, observer margins) are module-local UPPER_SNAKE. Truncation
 banners/testids (`file-rawcode-truncated-alert`, `file-delimited-truncated-alert`,
 `file-xlsx-truncated-alert-*`) are KEPT (they now fire only at the raised

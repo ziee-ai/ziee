@@ -1026,6 +1026,22 @@ const integratorSeeded: SeededSurfaceEntry[] = [
     initialPath: '/',
     component: lazyNamed(() => import('./TableDemos'), 'XlsxViewerDemo'),
   },
+  {
+    slug: 'seeded-delimited-viewer-large',
+    title: 'Tabular viewer — large CSV (interactive)',
+    note: 'DelimitedTable, >10k rows: row-virtualized, whole-set sort/filter, no truncation',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'LargeDelimitedViewerDemo'),
+  },
+  {
+    slug: 'seeded-rawcode-large',
+    title: 'Text/code viewer — large file (interactive)',
+    note: 'RawCodeView, thousands of lines: chunk-on-demand Shiki highlight, lifted line cap',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'LargeRawCodeViewDemo'),
+  },
   // ── McpToolCallsTab: LOADED with tool-call rows (kit-Table sort/filter). The
   //    grid refetches on mount, so holdPatch re-asserts the seeded rows against
   //    the (empty) cassette. Drives the F1 data-grid sort/filter e2e. ──────────

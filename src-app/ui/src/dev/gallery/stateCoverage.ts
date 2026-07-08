@@ -390,6 +390,7 @@ export const STATE_COVERAGE = {
   "modules/user/components/group/UserGroupsSettings:error": { via: 'page-state-mode' },
   "modules/chat/components/ConversationFindBar:empty": { skip: true, reason: "via surface — the find bar renders null when closed; its open/match states are proven by the conversation-find e2e + Part 2 runtime coverage" },
   "modules/file/chat-extension/components/FilePasteHandler:empty": { skip: true, reason: "via surface — an invisible composer-attached paste-image sentinel (renders only a hidden span); behavior proven by the composer-paste-image e2e" },
+  "modules/file/viewers/shared/RawCodeView:empty": { skip: true, reason: "unreachable — the flagged chunks.length===0 is an IntersectionObserver effect guard, not a render branch, and chunkLineArray always yields ≥1 chunk (even empty text → one empty-line chunk); the viewer's real render (windowed chunks + highlight) is covered by the seeded-rawcode-large gallery surface + the large-text-viewer e2e" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

@@ -84,7 +84,12 @@ into desktop/ui, so every source edit is applied to BOTH.
 ## Files to touch
 
 - `src-app/ui/src/modules/file/viewers/shared/RawCodeView.tsx` (ITEM-1..4)
+- `src-app/ui/src/modules/file/viewers/shared/chunking.ts` NEW — pure
+  chunk/cap/height/escape helpers extracted for DOM-free unit testing (ITEM-1..4)
 - `src-app/ui/src/modules/file/viewers/tabular/DelimitedTable.tsx` (ITEM-5)
+- `src-app/ui/src/modules/file/viewers/tabular/parse.ts` NEW — pure delimited
+  parse + `DELIMITED_MAX_ROWS`/`XLSX_MAX_ROWS` constants extracted for DOM-free
+  unit testing (ITEM-5/6)
 - `src-app/ui/src/modules/file/viewers/tabular/XlsxBody.tsx` (ITEM-6)
 - `src-app/ui/src/modules/file/viewers/markdown/body.tsx` (ITEM-7, comment only)
 - `src-app/ui/src/modules/file/components/FilePanel.tsx` (ITEM-8, comment only)
@@ -97,8 +102,12 @@ into desktop/ui, so every source edit is applied to BOTH.
 - New unit tests:
   `src-app/ui/src/modules/file/viewers/shared/chunking.test.ts` (ITEM-1/2),
   `src-app/ui/src/modules/file/viewers/tabular/*` cap tests (ITEM-5/6)
+- `src-app/ui/tests/e2e/file/helpers.ts` — add `seedProjectBinaryFile` (real
+  xlsx-binary upload for the large-table e2e), mirroring `seedProjectImage`
+- `src-app/ui/src/dev/gallery/stateCoverage.ts` — add a skip entry for the
+  RawCodeView effect-guard state the detector flags (ITEM-9)
 - New e2e specs under `src-app/ui/tests/e2e/file/` (large-text-viewer,
-  large-table-viewer) — see TESTS.md
+  large-table-viewer) + `tests/e2e/visual/large-viewer-gallery.spec.ts` — see TESTS.md
 - No `src-app/desktop/ui/**` source edits (single-source via alias, ITEM-10);
   only its `npm run check` must stay green.
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1850 signals total.
+// 323 surfaces carry renderable-state signals; 1853 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1417,14 +1417,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 68 },
-      { kind: "branch", condition: "showFullPage", line: 71 },
-      { kind: "branch", condition: "!hideHeader", line: 115 },
-      { kind: "branch", condition: "tooLarge", line: 129 },
-      { kind: "branch", condition: "isViewingOld", line: 145 },
-      { kind: "branch", condition: "oldVersionText === null", line: 147 },
-      { kind: "branch", condition: "tooLarge", line: 162 },
-      { kind: "branch", condition: "Body", line: 186 },
+      { kind: "branch", condition: "HeaderActions", line: 75 },
+      { kind: "branch", condition: "showFullPage", line: 78 },
+      { kind: "branch", condition: "!hideHeader", line: 122 },
+      { kind: "branch", condition: "tooLarge", line: 136 },
+      { kind: "branch", condition: "isViewingOld", line: 152 },
+      { kind: "branch", condition: "oldVersionText === null", line: 154 },
+      { kind: "branch", condition: "tooLarge", line: 169 },
+      { kind: "branch", condition: "Body", line: 193 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {
@@ -1528,10 +1528,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "href?.startsWith('#')", line: 73 },
       { kind: "error", condition: "!(err instanceof Error)", line: 99 },
       { kind: "error", condition: "this.state.error", line: 144 },
-      { kind: "branch", condition: "content === '__error__'", line: 202 },
-      { kind: "branch", condition: "content === null", line: 209 },
-      { kind: "branch", condition: "file", line: 216 },
-      { kind: "branch", condition: "file && mode === 'raw'", line: 218 },
+      { kind: "branch", condition: "content === '__error__'", line: 210 },
+      { kind: "branch", condition: "content === null", line: 217 },
+      { kind: "branch", condition: "file", line: 224 },
+      { kind: "branch", condition: "file && mode === 'raw'", line: 226 },
     ],
   },
   "modules/file/viewers/markdown/header": {
@@ -1571,12 +1571,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/file/viewers/shared/RawCodeView": {
     surface: "modules/file/viewers/shared/RawCodeView",
-    requiredStates: [],
+    requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!filename", line: 47 },
-      { kind: "branch", condition: "cancelled", line: 153 },
-      { kind: "branch", condition: "cancelled", line: 159 },
-      { kind: "branch", condition: "truncated", line: 184 },
+      { kind: "branch", condition: "!filename", line: 52 },
+      { kind: "branch", condition: "!ready", line: 164 },
+      { kind: "branch", condition: "index < 0 || index >= chunks.length", line: 165 },
+      { kind: "branch", condition: "requestedRef.current.has(index)", line: 166 },
+      { kind: "branch", condition: "cancelled", line: 205 },
+      { kind: "empty", condition: "!root || chunks.length === 0", line: 241 },
+      { kind: "branch", condition: "truncated", line: 265 },
     ],
   },
   "modules/file/viewers/shared/chrome": {
@@ -1608,8 +1611,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/DelimitedTable",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 155 },
-      { kind: "branch", condition: "truncated", line: 198 },
+      { kind: "branch", condition: "idx < 0", line: 118 },
+      { kind: "branch", condition: "truncated", line: 161 },
     ],
   },
   "modules/file/viewers/tabular/ExpandableCell": {
@@ -1623,14 +1626,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/XlsxBody",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 128 },
-      { kind: "branch", condition: "sheet.truncated", line: 168 },
-      { kind: "branch", condition: "!fileBinaryContent", line: 229 },
-      { kind: "branch", condition: "!file", line: 279 },
-      { kind: "error", condition: "loadError", line: 281 },
-      { kind: "loading", condition: "!fileBinaryContent || loading", line: 290 },
-      { kind: "empty", condition: "sheets.length === 0", line: 294 },
-      { kind: "branch", condition: "sheets.length === 1", line: 298 },
+      { kind: "branch", condition: "idx < 0", line: 124 },
+      { kind: "branch", condition: "sheet.truncated", line: 164 },
+      { kind: "branch", condition: "!fileBinaryContent", line: 225 },
+      { kind: "branch", condition: "!file", line: 275 },
+      { kind: "error", condition: "loadError", line: 277 },
+      { kind: "loading", condition: "!fileBinaryContent || loading", line: 286 },
+      { kind: "empty", condition: "sheets.length === 0", line: 290 },
+      { kind: "branch", condition: "sheets.length === 1", line: 294 },
     ],
   },
   "modules/file/viewers/tabular/body": {
@@ -3874,7 +3877,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 323 keys.
+ * 324 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3985,6 +3988,7 @@ export type RequiredState =
   | "modules/file/viewers/pdf/body:empty"
   | "modules/file/viewers/pdf/pdfjs-body:delayed"
   | "modules/file/viewers/pdf/pdfjs-body:error"
+  | "modules/file/viewers/shared/RawCodeView:empty"
   | "modules/file/viewers/shared/chrome:empty"
   | "modules/file/viewers/tabular/XlsxBody:delayed"
   | "modules/file/viewers/tabular/XlsxBody:empty"
@@ -4311,6 +4315,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/viewers/pdf/body:empty",
   "modules/file/viewers/pdf/pdfjs-body:delayed",
   "modules/file/viewers/pdf/pdfjs-body:error",
+  "modules/file/viewers/shared/RawCodeView:empty",
   "modules/file/viewers/shared/chrome:empty",
   "modules/file/viewers/tabular/XlsxBody:delayed",
   "modules/file/viewers/tabular/XlsxBody:empty",
