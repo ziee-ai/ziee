@@ -6,6 +6,15 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { AvailableRootfsCard } from './AvailableRootfsCard'
 import { DownloadedRootfsCard } from './DownloadedRootfsCard'
+import {
+  buildVersionGroups,
+  deriveHostArch,
+  deriveHostPackage,
+  isMajorBump,
+  MANAGE_PERM,
+  READ_PERM,
+  type VersionGroup,
+} from './_rootfsShared'
 
 /** Admin-facing explanation for each not-`ready` sandbox state. The server sends
  *  only the machine-readable enum; copy lives here (i18n-friendly, mirrors the
@@ -25,15 +34,6 @@ const DEGRADED_NOTICE: Record<Exclude<SandboxAvailability, 'ready'>, string> = {
   not_initialized:
     'Code sandbox is not initialized. Available versions from the catalog are shown below.',
 }
-import {
-  buildVersionGroups,
-  deriveHostArch,
-  deriveHostPackage,
-  isMajorBump,
-  MANAGE_PERM,
-  READ_PERM,
-  type VersionGroup,
-} from './_rootfsShared'
 
 export function SandboxRootfsVersionsSection() {
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the

@@ -22,13 +22,19 @@
 //!     never touches `live_pool()`, so it returns 200 + a `connected`
 //!     event even with the sandbox disabled.
 //!
-//! The 200 happy paths for list/install/set-pin/delete require an
-//! initialized sandbox (enabled config + DB pool) and are exercised by
-//! the Tier-6 HTTP-E2E suite + the `version_manager` unit tests. We
-//! deliberately do NOT assert the exact list/install status here because
-//! `code_sandbox::config::STATE` is a process-wide `OnceCell` — a
-//! sandbox-enabled test elsewhere in the same binary can leave it set,
-//! making a 200-vs-503 assertion order-dependent.
+//! The LIST path (`GET /rootfs/versions`) degrades gracefully: it now
+//! returns **200** with the GitHub catalog + a machine-readable
+//! `availability` reason even when the sandbox is disabled, so we DO
+//! assert `availability == "disabled_in_config"` here. This is
+//! deterministic because each `TestServer` spawns its OWN server
+//! subprocess (see `harness_inner.rs`), so `code_sandbox::config::{STATE,
+//! INIT_STATUS}` are per-subprocess — a sandbox-enabled test elsewhere in
+//! this binary cannot leak state into another test's server process.
+//!
+//! The MUTATING paths (install/set-pin/delete) still require an
+//! initialized sandbox (a live DB pool) and keep their 503
+//! `SANDBOX_NOT_INITIALIZED`; their 200 happy paths are exercised by the
+//! Tier-6 HTTP-E2E suite + the `version_manager` unit tests.
 
 use std::time::Duration;
 
