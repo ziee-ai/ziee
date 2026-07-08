@@ -111,59 +111,6 @@ function projectIdFromUrl(): string | null {
   return m ? m[1] : null
 }
 
-/**
- * Persistent "In project: NAME" chip at the top of the message list.
- * Reads the active conversation from Stores.Chat; if it's project-
- * bound, renders a clickable Tag that routes to /projects/{id}.
- * Returns null for unfiled conversations (no chip rendered).
- *
- * Loads the project on mount when the cache is cold (e.g. user
- * deep-linked into /chat/{cid} without going through any list that
- * would have populated the cache via hover).
- */
-function ProjectChipForConversationHeader() {
-  const conversation = Stores.Chat.conversation
-  const navigate = useNavigate()
-  const [project, setProject] = useState<Project | null>(() => {
-    if (!conversation?.id) return null
-    const cached = getCached(conversation.id)
-    return cached ?? null
-  })
-
-  useEffect(() => {
-    let cancelled = false
-    setProject(() => {
-      if (!conversation?.id) return null
-      const cached = getCached(conversation.id)
-      return cached ?? null
-    })
-    if (!conversation?.id) return
-    const cached = getCached(conversation.id)
-    if (cached !== undefined) return
-    loadProjectForConversation(conversation.id).then(p => {
-      if (cancelled) return
-      setProject(p)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [conversation?.id])
-
-  if (!conversation?.id || !project) return null
-
-  return (
-    <div className="px-4 pt-2">
-      <Tag variant="outline"
-        data-testid="project-header-chip-tag"
-        tone="info"
-        className="cursor-pointer"
-        onClick={() => navigate(`/projects/${project.id}`)}
-      >
-        In project: {project.name}
-      </Tag>
-    </div>
-  )
-}
 
 const projectExtension: ChatExtension = createExtension({
   name: 'project',
@@ -226,19 +173,6 @@ const projectExtension: ChatExtension = createExtension({
   renderConversationCardTrailing: (conversation) => (
     <ProjectMembershipTrailing conversationId={conversation.id} />
   ),
-
-  // Always-visible chip at the top of the message list naming the
-  // project that owns the current conversation. Renders nothing when
-  // the conversation is unfiled. Separate from
-  // renderConversationCardTrailing (which is hover-only on cards in
-  // lists) — this one is the persistent "you are in a project" marker
-  // on the conversation page itself.
-  slots: {
-    message_list_header: {
-      component: ProjectChipForConversationHeader,
-      order: 10,
-    },
-  },
 
   // Dropdown contributions for the sidebar's RecentConversationsWidget
   // (and any future conversation menu). Provides:

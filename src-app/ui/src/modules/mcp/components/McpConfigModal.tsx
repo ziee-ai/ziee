@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, Space, InputNumber, message } from '@/components/ui'
+import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, InputNumber, message } from '@/components/ui'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Trash2 } from 'lucide-react'
@@ -32,10 +32,10 @@ import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores
 let mcpConfigModalMounts = 0
 
 export function McpConfigModal() {
-  // Below the mobile (xs) breakpoint — the same width at which the sidebar
+  // Below the mobile (sm) breakpoint — the same width at which the sidebar
   // becomes an overlay Sheet — the config surface slides in as a Drawer instead
   // of a centered Dialog (which is cramped once the viewport can't fit it).
-  const isMobile = useWindowMinSize().xs
+  const isMobile = useWindowMinSize().sm
   const [isPrimaryModal, setIsPrimaryModal] = useState(false)
   useEffect(() => {
     mcpConfigModalMounts += 1
@@ -376,7 +376,9 @@ export function McpConfigModal() {
 
   const modalTitle = isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'
   const modalFooter = (
-    <Space>
+    // Right-aligned regardless of host (the Drawer only auto-right-aligns ARRAY
+    // footers, not a node) — actions belong on the trailing edge in both.
+    <div className="flex justify-end gap-2">
       {/* "Save as Default" writes user_mcp_defaults — orthogonal to
           project scope, hide there to avoid confusion. */}
       {!isProjectScope && (
@@ -387,7 +389,7 @@ export function McpConfigModal() {
       <Button onClick={handleClose} loading={saving} data-testid="mcp-config-close-btn">
         {isProjectScope || currentConversationId ? 'Save & Close' : 'Close'}
       </Button>
-    </Space>
+    </div>
   )
   const modalBody = (
     <div className="space-y-4 pb-2">

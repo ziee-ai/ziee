@@ -24,7 +24,7 @@ export default function NewChatPage() {
   }, [navigate])
 
   return (
-    <div className="flex flex-col h-full items-center justify-center p-8">
+    <div className="flex flex-col h-full items-center justify-center p-4">
       <div className="w-full max-w-3xl">
         {/* Welcome message */}
         <div className="text-center mb-12">

@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1823** signals total: 1434 branch, 111 empty, 95 error, 96 loading, 85 overlay, 2 panel.
+- **1817** signals total: 1428 branch, 111 empty, 95 error, 96 loading, 85 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2229,26 +2229,26 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `prevXsRef.current === windowMinSize.xs` | 205 |
+| branch | `prevXsRef.current === windowMinSize.sm` | 205 |
 | branch | `e.touches.length !== 1` | 245 |
 | branch | `!panel` | 249 |
 | branch | `!s` | 255 |
 | branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 260 |
 | branch | `Math.abs(dy) > Math.abs(dx)` | 261 |
 | branch | `!s \|\| !s.active` | 275 |
-| branch | `!windowMinSize.xs \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 289 |
-| branch | `document.querySelector( `[${testidAttr}="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]`, )` | 295 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 313 |
-| branch | `!s` | 320 |
-| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 325 |
-| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 327 |
-| branch | `!mainContentElement` | 345 |
-| branch | `!window.visualViewport` | 384 |
-| branch | `!window.visualViewport` | 388 |
-| branch | `windowMinSize.xs` | 433 |
-| overlay | `<Sheet open>` | 434 |
-| branch | `!windowMinSize.xs` | 456 |
-| branch | `!isSidebarCollapsed` | 536 |
+| branch | `!windowMinSize.sm \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 289 |
+| branch | `document.querySelector( '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]', )` | 293 |
+| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 311 |
+| branch | `!s` | 318 |
+| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 323 |
+| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 325 |
+| branch | `!mainContentElement` | 343 |
+| branch | `!window.visualViewport` | 382 |
+| branch | `!window.visualViewport` | 386 |
+| branch | `windowMinSize.sm` | 431 |
+| overlay | `<Sheet open>` | 432 |
+| branch | `!windowMinSize.sm` | 454 |
+| branch | `!isSidebarCollapsed` | 534 |
 
 ### `modules/layouts/app-layout/components/Drawer`
 
@@ -2265,13 +2265,13 @@ Required states: `empty`
 | branch | `!s \|\| !s.active \|\| !el` | 152 |
 | branch | `Array.isArray(footer)` | 187 |
 | branch | `showOverlay` | 218 |
-| branch | `title != null` | 264 |
-| branch | `closable` | 274 |
-| branch | `typeof title === 'string'` | 279 |
-| branch | `extra != null` | 294 |
-| empty | `noBodyScrollWrap` | 299 |
-| branch | `footerNode != null` | 302 |
-| branch | `title == null` | 319 |
+| branch | `title != null` | 268 |
+| branch | `closable` | 278 |
+| branch | `typeof title === 'string'` | 283 |
+| branch | `extra != null` | 298 |
+| empty | `noBodyScrollWrap` | 303 |
+| branch | `footerNode != null` | 306 |
+| branch | `title == null` | 323 |
 
 ### `modules/layouts/app-layout/components/HeaderBarContainer`
 
@@ -2883,11 +2883,11 @@ Required states: `empty`, `open`
 | branch | `approvalMode === 'manual_approve'` | 348 |
 | branch | `tool.description` | 362 |
 | branch | `!isPrimaryModal` | 375 |
-| branch | `!isProjectScope` | 382 |
-| empty | `enabledServers.length === 0` | 424 |
-| branch | `isMobile` | 550 |
-| overlay | `<Drawer open>` | 551 |
-| overlay | `<Dialog open>` | 563 |
+| branch | `!isProjectScope` | 384 |
+| empty | `enabledServers.length === 0` | 426 |
+| branch | `isMobile` | 552 |
+| overlay | `<Drawer open>` | 553 |
+| overlay | `<Dialog open>` | 565 |
 
 ### `modules/mcp/components/common/KeyValueSecretEditor`
 
@@ -3316,30 +3316,24 @@ Required states: `delayed`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation?.id` | 128 |
-| branch | `!conversation?.id` | 136 |
-| branch | `!conversation?.id` | 140 |
-| branch | `cached !== undefined` | 142 |
-| branch | `cancelled` | 144 |
-| branch | `!conversation?.id \|\| !project` | 152 |
-| branch | `!projectId` | 190 |
-| overlay | `<Confirm open>` | 314 |
-| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 365 |
-| branch | `cancelled` | 367 |
-| branch | `event.data.conversationId !== conversationId` | 385 |
-| branch | `event.data.conversationId !== conversationId` | 399 |
-| loading | `state.kind === 'loading'` | 412 |
-| branch | `state.kind === 'in_project'` | 416 |
-| overlay | `<AddToProjectModal open>` | 453 |
-| branch | `loaded` | 495 |
-| branch | `cancelled` | 497 |
-| branch | `event.data.conversationId !== conversation.id` | 514 |
-| branch | `event.data.conversationId !== conversation.id` | 524 |
-| branch | `!project` | 545 |
-| branch | `!ok` | 552 |
-| branch | `project` | 564 |
-| branch | `loaded` | 581 |
-| overlay | `<AddToProjectModal open>` | 594 |
+| branch | `!projectId` | 137 |
+| overlay | `<Confirm open>` | 248 |
+| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 299 |
+| branch | `cancelled` | 301 |
+| branch | `event.data.conversationId !== conversationId` | 319 |
+| branch | `event.data.conversationId !== conversationId` | 333 |
+| loading | `state.kind === 'loading'` | 346 |
+| branch | `state.kind === 'in_project'` | 350 |
+| overlay | `<AddToProjectModal open>` | 387 |
+| branch | `loaded` | 429 |
+| branch | `cancelled` | 431 |
+| branch | `event.data.conversationId !== conversation.id` | 448 |
+| branch | `event.data.conversationId !== conversation.id` | 458 |
+| branch | `!project` | 479 |
+| branch | `!ok` | 486 |
+| branch | `project` | 498 |
+| branch | `loaded` | 515 |
+| overlay | `<AddToProjectModal open>` | 528 |
 
 ### `modules/projects/components/AddToProjectModal`
 

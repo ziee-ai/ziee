@@ -238,6 +238,10 @@ export const Drawer: React.FC<DrawerProps> = ({
         )}
         <DialogPrimitive.Content
           ref={contentRef}
+          // Stable marker for "an app Drawer is open" — used by the page's
+          // swipe-to-open-sidebar guard. NOT the data-testid (a caller can
+          // override that, which would silently break the guard).
+          data-slot="layout-drawer"
           data-testid={testid ?? 'layout-drawer-content'}
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
           // A higher-stacked drawer/dialog (e.g. a file preview opened from here)
