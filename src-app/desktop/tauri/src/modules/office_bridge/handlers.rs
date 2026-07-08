@@ -11,12 +11,11 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::common::{ApiResult, AppError};
-use crate::core::Repos;
-use crate::modules::code_sandbox::types::{
+use ziee::{ApiResult, AppError};
+use ziee::code_sandbox::{
     ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
 };
-use crate::modules::permissions::{RequirePermissions, with_permission};
+use ziee::permissions::{RequirePermissions, with_permission};
 
 use super::models::{ConnectReadiness, OfficeBridgeSettings, UpdateOfficeBridgeSettingsRequest};
 use super::permissions::{OfficeBridgeAdminRead, OfficeBridgeManage, OfficeBridgeUse};
@@ -127,8 +126,7 @@ async fn dispatch_tool_call(params: &Value) -> Result<Value, (StatusCode, JsonRp
     // runtime-disabled the module gets a typed "disabled" error instead of the
     // tools running, even though `office_bridge::use` is still granted. A cheap
     // DB read like the other settings reads.
-    let settings = Repos
-        .office_bridge
+    let settings = crate::modules::office_bridge::OfficeBridgeRepository::new(ziee::Repos.pool().clone())
         .get_settings()
         .await
         .map_err(|e| (StatusCode::OK, JsonRpcError::from_app_error(&e)))?;
@@ -333,7 +331,7 @@ struct EditDocumentArgs {
 pub async fn get_settings(
     _auth: RequirePermissions<(OfficeBridgeAdminRead,)>,
 ) -> ApiResult<Json<OfficeBridgeSettings>> {
-    let row = Repos.office_bridge.get_settings().await?;
+    let row = crate::modules::office_bridge::OfficeBridgeRepository::new(ziee::Repos.pool().clone()).get_settings().await?;
     Ok((StatusCode::OK, Json(row)))
 }
 
@@ -358,8 +356,7 @@ pub async fn update_settings(
         );
     }
 
-    let row = Repos
-        .office_bridge
+    let row = crate::modules::office_bridge::OfficeBridgeRepository::new(ziee::Repos.pool().clone())
         .update_settings(body.enabled, body.port)
         .await?;
     Ok((StatusCode::OK, Json(row)))
@@ -491,10 +488,10 @@ fn materialize_manifest(data_dir: &Path, port: i32) -> Result<PathBuf, AppError>
 pub async fn connect(
     _auth: RequirePermissions<(OfficeBridgeManage,)>,
 ) -> ApiResult<Json<ConnectReadiness>> {
-    let settings = Repos.office_bridge.get_settings().await?;
+    let settings = crate::modules::office_bridge::OfficeBridgeRepository::new(ziee::Repos.pool().clone()).get_settings().await?;
     let port = settings.port;
 
-    let data_dir = crate::core::get_app_data_dir();
+    let data_dir = ziee::get_app_data_dir();
     // Mint/load the CA to trust and materialize the manifest to sideload. These
     // are genuine prerequisites (no CA / no manifest = nothing to install), so a
     // failure here is a real 500 — distinct from the best-effort platform steps

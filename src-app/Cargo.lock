@@ -12813,15 +12813,18 @@ dependencies = [
 name = "ziee-desktop"
 version = "0.1.0"
 dependencies = [
+ "ai-providers",
  "aide",
  "anyhow",
  "async-trait",
  "axum",
+ "axum-server",
  "base64 0.22.1",
  "bcrypt",
  "chrono",
  "clap",
  "hex",
+ "include_dir",
  "mime_guess",
  "minisign-verify",
  "ngrok",
@@ -12829,9 +12832,11 @@ dependencies = [
  "paste",
  "portpicker",
  "rand 0.9.4",
+ "rcgen",
  "reqwest 0.12.28",
  "rust-embed",
  "rustls",
+ "rustls-pemfile",
  "schemars 0.9.0",
  "serde",
  "serde_json",
@@ -12854,6 +12859,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "windows 0.61.3",
  "ziee",
 ]
 

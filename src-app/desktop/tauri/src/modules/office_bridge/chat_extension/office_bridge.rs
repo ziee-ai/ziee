@@ -10,10 +10,10 @@ use sqlx::PgPool;
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 
-use crate::common::AppError;
-use crate::core::Repos;
-use crate::modules::chat::core::extension::request::SendMessageRequest;
-use crate::modules::chat::core::extension::{BeforeLlmAction, ChatExtension, StreamContext};
+use ziee::AppError;
+use ziee::Repos;
+use ziee::chat_extension::SendMessageRequest;
+use ziee::chat_extension::{BeforeLlmAction, ChatExtension, StreamContext};
 
 /// One-line system nudge so the model knows the `office` tools exist + what they
 /// operate on.
@@ -73,7 +73,7 @@ impl OfficeBridgeExtension {
         if !row_enabled {
             return Ok(false);
         }
-        let settings = Repos.office_bridge.get_settings().await?;
+        let settings = crate::modules::office_bridge::OfficeBridgeRepository::new(ziee::Repos.pool().clone()).get_settings().await?;
         Ok(settings.enabled)
     }
 }
@@ -94,7 +94,7 @@ impl ChatExtension for OfficeBridgeExtension {
         // Cheapest gate first: a non-tool-capable model can't call the tools, so
         // don't attach (and skip the settings read entirely).
         let tool_capable =
-            crate::modules::file::available_files::model_supports_tools(&context.metadata).await;
+            ziee::file_available::model_supports_tools(&context.metadata).await;
         if !tool_capable {
             return Ok(BeforeLlmAction::Continue);
         }

@@ -1,6 +1,6 @@
 //! Permission keys for the office_bridge module.
 
-use crate::modules::permissions::types::PermissionCheck;
+use ziee::permissions::PermissionCheck;
 
 /// Use the built-in office-bridge tools (enumerate / read / act on open Office
 /// documents). Granted to the default Users group by migration 133.

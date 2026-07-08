@@ -71,6 +71,31 @@ url = { workspace = true }
 uuid.workspace = true
 bcrypt = "0.17.1"
 
+# office_bridge (desktop-only built-in MCP server): embedded add-in assets,
+# self-signed CA+leaf cert minting, and the HTTPS+WSS bridge listener. Provider
+# tool blocks come from ai-providers (same path dep the server uses).
+include_dir.workspace = true
+rcgen.workspace = true
+rustls-pemfile.workspace = true
+axum-server.workspace = true
+ai-providers = { path = "../../server/ai-providers" }
+
+[target.'cfg(windows)'.dependencies]
+# office_bridge Windows COM/oleacc/EnumWindows backend (platform/windows.rs).
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

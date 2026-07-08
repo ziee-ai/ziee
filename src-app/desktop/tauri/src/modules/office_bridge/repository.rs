@@ -4,7 +4,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::common::AppError;
+use ziee::AppError;
 
 use super::models::OfficeBridgeSettings;
 

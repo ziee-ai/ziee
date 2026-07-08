@@ -6,8 +6,9 @@
 use crate::module_api::DesktopModule;
 use crate::modules::{
     auth::AuthModule, backend::BackendModule, host_mount::HostMountModule,
-    magic_link::MagicLinkModule, remote_access::RemoteAccessModule, settings::SettingsModule,
-    tray::TrayModule, tunnel_auth::TunnelAuthModule, updater::UpdaterModule,
+    magic_link::MagicLinkModule, office_bridge::OfficeBridgeModule,
+    remote_access::RemoteAccessModule, settings::SettingsModule, tray::TrayModule,
+    tunnel_auth::TunnelAuthModule, updater::UpdaterModule,
 };
 use anyhow::Result;
 use tauri::App;
@@ -38,6 +39,11 @@ pub fn create_desktop_modules(config_file: Option<String>) -> Vec<Box<dyn Deskto
         // here, and its sandbox provider registers post-server-start in
         // backend/mod.rs.
         Box::new(HostMountModule::new()),
+        // Desktop-only office_bridge built-in MCP server (Word/Excel/PowerPoint).
+        // Its REST routes register here; its MCP row + bridge listener + watcher
+        // + chat-extension/auto-attach seams register post-server-start in
+        // backend/mod.rs (once ziee::Repos exists).
+        Box::new(OfficeBridgeModule::new()),
     ]
 }
 

@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
+use ziee::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 
 use super::platform::{OfficePlatform, OpenDoc};
 

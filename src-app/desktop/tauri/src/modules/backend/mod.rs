@@ -338,6 +338,16 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                 // at execute_command time.
                 crate::modules::host_mount::register_provider();
 
+                // Register the desktop-only office_bridge built-in MCP server:
+                // upserts its mcp_servers row + registers its chat extension and
+                // auto-attach entry against the generic server seams, and spawns
+                // the add-in bridge listener + document watcher. Safe after
+                // migrations (its office_bridge_* tables now exist). No-op on a
+                // host without Office (probe returns None).
+                if let Some(cfg) = BACKEND_CONFIG.get() {
+                    crate::modules::office_bridge::register_office_bridge(cfg);
+                }
+
                 // Ensure admin exists (create on first run)
                 if let Err(e) = ensure_desktop_admin().await {
                     tracing::error!("Failed to ensure desktop admin: {}", e);

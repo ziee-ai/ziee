@@ -24,7 +24,6 @@ pub mod llm_repository;
 pub mod mcp;
 pub mod memory;
 pub mod memory_mcp;
-pub mod office_bridge;
 pub mod onboarding;
 pub mod permissions;
 pub mod project;

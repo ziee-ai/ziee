@@ -36,7 +36,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_server::tls_rustls::RustlsConfig;
 
-use crate::common::AppError;
+use ziee::AppError;
 
 use super::{assets, auth, cert};
 

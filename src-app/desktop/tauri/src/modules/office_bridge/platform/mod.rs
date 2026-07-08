@@ -30,7 +30,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::common::AppError;
+use ziee::AppError;
 
 #[cfg(windows)]
 pub mod windows;

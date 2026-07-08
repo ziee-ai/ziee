@@ -8,7 +8,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use crate::common::AppError;
+use ziee::AppError;
 
 use super::{ActResult, DocOp, OfficeCaps, OfficePlatform, OpenDoc, not_supported_err};
 

@@ -27,7 +27,7 @@ use std::path::Path;
 use async_trait::async_trait;
 use axum::http::StatusCode;
 
-use crate::common::AppError;
+use ziee::AppError;
 
 use super::{ActResult, DocOp, OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
 

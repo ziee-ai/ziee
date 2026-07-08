@@ -52,7 +52,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{BSTR, GUID, IUnknown, Interface, PCWSTR, Result as WinResult};
 
-use crate::common::AppError;
+use ziee::AppError;
 
 use super::{ActResult, DocOp, OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
 

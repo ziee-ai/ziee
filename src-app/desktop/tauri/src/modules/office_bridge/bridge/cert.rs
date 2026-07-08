@@ -25,7 +25,7 @@ use std::path::Path;
 use axum::http::StatusCode;
 use sha2::{Digest, Sha256};
 
-use crate::common::AppError;
+use ziee::AppError;
 
 /// Cache file names under the app data dir. All four persist so the trusted CA
 /// (and the leaf it signs) are re-read on the next boot unchanged.

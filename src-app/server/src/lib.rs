@@ -130,17 +130,6 @@ pub use modules::mcp::elicitation::registry as elicitation_registry;
 #[doc(hidden)]
 pub use modules::code_sandbox::embedded as code_sandbox_embedded;
 
-// office_bridge bridge listener (ITEM-5) — re-exported so TEST-7
-// (`tests/office_bridge/bridge_test.rs`) can drive `server::start` +
-// `cert::load_or_mint` against an ephemeral, temp-dir-cert bridge.
-#[doc(hidden)]
-pub use modules::office_bridge::bridge as office_bridge_bridge;
-
-// office_bridge platform seam (ITEM-6/7) — re-exported so TEST-9
-// (`tests/office_bridge/windows_com_test.rs`, live `#[ignore]`) can drive
-// `platform::active()` (the real Windows COM backend) end-to-end.
-#[doc(hidden)]
-pub use modules::office_bridge::platform as office_bridge_platform;
 
 // Re-export app_data_dir setter so the selective-wipe regression test
 // can redirect the app data root to a TempDir without going through

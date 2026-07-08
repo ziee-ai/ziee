@@ -1,12 +1,14 @@
 //! office_bridge extension registration for the chat module.
+//!
+//! Desktop-only: registered at boot via `ziee::chat_extension::register_chat_extension`
+//! (the runtime seam) from `office_bridge::register_office_bridge`, NOT via a
+//! `#[distributed_slice(CHAT_EXTENSIONS)]` static — so a standalone `ziee` server,
+//! which never calls the seam, gets no office_bridge chat extension.
 
-use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::modules::chat::core::extension::{
-    CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
-};
+use ziee::chat_extension::{ChatExtension, ExtensionEntry, ExtensionMetadata};
 
 pub const METADATA: ExtensionMetadata = ExtensionMetadata {
     name: "office_bridge",
@@ -22,11 +24,11 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
     order: 23,
 };
 
-pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
+pub fn create(pool: PgPool, config: Arc<ziee::Config>) -> Arc<dyn ChatExtension> {
     // Deploy-level kill switch — ON by default (an absent `office_bridge:` config
-    // section means enabled), mirroring `office_bridge::mod::init`. When off, the
-    // extension must never attach even if a stale enabled row survives from a
-    // prior boot.
+    // section means enabled), mirroring `office_bridge::register_office_bridge`. When
+    // off, the extension must never attach even if a stale enabled row survives from
+    // a prior boot.
     let config_enabled = config
         .office_bridge
         .as_ref()
@@ -38,9 +40,11 @@ pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn
     ))
 }
 
-#[distributed_slice(CHAT_EXTENSIONS)]
-static OFFICE_BRIDGE_EXTENSION: ExtensionEntry = ExtensionEntry {
-    name: METADATA.name,
-    order: METADATA.order,
-    factory: create,
-};
+/// The chat-extension registry entry, registered at boot via the runtime seam.
+pub fn extension_entry() -> ExtensionEntry {
+    ExtensionEntry {
+        name: METADATA.name,
+        order: METADATA.order,
+        factory: create,
+    }
+}

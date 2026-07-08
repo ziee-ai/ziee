@@ -15,6 +15,7 @@
 pub mod auth;
 pub mod backend;
 pub mod host_mount;
+pub mod office_bridge;
 pub mod llm_provider;
 pub mod magic_link;
 pub mod mcp;
