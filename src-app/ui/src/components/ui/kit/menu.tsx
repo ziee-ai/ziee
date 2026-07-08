@@ -31,6 +31,13 @@ export type MenuProps = {
   selectedKey?: string
   /** Selected item keys (alias of `selectedKey`; any match marks the item current). */
   selectedKeys?: string[]
+  /** Keys of items that are an ANCESTOR of the current page (a broader section
+   *  you're within, but not the exact current page). Rendered with a subtle
+   *  "active section" treatment instead of the strong selected pill, and WITHOUT
+   *  `aria-current="page"` — so a section + its open sub-item don't both claim to
+   *  be the current page. An item present in both selected and ancestor is
+   *  treated as selected (exact wins). */
+  ancestorKeys?: string[]
   onSelect?: (key: string) => void
   mode?: 'vertical' | 'horizontal'
   /** Icon-only rail: hides labels (the label becomes each item's accessible name). */
@@ -46,9 +53,10 @@ function labelText(label: React.ReactNode): string | undefined {
   return typeof label === 'string' ? label : undefined
 }
 
-function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, groupTestid }: {
+function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, itemTestid, groupTestid }: {
   items: MenuItem[]
   selectedSet: Set<string>
+  ancestorSet: Set<string>
   onSelect?: (k: string) => void
   locked: boolean
   collapsed: boolean
@@ -73,7 +81,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
               {/* group caption is decorative chrome — hidden in the collapsed rail. */}
               {!collapsed && <div className="px-3 py-1 text-xs font-medium text-muted-foreground">{it.label}</div>}
               <ul className="contents">
-                <Items items={it.children} selectedSet={selectedSet} onSelect={onSelect} locked={locked} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
+                <Items items={it.children} selectedSet={selectedSet} ancestorSet={ancestorSet} onSelect={onSelect} locked={locked} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
               </ul>
             </li>
           )
@@ -88,6 +96,9 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
         }
         const item = it
         const selected = selectedSet.has(item.key)
+        // Ancestor = you're within this section but it isn't the exact page.
+        // Exact selection always wins over an ancestor match.
+        const ancestor = !selected && ancestorSet.has(item.key)
         // Never nameless in collapsed mode: explicit title → string label → the key.
         const name = item.title ?? labelText(item.label) ?? item.key
         // Trailing actions render as a SIBLING of the button (a <button> can't nest an
@@ -114,7 +125,11 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
                 // ring gets clipped by the scroll container's overflow. Drawing the
                 // ring inside the border-box keeps it fully visible everywhere.
                 'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 disabled:opacity-50',
-                selected ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-accent/60',
+                selected
+                  ? 'bg-primary text-primary-foreground font-medium'
+                  : ancestor
+                    ? 'bg-accent text-accent-foreground font-medium hover:bg-accent'
+                    : 'hover:bg-accent/60',
               )}
             >
               {item.icon != null && <span aria-hidden className="shrink-0 [&_svg]:size-4">{item.icon}</span>}
@@ -131,7 +146,7 @@ function Items({ items, selectedSet, onSelect, locked, collapsed, itemTestid, gr
   )
 }
 
-export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'vertical', collapsed = false, className, style, 'aria-label': ariaLabel, 'data-testid': testid }: MenuProps) {
+export function Menu({ items, selectedKey, selectedKeys, ancestorKeys, onSelect, mode = 'vertical', collapsed = false, className, style, 'aria-label': ariaLabel, 'data-testid': testid }: MenuProps) {
   const s = useSurface({})
   const itemTestid = React.useCallback(
     (k: string) => (testid ? `${testid}-item-${k}` : undefined),
@@ -147,10 +162,11 @@ export function Menu({ items, selectedKey, selectedKeys, onSelect, mode = 'verti
     if (selectedKey != null) set.add(selectedKey)
     return set
   }, [selectedKey, selectedKeys])
+  const ancestorSet = React.useMemo(() => new Set(ancestorKeys ?? []), [ancestorKeys])
   return (
     <nav aria-label={ariaLabel} style={style} data-testid={testid}>
       <ul className={cn(mode === 'horizontal' ? 'flex items-center gap-1' : 'flex flex-col gap-0.5', className)}>
-        <Items items={items} selectedSet={selectedSet} onSelect={onSelect} locked={!!s.disabled} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
+        <Items items={items} selectedSet={selectedSet} ancestorSet={ancestorSet} onSelect={onSelect} locked={!!s.disabled} collapsed={collapsed} itemTestid={itemTestid} groupTestid={groupTestid} />
       </ul>
     </nav>
   )

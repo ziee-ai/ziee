@@ -296,14 +296,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 64 |
-| branch | `'type' in it && it.type === 'group'` | 70 |
-| branch | `!collapsed` | 74 |
-| branch | `'type' in it && it.type === 'label'` | 82 |
-| branch | `!(collapsed)` | 83 |
-| branch | `item.icon != null` | 120 |
-| branch | `!collapsed` | 122 |
-| branch | `hasActions` | 124 |
+| branch | `'type' in it && it.type === 'divider'` | 72 |
+| branch | `'type' in it && it.type === 'group'` | 78 |
+| branch | `!collapsed` | 82 |
+| branch | `'type' in it && it.type === 'label'` | 90 |
+| branch | `!(collapsed)` | 91 |
+| branch | `item.icon != null` | 135 |
+| branch | `!collapsed` | 137 |
+| branch | `hasActions` | 139 |
 
 ### `components/ui/kit/multi-select`
 
@@ -2318,14 +2318,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!item` | 151 |
-| branch | `primaryItems.length > 0` | 172 |
-| branch | `navigationItems.length > 0` | 186 |
-| branch | `!isIconOnly` | 207 |
-| branch | `isIconOnly` | 220 |
-| branch | `toolsItems.length > 0` | 223 |
-| branch | `!isIconOnly && bottomWidgets.length > 0` | 242 |
-| branch | `footerWidgets.length > 0` | 257 |
+| branch | `!item` | 163 |
+| branch | `primaryItems.length > 0` | 184 |
+| branch | `navigationItems.length > 0` | 199 |
+| branch | `!isIconOnly` | 221 |
+| branch | `isIconOnly` | 234 |
+| branch | `toolsItems.length > 0` | 237 |
+| branch | `!isIconOnly && bottomWidgets.length > 0` | 257 |
+| branch | `footerWidgets.length > 0` | 272 |
 
 ### `modules/layouts/app-layout/components/ResizeHandle`
 

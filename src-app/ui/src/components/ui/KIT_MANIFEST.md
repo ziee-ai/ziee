@@ -731,11 +731,12 @@ _No always-required props._
 | `data-testid` | `string` | Test selector — forwarded onto <root>. Items derive `${testid}-item-${key}`. |
 | `items` | `MenuItem[]` |  |
 
-<details><summary>Optional props (8)</summary>
+<details><summary>Optional props (9)</summary>
 
 | prop | type | notes |
 |---|---|---|
 | `allowStyle` | `true | undefined` |  |
+| `ancestorKeys` | `string[] | undefined` | Keys of items that are an ANCESTOR of the current page (a broader section you're within, but not the exact current page). Rendered with a… |
 | `className` | `string | undefined` |  |
 | `collapsed` | `boolean | undefined` | Icon-only rail: hides labels (the label becomes each item's accessible name). |
 | `mode` | `"vertical" | "horizontal" | undefined` |  |
