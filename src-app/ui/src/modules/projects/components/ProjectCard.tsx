@@ -77,7 +77,7 @@ export function ProjectCard({
           <Folder aria-hidden="true" className="shrink-0 mt-0.5" />
           {/* Wrap to two lines before ellipsizing — a single-line truncate
               ("UI Sh…") wasted the card width on tablet/mobile. */}
-          <Title level={5} className="!m-0 line-clamp-2 [overflow-wrap:anywhere]">
+          <Title level={5} className="!m-0 !font-normal !text-sm line-clamp-2 [overflow-wrap:anywhere]">
             {project.name}
           </Title>
         </div>

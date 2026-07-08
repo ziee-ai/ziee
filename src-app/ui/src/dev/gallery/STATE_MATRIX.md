@@ -938,10 +938,10 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `conversation.message_count > 0` | 129 |
-| branch | `canDelete && !isInSelectionMode` | 167 |
-| overlay | `<Confirm open>` | 191 |
-| branch | `onSelect` | 209 |
+| branch | `conversation.message_count > 0` | 128 |
+| branch | `canDelete && !isInSelectionMode` | 166 |
+| overlay | `<Confirm open>` | 190 |
+| branch | `onSelect` | 208 |
 
 ### `modules/chat/components/ConversationFindBar`
 

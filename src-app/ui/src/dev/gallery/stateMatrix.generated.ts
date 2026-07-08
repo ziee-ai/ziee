@@ -823,10 +823,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ConversationCard",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "conversation.message_count > 0", line: 129 },
-      { kind: "branch", condition: "canDelete && !isInSelectionMode", line: 167 },
-      { kind: "overlay", condition: "<Confirm open>", line: 191 },
-      { kind: "branch", condition: "onSelect", line: 209 },
+      { kind: "branch", condition: "conversation.message_count > 0", line: 128 },
+      { kind: "branch", condition: "canDelete && !isInSelectionMode", line: 166 },
+      { kind: "overlay", condition: "<Confirm open>", line: 190 },
+      { kind: "branch", condition: "onSelect", line: 208 },
     ],
   },
   "modules/chat/components/ConversationFindBar": {
