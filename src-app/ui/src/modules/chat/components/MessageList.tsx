@@ -242,9 +242,15 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     // useInPlaceAnchor then pins any residual drift. For every other row this
     // replicates virtual-core's default predicate (adjust above-viewport rows
     // whose size changes, except re-measures while scrolling backward).
-    // `@tanstack/react-virtual` v3.14.5 READS `shouldAdjustScrollPositionOnItemSizeChange`
-    // as an instance property (resizeItem) but does not accept it as an option,
-    // so it is assigned imperatively here (idempotent per render).
+    // `@tanstack/react-virtual` (resolved virtual-core 3.17.3) READS
+    // `shouldAdjustScrollPositionOnItemSizeChange` as an instance property
+    // (resizeItem, index.js:869) but does not accept it as a typed option, so it
+    // is assigned imperatively here (idempotent per render; virtual-core never
+    // overwrites it). For every NON-parked row this must FAITHFULLY replicate the
+    // library's default predicate — including the `+ scrollAdjustments` term and
+    // `getScrollOffset()` (NOT the raw `scrollOffset`), which accumulate during a
+    // measurement burst — or above-fold rows the library would adjust get
+    // skipped, reintroducing estimate-correction / prepend-anchor drift.
     ;(
       virt as unknown as {
         shouldAdjustScrollPositionOnItemSizeChange?: (
@@ -257,11 +263,16 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       if (inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key) {
         return false
       }
-      const off = instance.scrollOffset ?? 0
+      const inst = instance as unknown as {
+        getScrollOffset: () => number
+        scrollAdjustments: number
+        itemSizeCache: { has: (k: VirtualItem['key']) => boolean }
+        scrollDirection: 'forward' | 'backward' | null
+      }
+      const off = inst.getScrollOffset() + inst.scrollAdjustments
       return (
         item.start < off &&
-        (!instance.itemSizeCache.has(item.key) ||
-          instance.scrollDirection !== 'backward')
+        (!inst.itemSizeCache.has(item.key) || inst.scrollDirection !== 'backward')
       )
     }
 

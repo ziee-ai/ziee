@@ -200,7 +200,15 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     setDrag(null)
   }, [key])
   const onHandlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    // Guard symmetrically with setPointerCapture: releasePointerCapture throws
+    // NotFoundError on spec-conformant engines (WebKit/Firefox) when no capture
+    // is active (e.g. a synthetic/dispatched pointer). A throw here must NOT
+    // abort endDrag() → the height commit.
+    try {
+      ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    } catch {
+      /* no active capture — ignore */
+    }
     endDrag()
   }
   const onHandleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {

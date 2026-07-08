@@ -37,14 +37,23 @@ export const inPlaceAnchorSignal: { key: string | null } = { key: null }
  * scroll element across the chat↔file module boundary.
  */
 export function useInPlaceAnchor(rowRef: RefObject<HTMLElement | null>) {
-  const pending = useRef<{ raf1: number; raf2: number } | null>(null)
+  const pending = useRef<{ raf1: number; raf2: number; key: string | null } | null>(
+    null,
+  )
+  // Only ever unpark the signal if THIS hook still owns the parked key — another
+  // row's change (a second hook instance) may have re-parked its own key in the
+  // meantime, and clearing it unconditionally would unpark that row mid-change
+  // and re-enable the teleport (cross-row clobber).
+  const unparkIfOwned = (key: string | null) => {
+    if (inPlaceAnchorSignal.key === key) inPlaceAnchorSignal.key = null
+  }
   const cancel = () => {
     const p = pending.current
     if (!p) return
     cancelAnimationFrame(p.raf1)
     cancelAnimationFrame(p.raf2)
+    unparkIfOwned(p.key)
     pending.current = null
-    inPlaceAnchorSignal.key = null
   }
   useEffect(() => cancel, [])
 
@@ -56,7 +65,8 @@ export function useInPlaceAnchor(rowRef: RefObject<HTMLElement | null>) {
     // carries it as data-message-id. Park it so MessageList suppresses the
     // virtualizer's auto-adjust for this row only.
     const msgEl = el.closest<HTMLElement>('[data-message-id]')
-    inPlaceAnchorSignal.key = msgEl?.dataset.messageId ?? null
+    const myKey = msgEl?.dataset.messageId ?? null
+    inPlaceAnchorSignal.key = myKey
     const scroller = findScrollParent(el)
     const viewportTop = scroller ? scroller.getBoundingClientRect().top : 0
     const viewportHeight = scroller ? scroller.clientHeight : window.innerHeight
@@ -64,7 +74,7 @@ export function useInPlaceAnchor(rowRef: RefObject<HTMLElement | null>) {
     const raf1 = requestAnimationFrame(() => {
       const raf2 = requestAnimationFrame(() => {
         pending.current = null
-        inPlaceAnchorSignal.key = null
+        unparkIfOwned(myKey)
         const cur = rowRef.current
         if (!cur) return
         const topAfter = cur.getBoundingClientRect().top - viewportTop
@@ -73,9 +83,9 @@ export function useInPlaceAnchor(rowRef: RefObject<HTMLElement | null>) {
         if (scroller) scroller.scrollTop += delta
         else window.scrollBy(0, delta)
       })
-      pending.current = { raf1, raf2 }
+      pending.current = { raf1, raf2, key: myKey }
     })
-    pending.current = { raf1, raf2: 0 }
+    pending.current = { raf1, raf2: 0, key: myKey }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowRef])
 }
