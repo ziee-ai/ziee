@@ -38,7 +38,7 @@ export function OpenDocumentsToolResultCard(props: ContentRendererProps) {
   const documents = Array.isArray(sc?.documents) ? sc.documents : []
 
   const open = () => {
-    Stores.Chat.__state.displayInRightPanel<'office-bridge'>({
+    Stores.Chat.displayInRightPanel<'office-bridge'>({
       id: OFFICE_DOCS_PANEL_ID,
       title: 'Open Office documents',
       type: 'office-bridge',

@@ -33,10 +33,11 @@ export const OfficeBridge = defineStore('OfficeBridge', {
     // Push the fresh list into the open right-panel tab (if any) so an
     // already-open panel updates live. No-op when the panel is closed.
     const pushToOpenPanel = (documents: OpenDoc[]) => {
-      const chat = Stores.Chat.__state
-      const tab = chat.rightPanel.tabs.find(t => t.type === OFFICE_DOCS_PANEL_TYPE)
+      // `$` is the hook-free state-read escape; actions (updateRightPanelTab) are
+      // callable directly (main removed the `__state` alias — see store-kit.ts).
+      const tab = Stores.Chat.$.rightPanel.tabs.find(t => t.type === OFFICE_DOCS_PANEL_TYPE)
       if (tab) {
-        chat.updateRightPanelTab<'office-bridge'>(tab.id, { documents })
+        Stores.Chat.updateRightPanelTab<'office-bridge'>(tab.id, { documents })
       }
     }
 
