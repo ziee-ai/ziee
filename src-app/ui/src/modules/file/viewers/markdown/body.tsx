@@ -186,6 +186,14 @@ const SHIKI_THEME: ComponentProps<typeof Streamdown>['shikiTheme'] = [
   'github-dark-high-contrast',
 ]
 
+// Windowing note (file-viewer-virtualization): the RENDERED markdown path below
+// is intentionally NOT windowed — it keeps the FilePanel 10 MB byte cap as its
+// only boundary. `Streamdown` exposes no block-level windowing seam, and
+// reliably splitting markdown into independently-renderable blocks (nested
+// tables / lists / fenced code can span arbitrary lengths) is not clean, so
+// windowing rendered markdown would risk correctness for little gain under the
+// byte cap. The markdown RAW mode (below) delegates to `RawCodeView`, so it
+// inherits that viewer's chunk-on-demand windowing + lifted line cap for free.
 export function MarkdownBody(props: FileViewerSlotProps) {
   const { file, url } = getSource(props)
 
