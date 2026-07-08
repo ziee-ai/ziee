@@ -263,7 +263,10 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
               size="default"
               aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
               aria-expanded={!collapsed}
-              aria-controls={bodyId}
+              // Only reference the region while it is actually mounted (expanded);
+              // when collapsed the body/skeleton is unmounted, so a dangling
+              // aria-controls IDREF would be invalid (re-audit low finding).
+              aria-controls={collapsed ? undefined : bodyId}
               icon={collapsed ? <ChevronRight /> : <ChevronDown />}
               onClick={() => setCollapsed(!collapsed)}
               data-testid="inline-file-preview-chevron"
@@ -295,9 +298,13 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
               style={{ height: bodyHeightPx }}
               data-testid="inline-file-preview-skeleton"
               data-body-height={bodyHeightPx}
-              aria-hidden="true"
             >
-              <div className="h-full w-full animate-pulse bg-muted/40" />
+              {/* Decorative loading placeholder — hidden from AT; the region
+                  itself stays referenceable by the resize separator. */}
+              <div
+                className="h-full w-full animate-pulse bg-muted/40"
+                aria-hidden="true"
+              />
             </div>
           )}
           {/* Bottom drag/keyboard resize handle (ITEM-3). */}
