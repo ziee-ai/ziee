@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1834** signals total: 1443 branch, 111 empty, 95 error, 99 loading, 84 overlay, 2 panel.
+- **1836** signals total: 1445 branch, 111 empty, 95 error, 99 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -940,16 +940,16 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!match` | 63 |
-| branch | `!ok` | 68 |
-| branch | `!open` | 87 |
-| branch | `!conversationId \|\| term === ''` | 92 |
-| branch | `cancelled \|\| gen !== searchGenRef.current` | 110 |
-| branch | `!open` | 145 |
-| branch | `!open` | 180 |
-| empty | `total === 0` | 183 |
-| branch | `matches.length > 0` | 287 |
-| loading | `loading` | 327 |
+| branch | `!match` | 67 |
+| branch | `!ok` | 72 |
+| branch | `!open` | 85 |
+| branch | `!conversationId \|\| term === ''` | 90 |
+| branch | `cancelled \|\| gen !== searchGenRef.current` | 108 |
+| branch | `!open` | 143 |
+| branch | `!open` | 178 |
+| empty | `total === 0` | 181 |
+| branch | `matches.length > 0` | 285 |
+| loading | `loading` | 325 |
 
 ### `modules/chat/components/ConversationList`
 
@@ -1001,9 +1001,13 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `!loading && messagesArray.length === 0` | 19 |
-| branch | `loadingOlder` | 45 |
-| loading | `(loading \|\| isStreaming)` | 71 |
+| branch | `idx < 0` | 83 |
+| branch | `!msg` | 93 |
+| branch | `idx < 0` | 101 |
+| loading | `!loading && count === 0` | 116 |
+| branch | `loadingOlder` | 144 |
+| branch | `!msg` | 168 |
+| loading | `(loading \|\| isStreaming)` | 200 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1206,26 +1210,24 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 136 |
-| branch | `!Stores.Chat.$.conversation` | 157 |
-| branch | `!conversationId` | 199 |
-| branch | `!sentinel` | 244 |
-| branch | `!entries[0]?.isIntersecting` | 248 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 251 |
-| branch | `!sentinel` | 286 |
-| branch | `!entries[0]?.isIntersecting` | 290 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 291 |
-| loading | `!pending` | 305 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 308 |
-| branch | `!c \|\| !v` | 314 |
-| branch | `newTop == null` | 316 |
-| branch | `!conversation?.id` | 361 |
-| branch | `!m` | 365 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 368 |
-| loading | `loading && !conversation` | 389 |
-| loading | `!loading && !conversation` | 398 |
-| error | `error` | 401 |
-| error | `error` | 458 |
+| branch | `!sentinel` | 134 |
+| branch | `!Stores.Chat.$.conversation` | 155 |
+| branch | `!conversationId` | 197 |
+| branch | `!sentinel` | 242 |
+| branch | `!entries[0]?.isIntersecting` | 246 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 249 |
+| branch | `!sentinel` | 284 |
+| branch | `!entries[0]?.isIntersecting` | 288 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 289 |
+| loading | `!pending` | 304 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 307 |
+| branch | `!conversation?.id` | 316 |
+| branch | `!m` | 320 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 323 |
+| loading | `loading && !conversation` | 343 |
+| loading | `!loading && !conversation` | 352 |
+| error | `error` | 355 |
+| error | `error` | 412 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

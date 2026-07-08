@@ -4,7 +4,11 @@ import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
 import { Search as SearchIcon } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
-import { MessageList } from '@/modules/chat/components/MessageList'
+import {
+  MessageList,
+  type MessageAnchor,
+  type MessageListHandle,
+} from '@/modules/chat/components/MessageList'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
@@ -18,12 +22,6 @@ import { cn } from '@/lib/utils'
 import { ConversationFindBar } from '@/modules/chat/components/ConversationFindBar'
 import { ConversationFindContext } from '@/modules/chat/components/ConversationFindContext'
 import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton'
-import {
-  captureTopAnchor,
-  measureMessageTop,
-  restoreDelta,
-  type ScrollAnchor,
-} from '@/modules/chat/core/utils/scrollAnchor.utils'
 import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
 
 export default function ConversationPage() {
@@ -71,14 +69,14 @@ export default function ConversationPage() {
   // anchored mid-conversation (`hasMoreAfter`, e.g. after an around= jump) we
   // append the next NEWER page so the user can scroll DOWN toward the latest.
   const bottomLoadSentinelRef = useRef<HTMLDivElement>(null)
-  // Anchor captured just before a prepend so we can re-pin the view after it.
+  // Imperative handle to the virtualized MessageList (scroll-to + anchor).
+  const messageListRef = useRef<MessageListHandle>(null)
+  // Anchor captured just before a prepend so we can re-pin the view after it
+  // (index-based, via the virtualizer — see MessageList.restoreAnchor).
   const pendingAnchorRef = useRef<{
-    anchor: ScrollAnchor
+    anchor: MessageAnchor
     prevFirstId: string
   } | null>(null)
-  // A short-lived ResizeObserver re-applies the restore as late async content
-  // (images/katex/mermaid/shiki) in the prepended block resolves.
-  const anchorResizeObsRef = useRef<ResizeObserver | null>(null)
   // Flips true once the OverlayScrollbars instance is initialized (desktop
   // inner scroll). The reverse-scroll observer keys on it so it re-creates with
   // the correct viewport `root` instead of the window fallback captured before
@@ -249,12 +247,12 @@ export default function ConversationPage() {
         // Fresh store reads — the closure's `hasMoreBefore`/`loadingOlder` could
         // be stale between re-renders.
         if (!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder) return
-        const container = messagesContainerRef.current
-        const v = getViewport()
+        // Capture the top-visible message as an index anchor via the virtualizer
+        // so the prepend doesn't teleport the view (restored below).
         const prevFirstId = firstMessageId(Stores.Chat.$.messages)
-        if (container && v && prevFirstId) {
-          const anchor = captureTopAnchor(container, v.viewportTop)
-          if (anchor) pendingAnchorRef.current = { anchor, prevFirstId }
+        const anchor = messageListRef.current?.captureAnchor() ?? null
+        if (anchor && prevFirstId) {
+          pendingAnchorRef.current = { anchor, prevFirstId }
         }
         await Stores.Chat.loadOlderMessages()
         // If NO older page landed (guard early-return, empty/duplicate page, or
@@ -298,8 +296,9 @@ export default function ConversationPage() {
   }, [conversation?.id, hasMoreAfter, getViewport, scrollerReady])
 
   // After an older page is PREPENDED, re-pin the captured anchor so the view
-  // stays put (DEC-2). Runs before paint; a short-lived ResizeObserver re-applies
-  // the correction as late async content (images/katex/mermaid/shiki) resolves.
+  // stays put (ITEM-4). Runs before paint. Index-based via the virtualizer,
+  // which then settles the estimate→measured height corrections of the
+  // prepended rows itself (shouldAdjustScrollPositionOnItemSizeChange).
   useLayoutEffect(() => {
     const pending = pendingAnchorRef.current
     if (!pending) return
@@ -307,52 +306,8 @@ export default function ConversationPage() {
     // Only act once the prepend actually landed (oldest-loaded id changed).
     if (!currentFirst || currentFirst === pending.prevFirstId) return
     pendingAnchorRef.current = null
-
-    const applyRestore = () => {
-      const c = messagesContainerRef.current
-      const v = getViewport()
-      if (!c || !v) return
-      const newTop = measureMessageTop(c, pending.anchor.anchorId)
-      if (newTop == null) return
-      const delta = restoreDelta(pending.anchor.savedTop, newTop - v.viewportTop)
-      if (delta !== 0) v.scrollBy(delta)
-    }
-    applyRestore()
-
-    // Re-apply for ≤1s as async heights settle, then disconnect. A user gesture
-    // (wheel / touch / arrow keys) STOPS the re-pin immediately so it never
-    // fights the user if they scroll away while late content is still resizing.
-    // (Gesture events fire only on real input — not on our own programmatic
-    // scrollBy — so applyRestore's scroll can't self-cancel.)
-    anchorResizeObsRef.current?.disconnect()
-    const container = messagesContainerRef.current
-    const view = getViewport()
-    const gestureTarget: EventTarget = view?.root ?? window
-    let stopAt = 0
-    const teardown = () => {
-      if (stopAt) window.clearTimeout(stopAt)
-      anchorResizeObsRef.current?.disconnect()
-      anchorResizeObsRef.current = null
-      gestureTarget.removeEventListener('wheel', teardown)
-      gestureTarget.removeEventListener('touchmove', teardown)
-      gestureTarget.removeEventListener('keydown', teardown)
-    }
-    if (container) {
-      const ro = new ResizeObserver(() => applyRestore())
-      ro.observe(container)
-      anchorResizeObsRef.current = ro
-      stopAt = window.setTimeout(teardown, 1000)
-      gestureTarget.addEventListener('wheel', teardown, { passive: true })
-      gestureTarget.addEventListener('touchmove', teardown, { passive: true })
-      gestureTarget.addEventListener('keydown', teardown)
-    }
-    return teardown
-  }, [messages, getViewport])
-
-  // Clean up the anchor ResizeObserver on unmount.
-  useEffect(() => {
-    return () => anchorResizeObsRef.current?.disconnect()
-  }, [])
+    messageListRef.current?.restoreAnchor(pending.anchor)
+  }, [messages])
 
   // ── Deep-link: `#message-<id>` jumps to a (possibly-unloaded) message ───────
   // Consumed by citations / cross-surface links. Loads a window centered on the
@@ -366,11 +321,10 @@ export default function ConversationPage() {
       const messageId = m[1]
       const found = await Stores.Chat.jumpToMessage(messageId)
       if (!found || Stores.Chat.$.conversation?.id !== conversation.id) return
-      // Wait for the centered window to render, then center + highlight.
+      // Wait for the centered window to render, then scroll the (possibly
+      // virtualized-out) target into view via the virtualizer + highlight.
       requestAnimationFrame(() => {
-        document
-          .querySelector(`[data-message-id="${CSS.escape(messageId)}"]`)
-          ?.scrollIntoView({ behavior: 'auto', block: 'center' })
+        messageListRef.current?.scrollToMessageId(messageId, 'center')
         setActiveMatchId(messageId)
         if (cleared) window.clearTimeout(cleared)
         cleared = window.setTimeout(() => setActiveMatchId(null), 2500)
@@ -473,6 +427,9 @@ export default function ConversationPage() {
                 open={findOpen}
                 onClose={closeFind}
                 onActiveMatchChange={setActiveMatchId}
+                scrollToMessage={id =>
+                  messageListRef.current?.scrollToMessageId(id, 'center') ?? false
+                }
               />
             </div>
           </div>
@@ -523,7 +480,11 @@ export default function ConversationPage() {
                 data-testid="chat-top-sentinel"
               />
               <ConversationFindContext.Provider value={findContextValue}>
-                <MessageList />
+                <MessageList
+                  ref={messageListRef}
+                  getScrollElement={() => getViewport()?.root ?? null}
+                  scrollerReady={scrollerReady}
+                />
               </ConversationFindContext.Provider>
               {/* Bottom-load sentinel: triggers loading NEWER messages when the
                   window is anchored mid-conversation (after an around= jump). */}

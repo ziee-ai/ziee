@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   appendWindow,
   firstMessageId,
+  indexOfMessageId,
   lastMessageId,
   mergeTailWindow,
   prependWindow,
@@ -89,4 +90,14 @@ test('firstMessageId / lastMessageId read the window boundaries', () => {
   const empty = new Map<string, MessageWithContent>()
   assert.equal(firstMessageId(empty), null)
   assert.equal(lastMessageId(empty), null)
+})
+
+// TEST-1 (virtualize): id → window index mapping behind scrollToMessageId.
+test('indexOfMessageId returns the window index or -1 when unloaded', () => {
+  const m = toOrderedMap([msg('a'), msg('b'), msg('c')])
+  assert.equal(indexOfMessageId(m, 'a'), 0)
+  assert.equal(indexOfMessageId(m, 'b'), 1)
+  assert.equal(indexOfMessageId(m, 'c'), 2)
+  assert.equal(indexOfMessageId(m, 'missing'), -1)
+  assert.equal(indexOfMessageId(new Map<string, MessageWithContent>(), 'a'), -1)
 })

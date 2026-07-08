@@ -11,6 +11,9 @@ interface ConversationFindBarProps {
   onClose: () => void
   /** Report the id of the active match (or null) so the page can highlight it. */
   onActiveMatchChange: (id: string | null) => void
+  /** Scroll a (loaded) message into view via the virtualizer. Returns false when
+   *  it isn't in the loaded window (the caller has already jumped by then). */
+  scrollToMessage: (id: string) => boolean
 }
 
 const SEARCH_DEBOUNCE_MS = 250
@@ -32,6 +35,7 @@ export function ConversationFindBar({
   open,
   onClose,
   onActiveMatchChange,
+  scrollToMessage,
 }: ConversationFindBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
@@ -67,19 +71,13 @@ export function ConversationFindBar({
         const ok = await Stores.Chat.jumpToMessage(id)
         if (!ok) return
       }
-      // Allow the (possibly newly-jumped) window to render, then center.
-      const behavior: ScrollBehavior = window.matchMedia?.(
-        '(prefers-reduced-motion: reduce)',
-      ).matches
-        ? 'auto'
-        : 'smooth'
+      // Allow the (possibly newly-jumped) window to render, then scroll the
+      // (possibly virtualized-out) match into view via the virtualizer.
       requestAnimationFrame(() => {
-        document
-          .querySelector(`[data-message-id="${CSS.escape(id)}"]`)
-          ?.scrollIntoView({ behavior, block: 'center' })
+        scrollToMessage(id)
       })
     },
-    [onActiveMatchChange],
+    [onActiveMatchChange, scrollToMessage],
   )
 
   // Debounced first-page search whenever the query (or conversation) changes.

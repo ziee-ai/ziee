@@ -52,6 +52,21 @@ export function restoreDelta(savedTop: number, newTop: number): number {
   return newTop - savedTop
 }
 
+/**
+ * Pure (virtualized list, ITEM-4): the scroll OFFSET that re-pins an anchor row
+ * at its captured `viewportOffset` given the virtualizer's content-space offset
+ * for that row's (post-prepend) index. Clamped ≥ 0 (can't scroll above the top).
+ * `offsetForIndex` = `virtualizer.getOffsetForIndex(index, 'start')[0]` (the
+ * row's top in content coordinates); `viewportOffset` = the row's top relative
+ * to the viewport top when captured (may be negative if it straddled the fold).
+ */
+export function indexRestoreOffset(
+  offsetForIndex: number,
+  viewportOffset: number,
+): number {
+  return Math.max(0, offsetForIndex - viewportOffset)
+}
+
 // ── DOM readers (thin; the pure math above is what tests exercise) ───────────
 
 /** Read every `[data-message-id]` box under `container`, in document order. */

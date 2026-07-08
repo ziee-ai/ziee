@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  indexRestoreOffset,
   pickTopAnchor,
   restoreDelta,
   type MessageBox,
@@ -56,4 +57,15 @@ test('restoreDelta pins the anchor back to its saved offset', () => {
   assert.equal(restoreDelta(40, 40), 0)
   // Anchor moved up (rare) → negative delta scrolls up.
   assert.equal(restoreDelta(120, 80), -40)
+})
+
+// TEST-2 (virtualize): index-based restore offset for the virtualizer.
+test('indexRestoreOffset re-pins the anchor index at its captured offset', () => {
+  // Anchor row now starts at content-y 900; it was 120px below the viewport top
+  // → scroll so 900 sits at 120 → offset 780.
+  assert.equal(indexRestoreOffset(900, 120), 780)
+  // Anchor straddled the fold (viewportOffset negative) → offset larger.
+  assert.equal(indexRestoreOffset(900, -30), 930)
+  // Clamp at the top: never scroll above 0.
+  assert.equal(indexRestoreOffset(50, 200), 0)
 })
