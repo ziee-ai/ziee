@@ -2738,7 +2738,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `grayed` | 15 |
 | branch | `!grayed` | 30 |
-| branch | `help` | 64 |
+| branch | `help` | 60 |
 
 ### `modules/llm-provider/components/llm-models/shared/LlmModelParametersSection`
 

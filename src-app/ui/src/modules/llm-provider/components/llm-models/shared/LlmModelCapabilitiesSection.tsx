@@ -52,26 +52,23 @@ function CapabilityRow({
   help?: string
 }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}
-    >
-      <span>
-        {label}
+    <div className="flex items-center justify-between gap-3 min-h-9">
+      {/* Label (+ optional help as a description line beneath it) takes the row;
+          min-w-0 lets it truncate/wrap instead of crushing the toggle. */}
+      <div className="min-w-0">
+        <span className="text-sm">{label}</span>
         {help && (
-          <span className="text-muted-foreground" style={{ fontSize: 12, marginLeft: 8 }}>
-            {help}
-          </span>
+          <span className="text-muted-foreground text-xs block">{help}</span>
         )}
-      </span>
+      </div>
+      {/* w-auto shrink-0: the Field defaults to w-full, which would stretch across
+          the row and jam the Switch against the label — override it so
+          justify-between can right-align the toggle. */}
       <FormField
         name={`capabilities.${name}`}
         aria-label={label}
         valuePropName="checked"
-        className="mb-0"
+        className="mb-0 w-auto shrink-0"
       >
         <Switch data-testid={`llm-capability-switch-${name}`} />
       </FormField>

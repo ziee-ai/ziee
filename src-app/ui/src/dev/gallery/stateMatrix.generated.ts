@@ -2489,7 +2489,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "grayed", line: 15 },
       { kind: "branch", condition: "!grayed", line: 30 },
-      { kind: "branch", condition: "help", line: 64 },
+      { kind: "branch", condition: "help", line: 60 },
     ],
   },
   "modules/llm-provider/components/llm-models/shared/LlmModelParametersSection": {
