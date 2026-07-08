@@ -214,10 +214,41 @@ minimum add a readiness note the `[Connect]`/settings UI shows. Not a spike bloc
   brief's "3-column table") still return `OFFICE_PANE_REQUIRED` on every platform. The
   transport they need (WSS + token + echo) is now proven; the JSON-RPC dispatch on top
   of the echo skeleton (`bridge/server.rs::handle_socket`) is the missing piece.
-- **Occupied-port UX** for 44300 (finding above).
+- ~~**Occupied-port UX** for 44300 (finding above).~~ **FIXED** — see below.
 - **TCC Automation consent**: first real osascript use per app raises the standard macOS
   "ziee wants to control Microsoft X" prompt (observed for PowerPoint). Expected; document
   for operators.
 - Cosmetic: the runtime app-data bundle id is `com.ziee.chat` — contradicts the
   CLAUDE.md "app is `ziee`, not `ziee-chat`" naming rule (out of scope, flagged).
 
+
+---
+
+## Port-collision fix (implemented on `feat/office-bridge`)
+
+The occupied-44300 rough edge is now handled, respecting Office's manifest-URL
+stability constraint (the port must not change *after* the add-in is sideloaded):
+
+- `bridge/server.rs`
+  - `start()` now detects `ErrorKind::AddrInUse` distinctly and returns the typed
+    code `PORT_IN_USE_CODE` (`OFFICE_BRIDGE_PORT_IN_USE`), instead of a generic
+    bind error that read as a silent death.
+  - Added `find_free_loopback_port()` — binds `127.0.0.1:0`, reads the assigned
+    port, releases it.
+  - Unit tests: `find_free_loopback_port_returns_a_bindable_port` and
+    `start_reports_port_in_use_with_distinct_code`.
+- `mod.rs::register_office_bridge` bridge-start task now applies the policy, gated on
+  `office_bridge_settings.last_connected_at` (NULL until `[Connect]` sideloads):
+  - **Not yet connected** → auto-migrate to a free port, **persist it** via
+    `update_settings`, and start there. The next `[Connect]` materializes the
+    manifest at the persisted port (`materialize_manifest` already rewrites `:44300`),
+    so nothing is stranded. The port is now *stable* (persisted) — just not literally 44300.
+  - **Already connected** → do NOT migrate (the sideloaded manifest points at the old
+    port); log an actionable error telling the operator to free the port or change the
+    port in settings and re-run Connect.
+
+This is exactly the "pick a stable port once, don't churn it per boot" approach — 44300
+stays the default/first choice, and only a genuine collision on a not-yet-connected
+install moves (and persists) off it. A new dependency (socket2/SO_REUSEADDR) was
+deliberately avoided; the `last_connected_at` gate also prevents a transient
+TIME_WAIT collision from churning a connected install's port.

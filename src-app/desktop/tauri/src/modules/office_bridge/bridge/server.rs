@@ -44,6 +44,23 @@ use super::{assets, auth, cert};
 /// bridge selects on accept. Kept in sync with `resources/office-bridge/taskpane.js`.
 const SUBPROTOCOL: &str = "ziee-bridge";
 
+/// Error code [`start`] returns when the requested TCP port is already bound by
+/// another process. Distinct from a generic bind failure so the caller can apply
+/// the "auto-migrate the port if not yet sideloaded, else surface it" policy
+/// (see `office_bridge::register_office_bridge`).
+pub const PORT_IN_USE_CODE: &str = "OFFICE_BRIDGE_PORT_IN_USE";
+
+/// Bind an ephemeral loopback port, read the number the OS assigned, and release
+/// it — yielding a port that was free a moment ago. There is a small TOCTOU
+/// window (another process could claim it before the caller re-binds); the caller
+/// binds immediately after and treats a second failure as fatal.
+pub fn find_free_loopback_port() -> Option<u16> {
+    TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .ok()
+        .and_then(|l| l.local_addr().ok())
+        .map(|a| a.port())
+}
+
 /// A running bridge listener. Holds the shared `axum-server` shutdown handle so
 /// callers can stop both address-family servers at once.
 pub struct BridgeHandle {
@@ -98,9 +115,21 @@ pub async fn start(port: u16, data_dir: PathBuf) -> Result<BridgeHandle, AppErro
     let tls = RustlsConfig::from_config(Arc::new(server_config));
 
     // Bind v4 synchronously so the socket is listening before we return, and so
-    // an ephemeral port==0 resolves to a concrete port we can reuse for v6.
-    let l4 = TcpListener::bind((Ipv4Addr::LOCALHOST, port))
-        .map_err(|e| bind_err(format!("bind 127.0.0.1:{port}: {e}")))?;
+    // an ephemeral port==0 resolves to a concrete port we can reuse for v6. An
+    // `AddrInUse` failure is reported with a distinct code so the caller can
+    // migrate the port (when the add-in has not been sideloaded yet) instead of
+    // silently leaving the bridge down.
+    let l4 = match TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            return Err(AppError::new(
+                StatusCode::CONFLICT,
+                PORT_IN_USE_CODE,
+                format!("office_bridge: TCP port {port} is already in use"),
+            ));
+        }
+        Err(e) => return Err(bind_err(format!("bind 127.0.0.1:{port}: {e}"))),
+    };
     let actual_port = l4
         .local_addr()
         .map_err(|e| bind_err(format!("read bound v4 addr: {e}")))?
@@ -353,6 +382,32 @@ fn bind_err(msg: impl Into<String>) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_free_loopback_port_returns_a_bindable_port() {
+        let p = find_free_loopback_port().expect("a free loopback port");
+        assert_ne!(p, 0);
+        // It was free a moment ago, so we can bind it right now.
+        let l = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, p))
+            .expect("the reported port is bindable");
+        drop(l);
+    }
+
+    #[tokio::test]
+    async fn start_reports_port_in_use_with_distinct_code() {
+        // Occupy a port, then ask the bridge to bind the SAME port.
+        let squatter = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let taken = squatter.local_addr().unwrap().port();
+        // Unique data dir so concurrent tests don't race on the minted cert files.
+        let data_dir = std::env::temp_dir().join(format!("ziee-ob-test-{taken}"));
+        let _ = std::fs::create_dir_all(&data_dir);
+        let err = start(taken, data_dir.clone())
+            .await
+            .err()
+            .expect("binding an occupied port must fail");
+        assert_eq!(err.error_code(), PORT_IN_USE_CODE);
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
 
     #[test]
     fn allowed_origins_includes_loopback_and_prod() {

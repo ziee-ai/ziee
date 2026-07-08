@@ -191,12 +191,57 @@ pub fn register_office_bridge(config: &ziee::Config) {
         }
         let port = u16::try_from(settings.port).unwrap_or(44300);
         let data_dir = ziee::get_app_data_dir();
-        match bridge::server::start(port, data_dir).await {
+        match bridge::server::start(port, data_dir.clone()).await {
             Ok(handle) => tracing::info!(
                 "office_bridge: bridge listener started on {} (port {})",
                 handle.origin,
                 handle.port
             ),
+            // The port is occupied (another process — often a second ziee
+            // instance). Office caches the sideloaded manifest's URL, so the
+            // bridge port must stay STABLE once the add-in has been sideloaded
+            // (`last_connected_at` is set by the `[Connect]` flow). Therefore:
+            //   - not yet connected → free to auto-migrate to an open port and
+            //     persist it; the next `[Connect]` materializes the manifest at
+            //     the new port, so nothing is stranded.
+            //   - already connected → the sideloaded manifest points at the old
+            //     port; migrating would silently break the pane, so surface an
+            //     actionable error instead and leave the listener down.
+            Err(e) if e.error_code() == bridge::server::PORT_IN_USE_CODE => {
+                if settings.last_connected_at.is_some() {
+                    tracing::error!(
+                        "office_bridge: bridge port {port} is in use, and the add-in was \
+                         already sideloaded at that port — NOT migrating (that would strand \
+                         the sideloaded manifest). Free port {port}, or change the office_bridge \
+                         port in settings and re-run Connect to re-sideload."
+                    );
+                } else if let Some(free) = bridge::server::find_free_loopback_port() {
+                    let repo2 = repository::OfficeBridgeRepository::new(ziee::Repos.pool().clone());
+                    if let Err(e) = repo2.update_settings(None, Some(i32::from(free))).await {
+                        tracing::error!(
+                            "office_bridge: port {port} in use; found free port {free} but \
+                             persisting it failed: {e:?}; not starting listener"
+                        );
+                    } else {
+                        match bridge::server::start(free, data_dir).await {
+                            Ok(handle) => tracing::warn!(
+                                "office_bridge: port {port} was in use; auto-migrated to free \
+                                 port {} and persisted it (not yet connected, so the sideloaded \
+                                 manifest will use the new port).",
+                                handle.port
+                            ),
+                            Err(e) => tracing::error!(
+                                "office_bridge: retry on migrated port {free} failed: {e:?}"
+                            ),
+                        }
+                    }
+                } else {
+                    tracing::error!(
+                        "office_bridge: bridge port {port} is in use and no free loopback port \
+                         could be found; not starting listener"
+                    );
+                }
+            }
             Err(e) => tracing::error!("office_bridge: bridge listener failed to start: {e:?}"),
         }
     });
