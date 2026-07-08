@@ -1012,23 +1012,23 @@ Required states: `delayed`, `empty`
 | branch | `!vw \|\| vw <= 0` | 115 |
 | branch | `w <= 0` | 117 |
 | branch | `!el` | 128 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 281 |
-| branch | `!el` | 290 |
-| empty | `count === 0` | 297 |
-| branch | `!el` | 315 |
-| branch | `!item` | 318 |
-| branch | `!msg` | 320 |
-| branch | `!c` | 326 |
-| branch | `virtualize` | 331 |
-| branch | `idx < 0` | 333 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 345 |
-| branch | `!c` | 351 |
-| branch | `newTop == null` | 353 |
-| loading | `!loading && count === 0` | 362 |
-| branch | `loadingOlder` | 388 |
-| branch | `virtualize` | 398 |
-| branch | `!msg` | 413 |
-| loading | `(loading \|\| isStreaming)` | 457 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 287 |
+| branch | `!el` | 296 |
+| empty | `count === 0` | 303 |
+| branch | `!el` | 321 |
+| branch | `!item` | 324 |
+| branch | `!msg` | 326 |
+| branch | `!c` | 332 |
+| branch | `virtualize` | 337 |
+| branch | `idx < 0` | 339 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 351 |
+| branch | `!c` | 357 |
+| branch | `newTop == null` | 359 |
+| loading | `!loading && count === 0` | 368 |
+| branch | `loadingOlder` | 394 |
+| branch | `virtualize` | 404 |
+| branch | `!msg` | 419 |
+| loading | `(loading \|\| isStreaming)` | 463 |
 
 ### `modules/chat/components/ModelSelector`
 

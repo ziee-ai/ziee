@@ -199,9 +199,15 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       // the estimate→measured correction — and the scrollbar-thumb jump it caused
       // — shrinks toward zero. Reads the width REF (no reflow) (ITEM-1, DEC-1).
       estimateSize: i => estimateMessageHeight(messagesArray[i], widthRef.current),
-      // Fewer heavy off-screen tables/images mounted per frame; pop-in still
-      // acceptable at normal scroll speed (ITEM-5, DEC-5).
-      overscan: 4,
+      // Overscan stays at 8 (the pre-virtualization-fix value). ITEM-5's proposed
+      // drop to 4 measurably regressed the reverse-infinite-scroll ANCHOR: fewer
+      // off-screen rows above the viewport get measured, so the prepend
+      // anchor-restore leans on the (coarser) estimate and the view drifts ~120px
+      // (the `lazy-load-messages` anchor invariant broke). Anchor precision beats
+      // the marginal off-screen-mount saving — especially since ChatMessage is
+      // memoized (extra overscan rows don't re-render on scroll) (ITEM-5, DEC-5;
+      // FIX_ROUND-4 drift).
+      overscan: 8,
       initialMeasurementsCache,
       // Persist real measured heights across mounts. sync=true is scroll,
       // sync=false is a measurement/layout change — coalesce those into one
