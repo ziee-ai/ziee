@@ -71,8 +71,10 @@ build.rs loop), so office_bridge's schema rides that with no new migration infra
   desktop crate (`src-app/desktop/tauri/resources/office-bridge/`); update the `include_dir!` base
   path in the (relocated) `bridge/assets.rs`.
 - **ITEM-8**: Frontend — move `src-app/ui/src/modules/office-bridge/` →
-  `src-app/desktop/ui/src/modules/office-bridge/`; wire it into the desktop UI module registry;
-  remove it from the web UI. The Open-Documents panel/card/store + e2e spec become desktop-UI only.
+  `src-app/desktop/ui/src/modules/office-bridge/`. Module discovery is **glob-driven** (revised per
+  DRIFT-1.2): `desktop-loader.ts` auto-picks the relocated dir and the web-ui glob drops it — NO
+  registry edits (only the gallery coverage/state entries move web→desktop). Move the e2e spec too.
+  The Open-Documents panel/card/store + e2e spec become desktop-UI only.
 - **ITEM-9**: Tests — relocate the module's unit tests (move with the source) and the integration
   tests `server/tests/office_bridge/` (incl. TEST-9 live COM, TEST-7 bridge, settings/mcp) into the
   desktop crate's test tree (`desktop/tauri/tests/…`); ensure the desktop integration harness runs
