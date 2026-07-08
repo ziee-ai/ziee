@@ -24,15 +24,21 @@ two desktop-e2e harness bugs.
 - **TEST-15**: PASS
 - **TEST-16**: PASS
 - **TEST-17**: PASS
-- **TEST-18**: BLOCKED (desktop-e2e infra, NOT a product defect) — the spec was relocated from the
-  web-ui e2e suite; two real harness bugs were fixed (it read the wrong workspace's `.test-configs`;
-  the 90s backend-startup timeout was too short for a cold `cargo run --bin ziee` + 118-migration
-  boot → raised to 240s). It now boots the backend, but the moved spec waits for the web-ui first-run
-  screen `app-setup-username-input`, which the **desktop/ui app shell** handles differently
-  (desktop auto-login) — a spec↔app-shell setup-flow mismatch that needs the login helper rewritten
-  for the desktop shell. The panel itself IS verified: **TEST-17** (store sync/refetch unit), the
-  **13 desktop backend integration tests** (incl. the `/api/office-bridge/documents` endpoint the
-  panel refetches), and **TEST-9** live.
+- **TEST-18**: PASS — desktop-e2e, `1 passed (14.0s)` on the desktop/ui playwright runner
+  (real Docker Postgres + spawned `ziee` backend + Vite + chromium). The spec's auth preamble was
+  rebased from the web-ui first-run `loginAsAdmin` flow onto the DESKTOP shell's real-backend
+  pattern (`installTauriMock({backendPort, tokens})` + auto-login, mirroring
+  `desktop-real-backend-smoke.spec.ts`), and its broken `testInfra.baseURL`/`apiURL` refs
+  (fields that don't exist on `TestInfra`) fixed to `backendURL`/config-baseURL. The office-bridge
+  assertions run unchanged: the `list_open_documents` tool-result card renders, opens the panel,
+  and lists Q3-Report.docx + Budget.xlsx with active/unsaved tags.
+  **Found + fixed a REAL frontend integration bug in the process** (not infra): the chat-extension
+  auto-discovery glob (`ui/src/modules/chat/extensions/index.ts`,
+  `import.meta.glob('../../*/chat-extension/…')`) is rooted at `ui/src/modules/`, so the desktop-only
+  office-bridge chat extension was NEVER discovered → the tool result rendered as plain text, no card.
+  Fixed with a desktop-first override `desktop/ui/src/modules/chat/extensions/index.ts` that runs the
+  core web discovery, then globs desktop-local sibling extensions and registers them into the same
+  `chatExtensionRegistry` singleton (glob-driven, no core registry edits).
 
 npm run check (ui): PASS
 npm run check (desktop/ui): PASS
