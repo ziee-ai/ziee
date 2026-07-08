@@ -11,6 +11,8 @@ src-app/desktop/tauri/Cargo.toml	74	98	correctness,build-cfg,perms-authz
 src-app/desktop/tauri/Cargo.toml	111	116	correctness,build-cfg,perms-authz
 src-app/desktop/tauri/src/core/module_builder.rs	9	11	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/core/module_builder.rs	42	46	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/lib.rs	158	166	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/lib.rs	205	210	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/backend/mod.rs	254	261	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/backend/mod.rs	349	358	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/mod.rs	18	18	correctness,patterns-conformance,api-contract,error-handling,build-cfg
@@ -39,6 +41,11 @@ src-app/desktop/tauri/src/modules/office_bridge/platform/mod.rs	33	33	correctnes
 src-app/desktop/tauri/src/modules/office_bridge/platform/unsupported.rs	11	11	correctness,security,concurrency,error-handling
 src-app/desktop/tauri/src/modules/office_bridge/platform/windows.rs	55	55	correctness,security,concurrency,error-handling
 src-app/desktop/tauri/src/modules/office_bridge/repository.rs	7	7	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/office_bridge/routes.rs	9	13	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/office_bridge/routes.rs	17	17	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/office_bridge/routes.rs	19	19	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/office_bridge/routes.rs	27	27	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/office_bridge/routes.rs	33	33	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/watcher.rs	28	28	correctness,security,concurrency,error-handling
 src-app/desktop/tauri/tests/integration_tests.rs	23	23	tests-quality,correctness,patterns-conformance
 src-app/desktop/tauri/tests/office_bridge/attach_test.rs	1	58	tests-quality,correctness,patterns-conformance
@@ -71,9 +78,11 @@ src-app/desktop/ui/src/dev/gallery/stateMatrix.generated.ts	250	250	state-manage
 src-app/desktop/ui/src/dev/gallery/stateMatrix.generated.ts	270	270	state-management,patterns-conformance,correctness,a11y
 src-app/desktop/ui/src/dev/gallery/stateMatrix.generated.ts	278	281	state-management,patterns-conformance,correctness,a11y
 src-app/desktop/ui/src/dev/gallery/stateMatrix.generated.ts	294	297	state-management,patterns-conformance,correctness,a11y
-src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	2	7	tests-quality,correctness,patterns-conformance
-src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	12	12	tests-quality,correctness,patterns-conformance
-src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	20	22	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	2	9	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	11	11	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	16	16	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/tests/e2e/20-office-bridge/office-bridge.spec.ts	24	26	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/tests/fixtures/test-context.ts	80	80	tests-quality,correctness,patterns-conformance
 src-app/server/src/core/repository.rs	228	228	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/server/src/lib.rs	4	4	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/server/src/lib.rs	19	19	correctness,patterns-conformance,api-contract,error-handling,build-cfg
