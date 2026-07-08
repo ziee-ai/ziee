@@ -238,23 +238,6 @@ html.dark .os-theme-dark {
     width 0.15s ease-out,
     height 0.15s ease-out;
 }
-/* Smooth the handle's SIZE + POSITION so the small jumps from the virtualized
- * message list re-measuring row heights ease into place instead of snapping (the
- * "jitter" + back-and-forth). OverlayScrollbars forces `transition: none
- * !important` on the handle in several internal states (unusable / measuring),
- * so we override with `!important` + a specificity (`.os-scrollbar.os-scrollbar-
- * vertical`) that beats those library rules. It updates the handle 1:1 with
- * scroll (no gated "actively scrolling" flag), so keep the ease SHORT. */
-.os-scrollbar.os-scrollbar-vertical .os-scrollbar-handle,
-.os-scrollbar.os-scrollbar-horizontal .os-scrollbar-handle {
-  transition:
-    opacity 0.15s,
-    background-color 0.15s,
-    border-color 0.15s,
-    width 0.15s ease-out,
-    height 0.12s ease-out,
-    transform 0.12s ease-out !important;
-}
 .os-theme-dark.os-scrollbar:hover,
 .os-theme-light.os-scrollbar:hover {
   --os-size: 12px;
