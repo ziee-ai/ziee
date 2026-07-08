@@ -105,14 +105,15 @@ mod tests {
         );
     }
 
-    /// DEC-9 guard: the macOS transport is never claimed as verified. Compiled
-    /// only on macOS (where `platform::macos` exists).
+    /// DEC-9: the macOS transport was empirically verified by the 2026-07-08 Mac
+    /// spike (Keychain trust + WKWebView same-origin WSS round-trip), so the gate
+    /// is now `true`. Compiled only on macOS (where `platform::macos` exists).
     #[cfg(target_os = "macos")]
     #[test]
-    fn test11_mac_transport_unverified() {
+    fn test11_mac_transport_verified() {
         assert!(
-            !super::super::macos::MAC_TRANSPORT_VERIFIED,
-            "macOS transport must stay UNVERIFIED until the Mac spike runs"
+            super::super::macos::MAC_TRANSPORT_VERIFIED,
+            "macOS transport verified by the DEC-9 Mac spike"
         );
     }
 }

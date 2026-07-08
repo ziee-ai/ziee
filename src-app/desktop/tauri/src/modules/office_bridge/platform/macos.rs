@@ -1,18 +1,17 @@
 //! macOS `OfficePlatform` — best-effort AppleScript/`osascript` bridge (ITEM-8).
 //!
-//! **UNVERIFIED — Mac spike (DEC-9).** This entire module is a best-effort,
-//! std-only scaffold authored on a Windows box. It is `#[cfg(target_os =
-//! "macos")]`, so it is NOT compiled or runtime-verified here — every method
-//! body is written in plain `std` (`std::process::Command`, `std::fs`,
-//! `std::path`) against the crate's shared trait types so it is as
-//! syntactically safe as possible and *plausibly* compiles on macOS, but no
-//! claim is made that any path actually works.
+//! **VERIFIED — 2026-07-08 Mac spike (DEC-9).** Authored on a Windows box, this
+//! module was empirically verified end-to-end on a real Apple-Silicon Mac with
+//! Office installed (see `MAC_OFFICE_BRIDGE_VERIFICATION.md`). The spike fixed two
+//! live osascript bugs (the `repeat with d in (get …)` count error, and an
+//! unsaved-doc `save` GUI-dialog hang) and confirmed the transport gate:
+//! [`MAC_TRANSPORT_VERIFIED`] is now `true`.
 //!
-//! The gate remains [`MAC_TRANSPORT_VERIFIED`] (`false`): the Keychain
-//! cert-trust + WKWebView same-origin-WSS round-trip spike has NOT run. The
-//! `install_cert_trust` path in particular runs `security add-trusted-cert`,
-//! but whether a WKWebView task pane then trusts that cert *prompt-free* is THE
-//! unproven Mac-spike unknown — see the comment on that method.
+//! The Keychain cert-trust + WKWebView same-origin-WSS round-trip PASSED:
+//! `install_cert_trust`'s `security add-trusted-cert` makes the bridge CA trusted,
+//! and the Office WKWebView task pane then loads the served `https://localhost`
+//! content *prompt-free* with a live WSS connect-back. The still-open item is the
+//! 5 pane-mediated Office.js tools (ITEM-9 daemon↔pane RPC), unrelated to transport.
 //!
 //! Mechanism parity with the Windows COM impl (ITEM-7): enumerate + act via
 //! Apple Events (`osascript`), install the cert into the login keychain, and
@@ -32,9 +31,18 @@ use ziee::AppError;
 use super::{ActResult, DocOp, OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
 
 /// Whether the macOS transport (Keychain trust + WKWebView same-origin WSS) has
-/// been empirically verified. Hard `false` until the Mac spike runs (DEC-9); no
-/// code path should claim macOS works while this is false.
-pub const MAC_TRANSPORT_VERIFIED: bool = false;
+/// been empirically verified. **`true` as of the 2026-07-08 Mac spike (DEC-9)** —
+/// see `MAC_OFFICE_BRIDGE_VERIFICATION.md`. On a real Apple-Silicon Mac with Office
+/// installed, `security add-trusted-cert` made the minted bridge CA trusted, the
+/// Office **WKWebView task pane loaded `https://localhost:44300/taskpane.html`
+/// prompt-free**, and its Office.js `wss://localhost:44300/bridge` connect-back +
+/// ping/echo round-tripped live (Excel: `bridge open (host=Excel, token=present)`).
+///
+/// SCOPE: this gates the TRANSPORT (cert trust + WKWebView same-origin WSS) and the
+/// osascript tool path (`list_open_documents` + Word `append_paragraph`, both fixed
+/// + verified in this spike). It does NOT imply the 5 pane-mediated Office.js tools
+/// work — those are the still-unimplemented ITEM-9 daemon↔pane RPC.
+pub const MAC_TRANSPORT_VERIFIED: bool = true;
 
 pub struct MacOfficePlatform;
 
@@ -120,7 +128,11 @@ fn applescript_escape(s: &str) -> String {
 /// un-launched app contributes nothing rather than being started. Emits one
 /// tab-separated `name\tfullName\tsaved\tactive` line per open document.
 ///
-/// UNVERIFIED — Mac spike: AppleScript enumeration shape per app.
+/// Mac spike 2026-07-08 (VERIFIED live against Word+Excel): the enumeration
+/// requires `repeat with d in (get {collection})` — a bare `repeat with d in
+/// {collection}` raises `-1708` (Word: "every document doesn't understand the
+/// count message") / `-50` (Excel: "Parameter error") because AS then tries to
+/// `count` the element specifier. The `(get ...)` materializes the list first.
 fn list_script(app: &MacApp) -> String {
     format!(
         r#"if application "{display}" is running then
@@ -130,7 +142,7 @@ fn list_script(app: &MacApp) -> String {
 			set activeName to name of {active}
 		end try
 		set out to ""
-		repeat with d in {collection}
+		repeat with d in (get {collection})
 			set docName to name of d
 			set fullName to docName
 			try
@@ -242,7 +254,11 @@ fn list_documents_blocking() -> Vec<OpenDoc> {
 /// Mirrors the Windows Word-only append (ITEM-7); a target belonging to
 /// Excel/PowerPoint simply won't match and errors.
 ///
-/// UNVERIFIED — Mac spike: AppleScript document mutation + read-back.
+/// Mac spike 2026-07-08 (VERIFIED live against Word): the append + read-back
+/// body works, but two fixes were required — `repeat with d in (get documents)`
+/// (same `-1708` issue as enumeration), and the `save theDoc` is now guarded by
+/// `if (path of theDoc) is not ""` because saving a never-saved document pops a
+/// blocking GUI "Save As" dialog that hangs the osascript call indefinitely.
 fn act_word_blocking(target: &str, text: &str) -> Result<ActResult, String> {
     let target_esc = applescript_escape(target);
     let text_esc = applescript_escape(text);
@@ -250,7 +266,7 @@ fn act_word_blocking(target: &str, text: &str) -> Result<ActResult, String> {
         r#"if application "Microsoft Word" is running then
 	tell application "Microsoft Word"
 		set theDoc to missing value
-		repeat with d in documents
+		repeat with d in (get documents)
 			try
 				if (full name of d is "{target}") or (name of d is "{target}") then
 					set theDoc to d
@@ -260,7 +276,9 @@ fn act_word_blocking(target: &str, text: &str) -> Result<ActResult, String> {
 		if theDoc is missing value then error "no open Word document matches"
 		set textObj to text object of theDoc
 		set content of textObj to (content of textObj) & return & "{text}"
-		save theDoc
+		try
+			if (path of theDoc) is not "" then save theDoc
+		end try
 		set lastPara to "{text}"
 		try
 			set lastPara to content of text object of (last paragraph of textObj)
@@ -293,11 +311,9 @@ end if"#,
 #[async_trait]
 impl OfficePlatform for MacOfficePlatform {
     fn probe(&self) -> Option<OfficeCaps> {
-        // UNVERIFIED — Mac spike: macOS is a supported desktop shape, so the
-        // seam + settings surface exercise here; `office_present` is a real
-        // bundle-presence probe. The automation *transport* is still gated by
-        // MAC_TRANSPORT_VERIFIED (false) — nothing downstream should treat a
-        // `Some(..)` here as proof the AppleScript path works.
+        // macOS is a supported desktop shape; `office_present` is a real
+        // bundle-presence probe. The automation transport is verified as of the
+        // 2026-07-08 Mac spike (MAC_TRANSPORT_VERIFIED = true).
         let office_present = office_present();
         if !office_present {
             tracing::info!(
@@ -326,8 +342,8 @@ impl OfficePlatform for MacOfficePlatform {
         doc_full_name: &str,
         op: &DocOp,
     ) -> Result<ActResult, AppError> {
-        // UNVERIFIED — Mac spike: AppleScript append-paragraph + save + read-back
-        // (Word only, mirroring the Windows ITEM-7 op).
+        // VERIFIED — 2026-07-08 Mac spike: AppleScript append-paragraph + read-back
+        // (Word only, mirroring the Windows ITEM-7 op). See `act_word_blocking`.
         let DocOp::AppendParagraph { text } = op;
         let target = doc_full_name.to_string();
         let text = text.clone();
@@ -342,15 +358,16 @@ impl OfficePlatform for MacOfficePlatform {
     }
 
     fn install_cert_trust(&self, cert_der: &[u8]) -> Result<(), AppError> {
-        // UNVERIFIED — Mac spike: stage the DER as a temp `.cer`, then
+        // VERIFIED — 2026-07-08 Mac spike: stage the DER as a temp `.cer`, then
         // `security add-trusted-cert -d -r trustRoot -k <login.keychain-db>`.
         //
-        // **THIS IS THE MAC SPIKE GATE.** `security add-trusted-cert` typically
-        // prompts for auth, and — critically — it is UNVERIFIED that a WKWebView
-        // task pane then trusts the served `https://localhost` cert *prompt-free*
-        // (the WKWebView / ATS trust store may not honor a user-added trustRoot
-        // the way Safari/Keychain does). Until that round-trip is proven,
-        // MAC_TRANSPORT_VERIFIED stays false regardless of this returning `Ok`.
+        // This was THE Mac-spike gate, and it PASSED: after this runs, the system
+        // SecTrust evaluator (`security verify-cert -p ssl -s localhost`) trusts the
+        // leaf, and the Office WKWebView task pane loaded the served
+        // `https://localhost:44300` content prompt-free with a live WSS connect-back
+        // (see MAC_OFFICE_BRIDGE_VERIFICATION.md). NOTE: `-d` targets the admin trust
+        // domain and typically raises ONE GUI admin-auth prompt (the macOS analog of
+        // Windows' single UAC on cert install) — acceptable, one-time.
         let mut cert_path = std::env::temp_dir();
         cert_path.push(format!("ziee-bridge-cert-{}.cer", std::process::id()));
         std::fs::write(&cert_path, cert_der)
@@ -457,13 +474,14 @@ impl OfficePlatform for MacOfficePlatform {
 mod tests {
     use super::*;
 
-    /// DEC-9 guard: the macOS transport is never claimed as verified. (Compiled
-    /// only on macOS; will not run on the Windows authoring box.)
+    /// DEC-9: the macOS transport (Keychain trust + WKWebView same-origin WSS) was
+    /// empirically verified by the 2026-07-08 Mac spike (see
+    /// `MAC_OFFICE_BRIDGE_VERIFICATION.md`), so the gate is now `true`.
     #[test]
-    fn mac_transport_stays_unverified() {
+    fn mac_transport_verified() {
         assert!(
-            !MAC_TRANSPORT_VERIFIED,
-            "macOS transport must stay UNVERIFIED until the Mac spike runs"
+            MAC_TRANSPORT_VERIFIED,
+            "macOS transport verified by the DEC-9 Mac spike"
         );
     }
 
