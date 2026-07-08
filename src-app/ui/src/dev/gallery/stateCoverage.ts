@@ -53,6 +53,15 @@ export const STATE_COVERAGE = {
   // running/failed, attachments, elicitation) that have no single named key.
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
+  // The find bar's `loading` state is a transient in-flight search fetch (the
+  // results-list spinner while a page of matches loads). It can't be captured
+  // as a deterministic gallery snapshot; it's exercised end-to-end by the
+  // server-side find e2e spec (conversation-find.spec.ts / TEST-16).
+  'modules/chat/components/ConversationFindBar:delayed': {
+    skip: true,
+    reason:
+      "transient in-flight search fetch (results-list spinner); not deterministically snapshottable — verified by the server-side find e2e spec (conversation-find.spec.ts)",
+  },
   'modules/file/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-file',
   },
@@ -116,6 +125,7 @@ export const STATE_COVERAGE = {
   "modules/chat/components/ConversationList:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/ConversationList:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/MessageList:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
+  "modules/chat/components/MessageList:empty": { skip: true, reason: "the dedicated 'seeded-message-list-empty' gallery surface renders this empty (!loading && count===0) branch directly" },
   "modules/chat/core/components/ChatRightPanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/extensions/registry:empty": { skip: true, reason: "nonvisual surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/extensions/slots:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },

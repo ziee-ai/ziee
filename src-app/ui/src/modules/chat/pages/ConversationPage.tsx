@@ -1,9 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
 import { Search as SearchIcon } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
-import { MessageList } from '@/modules/chat/components/MessageList'
+import {
+  MessageList,
+  type MessageAnchor,
+  type MessageListHandle,
+} from '@/modules/chat/components/MessageList'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
@@ -17,11 +22,13 @@ import { cn } from '@/lib/utils'
 import { ConversationFindBar } from '@/modules/chat/components/ConversationFindBar'
 import { ConversationFindContext } from '@/modules/chat/components/ConversationFindContext'
 import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton'
+import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
 
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
 
-  const { conversation, messages, loading, error } = Stores.Chat
+  const { conversation, messages, loading, error, hasMoreBefore, hasMoreAfter } =
+    Stores.Chat
   // Native document-scroll on mobile: the message history scrolls the WINDOW
   // (iOS toolbar collapses as you scroll up) while the composer stays pinned via
   // position:sticky. Desktop keeps the fixed inner-scroll shell. The right panel
@@ -58,6 +65,60 @@ export default function ConversationPage() {
   const [composerHidden, setComposerHidden] = useState(false)
   // Conversation id whose initial bottom-jump we've already done.
   const initialScrollConvIdRef = useRef<string | null>(null)
+
+  // ── Reverse-infinite-scroll (load older on scroll-up) refs (ITEM-9) ────────
+  // The OverlayScrollbars component (desktop inner scroll). In mobile native
+  // flow it renders a plain div and this stays null → we fall back to window.
+  const scrollerRef = useRef<OverlayScrollbarsComponentRef>(null)
+  // The message content container (holds every [data-message-id]).
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  // Top sentinel — when it approaches the viewport top we prepend older msgs.
+  const topSentinelRef = useRef<HTMLDivElement>(null)
+  // Bottom sentinel — when it approaches the viewport bottom AND the window is
+  // anchored mid-conversation (`hasMoreAfter`, e.g. after an around= jump) we
+  // append the next NEWER page so the user can scroll DOWN toward the latest.
+  const bottomLoadSentinelRef = useRef<HTMLDivElement>(null)
+  // Imperative handle to the virtualized MessageList (scroll-to + anchor).
+  const messageListRef = useRef<MessageListHandle>(null)
+  // Anchor captured just before a prepend so we can re-pin the view after it
+  // (index-based, via the virtualizer — see MessageList.restoreAnchor).
+  const pendingAnchorRef = useRef<{
+    anchor: MessageAnchor
+    prevFirstId: string
+  } | null>(null)
+  // Flips true once the OverlayScrollbars instance is initialized (desktop
+  // inner scroll). The reverse-scroll observer keys on it so it re-creates with
+  // the correct viewport `root` instead of the window fallback captured before
+  // the scroller mounts. Never flips in mobile native-flow (no OS instance) —
+  // there the window root is correct anyway.
+  const [scrollerReady, setScrollerReady] = useState(false)
+
+  // Resolve the active scroll viewport for both desktop (OverlayScrollbars) and
+  // mobile (native window scroll). `viewportTop` is the client-Y of the viewport
+  // top edge used to compute anchor offsets.
+  const getViewport = useCallback((): {
+    scrollBy: (delta: number) => void
+    viewportTop: number
+    root: HTMLElement | null
+  } | null => {
+    const os = scrollerRef.current?.osInstance()
+    const vp = os?.elements().viewport as HTMLElement | undefined
+    if (vp) {
+      return {
+        scrollBy: d => {
+          vp.scrollTop += d
+        },
+        viewportTop: vp.getBoundingClientRect().top,
+        root: vp,
+      }
+    }
+    // Native window scroll (mobile nativeFlow).
+    return {
+      scrollBy: d => window.scrollBy(0, d),
+      viewportTop: 0,
+      root: null,
+    }
+  }, [])
 
   // In-conversation find (ITEM-1) + jump-to-latest visibility (ITEM-2).
   const [findOpen, setFindOpen] = useState(false)
@@ -164,8 +225,21 @@ export default function ConversationPage() {
 
   const findContextValue = useMemo(() => ({ activeMatchId }), [activeMatchId])
 
-  const jumpToLatest = () =>
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const jumpToLatest = async () => {
+    // If the window is anchored mid-conversation (after an around= jump), the
+    // real latest message isn't loaded — `messagesEndRef` is only the bottom of
+    // the loaded slice. Snap to the tail first so "Jump to latest" reaches the
+    // actual latest, then scroll instantly (content just changed).
+    const cid = Stores.Chat.$.conversation?.id
+    if (cid && Stores.Chat.$.hasMoreAfter) {
+      await Stores.Chat.loadMessages(cid)
+      requestAnimationFrame(() =>
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }),
+      )
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   // Initial load: jump to the bottom INSTANTLY (before paint), once per
   // conversation. An animated scroll-through would drag the viewport past
@@ -189,7 +263,14 @@ export default function ConversationPage() {
       initialScrollConvIdRef.current !== conversationId
     ) {
       initialScrollConvIdRef.current = conversationId
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+      // A `#message-<id>` deep-link handler (below) owns the initial scroll in
+      // that case — don't yank the view to the bottom over it.
+      if (!/^#message-/.test(window.location.hash)) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+        // The messagesEndRef jump lands on ESTIMATED row heights under
+        // virtualization; settle on the true (measured) bottom.
+        messageListRef.current?.scrollToBottom()
+      }
     }
   }, [conversationId, conversation, messages])
 
@@ -197,15 +278,131 @@ export default function ConversationPage() {
   // only when the loaded conversation matches the URL, the initial jump for it
   // has happened, and the user is already at the bottom. The conversation gate
   // stops a smooth animation from firing during the stale A→B switch window.
+  // Also suppressed while an older-page prepend is being scroll-anchored
+  // (pendingAnchorRef) — otherwise the bottom-follow would fight the restore.
+  // AND suppressed when `hasMoreAfter` is true: the loaded window is anchored
+  // MID-conversation (after an around= jump), so `messagesEndRef` is not the
+  // real latest — auto-following it would re-enter the bottom-load sentinel and
+  // cascade an un-interruptible auto-scroll toward the tail. Auto-follow only
+  // makes sense once the window actually holds the newest message.
   useEffect(() => {
     if (
+      !pendingAnchorRef.current &&
+      !hasMoreAfter &&
       conversation?.id === conversationId &&
       initialScrollConvIdRef.current === conversationId &&
       isAtBottomRef.current
     ) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages, conversationId, conversation])
+  }, [messages, conversationId, conversation, hasMoreAfter])
+
+  // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
+  // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next
+  // older page BEFORE the user reaches the very top. Just before dispatching we
+  // capture the top-visible message as a scroll anchor so the prepend doesn't
+  // teleport the view (restored in the layout effect below).
+  useEffect(() => {
+    const sentinel = topSentinelRef.current
+    if (!sentinel) return
+    const view = getViewport()
+    const observer = new IntersectionObserver(
+      async entries => {
+        if (!entries[0]?.isIntersecting) return
+        // Fresh store reads — the closure's `hasMoreBefore`/`loadingOlder` could
+        // be stale between re-renders.
+        if (!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder) return
+        // Capture the top-visible message as an index anchor via the virtualizer
+        // so the prepend doesn't teleport the view (restored below).
+        const prevFirstId = firstMessageId(Stores.Chat.$.messages)
+        const anchor = messageListRef.current?.captureAnchor() ?? null
+        if (anchor && prevFirstId) {
+          pendingAnchorRef.current = { anchor, prevFirstId }
+        }
+        await Stores.Chat.loadOlderMessages()
+        // If NO older page landed (guard early-return, empty/duplicate page, or
+        // a conversation switch), the restore layout-effect never fires — clear
+        // the pending anchor so it can't stick truthy and permanently suppress
+        // the bottom auto-follow. `$.messages` reflects the post-`set` store.
+        const pending = pendingAnchorRef.current
+        if (
+          pending &&
+          firstMessageId(Stores.Chat.$.messages) === pending.prevFirstId
+        ) {
+          pendingAnchorRef.current = null
+        }
+      },
+      { root: view?.root ?? null, rootMargin: '800px 0px 0px 0px', threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+    // `scrollerReady` re-creates the observer once the OverlayScrollbars
+    // viewport exists so `root` is the real scroll box, not the window fallback.
+  }, [conversation?.id, hasMoreBefore, getViewport, scrollerReady])
+
+  // Load NEWER messages on scroll-down when the window is anchored mid-
+  // conversation (after an around= jump). No scroll anchoring needed: appending
+  // below the fold doesn't shift what's already visible. The 800px bottom
+  // rootMargin prefetches before the user hits the loaded slice's end.
+  useEffect(() => {
+    const sentinel = bottomLoadSentinelRef.current
+    if (!sentinel) return
+    const view = getViewport()
+    const observer = new IntersectionObserver(
+      entries => {
+        if (!entries[0]?.isIntersecting) return
+        if (!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming) return
+        void Stores.Chat.loadNewerMessages()
+      },
+      { root: view?.root ?? null, rootMargin: '0px 0px 800px 0px', threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [conversation?.id, hasMoreAfter, getViewport, scrollerReady])
+
+  // After an older page is PREPENDED, re-pin the captured anchor so the view
+  // stays put (ITEM-4). Runs before paint. Index-based via the virtualizer,
+  // which then settles the estimate→measured height corrections of the
+  // prepended rows itself (shouldAdjustScrollPositionOnItemSizeChange).
+  useLayoutEffect(() => {
+    const pending = pendingAnchorRef.current
+    if (!pending) return
+    const currentFirst = firstMessageId(messages)
+    // Only act once the prepend actually landed (oldest-loaded id changed).
+    if (!currentFirst || currentFirst === pending.prevFirstId) return
+    pendingAnchorRef.current = null
+    messageListRef.current?.restoreAnchor(pending.anchor)
+  }, [messages])
+
+  // ── Deep-link: `#message-<id>` jumps to a (possibly-unloaded) message ───────
+  // Consumed by citations / cross-surface links. Loads a window centered on the
+  // message (around=), centers it, and highlights it via the find ring.
+  useEffect(() => {
+    if (!conversation?.id) return
+    let cleared: number | undefined
+    const applyHash = async () => {
+      const m = window.location.hash.match(/^#message-(.+)$/)
+      if (!m) return
+      const messageId = m[1]
+      const found = await Stores.Chat.jumpToMessage(messageId)
+      if (!found || Stores.Chat.$.conversation?.id !== conversation.id) return
+      // Wait for the centered window to render, then scroll the (possibly
+      // virtualized-out) target into view via the virtualizer + highlight.
+      requestAnimationFrame(() => {
+        messageListRef.current?.scrollToMessageId(messageId, 'center')
+        setActiveMatchId(messageId)
+        if (cleared) window.clearTimeout(cleared)
+        cleared = window.setTimeout(() => setActiveMatchId(null), 2500)
+      })
+    }
+    void applyHash()
+    window.addEventListener('hashchange', applyHash)
+    return () => {
+      window.removeEventListener('hashchange', applyHash)
+      if (cleared) window.clearTimeout(cleared)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?.id])
 
   // Loading state
   if (loading && !conversation) {
@@ -295,6 +492,9 @@ export default function ConversationPage() {
                 open={findOpen}
                 onClose={closeFind}
                 onActiveMatchChange={setActiveMatchId}
+                scrollToMessage={id =>
+                  messageListRef.current?.scrollToMessageId(id, 'center') ?? false
+                }
               />
             </div>
           </div>
@@ -324,13 +524,46 @@ export default function ConversationPage() {
               messagesEnd sentinel + scrollIntoView + isAtBottom observer all
               keep working: OverlayScrollbars scrolls a real viewport element. The
               context chrome above stays a SIBLING of this scroller (K1/K4). */}
-          <DivScrollY nativeFlow className="flex-1">
-            {/* pb-8 matches the composer's h-8 fade so the last message can scroll
-                clear of it at rest (fully readable, not dissolved). */}
-            <div className="w-full max-w-4xl mx-auto px-4 pt-4 pb-8">
+          <DivScrollY
+            nativeFlow
+            className="flex-1"
+            ref={scrollerRef}
+            events={{ initialized: () => setScrollerReady(true) }}
+          >
+            {/* `overflow-anchor: none` stops the browser's own scroll anchoring
+                from fighting the manual anchor restore on prepend (DEC-2).
+                pb-8 matches the composer's h-8 fade so the last message can
+                scroll clear of it at rest (fully readable, not dissolved). */}
+            <div
+              ref={messagesContainerRef}
+              className="w-full max-w-4xl mx-auto px-4 pt-4 pb-8"
+              style={{ overflowAnchor: 'none' }}
+            >
+              {/* Top sentinel: intersecting (with an 800px rootMargin) triggers
+                  loading the next older page (reverse infinite scroll). */}
+              <div
+                ref={topSentinelRef}
+                aria-hidden="true"
+                data-testid="chat-top-sentinel"
+              />
+>>>>>>> feat/lazy-load-conversation-messages
               <ConversationFindContext.Provider value={findContextValue}>
-                <MessageList />
+                <MessageList
+                  ref={messageListRef}
+                  getScrollElement={() => getViewport()?.root ?? null}
+                  scrollerReady={scrollerReady}
+                  // Desktop (inner OS scroll) virtualizes; mobile native
+                  // window-scroll renders the bounded window plainly.
+                  virtualize={!nativeScroll}
+                />
               </ConversationFindContext.Provider>
+              {/* Bottom-load sentinel: triggers loading NEWER messages when the
+                  window is anchored mid-conversation (after an around= jump). */}
+              <div
+                ref={bottomLoadSentinelRef}
+                aria-hidden="true"
+                data-testid="chat-bottom-load-sentinel"
+              />
               <div ref={messagesEndRef} />
             </div>
           </DivScrollY>
