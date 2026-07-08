@@ -371,8 +371,17 @@ export function RawCodeView({
             accurate. The heavy Shiki highlight is deferred by the observer above;
             the DOM text (plain OR highlighted) is ALWAYS present so
             find-in-document spans the whole file. The memo ensures one chunk
-            highlighting doesn't re-render the others. */}
-        <div className="raw-code-chunks">
+            highlighting doesn't re-render the others.
+            ONE `tabindex=0` here (the per-chunk <pre>s carry none — see
+            chunking.ts + the transformer `pre` hook) gives keyboard-only users a
+            single focus target inside the scroll viewport so arrow keys scroll
+            the code, without the one-tab-stop-per-chunk anti-pattern. */}
+        <div
+          className="raw-code-chunks"
+          tabIndex={0}
+          role="group"
+          aria-label="File contents"
+        >
           {chunks.map((chunk, i) => (
             <CodeChunk
               key={i}
