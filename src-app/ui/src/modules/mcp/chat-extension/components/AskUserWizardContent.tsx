@@ -132,8 +132,11 @@ function ChoiceCards({
     [fieldSchema],
   )
   const showOther = allowsOther(fieldSchema)
-  const otherId = `${uid}-other`
-  const otherLabelId = `${uid}-other-label`
+  // Derive the Other control's ids from the SENTINEL (not the literal "other"),
+  // so they can only collide with an enum value equal to the reserved sentinel —
+  // never with a realistic option value literally named "other".
+  const otherId = `${uid}-${OTHER_SENTINEL}`
+  const otherLabelId = `${uid}-${OTHER_SENTINEL}-label`
   // The question title/description name the option GROUP for a screen reader.
   const groupLabel = fieldSchema.title || name
 
@@ -214,7 +217,7 @@ function ChoiceCards({
                   checked={otherOn}
                   onCheckedChange={toggleOtherMulti}
                   aria-labelledby={otherLabelId}
-                  data-testid={`${name}-other-checkbox`}
+                  data-testid={`${name}-${OTHER_SENTINEL}-checkbox`}
                 />
               ) : (
                 <RadioGroupItem
@@ -364,23 +367,27 @@ export function AskUserWizardContent({
   }
 
   const handleSubmit = async () => {
-    if (isSubmitting) return // re-entry guard: a double-click must not double-POST
-    const zodOk = await form.trigger()
-    // Find the GLOBALLY-first offending step across BOTH zod + Other-filled rules.
-    let firstBad = -1
-    for (let i = 0; i < total; i++) {
-      const [name, fs] = entries[i] as [string, FieldSchema]
-      const otherErr = otherFieldError(fs, form.getValues(name), otherText[name])
-      if (otherErr) form.setError(name, { type: 'other-required', message: otherErr })
-      const invalid = otherErr != null || form.formState.errors[name] != null
-      if (invalid && firstBad === -1) firstBad = i
-    }
-    if (!zodOk || firstBad >= 0) {
-      if (firstBad >= 0) setStep(firstBad)
-      return
-    }
+    if (isSubmitting) return
+    // Set the guard SYNCHRONOUSLY before the first await so React flushes the
+    // loading/disabled state before any second discrete click — otherwise the
+    // `await form.trigger()` window lets a double-click (or a Submit-then-Decline)
+    // re-enter with isSubmitting still false and issue a conflicting second POST.
     setIsSubmitting(true)
     try {
+      const zodOk = await form.trigger()
+      // Find the GLOBALLY-first offending step across BOTH zod + Other-filled rules.
+      let firstBad = -1
+      for (let i = 0; i < total; i++) {
+        const [name, fs] = entries[i] as [string, FieldSchema]
+        const otherErr = otherFieldError(fs, form.getValues(name), otherText[name])
+        if (otherErr) form.setError(name, { type: 'other-required', message: otherErr })
+        const invalid = otherErr != null || form.formState.errors[name] != null
+        if (invalid && firstBad === -1) firstBad = i
+      }
+      if (!zodOk || firstBad >= 0) {
+        if (firstBad >= 0) setStep(firstBad)
+        return // `finally` re-enables the controls so the user can correct + retry
+      }
       const values = finalizeValues(properties, form.getValues(), otherText)
       await Stores.McpComposer.resolveElicitation(elicitationId, 'accept', values)
     } catch (e) {
@@ -422,6 +429,7 @@ export function AskUserWizardContent({
             )}
             {isLast ? (
               <Button
+                type="button"
                 loading={isSubmitting}
                 size="default"
                 onClick={handleSubmit}
