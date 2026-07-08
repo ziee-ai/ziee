@@ -546,7 +546,6 @@ export default function ConversationPage() {
                 aria-hidden="true"
                 data-testid="chat-top-sentinel"
               />
->>>>>>> feat/lazy-load-conversation-messages
               <ConversationFindContext.Provider value={findContextValue}>
                 <MessageList
                   ref={messageListRef}
