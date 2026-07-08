@@ -9,23 +9,41 @@ use uuid::Uuid;
 /// into a form by the client, so an unbounded schema is a memory/DoS vector.
 pub const MAX_REQUESTED_SCHEMA_BYTES: usize = 1024 * 1024; // 1 MiB
 
-/// Bound an incoming elicitation `requestedSchema` to [`MAX_REQUESTED_SCHEMA_BYTES`].
-/// Oversized schemas are dropped (replaced with a minimal error schema) rather
-/// than forwarded to the client. Applied at every MCP ingress point that parses
-/// `requestedSchema`.
+/// Root marker that flips the chat frontend into the RICH `ask_user` decision UX
+/// (per-option cards, the 1–4 question wizard, the Other-escape). It is a
+/// **trust signal**: only the ziee-internal `ask_user` path is allowed to set it,
+/// which it does by re-stamping AFTER this cap. Every elicitation ingress runs
+/// [`cap_requested_schema`], which STRIPS any client/server-supplied copy of this
+/// key, so an external MCP server cannot forge it to render its untrusted schema
+/// as the internal decision UX. See `chat_extension/helpers.rs::stamp_ask_user_marker`.
+pub const ASK_USER_SCHEMA_MARKER: &str = "x-ziee-askuser";
+
+/// Bound an incoming elicitation `requestedSchema` to [`MAX_REQUESTED_SCHEMA_BYTES`]
+/// and STRIP the trusted [`ASK_USER_SCHEMA_MARKER`] from its root. Oversized schemas
+/// are dropped (replaced with a minimal error schema) rather than forwarded to the
+/// client. Applied at every MCP ingress point that parses `requestedSchema`, so the
+/// rich-UX marker can only ever come from the trusted internal re-stamp, never from
+/// an untrusted external server.
 pub fn cap_requested_schema(schema: serde_json::Value) -> serde_json::Value {
     let len = serde_json::to_string(&schema).map(|s| s.len()).unwrap_or(0);
     if len > MAX_REQUESTED_SCHEMA_BYTES {
         tracing::warn!(
             "elicitation requestedSchema is {len} bytes (> {MAX_REQUESTED_SCHEMA_BYTES} cap); dropping it"
         );
-        serde_json::json!({
+        return serde_json::json!({
             "type": "object",
             "properties": {},
             "x-ziee-error": "requested schema exceeded the 1 MiB limit and was dropped"
-        })
-    } else {
-        schema
+        });
+    }
+    // Strip a forged rich-UX marker from untrusted ingress. The trusted internal
+    // ask_user path re-adds it AFTER this call; external servers never do.
+    match schema {
+        serde_json::Value::Object(mut map) => {
+            map.remove(ASK_USER_SCHEMA_MARKER);
+            serde_json::Value::Object(map)
+        }
+        other => other,
     }
 }
 
@@ -146,5 +164,26 @@ mod tests {
         let schema = serde_json::json!({ "type": "object", "properties": {} });
         assert!(serde_json::to_string(&schema).unwrap().len() <= MAX_REQUESTED_SCHEMA_BYTES);
         assert_eq!(cap_requested_schema(schema.clone()), schema);
+    }
+
+    /// SECURITY: an untrusted schema that FORGES the rich-UX marker has it
+    /// STRIPPED at ingress, so an external MCP server cannot make its schema
+    /// render as the ziee-internal `ask_user` decision UX. (The trusted internal
+    /// path re-stamps the marker AFTER this cap.)
+    #[test]
+    fn cap_requested_schema_strips_forged_ask_user_marker() {
+        let forged = serde_json::json!({
+            "type": "object",
+            "x-ziee-askuser": true,
+            "properties": { "x": { "type": "string" } }
+        });
+        let capped = cap_requested_schema(forged);
+        assert!(
+            capped.get(ASK_USER_SCHEMA_MARKER).is_none(),
+            "the forged rich-UX marker must be stripped from untrusted ingress"
+        );
+        // Non-marker content is preserved.
+        assert_eq!(capped["type"], "object");
+        assert!(capped["properties"]["x"].is_object());
     }
 }

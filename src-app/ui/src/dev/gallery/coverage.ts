@@ -373,6 +373,8 @@ export const GALLERY_COVERAGE = {
   "modules/llm-provider/widgets/LLMProviderGroupWidget": { kind: 'via', reason: 'slot-widget in llm-provider' },
   "modules/llm-repository/components/LlmRepositoryDrawer": { kind: 'overlay', states: ['open', 'filled', 'invalid'] },
   "modules/llm-repository/components/LlmRepositorySettings": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
+  "modules/mcp/chat-extension/components/AskUserWizardContent": { kind: 'via', reason: 'rendered within the mcp module page (ask_user rich wizard) — gallery cell deep-chat-ask-user-wizard' },
+  "modules/mcp/chat-extension/components/elicitationFields": { kind: 'via', reason: 'shared non-choice field renderer used by the elicitation form + ask_user wizard' },
   "modules/mcp/chat-extension/components/ElicitationFormContent": { kind: 'via', reason: 'rendered within the mcp module page' },
   "modules/mcp/chat-extension/components/McpInitializer": { kind: 'via', reason: 'rendered within the mcp module page' },
   "modules/mcp/chat-extension/components/McpMenuItem": { kind: 'via', reason: 'rendered within the mcp module page' },

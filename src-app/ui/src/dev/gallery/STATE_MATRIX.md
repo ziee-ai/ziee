@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **323** surfaces carry at least one renderable-state signal.
-- **1850** signals total: 1457 branch, 111 empty, 95 error, 99 loading, 86 overlay, 2 panel.
+- **325** surfaces carry at least one renderable-state signal.
+- **1872** signals total: 1478 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 86 |
 | `empty` | 89 |
-| `error` | 74 |
+| `error` | 75 |
 | `open` | 72 |
 | `panel-open` | 2 |
 
@@ -2812,23 +2812,47 @@ Required states: `empty`, `error`
 | branch | `index < repositories.length - 1` | 329 |
 | branch | `totalRepositories > 0` | 338 |
 
+### `modules/mcp/chat-extension/components/AskUserWizardContent`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `option.recommended` | 88 |
+| branch | `option.description` | 94 |
+| branch | `option.preview` | 99 |
+| branch | `multi` | 152 |
+| branch | `showOther` | 203 |
+| branch | `multi` | 213 |
+| branch | `multi` | 234 |
+| branch | `otherOn` | 250 |
+| error | `fieldState.error?.message` | 260 |
+| branch | `!mounted.current` | 331 |
+| branch | `otherErr` | 342 |
+| branch | `isSubmitting` | 355 |
+| branch | `isSubmitting` | 369 |
+| branch | `!zodOk \|\| firstBad >= 0` | 386 |
+| branch | `step > 0` | 417 |
+| branch | `isLast` | 429 |
+| branch | `total > 1` | 460 |
+| branch | `current && isChoice && currentSchema.title` | 484 |
+| branch | `current && isChoice && currentSchema.description` | 489 |
+| branch | `current` | 494 |
+| branch | `isChoice` | 495 |
+
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 215 |
-| branch | `isMultiSelect` | 217 |
-| branch | `fieldSchema.type === 'boolean'` | 255 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
-| branch | `fieldSchema.format === 'password'` | 336 |
-| branch | `status === 'accepted'` | 464 |
-| branch | `items.length > 0` | 493 |
-| branch | `status === 'declined'` | 507 |
-| branch | `status === 'cancelled'` | 527 |
+| branch | `isSelectField` | 69 |
+| branch | `isMultiSelect` | 71 |
+| branch | `status === 'accepted'` | 208 |
+| branch | `items.length > 0` | 237 |
+| branch | `status === 'declined'` | 251 |
+| branch | `status === 'cancelled'` | 271 |
+| branch | `isRichAskUser` | 302 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -2863,6 +2887,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `mcpServerParenLabel(toolCall.server)` | 170 |
 | branch | `toolCall.input !== undefined` | 183 |
 | branch | `!isControlWrite` | 205 |
+
+### `modules/mcp/chat-extension/components/elicitationFields`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `fieldSchema.type === 'boolean'` | 27 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 41 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 66 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 86 |
+| branch | `fieldSchema.format === 'password'` | 108 |
 
 ### `modules/mcp/chat-extension/extension`
 
