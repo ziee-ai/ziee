@@ -21339,7 +21339,7 @@
         ]
       }
     },
-    "/office-bridge/settings": {
+    "/api/office-bridge/settings": {
       "get": {
         "tags": [
           "OfficeBridge"
@@ -21448,7 +21448,7 @@
         ]
       }
     },
-    "/office-bridge/documents": {
+    "/api/office-bridge/documents": {
       "get": {
         "tags": [
           "OfficeBridge"
@@ -21501,7 +21501,7 @@
         ]
       }
     },
-    "/office-bridge/connect": {
+    "/api/office-bridge/connect": {
       "post": {
         "tags": [
           "OfficeBridge"
