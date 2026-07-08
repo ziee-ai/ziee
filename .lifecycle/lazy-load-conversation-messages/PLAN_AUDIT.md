@@ -76,7 +76,10 @@ Audit of PLAN.md against the actual codebase (worktree off origin/main @ 7f1ef2d
   `branch_id`; the `idx_branch_messages_branch_id` + message_contents PK cover
   it; substring ILIKE is a scan bounded by the branch size, acceptable for an
   interactive per-conversation search, matching the existing list-search cost
-  profile). ✔
+  profile). Pagination uses LIMIT/OFFSET here (NOT keyset) — correct because the
+  match set is a filtered, ordinal-indexed result the user pages/steps through by
+  position (not a live-growing branch tail), mirroring `list_conversations`;
+  a `count` query supplies `total`. ✔
 - **Branch scoping is a correctness + isolation requirement.** Search MUST be
   scoped to the conversation's `active_branch_id` (like the list search comment
   notes) so a superseded edit-branch's content isn't surfaced, and so results are

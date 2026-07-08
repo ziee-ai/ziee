@@ -117,29 +117,37 @@ are the concrete, testable surfaces (TEST-10, TEST-16).
 
 ### DEC-12: In-conversation search — server-side endpoint shape + how results display?
 **Resolution:** Add `GET /conversations/{id}/messages/search?q=<term>&limit=<n>`.
+`GET /conversations/{id}/messages/search?q=<term>&page=<p>&per_page=<n>`.
 Server-side, case-insensitive substring (`ILIKE`) over `text` content blocks,
 scoped to the conversation's ACTIVE branch (reusing the exact EXISTS-join from
-`conversations.rs::list_conversations`). Response:
+`conversations.rs::list_conversations` + a matching `count` for `total`).
+**PAGINATED** (user-chosen — page/per_page, mirroring `mcp/tool_calls` /
+`list_conversations`). Response:
 ```
 MessageSearchResults {
-  matches: MessageSearchMatch[],   // branch-chronological
+  matches: MessageSearchMatch[],   // one page, branch-chronological
   total: i64,                      // full match count (for "X of Y")
-  truncated: bool,                 // true if matches capped
+  page: i64,
+  per_page: i64,                   // default 25, clamp 1..=100
 }
 MessageSearchMatch { message_id, role, created_at, snippet, ordinal }
 ```
-`limit` caps the returned matches (default 200, max 500) — `total` still reflects
-the full count so the "X of Y" readout is honest. The F3 find bar (ITEM-13) runs
-this on a debounced query, DISPLAYS the matches as a selectable snippet list
-under the bar, keeps the "X of Y" + Next/Prev, and on selecting/navigating a
-match: scroll-into-view if it's in the loaded window, else `jumpToMessage`
-(around=) then center + highlight. "Load more around" = the before/after
-infinite-scroll (DEC-2/ITEM-9) continuing from the jumped position.
+`ordinal` is the 1-based GLOBAL position in the full match set (`(page-1)*per_page
++ i + 1`) so "X of Y" and Next/Prev stay stable across pages. The F3 find bar
+(ITEM-13, user-chosen "snippet results list") runs this on a debounced query and
+DISPLAYS the matches as a selectable snippet LIST under the bar that
+infinite-scrolls to fetch the next page as the user scrolls it; keeps the "X of Y"
+(Y = `total`) + Next/Prev that step across the full set (fetching the adjacent
+page when stepping past the loaded boundary). Selecting/navigating a match:
+scroll-into-view if it's in the loaded window, else `jumpToMessage` (around=) then
+center + highlight. "Load more around" = the before/after infinite-scroll
+(DEC-2/ITEM-9) continuing from the jumped position.
 **Basis:** user directive + codebase — under lazy-load the client-only
 `findMatches` can only see loaded messages (a regression); server-side search over
-the active branch is the fix, and it reuses the proven active-branch match join.
-Match-level (not offset-level) results match the existing whole-message
-find/highlight model. Surfaced to the user for ack (endpoint + results display).
+the active branch is the fix, reusing the proven active-branch match join.
+Pagination (page/per_page) and the snippet results list are the user's explicit
+choices. Match-level (not offset-level) results match the existing whole-message
+find/highlight model.
 
 ### DEC-10: Virtualization?
 **Resolution:** DEFERRED (not in this iteration). Lazy-load only. Documented as a
