@@ -5,12 +5,11 @@
 //! network. A TLS client that TRUSTS the minted cert (added as a rustls root)
 //! then asserts:
 //!   (a) `GET /taskpane.html` returns 200 with a per-session token injected,
-//!   (b) `wss://.../bridge` with that token + an allowed Origin echoes a frame,
+//!   (b) `wss://.../bridge` with that token + an allowed Origin UPGRADES (the
+//!       JSON-RPC pane round-trip over this socket is covered by `pane_rpc_test`),
 //!   (c) a bad Origin and a missing/invalid token are BOTH rejected.
 
 use std::sync::Arc;
-
-use futures_util::{SinkExt, StreamExt};
 
 use ziee_desktop::modules::office_bridge::bridge::{cert, server};
 
@@ -96,8 +95,6 @@ async fn ws_connect(
 
 #[tokio::test]
 async fn test7_bridge_https_and_wss_end_to_end() {
-    use tokio_tungstenite::tungstenite::Message;
-
     // Ephemeral, temp-dir cert → fully hermetic. Mint first so the test holds
     // the exact cert bytes the listener will load from the cache.
     let dir = tempfile::tempdir().expect("tempdir");
@@ -141,25 +138,15 @@ async fn test7_bridge_https_and_wss_end_to_end() {
         "the quoted placeholder is gone from the served page"
     );
 
-    // ---- (b) WSS /bridge with a valid token + allowed Origin → echo ---------
+    // ---- (b) WSS /bridge with a valid token + allowed Origin → UPGRADES ------
+    // The socket now runs the JSON-RPC pane duplex (ITEM-9), not an echo, so this
+    // asserts the upgrade succeeds; the request/response round-trip over it is
+    // covered by `pane_rpc_test`.
     let origin = format!("https://127.0.0.1:{port}");
-    let mut ws = ws_connect(ws_request(port, &origin, Some(&token)), &cert_der)
+    let ws = ws_connect(ws_request(port, &origin, Some(&token)), &cert_der)
         .await
         .expect("valid token + origin upgrades");
-    ws.send(Message::Text("round-trip".into()))
-        .await
-        .expect("send text frame");
-    let echoed = tokio::time::timeout(std::time::Duration::from_secs(5), ws.next())
-        .await
-        .expect("echo arrives before timeout")
-        .expect("stream item")
-        .expect("ws message");
-    assert_eq!(
-        echoed.into_text().expect("text frame").as_str(),
-        "round-trip",
-        "the bridge echoes the frame back"
-    );
-    ws.close(None).await.ok();
+    drop(ws);
 
     // ---- (c1) WSS with a BAD Origin → rejected before upgrade ---------------
     let bad_origin = ws_connect(

@@ -10,9 +10,8 @@
 //! - `GET /taskpane.js`, `GET /icon.png` — the remaining embedded assets.
 //! - `GET /bridge` — a `WebSocketUpgrade` guarded by the **Origin allowlist**
 //!   AND a valid **per-session token** (carried as a `Sec-WebSocket-Protocol`
-//!   value, DEC-6); on accept it echoes each text frame back. Real JSON-RPC
-//!   method dispatch is ITEM-9 — this is the transport skeleton, matching the
-//!   proven spike's `/bridge` echo.
+//!   value, DEC-6); on accept it runs the JSON-RPC duplex ([`handle_socket`])
+//!   that the daemon↔pane broker ([`broker`]) drives — ITEM-9.
 //! - token-guarded `POST /report|/caps|/selection|/comment` — dev/diagnostic
 //!   sinks that accept JSON and 200.
 //!
@@ -36,9 +35,12 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_server::tls_rustls::RustlsConfig;
 
+use tokio::sync::mpsc;
+
 use ziee::AppError;
 
-use super::{assets, auth, cert};
+use super::protocol::BridgeResponse;
+use super::{assets, auth, broker, cert};
 
 /// The WSS subprotocol the task pane offers (alongside the token) and the
 /// bridge selects on accept. Kept in sync with `resources/office-bridge/taskpane.js`.
@@ -299,31 +301,109 @@ async fn bridge_ws(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
 
-    // Echo the selected subprotocol back (Chromium/WebView2 abort the socket if
-    // the client offered subprotocols and the server selects none).
+    // Select the subprotocol back (Chromium/WebView2 abort the socket if the client
+    // offered subprotocols and the server selects none), then run the JSON-RPC duplex.
     ws.protocols([SUBPROTOCOL]).on_upgrade(handle_socket)
 }
 
-/// Echo each received text/binary frame back to the sender. RPC dispatch is
-/// ITEM-9; this mirrors the spike's `/bridge` echo.
+/// Service one task-pane socket as a JSON-RPC duplex (ITEM-9). A single task owns
+/// the socket and `tokio::select!`s between:
+///   - outbound frames pushed by [`broker::call_pane`] via an mpsc sink, and
+///   - inbound frames from the pane.
+///
+/// Inbound frames are classified by JSON-RPC shape: a frame with `method` is a
+/// pane→daemon request/notification (`register` hello → [`broker::register_pane`];
+/// `ping`/`selection_changed` → debug-logged), a frame with `result`/`error` is a
+/// reply to a daemon→pane request → [`broker::route_response`]. Junk / unclassifiable
+/// frames are ignored (the loop keeps running). The pane is unregistered on close.
 async fn handle_socket(mut socket: WebSocket) {
-    while let Some(Ok(msg)) = socket.recv().await {
-        match msg {
-            Message::Text(t) => {
-                if socket.send(Message::Text(t)).await.is_err() {
-                    break;
+    let pane_id = broker::next_pane_id();
+    // The sink the broker pushes daemon→pane requests down. A clone is handed to the
+    // registry on the pane's `register` hello; this end holds `tx` so `rx` stays open
+    // for the socket's lifetime regardless of registration timing.
+    let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+
+    loop {
+        tokio::select! {
+            // Outbound: a daemon→pane request from `call_pane`.
+            out = rx.recv() => {
+                match out {
+                    Some(msg) => {
+                        if socket.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    // All senders dropped (registry entry gone AND local tx gone) —
+                    // cannot happen while we hold `tx`, but treat as end-of-life.
+                    None => break,
                 }
             }
-            Message::Binary(b) => {
-                if socket.send(Message::Binary(b)).await.is_err() {
-                    break;
+            // Inbound: a frame from the pane.
+            inbound = socket.recv() => {
+                match inbound {
+                    Some(Ok(Message::Text(t))) => classify_pane_frame(pane_id, &tx, t.as_str()),
+                    // Binary is unused by the pane protocol; ignore.
+                    Some(Ok(Message::Binary(_))) => {}
+                    // Ping/Pong are handled by axum's keep-alive.
+                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
+                    // Clean close or stream end.
+                    Some(Ok(Message::Close(_))) | None => break,
+                    // Transport error.
+                    Some(Err(_)) => break,
                 }
             }
-            Message::Close(_) => break,
-            // Ping/Pong are handled by axum's keep-alive; ignore here.
-            _ => {}
         }
     }
+
+    broker::unregister_pane(pane_id);
+}
+
+/// Classify + handle one inbound text frame from the pane (see [`handle_socket`]).
+fn classify_pane_frame(pane_id: u64, tx: &mpsc::UnboundedSender<Message>, text: &str) {
+    let v: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        // Not JSON → ignore (a malformed/junk frame must not kill the socket).
+        Err(_) => return,
+    };
+
+    // A frame with `method` is a pane→daemon request/notification.
+    if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
+        match method {
+            "register" => {
+                let params = v.get("params");
+                let host = params
+                    .and_then(|p| p.get("host"))
+                    .and_then(|h| h.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let doc_key = params
+                    .and_then(|p| p.get("doc_key"))
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                tracing::debug!(
+                    "office_bridge: pane {pane_id} registered (host={host}, doc_key_set={})",
+                    !doc_key.is_empty()
+                );
+                broker::register_pane(pane_id, host, doc_key, tx.clone());
+            }
+            "ping" | "selection_changed" => {
+                tracing::trace!("office_bridge: pane {pane_id} {method}");
+            }
+            other => {
+                tracing::debug!("office_bridge: pane {pane_id} unhandled method `{other}`");
+            }
+        }
+        return;
+    }
+
+    // Otherwise a frame with `result`/`error` is a reply to a daemon→pane request.
+    if v.get("result").is_some() || v.get("error").is_some() {
+        if let Ok(resp) = serde_json::from_value::<BridgeResponse>(v) {
+            broker::route_response(resp);
+        }
+    }
+    // Neither method nor result/error → ignore.
 }
 
 /// Whether a POST carries a valid session token, via `Authorization: Bearer
