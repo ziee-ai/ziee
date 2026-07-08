@@ -232,15 +232,17 @@ test.describe('message-scroll-perf — geometry stability', () => {
     })
     await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
 
-    // Scroll up to the top and back down; heavy code rows re-window in and out.
+    // Scroll up to the top; heavy code rows re-window in and out (the newest
+    // rows unmount, the oldest mount) — exercising the memo boundary.
     await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
     await expect(page.locator('[data-message-id="a-0"]')).toBeVisible({
       timeout: 10000,
     })
     // A Shiki-highlighted code block actually rendered (not a raw <pre> dump).
     await expect(page.locator('[data-message-id="a-0"] pre').first()).toBeVisible()
-    await page.locator('[data-message-id="a-14"]').scrollIntoViewIfNeeded()
-    await expect(page.locator('[data-message-id="a-14"]')).toBeVisible()
+    // The newest row is now virtualized OUT (proof the window shifted) — do NOT
+    // scrollIntoView a non-mounted node; assert the re-windowing via mount state.
+    await expect(page.locator('[data-message-id="a-14"]')).toHaveCount(0)
 
     // No app-level console/page errors from the scroll (no re-render/re-highlight
     // crash, no ErrorBoundary). Locks the memo boundary against a runtime storm.
@@ -271,17 +273,15 @@ test.describe('message-scroll-perf — geometry stability', () => {
     const cap = await page.evaluate(() =>
       Math.min(window.innerHeight * 0.6, 36 * 16),
     )
-    const rowH = await page.evaluate(() => {
-      const t = document.querySelector('[data-testid="chat-message"] table')
-      let el: HTMLElement | null = t as HTMLElement | null
-      let max = 0
-      while (el && el.getAttribute('data-testid') !== 'chat-message') {
-        max = Math.max(max, el.getBoundingClientRect().height)
-        el = el.parentElement
-      }
-      return max
-    })
-    // The 100-row table is bounded near the cap (+ chrome), not 100 rows tall.
-    expect(rowH).toBeLessThan(cap + 200)
+    // Measure the MESSAGE ROW's own height — the inner <table> element is 100 rows
+    // tall (~3700px) BUT it lives inside MarkdownTable's height-capped
+    // (max-h-[min(60vh,36rem)]) scroll box, so the ROW the virtualizer measures is
+    // bounded near the cap + chrome (the "Table:" line + actions), not the full
+    // table. (ITEM-4: heavy inline content imposes a definite row height.)
+    const rowH =
+      (await page.locator('[data-testid="chat-message"]').first().boundingBox())
+        ?.height ?? 0
+    expect(rowH).toBeGreaterThan(0)
+    expect(rowH).toBeLessThan(cap + 300)
   })
 })

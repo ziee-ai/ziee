@@ -107,14 +107,19 @@ test.describe('message-scroll-perf — inline image height reservation', () => {
       timeout: 30000,
     })
 
-    // The reserved-image placeholder is present and NOT yet loaded.
+    // The reserved-image placeholder is present and NOT yet loaded. (We assert
+    // ATTACHED, not visible: a dimensionless placeholder is inline-block with a
+    // reserved HEIGHT but 0 width until the bytes arrive — it reserves row height,
+    // which is the ITEM-3 goal, but has no visible width yet.)
     const reserved = page.getByTestId('reserved-image').first()
-    await expect(reserved).toBeVisible({ timeout: 10000 })
+    await reserved.waitFor({ state: 'attached', timeout: 10000 })
     await expect(reserved).not.toHaveAttribute('data-loaded', '')
 
-    // PRIMARY assertion (the ITEM-3 fix): the row is NOT collapsed to ~0 before
-    // the bytes arrive — it holds its reserved height.
-    const reservedH = (await reserved.boundingBox())?.height ?? 0
+    // PRIMARY assertion (the ITEM-3 fix): the image ROW reserves its height BEFORE
+    // the bytes arrive — the row is not collapsed to ~text-height, so the
+    // virtualizer measures a stable row height (no post-load re-measure jump).
+    const imgRow = page.locator('[data-message-id="img-msg"]')
+    const reservedH = (await imgRow.boundingBox())?.height ?? 0
     expect(reservedH).toBeGreaterThan(200)
 
     // Reference row position before the image resolves.
