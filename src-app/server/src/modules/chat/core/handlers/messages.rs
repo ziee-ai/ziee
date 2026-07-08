@@ -2,7 +2,11 @@
 
 use crate::core::Repos;
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{
+    Json, debug_handler,
+    extract::{Path, Query},
+    http::StatusCode,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -10,8 +14,10 @@ use crate::{
     modules::{
         chat::core::{
             permissions::*,
-            
-            types::{EditMessageRequest, EditMessageResponse, MessageWithContent},
+            types::{
+                EditMessageRequest, EditMessageResponse, MessageHistoryQuery, MessageSearchQuery,
+                MessageSearchResults, MessageWithContent, PaginatedMessages,
+            },
         },
         permissions::{extractors::RequirePermissions, with_permission},
         sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
@@ -22,15 +28,23 @@ use crate::{
 // Message Handlers
 // =====================================================
 
-/// Get conversation history (all messages with content in active branch)
+/// Get one paginated (keyset) page of the active branch's messages with content.
+///
+/// Cursor is a message_id on the active branch. No cursor → newest page (tail);
+/// `before` → older page; `after` → newer page; `around` → a centered window.
+/// See [`MessageHistoryQuery`]. Full-history load (for AI context) lives in the
+/// repository's untouched `get_conversation_history`.
 #[debug_handler]
 pub async fn get_conversation_history(
     auth: RequirePermissions<(MessagesRead,)>,
-
     Path(conversation_id): Path<Uuid>,
-) -> ApiResult<Json<Vec<MessageWithContent>>> {
+    Query(query): Query<MessageHistoryQuery>,
+) -> ApiResult<Json<PaginatedMessages>> {
     // Verify conversation exists and user owns it
-    let conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
+    let conversation = Repos
+        .chat
+        .core
+        .get_conversation(conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -39,19 +53,99 @@ pub async fn get_conversation_history(
         .active_branch_id
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
-    // Get conversation history
-    let history = Repos.chat.core.get_conversation_history( branch_id).await?;
+    // Resolve the window mode (400 if >1 cursor) + clamp the page size.
+    let mode = query.mode()?;
+    let limit = query.clamped_limit();
 
-    Ok((StatusCode::OK, Json(history)))
+    // A supplied cursor id that isn't in the active branch → 404.
+    let page = Repos
+        .chat
+        .core
+        .get_message_window(branch_id, mode, limit)
+        .await?
+        .ok_or_else(|| AppError::not_found("Message"))?;
+
+    Ok((StatusCode::OK, Json(page)))
 }
 
 pub fn get_conversation_history_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MessagesRead,)>(op)
         .id("Message.getHistory")
         .tag("Chat")
-        .summary("Get conversation history")
-        .description("Get all messages with content for the active branch of a conversation")
-        .response::<200, Json<Vec<MessageWithContent>>>()
+        .summary("Get conversation history (paginated)")
+        .description(
+            "Get one page of messages with content for the active branch. Keyset pagination: \
+             pass `before=<message_id>` for older messages, `after=<message_id>` for newer, or \
+             `around=<message_id>` for a window centered on a message. No cursor returns the \
+             newest page. `limit` defaults to 30 (max 100). At most one of before/after/around \
+             may be set.",
+        )
+        .response::<200, Json<PaginatedMessages>>()
+        .response_with::<400, (), _>(|res| {
+            res.description("More than one of before/after/around set")
+        })
+        .response_with::<404, (), _>(|res| {
+            res.description("Conversation or cursor message not found")
+        })
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Search messages WITHIN one conversation's active branch (server-side, so a
+/// match in an unloaded/paginated-out message is still found). Paginated.
+#[debug_handler]
+pub async fn search_conversation_messages(
+    auth: RequirePermissions<(MessagesRead,)>,
+    Path(conversation_id): Path<Uuid>,
+    Query(query): Query<MessageSearchQuery>,
+) -> ApiResult<Json<MessageSearchResults>> {
+    let conversation = Repos
+        .chat
+        .core
+        .get_conversation(conversation_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Conversation"))?;
+
+    let page = query.clamped_page();
+    let per_page = query.clamped_per_page();
+
+    // Blank query → empty result without a DB scan.
+    let Some(term) = query.trimmed_term() else {
+        return Ok((
+            StatusCode::OK,
+            Json(MessageSearchResults {
+                matches: Vec::new(),
+                total: 0,
+                page,
+                per_page,
+            }),
+        ));
+    };
+
+    let branch_id = conversation
+        .active_branch_id
+        .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
+
+    let results = Repos
+        .chat
+        .core
+        .search_messages_in_conversation(branch_id, term, page, per_page)
+        .await?;
+
+    Ok((StatusCode::OK, Json(results)))
+}
+
+pub fn search_conversation_messages_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MessagesRead,)>(op)
+        .id("Message.searchInConversation")
+        .tag("Chat")
+        .summary("Search messages within a conversation")
+        .description(
+            "Case-insensitive substring search over the text of the conversation's active-branch \
+             messages, paginated. Returns matches with a snippet + a stable 1-based global \
+             `ordinal` and the full `total`, so a find UI can display results and jump \
+             (via `around=`) to a message that lazy-load has not yet loaded.",
+        )
+        .response::<200, Json<MessageSearchResults>>()
         .response_with::<404, (), _>(|res| res.description("Conversation not found"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }

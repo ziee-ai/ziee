@@ -12,6 +12,10 @@ pub use conversation::{
     ConversationListResponse, ConversationResponse, CreateConversationRequest,
     UpdateConversationRequest,
 };
-pub use message::{EditMessageRequest, EditMessageResponse, MessageWithContent};
+pub use message::{
+    EditMessageRequest, EditMessageResponse, MessageHistoryQuery, MessageSearchMatch,
+    MessageSearchQuery, MessageSearchResults, MessageWindowMode, MessageWithContent,
+    PaginatedMessages, build_snippet,
+};
 pub use providers::{GetUserProvidersResponse, ProviderWithModels};
 pub use streaming::{ChatStreamChunk, ContentBlockDelta, StreamError, Usage};

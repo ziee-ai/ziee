@@ -17,7 +17,18 @@ import {
   computeChildAnchor,
   computeParentAnchor,
 } from '@/modules/chat/core/utils/branchAnchor.utils'
+import {
+  appendWindow,
+  firstMessageId,
+  lastMessageId,
+  mergeTailWindow,
+  prependWindow,
+  toOrderedMap,
+} from '@/modules/chat/core/stores/messageWindow'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
+
+/** Default page size for a message-history window (mirrors the backend default). */
+const MESSAGE_PAGE_SIZE = 30
 
 // ── Right panel types ──────────────────────────────────────────────────────
 
@@ -270,6 +281,11 @@ interface ChatStateSnapshot {
   streamingMessage: MessageWithContent | null
   tempUserMessageId: string | null
   isStreaming: boolean
+  // Preserve the lazy-load window boundaries so a cached conversation restores
+  // with correct pagination affordances (without these, a restored conversation
+  // couldn't scroll up to load older messages).
+  hasMoreBefore: boolean
+  hasMoreAfter: boolean
 }
 
 interface ChatState {
@@ -283,6 +299,19 @@ interface ChatState {
   sending: boolean
   isStreaming: boolean
   error: string | null
+
+  // ── Lazy-load window state ──────────────────────────────────────────────
+  // The `messages` Map holds a contiguous slice of the active branch path.
+  // These flags drive reverse-infinite-scroll (load older on scroll-up) and
+  // the after= direction (load newer after an around= jump).
+  /** Older messages exist before the oldest loaded one (show top spinner / paginate up). */
+  hasMoreBefore: boolean
+  /** Newer messages exist after the newest loaded one (only true after an around= jump). */
+  hasMoreAfter: boolean
+  /** An older-page fetch is in flight (guards the scroll trigger + shows the top spinner). */
+  loadingOlder: boolean
+  /** A newer-page fetch is in flight (re-entrancy guard for the bottom sentinel). */
+  loadingNewer: boolean
 
   // Streaming message assembly
   streamingMessage: MessageWithContent | null
@@ -362,7 +391,21 @@ interface ChatState {
     emitCreated?: boolean,
   ) => Promise<Conversation>
   loadConversation: (id: string) => Promise<void>
+  /** Full (re)load of the newest page (tail) — resets the window. Used on
+   *  initial open, branch switch, edit-cancel, and abort-reload. */
   loadMessages: (id: string) => Promise<void>
+  /** Prepend the next OLDER page (before=oldest-loaded). Guarded by hasMoreBefore. */
+  loadOlderMessages: () => Promise<void>
+  /** Append the next NEWER page (after=newest-loaded). Guarded by hasMoreAfter
+   *  (only relevant after an around= jump left us mid-conversation). */
+  loadNewerMessages: () => Promise<void>
+  /** Jump to a (possibly-unloaded) message: load a window CENTERED on it
+   *  (around=) and replace the window. Returns false if the id isn't on the
+   *  active branch. The caller scroll-centers + highlights it. */
+  jumpToMessage: (messageId: string) => Promise<boolean>
+  /** Merge the newest page into the window without discarding loaded older
+   *  pages (used after a streamed turn / cross-device change). */
+  reconcileTail: (conversationId: string) => Promise<void>
   sendMessage: () => Promise<void>
   applyStreamFrame: (conversationId: string, event: any) => Promise<void>
   updateConversation: (updates: { title?: string }) => Promise<void>
@@ -443,6 +486,10 @@ export const Chat = defineStore('Chat', {
     sending: false,
     isStreaming: false,
     error: null as string | null,
+    hasMoreBefore: false,
+    hasMoreAfter: false,
+    loadingOlder: false,
+    loadingNewer: false,
     streamingMessage: null as MessageWithContent | null,
     tempUserMessageId: null as string | null,
     streamingAbortController: null as AbortController | null,
@@ -480,6 +527,8 @@ export const Chat = defineStore('Chat', {
         streamingMessage: state.streamingMessage,
         tempUserMessageId: state.tempUserMessageId,
         isStreaming: state.isStreaming,
+        hasMoreBefore: state.hasMoreBefore,
+        hasMoreAfter: state.hasMoreAfter,
       }
       set(state => {
         const newCache = new Map(state.conversationStateCache)
@@ -507,6 +556,10 @@ export const Chat = defineStore('Chat', {
         streamingMessage: snapshot.streamingMessage,
         tempUserMessageId: snapshot.tempUserMessageId,
         isStreaming: snapshot.isStreaming,
+        hasMoreBefore: snapshot.hasMoreBefore ?? false,
+        hasMoreAfter: snapshot.hasMoreAfter ?? false,
+        loadingOlder: false,
+        loadingNewer: false,
       })
       console.log(
         `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
@@ -663,6 +716,10 @@ export const Chat = defineStore('Chat', {
           streamingAbortController: null,
           streamingMessageId: null,
           messages: new Map(),
+          hasMoreBefore: false,
+          hasMoreAfter: false,
+          loadingOlder: false,
+          loadingNewer: false,
         })
       }
 
@@ -752,9 +809,17 @@ export const Chat = defineStore('Chat', {
     loadMessages: async (id: string) => {
       set({ loading: true, error: null })
       try {
-        const messagesArray = await ApiClient.Message.getHistory({ id })
+        // Newest page (tail): no cursor. Resets the window.
+        const page = await ApiClient.Message.getHistory({
+          id,
+          limit: MESSAGE_PAGE_SIZE,
+        })
         set({
-          messages: new Map(messagesArray.map(msg => [msg.id, msg])),
+          messages: toOrderedMap(page.messages),
+          hasMoreBefore: page.has_more_before,
+          hasMoreAfter: page.has_more_after,
+          loadingOlder: false,
+          loadingNewer: false,
           loading: false,
         })
       } catch (error: any) {
@@ -762,6 +827,153 @@ export const Chat = defineStore('Chat', {
           error: error.message || 'Failed to load messages',
           loading: false,
         })
+      }
+    },
+
+    loadOlderMessages: async () => {
+      const state = get()
+      const conversationId = state.conversation?.id
+      // Guard: nothing older, already fetching, mid-stream (the live buffer is
+      // authoritative), or empty window.
+      if (
+        !conversationId ||
+        !state.hasMoreBefore ||
+        state.loadingOlder ||
+        state.isStreaming
+      ) {
+        return
+      }
+      const oldestId = firstMessageId(state.messages)
+      if (!oldestId) return
+
+      set({ loadingOlder: true })
+      try {
+        const page = await ApiClient.Message.getHistory({
+          id: conversationId,
+          before: oldestId,
+          limit: MESSAGE_PAGE_SIZE,
+        })
+        // Drop the result if the user switched conversations mid-fetch.
+        if (get().conversation?.id !== conversationId) return
+        set(s => ({
+          messages: prependWindow(s.messages, page.messages),
+          hasMoreBefore: page.has_more_before,
+          loadingOlder: false,
+        }))
+        await get().computeForkPoints()
+      } catch (error: any) {
+        if (get().conversation?.id === conversationId) {
+          set({
+            error: error.message || 'Failed to load older messages',
+            loadingOlder: false,
+          })
+        }
+      }
+    },
+
+    loadNewerMessages: async () => {
+      const state = get()
+      const conversationId = state.conversation?.id
+      // Re-entrancy guard (`loadingNewer`) mirrors `loadingOlder`: the bottom
+      // sentinel can fire repeatedly, so drop overlapping same-cursor fetches.
+      if (
+        !conversationId ||
+        !state.hasMoreAfter ||
+        state.isStreaming ||
+        state.loadingNewer
+      ) {
+        return
+      }
+      const newestId = lastMessageId(state.messages)
+      if (!newestId) return
+
+      set({ loadingNewer: true })
+      try {
+        const page = await ApiClient.Message.getHistory({
+          id: conversationId,
+          after: newestId,
+          limit: MESSAGE_PAGE_SIZE,
+        })
+        if (get().conversation?.id !== conversationId) return
+        set(s => ({
+          messages: appendWindow(s.messages, page.messages),
+          hasMoreAfter: page.has_more_after,
+          loadingNewer: false,
+        }))
+        await get().computeForkPoints()
+      } catch (error: any) {
+        if (get().conversation?.id === conversationId) {
+          set({
+            error: error.message || 'Failed to load newer messages',
+            loadingNewer: false,
+          })
+        }
+      }
+    },
+
+    jumpToMessage: async (messageId: string): Promise<boolean> => {
+      const conversationId = get().conversation?.id
+      if (!conversationId) return false
+
+      // Already loaded → no fetch needed; caller scrolls to it.
+      if (get().messages.has(messageId)) return true
+
+      try {
+        const page = await ApiClient.Message.getHistory({
+          id: conversationId,
+          around: messageId,
+          limit: MESSAGE_PAGE_SIZE,
+        })
+        if (get().conversation?.id !== conversationId) return false
+        // Replace the window with the centered window.
+        set({
+          messages: toOrderedMap(page.messages),
+          hasMoreBefore: page.has_more_before,
+          hasMoreAfter: page.has_more_after,
+          loadingOlder: false,
+          loadingNewer: false,
+        })
+        await get().computeForkPoints()
+        return get().messages.has(messageId)
+      } catch (error: any) {
+        if (get().conversation?.id === conversationId) {
+          set({ error: error.message || 'Failed to jump to message' })
+        }
+        return false
+      }
+    },
+
+    reconcileTail: async (conversationId: string) => {
+      try {
+        const page = await ApiClient.Message.getHistory({
+          id: conversationId,
+          limit: MESSAGE_PAGE_SIZE,
+        })
+        // Only apply to the still-open conversation.
+        if (get().conversation?.id !== conversationId) return
+        if (get().hasMoreAfter) {
+          // The window is anchored MID-conversation (e.g. after an around=
+          // jump), so the loaded slice does NOT abut the real tail — a merge
+          // would splice the tail on after a gap. Snap to the tail instead.
+          set({
+            messages: toOrderedMap(page.messages),
+            hasMoreBefore: page.has_more_before,
+            hasMoreAfter: page.has_more_after,
+            loadingOlder: false,
+            loadingNewer: false,
+          })
+        } else {
+          // Window already includes the tail: merge so loaded older pages stay
+          // and the new turn appends at the bottom.
+          set(s => ({
+            messages: mergeTailWindow(s.messages, page.messages),
+            hasMoreAfter: false,
+          }))
+        }
+      } catch (error: any) {
+        if (get().conversation?.id === conversationId) {
+          set({ error: error.message || 'Failed to refresh messages' })
+        }
       }
     },
 
@@ -958,6 +1170,10 @@ export const Chat = defineStore('Chat', {
     },
 
     cancelEdit: async () => {
+      // Capture the edited message id BEFORE clearing so we can restore its
+      // neighborhood (not just the tail) when it was scrolled up mid-history.
+      const editedId = get().editingMessage?.id
+
       // Clear text input first
       ;(get() as any).TextStore?.clearText()
 
@@ -968,9 +1184,16 @@ export const Chat = defineStore('Chat', {
         pendingBranchForkLevel: null,
       })
 
-      // Reload messages to restore what was trimmed by startEditMessage
+      // Restore what was trimmed by startEditMessage. If the edited message sat
+      // in the middle of a long (lazy-loaded) history, restore the window
+      // CENTERED on it (around=) rather than snapping to the tail; fall back to
+      // the tail if it can't be located on the active branch.
       const conversationId = get().conversation?.id
-      if (conversationId) {
+      if (!conversationId) return
+      if (editedId) {
+        const ok = await get().jumpToMessage(editedId)
+        if (!ok) await get().loadMessages(conversationId)
+      } else {
         await get().loadMessages(conversationId)
       }
     },
@@ -1118,9 +1341,10 @@ export const Chat = defineStore('Chat', {
           !get().messages.has(event.user_message_id)
         ) {
           // Receiving device (never had a temp): another device sent this
-          // message. Fetch it so the user bubble renders before the assistant
-          // tokens fill in. Covers a catch-up replay too.
-          await get().loadMessages(conversationId)
+          // message. Merge the tail so the user bubble renders before the
+          // assistant tokens fill in, without discarding loaded older pages.
+          // Covers a catch-up replay too.
+          await get().reconcileTail(conversationId)
         }
         return
       }
@@ -1296,18 +1520,25 @@ export const Chat = defineStore('Chat', {
           if (streamingMessage) {
             await chatExtensionRegistry.afterStreamComplete(streamingMessage)
           }
+          // Capture BEFORE clearing: an edit/regenerate created a NEW branch
+          // during this stream, so the loaded window still holds the old
+          // branch's prefix — cursors/merge would be inconsistent. Reset to the
+          // new branch's tail instead of merging.
+          const branchChanged = get().branchChangedDuringStream
           set({ branchChangedDuringStream: false })
           const conversation = get().conversation
           if (conversation) {
-            await get().loadMessages(conversation.id)
-            const { Stores } = await import('@/core/stores')
-            await Stores.EventBus.emit({
-              type: 'conversation.messageCountChanged',
-              data: {
-                conversationId: conversation.id,
-                messageCount: get().messages.size,
-              },
-            })
+            if (branchChanged) {
+              await get().loadMessages(conversation.id)
+            } else {
+              // Merge the finalized tail into the window WITHOUT discarding any
+              // older pages the user scrolled up to load (DEC-6). The sidebar
+              // message_count self-heals via the `Conversation` sync the backend
+              // emits on turn completion (streaming.rs), so we no longer emit an
+              // optimistic `messageCountChanged` here — under lazy-load
+              // `messages.size` is only the loaded window, not the true total.
+              await get().reconcileTail(conversation.id)
+            }
           }
           await get().computeForkPoints()
         } else {
@@ -1422,6 +1653,16 @@ export const Chat = defineStore('Chat', {
       }
 
       set({ sending: true, isStreaming: true, error: null })
+
+      // If the window is anchored MID-conversation (after an around=/find/
+      // deep-link jump, so `hasMoreAfter` is true), the loaded slice does not
+      // abut the real tail. Snap to the tail first so the new turn's optimistic
+      // bubble appends at the actual end instead of after a gap of unloaded
+      // messages (reconciled again on `complete`, but this fixes the optimistic
+      // render order too).
+      if (get().hasMoreAfter) {
+        await get().loadMessages(conversation.id)
+      }
 
       const userContents = await chatExtensionRegistry.provideUserContent(
         (allRequestFields.content as string) || '',
@@ -1720,6 +1961,10 @@ export const Chat = defineStore('Chat', {
         sending: false,
         isStreaming: false,
         error: null,
+        hasMoreBefore: false,
+        hasMoreAfter: false,
+        loadingOlder: false,
+        loadingNewer: false,
         streamingMessage: null,
         tempUserMessageId: null,
         streamingMessageId: null,
@@ -1757,6 +2002,11 @@ export const Chat = defineStore('Chat', {
         const reloadOpen = async (id: string) => {
           const state = get()
           if (state.conversation?.id !== id || state.isStreaming) return
+          // Capture the active branch BEFORE refreshing metadata so we can tell
+          // whether a remote change switched branches (→ reset the window) vs a
+          // same-branch change like a new turn / rename (→ merge the tail and
+          // preserve the user's scrolled-up older pages).
+          const prevBranchId = state.conversation?.active_branch_id
           // Refresh conversation METADATA too (title/model/branch) — a remote
           // rename or auto-title only reaches the open view this way (the live
           // token stream no longer carries titleUpdated to non-senders).
@@ -1767,7 +2017,14 @@ export const Chat = defineStore('Chat', {
             // fall through to message/branch reload
           }
           if (get().conversation?.id !== id || get().isStreaming) return
-          await get().loadMessages(id)
+          const branchChanged =
+            get().conversation?.active_branch_id !== prevBranchId
+          if (branchChanged) {
+            // Different branch path → cursors are invalid; reset to its tail.
+            await get().loadMessages(id)
+          } else {
+            await get().reconcileTail(id)
+          }
           await get().loadBranches(id)
           await get().computeForkPoints()
         }

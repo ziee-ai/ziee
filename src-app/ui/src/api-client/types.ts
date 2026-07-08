@@ -3333,8 +3333,54 @@ export interface MessageContentDataElicitationRequest {
  */
 export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
+/**
+ * Query params for `GET /conversations/{id}/messages`.
+ *
+ *  The cursor is a **message_id** (resolved server-side to its
+ *  `branch_messages.created_at` on the conversation's ACTIVE branch). At most
+ *  ONE of `before` / `after` / `around` may be set:
+ *  - none    → the newest `limit` messages (tail),
+ *  - `before`→ the `limit` messages immediately OLDER than the cursor,
+ *  - `after` → the `limit` messages immediately NEWER than the cursor,
+ *  - `around`→ a window CENTERED on the cursor (≈limit/2 older + it + ≈limit/2 newer).
+ */
+export interface MessageHistoryQuery {
+  after?: string
+  around?: string
+  before?: string
+  limit?: number
+}
+
 export interface MessageMcpServersResponse {
   server_ids: string[]
+}
+
+/** A single in-conversation search hit. */
+export interface MessageSearchMatch {
+  created_at: string
+  message_id: string
+  /** 1-based GLOBAL position within the full match set (stable across pages). */
+  ordinal: number
+  role: string
+  /** A bounded, ellipsized excerpt of the matching text around the hit. */
+  snippet: string
+}
+
+/** Query params for `GET /conversations/{id}/messages/search`. */
+export interface MessageSearchQuery {
+  page?: number
+  per_page?: number
+  /** Case-insensitive substring term. Blank/whitespace → empty result. */
+  q?: string
+}
+
+/** A page of in-conversation search results. */
+export interface MessageSearchResults {
+  matches: MessageSearchMatch[]
+  page: number
+  per_page: number
+  /** Full match count across all pages (drives the "X of Y" readout). */
+  total: number
 }
 
 /** Message with its content blocks */
@@ -3588,6 +3634,19 @@ export interface OperatingSystemInfo {
   kernel_version?: string
   name: string
   version: string
+}
+
+/**
+ * A page of messages from the active branch, chronological ascending. Cursors
+ *  are the window endpoints — the client sends `messages[0].id` as the next
+ *  `before` (scroll-up) and `messages[last].id` as the next `after` (scroll-down).
+ */
+export interface PaginatedMessages {
+  /** Newer messages exist beyond `messages[last]`. */
+  has_more_after: boolean
+  /** Older messages exist beyond `messages[0]`. */
+  has_more_before: boolean
+  messages: MessageWithContent[]
 }
 
 /**
@@ -6633,6 +6692,7 @@ export const ApiEndpoints = {
   'Message.getAssistant': 'GET /api/messages/{id}/assistant',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
+  'Message.searchInConversation': 'GET /api/conversations/{id}/messages/search',
   'Message.send': 'POST /api/conversations/{id}/messages',
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
@@ -6983,8 +7043,9 @@ export type ApiEndpointParameters = {
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
   'Message.getAssistant': { id: string }
-  'Message.getHistory': { id: string }
+  'Message.getHistory': { id: string; after?: string; around?: string; before?: string; limit?: number }
   'Message.getMcpServers': { id: string }
+  'Message.searchInConversation': { id: string; page?: number; per_page?: number; q?: string }
   'Message.send': { id: string } & SendMessageRequest
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'Onboarding.complete': { guide_id: string }
@@ -7335,8 +7396,9 @@ export type ApiEndpointResponses = {
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent
   'Message.getAssistant': MessageAssistantResponse
-  'Message.getHistory': MessageWithContent[]
+  'Message.getHistory': PaginatedMessages
   'Message.getMcpServers': MessageMcpServersResponse
+  'Message.searchInConversation': MessageSearchResults
   'Message.send': SendMessageResponse
   'Message.stopGeneration': void
   'Onboarding.complete': OnboardingProgress

@@ -37,6 +37,13 @@ pub fn chat_router() -> ApiRouter {
             get_with(get_conversation_history, get_conversation_history_docs),
         )
         .api_route(
+            "/conversations/{id}/messages/search",
+            get_with(
+                search_conversation_messages,
+                search_conversation_messages_docs,
+            ),
+        )
+        .api_route(
             "/conversations/{id}/messages",
             post_with(send_message, send_message_docs),
         )
