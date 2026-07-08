@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@/components/ui'
-import { Copy, Folder, Pencil, Trash2 } from 'lucide-react'
+import { Copy, Pencil, Trash2 } from 'lucide-react'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'
 import { cn } from '@/lib/utils'
@@ -74,7 +74,6 @@ export function ProjectCard({
       data-test-project-name={project.name}
       title={
         <div className="flex items-start gap-2 min-w-0">
-          <Folder aria-hidden="true" className="shrink-0 mt-0.5" />
           {/* Wrap to two lines before ellipsizing — a single-line truncate
               ("UI Sh…") wasted the card width on tablet/mobile. */}
           <Title level={5} className="!m-0 !font-normal !text-sm line-clamp-2 [overflow-wrap:anywhere]">

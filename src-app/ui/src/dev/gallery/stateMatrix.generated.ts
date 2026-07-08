@@ -3083,10 +3083,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/projects/components/ProjectCard",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "canEdit", line: 98 },
-      { kind: "branch", condition: "canDuplicate", line: 113 },
-      { kind: "branch", condition: "canDelete", line: 129 },
-      { kind: "overlay", condition: "<Confirm open>", line: 145 },
+      { kind: "branch", condition: "canEdit", line: 97 },
+      { kind: "branch", condition: "canDuplicate", line: 112 },
+      { kind: "branch", condition: "canDelete", line: 128 },
+      { kind: "overlay", condition: "<Confirm open>", line: 144 },
     ],
   },
   "modules/projects/components/ProjectDefaultsForm": {

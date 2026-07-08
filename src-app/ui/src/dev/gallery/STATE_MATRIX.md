@@ -3377,10 +3377,10 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canEdit` | 98 |
-| branch | `canDuplicate` | 113 |
-| branch | `canDelete` | 129 |
-| overlay | `<Confirm open>` | 145 |
+| branch | `canEdit` | 97 |
+| branch | `canDuplicate` | 112 |
+| branch | `canDelete` | 128 |
+| overlay | `<Confirm open>` | 144 |
 
 ### `modules/projects/components/ProjectDefaultsForm`
 
