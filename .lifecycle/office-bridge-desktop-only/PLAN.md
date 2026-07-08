@@ -18,11 +18,12 @@ build.rs loop), so office_bridge's schema rides that with no new migration infra
 - **ITEM-1**: Relocate the module tree `src-app/server/src/modules/office_bridge/` →
   `src-app/desktop/tauri/src/modules/office_bridge/` (mod, routes, handlers, models, tools,
   repository, permissions, watcher, bridge/*, platform/*, chat_extension/*) and declare it in
-  `desktop/tauri/src/modules/mod.rs`. The module's REST/MCP-server + settings surface is registered
-  the way the `host_mount` desktop module does (a `DesktopModule` hand-registered in
-  `create_desktop_modules`, `desktop/tauri/src/core/module_builder.rs`) — this DROPS the
-  `AppModule`/`ModuleContext`/`MODULE_ENTRIES` dependency entirely (per DEC-1). Only its
-  *definition site* moves; the COM/platform/bridge logic is unchanged.
+  `desktop/tauri/src/modules/mod.rs`. Registration mechanism is resolved in **DEC-1**: keep it an
+  `AppModule` registered via `#[distributed_slice(ziee::…MODULE_ENTRIES)]` from the desktop crate —
+  preserving the tested `init(&ModuleContext)` lifecycle that upserts the MCP row + spawns the
+  bridge/watcher (minimal change) — CONTINGENT on the ITEM-14 linkme cross-crate validation;
+  fallback = reshape to a `host_mount`-style `DesktopModule` + a manual MCP/chat-ext seam in `ziee`.
+  Only its *definition site* moves; the COM/platform/bridge logic is unchanged.
 - **ITEM-14**: Cross-crate `CHAT_EXTENSIONS` registration (the one unproven pattern — no downstream
   crate registers a chat extension today). Validate FIRST via a tiny smoke test that a
   `#[distributed_slice(ziee::chat_extension::CHAT_EXTENSIONS)]` entry defined in the desktop crate
