@@ -17,7 +17,7 @@ import {
   rowsToDelimited,
   viewToXlsxBlob,
 } from './tableView'
-import { XLSX_MAX_ROWS } from './parse'
+import { XLSX_MAX_ROWS, capRows } from './parse'
 
 /** Above this row count a sheet switches to row virtualization (needs a definite
  *  scroll height); at/below it renders a plain table that hugs its content, so a
@@ -245,8 +245,9 @@ export function XlsxBody(props: FileViewerSlotProps) {
             const data = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' })
             const headers = (data[0] as string[]) ?? []
             const dataRows = (data.slice(1) as string[][])
-            const truncated = dataRows.length > XLSX_MAX_ROWS
-            const rows = dataRows.slice(0, XLSX_MAX_ROWS)
+            // Shared truncation predicate (also used by parseDelimitedText) so
+            // the lifted per-sheet cap is exercised by production code in tests.
+            const { rows, truncated } = capRows(dataRows, XLSX_MAX_ROWS)
             return { name, headers, rows, truncated }
           })
           if (!cancelled) {

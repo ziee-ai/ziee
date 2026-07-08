@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert } from '@/components/ui'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
@@ -78,6 +78,13 @@ function inferLang(filename?: string): string | null {
 function makeLineNumberTransformer(startLine: number): ShikiTransformer {
   return {
     name: 'raw-code-view:line-numbers',
+    // Strip the `tabindex="0"` shiki stamps on its <pre>: with one <pre> per
+    // chunk it would add a keyboard tab-stop PER chunk. The single
+    // OverlayScrollbars viewport is the scroll region (the plain-chunk builder
+    // omits tabindex too — chunking.ts::buildPlainChunkHtml).
+    pre(node) {
+      if (node.properties) delete node.properties.tabindex
+    },
     line(node, line) {
       const codeWrap = {
         type: 'element' as const,
@@ -99,6 +106,33 @@ function makeLineNumberTransformer(startLine: number): ShikiTransformer {
     },
   }
 }
+
+/** One chunk slot. Memoized on its PRIMITIVE props (html string + reserved px)
+ *  so a single chunk highlighting (which replaces the parent's `highlighted`
+ *  Map) does NOT re-render the other N-1 chunks' subtrees — only the chunk whose
+ *  `html` actually changed re-renders. Offscreen chunks skip layout/paint via
+ *  `content-visibility:auto`; their reserved height keeps the scrollbar accurate. */
+const CodeChunk = memo(function CodeChunk({
+  index,
+  html,
+  reservedPx,
+}: {
+  index: number
+  html: string
+  reservedPx: number
+}) {
+  return (
+    <div
+      data-chunk-index={index}
+      style={{
+        contentVisibility: 'auto',
+        containIntrinsicSize: `auto ${reservedPx}px`,
+      }}
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
+})
 
 export function RawCodeView({
   text,
@@ -155,9 +189,19 @@ export function RawCodeView({
   // a chunk (mirrors the PDF store's per-page dedupe).
   const requestedRef = useRef<Set<number>>(new Set())
   const osRef = useRef<OverlayScrollbarsComponentRef>(null)
+  // Monotonic generation, bumped on every (text/filename/theme) reset. Each
+  // highlight request captures the current gen; a resolution whose gen is stale
+  // (the file/theme changed while it was in-flight) is DISCARDED, so a previous
+  // file's or theme's HTML can never land in the new state (cancel guard).
+  const genRef = useRef(0)
+  // Bumped once shiki is resolved for the current gen, so the observer effect
+  // re-attaches after a reset (a theme flip clears highlights; re-observing makes
+  // the IO fire its initial callback for currently-visible chunks → they
+  // re-highlight without a scroll).
+  const [readyGen, setReadyGen] = useState(0)
 
   // Highlight a single chunk (idempotent). Safe to call before shiki is ready —
-  // it no-ops and the ready-effect re-drives the initially-visible chunks.
+  // it no-ops; the observer re-drives visible chunks once ready.
   const highlightChunk = useCallback(
     (index: number) => {
       const ready = readyRef.current
@@ -165,6 +209,7 @@ export function RawCodeView({
       if (index < 0 || index >= chunks.length) return
       if (requestedRef.current.has(index)) return
       requestedRef.current.add(index)
+      const gen = genRef.current
       const chunk: LineChunk = chunks[index]
       ready
         .codeToHtml(chunk.text, {
@@ -173,6 +218,8 @@ export function RawCodeView({
           transformers: [makeLineNumberTransformer(chunk.startLine)],
         })
         .then(html => {
+          // Stale resolution (file/theme changed while in-flight) → drop it.
+          if (genRef.current !== gen) return
           setHighlighted(prev => {
             const next = new Map(prev)
             next.set(index, html)
@@ -183,7 +230,7 @@ export function RawCodeView({
         .catch(err => {
           // Leave the chunk on its plain-text render (the user still sees the
           // code, just without colors) and allow a later retry.
-          requestedRef.current.delete(index)
+          if (genRef.current === gen) requestedRef.current.delete(index)
           // eslint-disable-next-line no-console
           console.warn('[RawCodeView] shiki highlight failed for chunk', index, err)
         })
@@ -192,10 +239,12 @@ export function RawCodeView({
   )
 
   // Resolve shiki + validate the language once per (text, filename, theme). On
-  // any change, reset the highlight caches so a theme flip / new file re-derives
-  // colors instead of showing the previous theme's spans.
+  // any change, bump the generation + reset the highlight caches so a theme flip
+  // / new file re-derives colors instead of showing the previous theme's spans
+  // (and any in-flight highlight from the old gen is discarded on resolve).
   useEffect(() => {
     let cancelled = false
+    genRef.current += 1
     readyRef.current = null
     requestedRef.current = new Set()
     setHighlighted(new Map())
@@ -215,11 +264,10 @@ export function RawCodeView({
             ? 'github-dark-high-contrast'
             : 'github-light-high-contrast',
         }
-        // Eager-highlight the first chunks so a small file (the common case) and
-        // the initial viewport render highlighted immediately — mirrors the PDF
-        // body's eager first-page requests. The observer covers the rest.
-        highlightChunk(0)
-        highlightChunk(1)
+        // Signal the observer effect to (re)attach + highlight the visible chunks
+        // for this generation. Eager highlighting lives there so it fires after
+        // the OverlayScrollbars viewport exists (see below).
+        setReadyGen(g => g + 1)
       })
       .catch(err => {
         // Shiki import failed entirely — every chunk stays on its plain-text
@@ -230,30 +278,59 @@ export function RawCodeView({
     return () => {
       cancelled = true
     }
-  }, [lang, isDarkMode, highlightChunk])
+    // `text` (not just `lang`) is a dep: a same-language new file / new version
+    // must also reset the caches. highlightChunk is intentionally NOT a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, lang, isDarkMode])
 
-  // IntersectionObserver over the chunk slots — highlight a chunk (and the next
-  // one, as a small prefetch) as it scrolls into view (+ a 600px margin). The
-  // element that actually scrolls (and must be the observer root) is the
-  // OverlayScrollbars viewport, not the host. Mirrors pdf/body.tsx exactly.
+  // IntersectionObserver over the chunk slots — highlight a chunk (and the next,
+  // as a small prefetch) as it scrolls into view (+ a 600px margin). The element
+  // that actually scrolls (and must be the observer root) is the OverlayScrollbars
+  // viewport, not the host. Re-runs when the chunks change OR shiki becomes ready
+  // for a new generation (`readyGen`) so a theme flip re-highlights visible
+  // chunks. Same page-on-demand shape as pdf/body.tsx (rootMargin + eager-first
+  // differ). With OverlayScrollbars `defer`, the viewport may not exist on the
+  // first run — retry on the next frame until it does (else a large first file
+  // would only ever highlight the eager chunks).
   useEffect(() => {
-    const root = osRef.current?.osInstance()?.elements().viewport
-    if (!root || chunks.length === 0) return
-    const io = new IntersectionObserver(
-      entries => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue
-          const idx = Number((entry.target as HTMLElement).dataset.chunkIndex)
-          if (Number.isNaN(idx)) continue
-          highlightChunk(idx)
-          highlightChunk(idx + 1)
-        }
-      },
-      { root, rootMargin: '600px 0px' },
-    )
-    root.querySelectorAll('[data-chunk-index]').forEach(el => io.observe(el))
-    return () => io.disconnect()
-  }, [chunks, highlightChunk])
+    if (!readyRef.current || chunks.length === 0) return
+    let cancelled = false
+    let raf = 0
+    let io: IntersectionObserver | null = null
+    const attach = () => {
+      if (cancelled) return
+      const root = osRef.current?.osInstance()?.elements().viewport
+      if (!root) {
+        raf = requestAnimationFrame(attach)
+        return
+      }
+      // Eager-highlight the first chunks (small files + the initial viewport).
+      highlightChunk(0)
+      highlightChunk(1)
+      io = new IntersectionObserver(
+        entries => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue
+            const idx = Number((entry.target as HTMLElement).dataset.chunkIndex)
+            if (Number.isNaN(idx)) continue
+            highlightChunk(idx)
+            highlightChunk(idx + 1)
+          }
+        },
+        { root, rootMargin: '600px 0px' },
+      )
+      // observe() makes the IO fire an initial callback for already-intersecting
+      // chunks, so visible chunks highlight without a scroll — also the re-attach
+      // path that re-highlights the viewport after a theme reset.
+      root.querySelectorAll('[data-chunk-index]').forEach(el => io!.observe(el))
+    }
+    attach()
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+      io?.disconnect()
+    }
+  }, [chunks, readyGen, highlightChunk])
 
   return (
     <div
@@ -273,8 +350,8 @@ export function RawCodeView({
       {/* OverlayScrollbars for consistent themed scrollbar styling (matches the
           rest of the app via DivScrollY). Both axes enabled so long lines get a
           horizontal scrollbar anchored at the viewport edge. `defer` lets the
-          component init after layout settles, avoiding a flash during the initial
-          async highlight. */}
+          component init after layout settles; the observer effect's rAF retry
+          waits for the viewport this creates. */}
       <OverlayScrollbarsComponent
         ref={osRef}
         className="flex-1 min-h-0 w-full raw-code-view"
@@ -289,24 +366,19 @@ export function RawCodeView({
             it grows to the widest chunk (min 100% of the viewport). py-2 restores
             the top/bottom breathing room the per-chunk `<pre>` no longer carries
             (pre padding is 0 so chunks butt together with no inter-chunk gaps). */}
+        {/* Each chunk is a memoized slot: offscreen chunks skip layout/paint
+            (content-visibility) while their reserved height keeps the scrollbar
+            accurate. The heavy Shiki highlight is deferred by the observer above;
+            the DOM text (plain OR highlighted) is ALWAYS present so
+            find-in-document spans the whole file. The memo ensures one chunk
+            highlighting doesn't re-render the others. */}
         <div className="raw-code-chunks">
           {chunks.map((chunk, i) => (
-            <div
+            <CodeChunk
               key={i}
-              data-chunk-index={i}
-              // Browser-native virtualization: offscreen chunks skip layout/paint
-              // while their reserved height keeps the scrollbar accurate. The
-              // heavy Shiki highlight is deferred by the observer above; the DOM
-              // text (plain or highlighted) is ALWAYS present for find-in-document.
-              style={{
-                contentVisibility: 'auto',
-                containIntrinsicSize: `auto ${chunkReservedHeight(
-                  chunk.lines.length,
-                  wordWrap,
-                )}px`,
-              }}
-              // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: highlighted.get(i) ?? plainHtml[i] }}
+              index={i}
+              html={highlighted.get(i) ?? plainHtml[i]}
+              reservedPx={chunkReservedHeight(chunk.lines.length, wordWrap)}
             />
           ))}
         </div>

@@ -124,5 +124,10 @@ export function buildPlainChunkHtml(chunk: LineChunk): string {
         }</span><span class="line-code">${plainLineCodeInner(line)}</span></span>`,
     )
     .join('\n')
-  return `<pre class="shiki" tabindex="0"><code>${rows}</code></pre>`
+  // NO `tabindex` on the per-chunk <pre>: there are many chunks, so a focusable
+  // pre each would add one keyboard tab-stop PER chunk (a WCAG anti-pattern). The
+  // single OverlayScrollbars viewport is the scroll region. The Shiki-highlighted
+  // chunks strip their auto-added tabindex the same way (see the transformer's
+  // `pre` hook in RawCodeView).
+  return `<pre class="shiki"><code>${rows}</code></pre>`
 }

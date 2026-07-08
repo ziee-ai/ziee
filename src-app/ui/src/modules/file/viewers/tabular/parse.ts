@@ -20,6 +20,18 @@ export const DELIMITED_MAX_ROWS = 300_000
  *  the `XLSX.read({ sheetRows })` parse limit and the post-parse slice. */
 export const XLSX_MAX_ROWS = 200_000
 
+/**
+ * Apply a row OOM-backstop cap. Below the cap the rows pass through
+ * (`truncated:false`); above it they are sliced to exactly `cap`
+ * (`truncated:true`). Single source of the truncation predicate for BOTH the
+ * CSV/TSV (`parseDelimitedText`) and the XLSX (`XlsxBody`) viewers, so the
+ * lifted-cap behaviour is exercised by real production code in the unit tests.
+ */
+export function capRows<T>(rows: T[], cap: number): { rows: T[]; truncated: boolean } {
+  if (rows.length > cap) return { rows: rows.slice(0, cap), truncated: true }
+  return { rows, truncated: false }
+}
+
 /** Split one delimited line into fields, honouring RFC-4180 double-quoting
  *  (quoted fields may contain the delimiter; `""` is an escaped quote). */
 export function parseDelimitedLine(line: string, delimiter: string): string[] {
@@ -54,14 +66,16 @@ export function parseDelimitedLine(line: string, delimiter: string): string[] {
 export function parseDelimitedText(
   text: string,
   delimiter: string,
+  cap: number = DELIMITED_MAX_ROWS,
 ): { headers: string[]; rows: string[][]; truncated: boolean } {
   const lines = text.split('\n').filter(l => l.trim() !== '')
   if (lines.length === 0) return { headers: [], rows: [], truncated: false }
   const headers = parseDelimitedLine(lines[0], delimiter)
-  const dataLines = lines.slice(1)
-  const truncated = dataLines.length > DELIMITED_MAX_ROWS
-  const rows = dataLines
-    .slice(0, DELIMITED_MAX_ROWS)
-    .map(l => parseDelimitedLine(l, delimiter))
+  // Cap the data lines FIRST (via the shared predicate), then parse only the
+  // kept lines — so a huge file never materializes fields past the cap. `cap` is
+  // injectable purely so the unit tests can exercise the real truncated:true
+  // branch without building 300k rows (production callers use the default).
+  const { rows: keptLines, truncated } = capRows(lines.slice(1), cap)
+  const rows = keptLines.map(l => parseDelimitedLine(l, delimiter))
   return { headers, rows, truncated }
 }
