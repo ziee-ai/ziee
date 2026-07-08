@@ -15,6 +15,7 @@ import {
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
+import { reconcileInitialTask } from './installTaskReconcile'
 
 /** Per-(version, arch, flavor, package) action state — drives the install /
  *  set-pin / delete buttons' loading flags. */
@@ -281,7 +282,11 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
             package: pkg,
           })
           set(s => {
-            s.installTasks[key] = initial
+            // Race guard: the SSE `taskStarted`/`progress` events (same task_id)
+            // may already have created + advanced this task while this POST was
+            // in flight. Keep the SSE-tracked task if present so a late reply
+            // (phase: null) can't clobber an in-flight download back to "queued".
+            s.installTasks[key] = reconcileInitialTask(s.installTasks[key], initial)
           })
         } catch (e: any) {
           set(s => {
