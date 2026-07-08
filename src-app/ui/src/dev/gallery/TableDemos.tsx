@@ -1,9 +1,9 @@
 /**
  * Standalone kit-Table + tabular-viewer demos, shared by the browse-view story
  * cases (data.story.tsx) AND the isolated `?surface=` seeded entries the
- * interactive e2e drives (the browse canvas carries open-overlay backdrops that
- * intercept clicks, so click-based specs run against these single-surface
- * renders instead). Store-free — safe to render standalone.
+ * interactive e2e drives (the browse canvas mounts every story at once, so
+ * click-based specs run against these focused single-surface renders instead).
+ * Store-free — safe to render standalone.
  */
 import { useState } from 'react'
 import { Button, Table } from '@/components/ui'
@@ -66,16 +66,19 @@ export function TableScrollDemo() {
       <Button data-testid="g-table-scroll-btn" onClick={() => setScrollTo(400)}>
         Scroll to row 400
       </Button>
-      <div className="h-64">
-        <Table
-          data-testid="g-table-scroll"
-          columns={cols}
-          dataSource={rows}
-          rowKey="id"
-          virtualized
-          scrollToIndex={scrollTo}
-        />
-      </div>
+      {/* Drive the scroll-box height via the Table's own `maxHeight` prop (a
+          single source of truth) — an external fixed-height wrapper doesn't
+          constrain the inner OverlayScrollbars viewport, so the table would
+          overflow it. */}
+      <Table
+        data-testid="g-table-scroll"
+        columns={cols}
+        dataSource={rows}
+        rowKey="id"
+        virtualized
+        maxHeight="16rem"
+        scrollToIndex={scrollTo}
+      />
     </div>
   )
 }

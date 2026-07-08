@@ -59,6 +59,12 @@ export const LAYOUT_BASELINE: LayoutBaselineEntry[] = [
     testid: 'segmented-list',
     note: "Segmented composes the same shadcn TabsList `p-[3px]` inset — same intentional upstream 3px padding as gallery-section-tabs.",
   },
+  {
+    section: 'gallery-section-mermaid-block',
+    check: 'spacingScale',
+    testid: 'mermaid-source-toggle',
+    note: "MermaidBlock's source/render Segmented composes the same shadcn TabsList `p-[3px]` inset — same intentional upstream 3px padding as gallery-section-tabs / gallery-section-segmented. Drop this entry together with those two if the kit ever snaps `p-[3px]`→`p-1`.",
+  },
   // The Tag stress story deliberately renders a lone tag whose content is wider
   // than its 224px flex-wrap row. Tag is `whitespace-nowrap` by design (the whole
   // tag wraps to the next line via the parent's flex-wrap rather than breaking

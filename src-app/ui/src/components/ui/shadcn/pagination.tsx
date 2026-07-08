@@ -23,7 +23,12 @@ function PaginationContent({
   return (
     <ul
       data-slot="pagination-content"
-      className={cn("flex items-center gap-0.5", className)}
+      className={cn(
+        // max-w-full + overflow-x-auto: at ≤480px the WCAG min-w-11 (44px) page
+        // links can exceed a narrow container; scroll the row instead of spilling.
+        "flex items-center gap-0.5 max-w-full overflow-x-auto",
+        className,
+      )}
       {...props}
     />
   )

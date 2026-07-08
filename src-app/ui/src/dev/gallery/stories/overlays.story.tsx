@@ -3,7 +3,6 @@
  * (Playwright opens them and snapshots the open state); where an inline open
  * variant is cheap, it's shown too.
  */
-import { useState } from 'react'
 import {
   Button,
   Confirm,
@@ -18,22 +17,28 @@ import type { GalleryStory } from '../story'
 const noop = () => undefined
 
 /**
- * Inline OPEN + loading Sheet: open on mount so the coverage/visual pass captures
- * the loading arm (`loading ? <Spinner> : children`), but with `onOpenChange` wired
- * so the built-in close button / Escape / backdrop actually dismiss it — otherwise
- * a hardcoded `open` with no handler pins a modal over the whole gallery canvas and
- * blocks manual browsing.
+ * Trigger-based OPEN + loading Sheet — renders a CLOSED trigger by default (per
+ * this file's contract), so `overlays.spec.ts` opens it and asserts the loading
+ * arm (`loading ? <Spinner> : children`), an arm no closed-trigger render reaches.
+ *
+ * It must NOT open on mount: the browse-all canvas mounts every story at once, so
+ * an open Sheet portals a `data-slot="sheet-overlay"` backdrop (`fixed inset-0`)
+ * over the whole page — it intercepts pointer events (blocking hover/click specs)
+ * and its scroll-lock trips the document horizontal-scroll invariant. Uncontrolled
+ * (base-ui opens on the trigger, Escape/backdrop dismiss).
  */
 function SheetOpenLoadingCase() {
-  const [open, setOpen] = useState(true)
   return (
     <Sheet
       data-testid="g-sheet-loading"
-      open={open}
-      onOpenChange={setOpen}
       loading
       loadingLabel="Loading sheet content"
       title="Loading sheet"
+      trigger={
+        <Button data-testid="g-sheet-loading-open" variant="outline">
+          Open loading sheet
+        </Button>
+      }
     >
       <p className="text-sm text-muted-foreground">Hidden while loading.</p>
     </Sheet>
@@ -93,10 +98,11 @@ const sheetStory: GalleryStory = {
       ),
     },
     {
-      // Inline OPEN + loading: the body is replaced by a centered spinner
+      // Loading arm: the body is replaced by a centered spinner
       // (`loading ? <Spinner> : children`) — an arm no closed-trigger render
-      // reaches. Open on mount so the coverage pass sees it, but dismissable
-      // (see SheetOpenLoadingCase) so it doesn't pin a modal over the canvas.
+      // reaches. Renders a CLOSED trigger; overlays.spec.ts opens it to assert
+      // the arm, so it never pins a modal backdrop over the browse canvas
+      // (see SheetOpenLoadingCase).
       key: 'open-loading',
       label: 'Open · loading',
       render: () => <SheetOpenLoadingCase />,

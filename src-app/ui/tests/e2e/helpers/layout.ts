@@ -151,6 +151,13 @@ async function probe(
         if (ignored(el)) continue
         const cs = getComputedStyle(el)
         if (cs.display === 'none' || cs.visibility === 'hidden') continue
+        // <colgroup>/<col> are non-painting table-structure elements: their layout
+        // box spans the whole column region (so it geometrically "overlaps"
+        // thead/tbody by design) yet carries no visual design target. Measuring
+        // them yields only false positives (siblingOverlap/childOverflow), so
+        // exclude them from every invariant — same intent as the sr-only skips below.
+        if (cs.display === 'table-column' || cs.display === 'table-column-group')
+          continue
         const r = el.getBoundingClientRect()
         if (r.width === 0 && r.height === 0) continue
         // Skip visually-hidden / hairline elements: sr-only form mirrors (a 1px
@@ -349,9 +356,22 @@ export async function assertLayoutSane(
         p.parentOverflowX === 'auto' || p.parentOverflowX === 'scroll'
       const yScrolls =
         p.parentOverflowY === 'auto' || p.parentOverflowY === 'scroll'
+      // A negative margin deliberately pulls the border-box |margin| past the
+      // (flex/inline) parent's box that sized to the margin-box — e.g. a
+      // `-mx-1 px-1` hover-padding button whose bg bleeds 4px but stays inside the
+      // real cell. Discount that slack per side so the pattern isn't mis-flagged
+      // as an overflow bug (mirrors the negative-margin exemption in
+      // detectSiblingOverlap). margins = [top, right, bottom, left].
+      const [mTop, mRight, mBottom, mLeft] = [
+        p.styles.margins[0] ?? 0,
+        p.styles.margins[1] ?? 0,
+        p.styles.margins[2] ?? 0,
+        p.styles.margins[3] ?? 0,
+      ]
       if (!xScrolls) {
-        const overRight = p.rect.x + p.rect.w - (p.parentRect.x + p.parentRect.w)
-        const overLeft = p.parentRect.x - p.rect.x
+        const overRight =
+          p.rect.x + p.rect.w - (p.parentRect.x + p.parentRect.w) - Math.max(0, -mRight)
+        const overLeft = p.parentRect.x - p.rect.x - Math.max(0, -mLeft)
         if (overRight > tol || overLeft > tol) {
           violations.push({
             check: 'childOverflow',
@@ -363,8 +383,8 @@ export async function assertLayoutSane(
       // Vertical overflow (the docstring promised it; was missing).
       if (!yScrolls && p.parentRect.h > 0) {
         const overBottom =
-          p.rect.y + p.rect.h - (p.parentRect.y + p.parentRect.h)
-        const overTop = p.parentRect.y - p.rect.y
+          p.rect.y + p.rect.h - (p.parentRect.y + p.parentRect.h) - Math.max(0, -mBottom)
+        const overTop = p.parentRect.y - p.rect.y - Math.max(0, -mTop)
         if (overBottom > tol || overTop > tol) {
           violations.push({
             check: 'childOverflow',
@@ -377,9 +397,13 @@ export async function assertLayoutSane(
 
     // 2. Spacing on-scale. Uses the tight scale tolerance, NOT the geometric one.
     if (enabled('spacingScale')) {
+      // Margins are intentionally NOT grid-checked: getComputedStyle returns the
+      // *used* value, so an `auto` margin (e.g. `ms-auto` to push a flex item to
+      // the end) resolves to a free-space pixel distance that can never land on a
+      // 2px grid — a false positive. Margin collapsing + negative margins compound
+      // the unreliability. Paddings + gaps (the real design-token spacing) stay covered.
       const offScale = [
         ...p.styles.paddings,
-        ...p.styles.margins.map(Math.abs),
         ...p.styles.gap,
       ].filter(v => !onScale(v, opts.grid, opts.scaleTolerance))
       if (offScale.length) {

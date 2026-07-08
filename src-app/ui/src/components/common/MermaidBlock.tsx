@@ -139,7 +139,10 @@ export const MermaidBlock = memo(function MermaidBlock({
       data-streamdown="mermaid-block"
       className="my-4 flex w-full flex-col gap-2 rounded-xl border border-border bg-sidebar p-2"
     >
-      <div className="flex h-8 items-center justify-between gap-2 text-muted-foreground text-xs">
+      {/* min-h-8 (not h-8): on ≤480px the toolbar's WCAG tap-target children grow
+          to 44px; grow the row to contain them instead of clipping. On-grid + no
+          desktop change. */}
+      <div className="flex min-h-8 items-center justify-between gap-2 text-muted-foreground text-xs">
         <Segmented
           size="sm"
           data-testid="mermaid-source-toggle"
