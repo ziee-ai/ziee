@@ -186,6 +186,15 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         enum_vals.as_array().is_some_and(|a| a.iter().any(|v| v == "green")),
         "the multiple-choice schema should reach the client: {data}"
     );
+    // The ziee-internal ask_user path stamps the rich-UX marker so the FE renders
+    // the decision UX (cards/wizard/Other). External MCP elicitation is never
+    // stamped (and any forged copy is stripped at ingress). See DEC-2 / the
+    // cap_requested_schema strip + stamp_ask_user_marker unit tests.
+    assert_eq!(
+        data["requested_schema"]["x-ziee-askuser"],
+        serde_json::json!(true),
+        "ask_user requested_schema must carry the rich-UX marker: {data}"
+    );
 
     // With an EMPTY mcp_config, the loop attaches ONLY auto-attached BUILT-INS
     // (no third-party server requested). For a tool-capable model that set is:
@@ -216,6 +225,10 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         "__list_citations",
         "__format_citations",
         "__remove_citations",
+        // control (operate ziee's own REST API)
+        "__list_capabilities",
+        "__describe_capability",
+        "__invoke_capability",
         // skill
         "__load_skill",
         "__read_skill_file",
