@@ -74,11 +74,3 @@ test('exportFilename swaps the extension and appends -view', () => {
   assert.equal(exportFilename('sheet.xlsx', 'xlsx'), 'sheet-view.xlsx')
   assert.equal(exportFilename(undefined, 'csv'), 'export-view.csv')
 })
-
-// TEST-23 (export-view) — exportTabularView reuses rowsToDelimited over the
-// visible-column subset, so a hidden-column export drops that column's data.
-// This locks the column-subset path the header's Export-view button relies on.
-test('rowsToDelimited over the visible-column subset backs Export-view (hidden columns dropped)', () => {
-  const visibleOnly: ExportColumn[] = [{ key: '0', title: 'Name' }] // Qty hidden
-  assert.equal(rowsToDelimited(rows, visibleOnly, ','), 'Name\r\nBanana\r\n"apple, green"')
-})

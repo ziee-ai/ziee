@@ -138,16 +138,20 @@ export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: st
     })
   }, [fileId, activeColumns, delimiter, fileName])
 
-  // On mount + whenever the parsed data changes (new file/text), reset the view
-  // refs to the fresh full parse BEFORE publishing — otherwise the snapshot would
-  // briefly carry the previous file's rows/selection until the kit's onViewChange
-  // re-fires. Keeps the header's actions correct for the file actually shown.
+  // On mount + whenever the PARSED DATA changes (new file/text → new dataSource),
+  // reset the view refs to the fresh full parse and publish. Keyed ONLY on
+  // `dataSource` (which, with `exportColumns`, is memoized on [text, delimiter]):
+  // a live filter/sort/selection does NOT change dataSource, so it won't re-fire
+  // and clobber the kit's active view — and, critically, neither does a rename
+  // (fileName change), which must not reset the user's filter/selection.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally NOT
+  // keyed on publishView/exportColumns — see above; both track [text, delimiter].
   useEffect(() => {
     viewRef.current = dataSource
     visibleKeysRef.current = exportColumns.map(c => c.key)
     selectionRef.current = ''
     publishView()
-  }, [publishView, dataSource, exportColumns])
+  }, [dataSource])
 
   // Drop the published snapshot when the table unmounts (panel close / switch to
   // raw view) so the header's Export / Copy-selection disable rather than act on

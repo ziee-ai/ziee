@@ -1763,8 +1763,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `idx < 0` | 154 |
 | branch | `!fileId` | 168 |
-| branch | `!fileId` | 193 |
-| branch | `truncated` | 213 |
+| branch | `!fileId` | 197 |
+| branch | `truncated` | 217 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 

@@ -1578,8 +1578,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "idx < 0", line: 154 },
       { kind: "branch", condition: "!fileId", line: 168 },
-      { kind: "branch", condition: "!fileId", line: 193 },
-      { kind: "branch", condition: "truncated", line: 213 },
+      { kind: "branch", condition: "!fileId", line: 197 },
+      { kind: "branch", condition: "truncated", line: 217 },
     ],
   },
   "modules/file/viewers/tabular/ExpandableCell": {
