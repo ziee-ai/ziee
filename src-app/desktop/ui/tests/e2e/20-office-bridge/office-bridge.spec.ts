@@ -3,7 +3,11 @@ import type { Page } from '@playwright/test'
 // chat right-panel, so this spec reuses the web-ui e2e chat/provider/SSE-mock
 // harness from the shared monorepo. Phase 8 validates the runtime wiring against
 // the desktop/ui playwright runner.
-import { test, expect } from '../../../../../ui/tests/fixtures/test-context'
+// Local (desktop/ui) test-context so `testInfra` reads the postgres config that
+// THIS workspace's global-setup writes (desktop/ui/tests/.test-configs). Importing
+// the ui-workspace context read from ui/tests/.test-configs → ENOENT. The pure
+// helpers below stay cross-workspace (no path-dependent infra).
+import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../../../../ui/tests/common/auth-helpers'
 import {
   createProviderViaAPI,

@@ -77,7 +77,7 @@ interface TestFixtures {
   testInfra: TestInfra
 }
 
-const BACKEND_STARTUP_TIMEOUT_MS = 90_000 // cold cargo build can be slow
+const BACKEND_STARTUP_TIMEOUT_MS = 240_000 // cold cargo build + 118-migration boot can exceed 90s on some hosts
 const READINESS_POLL_INTERVAL_MS = 500
 const HEARTBEAT_INTERVAL_MS = 5_000
 
