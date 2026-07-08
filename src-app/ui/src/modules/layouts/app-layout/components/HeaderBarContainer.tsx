@@ -10,6 +10,12 @@ interface HeaderBarContainerProps {
 
 /** Scroll distance (px) before the header starts hiding on scroll-down. */
 const HIDE_THRESHOLD = 50
+/** Ignore sub-threshold direction flips (momentum jitter). */
+const DIRECTION_DELTA = 6
+/** Debounce hide/show: once toggled, ignore further toggles for this long so an
+ *  iOS rubber-band bounce (which reverses direction rapidly) can't flip-flop the
+ *  header. */
+const TOGGLE_COOLDOWN_MS = 250
 
 export const HeaderBarContainer = ({
   children,
@@ -35,20 +41,38 @@ export const HeaderBarContainer = ({
       return
     }
     lastY.current = window.scrollY
+    let lastToggle = 0
+    // `pinned` = relative(away) vs sticky(shown); `headerHidden` = whether the
+    // header is off-screen (shared so the fixed toggle button follows it).
+    // Debounced so a rubber-band bounce can't flip-flop it; showing-at-top is
+    // exempt (must always reveal instantly).
+    const toggle = (hidden: boolean, pin: boolean) => {
+      const now = performance.now()
+      if (now - lastToggle < TOGGLE_COOLDOWN_MS) return
+      lastToggle = now
+      setPinned(pin)
+      setHeaderHidden(hidden)
+    }
     const onScroll = () => {
       const y = window.scrollY
-      // `pinned` = relative(away) vs sticky(shown); `headerHidden` = whether the
-      // header is off-screen, shared so the fixed toggle button follows it.
-      if (y <= HIDE_THRESHOLD) {
-        setPinned(false) // at top → relative, shown
-        setHeaderHidden(false)
-      } else if (y > lastY.current) {
-        setPinned(false) // scrolling down → relative, wipes away
-        setHeaderHidden(true)
-      } else if (y < lastY.current) {
-        setPinned(true) // scrolling up → sticky, reappears
-        setHeaderHidden(false)
+      const maxY = document.documentElement.scrollHeight - window.innerHeight
+      // iOS Safari reports scrollY BEYOND [0, maxY] during a rubber-band
+      // overscroll, and the bounce-back reads as a direction reversal — skip it
+      // so the header doesn't glitch at the top/bottom edges.
+      if (y < 0 || y > maxY) {
+        lastY.current = Math.max(0, Math.min(y, maxY))
+        return
       }
+      if (y <= HIDE_THRESHOLD) {
+        setPinned(false) // at top → relative, shown (instant, no debounce)
+        setHeaderHidden(false)
+        lastY.current = y
+        return
+      }
+      const dy = y - lastY.current
+      if (Math.abs(dy) < DIRECTION_DELTA) return // jitter — ignore, keep lastY
+      if (dy > 0) toggle(true, false) // scrolling down → hide (relative, wipes)
+      else toggle(false, true) // scrolling up → show (sticky, reappears)
       lastY.current = y
     }
     window.addEventListener('scroll', onScroll, { passive: true })

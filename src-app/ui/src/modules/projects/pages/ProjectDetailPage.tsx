@@ -285,8 +285,10 @@ export function ProjectDetailPage() {
           </div>
           <div className="flex items-center gap-1">
             <Can permission={Permissions.ProjectsEdit}>
-              <Button data-testid="project-detail-edit-button" variant="ghost" icon={<Pencil />} onClick={handleEdit}>
-                Edit
+              <Button data-testid="project-detail-edit-button" variant="ghost" icon={<Pencil />} onClick={handleEdit} aria-label="Edit" tooltip="Edit">
+                {/* Icon-only when the PAGE is narrow (sidebar open on desktop OR
+                    a small screen) — element-width, not the viewport. */}
+                {!pageMinSize.sm && 'Edit'}
               </Button>
             </Can>
             {/* Duplicate is gated by BOTH create + read on the
@@ -307,8 +309,10 @@ export function ProjectDetailPage() {
                 variant="ghost"
                 icon={<Copy />}
                 onClick={handleDuplicate}
+                aria-label="Duplicate"
+                tooltip="Duplicate"
               >
-                Duplicate
+                {!pageMinSize.sm && 'Duplicate'}
               </Button>
             </Can>
           </div>

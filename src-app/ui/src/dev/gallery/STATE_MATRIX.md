@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1817** signals total: 1429 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
+- **1821** signals total: 1433 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -127,10 +127,10 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `(title != null \|\| extra != null)` | 39 |
-| branch | `title != null` | 41 |
-| loading | `skeleton` | 56 |
-| branch | `footer != null` | 66 |
+| branch | `(title != null \|\| extra != null)` | 41 |
+| branch | `title != null` | 43 |
+| loading | `skeleton` | 52 |
+| branch | `footer != null` | 62 |
 
 ### `components/ui/kit/checkbox`
 
@@ -2279,8 +2279,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!nativeScroll` | 32 |
-| branch | `nativeScroll && pinned` | 65 |
+| branch | `!nativeScroll` | 38 |
+| branch | `now - lastToggle < TOGGLE_COOLDOWN_MS` | 51 |
+| branch | `y < 0 \|\| y > maxY` | 62 |
+| branch | `y <= HIDE_THRESHOLD` | 66 |
+| branch | `Math.abs(dy) < DIRECTION_DELTA` | 73 |
+| branch | `nativeScroll && pinned` | 89 |
 
 ### `modules/layouts/app-layout/components/LeftSidebar`
 
@@ -2315,7 +2319,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSidebarCollapsed` | 73 |
+| branch | `isSidebarCollapsed` | 76 |
 
 ### `modules/literature/chat-extension/extension`
 
@@ -3419,11 +3423,11 @@ Required states: `delayed`, `empty`
 | loading | `loading` | 217 |
 | branch | `!project` | 227 |
 | branch | `!copy` | 258 |
-| branch | `selectedIds.size > 0` | 350 |
-| branch | `canDeleteConversations` | 385 |
-| branch | `toolbarInCardBody && bulkToolbar` | 415 |
-| branch | `project.description` | 464 |
-| branch | `project.instructions` | 485 |
+| branch | `selectedIds.size > 0` | 354 |
+| branch | `canDeleteConversations` | 389 |
+| branch | `toolbarInCardBody && bulkToolbar` | 419 |
+| branch | `project.description` | 468 |
+| branch | `project.instructions` | 489 |
 
 ### `modules/projects/pages/ProjectsListPage`
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 324 surfaces carry renderable-state signals; 1817 signals total.
+// 324 surfaces carry renderable-state signals; 1821 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -86,10 +86,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/card",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "branch", condition: "(title != null || extra != null)", line: 39 },
-      { kind: "branch", condition: "title != null", line: 41 },
-      { kind: "loading", condition: "skeleton", line: 56 },
-      { kind: "branch", condition: "footer != null", line: 66 },
+      { kind: "branch", condition: "(title != null || extra != null)", line: 41 },
+      { kind: "branch", condition: "title != null", line: 43 },
+      { kind: "loading", condition: "skeleton", line: 52 },
+      { kind: "branch", condition: "footer != null", line: 62 },
     ],
   },
   "components/ui/kit/checkbox": {
@@ -2061,8 +2061,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/layouts/app-layout/components/HeaderBarContainer",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!nativeScroll", line: 32 },
-      { kind: "branch", condition: "nativeScroll && pinned", line: 65 },
+      { kind: "branch", condition: "!nativeScroll", line: 38 },
+      { kind: "branch", condition: "now - lastToggle < TOGGLE_COOLDOWN_MS", line: 51 },
+      { kind: "branch", condition: "y < 0 || y > maxY", line: 62 },
+      { kind: "branch", condition: "y <= HIDE_THRESHOLD", line: 66 },
+      { kind: "branch", condition: "Math.abs(dy) < DIRECTION_DELTA", line: 73 },
+      { kind: "branch", condition: "nativeScroll && pinned", line: 89 },
     ],
   },
   "modules/layouts/app-layout/components/LeftSidebar": {
@@ -2094,7 +2098,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/layouts/app-layout/components/SidebarToggleButton",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isSidebarCollapsed", line: 73 },
+      { kind: "branch", condition: "isSidebarCollapsed", line: 76 },
     ],
   },
   "modules/literature/chat-extension/extension": {
@@ -3118,11 +3122,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading", line: 217 },
       { kind: "branch", condition: "!project", line: 227 },
       { kind: "branch", condition: "!copy", line: 258 },
-      { kind: "branch", condition: "selectedIds.size > 0", line: 350 },
-      { kind: "branch", condition: "canDeleteConversations", line: 385 },
-      { kind: "branch", condition: "toolbarInCardBody && bulkToolbar", line: 415 },
-      { kind: "branch", condition: "project.description", line: 464 },
-      { kind: "branch", condition: "project.instructions", line: 485 },
+      { kind: "branch", condition: "selectedIds.size > 0", line: 354 },
+      { kind: "branch", condition: "canDeleteConversations", line: 389 },
+      { kind: "branch", condition: "toolbarInCardBody && bulkToolbar", line: 419 },
+      { kind: "branch", condition: "project.description", line: 468 },
+      { kind: "branch", condition: "project.instructions", line: 489 },
     ],
   },
   "modules/projects/pages/ProjectsListPage": {
