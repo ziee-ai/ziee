@@ -19,6 +19,7 @@ machine-readable reason), and make code_sandbox an opt-in in the web container.
 - **ITEM-9**: Add `docker-compose.sandbox.yaml` (merge overlay, minimal caps: `/dev/fuse` + `SYS_ADMIN` + unconfined apparmor/seccomp, `ZIEE_CODE_SANDBOX_ENABLED: "true"`) and document the opt-in + `privileged` fallback in `docker/web/README.md`.
 - **ITEM-10**: Regenerate `openapi.json` + `api-client/types.ts` (both workspaces) so the new enum/field flow through, keeping the `emit_ts` golden parity test green.
 - **ITEM-11**: Fix the install-progress race in `SandboxRootfsVersions.store.ts` — the `installVersion` POST reply (phase `null`) could clobber SSE-tracked progress, leaving a long download stuck on "queued". Extract a pure `reconcileInitialTask(existing, initial)` (`existing ?? initial`, SSE-authoritative) into `installTaskReconcile.ts` and use it at the POST-response merge. (Pre-existing bug surfaced once the sandbox became runnable in the container.)
+- **ITEM-12**: Unblock the production `vite build` (needed to ship + to live-verify ITEM-11): a pre-existing break on `main` — the `ask-user` `AskUserWizardContent.tsx` + `ElicitationFormContent.tsx` are two mutually-exclusive renderings that intentionally share 4 `data-testid`s (the e2e specs select with `.first()`), which the build-time `testid-unique` plugin rejects. Add a narrow allowlist in `plugins/vite-plugin-testid-unique.js` permitting those 4 ids ONLY when every claiming file is one of the two sanctioned components.
 
 ## Files to touch
 
@@ -29,6 +30,7 @@ machine-readable reason), and make code_sandbox an opt-in in the web container.
 - `src-app/server/src/modules/code_sandbox/tests` via `src-app/server/tests/code_sandbox/tier3_versions.rs`
 - `src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts`
 - `src-app/ui/src/modules/code-sandbox/stores/installTaskReconcile.ts` (+ `.test.ts`) — install-progress race guard
+- `src-app/ui/plugins/vite-plugin-testid-unique.js` — allowlist the intentional elicitation testid shares (unblocks `vite build`)
 - `src-app/ui/src/modules/code-sandbox/components/SandboxRootfsVersionsSection.tsx`
 - `src-app/ui/src/modules/code-sandbox/components/AvailableRootfsCard.tsx`
 - `src-app/ui/src/dev/gallery/seededSurfaces.tsx`

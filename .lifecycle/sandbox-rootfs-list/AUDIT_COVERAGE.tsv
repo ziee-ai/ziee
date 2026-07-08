@@ -59,9 +59,13 @@ src-app/ui/src/modules/code-sandbox/components/_rootfsShared.tsx	407	407	pattern
 src-app/ui/src/modules/code-sandbox/components/_rootfsShared.tsx	415	415	patterns-conformance,a11y,state-management
 src-app/ui/src/modules/code-sandbox/components/_rootfsShared.tsx	422	424	patterns-conformance,a11y,state-management
 src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	8	8	state-management,correctness,patterns-conformance
-src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	79	84	state-management,correctness,patterns-conformance
-src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	118	118	state-management,correctness,patterns-conformance
-src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	312	312	state-management,correctness,patterns-conformance
-src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	344	344	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	18	18	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	80	85	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	119	119	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	285	289	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	317	317	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/SandboxRootfsVersions.store.ts	349	349	state-management,correctness,patterns-conformance
+src-app/ui/src/modules/code-sandbox/stores/installTaskReconcile.test.ts	1	51	tests-quality,correctness,state-management
+src-app/ui/src/modules/code-sandbox/stores/installTaskReconcile.ts	1	24	correctness,state-management,patterns-conformance
 src-app/ui/tests/e2e/settings/sandbox-rootfs-versions.spec.ts	97	97	tests-quality,correctness,a11y
 src-app/ui/tests/e2e/settings/sandbox-rootfs-versions.spec.ts	960	997	tests-quality,correctness,a11y
