@@ -122,7 +122,11 @@ async fn bring_up() -> (server::BridgeHandle, WsStream) {
 #[derive(Clone, Copy)]
 enum Mode {
     Ok,
+    /// Reply with a generic pane error (→ OFFICE_PANE_ERROR).
     Err,
+    /// Reply with the pane's "unsupported on this host" code -32002
+    /// (→ OFFICE_UNSUPPORTED_ON_HOST).
+    Unsupported,
 }
 
 /// Drive a mock task pane over `ws`: send the `register` hello, then answer each
@@ -131,6 +135,7 @@ enum Mode {
 /// it replies with a JSON-RPC error. `junk_first` sends an unparsable frame and a
 /// stale-id response before entering the loop (TEST-8).
 async fn run_mock_pane(mut ws: WsStream, host: &'static str, doc_key: String, mode: Mode, junk_first: bool) {
+    let self_doc = doc_key.clone(); // included in Ok replies so a test can tell panes apart
     let register = json!({
         "jsonrpc": "2.0", "id": 1, "method": "register",
         "params": { "host": host, "doc_key": doc_key }
@@ -162,12 +167,17 @@ async fn run_mock_pane(mut ws: WsStream, host: &'static str, doc_key: String, mo
                             "result": {
                                 "got_method": method,
                                 "got_params": v.get("params").cloned().unwrap_or(Value::Null),
+                                "pane_doc": self_doc,
                                 "text": "MOCK BODY",
                             }
                         }),
                         Mode::Err => json!({
                             "jsonrpc": "2.0", "id": id,
-                            "error": { "code": -32002, "message": "mock host-unsupported" }
+                            "error": { "code": -32000, "message": "mock pane failure" }
+                        }),
+                        Mode::Unsupported => json!({
+                            "jsonrpc": "2.0", "id": id,
+                            "error": { "code": -32002, "message": "only supported in Word" }
                         }),
                     };
                     ws.send(Message::Text(resp.to_string().into())).await.ok();
@@ -357,4 +367,61 @@ async fn test12_pane_error_propagates() {
 
     handle.shutdown();
     pane.abort();
+}
+
+/// TEST-16 — a pane reply with the "unsupported on this host" code (-32002) maps to
+/// OFFICE_UNSUPPORTED_ON_HOST (same code as the native PPT pre-gate), not the generic
+/// OFFICE_PANE_ERROR.
+#[tokio::test]
+async fn test16_pane_unsupported_maps_to_unsupported_on_host() {
+    let doc = "/Users/x/RptSixteen.docx".to_string();
+    let (handle, ws) = bring_up().await;
+    let pane = tokio::spawn(run_mock_pane(ws, "excel", doc.clone(), Mode::Unsupported, false));
+
+    let code = retry_dispatch("get_tracked_changes", json!({ "doc_full_name": doc }))
+        .await
+        .expect_err("unsupported-on-host surfaces as an error");
+    assert_eq!(code, "OFFICE_UNSUPPORTED_ON_HOST");
+
+    handle.shutdown();
+    pane.abort();
+}
+
+/// TEST-15 — POSITIVE multi-pane routing: two live panes for two distinct documents
+/// each answer; a call for doc A must resolve to A's pane and a call for doc B to B's
+/// (exact-match resolution + per-pane response binding, not cross-routed).
+#[tokio::test]
+async fn test15_two_panes_route_to_correct_document() {
+    let doc_a = "/Users/x/Alpha.docx".to_string();
+    let doc_b = "/Users/x/Beta.docx".to_string();
+
+    let (handle_a, ws_a) = bring_up().await;
+    let (handle_b, ws_b) = bring_up().await;
+    let pane_a = tokio::spawn(run_mock_pane(ws_a, "word", doc_a.clone(), Mode::Ok, false));
+    let pane_b = tokio::spawn(run_mock_pane(ws_b, "word", doc_b.clone(), Mode::Ok, false));
+
+    // Both panes register against the SAME process-global broker (two separate
+    // bridge listeners, one shared broker), so exact-key resolution must pick right.
+    let out_a = retry_call_pane(&doc_a, "read_document", json!({ "doc_full_name": doc_a }))
+        .await
+        .expect("doc A round-trip");
+    let out_b = retry_call_pane(&doc_b, "read_document", json!({ "doc_full_name": doc_b }))
+        .await
+        .expect("doc B round-trip");
+
+    assert_eq!(
+        out_a.get("pane_doc").and_then(|d| d.as_str()),
+        Some(doc_a.as_str()),
+        "doc A's call must be answered by doc A's pane"
+    );
+    assert_eq!(
+        out_b.get("pane_doc").and_then(|d| d.as_str()),
+        Some(doc_b.as_str()),
+        "doc B's call must be answered by doc B's pane"
+    );
+
+    handle_a.shutdown();
+    handle_b.shutdown();
+    pane_a.abort();
+    pane_b.abort();
 }

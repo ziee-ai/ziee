@@ -20,7 +20,12 @@ var BRIDGE_URL = 'wss://localhost:44300/bridge';
 var ERR_OP_FAILED = -32001;
 var ERR_UNSUPPORTED_HOST = -32002;
 var ERR_ANCHOR_NOT_FOUND = -32003;
+var ERR_TARGET_MISMATCH = -32004;
 var ERR_UNKNOWN_METHOD = -32601;
+
+// Cap on read_document output so a huge document/sheet can't materialize an
+// unbounded string in the WebView, over WSS, and into the LLM tool result.
+var MAX_READ_CHARS = 100000;
 
 function log(m) {
   var el = document.getElementById('log');
@@ -39,6 +44,23 @@ var ws = null;
 var nextId = 1;
 // The Office host name ('Word' | 'Excel' | 'PowerPoint' | 'unknown'), set on ready.
 var HOST = 'unknown';
+// This pane's own document URL (from register). Used to validate that a request
+// actually targets THIS document — defense-in-depth against broker mis-routing.
+var SELF_DOC_KEY = '';
+
+// Last path segment, tolerant of / and \ separators (matches the daemon broker).
+function baseName(p) {
+  if (!p) { return ''; }
+  var parts = String(p).split(/[\\/]/);
+  return parts[parts.length - 1];
+}
+
+// Truncate read output to the cap; returns { text, truncated }.
+function capText(s) {
+  s = String(s == null ? '' : s);
+  if (s.length <= MAX_READ_CHARS) { return { text: s, truncated: false }; }
+  return { text: s.slice(0, MAX_READ_CHARS), truncated: true };
+}
 
 // Open the same-origin WSS bridge. The token rides the WebSocket subprotocol
 // (DEC-6) so it never appears in a URL/query that could leak via logs.
@@ -68,6 +90,7 @@ function sendRegister(info) {
   try {
     Office.context.document.getFilePropertiesAsync(function (r) {
       var url = (r && r.status === 'succeeded' && r.value && r.value.url) ? r.value.url : '';
+      SELF_DOC_KEY = url;
       send('register', { host: String(info.host), doc_key: url });
       log('registered (doc_key=' + (url || '<unsaved>') + ')');
     });
@@ -107,6 +130,14 @@ function handleIncoming(data) {
 }
 
 function dispatchOp(id, method, params) {
+  // Defense-in-depth against broker mis-routing: if this pane has a known document
+  // and the request targets a DIFFERENT one, refuse rather than act on the wrong doc.
+  // (Skipped for an unsaved doc whose SELF_DOC_KEY is empty and can't be matched.)
+  var target = params && params.doc_full_name;
+  if (SELF_DOC_KEY && target && baseName(target) !== baseName(SELF_DOC_KEY)) {
+    return replyErr(id, ERR_TARGET_MISMATCH,
+      'this task pane serves "' + baseName(SELF_DOC_KEY) + '", not "' + baseName(target) + '"');
+  }
   try {
     switch (method) {
       case 'get_selection': opGetSelection(id); break;
@@ -140,7 +171,10 @@ function opReadDocument(id) {
     Word.run(function (ctx) {
       var body = ctx.document.body;
       body.load('text');
-      return ctx.sync().then(function () { reply(id, { text: body.text }); });
+      return ctx.sync().then(function () {
+        var c = capText(body.text);
+        reply(id, { text: c.text, truncated: c.truncated });
+      });
     }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'read_document failed: ' + e.message); });
   } else if (HOST === 'Excel' && typeof Excel !== 'undefined') {
     Excel.run(function (ctx) {
@@ -150,7 +184,8 @@ function opReadDocument(id) {
         var text = used.isNullObject ? '' : (used.values || []).map(function (row) {
           return row.join('\t');
         }).join('\n');
-        reply(id, { text: text });
+        var c = capText(text);
+        reply(id, { text: c.text, truncated: c.truncated });
       });
     }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'read_document failed: ' + e.message); });
   } else {

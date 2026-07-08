@@ -65,7 +65,10 @@ pub struct BridgeError {
 /// stay a faithful wire mirror.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeResponse {
-    /// Always `"2.0"`.
+    /// Always `"2.0"` on the wire. `default` on deserialize so a peer reply that
+    /// omits `jsonrpc` still parses + routes (rather than being silently dropped and
+    /// timing out); the value itself is not validated.
+    #[serde(default)]
     pub jsonrpc: String,
     /// Echoes the request id.
     #[serde(default, skip_serializing_if = "Option::is_none")]

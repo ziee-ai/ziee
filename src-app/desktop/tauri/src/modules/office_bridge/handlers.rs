@@ -269,18 +269,20 @@ pub async fn dispatch_tool(
         }
 
         // Pane-mediated (Office.js over the WSS bridge): route to the connected
-        // task pane via the broker and await the correlated reply (ITEM-9). No
-        // host-capability pre-gate for these three.
-        "read_document" | "get_selection" | "get_tracked_changes" => {
+        // task pane via the broker and await the correlated reply (ITEM-9). These
+        // two are host-agnostic (Word + Excel), so no capability pre-gate.
+        "read_document" | "get_selection" => {
             let doc_full_name = require_doc_full_name(args)?;
             let result = broker::call_pane(&doc_full_name, name, args.clone()).await?;
             Ok(pane_tool_result(name, &doc_full_name, result))
         }
 
-        // Pane-mediated AND host-gated: surface the PowerPoint-unsupported error
+        // Pane-mediated AND Word-only: surface the PowerPoint-unsupported error
         // distinctly (via the fast native `doc_host` lookup) BEFORE any round-trip,
-        // then route to the pane.
-        "add_comment" | "set_track_changes" => {
+        // then route to the pane. (`get_tracked_changes` is grouped here — Word-only —
+        // so PPT gets the same fast `OFFICE_UNSUPPORTED_ON_HOST` as the mutations; a
+        // non-Word non-PPT host is caught by the pane's `-32002` → same code.)
+        "add_comment" | "set_track_changes" | "get_tracked_changes" => {
             let doc_full_name = require_doc_full_name(args)?;
             if doc_host(platform, &doc_full_name).await == Some(OfficeApp::PowerPoint) {
                 return Err(unsupported_on_ppt_err(name));

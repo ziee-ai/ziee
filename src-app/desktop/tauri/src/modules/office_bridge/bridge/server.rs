@@ -358,6 +358,15 @@ async fn handle_socket(mut socket: WebSocket) {
     broker::unregister_pane(pane_id);
 }
 
+/// Length bounds on the UNTRUSTED `register` identity fields.
+const MAX_HOST_LEN: usize = 32;
+const MAX_DOC_KEY_LEN: usize = 4096;
+
+/// Truncate untrusted pane input to `max` chars (char-boundary safe).
+fn capped(s: &str, max: usize) -> String {
+    s.chars().take(max).collect()
+}
+
 /// Classify + handle one inbound text frame from the pane (see [`handle_socket`]).
 fn classify_pane_frame(pane_id: u64, tx: &mpsc::UnboundedSender<Message>, text: &str) {
     let v: serde_json::Value = match serde_json::from_str(text) {
@@ -370,17 +379,17 @@ fn classify_pane_frame(pane_id: u64, tx: &mpsc::UnboundedSender<Message>, text: 
     if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
         match method {
             "register" => {
+                // `host`/`doc_key` are UNTRUSTED pane input — bound their length so a
+                // compromised pane can't register a pathological identity string.
                 let params = v.get("params");
-                let host = params
-                    .and_then(|p| p.get("host"))
-                    .and_then(|h| h.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                let doc_key = params
-                    .and_then(|p| p.get("doc_key"))
-                    .and_then(|d| d.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                let host = capped(
+                    params.and_then(|p| p.get("host")).and_then(|h| h.as_str()).unwrap_or("unknown"),
+                    MAX_HOST_LEN,
+                );
+                let doc_key = capped(
+                    params.and_then(|p| p.get("doc_key")).and_then(|d| d.as_str()).unwrap_or(""),
+                    MAX_DOC_KEY_LEN,
+                );
                 tracing::debug!(
                     "office_bridge: pane {pane_id} registered (host={host}, doc_key_set={})",
                     !doc_key.is_empty()
@@ -398,9 +407,10 @@ fn classify_pane_frame(pane_id: u64, tx: &mpsc::UnboundedSender<Message>, text: 
     }
 
     // Otherwise a frame with `result`/`error` is a reply to a daemon→pane request.
+    // Route it bound to THIS pane (broker rejects a corr id routed to another pane).
     if v.get("result").is_some() || v.get("error").is_some() {
         if let Ok(resp) = serde_json::from_value::<BridgeResponse>(v) {
-            broker::route_response(resp);
+            broker::route_response(pane_id, resp);
         }
     }
     // Neither method nor result/error → ignore.
