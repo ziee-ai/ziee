@@ -14,13 +14,14 @@ frontend `npm run check` + `node --test` + Playwright.
 - **TEST-6**: PASS
 - **TEST-7**: PASS
 - **TEST-8**: PASS
-- **TEST-9**: SKIP — live/manual only. Requires a **non-elevated INTERACTIVE** Office session. The
-  Windows COM Running Object Table is keyed by logon session; an automated de-elevation (scheduled
-  task `/RL LIMITED /IT`) runs under a different logon-session LUID, so Office's ROT registration is
-  invisible and `GetActiveObject` falls back to window-enum. The capability itself is proven
-  (identical COM enumerate+act was demonstrated live in the spike, mailbox id-6); this `#[ignore]`d
-  test passes only when launched from a genuine interactive desktop session. Genuine
-  environment-incompatibility skip (not `#[ignore]`d to go green).
+- **TEST-9**: PASS (live) — 2026-07-07. Ran the real `office_bridge::windows_com_test::test9_windows_com_list_and_act`
+  against a live, non-elevated, interactive Office session and it passed: `1 passed; 0 failed`, exit 0.
+  Genuine because the runner was launched via `explorer.exe` (the shell's filtered token), so it ran at
+  **Medium Mandatory Level (S-1-16-8192, non-elevated) in session 1** — the same interactive logon as
+  Office — NOT via a scheduled task (which mints a different logon LUID → ROT invisible). A real Word
+  `.docx` was open; the test enumerated it (full path + attach_method) and did append/save/**read-back**
+  of a marker paragraph through the real ziee `office_bridge_platform` COM code. Evidence:
+  `C:\Users\lab\bridge-mailbox\test9\` (`test9-run.log`, `TEST-9-PROOF.md`, `test9-doc.docx`, screenshot).
 - **TEST-10**: PASS
 - **TEST-11**: SKIP — platform-gated. `platform/unsupported.rs` is
   `#[cfg(not(any(windows, target_os="macos")))]` and its `MAC_TRANSPORT_VERIFIED` assertion is
@@ -36,6 +37,7 @@ frontend `npm run check` + `node --test` + Playwright.
 - **TEST-19**: PASS
 
 npm run check (ui): PASS
+npm run check (desktop/ui): PASS
 
 ## Raw result lines
 - lib office_bridge: `test result: ok. 41 passed; 0 failed; 0 ignored` (+ TEST-2/3/5 integration added 10 more)
