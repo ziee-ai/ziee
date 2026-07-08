@@ -14,3 +14,6 @@ src-app/ui/src/modules/chat/core/utils/measuredHeightCache.test.ts	1	100000	test
 src-app/ui/src/modules/chat/core/utils/scrollAnchor.utils.test.ts	1	100000	tests-quality,perms-authz,i18n-copy
 src-app/ui/tests/e2e/chat/message-scroll-perf.spec.ts	1	100000	tests-quality,perms-authz,i18n-copy
 src-app/ui/tests/e2e/chat/message-scroll-image-stability.spec.ts	1	100000	tests-quality,perms-authz,i18n-copy
+src-app/ui/src/components/ui/testIds.generated.ts	1	100000	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	100000	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	100000	patterns-conformance,correctness,tests-quality
