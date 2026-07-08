@@ -2601,9 +2601,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/components/ToolCallPendingApprovalContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "mcpServerParenLabel(toolCall.server)", line: 170 },
-      { kind: "branch", condition: "toolCall.input !== undefined", line: 183 },
-      { kind: "branch", condition: "!isControlWrite", line: 205 },
+      { kind: "branch", condition: "!isControlWrite", line: 189 },
+      { kind: "branch", condition: "mcpServerParenLabel(toolCall.server)", line: 208 },
+      { kind: "branch", condition: "toolCall.input !== undefined", line: 223 },
     ],
   },
   "modules/mcp/chat-extension/extension": {

@@ -2860,9 +2860,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `mcpServerParenLabel(toolCall.server)` | 170 |
-| branch | `toolCall.input !== undefined` | 183 |
-| branch | `!isControlWrite` | 205 |
+| branch | `!isControlWrite` | 189 |
+| branch | `mcpServerParenLabel(toolCall.server)` | 208 |
+| branch | `toolCall.input !== undefined` | 223 |
 
 ### `modules/mcp/chat-extension/extension`
 
