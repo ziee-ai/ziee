@@ -3,13 +3,13 @@
 Every input resolved up front so implementation runs nonstop. All resolvable by codebase
 convention + the user's stated directive (desktop-only); none require a fresh product call.
 
-### DEC-1: How is the module registered from the desktop crate — `AppModule` via cross-crate `MODULE_ENTRIES`, or reshaped to a `DesktopModule`?
-**Resolution:** Keep it an `AppModule` and register via `#[distributed_slice(ziee::module_api::types::MODULE_ENTRIES)]` defined in the desktop crate — preserving the tested `init(&ModuleContext)` lifecycle (upsert the `mcp_servers` row, spawn the bridge listener + watcher). Contingent on the ITEM-14 linkme cross-crate validation passing; if it fails, fall back to a `host_mount`-style `DesktopModule` + a manual MCP-registration seam.
-**Basis:** codebase — `linkme` distributed slices are designed to aggregate entries across all crates in the final linked binary; this is the minimal-change path and keeps the already-audited init lifecycle intact. `host_mount` is the documented fallback pattern.
+### DEC-1: How is the module registered from the desktop crate — cross-crate `#[distributed_slice]`, or a runtime register seam?
+**Resolution:** **RUNTIME SEAM** (revised after Phase-5 codebase evidence). Reshape office_bridge to a `host_mount`-style `DesktopModule` that, at boot, registers its REST/settings routes (`register_api_routes`), spawns the bridge listener + watcher and upserts the `mcp_servers` row using `ziee::Repos.pool()`, and registers its built-in MCP server + chat-extension + auto-attach entry via new `ziee::register_*` runtime functions. NO cross-crate `#[distributed_slice(ziee::…)]`.
+**Basis:** codebase — the ONLY existing desktop→server downstream-registration in the repo is a runtime seam (`host_mount/mod.rs:82` → `ziee::code_sandbox::register_sandbox_mount_provider`, `mount_provider.rs:62`); there are ZERO `#[distributed_slice(ziee::…)]` registrations in the desktop crate. The "match existing patterns" project rule ([[feedback_match_existing_patterns]]) makes the runtime seam decisive — it is guaranteed to work and avoids linkme's cross-crate dead-code-linkage caveat, which is unproven here.
 
-### DEC-2: How is the chat extension registered cross-crate?
-**Resolution:** Via `#[distributed_slice(ziee::chat_extension::CHAT_EXTENSIONS)]` defined in the desktop crate (same mechanism as DEC-1), validated by the ITEM-14 smoke test. Fallback = a `pub fn ziee::register_chat_extension(entry)` runtime seam the desktop calls at boot.
-**Basis:** codebase — identical linkme mechanism to MODULE_ENTRIES; one validation covers both.
+### DEC-2: How is the chat extension (and the auto-attach entry) registered from the desktop crate?
+**Resolution:** Via runtime register functions in `ziee`, mirroring `register_sandbox_mount_provider`: `ziee::register_chat_extension(entry)` and `ziee::register_auto_attach_builtin(AutoAttachEntry)`, each appending to a `OnceLock<Mutex<Vec<…>>>` registry that the server consumes at boot (the chat-extension registry alongside `CHAT_EXTENSIONS`; `auto_attach_builtin_ids` alongside its slice/hardcoded arms). office_bridge's `DesktopModule::init` calls both. The `AUTO_ATTACH_BUILTINS` distributed slice added in Phase 5 (`e4776d6a`) is converted to / augmented by this runtime registry.
+**Basis:** codebase — same `register_sandbox_mount_provider` precedent; guaranteed cross-crate delivery without linkme.
 
 ### DEC-3: Does the `AUTO_ATTACH_BUILTINS` inversion move ALL built-ins off the hardcoded list, or only office_bridge?
 **Resolution:** Introduce the `AUTO_ATTACH_BUILTINS` distributed slice and iterate it IN ADDITION to the existing hardcoded arms in `auto_attach_builtin_ids`; move ONLY office_bridge's `{flag → server_id}` entry into it (registered from the desktop crate). Other built-ins keep their current handling.

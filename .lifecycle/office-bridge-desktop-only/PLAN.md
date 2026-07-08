@@ -18,20 +18,18 @@ build.rs loop), so office_bridge's schema rides that with no new migration infra
 - **ITEM-1**: Relocate the module tree `src-app/server/src/modules/office_bridge/` →
   `src-app/desktop/tauri/src/modules/office_bridge/` (mod, routes, handlers, models, tools,
   repository, permissions, watcher, bridge/*, platform/*, chat_extension/*) and declare it in
-  `desktop/tauri/src/modules/mod.rs`. Registration mechanism is resolved in **DEC-1**: keep it an
-  `AppModule` registered via `#[distributed_slice(ziee::…MODULE_ENTRIES)]` from the desktop crate —
-  preserving the tested `init(&ModuleContext)` lifecycle that upserts the MCP row + spawns the
-  bridge/watcher (minimal change) — CONTINGENT on the ITEM-14 linkme cross-crate validation;
-  fallback = reshape to a `host_mount`-style `DesktopModule` + a manual MCP/chat-ext seam in `ziee`.
-  Only its *definition site* moves; the COM/platform/bridge logic is unchanged.
-- **ITEM-14**: Cross-crate `CHAT_EXTENSIONS` registration (the one unproven pattern — no downstream
-  crate registers a chat extension today). Validate FIRST via a tiny smoke test that a
-  `#[distributed_slice(ziee::chat_extension::CHAT_EXTENSIONS)]` entry defined in the desktop crate
-  is collected by `ziee`'s extension registry in the desktop binary. If linkme cross-crate collection
-  works → register office_bridge's chat extension that way (per DEC-2). If it does NOT → add a manual
-  desktop chat-extension registration seam in `ziee` (a `pub fn register_chat_extension(entry)` the
-  desktop calls at boot) and use that instead. Either way the server binary gets no office_bridge
-  chat extension.
+  `desktop/tauri/src/modules/mod.rs`. Registration mechanism (**DEC-1, revised to the runtime seam**):
+  office_bridge becomes a `host_mount`-style `DesktopModule` — `register_api_routes` for its settings
+  REST, and `init` spawns the bridge listener + watcher + upserts the `mcp_servers` row via
+  `ziee::Repos.pool()`, and calls the new `ziee::register_*` runtime seams (ITEM-14). NO cross-crate
+  `#[distributed_slice(ziee::…)]`. The COM/platform/bridge logic is unchanged.
+- **ITEM-14**: Add the runtime registration seams in `ziee` (DEC-2), mirroring
+  `code_sandbox::register_sandbox_mount_provider` (`OnceLock<Mutex<Vec<…>>>` fed by a `pub fn`):
+  `ziee::register_chat_extension(entry)` (consumed at boot alongside `CHAT_EXTENSIONS`) and
+  `ziee::register_auto_attach_builtin(AutoAttachEntry)` (consumed by `auto_attach_builtin_ids`).
+  Convert/augment the `AUTO_ATTACH_BUILTINS` slice from Phase 5 into this runtime registry.
+  office_bridge's `DesktopModule::init` calls both. The server binary, which never calls them, gets
+  no office_bridge chat extension or auto-attach entry.
 - **ITEM-2**: Rewrite the module's cross-crate references: `crate::…` server-framework paths →
   `ziee::…` (MODULE_ENTRIES, CHAT_EXTENSIONS, ModuleEntry/AppModule/ModuleContext, the MCP
   registration API, permission `PermissionCheck` trait, `common::secret`, repository factory,
