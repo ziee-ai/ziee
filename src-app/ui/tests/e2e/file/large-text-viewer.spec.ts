@@ -81,18 +81,19 @@ test.describe('File viewer — large text/code (windowed)', () => {
 
     // MARKER occurs on lines 5, 12000, 24000 — two of them beyond the retired
     // 10k cap and the initial viewport window. find must count ALL three.
+    // (FindBar renders "<active> of <count>".)
     await input.fill(MARKER)
     const count = drawer.getByTestId('file-find-count')
-    await expect(count).toHaveText('1 / 3', { timeout: 15000 })
+    await expect(count).toHaveText('1 of 3', { timeout: 15000 })
 
     // next navigates to the off-screen matches (viewer scrolls them into view).
     await drawer.getByTestId('file-find-next-btn').click()
-    await expect(count).toHaveText('2 / 3')
+    await expect(count).toHaveText('2 of 3')
     await drawer.getByTestId('file-find-next-btn').click()
-    await expect(count).toHaveText('3 / 3')
+    await expect(count).toHaveText('3 of 3')
     // wraps back to the first.
     await drawer.getByTestId('file-find-next-btn').click()
-    await expect(count).toHaveText('1 / 3')
+    await expect(count).toHaveText('1 of 3')
   })
 
   test('word-wrap toggle works under windowing', async ({ page, testInfra }) => {
