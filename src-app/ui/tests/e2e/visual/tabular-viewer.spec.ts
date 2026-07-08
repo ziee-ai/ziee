@@ -55,6 +55,11 @@ test.describe('Tabular viewer', () => {
     // The header-inclusive surface: DelimitedHeader (view-aware Export) over the
     // real DelimitedTable, coordinated via FileStore.fileTabularView.
     await openSeeded(page, 'seeded-delimited-viewer-shell', CSV)
+    // The export affordance names the delimited format it will produce (CSV here).
+    await expect(page.getByTestId('file-viewer-tabular-export-btn')).toHaveAttribute(
+      'aria-label',
+      'Export view (CSV)',
+    )
     await page.getByTestId(`${CSV}-search`).fill('Banana') // 1 row
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -87,6 +92,15 @@ test.describe('Tabular viewer', () => {
     await page.getByTestId(`${CSV}-row-0`).locator('td').nth(1).click()
     await page.getByTestId('file-viewer-tabular-copy-selection-btn').click()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Banana')
+  })
+
+  test('TEST-27: Copy-selection with nothing selected warns and leaves the clipboard empty', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await openSeeded(page, 'seeded-delimited-viewer-shell', CSV)
+    // Enabled once the body publishes a snapshot, but with no cell selected it must
+    // copy NOTHING (warn) rather than silently copying the whole view.
+    await page.getByTestId('file-viewer-tabular-copy-selection-btn').click()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('')
   })
 
   test('TEST-26: clicking a clipped cell opens a popover with the full value', async ({ page }) => {
