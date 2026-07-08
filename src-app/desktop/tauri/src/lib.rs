@@ -155,6 +155,15 @@ pub async fn run_headless(config_file: Option<String>) -> Result<()> {
     // router below (see comment in the closure for the full why).
     let desktop_cors = ziee::create_cors_layer(&config);
 
+    // PARITY with the GUI path (`start_backend_server`): office_bridge's STATIC
+    // seams (chat extension + auto-attach entry) MUST register BEFORE
+    // `start_server_with_routes` builds the chat module (which snapshots the
+    // ExtensionRegistry) — a post-start push would be too late. Pool-free; no-op
+    // without Office. `config` is moved into the server below, so clone it for the
+    // post-start runtime half.
+    let ob_config = config.clone();
+    crate::modules::office_bridge::register_office_bridge_static(&config);
+
     let addr = ziee::start_server_with_routes(
         config,
         move |router, jwt: std::sync::Arc<JwtService>| {
@@ -192,6 +201,12 @@ pub async fn run_headless(config_file: Option<String>) -> Result<()> {
     // host-folder mount provider against the sandbox seam now that the pool
     // exists. Without this, headless `execute_command` sees no host mounts.
     crate::modules::host_mount::register_provider();
+
+    // PARITY with the GUI path: office_bridge's RUNTIME half — upsert its
+    // mcp_servers row + spawn the add-in bridge listener + document watcher. Safe
+    // now: migrations ran pre-server, `ziee::Repos` is initialized. No-op without
+    // Office. (The static half registered before start_server_with_routes above.)
+    crate::modules::office_bridge::register_office_bridge(&ob_config);
 
     // PARITY with the GUI path: idempotent backfill of system MCP →
     // group assignments. The per-event handler above catches NEW
