@@ -37,7 +37,8 @@ src-app/ui/src/modules/file/viewers/tabular/header.tsx	6	6	correctness,error-han
 src-app/ui/src/modules/file/viewers/tabular/header.tsx	9	73	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
 src-app/ui/src/modules/file/viewers/tabular/header.tsx	81	81	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
 src-app/ui/src/modules/file/viewers/tabular/tableView.ts	100	139	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
-src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	55	57	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
-src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	61	61	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
-src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	85	85	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
-src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	88	88	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
+src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	55	62	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
+src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	66	66	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
+src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	90	90	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
+src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	93	93	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
+src-app/ui/tests/e2e/visual/tabular-viewer.spec.ts	97	105	correctness,error-handling,state-management,concurrency,security,api-contract,a11y,patterns-conformance,perf,tests-quality,regressions,i18n-copy
