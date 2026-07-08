@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1818** signals total: 1429 branch, 111 empty, 95 error, 96 loading, 85 overlay, 2 panel.
+- **1816** signals total: 1427 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -19,7 +19,7 @@
 | `delayed` | 85 |
 | `empty` | 88 |
 | `error` | 74 |
-| `open` | 71 |
+| `open` | 72 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -1041,18 +1041,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/core/components/ChatRightPanel`
 
-Required states: `empty`
+Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!activeTab` | 13 |
-| branch | `!resolved` | 16 |
-| empty | `tabs.length === 0` | 49 |
-| branch | `e.key === 'Escape'` | 113 |
-| empty | `focusable.length === 0` | 122 |
-| branch | `isMobile` | 169 |
-| branch | `!showDrawer` | 170 |
-| branch | `isOpen` | 210 |
+| branch | `!activeTab` | 14 |
+| branch | `!resolved` | 17 |
+| empty | `tabs.length === 0` | 50 |
+| branch | `isMobile` | 135 |
+| overlay | `<Drawer open>` | 137 |
+| branch | `isOpen` | 177 |
 
 ### `modules/chat/core/extensions/registry`
 
@@ -1209,12 +1207,12 @@ Required states: `delayed`, `error`
 |---|---|---|
 | branch | `!sentinel` | 78 |
 | branch | `!el` | 98 |
-| branch | `!Stores.Chat.$.conversation` | 115 |
-| branch | `!conversationId` | 144 |
-| loading | `loading && !conversation` | 170 |
-| loading | `!loading && !conversation` | 179 |
-| error | `error` | 182 |
-| error | `error` | 239 |
+| branch | `!Stores.Chat.$.conversation` | 117 |
+| branch | `!conversationId` | 146 |
+| loading | `loading && !conversation` | 172 |
+| loading | `!loading && !conversation` | 181 |
+| error | `error` | 184 |
+| error | `error` | 241 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

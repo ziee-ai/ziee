@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { Button, Empty, Tabs, Text } from '@/components/ui'
 import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 function ActivePanelContent() {
   const { tabs, activeId } = Stores.Chat.rightPanel
@@ -43,16 +44,12 @@ function ActivePanelContent() {
   return <Component {...(activeTab.data as Record<string, unknown>)} />
 }
 
-function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
+function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; asTitle?: boolean }) {
   const { tabs, activeId } = Stores.Chat.rightPanel
 
   if (tabs.length === 0) return null
 
-  return (
-    <div
-      className="flex-shrink-0 flex items-center border-b border-border"
-      data-testid="chat-right-panel-tabs"
-    >
+  const tabsEl = (
       <Tabs
         data-testid="chat-right-panel-tab-list"
         editable
@@ -91,6 +88,18 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
           if (action === 'remove') Stores.Chat.closeRightPanelTab(key)
         }}
       />
+  )
+
+  // In the Drawer the tabs ARE the header (the Drawer supplies the left back
+  // button + chrome), so render just the tab strip — no border, no close button.
+  if (asTitle) return tabsEl
+
+  return (
+    <div
+      className="flex-shrink-0 flex items-center border-b border-border"
+      data-testid="chat-right-panel-tabs"
+    >
+      {tabsEl}
       <Button
         variant="ghost"
         size="default"
@@ -105,36 +114,8 @@ function PanelTabs({ onCloseAll }: { onCloseAll: () => void }) {
   )
 }
 
-function handleDrawerKeyDown(
-  e: React.KeyboardEvent,
-  drawerRef: React.RefObject<HTMLDivElement | null>,
-  onClose: () => void,
-) {
-  if (e.key === 'Escape') {
-    e.stopPropagation()
-    onClose()
-    return
-  }
-  if (e.key === 'Tab' && drawerRef.current) {
-    const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    )
-    if (focusable.length === 0) return
-    const first = focusable[0]
-    const last = focusable[focusable.length - 1]
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault()
-      last.focus()
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault()
-      first.focus()
-    }
-  }
-}
-
 export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const drawerRef = useRef<HTMLDivElement>(null)
   const { rightPanel } = Stores.Chat
   // `narrow` = the conversation PAGE is small (element-width, sidebar-aware),
   // not the window — so an open sidebar on a wide window still gets the drawer.
@@ -147,44 +128,30 @@ export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
     rightPanel.tabs.length > 0 &&
     rightPanel.activeId !== null
 
-  // Mobile drawer: auto-focus the close button when opened (screen-reader
-  // announcement) and restore focus to the opener when it closes.
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    if (showDrawer && drawerRef.current) {
-      previouslyFocusedRef.current = document.activeElement as HTMLElement | null
-      const closeBtn = drawerRef.current.querySelector<HTMLElement>(
-        '[data-testid="chat-right-panel-close"]',
-      )
-      if (closeBtn) {
-        closeBtn.focus()
-      }
-    } else if (!showDrawer && previouslyFocusedRef.current) {
-      previouslyFocusedRef.current.focus?.()
-      previouslyFocusedRef.current = null
-    }
-  }, [showDrawer])
-
-  // Mobile: full-screen fixed overlay so it covers the entire page including header
+  // Narrow page: the panel is an actual Drawer (full-width) — it handles the
+  // backdrop, focus-trap, Escape, and swipe-to-close, and carries the
+  // `data-slot="layout-drawer"` the sidebar-swipe guard keys on. The panel's own
+  // PanelTabs is the header (no Drawer title), edge-to-edge (body padding zeroed).
   if (isMobile) {
-    if (!showDrawer) return null
     return (
-      <div
-        ref={drawerRef}
-        className="fixed inset-0 z-[1000] flex flex-col bg-background"
+      <Drawer
+        open={showDrawer}
+        onClose={Stores.Chat.closeMobileDrawer}
+        placement="right"
+        noBodyScrollWrap
         data-testid="chat-right-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Chat panel"
-        onKeyDown={e =>
-          handleDrawerKeyDown(e, drawerRef, Stores.Chat.closeMobileDrawer)
-        }
+        // Tabs live in the title, beside the Drawer's own left back button.
+        title={<PanelTabs asTitle />}
+        titleText="File preview"
+        // header pb-0: the tabs sit flush against the content (no gap), matching
+        // the side-panel look. body: !p-0 edge-to-edge; overflow-hidden +
+        // rounded-b-lg so the content clips to the drawer's rounded bottom corners.
+        classNames={{ header: '!pb-0', body: '!p-0 overflow-hidden rounded-b-lg' }}
       >
-        <PanelTabs onCloseAll={Stores.Chat.closeMobileDrawer} />
-        <div className="flex-1 overflow-hidden">
+        <div className="h-full overflow-hidden min-h-0">
           <ActivePanelContent />
         </div>
-      </div>
+      </Drawer>
     )
   }
 

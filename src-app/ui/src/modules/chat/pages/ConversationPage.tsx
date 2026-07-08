@@ -96,8 +96,10 @@ export default function ConversationPage() {
   useEffect(() => {
     const el = mainAreaRef.current
     if (!el) return
+    // md breakpoint (≤768px page width) — below it the side panel is too cramped
+    // next to the messages, so the panel opens as a Drawer instead.
     const measure = () =>
-      setRightPanelNarrow(el.getBoundingClientRect().width <= 640)
+      setRightPanelNarrow(el.getBoundingClientRect().width <= 768)
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)

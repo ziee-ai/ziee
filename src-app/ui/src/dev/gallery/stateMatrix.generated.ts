@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 324 surfaces carry renderable-state signals; 1818 signals total.
+// 324 surfaces carry renderable-state signals; 1816 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -917,16 +917,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/core/components/ChatRightPanel": {
     surface: "modules/chat/core/components/ChatRightPanel",
-    requiredStates: ["empty"],
+    requiredStates: ["empty","open"],
     signals: [
-      { kind: "branch", condition: "!activeTab", line: 13 },
-      { kind: "branch", condition: "!resolved", line: 16 },
-      { kind: "empty", condition: "tabs.length === 0", line: 49 },
-      { kind: "branch", condition: "e.key === 'Escape'", line: 113 },
-      { kind: "empty", condition: "focusable.length === 0", line: 122 },
-      { kind: "branch", condition: "isMobile", line: 169 },
-      { kind: "branch", condition: "!showDrawer", line: 170 },
-      { kind: "branch", condition: "isOpen", line: 210 },
+      { kind: "branch", condition: "!activeTab", line: 14 },
+      { kind: "branch", condition: "!resolved", line: 17 },
+      { kind: "empty", condition: "tabs.length === 0", line: 50 },
+      { kind: "branch", condition: "isMobile", line: 135 },
+      { kind: "overlay", condition: "<Drawer open>", line: 137 },
+      { kind: "branch", condition: "isOpen", line: 177 },
     ],
   },
   "modules/chat/core/extensions/registry": {
@@ -1067,12 +1065,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "!sentinel", line: 78 },
       { kind: "branch", condition: "!el", line: 98 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 115 },
-      { kind: "branch", condition: "!conversationId", line: 144 },
-      { kind: "loading", condition: "loading && !conversation", line: 170 },
-      { kind: "loading", condition: "!loading && !conversation", line: 179 },
-      { kind: "error", condition: "error", line: 182 },
-      { kind: "error", condition: "error", line: 239 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 117 },
+      { kind: "branch", condition: "!conversationId", line: 146 },
+      { kind: "loading", condition: "loading && !conversation", line: 172 },
+      { kind: "loading", condition: "!loading && !conversation", line: 181 },
+      { kind: "error", condition: "error", line: 184 },
+      { kind: "error", condition: "error", line: 241 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -3848,7 +3846,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 320 keys.
+ * 321 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3905,6 +3903,7 @@ export type RequiredState =
   | "modules/chat/components/ConversationList:error"
   | "modules/chat/components/MessageList:delayed"
   | "modules/chat/core/components/ChatRightPanel:empty"
+  | "modules/chat/core/components/ChatRightPanel:open"
   | "modules/chat/core/extensions/registry:empty"
   | "modules/chat/core/extensions/slots:empty"
   | "modules/chat/core/utils/StreamdownErrorBoundary:error"
@@ -4228,6 +4227,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/components/ConversationList:error",
   "modules/chat/components/MessageList:delayed",
   "modules/chat/core/components/ChatRightPanel:empty",
+  "modules/chat/core/components/ChatRightPanel:open",
   "modules/chat/core/extensions/registry:empty",
   "modules/chat/core/extensions/slots:empty",
   "modules/chat/core/utils/StreamdownErrorBoundary:error",

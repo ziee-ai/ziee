@@ -88,6 +88,7 @@ export const STATE_COVERAGE = {
   "modules/assistant/chat-extension/components/AssistantMenuItem:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/assistant/chat-extension/components/AssistantSelector:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/assistant/components/AssistantFormDrawer:open": { via: 'overlay' },
+  "modules/chat/core/components/ChatRightPanel:open": { via: 'overlay' },
   "modules/assistant/pages/AssistantsSettings:delayed": { via: 'page-state-mode' },
   "modules/assistant/pages/AssistantsSettings:empty": { via: 'page-state-mode' },
   "modules/assistant/pages/UserAssistantsSettings:delayed": { via: 'page-state-mode' },
