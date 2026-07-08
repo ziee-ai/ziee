@@ -126,8 +126,7 @@ export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: st
   // Publish the current view snapshot for the file-viewer header's view-aware
   // Export / Copy-selection actions (see DelimitedHeader). No-op in the
   // inline/chat context (no file id) — there the header isn't rendered.
-  // selectionRef is already formula-neutralized by the kit (sanitizeClipboard);
-  // the header's whole-view fallback goes through rowsToDelimited (also neutralized).
+  // selectionRef is already formula-neutralized by the kit (sanitizeClipboard).
   const publishView = useCallback(() => {
     if (!fileId) return
     Stores.File.setFileTabularView(fileId, {
@@ -139,11 +138,24 @@ export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: st
     })
   }, [fileId, activeColumns, delimiter, fileName])
 
-  // Seed the snapshot on mount + whenever the parsed data changes, so the
-  // header's actions are enabled immediately and never act on a stale file.
+  // On mount + whenever the parsed data changes (new file/text), reset the view
+  // refs to the fresh full parse BEFORE publishing — otherwise the snapshot would
+  // briefly carry the previous file's rows/selection until the kit's onViewChange
+  // re-fires. Keeps the header's actions correct for the file actually shown.
   useEffect(() => {
+    viewRef.current = dataSource
+    visibleKeysRef.current = exportColumns.map(c => c.key)
+    selectionRef.current = ''
     publishView()
-  }, [publishView, dataSource])
+  }, [publishView, dataSource, exportColumns])
+
+  // Drop the published snapshot when the table unmounts (panel close / switch to
+  // raw view) so the header's Export / Copy-selection disable rather than act on
+  // a view that is no longer rendered.
+  useEffect(() => {
+    if (!fileId) return
+    return () => Stores.File.clearFileTabularView(fileId)
+  }, [fileId])
 
   return (
     // A PLAIN (small) grid hugs its content so a 2-3 row table doesn't sit in a

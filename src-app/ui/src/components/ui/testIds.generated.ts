@@ -346,7 +346,7 @@ export const TEST_IDS = [
   "file-viewer-mode-segmented",
   "file-viewer-raw-btn",
   "file-viewer-rendered-btn",
-  "file-viewer-tabular-copy-btn",
+  "file-viewer-tabular-copy-selection-btn",
   "file-viewer-tabular-export-btn",
   "file-viewer-wrap-btn",
   "file-viewer-zoom-in-btn",

@@ -85,7 +85,7 @@ test.describe('Tabular viewer', () => {
     await openSeeded(page, 'seeded-delimited-viewer-shell', CSV)
     // Select the Name cell (col index 1: # gutter, Name, Qty, Note) of row 0.
     await page.getByTestId(`${CSV}-row-0`).locator('td').nth(1).click()
-    await page.getByTestId('file-viewer-tabular-copy-btn').click()
+    await page.getByTestId('file-viewer-tabular-copy-selection-btn').click()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Banana')
   })
 

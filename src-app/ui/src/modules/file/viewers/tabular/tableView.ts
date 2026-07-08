@@ -125,18 +125,13 @@ export function exportTabularView(view: TabularViewState): void {
   downloadDelimited(text, exportFilename(view.fileName, ext), view.delimiter)
 }
 
-/** The text a Copy-selection writes: the current selection as TSV, or — when
- *  nothing is selected — the whole view as TSV (formula-neutralized via
- *  rowsToDelimited). Pure (the clipboard write lives in copyTabularSelection). */
-export function tabularClipboardText(view: TabularViewState): string {
-  return view.selectionTsv || rowsToDelimited(view.rows, view.columns, '\t')
-}
-
-/** Copy the current selection (or the whole view as a fallback) to the clipboard
- *  as TSV. Returns whether the write succeeded so the caller can toast. */
+/** Copy the current SELECTION to the clipboard as TSV. The selection string is
+ *  already formula-neutralized by the kit (sanitizeClipboard). The caller
+ *  guarantees a non-empty selection (the header warns on an empty one, mirroring
+ *  chrome.tsx's CopySelectionButton). Returns whether the write succeeded. */
 export async function copyTabularSelection(view: TabularViewState): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(tabularClipboardText(view))
+    await navigator.clipboard.writeText(view.selectionTsv)
     return true
   } catch {
     return false

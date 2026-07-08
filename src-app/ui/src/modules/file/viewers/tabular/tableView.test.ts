@@ -3,11 +3,9 @@ import assert from 'node:assert/strict'
 import {
   type ExportColumn,
   type TabularRecord,
-  type TabularViewState,
   exportFilename,
   rowsToAoa,
   rowsToDelimited,
-  tabularClipboardText,
 } from './tableView.ts'
 
 // Data columns as the viewer builds them (colKey → header title); the `#` gutter
@@ -77,16 +75,10 @@ test('exportFilename swaps the extension and appends -view', () => {
   assert.equal(exportFilename(undefined, 'csv'), 'export-view.csv')
 })
 
-// TEST-25 (copy-selection) — the pure copy-text choice behind the header's
-// Copy-selection action: the live selection when present, else the whole view.
-test('tabularClipboardText prefers the selection, else falls back to the whole view (TSV)', () => {
-  const base: TabularViewState = { rows, columns, delimiter: ',', fileName: 'data.csv', selectionTsv: '' }
-  // A selection (already formula-neutralized TSV by the kit) is used verbatim.
-  assert.equal(tabularClipboardText({ ...base, selectionTsv: 'Banana' }), 'Banana')
-  // No selection → the whole view serialised as TSV (header + rows), regardless
-  // of the view's own delimiter (copy is always TSV).
-  assert.equal(
-    tabularClipboardText(base),
-    'Name\tQty\r\nBanana\t10\r\napple, green\t2',
-  )
+// TEST-23 (export-view) — exportTabularView reuses rowsToDelimited over the
+// visible-column subset, so a hidden-column export drops that column's data.
+// This locks the column-subset path the header's Export-view button relies on.
+test('rowsToDelimited over the visible-column subset backs Export-view (hidden columns dropped)', () => {
+  const visibleOnly: ExportColumn[] = [{ key: '0', title: 'Name' }] // Qty hidden
+  assert.equal(rowsToDelimited(rows, visibleOnly, ','), 'Name\r\nBanana\r\n"apple, green"')
 })

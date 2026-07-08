@@ -160,6 +160,10 @@ interface FileExtensionStore {
   /** Publishes the tabular body's current view snapshot for the header's
    *  Export / Copy-selection actions. */
   setFileTabularView: (fileId: string, view: TabularViewState) => void
+  /** Drops a file's tabular snapshot (e.g. on table unmount / switch to raw
+   *  view) so the header's Export / Copy-selection disable rather than act on a
+   *  stale, no-longer-rendered view. */
+  clearFileTabularView: (fileId: string) => void
 
   /**
    * Returns the cached file entity for a message file, or the fallback if not yet loaded.
@@ -731,6 +735,15 @@ export const File = defineStore('File', {
       set((state) => {
         const next = new Map(state.fileTabularView)
         next.set(fileId, view)
+        state.fileTabularView = next
+      })
+    },
+
+    clearFileTabularView: (fileId: string) => {
+      set((state) => {
+        if (!state.fileTabularView.has(fileId)) return
+        const next = new Map(state.fileTabularView)
+        next.delete(fileId)
         state.fileTabularView = next
       })
     },
