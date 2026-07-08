@@ -1,0 +1,23 @@
+# TESTS — message-scroll-stability
+
+Tiers mirror the codebase: unit (`*.test.ts` colocated), e2e (`ui/tests/e2e/`).
+The virtualizer's DOM/scroll mechanics can only be proven end-to-end, so the
+correctness of the fix is anchored by e2e specs; pure helpers get unit tests.
+
+## Unit
+
+- **TEST-1** (tier: unit) [covers: ITEM-6] file: `src-app/ui/src/modules/chat/core/stores/messageViewState.helpers.ts` — asserts: key builders (message-id key vs file-uri key) are distinct + stable, and the reset helper produces empty maps (per-conversation isolation).
+- **TEST-2** (tier: unit) [covers: ITEM-2] file: `src-app/ui/src/modules/file/chat-extension/components/inlineFileHeight.ts` — asserts: reserved-height resolver returns the SAME definite px for the `!inView` skeleton and the mounted body per viewer type (tabular vs generic), and clamps a user-resized px within [min,max].
+- **TEST-3** (tier: unit) [covers: ITEM-7] file: `src-app/ui/src/modules/chat/core/utils/scrollAnchor.utils.ts` — asserts: the in-place-anchor helper computes the new scrollTop that keeps the toggled row's viewport-top fixed given (oldHeight, newHeight, rowTop, scrollTop), and is a no-op when the row is entirely below the viewport.
+- **TEST-4** (tier: unit) [covers: ITEM-4, ITEM-6] file: `src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts` — asserts: setCollapsed(msgId, false) is read back true-expanded; conversation-switch reset clears it; an unknown id defaults to collapsed=true (parity with old default).
+- **TEST-5** (tier: unit) [covers: ITEM-5, ITEM-6] file: `src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts` — asserts: file-state set (collapsed/seen/heightPx) round-trips per file key, defaults (collapsed=false, seen=false, height=reserved default) when absent, and resets on conversation switch.
+
+## E2E (the behavioural proof — Playwright against the seeded gallery cell)
+
+- **TEST-6** (tier: e2e) [covers: ITEM-1, ITEM-2] file: `src-app/ui/tests/e2e/visual/chat-scroll-stability.spec.ts` — asserts: scrolling the seeded ~500-message mixed conversation top→bottom→top produces a virtualizer total-size correction count (via `window.__MSGLIST_METRICS__`) that settles to ~0 after each scroll pause (no ongoing recorrection storm) and the scrollbar thumb geometry is stable across settle frames.
+- **TEST-7** (tier: e2e) [covers: ITEM-2, ITEM-5] file: `src-app/ui/tests/e2e/visual/chat-scroll-stability.spec.ts` — asserts: an inline file preview (table + image) does NOT change its measured row height when its body mounts or its content settles (row `getBoundingClientRect().height` equal before/after body mount) → images/tables don't cause a jump.
+- **TEST-8** (tier: e2e) [covers: ITEM-4, ITEM-6] file: `src-app/ui/tests/e2e/visual/chat-scroll-stability.spec.ts` — asserts: click "Show more" on a long message → it expands → scroll to bottom → scroll back → the message is STILL expanded (show-more state survives virtualization unmount/remount).
+- **TEST-9** (tier: e2e) [covers: ITEM-7] file: `src-app/ui/tests/e2e/visual/chat-scroll-stability.spec.ts` — asserts: clicking "Show more" keeps the toggled message's top edge visually fixed (viewport does not jump; the expansion grows downward within tolerance).
+- **TEST-10** (tier: e2e) [covers: ITEM-3, ITEM-5] file: `src-app/ui/tests/e2e/visual/chat-scroll-stability.spec.ts` — asserts: dragging the inline file body's resize handle changes its height, the new height persists after scrolling the preview out of view and back, and the resize does not jump the viewport.
+- **TEST-11** (tier: e2e) [covers: ITEM-1, ITEM-7] file: `src-app/ui/tests/e2e/11-chat/chat-scroll-anchor.spec.ts` — asserts: reverse-infinite-scroll prepend (load older) still pins the anchor (top-visible message stays put, no >4px drift) AND jump-to-message (`#message-<id>`) still lands the target centered — the fix did not regress the existing anchor/jump paths.
+- **TEST-12** (tier: e2e) [covers: ITEM-2, ITEM-1] file: `src-app/ui/tests/e2e/visual/chat-scroll-stability.spec.ts` — asserts: gallery runtime-health on the seeded long-conversation surface reports zero console errors / failed requests / AA-contrast failures for the new fixed-height body + resize handle + skeleton states (feeds `npm run gate:ui`).
