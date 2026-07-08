@@ -19389,218 +19389,6 @@
         ]
       }
     },
-    "/api/office-bridge/settings": {
-      "get": {
-        "tags": [
-          "OfficeBridge"
-        ],
-        "summary": "Read office-bridge settings",
-        "description": "\n\n**Required Permission:** `office_bridge::admin::read`\n\nRead office-bridge settings (enable, port, connection state).",
-        "operationId": "OfficeBridge.getSettings",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read office-bridge settings (enable, port, connection state).",
-                        "name": "OfficeBridgeAdminRead",
-                        "value": "office_bridge::admin::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: office_bridge::admin::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OfficeBridgeSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "OfficeBridge"
-        ],
-        "summary": "Update office-bridge settings (enable, port)",
-        "description": "\n\n**Required Permission:** `office_bridge::admin::manage`\n\nUpdate office-bridge settings (enable, port).",
-        "operationId": "OfficeBridge.updateSettings",
-        "requestBody": {
-          "description": "PUT body for the global settings. Every field optional → absent = leave.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateOfficeBridgeSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update office-bridge settings (enable, port).",
-                        "name": "OfficeBridgeManage",
-                        "value": "office_bridge::admin::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: office_bridge::admin::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OfficeBridgeSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/office-bridge/documents": {
-      "get": {
-        "tags": [
-          "OfficeBridge"
-        ],
-        "summary": "List the user's currently-open Office documents",
-        "description": "\n\n**Required Permission:** `office_bridge::use`\n\nUse the office-bridge tools for open Office documents.",
-        "operationId": "OfficeBridge.listDocuments",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Use the office-bridge tools for open Office documents.",
-                        "name": "OfficeBridgeUse",
-                        "value": "office_bridge::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: office_bridge::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/OpenDoc"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/office-bridge/connect": {
-      "post": {
-        "tags": [
-          "OfficeBridge"
-        ],
-        "summary": "Run the [Connect] installer flow (trust cert, sideload add-in, report readiness)",
-        "description": "\n\n**Required Permission:** `office_bridge::admin::manage`\n\nUpdate office-bridge settings (enable, port).",
-        "operationId": "OfficeBridge.connect",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update office-bridge settings (enable, port).",
-                        "name": "OfficeBridgeManage",
-                        "value": "office_bridge::admin::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: office_bridge::admin::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Readiness report returned by the admin `[Connect]` installer flow (ITEM-13).\n\n The `[Connect]` action runs the one-shot install steps (trust the bridge CA,\n register the add-in manifest for sideloading) and reports where the host\n ended up. Every step is best-effort: a failed step sets its boolean `false`\n and appends a human-readable note to `message` rather than failing the whole\n request, so the admin sees a partial-success report instead of a 500.\n\n Like [`OfficeBridgeSettings`], this DTO must NEVER carry the bridge's\n per-session token or any secret — it is display/diagnostic state only.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConnectReadiness"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/lit-search/settings": {
       "get": {
         "tags": [
@@ -21539,6 +21327,218 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HostMountsBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/office-bridge/settings": {
+      "get": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "Read office-bridge settings",
+        "description": "\n\n**Required Permission:** `office_bridge::admin::read`\n\nRead office-bridge settings (enable, port, connection state).",
+        "operationId": "OfficeBridge.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read office-bridge settings (enable, port, connection state).",
+                        "name": "OfficeBridgeAdminRead",
+                        "value": "office_bridge::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeBridgeSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "Update office-bridge settings (enable, port)",
+        "description": "\n\n**Required Permission:** `office_bridge::admin::manage`\n\nUpdate office-bridge settings (enable, port).",
+        "operationId": "OfficeBridge.updateSettings",
+        "requestBody": {
+          "description": "PUT body for the global settings. Every field optional → absent = leave.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOfficeBridgeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update office-bridge settings (enable, port).",
+                        "name": "OfficeBridgeManage",
+                        "value": "office_bridge::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeBridgeSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/office-bridge/documents": {
+      "get": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "List the user's currently-open Office documents",
+        "description": "\n\n**Required Permission:** `office_bridge::use`\n\nUse the office-bridge tools for open Office documents.",
+        "operationId": "OfficeBridge.listDocuments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the office-bridge tools for open Office documents.",
+                        "name": "OfficeBridgeUse",
+                        "value": "office_bridge::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpenDoc"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/office-bridge/connect": {
+      "post": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "Run the [Connect] installer flow (trust cert, sideload add-in, report readiness)",
+        "description": "\n\n**Required Permission:** `office_bridge::admin::manage`\n\nUpdate office-bridge settings (enable, port).",
+        "operationId": "OfficeBridge.connect",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update office-bridge settings (enable, port).",
+                        "name": "OfficeBridgeManage",
+                        "value": "office_bridge::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Readiness report returned by the admin `[Connect]` installer flow (ITEM-13).\n\n The `[Connect]` action runs the one-shot install steps (trust the bridge CA,\n register the add-in manifest for sideloading) and reports where the host\n ended up. Every step is best-effort: a failed step sets its boolean `false`\n and appends a human-readable note to `message` rather than failing the whole\n request, so the admin sees a partial-success report instead of a 500.\n\n Like [`OfficeBridgeSettings`], this DTO must NEVER carry the bridge's\n per-session token or any secret — it is display/diagnostic state only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectReadiness"
                 }
               }
             }

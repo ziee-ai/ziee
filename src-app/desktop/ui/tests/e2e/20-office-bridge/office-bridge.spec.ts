@@ -1,11 +1,15 @@
 import type { Page } from '@playwright/test'
-import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+// office_bridge is desktop-only, but its panel renders inside the (web-ui core)
+// chat right-panel, so this spec reuses the web-ui e2e chat/provider/SSE-mock
+// harness from the shared monorepo. Phase 8 validates the runtime wiring against
+// the desktop/ui playwright runner.
+import { test, expect } from '../../../../../ui/tests/fixtures/test-context'
+import { loginAsAdmin } from '../../../../../ui/tests/common/auth-helpers'
 import {
   createProviderViaAPI,
   createModelViaAPI,
   assignProviderToAdministratorsGroup,
-} from '../../common/provider-helpers'
+} from '../../../../../ui/tests/common/provider-helpers'
 import {
   mockChatTokenStream,
   startedEvent,
@@ -13,9 +17,9 @@ import {
   mockGetMessages,
   mockUserMessage,
   type MockMessageContent,
-} from '../helpers/sse-mock-helpers'
-import { goToNewChatPage, selectModelInDropdown } from '../chat/helpers/chat-helpers'
-import { byTestId } from '../testid'
+} from '../../../../../ui/tests/e2e/helpers/sse-mock-helpers'
+import { goToNewChatPage, selectModelInDropdown } from '../../../../../ui/tests/e2e/chat/helpers/chat-helpers'
+import { byTestId } from '../../../../../ui/tests/e2e/testid'
 
 /**
  * TEST-18 [covers ITEM-14] — e2e: the office-bridge `list_open_documents`

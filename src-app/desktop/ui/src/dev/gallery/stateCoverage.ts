@@ -28,6 +28,10 @@ export const STATE_COVERAGE = {
   "modules/remote-access/pages/RemoteAccessPage:error": { via: 'page-state-mode' },
   "modules/updater/components/UpdateBanner:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/updater/pages/AboutPage:error": { via: 'page-state-mode' },
+  "modules/office-bridge/chat-extension/extension:panel-open": { skip: true, reason: "via surface — the office-documents panel opens inside the chat right-panel; proven by TEST-18 (desktop/ui e2e)" },
+  "modules/office-bridge/components/OpenDocumentsPanel:delayed": { skip: true, reason: "via surface — the loading branch is proven by runtime coverage + TEST-18" },
+  "modules/office-bridge/components/OpenDocumentsPanel:empty": { skip: true, reason: "via surface — the empty ('No open Office documents') branch is proven by runtime coverage" },
+  "modules/office-bridge/components/OpenDocumentsPanel:error": { skip: true, reason: "via surface — the refetch-failure error branch is proven by runtime coverage" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

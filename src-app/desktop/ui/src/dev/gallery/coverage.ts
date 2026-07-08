@@ -96,6 +96,9 @@ export const GALLERY_COVERAGE = {
   "modules/tunnel-auth/PhoneAuthPage": { kind: 'flow', reason: 'phone auth flow' },
   "modules/updater/components/UpdateBanner": { kind: 'via', reason: 'slot banner in the app-layout' },
   "modules/updater/pages/AboutPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
+  "modules/office-bridge/chat-extension/extension": { kind: 'via', reason: 'rendered within the chat right-panel (office-bridge panel + tool-result card)' },
+  "modules/office-bridge/components/OpenDocumentsPanel": { kind: 'via', reason: 'rendered within the chat right-panel; open-state exercised by TEST-18' },
+  "modules/office-bridge/components/OpenDocumentsToolResultCard": { kind: 'via', reason: 'rendered inline in a chat message (list_open_documents tool result)' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 

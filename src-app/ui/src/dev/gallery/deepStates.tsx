@@ -19,8 +19,6 @@ import { Loading } from '@/core/components/Loading'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
-import { OFFICE_DOCS_PANEL_ID } from '@/modules/office-bridge/stores/officeBridgeSync'
-import { OfficeBridge as OfficeBridgeStore } from '@/modules/office-bridge/stores/OfficeBridge.store'
 import { type InteractionRecipe, useRunInteraction } from './interactions'
 import { holdForever } from './seeded/helpers'
 import { ModelPicker } from '@/modules/user-llm-providers/ModelPicker.store'
@@ -316,55 +314,6 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
         title: 'Literature screening',
         type: 'literature',
         data: literaturePanelData,
-      })
-    },
-  },
-  {
-    slug: 'deep-chat-right-panel-office-bridge',
-    title: 'Conversation — right panel open (open Office documents)',
-    conversationId: SHOWCASE_CONVERSATION_ID,
-    note: 'an open-Office-documents tab (registerPanelRenderer("office-bridge"))',
-    setup: async () => {
-      await whenLoaded(SHOWCASE_CONVERSATION_ID)
-      const documents = [
-        {
-          app: 'word' as const,
-          name: 'Q3-Report.docx',
-          full_name: 'C:/Users/analyst/Q3-Report.docx',
-          path: 'C:/Users/analyst',
-          saved: true,
-          active: true,
-          attach_method: 'com_get_active_object' as const,
-        },
-        {
-          app: 'excel' as const,
-          name: 'Budget.xlsx',
-          full_name: 'C:/Users/analyst/Budget.xlsx',
-          path: 'C:/Users/analyst',
-          saved: false,
-          active: false,
-          attach_method: 'accessible_object_from_window' as const,
-        },
-        {
-          app: 'power_point' as const,
-          name: 'Kickoff.pptx',
-          full_name: 'C:/Users/analyst/Kickoff.pptx',
-          path: 'C:/Users/analyst',
-          saved: true,
-          active: false,
-          attach_method: 'window_enum_presence' as const,
-        },
-      ]
-      // The panel reads the LIVE list from Stores.OfficeBridge (the tab `data` is
-      // only a pre-fetch snapshot fallback), so seed the store too — otherwise the
-      // backend-free gallery renders the empty state and never showcases the
-      // populated panel. Mirrors how the file/literature deep-states seed stores.
-      OfficeBridgeStore.store.setState({ documents, loading: false, error: null })
-      chat().displayInRightPanel({
-        id: OFFICE_DOCS_PANEL_ID,
-        title: 'Open Office documents',
-        type: 'office-bridge',
-        data: { documents },
       })
     },
   },

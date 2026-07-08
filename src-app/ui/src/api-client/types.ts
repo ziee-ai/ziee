@@ -476,46 +476,6 @@ export interface ConfigFieldInfo {
 }
 
 /**
- * Readiness report returned by the admin `[Connect]` installer flow (ITEM-13).
- *
- *  The `[Connect]` action runs the one-shot install steps (trust the bridge CA,
- *  register the add-in manifest for sideloading) and reports where the host
- *  ended up. Every step is best-effort: a failed step sets its boolean `false`
- *  and appends a human-readable note to `message` rather than failing the whole
- *  request, so the admin sees a partial-success report instead of a 500.
- *
- *  Like [`OfficeBridgeSettings`], this DTO must NEVER carry the bridge's
- *  per-session token or any secret — it is display/diagnostic state only.
- */
-export interface ConnectReadiness {
-  /** The TCP port the bridge HTTPS+WSS listener uses (echoed for the UI). */
-  bridge_port: number
-  /**
-   * Whether the bridge CA was successfully installed into the OS trust store
-   *  (one UAC prompt on Windows). False ⇒ see `message`.
-   */
-  cert_trusted: boolean
-  /**
-   * Human-readable summary of the outcome — a success line when every step
-   *  landed, else the concatenated per-step failure/warning notes.
-   */
-  message: string
-  /**
-   * True ⇒ warn the user: Office is running elevated (as administrator), so
-   *  the add-in platform is disabled and the bridge cannot attach. Office must
-   *  be restarted without administrator rights.
-   */
-  office_elevated_warning: boolean
-  /** Whether a Microsoft Office installation was detected on the host. */
-  office_present: boolean
-  /**
-   * Whether the add-in manifest was registered for sideloading. False ⇒ see
-   *  `message`.
-   */
-  sideloaded: boolean
-}
-
-/**
  * One catalog entry returned by `GET /api/lit-search/connectors`: the code-owned
  *  descriptor joined with the stored row's configured/api_key state. The key
  *  value is NEVER returned — only `api_key_set`.
@@ -3613,21 +3573,6 @@ export interface MutationResponse {
   ok: boolean
 }
 
-/** Which Office application a document belongs to. */
-export type OfficeApp = 'word' | 'excel' | 'power_point'
-
-/** Deployment-wide office-bridge settings (singleton row). Returned by GET. */
-export interface OfficeBridgeSettings {
-  /** Public fingerprint of the locally-trusted bridge cert (not a secret). */
-  cert_fingerprint?: string
-  /** Runtime admin toggle (distinct from the deploy-level config kill switch). */
-  enabled: boolean
-  /** Last time a task pane successfully connected, or null if never. */
-  last_connected_at?: string
-  /** Fixed TCP port the bridge HTTPS+WSS listener binds (default 44300). */
-  port: number
-}
-
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -3636,34 +3581,6 @@ export interface OfficeBridgeSettings {
 export interface OnboardingProgress {
   completed_guide_ids: string[]
   completed_step_ids: string[]
-}
-
-/**
- * One currently-open Office document, as enumerated by the platform.
- *
- *  `full_name` is the app's own fully-qualified document identifier (path +
- *  name for a saved doc, or just the name for an unsaved one) — it is the
- *  stable handle callers pass back to [`OfficePlatform::act_on_document`].
- */
-export interface OpenDoc {
-  /** Whether this is the app's currently-active document. */
-  active: boolean
-  /** The owning application (Word/Excel/PowerPoint). */
-  app: OfficeApp
-  /**
-   * How the platform attached to this doc (e.g. `"com_get_active_object"`,
-   *  `"accessible_object_from_window"`, `"enum_windows_presence"`). Purely
-   *  diagnostic; opaque to callers.
-   */
-  attach_method: string
-  /** App-qualified full name — the handle for `act_on_document`. */
-  full_name: string
-  /** Short document name (e.g. `Report.docx`). */
-  name: string
-  /** Filesystem path of the containing folder, if the doc has been saved. */
-  path?: string
-  /** Whether the document has no unsaved changes (`Document.Saved`). */
-  saved: boolean
 }
 
 export interface OperatingSystemInfo {
@@ -5553,12 +5470,6 @@ export interface UpdateMemoryRequest {
   metadata?: unknown
 }
 
-/** PUT body for the global settings. Every field optional → absent = leave. */
-export interface UpdateOfficeBridgeSettingsRequest {
-  enabled?: boolean
-  port?: number
-}
-
 /**
  * Self-service profile update for the authenticated user. Only the
  *  safe fields are accepted here: `email` is intentionally NOT
@@ -6303,9 +6214,6 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
-  OfficeBridgeAdminRead = 'office_bridge::admin::read',
-  OfficeBridgeManage = 'office_bridge::admin::manage',
-  OfficeBridgeUse = 'office_bridge::use',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
   ProjectsCreate = 'projects::create',
@@ -6437,9 +6345,6 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
-  OfficeBridgeAdminRead: 'Read office-bridge settings (enable, port, connection state).',
-  OfficeBridgeManage: 'Update office-bridge settings (enable, port).',
-  OfficeBridgeUse: 'Use the office-bridge tools for open Office documents.',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
   ProjectsCreate: 'Create chat projects',
@@ -6730,10 +6635,6 @@ export const ApiEndpoints = {
   'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
   'Message.send': 'POST /api/conversations/{id}/messages',
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
-  'OfficeBridge.connect': 'POST /api/office-bridge/connect',
-  'OfficeBridge.getSettings': 'GET /api/office-bridge/settings',
-  'OfficeBridge.listDocuments': 'GET /api/office-bridge/documents',
-  'OfficeBridge.updateSettings': 'PUT /api/office-bridge/settings',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -7086,10 +6987,6 @@ export type ApiEndpointParameters = {
   'Message.getMcpServers': { id: string }
   'Message.send': { id: string } & SendMessageRequest
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
-  'OfficeBridge.connect': void
-  'OfficeBridge.getSettings': void
-  'OfficeBridge.listDocuments': void
-  'OfficeBridge.updateSettings': UpdateOfficeBridgeSettingsRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -7442,10 +7339,6 @@ export type ApiEndpointResponses = {
   'Message.getMcpServers': MessageMcpServersResponse
   'Message.send': SendMessageResponse
   'Message.stopGeneration': void
-  'OfficeBridge.connect': ConnectReadiness
-  'OfficeBridge.getSettings': OfficeBridgeSettings
-  'OfficeBridge.listDocuments': OpenDoc[]
-  'OfficeBridge.updateSettings': OfficeBridgeSettings
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress

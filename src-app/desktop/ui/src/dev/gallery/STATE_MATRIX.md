@@ -7,19 +7,20 @@
 
 ## Summary
 
-- **15** surfaces carry at least one renderable-state signal.
-- **91** signals total: 82 branch, 3 empty, 3 error, 2 loading, 1 overlay.
-- **0** right-panel renderers registered (each a right-panel-open state).
+- **18** surfaces carry at least one renderable-state signal.
+- **99** signals total: 86 branch, 4 empty, 4 error, 3 loading, 1 overlay, 1 panel.
+- **1** right-panel renderers registered (each a right-panel-open state).
 - **5** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 2 |
-| `empty` | 3 |
-| `error` | 3 |
+| `delayed` | 3 |
+| `empty` | 4 |
+| `error` | 4 |
 | `open` | 1 |
+| `panel-open` | 1 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
 
@@ -29,7 +30,7 @@ conversation page.
 
 | panel type | registered in |
 |---|---|
-| _(none)_ | |
+| `office-bridge` | `modules/office-bridge/chat-extension/extension`:25 |
 
 ## Slot registrations
 
@@ -155,6 +156,35 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `isSidebarCollapsed` | 76 |
+
+### `modules/office-bridge/chat-extension/extension`
+
+Required states: `panel-open`
+
+| kind | condition | line |
+|---|---|---|
+| panel | `registerPanelRenderer('office-bridge')` | 25 |
+
+### `modules/office-bridge/components/OpenDocumentsPanel`
+
+Required states: `delayed`, `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| error | `error && documents.length === 0` | 31 |
+| loading | `loading && documents.length === 0` | 46 |
+| empty | `documents.length === 0` | 57 |
+| branch | `doc.path` | 96 |
+| branch | `doc.active` | 105 |
+
+### `modules/office-bridge/components/OpenDocumentsToolResultCard`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `content.content_type !== 'tool_result'` | 22 |
+| branch | `documents.length > 0` | 64 |
 
 ### `modules/remote-access/pages/RemoteAccessPage`
 

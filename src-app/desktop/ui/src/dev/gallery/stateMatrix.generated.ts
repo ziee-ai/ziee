@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 15 surfaces carry renderable-state signals; 91 signals total.
+// 18 surfaces carry renderable-state signals; 99 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -140,6 +140,32 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "isSidebarCollapsed", line: 76 },
     ],
   },
+  "modules/office-bridge/chat-extension/extension": {
+    surface: "modules/office-bridge/chat-extension/extension",
+    requiredStates: ["panel-open"],
+    signals: [
+      { kind: "panel", condition: "registerPanelRenderer('office-bridge')", line: 25 },
+    ],
+  },
+  "modules/office-bridge/components/OpenDocumentsPanel": {
+    surface: "modules/office-bridge/components/OpenDocumentsPanel",
+    requiredStates: ["delayed","empty","error"],
+    signals: [
+      { kind: "error", condition: "error && documents.length === 0", line: 31 },
+      { kind: "loading", condition: "loading && documents.length === 0", line: 46 },
+      { kind: "empty", condition: "documents.length === 0", line: 57 },
+      { kind: "branch", condition: "doc.path", line: 96 },
+      { kind: "branch", condition: "doc.active", line: 105 },
+    ],
+  },
+  "modules/office-bridge/components/OpenDocumentsToolResultCard": {
+    surface: "modules/office-bridge/components/OpenDocumentsToolResultCard",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "content.content_type !== 'tool_result'", line: 22 },
+      { kind: "branch", condition: "documents.length > 0", line: 64 },
+    ],
+  },
   "modules/remote-access/pages/RemoteAccessPage": {
     surface: "modules/remote-access/pages/RemoteAccessPage",
     requiredStates: ["delayed","error"],
@@ -221,7 +247,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
 
 /** Right-panel renderers — each is a distinct right-panel-open state to render. */
 export const PANEL_RENDERERS: PanelRegistration[] = [
-
+  { type: "office-bridge", surface: "modules/office-bridge/chat-extension/extension", line: 25 },
 ]
 
 /** Slot registrations (discoverability map for sidebar/settings/panel mount points). */
@@ -241,7 +267,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 9 keys.
+ * 13 keys.
  */
 export type RequiredState =
   | "modules/host-mount/conversation-extension/components/ConversationMountsControl:empty"
@@ -249,6 +275,10 @@ export type RequiredState =
   | "modules/host-mount/project-extension/components/ProjectMountsPanel:delayed"
   | "modules/host-mount/project-extension/components/ProjectMountsPanel:empty"
   | "modules/layouts/app-layout/components/Drawer:empty"
+  | "modules/office-bridge/chat-extension/extension:panel-open"
+  | "modules/office-bridge/components/OpenDocumentsPanel:delayed"
+  | "modules/office-bridge/components/OpenDocumentsPanel:empty"
+  | "modules/office-bridge/components/OpenDocumentsPanel:error"
   | "modules/remote-access/pages/RemoteAccessPage:delayed"
   | "modules/remote-access/pages/RemoteAccessPage:error"
   | "modules/updater/components/UpdateBanner:error"
@@ -261,6 +291,10 @@ export const REQUIRED_STATE_KEYS = [
   "modules/host-mount/project-extension/components/ProjectMountsPanel:delayed",
   "modules/host-mount/project-extension/components/ProjectMountsPanel:empty",
   "modules/layouts/app-layout/components/Drawer:empty",
+  "modules/office-bridge/chat-extension/extension:panel-open",
+  "modules/office-bridge/components/OpenDocumentsPanel:delayed",
+  "modules/office-bridge/components/OpenDocumentsPanel:empty",
+  "modules/office-bridge/components/OpenDocumentsPanel:error",
   "modules/remote-access/pages/RemoteAccessPage:delayed",
   "modules/remote-access/pages/RemoteAccessPage:error",
   "modules/updater/components/UpdateBanner:error",

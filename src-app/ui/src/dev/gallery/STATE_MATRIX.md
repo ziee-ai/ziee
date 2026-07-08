@@ -7,20 +7,20 @@
 
 ## Summary
 
-- **326** surfaces carry at least one renderable-state signal.
-- **1821** signals total: 1429 branch, 112 empty, 96 error, 97 loading, 84 overlay, 3 panel.
-- **3** right-panel renderers registered (each a right-panel-open state).
+- **323** surfaces carry at least one renderable-state signal.
+- **1813** signals total: 1425 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
+- **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 85 |
-| `empty` | 89 |
-| `error` | 75 |
+| `delayed` | 84 |
+| `empty` | 88 |
+| `error` | 74 |
 | `open` | 71 |
-| `panel-open` | 3 |
+| `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
 
@@ -32,7 +32,6 @@ conversation page.
 |---|---|
 | `file` | `modules/file/chat-extension/extension`:151 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
-| `office-bridge` | `modules/office-bridge/chat-extension/extension`:25 |
 
 ## Slot registrations
 
@@ -3200,35 +3199,6 @@ Required states: `delayed`, `error`
 |---|---|---|
 | error | `error && !settings` | 38 |
 | loading | `loading && !settings` | 47 |
-
-### `modules/office-bridge/chat-extension/extension`
-
-Required states: `panel-open`
-
-| kind | condition | line |
-|---|---|---|
-| panel | `registerPanelRenderer('office-bridge')` | 25 |
-
-### `modules/office-bridge/components/OpenDocumentsPanel`
-
-Required states: `delayed`, `empty`, `error`
-
-| kind | condition | line |
-|---|---|---|
-| error | `error && documents.length === 0` | 31 |
-| loading | `loading && documents.length === 0` | 46 |
-| empty | `documents.length === 0` | 57 |
-| branch | `doc.path` | 96 |
-| branch | `doc.active` | 105 |
-
-### `modules/office-bridge/components/OpenDocumentsToolResultCard`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `content.content_type !== 'tool_result'` | 22 |
-| branch | `documents.length > 0` | 64 |
 
 ### `modules/onboarding/OnboardingPage`
 

@@ -64,12 +64,6 @@ export const STATE_COVERAGE = {
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
   },
-  'modules/office-bridge/chat-extension/extension:panel-open': {
-    via: 'deep:deep-chat-right-panel-office-bridge',
-  },
-  "modules/office-bridge/components/OpenDocumentsPanel:delayed": { skip: true, reason: "via surface — rendered within the chat right-panel; the loading branch is proven by Part 2 runtime coverage + TEST-18 (tests/e2e/20-office-bridge)" },
-  "modules/office-bridge/components/OpenDocumentsPanel:empty": { skip: true, reason: "via surface — rendered within the chat right-panel; the empty ('No open Office documents') branch is proven by Part 2 runtime coverage" },
-  "modules/office-bridge/components/OpenDocumentsPanel:error": { skip: true, reason: "via surface — rendered within the chat right-panel; the refetch-failure error branch is proven by Part 2 runtime coverage" },
   "components/ui/kit/button:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "components/ui/kit/card:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "components/ui/kit/checkbox:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
