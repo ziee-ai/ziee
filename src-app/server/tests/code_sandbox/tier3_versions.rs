@@ -118,12 +118,12 @@ async fn list_versions_requires_read_permission() {
     assert_eq!(resp.status().as_u16(), 403);
 }
 
-/// A user WITH environments::read passes the permission gate — the
-/// extractor does not 401/403 them. (The handler body then either
-/// returns 200 with the status snapshot when the sandbox is initialized
-/// or 503 SANDBOX_NOT_INITIALIZED when it isn't; both are valid and the
-/// exact one depends on process-global init state, so we only assert the
-/// gate let them through.)
+/// A user WITH environments::read passes the permission gate AND the LIST
+/// path degrades gracefully: it returns **200** with the GitHub catalog +
+/// a machine-readable `availability` reason instead of a blanket 503. The
+/// default harness leaves `code_sandbox.enabled: false`, and each test runs
+/// its own fresh server subprocess, so the recorded reason is deterministic:
+/// `disabled_in_config`.
 #[tokio::test]
 async fn list_versions_passes_permission_gate_for_reader() {
     let server = TestServer::start().await;
@@ -134,12 +134,67 @@ async fn list_versions_passes_permission_gate_for_reader() {
         .send()
         .await
         .expect("request");
-    let code = resp.status().as_u16();
-    assert!(
-        code != 401 && code != 403,
-        "reader should clear the permission gate; got {code}: {:?}",
-        resp.text().await
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "the LIST path degrades to 200 even when the sandbox is disabled"
     );
+    let body: Value = resp.json().await.expect("json body");
+    assert_eq!(
+        body["availability"], "disabled_in_config",
+        "a disabled sandbox reports its reason so the UI can degrade gracefully"
+    );
+    assert!(
+        body["available"].is_array(),
+        "the GitHub catalog is always an array (possibly empty when offline)"
+    );
+}
+
+/// The degraded LIST response carries the GitHub catalog but an EMPTY
+/// installed/pinned set (they need the DB/state), and only the LIST path
+/// degrades: the mutating `install` path still hard-gates on a live pool
+/// and returns 503 `SANDBOX_NOT_INITIALIZED`.
+#[tokio::test]
+async fn list_versions_degraded_returns_available_when_disabled() {
+    let server = TestServer::start().await;
+    let token = user_with_manage(&server).await;
+
+    let list = reqwest::Client::new()
+        .get(versions_url(&server, ""))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("list request");
+    assert_eq!(list.status().as_u16(), 200);
+    let body: Value = list.json().await.expect("json body");
+    assert_eq!(body["availability"], "disabled_in_config");
+    assert_eq!(
+        body["installed"].as_array().map(|a| a.len()),
+        Some(0),
+        "nothing is installed while the sandbox is disabled"
+    );
+    assert!(
+        body["pinned_version"].is_null(),
+        "no pin is surfaced while the sandbox is disabled"
+    );
+    assert!(body["available"].is_array());
+
+    // The mutating path is unchanged — a valid install request clears
+    // validation but then hits the live-pool gate → 503.
+    let install = reqwest::Client::new()
+        .post(versions_url(&server, "/install"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&valid_install_body())
+        .send()
+        .await
+        .expect("install request");
+    assert_eq!(
+        install.status().as_u16(),
+        503,
+        "install still requires an initialized sandbox"
+    );
+    let ierr: Value = install.json().await.expect("json body");
+    assert_eq!(ierr["error_code"], "SANDBOX_NOT_INITIALIZED");
 }
 
 // =====================================================================
