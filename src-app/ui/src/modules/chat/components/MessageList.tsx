@@ -153,8 +153,16 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     const seedRef = useRef<VirtualItem[] | null>(null)
     const initialMeasurementsCache = useMemo(
       () => {
+        // Window reset (conversation switch clears messages to an empty Map, then
+        // virtual-core empties its measurementsCache too) → drop the freeze so the
+        // NEXT non-empty build seeds the NEW conversation's ids, not the stale
+        // previous one. Streaming never reaches count 0, so it never resets here —
+        // the seed stays frozen through a stream (FIX_ROUND-2).
+        if (messagesArray.length === 0) {
+          seedRef.current = null
+          return EMPTY_SEED
+        }
         if (seedRef.current) return seedRef.current
-        if (messagesArray.length === 0) return EMPTY_SEED
         const seed = buildInitialMeasurementsCache(
           messagesArray.map(m => m.id),
           widthRef.current,
