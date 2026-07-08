@@ -3,7 +3,6 @@ import {
   Code,
   Copy,
   Download,
-  ExternalLink,
   Eye,
   Maximize2,
   Search,
@@ -252,28 +251,6 @@ export function CopySelectionButton() {
       icon={<ClipboardCopy />}
       onClick={handleCopy}
       data-testid="file-viewer-copy-selection-btn"
-    />
-  )
-}
-
-// ── OpenInNewTabButton ──────────────────────────────────────────────────────
-// Opens the raw file in a new browser tab (browser-native rendering) via a
-// freshly-minted download token. Shell-level affordance — file-type agnostic.
-
-export function OpenInNewTabButton({ file }: { file: FileEntity }) {
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      tooltip="Open in new tab"
-      aria-label="Open file in new tab"
-      icon={<ExternalLink />}
-      onClick={() =>
-        Stores.File.openFileInNewTab(file.id).catch(() =>
-          message.error('Failed to open file'),
-        )
-      }
-      data-testid="file-viewer-open-tab-btn"
     />
   )
 }

@@ -2,7 +2,6 @@ import { Space } from '@/components/ui'
 import {
   CopyButton,
   CopySelectionButton,
-  DownloadButton,
   FindButton,
   WrapToggle,
 } from '../shared/chrome'
@@ -17,7 +16,6 @@ export function TextHeader(props: FileViewerSlotProps) {
       <WrapToggle file={file} />
       <CopySelectionButton />
       <CopyButton file={file} />
-      <DownloadButton file={file} />
     </Space>
   )
 }

@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **324** surfaces carry at least one renderable-state signal.
-- **1821** signals total: 1432 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
+- **323** surfaces carry at least one renderable-state signal.
+- **1818** signals total: 1429 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1485,19 +1485,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `inView` | 64 |
-| branch | `typeof IntersectionObserver === 'undefined'` | 65 |
-| branch | `!el` | 70 |
-| branch | `!file` | 104 |
-| branch | `!file` | 118 |
-| branch | `label` | 160 |
-| branch | `displaySize !== undefined` | 161 |
-| branch | `HeaderActions` | 167 |
-| branch | `file` | 170 |
+| branch | `inView` | 65 |
+| branch | `typeof IntersectionObserver === 'undefined'` | 66 |
+| branch | `!el` | 71 |
+| branch | `!file` | 105 |
+| branch | `label` | 154 |
+| branch | `displaySize !== undefined` | 155 |
+| branch | `HeaderActions` | 161 |
+| branch | `file` | 165 |
 | branch | `file` | 183 |
-| branch | `canInline && Body` | 212 |
-| branch | `collapsed` | 218 |
-| branch | `showBody && Body` | 236 |
+| branch | `canInline && Body` | 199 |
+| branch | `collapsed` | 205 |
+| branch | `showBody && Body` | 223 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
@@ -1556,14 +1555,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 67 |
-| branch | `showFullPage` | 70 |
-| branch | `!hideHeader` | 114 |
-| branch | `tooLarge` | 128 |
-| branch | `isViewingOld` | 144 |
-| branch | `oldVersionText === null` | 146 |
-| branch | `tooLarge` | 161 |
-| branch | `Body` | 185 |
+| branch | `HeaderActions` | 68 |
+| branch | `showFullPage` | 71 |
+| branch | `!hideHeader` | 115 |
+| branch | `tooLarge` | 129 |
+| branch | `isViewingOld` | 145 |
+| branch | `oldVersionText === null` | 147 |
+| branch | `tooLarge` | 162 |
+| branch | `Body` | 186 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1661,7 +1660,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 13 |
+| branch | `!('file' in props)` | 12 |
 
 ### `modules/file/viewers/markdown/body`
 
@@ -1686,8 +1685,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 16 |
-| branch | `isRaw` | 24 |
+| branch | `!('file' in props)` | 15 |
+| branch | `isRaw` | 23 |
 
 ### `modules/file/viewers/pdf/body`
 
@@ -1701,14 +1700,6 @@ Required states: `empty`
 | branch | `truncated` | 91 |
 | branch | `url` | 124 |
 | branch | `pageErrors?.has(i + 1)` | 131 |
-
-### `modules/file/viewers/pdf/header`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!('file' in props)` | 5 |
 
 ### `modules/file/viewers/pdf/pdfjs-body`
 
@@ -1743,11 +1734,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `file.text_page_count === 0` | 41 |
-| branch | `text === undefined \|\| text === ''` | 109 |
-| branch | `!isHighlightSupported()` | 179 |
-| branch | `text.trim() === '' \|\| !inViewer` | 235 |
-| branch | `inRouter` | 291 |
+| empty | `file.text_page_count === 0` | 40 |
+| branch | `text === undefined \|\| text === ''` | 108 |
+| branch | `!isHighlightSupported()` | 178 |
+| branch | `text.trim() === '' \|\| !inViewer` | 234 |
+| branch | `inRouter` | 268 |
 
 ### `modules/file/viewers/shared/find/FindableRegion`
 
@@ -1812,8 +1803,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 7 |
-| branch | `!('file' in props)` | 20 |
+| branch | `!('file' in props)` | 8 |
 
 ### `modules/file/viewers/text/body`
 
@@ -1831,7 +1821,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 12 |
+| branch | `!('file' in props)` | 11 |
 
 ### `modules/file/viewers/web/body`
 
@@ -1849,10 +1839,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 14 |
+| branch | `!('file' in props)` | 13 |
+| branch | `isRaw` | 21 |
 | branch | `isRaw` | 22 |
 | branch | `isRaw` | 23 |
-| branch | `isRaw` | 24 |
 
 ### `modules/hardware/HardwareMonitor`
 

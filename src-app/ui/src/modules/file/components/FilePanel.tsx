@@ -6,7 +6,6 @@ import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import {
   DownloadButton,
   FullPageButton,
-  OpenInNewTabButton,
 } from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { Stores } from '@/core/stores'
@@ -64,9 +63,11 @@ export function FilePanelHeaderActions({
   const HeaderActions = handler?.headerActions
   return (
     <>
-      {HeaderActions ? <HeaderActions file={file} /> : <DownloadButton file={file} />}
-      {/* Shell-level affordances shared by every file type. */}
-      <OpenInNewTabButton file={file} />
+      {/* Viewer-specific chrome (toggles / copy / zoom …), when the matched
+          viewer declares any. */}
+      {HeaderActions ? <HeaderActions file={file} /> : null}
+      {/* Download is a shell-level affordance guaranteed for EVERY file type. */}
+      <DownloadButton file={file} />
       {showFullPage ? <FullPageButton file={file} /> : null}
     </>
   )

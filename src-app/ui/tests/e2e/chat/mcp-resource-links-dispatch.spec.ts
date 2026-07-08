@@ -80,7 +80,7 @@ test.describe('Inline file previews — modular dispatch contract', () => {
     // an inline body to toggle.
     await expect(preview.locator('[data-testid="inline-file-preview-chevron"]'))
       .toHaveCount(0)
-    // Open-in-new-tab link still present as the fallback access path.
+    // External URL-only link → open-in-new-tab is the fallback access path.
     await expect(preview.locator('[data-testid="inline-file-preview-open"]'))
       .toBeVisible()
   })

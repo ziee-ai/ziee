@@ -1,10 +1,11 @@
 import { ChevronRight, ChevronDown, FileOutput, File, PanelRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Tooltip, message } from '@/components/ui'
+import { Button, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
 import { isInlineCapable } from '@/modules/file/viewers/shared/source'
+import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
 
 interface InlineFilePreviewProps {
   /** Viewer matched by `getViewer(name, mimeType)`. `undefined` when no
@@ -114,13 +115,6 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     })
   }
 
-  const handleOpenInNewTab = () => {
-    if (!file) return
-    Stores.File.openFileInNewTab(file.id).catch(() =>
-      message.error('Failed to open file'),
-    )
-  }
-
   return (
     <div
       ref={containerRef}
@@ -165,6 +159,25 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
             to the second line as a whole. */}
         <div className="flex items-center gap-0.5 flex-shrink-0 ms-auto">
           {HeaderActions ? <HeaderActions {...slotProps} /> : null}
+          {/* Backend-owned file → Download (store-driven, carries the bearer
+              token). External URL-only link → keep open-in-new-tab, its only
+              access path (no file bytes to stream, so no download). */}
+          {file ? (
+            <DownloadButton file={file} />
+          ) : (
+            <Tooltip content="Open in new tab">
+              <Button
+                variant="ghost"
+                size="default"
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                icon={<FileOutput />}
+                aria-label="Open file in new tab"
+                data-testid="inline-file-preview-open"
+              />
+            </Tooltip>
+          )}
           {/* Open in side panel — only for backend-owned files (need a File id
               to drive the panel renderer). */}
           {file ? (
@@ -179,32 +192,6 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
               />
             </Tooltip>
           ) : null}
-          <Tooltip content="Open in new tab">
-            {file ? (
-              // File-backed: mint a fresh token via the store action (a plain
-              // <a target=_blank> can't carry the bearer header).
-              <Button
-                variant="ghost"
-                size="default"
-                icon={<FileOutput />}
-                onClick={handleOpenInNewTab}
-                aria-label="Open file in new tab"
-                data-testid="inline-file-preview-open"
-              />
-            ) : (
-              // External MCP link: open the URL directly.
-              <Button
-                variant="ghost"
-                size="default"
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                icon={<FileOutput />}
-                aria-label="Open file in new tab"
-                data-testid="inline-file-preview-open"
-              />
-            )}
-          </Tooltip>
           {/* Expand/collapse toggle — trailing (right) edge, matching the app
               convention used by the execute_command / MCP tool-call cards (chevron
               on the right). Only render when the viewer actually has an inline body

@@ -3,7 +3,6 @@ import { Stores } from '@/core/stores'
 import {
   CopyButton,
   CopySelectionButton,
-  DownloadButton,
   FindButton,
   RawToggle,
   WrapToggle,
@@ -24,7 +23,6 @@ export function WebHeader(props: FileViewerSlotProps) {
       {isRaw ? <CopySelectionButton /> : null}
       <RawToggle file={file} />
       <CopyButton file={file} />
-      <DownloadButton file={file} />
     </Space>
   )
 }

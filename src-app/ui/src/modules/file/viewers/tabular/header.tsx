@@ -1,8 +1,9 @@
 import { Space } from '@/components/ui'
-import { CopyButton, DownloadButton, RawToggle } from '../shared/chrome'
+import { CopyButton, RawToggle } from '../shared/chrome'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
-/** CSV/TSV header — supports raw toggle, copy, download. */
+/** CSV/TSV header — raw toggle + copy. (Download is a shell-level affordance
+ *  rendered by the host — InlineFilePreview / FilePanelHeaderActions.) */
 export function DelimitedHeader(props: FileViewerSlotProps) {
   if (!('file' in props)) return null
   const { file } = props
@@ -10,13 +11,12 @@ export function DelimitedHeader(props: FileViewerSlotProps) {
     <Space size="small" wrap={false}>
       <RawToggle file={file} />
       <CopyButton file={file} />
-      <DownloadButton file={file} />
     </Space>
   )
 }
 
-/** XLSX header — binary format, only download. */
-export function XlsxHeader(props: FileViewerSlotProps) {
-  if (!('file' in props)) return null
-  return <DownloadButton file={props.file} />
+/** XLSX header — binary format, no viewer-specific chrome (the host renders the
+ *  shared Download affordance). */
+export function XlsxHeader(_props: FileViewerSlotProps) {
+  return null
 }

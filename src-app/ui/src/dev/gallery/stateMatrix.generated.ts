@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 324 surfaces carry renderable-state signals; 1821 signals total.
+// 323 surfaces carry renderable-state signals; 1818 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1319,19 +1319,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/chat-extension/components/InlineFilePreview",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "inView", line: 64 },
-      { kind: "branch", condition: "typeof IntersectionObserver === 'undefined'", line: 65 },
-      { kind: "branch", condition: "!el", line: 70 },
-      { kind: "branch", condition: "!file", line: 104 },
-      { kind: "branch", condition: "!file", line: 118 },
-      { kind: "branch", condition: "label", line: 160 },
-      { kind: "branch", condition: "displaySize !== undefined", line: 161 },
-      { kind: "branch", condition: "HeaderActions", line: 167 },
-      { kind: "branch", condition: "file", line: 170 },
+      { kind: "branch", condition: "inView", line: 65 },
+      { kind: "branch", condition: "typeof IntersectionObserver === 'undefined'", line: 66 },
+      { kind: "branch", condition: "!el", line: 71 },
+      { kind: "branch", condition: "!file", line: 105 },
+      { kind: "branch", condition: "label", line: 154 },
+      { kind: "branch", condition: "displaySize !== undefined", line: 155 },
+      { kind: "branch", condition: "HeaderActions", line: 161 },
+      { kind: "branch", condition: "file", line: 165 },
       { kind: "branch", condition: "file", line: 183 },
-      { kind: "branch", condition: "canInline && Body", line: 212 },
-      { kind: "branch", condition: "collapsed", line: 218 },
-      { kind: "branch", condition: "showBody && Body", line: 236 },
+      { kind: "branch", condition: "canInline && Body", line: 199 },
+      { kind: "branch", condition: "collapsed", line: 205 },
+      { kind: "branch", condition: "showBody && Body", line: 223 },
     ],
   },
   "modules/file/chat-extension/components/MessageFilesView": {
@@ -1386,14 +1385,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 67 },
-      { kind: "branch", condition: "showFullPage", line: 70 },
-      { kind: "branch", condition: "!hideHeader", line: 114 },
-      { kind: "branch", condition: "tooLarge", line: 128 },
-      { kind: "branch", condition: "isViewingOld", line: 144 },
-      { kind: "branch", condition: "oldVersionText === null", line: 146 },
-      { kind: "branch", condition: "tooLarge", line: 161 },
-      { kind: "branch", condition: "Body", line: 185 },
+      { kind: "branch", condition: "HeaderActions", line: 68 },
+      { kind: "branch", condition: "showFullPage", line: 71 },
+      { kind: "branch", condition: "!hideHeader", line: 115 },
+      { kind: "branch", condition: "tooLarge", line: 129 },
+      { kind: "branch", condition: "isViewingOld", line: 145 },
+      { kind: "branch", condition: "oldVersionText === null", line: 147 },
+      { kind: "branch", condition: "tooLarge", line: 162 },
+      { kind: "branch", condition: "Body", line: 186 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {
@@ -1484,7 +1483,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/image/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 13 },
+      { kind: "branch", condition: "!('file' in props)", line: 12 },
     ],
   },
   "modules/file/viewers/markdown/body": {
@@ -1507,8 +1506,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/markdown/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 16 },
-      { kind: "branch", condition: "isRaw", line: 24 },
+      { kind: "branch", condition: "!('file' in props)", line: 15 },
+      { kind: "branch", condition: "isRaw", line: 23 },
     ],
   },
   "modules/file/viewers/pdf/body": {
@@ -1521,13 +1520,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "truncated", line: 91 },
       { kind: "branch", condition: "url", line: 124 },
       { kind: "branch", condition: "pageErrors?.has(i + 1)", line: 131 },
-    ],
-  },
-  "modules/file/viewers/pdf/header": {
-    surface: "modules/file/viewers/pdf/header",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 5 },
     ],
   },
   "modules/file/viewers/pdf/pdfjs-body": {
@@ -1559,11 +1551,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/shared/chrome",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "file.text_page_count === 0", line: 41 },
-      { kind: "branch", condition: "text === undefined || text === ''", line: 109 },
-      { kind: "branch", condition: "!isHighlightSupported()", line: 179 },
-      { kind: "branch", condition: "text.trim() === '' || !inViewer", line: 235 },
-      { kind: "branch", condition: "inRouter", line: 291 },
+      { kind: "empty", condition: "file.text_page_count === 0", line: 40 },
+      { kind: "branch", condition: "text === undefined || text === ''", line: 108 },
+      { kind: "branch", condition: "!isHighlightSupported()", line: 178 },
+      { kind: "branch", condition: "text.trim() === '' || !inViewer", line: 234 },
+      { kind: "branch", condition: "inRouter", line: 268 },
     ],
   },
   "modules/file/viewers/shared/find/FindableRegion": {
@@ -1622,8 +1614,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 7 },
-      { kind: "branch", condition: "!('file' in props)", line: 20 },
+      { kind: "branch", condition: "!('file' in props)", line: 8 },
     ],
   },
   "modules/file/viewers/text/body": {
@@ -1639,7 +1630,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/text/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 12 },
+      { kind: "branch", condition: "!('file' in props)", line: 11 },
     ],
   },
   "modules/file/viewers/web/body": {
@@ -1655,10 +1646,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/web/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 14 },
+      { kind: "branch", condition: "!('file' in props)", line: 13 },
+      { kind: "branch", condition: "isRaw", line: 21 },
       { kind: "branch", condition: "isRaw", line: 22 },
       { kind: "branch", condition: "isRaw", line: 23 },
-      { kind: "branch", condition: "isRaw", line: 24 },
     ],
   },
   "modules/hardware/HardwareMonitor": {

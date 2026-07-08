@@ -4,7 +4,7 @@
     {
       "testid": "inline-file-preview-open",
       "action": "new tab",
-      "reason": "Flagged for review by acceptance #10b: the file-viewer open-in-new-tab button renders `FileOutput` (file-export glyph), not the conventional `ExternalLink`. Allow-listed (not silently changing runtime behavior) but recorded here as a tracked C11 deviation — the crop-review rubric asks the vision reviewer to confirm the glyph communicates 'open in new tab'."
+      "reason": "External (URL-only) inline resource links keep an open-in-new-tab affordance (no file bytes to download). It renders `FileOutput` (file-export glyph) rather than `ExternalLink`; allow-listed as a tracked C11 deviation. File-backed previews use Download instead (no open-in-new-tab)."
     }
   ]
 }
