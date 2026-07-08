@@ -4,7 +4,11 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { COLLAPSE_MAX_HEIGHT_PX } from '@/modules/chat/components/collapsible'
 import { Stores } from '@/core/stores'
-import { resolveMessageCollapsed } from '@/modules/chat/core/stores/messageViewState.helpers'
+import {
+  useMessageViewStateStore,
+  type MessageViewFullState,
+} from '@/modules/chat/core/stores/MessageViewState.store'
+import { DEFAULT_MESSAGE_COLLAPSED } from '@/modules/chat/core/stores/messageViewState.helpers'
 import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
 
 interface CollapsibleBlockProps {
@@ -47,13 +51,15 @@ export function CollapsibleBlock({
 
   // Collapsed source of truth: the lifted store when we have a message id
   // (survives remount), else local state (uncontrolled fallback for a
-  // CollapsibleBlock used without an id). Reading the whole `collapsed` map and
-  // indexing keeps the app's proxy-read convention; a toggle re-renders only the
-  // few long-message collapsibles (rare user action).
-  const { collapsed: collapsedMap } = Stores.MessageViewState
+  // CollapsibleBlock used without an id). SCOPED selector — subscribe only to
+  // THIS message's flag so toggling one message doesn't re-render every other
+  // mounted collapsible.
+  const storedCollapsed = useMessageViewStateStore((s: MessageViewFullState) =>
+    messageId ? s.collapsed[messageId] : undefined,
+  )
   const [localCollapsed, setLocalCollapsed] = useState(true)
   const collapsed = messageId
-    ? resolveMessageCollapsed(collapsedMap, messageId)
+    ? storedCollapsed ?? DEFAULT_MESSAGE_COLLAPSED
     : localCollapsed
 
   const anchorBeforeChange = useInPlaceAnchor(rootRef)

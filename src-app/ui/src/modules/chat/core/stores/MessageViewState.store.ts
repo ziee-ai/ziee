@@ -62,3 +62,9 @@ export const MessageViewState = defineStore('MessageViewState', {
 })
 
 export const useMessageViewStateStore = MessageViewState.store
+
+/** Full state (+ actions + lifecycle) — for scoped `useMessageViewStateStore`
+ *  selectors that read a single keyed entry (avoids whole-map re-render). */
+export type MessageViewFullState = ReturnType<
+  typeof useMessageViewStateStore.getState
+>

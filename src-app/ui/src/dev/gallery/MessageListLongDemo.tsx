@@ -118,12 +118,13 @@ export function MessageListLongDemo({ count = 500 }: { count?: number }) {
 
   useEffect(() => {
     useMessageViewStateStore.getState().resetViewState()
-    useChatStore.setState({
+    const patch: Partial<ReturnType<typeof useChatStore.getState>> = {
       messages: buildMessages(count),
       loading: false,
       isStreaming: false,
       loadingOlder: false,
-    } as never)
+    }
+    useChatStore.setState(patch)
     setReady(true)
   }, [count])
 

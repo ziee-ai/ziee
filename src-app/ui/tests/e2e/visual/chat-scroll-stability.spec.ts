@@ -105,13 +105,20 @@ test.describe('chat message-scroll-stability', () => {
     const body = msg.getByTestId('inline-file-preview-body')
     await expect(body).toBeVisible()
     const declared = Number(await body.getAttribute('data-body-height'))
-    expect(declared).toBeGreaterThan(0)
+    // The box is FIXED at the generic default (400px) — it CAPS content, it does
+    // not hug it (the inline image is only 180px tall). This is the discriminator
+    // vs the old content-driven `max-h` body, which would size to ~180px.
+    expect(declared).toBe(400)
+    const rowH1 = (await msg.boundingBox())!.height
     const h1 = (await body.boundingBox())!.height
-    // Wait for the image to decode/settle, then re-measure: fixed box ⇒ no change.
+    expect(Math.abs(h1 - declared)).toBeLessThanOrEqual(1)
+    // Wait for the image to decode/settle, then re-measure the ROW: fixed box ⇒
+    // neither the body nor the enclosing message row changes height.
     await page.waitForTimeout(600)
+    const rowH2 = (await msg.boundingBox())!.height
     const h2 = (await body.boundingBox())!.height
     expect(Math.abs(h2 - h1)).toBeLessThanOrEqual(1)
-    expect(Math.abs(h1 - declared)).toBeLessThanOrEqual(1)
+    expect(Math.abs(rowH2 - rowH1)).toBeLessThanOrEqual(1)
   })
 
   test('TEST-8: show-more stays expanded after scroll-away-and-back', async ({ page }) => {
@@ -202,6 +209,34 @@ test.describe('chat message-scroll-stability', () => {
     await resetMetrics(page)
     await settleIdle(page, 1000)
     expect(await corrections(page)).toBeLessThanOrEqual(2)
+  })
+
+  test('TEST-13: pointer-drag resize grows the body and persists', async ({ page }) => {
+    const msg = await scrollToMessage(page, 'g-msg-13')
+    await expect(msg).toBeAttached()
+    const body = msg.getByTestId('inline-file-preview-body')
+    const handle = msg.getByTestId('inline-file-preview-resize')
+    await expect(body).toBeVisible()
+    const h0 = Number(await body.getAttribute('data-body-height'))
+    const box = (await handle.boundingBox())!
+    // Drag the bottom handle down by ~90px.
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 90, {
+      steps: 10,
+    })
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+    const h1 = Number(await body.getAttribute('data-body-height'))
+    expect(h1).toBeGreaterThan(h0)
+    // Persisted across scroll-away-and-back (lifted state).
+    const scroller = page.getByTestId('g-msglist-scroll')
+    await scroller.evaluate(el => (el.scrollTop = el.scrollHeight))
+    await page.waitForTimeout(400)
+    const back = await scrollToMessage(page, 'g-msg-13')
+    expect(
+      Number(await back.getByTestId('inline-file-preview-body').getAttribute('data-body-height')),
+    ).toBe(h1)
   })
 
   test.afterEach(() => {
