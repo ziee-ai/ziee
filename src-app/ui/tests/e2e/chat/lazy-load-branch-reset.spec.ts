@@ -158,9 +158,27 @@ test.describe('Chat — lazy-load branch reset', () => {
     await page.goto(`${baseURL}/chat/${convId}`)
     await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 30000 })
 
-    // Branch A: tail loaded (a-39). Scroll up to load older pages (a-0 appears).
+    // Branch A: tail loaded (a-39). Scroll up to load older pages, then force the
+    // viewport to the very top so the oldest loaded message renders (under
+    // virtualization a loaded-but-offscreen message isn't in the DOM).
     await expect(page.locator('[data-message-id="a-39"]')).toBeVisible()
     await page.getByTestId('chat-top-sentinel').scrollIntoViewIfNeeded()
+    await page.waitForTimeout(600)
+    await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="chat-messages"]')
+      let n: HTMLElement | null = list?.parentElement ?? null
+      while (n) {
+        const s = getComputedStyle(n)
+        if (
+          (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+          n.scrollHeight > n.clientHeight
+        ) {
+          break
+        }
+        n = n.parentElement
+      }
+      ;(n ?? (document.scrollingElement as HTMLElement)).scrollTop = 0
+    })
     await expect(page.locator('[data-message-id="a-0"]')).toBeVisible({ timeout: 10000 })
 
     // Switch to branch B via the navigator (next — A is the older parent, so

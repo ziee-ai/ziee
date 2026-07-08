@@ -79,9 +79,24 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       ref,
       (): MessageListHandle => ({
         scrollToMessageId: (id, align = 'center') => {
-          const idx = arrRef.current.findIndex(m => m.id === id)
-          if (idx < 0) return false
-          virt.scrollToIndex(idx, { align })
+          const doScroll = () => {
+            const idx = arrRef.current.findIndex(m => m.id === id)
+            if (idx < 0) return false
+            virt.scrollToIndex(idx, { align })
+            return true
+          }
+          if (!doScroll()) return false
+          // A single scrollToIndex can be defeated by concurrent window changes
+          // (a bottom-sentinel loadNewer after a jump) + estimate→measured height
+          // settling, which shifts the target offset. Re-assert over a few frames
+          // (~50ms) so the target lands and stays put.
+          let n = 0
+          const reassert = () => {
+            if (n++ >= 3) return
+            doScroll()
+            requestAnimationFrame(reassert)
+          }
+          requestAnimationFrame(reassert)
           return true
         },
         captureAnchor: () => {

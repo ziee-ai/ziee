@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1836** signals total: 1445 branch, 111 empty, 95 error, 99 loading, 84 overlay, 2 panel.
+- **1838** signals total: 1447 branch, 111 empty, 95 error, 99 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1001,13 +1001,15 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 83 |
-| branch | `!msg` | 93 |
-| branch | `idx < 0` | 101 |
-| loading | `!loading && count === 0` | 116 |
-| branch | `loadingOlder` | 144 |
-| branch | `!msg` | 168 |
-| loading | `(loading \|\| isStreaming)` | 200 |
+| branch | `idx < 0` | 84 |
+| branch | `!doScroll()` | 88 |
+| branch | `n++ >= 3` | 95 |
+| branch | `!msg` | 108 |
+| branch | `idx < 0` | 116 |
+| loading | `!loading && count === 0` | 131 |
+| branch | `loadingOlder` | 159 |
+| branch | `!msg` | 183 |
+| loading | `(loading \|\| isStreaming)` | 215 |
 
 ### `modules/chat/components/ModelSelector`
 

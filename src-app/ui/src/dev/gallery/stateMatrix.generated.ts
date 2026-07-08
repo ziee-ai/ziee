@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1836 signals total.
+// 323 surfaces carry renderable-state signals; 1838 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -881,13 +881,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/MessageList",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 83 },
-      { kind: "branch", condition: "!msg", line: 93 },
-      { kind: "branch", condition: "idx < 0", line: 101 },
-      { kind: "loading", condition: "!loading && count === 0", line: 116 },
-      { kind: "branch", condition: "loadingOlder", line: 144 },
-      { kind: "branch", condition: "!msg", line: 168 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 200 },
+      { kind: "branch", condition: "idx < 0", line: 84 },
+      { kind: "branch", condition: "!doScroll()", line: 88 },
+      { kind: "branch", condition: "n++ >= 3", line: 95 },
+      { kind: "branch", condition: "!msg", line: 108 },
+      { kind: "branch", condition: "idx < 0", line: 116 },
+      { kind: "loading", condition: "!loading && count === 0", line: 131 },
+      { kind: "branch", condition: "loadingOlder", line: 159 },
+      { kind: "branch", condition: "!msg", line: 183 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 215 },
     ],
   },
   "modules/chat/components/ModelSelector": {
