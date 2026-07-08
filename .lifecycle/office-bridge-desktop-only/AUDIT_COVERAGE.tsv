@@ -11,7 +11,8 @@ src-app/desktop/tauri/Cargo.toml	74	98	correctness,build-cfg,perms-authz
 src-app/desktop/tauri/Cargo.toml	111	116	correctness,build-cfg,perms-authz
 src-app/desktop/tauri/src/core/module_builder.rs	9	11	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/core/module_builder.rs	42	46	correctness,patterns-conformance,api-contract,error-handling,build-cfg
-src-app/desktop/tauri/src/modules/backend/mod.rs	341	350	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/backend/mod.rs	254	261	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/backend/mod.rs	349	358	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/mod.rs	18	18	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/bridge/cert.rs	28	28	correctness,security,concurrency,error-handling
 src-app/desktop/tauri/src/modules/office_bridge/bridge/server.rs	39	39	correctness,security,concurrency,error-handling
@@ -31,7 +32,7 @@ src-app/desktop/tauri/src/modules/office_bridge/handlers.rs	334	334	correctness,
 src-app/desktop/tauri/src/modules/office_bridge/handlers.rs	359	359	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/handlers.rs	491	491	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/handlers.rs	494	494	correctness,patterns-conformance,api-contract,error-handling,build-cfg
-src-app/desktop/tauri/src/modules/office_bridge/mod.rs	1	205	correctness,patterns-conformance,api-contract,error-handling,build-cfg
+src-app/desktop/tauri/src/modules/office_bridge/mod.rs	1	228	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/permissions.rs	3	3	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/platform/macos.rs	30	30	correctness,security,concurrency,error-handling
 src-app/desktop/tauri/src/modules/office_bridge/platform/mod.rs	33	33	correctness,security,concurrency,error-handling
@@ -40,7 +41,7 @@ src-app/desktop/tauri/src/modules/office_bridge/platform/windows.rs	55	55	correc
 src-app/desktop/tauri/src/modules/office_bridge/repository.rs	7	7	correctness,patterns-conformance,api-contract,error-handling,build-cfg
 src-app/desktop/tauri/src/modules/office_bridge/watcher.rs	28	28	correctness,security,concurrency,error-handling
 src-app/desktop/tauri/tests/integration_tests.rs	23	23	tests-quality,correctness,patterns-conformance
-src-app/desktop/tauri/tests/office_bridge/attach_test.rs	1	34	tests-quality,correctness,patterns-conformance
+src-app/desktop/tauri/tests/office_bridge/attach_test.rs	1	58	tests-quality,correctness,patterns-conformance
 src-app/desktop/tauri/tests/office_bridge/bridge_test.rs	15	15	tests-quality,correctness,patterns-conformance
 src-app/desktop/tauri/tests/office_bridge/migrations_test.rs	1	43	tests-quality,correctness,patterns-conformance
 src-app/desktop/tauri/tests/office_bridge/mod.rs	17	18	tests-quality,correctness,patterns-conformance
