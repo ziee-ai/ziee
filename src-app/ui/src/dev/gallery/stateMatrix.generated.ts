@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1853 signals total.
+// 325 surfaces carry renderable-state signals; 1875 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2562,21 +2562,44 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "totalRepositories > 0", line: 338 },
     ],
   },
+  "modules/mcp/chat-extension/components/AskUserWizardContent": {
+    surface: "modules/mcp/chat-extension/components/AskUserWizardContent",
+    requiredStates: ["error"],
+    signals: [
+      { kind: "branch", condition: "option.recommended", line: 88 },
+      { kind: "branch", condition: "option.description", line: 94 },
+      { kind: "branch", condition: "option.preview", line: 99 },
+      { kind: "branch", condition: "multi", line: 152 },
+      { kind: "branch", condition: "showOther", line: 203 },
+      { kind: "branch", condition: "multi", line: 213 },
+      { kind: "branch", condition: "multi", line: 234 },
+      { kind: "branch", condition: "otherOn", line: 250 },
+      { kind: "error", condition: "fieldState.error?.message", line: 260 },
+      { kind: "branch", condition: "!mounted.current", line: 331 },
+      { kind: "branch", condition: "otherErr", line: 342 },
+      { kind: "branch", condition: "isSubmitting", line: 355 },
+      { kind: "branch", condition: "isSubmitting", line: 369 },
+      { kind: "branch", condition: "!zodOk || firstBad >= 0", line: 386 },
+      { kind: "branch", condition: "step > 0", line: 417 },
+      { kind: "branch", condition: "isLast", line: 429 },
+      { kind: "branch", condition: "total > 1", line: 460 },
+      { kind: "branch", condition: "current && isChoice && currentSchema.title", line: 484 },
+      { kind: "branch", condition: "current && isChoice && currentSchema.description", line: 489 },
+      { kind: "branch", condition: "current", line: 494 },
+      { kind: "branch", condition: "isChoice", line: 495 },
+    ],
+  },
   "modules/mcp/chat-extension/components/ElicitationFormContent": {
     surface: "modules/mcp/chat-extension/components/ElicitationFormContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isSelectField", line: 215 },
-      { kind: "branch", condition: "isMultiSelect", line: 217 },
-      { kind: "branch", condition: "fieldSchema.type === 'boolean'", line: 255 },
-      { kind: "branch", condition: "fieldSchema.type === 'number' || fieldSchema.type === 'integer'", line: 269 },
-      { kind: "branch", condition: "fieldSchema.type === 'string' && fieldSchema.format === 'date'", line: 294 },
-      { kind: "branch", condition: "fieldSchema.type === 'string' && fieldSchema.format === 'date-time'", line: 314 },
-      { kind: "branch", condition: "fieldSchema.format === 'password'", line: 336 },
-      { kind: "branch", condition: "status === 'accepted'", line: 464 },
-      { kind: "branch", condition: "items.length > 0", line: 493 },
-      { kind: "branch", condition: "status === 'declined'", line: 507 },
-      { kind: "branch", condition: "status === 'cancelled'", line: 527 },
+      { kind: "branch", condition: "isSelectField", line: 69 },
+      { kind: "branch", condition: "isMultiSelect", line: 71 },
+      { kind: "branch", condition: "status === 'accepted'", line: 208 },
+      { kind: "branch", condition: "items.length > 0", line: 237 },
+      { kind: "branch", condition: "status === 'declined'", line: 251 },
+      { kind: "branch", condition: "status === 'cancelled'", line: 271 },
+      { kind: "branch", condition: "isRichAskUser", line: 302 },
     ],
   },
   "modules/mcp/chat-extension/components/McpMenuItem": {
@@ -2607,6 +2630,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "mcpServerParenLabel(toolCall.server)", line: 170 },
       { kind: "branch", condition: "toolCall.input !== undefined", line: 183 },
       { kind: "branch", condition: "!isControlWrite", line: 205 },
+    ],
+  },
+  "modules/mcp/chat-extension/components/elicitationFields": {
+    surface: "modules/mcp/chat-extension/components/elicitationFields",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "fieldSchema.type === 'boolean'", line: 27 },
+      { kind: "branch", condition: "fieldSchema.type === 'number' || fieldSchema.type === 'integer'", line: 41 },
+      { kind: "branch", condition: "fieldSchema.type === 'string' && fieldSchema.format === 'date'", line: 66 },
+      { kind: "branch", condition: "fieldSchema.type === 'string' && fieldSchema.format === 'date-time'", line: 86 },
+      { kind: "branch", condition: "fieldSchema.format === 'password'", line: 108 },
     ],
   },
   "modules/mcp/chat-extension/extension": {
@@ -3877,7 +3911,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 323 keys.
+ * 324 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4067,6 +4101,7 @@ export type RequiredState =
   | "modules/llm-repository/components/LlmRepositoryDrawer:open"
   | "modules/llm-repository/components/LlmRepositorySettings:empty"
   | "modules/llm-repository/components/LlmRepositorySettings:error"
+  | "modules/mcp/chat-extension/components/AskUserWizardContent:error"
   | "modules/mcp/chat-extension/components/McpMenuItem:delayed"
   | "modules/mcp/chat-extension/components/McpStatusRow:empty"
   | "modules/mcp/chat-extension/extension:error"
@@ -4393,6 +4428,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/llm-repository/components/LlmRepositoryDrawer:open",
   "modules/llm-repository/components/LlmRepositorySettings:empty",
   "modules/llm-repository/components/LlmRepositorySettings:error",
+  "modules/mcp/chat-extension/components/AskUserWizardContent:error",
   "modules/mcp/chat-extension/components/McpMenuItem:delayed",
   "modules/mcp/chat-extension/components/McpStatusRow:empty",
   "modules/mcp/chat-extension/extension:error",
