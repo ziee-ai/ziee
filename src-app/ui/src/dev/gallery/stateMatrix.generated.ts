@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1823 signals total.
+// 323 surfaces carry renderable-state signals; 1855 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -831,11 +831,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/components/ConversationFindBar": {
     surface: "modules/chat/components/ConversationFindBar",
-    requiredStates: ["empty"],
+    requiredStates: ["delayed","empty"],
     signals: [
-      { kind: "branch", condition: "!open", line: 55 },
-      { kind: "branch", condition: "!open", line: 72 },
-      { kind: "empty", condition: "total === 0", line: 76 },
+      { kind: "branch", condition: "!match", line: 67 },
+      { kind: "branch", condition: "!ok", line: 72 },
+      { kind: "branch", condition: "!open", line: 85 },
+      { kind: "branch", condition: "!conversationId || term === ''", line: 90 },
+      { kind: "branch", condition: "cancelled || gen !== searchGenRef.current", line: 108 },
+      { kind: "branch", condition: "!open", line: 143 },
+      { kind: "branch", condition: "!open", line: 178 },
+      { kind: "empty", condition: "total === 0", line: 181 },
+      { kind: "branch", condition: "matches.length > 0", line: 285 },
+      { kind: "loading", condition: "loading", line: 325 },
     ],
   },
   "modules/chat/components/ConversationList": {
@@ -879,10 +886,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/components/MessageList": {
     surface: "modules/chat/components/MessageList",
-    requiredStates: ["delayed"],
+    requiredStates: ["delayed","empty"],
     signals: [
-      { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 52 },
+      { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 150 },
+      { kind: "branch", condition: "!el", line: 159 },
+      { kind: "empty", condition: "count === 0", line: 166 },
+      { kind: "branch", condition: "!el", line: 184 },
+      { kind: "branch", condition: "!item", line: 187 },
+      { kind: "branch", condition: "!msg", line: 189 },
+      { kind: "branch", condition: "!c", line: 195 },
+      { kind: "branch", condition: "virtualize", line: 200 },
+      { kind: "branch", condition: "idx < 0", line: 202 },
+      { kind: "branch", condition: "!c", line: 211 },
+      { kind: "branch", condition: "newTop == null", line: 213 },
+      { kind: "loading", condition: "!loading && count === 0", line: 222 },
+      { kind: "branch", condition: "loadingOlder", line: 248 },
+      { kind: "branch", condition: "virtualize", line: 258 },
+      { kind: "branch", condition: "!msg", line: 273 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 317 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -1063,19 +1084,30 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 82 },
-      { kind: "branch", condition: "!el", line: 102 },
-      { kind: "branch", condition: "!nativeScroll", line: 117 },
-      { kind: "branch", condition: "y < 0 || y > maxY", line: 126 },
-      { kind: "branch", condition: "maxY - y <= 8", line: 130 },
-      { kind: "branch", condition: "Math.abs(dy) < 6", line: 136 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 156 },
-      { kind: "branch", condition: "!conversationId", line: 185 },
-      { kind: "loading", condition: "loading && !conversation", line: 211 },
-      { kind: "loading", condition: "!loading && !conversation", line: 220 },
-      { kind: "error", condition: "error", line: 223 },
-      { kind: "error", condition: "error", line: 280 },
-      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 344 },
+      { kind: "branch", condition: "!sentinel", line: 143 },
+      { kind: "branch", condition: "!el", line: 163 },
+      { kind: "branch", condition: "!nativeScroll", line: 178 },
+      { kind: "branch", condition: "y < 0 || y > maxY", line: 187 },
+      { kind: "branch", condition: "maxY - y <= 8", line: 191 },
+      { kind: "branch", condition: "Math.abs(dy) < 6", line: 197 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 217 },
+      { kind: "branch", condition: "!conversationId", line: 259 },
+      { kind: "branch", condition: "!sentinel", line: 307 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 311 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 314 },
+      { kind: "branch", condition: "!sentinel", line: 349 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 353 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 354 },
+      { kind: "loading", condition: "!pending", line: 369 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 372 },
+      { kind: "branch", condition: "!conversation?.id", line: 381 },
+      { kind: "branch", condition: "!m", line: 385 },
+      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 388 },
+      { kind: "loading", condition: "loading && !conversation", line: 408 },
+      { kind: "loading", condition: "!loading && !conversation", line: 417 },
+      { kind: "error", condition: "error", line: 420 },
+      { kind: "error", condition: "error", line: 477 },
+      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 576 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -3847,7 +3879,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 321 keys.
+ * 323 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3899,10 +3931,12 @@ export type RequiredState =
   | "modules/chat/components/ChatInput:open"
   | "modules/chat/components/ChatMessage:empty"
   | "modules/chat/components/ConversationCard:open"
+  | "modules/chat/components/ConversationFindBar:delayed"
   | "modules/chat/components/ConversationFindBar:empty"
   | "modules/chat/components/ConversationList:delayed"
   | "modules/chat/components/ConversationList:error"
   | "modules/chat/components/MessageList:delayed"
+  | "modules/chat/components/MessageList:empty"
   | "modules/chat/core/components/ChatRightPanel:empty"
   | "modules/chat/core/components/ChatRightPanel:open"
   | "modules/chat/core/extensions/registry:empty"
@@ -4223,10 +4257,12 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/components/ChatInput:open",
   "modules/chat/components/ChatMessage:empty",
   "modules/chat/components/ConversationCard:open",
+  "modules/chat/components/ConversationFindBar:delayed",
   "modules/chat/components/ConversationFindBar:empty",
   "modules/chat/components/ConversationList:delayed",
   "modules/chat/components/ConversationList:error",
   "modules/chat/components/MessageList:delayed",
+  "modules/chat/components/MessageList:empty",
   "modules/chat/core/components/ChatRightPanel:empty",
   "modules/chat/core/components/ChatRightPanel:open",
   "modules/chat/core/extensions/registry:empty",

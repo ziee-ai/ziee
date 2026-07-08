@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1823** signals total: 1434 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
+- **1855** signals total: 1462 branch, 111 empty, 95 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,8 +16,8 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 85 |
-| `empty` | 88 |
+| `delayed` | 86 |
+| `empty` | 89 |
 | `error` | 74 |
 | `open` | 72 |
 | `panel-open` | 2 |
@@ -945,13 +945,20 @@ Required states: `open`
 
 ### `modules/chat/components/ConversationFindBar`
 
-Required states: `empty`
+Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 55 |
-| branch | `!open` | 72 |
-| empty | `total === 0` | 76 |
+| branch | `!match` | 67 |
+| branch | `!ok` | 72 |
+| branch | `!open` | 85 |
+| branch | `!conversationId \|\| term === ''` | 90 |
+| branch | `cancelled \|\| gen !== searchGenRef.current` | 108 |
+| branch | `!open` | 143 |
+| branch | `!open` | 178 |
+| empty | `total === 0` | 181 |
+| branch | `matches.length > 0` | 285 |
+| loading | `loading` | 325 |
 
 ### `modules/chat/components/ConversationList`
 
@@ -998,12 +1005,26 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/components/MessageList`
 
-Required states: `delayed`
+Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `!loading && messagesArray.length === 0` | 19 |
-| loading | `(loading \|\| isStreaming)` | 52 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 150 |
+| branch | `!el` | 159 |
+| empty | `count === 0` | 166 |
+| branch | `!el` | 184 |
+| branch | `!item` | 187 |
+| branch | `!msg` | 189 |
+| branch | `!c` | 195 |
+| branch | `virtualize` | 200 |
+| branch | `idx < 0` | 202 |
+| branch | `!c` | 211 |
+| branch | `newTop == null` | 213 |
+| loading | `!loading && count === 0` | 222 |
+| branch | `loadingOlder` | 248 |
+| branch | `virtualize` | 258 |
+| branch | `!msg` | 273 |
+| loading | `(loading \|\| isStreaming)` | 317 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1205,19 +1226,30 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 82 |
-| branch | `!el` | 102 |
-| branch | `!nativeScroll` | 117 |
-| branch | `y < 0 \|\| y > maxY` | 126 |
-| branch | `maxY - y <= 8` | 130 |
-| branch | `Math.abs(dy) < 6` | 136 |
-| branch | `!Stores.Chat.$.conversation` | 156 |
-| branch | `!conversationId` | 185 |
-| loading | `loading && !conversation` | 211 |
-| loading | `!loading && !conversation` | 220 |
-| error | `error` | 223 |
-| error | `error` | 280 |
-| branch | `nativeScroll && !composerHidden` | 344 |
+| branch | `!sentinel` | 143 |
+| branch | `!el` | 163 |
+| branch | `!nativeScroll` | 178 |
+| branch | `y < 0 \|\| y > maxY` | 187 |
+| branch | `maxY - y <= 8` | 191 |
+| branch | `Math.abs(dy) < 6` | 197 |
+| branch | `!Stores.Chat.$.conversation` | 217 |
+| branch | `!conversationId` | 259 |
+| branch | `!sentinel` | 307 |
+| branch | `!entries[0]?.isIntersecting` | 311 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
+| branch | `!sentinel` | 349 |
+| branch | `!entries[0]?.isIntersecting` | 353 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
+| loading | `!pending` | 369 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
+| branch | `!conversation?.id` | 381 |
+| branch | `!m` | 385 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
+| loading | `loading && !conversation` | 408 |
+| loading | `!loading && !conversation` | 417 |
+| error | `error` | 420 |
+| error | `error` | 477 |
+| branch | `nativeScroll && !composerHidden` | 576 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
