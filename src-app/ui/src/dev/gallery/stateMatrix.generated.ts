@@ -1107,7 +1107,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "!loading && !conversation", line: 417 },
       { kind: "error", condition: "error", line: 420 },
       { kind: "error", condition: "error", line: 477 },
-      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 577 },
+      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 576 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {

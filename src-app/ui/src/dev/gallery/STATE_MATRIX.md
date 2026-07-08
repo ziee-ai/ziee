@@ -1249,7 +1249,7 @@ Required states: `delayed`, `error`
 | loading | `!loading && !conversation` | 417 |
 | error | `error` | 420 |
 | error | `error` | 477 |
-| branch | `nativeScroll && !composerHidden` | 577 |
+| branch | `nativeScroll && !composerHidden` | 576 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
