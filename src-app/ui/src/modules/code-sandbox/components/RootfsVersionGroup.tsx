@@ -13,6 +13,9 @@ interface RootfsVersionGroupProps {
   /** "available" → Download-all primary action; "downloaded" → Set-default + Delete. */
   variant: 'available' | 'downloaded'
   canManage: boolean
+  /** "available" variant only: when true the sandbox isn't initialized, so the
+   *  Download button is disabled with an explanatory tooltip (install → 503). */
+  installDisabled?: boolean
   // Each card only owns the handlers for its variant, so the others are optional.
   onDownloadAll?: (group: VersionGroup) => void
   onSetDefault?: (version: string) => void
@@ -31,6 +34,7 @@ export function RootfsVersionGroup({
   group,
   variant,
   canManage,
+  installDisabled,
   onDownloadAll,
   onSetDefault,
   onDelete,
@@ -93,6 +97,11 @@ export function RootfsVersionGroup({
               label={installing.length > 0 ? 'Installing…' : 'Download'}
               icon={<CloudDownload />}
               loading={installing.length > 0}
+              disabledReason={
+                installDisabled
+                  ? 'Enable code_sandbox to install a rootfs'
+                  : undefined
+              }
               onClick={() => onDownloadAll?.(group)}
               data-testid={`rootfs-download-${group.version}`}
             />

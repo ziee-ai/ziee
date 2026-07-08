@@ -390,6 +390,10 @@ interface RenderButtonProps {
   onClick: () => void
   loading?: boolean
   danger?: boolean
+  /** When set, the button is disabled regardless of permission and wrapped in a
+   *  tooltip explaining why (e.g. the sandbox isn't initialized, so installing
+   *  would 503). Takes precedence over the requires-manage tooltip. */
+  disabledReason?: string
   'data-testid': string
 }
 
@@ -400,6 +404,7 @@ export function RenderButton({
   onClick,
   loading,
   danger,
+  disabledReason,
   'data-testid': testId,
 }: RenderButtonProps) {
   const btn = (
@@ -407,13 +412,16 @@ export function RenderButton({
       variant={danger ? 'destructive' : 'ghost'}
       icon={icon}
       loading={loading}
-      disabled={!canManage || loading}
+      disabled={!canManage || loading || !!disabledReason}
       onClick={onClick}
       data-testid={testId}
     >
       {label}
     </Button>
   )
+  if (disabledReason) {
+    return <Tooltip content={disabledReason}>{btn}</Tooltip>
+  }
   return canManage ? (
     btn
   ) : (

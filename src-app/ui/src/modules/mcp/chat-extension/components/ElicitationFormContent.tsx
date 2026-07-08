@@ -1,19 +1,12 @@
 import { useState, type ReactNode } from 'react'
-import { z } from 'zod'
-import { EMAIL_RE } from '@/lib/validation'
 import {
   Button,
   Card,
-  DatePicker,
   Descriptions,
   Form,
   FormField,
-  Input,
-  PasswordInput,
-  InputNumber,
   MultiSelect,
   Select,
-  Switch,
   Text,
   useForm,
   zodResolver,
@@ -26,6 +19,14 @@ import {
 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
+import {
+  ASK_USER_MARKER,
+  buildFormSchema,
+  getOptions,
+  type FieldSchema,
+} from './elicitationOptions'
+import { renderInputField } from './elicitationFields'
+import { AskUserWizardContent } from './AskUserWizardContent'
 
 interface ElicitationData {
   type: 'elicitation_request'
@@ -42,153 +43,6 @@ interface ElicitationData {
   status?: string
   /** Submitted field values (only present when status = "accepted") */
   response_content?: Record<string, unknown>
-}
-
-interface FieldSchema {
-  type?: string
-  title?: string
-  description?: string
-  /** JSON Schema string format. Per MCP spec: email, uri, date, date-time, password. */
-  format?: string
-  default?: unknown
-  minimum?: number
-  maximum?: number
-  minLength?: number
-  maxLength?: number
-  /** JSON Schema regex constraint for strings. */
-  pattern?: string
-  minItems?: number
-  maxItems?: number
-  enum?: string[]
-  enumNames?: string[]
-  anyOf?: Array<{ const: string; title?: string }>
-  oneOf?: Array<{ const: string; title?: string }>
-  items?: {
-    type?: string
-    enum?: string[]
-    anyOf?: Array<{ const: string; title?: string }>
-    oneOf?: Array<{ const: string; title?: string }>
-  }
-}
-
-function getOptions(
-  fieldSchema: FieldSchema,
-): { value: string; label: string }[] {
-  // TitledSingleSelectEnum — anyOf or oneOf at top level of the property schema
-  if (
-    fieldSchema.type === 'string' &&
-    (fieldSchema.anyOf || fieldSchema.oneOf)
-  ) {
-    const options = fieldSchema.anyOf ?? fieldSchema.oneOf!
-    return options.map(o => ({ value: o.const, label: o.title ?? o.const }))
-  }
-  // UntitledSingleSelectEnum or LegacyEnum (enumNames as labels)
-  if (fieldSchema.type === 'string' && fieldSchema.enum) {
-    const names = fieldSchema.enumNames ?? fieldSchema.enum
-    return fieldSchema.enum.map((v, i) => ({ value: v, label: names[i] ?? v }))
-  }
-  // TitledMultiSelectEnum — anyOf or oneOf inside items
-  if (
-    fieldSchema.type === 'array' &&
-    (fieldSchema.items?.anyOf || fieldSchema.items?.oneOf)
-  ) {
-    const options = fieldSchema.items.anyOf ?? fieldSchema.items.oneOf!
-    return options.map(o => ({ value: o.const, label: o.title ?? o.const }))
-  }
-  // UntitledMultiSelectEnum — enum inside items
-  if (fieldSchema.type === 'array' && fieldSchema.items?.enum) {
-    return fieldSchema.items.enum.map(v => ({ value: v, label: v }))
-  }
-  return []
-}
-
-/** Build a zod schema for a single field. */
-function buildFieldZodSchema(fieldSchema: FieldSchema, required: boolean): z.ZodTypeAny {
-  const label = fieldSchema.title ?? 'This field'
-  const isMultiSelect =
-    fieldSchema.type === 'array' &&
-    !!(
-      fieldSchema.items?.enum ||
-      fieldSchema.items?.anyOf ||
-      fieldSchema.items?.oneOf
-    )
-  const isSelectField =
-    isMultiSelect ||
-    (fieldSchema.type === 'string' &&
-      !!(fieldSchema.enum || fieldSchema.anyOf || fieldSchema.oneOf))
-
-  let schema: z.ZodTypeAny
-
-  if (isMultiSelect) {
-    let s = z.array(z.string())
-    if (fieldSchema.minItems != null)
-      s = s.min(fieldSchema.minItems, `Select at least ${fieldSchema.minItems} item(s)`)
-    if (fieldSchema.maxItems != null)
-      s = s.max(fieldSchema.maxItems, `Select at most ${fieldSchema.maxItems} item(s)`)
-    schema = required
-      ? z.preprocess((v) => v ?? [], s.min(1, `${label} is required`))
-      : s.optional()
-    return schema
-  }
-
-  if (isSelectField) {
-    schema = required
-      ? z.preprocess((v) => v ?? '', z.string().min(1, `${label} is required`))
-      : z.string().optional()
-    return schema
-  }
-
-  if (fieldSchema.type === 'boolean') {
-    schema = z.boolean()
-    return required ? schema : schema.optional()
-  }
-
-  if (fieldSchema.type === 'number' || fieldSchema.type === 'integer') {
-    let s = z.number({ error: `${label} must be a number` })
-    if (fieldSchema.type === 'integer') s = s.int(`${label} must be a whole number`)
-    if (fieldSchema.minimum != null) s = s.min(fieldSchema.minimum, `${label} must be at least ${fieldSchema.minimum}`)
-    if (fieldSchema.maximum != null) s = s.max(fieldSchema.maximum, `${label} must be at most ${fieldSchema.maximum}`)
-    schema = required ? s : s.optional()
-    return schema
-  }
-
-  // String (including date / date-time / email / uri / password)
-  let s = z.string()
-  if (fieldSchema.minLength != null)
-    s = s.min(fieldSchema.minLength, `${label} must be at least ${fieldSchema.minLength} character(s)`)
-  if (fieldSchema.maxLength != null)
-    s = s.max(fieldSchema.maxLength, `${label} must be at most ${fieldSchema.maxLength} character(s)`)
-  if (fieldSchema.pattern) {
-    try {
-      s = s.regex(new RegExp(fieldSchema.pattern), `${label} must match the required pattern`)
-    } catch {
-      // Server sent a malformed regex — skip the constraint rather than crashing.
-    }
-  }
-  if (fieldSchema.format === 'email') s = s.regex(EMAIL_RE, 'Enter a valid email address')
-  if (fieldSchema.format === 'uri') s = s.url('Enter a valid URL')
-
-  // A required field left untouched holds `undefined` (its default), which would
-  // otherwise fail with zod's raw type error ("expected string, received
-  // undefined") instead of the intended "<label> is required". Coerce nullish →
-  // '' first so `min(1)` produces the friendly required message. Only applied to
-  // required fields, so a successful (non-empty) submit is unaffected.
-  schema = required
-    ? z.preprocess((v) => v ?? '', s.min(1, `${label} is required`))
-    : s.optional()
-  return schema
-}
-
-/** Build a zod object schema from all property schemas. */
-function buildFormSchema(
-  properties: Record<string, FieldSchema>,
-  requiredFields: Set<string>,
-): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const shape: Record<string, z.ZodTypeAny> = {}
-  for (const [name, fieldSchema] of Object.entries(properties)) {
-    shape[name] = buildFieldZodSchema(fieldSchema as FieldSchema, requiredFields.has(name))
-  }
-  return z.object(shape)
 }
 
 function renderField(
@@ -252,119 +106,9 @@ function renderField(
     )
   }
 
-  if (fieldSchema.type === 'boolean') {
-    return (
-      <FormField
-        key={name}
-        name={name}
-        label={label}
-        valuePropName="checked"
-        description={fieldSchema.description}
-      >
-        <Switch data-testid={testId} />
-      </FormField>
-    )
-  }
-
-  if (fieldSchema.type === 'number' || fieldSchema.type === 'integer') {
-    return (
-      <FormField
-        key={name}
-        name={name}
-        label={label}
-        required={required}
-        description={fieldSchema.description}
-      >
-        <InputNumber
-          min={fieldSchema.minimum}
-          max={fieldSchema.maximum}
-          precision={fieldSchema.type === 'integer' ? 0 : undefined}
-          className="w-full"
-          data-testid={testId}
-        />
-      </FormField>
-    )
-  }
-
-  // ─── String formats with dedicated pickers ─────────────────────────────
-  // DatePicker stores an ISO string in form state; no dayjs conversion needed.
-  // NOTE: the kit DatePicker is date-only (no showTime); date-time fields get
-  // date-only selection and the time component will be T00:00:00 in the emitted
-  // ISO string. See FLAG: DatePicker showTime below.
-  if (fieldSchema.type === 'string' && fieldSchema.format === 'date') {
-    return (
-      <FormField
-        key={name}
-        name={name}
-        label={label}
-        required={required}
-        description={fieldSchema.description}
-      >
-        <DatePicker
-          placeholder={`Select ${label.toLowerCase()}`}
-          aria-label={label}
-          valueFormat="yyyy-MM-dd"
-          className="w-full"
-          data-testid={testId}
-        />
-      </FormField>
-    )
-  }
-
-  if (fieldSchema.type === 'string' && fieldSchema.format === 'date-time') {
-    // FLAG: kit DatePicker has no showTime — time will be T00:00:00 in the
-    // emitted value. Full datetime picking requires a future kit component.
-    return (
-      <FormField
-        key={name}
-        name={name}
-        label={label}
-        required={required}
-        description={fieldSchema.description}
-      >
-        <DatePicker
-          placeholder={`Select ${label.toLowerCase()}`}
-          aria-label={label}
-          valueFormat="yyyy-MM-dd'T'HH:mm:ss"
-          className="w-full"
-          data-testid={testId}
-        />
-      </FormField>
-    )
-  }
-
-  if (fieldSchema.format === 'password') {
-    return (
-      <FormField
-        key={name}
-        name={name}
-        label={label}
-        required={required}
-        description={fieldSchema.description}
-      >
-        <PasswordInput showLabel="Show" hideLabel="Hide" data-testid={testId} />
-      </FormField>
-    )
-  }
-
-  const inputType =
-    fieldSchema.format === 'email'
-      ? 'email'
-      : fieldSchema.format === 'uri'
-        ? 'url'
-        : 'text'
-
-  return (
-    <FormField
-      key={name}
-      name={name}
-      label={label}
-      required={required}
-      description={fieldSchema.description}
-    >
-      <Input type={inputType} data-testid={testId} />
-    </FormField>
-  )
+  // Non-choice fields (boolean / number / date / password / text) render
+  // identically to the wizard path via the shared helper.
+  return renderInputField(name, fieldSchema, required)
 }
 
 /**
@@ -548,6 +292,30 @@ export function ElicitationFormContent({
   }
 
   // --- Pending state: interactive form ---
+
+  // Rich decision UX (per-option cards + 1–4 question wizard + Other-escape) is
+  // enabled ONLY for the ziee-internal `ask_user` path, which the backend marks
+  // with ASK_USER_MARKER. External MCP-server elicitation is never marked and
+  // renders the flat, spec-compliant form below (unchanged).
+  const isRichAskUser =
+    (schema as Record<string, unknown> | undefined)?.[ASK_USER_MARKER] === true
+  if (isRichAskUser) {
+    return (
+      <div
+        className="my-2"
+        data-testid={`elicitation-pending-${elicitation.elicitation_id}`}
+      >
+        <AskUserWizardContent
+          elicitationId={elicitation.elicitation_id}
+          message={elicitation.message}
+          server={elicitation.server}
+          properties={properties}
+          requiredFields={requiredFields}
+        />
+      </div>
+    )
+  }
+
   return (
     <div
       className="my-2"

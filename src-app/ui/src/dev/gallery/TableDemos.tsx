@@ -10,6 +10,7 @@ import { Button, Table } from '@/components/ui'
 import type { TableColumn } from '@/components/ui'
 import { DelimitedTable } from '@/modules/file/viewers/tabular/DelimitedTable'
 import { XlsxSheet } from '@/modules/file/viewers/tabular/XlsxBody'
+import { RawCodeView } from '@/modules/file/viewers/shared/RawCodeView'
 
 interface ARow {
   id: string
@@ -115,6 +116,42 @@ export function XlsxViewerDemo() {
           truncated: false,
         }}
       />
+    </div>
+  )
+}
+
+// ── Large-file demos (file-viewer-virtualization) ────────────────────────────
+// Exercise the lifted per-viewer caps + windowed render paths: the tabular grid
+// row-virtualizes a >10k-row dataset (sort/filter span the whole set), and the
+// raw-code view chunk-windows its Shiki highlight over thousands of lines. Kept
+// modest (a few thousand rows/lines) so the gallery crawl stays fast while still
+// crossing the virtualization threshold + multiple highlight chunks.
+const LARGE_CSV_TEXT = (() => {
+  const rows = ['id,name,value,note']
+  for (let i = 1; i <= 12_000; i++) rows.push(`${i},Row ${i},${i * 3},note-${i}`)
+  return rows.join('\n')
+})()
+
+export function LargeDelimitedViewerDemo() {
+  return (
+    <div className="w-[40rem] max-w-full p-2">
+      <DelimitedTable text={LARGE_CSV_TEXT} delimiter="," fileName="large.csv" />
+    </div>
+  )
+}
+
+const LARGE_TEXT = (() => {
+  const lines: string[] = []
+  for (let i = 1; i <= 3_000; i++) {
+    lines.push(`line ${i}: const value_${i} = compute(${i}) // marker-${i}`)
+  }
+  return lines.join('\n')
+})()
+
+export function LargeRawCodeViewDemo() {
+  return (
+    <div className="w-[40rem] h-[24rem] max-w-full p-2">
+      <RawCodeView text={LARGE_TEXT} filename="large.ts" />
     </div>
   )
 }

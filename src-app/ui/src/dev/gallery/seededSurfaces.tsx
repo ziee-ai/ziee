@@ -247,6 +247,51 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       )
     },
   },
+  // ── code_sandbox rootfs versions: sandbox not initialized (disabled). The
+  // LIST endpoint returns 200 with the GitHub catalog + availability reason, so
+  // the section shows the graceful-degrade warning notice + the available card
+  // with Download disabled (never the destructive ErrorState). ────────────────
+  {
+    slug: 'seeded-sandbox-rootfs-disabled',
+    title: 'Code Sandbox rootfs — disabled (graceful degrade)',
+    note: 'availability=disabled_in_config + catalog → warning notice + available card, Download disabled',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/code-sandbox/components/SandboxRootfsVersionsSection'),
+      'SandboxRootfsVersionsSection',
+    ),
+    setup: async () => {
+      const { SandboxRootfsVersions } = await import(
+        '@/modules/code-sandbox/stores/SandboxRootfsVersions.store'
+      )
+      await holdPatch(() =>
+        SandboxRootfsVersions.store.setState({
+          availability: 'disabled_in_config',
+          loading: false,
+          error: null,
+          sseError: null,
+          pinnedVersion: null,
+          installed: [],
+          available: [
+            {
+              version: '0.0.6-alpha',
+              published_at: null,
+              draft: false,
+              prerelease: true,
+              asset_names: [
+                'ziee-sandbox-rootfs-x86_64-full.squashfs',
+                'ziee-sandbox-rootfs-x86_64-minimal.squashfs',
+              ],
+            },
+          ],
+          draining: [],
+          hostArch: 'x86_64',
+          hostPackage: 'squashfs',
+        } as any),
+      )
+    },
+  },
   // ── code_sandbox resource limits: stuck loading (loading && !limits). ────────
   {
     slug: 'seeded-sandbox-limits-loading',
@@ -1025,6 +1070,22 @@ const integratorSeeded: SeededSurfaceEntry[] = [
     path: '/',
     initialPath: '/',
     component: lazyNamed(() => import('./TableDemos'), 'XlsxViewerDemo'),
+  },
+  {
+    slug: 'seeded-delimited-viewer-large',
+    title: 'Tabular viewer — large CSV (interactive)',
+    note: 'DelimitedTable, >10k rows: row-virtualized, whole-set sort/filter, no truncation',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'LargeDelimitedViewerDemo'),
+  },
+  {
+    slug: 'seeded-rawcode-large',
+    title: 'Text/code viewer — large file (interactive)',
+    note: 'RawCodeView, thousands of lines: chunk-on-demand Shiki highlight, lifted line cap',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'LargeRawCodeViewDemo'),
   },
   // ── McpToolCallsTab: LOADED with tool-call rows (kit-Table sort/filter). The
   //    grid refetches on mount, so holdPatch re-asserts the seeded rows against

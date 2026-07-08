@@ -2,10 +2,12 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
 import { Flex } from '@/components/ui'
 import { Text } from '@/components/ui'
 import { Loader2, MessageSquare } from 'lucide-react'
@@ -13,12 +15,19 @@ import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
 import { Stores } from '@/core/stores'
 import {
+  anchorRestoreNeeded,
   captureTopAnchor,
   indexRestoreOffset,
   measureMessageTop,
   restoreDelta,
 } from '@/modules/chat/core/utils/scrollAnchor.utils'
 import { indexOfMessageId } from '@/modules/chat/core/stores/messageWindow'
+import { estimateMessageHeight } from '@/modules/chat/core/utils/estimateMessageHeight'
+import {
+  buildInitialMeasurementsCache,
+  recordMeasurements,
+  widthBucket,
+} from '@/modules/chat/core/utils/measuredHeightCache'
 
 /** A captured scroll anchor for reverse-infinite-scroll prepend (ITEM-4). */
 export interface MessageAnchor {
@@ -59,7 +68,11 @@ interface MessageListProps {
   virtualize?: boolean
 }
 
-const ESTIMATED_ROW_HEIGHT = 140
+/** App content column: max-w-4xl (896px) minus the px-4 gutters. */
+const MAX_CONTENT_WIDTH = 896
+const CONTENT_GUTTER = 32
+/** Stable empty seed (identity kept so an empty window doesn't churn options). */
+const EMPTY_SEED: VirtualItem[] = []
 
 /**
  * MessageList — row-virtualized (`@tanstack/react-virtual`) when an inner scroll
@@ -85,16 +98,140 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     const messagesArray = useMemo(() => Array.from(messages.values()), [messages])
     const count = messagesArray.length
 
+    // The rendered content width drives the height estimate + the measured-cache
+    // width bucket. It is tracked in a REF (updated by a ResizeObserver below),
+    // NOT read from the DOM on demand: `estimateSize` runs inside the render that
+    // the virtualizer triggers right after writing layout (a measurement +
+    // scroll adjustment), so a `clientWidth` read there would force a synchronous
+    // reflow on every measurement during scroll. The ref read is free. A coarse
+    // width BUCKET is mirrored into state so the seed memo below rebuilds when the
+    // viewport actually changes size class (FIX_ROUND-1: reflow + resize-seed).
+    const widthRef = useRef(MAX_CONTENT_WIDTH - CONTENT_GUTTER)
+    const [widthBucketState, setWidthBucketState] = useState(() =>
+      widthBucket(widthRef.current),
+    )
+    const measureWidth = () => {
+      const vw = getScrollElement()?.clientWidth
+      if (!vw || vw <= 0) return
+      const w = Math.min(vw, MAX_CONTENT_WIDTH) - CONTENT_GUTTER
+      if (w <= 0) return
+      widthRef.current = w
+      const b = widthBucket(w)
+      setWidthBucketState(prev => (prev === b ? prev : b))
+    }
+    // useLayoutEffect so `widthRef` is set BEFORE the first paint — on a warm
+    // reopen the messages load asynchronously (count 0 → N a tick later), so by
+    // the time the seed is consumed the width (and its bucket) is already the
+    // real one, not the fallback (FIX_ROUND-1: seed bucket mismatch).
+    useLayoutEffect(() => {
+      const el = getScrollElement()
+      if (!el) return
+      measureWidth()
+      const ro = new ResizeObserver(measureWidth)
+      ro.observe(el)
+      return () => ro.disconnect()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scrollerReady])
+
+    // Seed the virtualizer with any REAL measured heights persisted from a prior
+    // mount of this (or any) conversation at this width bucket, so re-opening a
+    // long conversation starts rows at their true height (near-zero first-scroll
+    // correction) (ITEM-2, DEC-2).
+    //
+    // `@tanstack/virtual-core` consumes `initialMeasurementsCache` EXACTLY ONCE —
+    // at the first render where the window is non-empty (its internal
+    // measurementsCache is still empty). The store clears messages on every
+    // conversation switch, so a real mount starts at count 0 and the count 0→N
+    // transition happens AFTER the layout effect corrected `widthRef` — so the
+    // one build lands at the right width bucket. We FREEZE it (seedRef) after that
+    // first non-empty build: streaming replaces the messages Map on every token,
+    // churning `messagesArray` identity, but rebuilding a seed the library has
+    // already consumed is wasted O(window) work + an impure LRU mutation during
+    // render (FIX_ROUND-2). A mid-session width change can't re-seed (the library
+    // won't re-read it) — nor does it need to: the visible rows simply re-measure
+    // at the new width via the row ResizeObservers.
+    const seedRef = useRef<VirtualItem[] | null>(null)
+    const initialMeasurementsCache = useMemo(
+      () => {
+        // Window reset (conversation switch clears messages to an empty Map, then
+        // virtual-core empties its measurementsCache too) → drop the freeze so the
+        // NEXT non-empty build seeds the NEW conversation's ids, not the stale
+        // previous one. Streaming never reaches count 0, so it never resets here —
+        // the seed stays frozen through a stream (FIX_ROUND-2).
+        if (messagesArray.length === 0) {
+          seedRef.current = null
+          return EMPTY_SEED
+        }
+        if (seedRef.current) return seedRef.current
+        const seed = buildInitialMeasurementsCache(
+          messagesArray.map(m => m.id),
+          widthRef.current,
+        )
+        seedRef.current = seed
+        return seed
+      },
+      // widthBucketState is a dep only so the pre-consume (count 0) width
+      // correction is reflected in the single build; after the freeze the body
+      // short-circuits. getScrollElement is a fresh closure each render, not a dep.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [messagesArray, widthBucketState],
+    )
+
+    // Debounced measured-height write-back. The virtualizer's onChange fires with
+    // sync=false on EVERY row measurement (not only at scroll-end), so folding
+    // the whole itemSizeCache there per event would be O(n²) over a scroll-
+    // through. Instead, coalesce into ONE trailing flush ~after measurements
+    // settle (FIX_ROUND-1: O(n²) write-back).
+    const flushTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+    const scheduleFlush = () => {
+      if (flushTimer.current) clearTimeout(flushTimer.current)
+      flushTimer.current = setTimeout(() => {
+        flushTimer.current = undefined
+        recordMeasurements(virt.itemSizeCache, widthRef.current)
+      }, 400)
+    }
+
     const virt = useVirtualizer({
       count,
       getScrollElement,
-      estimateSize: () => ESTIMATED_ROW_HEIGHT,
+      // Content-aware first-pass estimate (per-message: text length + table /
+      // image / code / tool add-ons), memoized per (message, width bucket), so
+      // the estimate→measured correction — and the scrollbar-thumb jump it caused
+      // — shrinks toward zero. Reads the width REF (no reflow) (ITEM-1, DEC-1).
+      estimateSize: i => estimateMessageHeight(messagesArray[i], widthRef.current),
+      // Overscan stays at 8 (the pre-virtualization-fix value). ITEM-5's proposed
+      // drop to 4 measurably regressed the reverse-infinite-scroll ANCHOR: fewer
+      // off-screen rows above the viewport get measured, so the prepend
+      // anchor-restore leans on the (coarser) estimate and the view drifts ~120px
+      // (the `lazy-load-messages` anchor invariant broke). Anchor precision beats
+      // the marginal off-screen-mount saving — especially since ChatMessage is
+      // memoized (extra overscan rows don't re-render on scroll) (ITEM-5, DEC-5;
+      // FIX_ROUND-4 drift).
       overscan: 8,
+      initialMeasurementsCache,
+      // Persist real measured heights across mounts. sync=true is scroll,
+      // sync=false is a measurement/layout change — coalesce those into one
+      // trailing flush (never per scroll frame; O(n) once per settle) (ITEM-2).
+      onChange: (_instance, sync) => {
+        if (!sync) scheduleFlush()
+      },
       // Stable per-message keys so the measurement cache survives prepend /
       // append / window-reset (a message keeps its measured height when its
       // index shifts).
       getItemKey: i => messagesArray[i]?.id ?? i,
     })
+
+    // Flush measured heights on unmount (conversation close / navigate away) so
+    // the next open seeds from them. Uses widthRef (last-known-good width) — the
+    // scroll DOM may already be detached in cleanup, so a clientWidth read would
+    // be 0 and record under the wrong bucket (FIX_ROUND-1: unmount bucket).
+    useEffect(() => {
+      return () => {
+        if (flushTimer.current) clearTimeout(flushTimer.current)
+        recordMeasurements(virt.itemSizeCache, widthRef.current)
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     // Live handle to the current array + the plain-path container for the
     // imperative methods.
@@ -201,9 +338,18 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
             const idx = indexOfMessageId(arrRef.current, anchor.anchorId)
             if (idx < 0) return
             const [offsetForIndex] = virt.getOffsetForIndex(idx, 'start') ?? [0]
-            virt.scrollToOffset(
-              indexRestoreOffset(offsetForIndex ?? 0, anchor.viewportOffset),
+            const target = indexRestoreOffset(
+              offsetForIndex ?? 0,
+              anchor.viewportOffset,
             )
+            // Skip the explicit restore when the virtualizer's own
+            // above-viewport size-change adjustment already pinned the anchor
+            // (within tolerance) — avoids a redundant scroll that double-adjusts
+            // into a visible jump (ITEM-6, DEC-6). The before-paint restore is
+            // preserved for the common case where it hasn't yet.
+            const el = getScrollElement()
+            if (el && !anchorRestoreNeeded(el.scrollTop, target)) return
+            virt.scrollToOffset(target)
             return
           }
           // Plain path: re-pin by the anchor row's new position (window scroll).

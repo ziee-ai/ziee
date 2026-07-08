@@ -224,8 +224,20 @@ fn map_version_err(err: version_manager::VersionError) -> (StatusCode, crate::co
 pub async fn get_versions_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
 ) -> ApiResult<Json<VersionStatus>> {
-    let pool = live_pool()?;
-    let status = version_manager::status(&pool).await.map_err(map_version_err)?;
+    // The LIST path degrades gracefully instead of hard-gating on `live_pool()`:
+    // the `available` catalog comes from the GitHub Releases API and needs
+    // neither the DB nor an initialized sandbox, so return 200 with a
+    // machine-readable `availability` reason. This lets the admin page render the
+    // catalog + a precise notice when the sandbox is disabled/unsupported rather
+    // than a blanket 503. (install / set-pin / delete still require a live pool
+    // and keep their 503.)
+    let status = match config::get_state() {
+        Some(state) => match state.pool.as_ref() {
+            Some(pool) => version_manager::status(pool).await.map_err(map_version_err)?,
+            None => version_manager::available_only(config::SandboxAvailability::PoolMissing).await,
+        },
+        None => version_manager::available_only(config::init_status()).await,
+    };
     Ok((StatusCode::OK, Json(status)))
 }
 

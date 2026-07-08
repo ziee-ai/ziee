@@ -17,16 +17,12 @@ import {
   rowsToDelimited,
   viewToXlsxBlob,
 } from './tableView'
+import { XLSX_MAX_ROWS, capRows } from './parse'
 
 /** Above this row count a sheet switches to row virtualization (needs a definite
  *  scroll height); at/below it renders a plain table that hugs its content, so a
  *  2-3 row sheet doesn't sit in a tall empty box. Mirrors DelimitedTable. */
 const VIRTUALIZE_ROW_THRESHOLD = 200
-
-/** Per-sheet cap on rendered rows. Above this, each sheet is truncated
- *  to the first N and a banner offers Download. The wider 10 MB
- *  byte-cap at FilePanel still applies upstream. */
-const MAX_ROWS = 10_000
 
 /** Per-data-column width — same value DelimitedTable uses for the
  *  matching CSV/TSV view. Caps wide cells; the table scrolls horizontally
@@ -168,7 +164,7 @@ export function XlsxSheet({
       {sheet.truncated && (
         <Alert
           tone="warning"
-          title={`Showing first ${MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
+          title={`Showing first ${XLSX_MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
           className="mb-2 flex-shrink-0"
           data-testid={`file-xlsx-truncated-alert-${sheet.name}`}
         />
@@ -237,20 +233,21 @@ export function XlsxBody(props: FileViewerSlotProps) {
           // a raw ArrayBuffer. Passing the bare buffer mis-interprets
           // byteLength → enormous internal allocations.
           //
-          // `sheetRows: MAX_ROWS + 1` stops parsing past our row cap
+          // `sheetRows: XLSX_MAX_ROWS + 1` stops parsing past our row cap
           // so large sheets don't materialize all rows in memory
-          // before our `slice(0, MAX_ROWS)` discards them.
+          // before our `slice(0, XLSX_MAX_ROWS)` discards them.
           const wb = XLSX.read(new Uint8Array(fileBinaryContent), {
             type: 'array',
-            sheetRows: MAX_ROWS + 1,
+            sheetRows: XLSX_MAX_ROWS + 1,
           })
           const parsed = wb.SheetNames.slice(0, 10).map(name => {
             const ws = wb.Sheets[name]
             const data = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' })
             const headers = (data[0] as string[]) ?? []
             const dataRows = (data.slice(1) as string[][])
-            const truncated = dataRows.length > MAX_ROWS
-            const rows = dataRows.slice(0, MAX_ROWS)
+            // Shared truncation predicate (also used by parseDelimitedText) so
+            // the lifted per-sheet cap is exercised by production code in tests.
+            const { rows, truncated } = capRows(dataRows, XLSX_MAX_ROWS)
             return { name, headers, rows, truncated }
           })
           if (!cancelled) {

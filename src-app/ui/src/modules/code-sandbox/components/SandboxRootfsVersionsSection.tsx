@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Alert, Button, dialog, ErrorState, Flex, Spin, Tag, Text, message } from '@/components/ui'
 import { RotateCw, Star } from 'lucide-react'
+import type { SandboxAvailability } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { AvailableRootfsCard } from './AvailableRootfsCard'
@@ -14,6 +15,25 @@ import {
   READ_PERM,
   type VersionGroup,
 } from './_rootfsShared'
+
+/** Admin-facing explanation for each not-`ready` sandbox state. The server sends
+ *  only the machine-readable enum; copy lives here (i18n-friendly, mirrors the
+ *  module's other inline notices). The GitHub catalog is still listed below, so
+ *  every message ends by pointing the admin at it. */
+const DEGRADED_NOTICE: Record<Exclude<SandboxAvailability, 'ready'>, string> = {
+  disabled_in_config:
+    'Code sandbox is disabled. Set code_sandbox.enabled: true (and install bubblewrap on the host) to install and mount a rootfs. Available versions from the catalog are shown below.',
+  host_unsupported:
+    'Code sandbox can’t start on this host — bubblewrap (bwrap) was not found on the server’s PATH. Install it to enable installing and mounting a rootfs. Available versions are shown below.',
+  cloud_imds_refused:
+    'Code sandbox is disabled because the cloud instance-metadata endpoint is reachable from this host. Set code_sandbox.allow_cloud_imds_reachable: true only if you accept the risk. Available versions are shown below.',
+  workspace_init_failed:
+    'Code sandbox couldn’t create its workspace directory on the server — check the data directory’s permissions. Available versions are shown below.',
+  pool_missing:
+    'Code sandbox is starting up (no database connection wired yet). Available versions from the catalog are shown below.',
+  not_initialized:
+    'Code sandbox is not initialized. Available versions from the catalog are shown below.',
+}
 
 export function SandboxRootfsVersionsSection() {
   // Hook-safety: every `Stores.X.field` read is a `useStore` hook under the
@@ -35,10 +55,16 @@ export function SandboxRootfsVersionsSection() {
     mcpServerWorkspaceCount,
     hostArch: serverHostArch,
     hostPackage: serverHostPackage,
+    availability,
   } = Stores.SandboxRootfsVersions
 
   const canManage = usePermission(MANAGE_PERM)
   const canRead = usePermission(READ_PERM) || canManage
+
+  // When the sandbox isn't initialized the LIST endpoint still returns 200 with
+  // the GitHub catalog (installed/pinned empty). Show a precise notice + the
+  // catalog, and disable install (POST would 503 while the sandbox is off).
+  const isDegraded = availability !== 'ready'
 
   // Prefer the server-authoritative host arch/package (correct even on a fresh,
   // zero-installed host — e.g. Windows/WSL2 needs tar.zst); fall back to the
@@ -259,6 +285,22 @@ export function SandboxRootfsVersionsSection() {
         />
       )}
 
+      {/* Graceful degrade: the sandbox isn't initialized, so installing/mounting
+          is unavailable — but the GitHub catalog below still renders. A warning
+          notice (never a destructive ErrorState), mirroring the not-authorized /
+          resource-limits read-only notices. */}
+      {isDegraded && (
+        <Alert
+          tone="warning"
+          title="Code sandbox is not active"
+          description={
+            DEGRADED_NOTICE[availability as Exclude<SandboxAvailability, 'ready'>] ??
+            DEGRADED_NOTICE.not_initialized
+          }
+          data-testid="sandbox-rootfs-degraded-alert"
+        />
+      )}
+
       {/* SSE transport state is a non-fatal, self-healing background reconnect
           — a warning, never the raw attempt-counter string as a destructive
           title. Downloads keep running; the list refreshes on completion. */}
@@ -302,6 +344,7 @@ export function SandboxRootfsVersionsSection() {
           <AvailableRootfsCard
             groups={availableGroups}
             canManage={canManage}
+            installDisabled={isDegraded}
             onDownloadAll={handleDownloadAll}
           />
         </>
