@@ -28,3 +28,9 @@ zod validation, wizard state, and store roundtrip run for real.
 - **TEST-14** (tier: e2e)        [covers: ITEM-8] file: `src-app/ui/tests/e2e/chat/ask-user-decision-ux.spec.ts` — asserts: an option carrying a preview renders its monospace preview block (`-opt-<value>-preview`); options without a preview render none.
 - **TEST-15** (tier: e2e)        [covers: ITEM-2] file: `src-app/ui/tests/e2e/chat/ask-user-elicitation.spec.ts` — asserts: the existing assistant-labelled ask_user flow still round-trips a choice (updated for the stamped/card rendering) — the back-compat headline case stays green under the new renderer.
 - **TEST-16** (tier: e2e)        [covers: ITEM-10] file: `src-app/ui/tests/e2e/visual/` (gallery) — asserts: the new rich ask_user gallery deep-state renders with zero runtime HIGH findings (console/contrast) under `npm run gate:ui`; covered via the gallery state cell + `check:state-matrix` inside `npm run check`.
+
+## Added in Phase 7 (audit-driven coverage)
+
+- **TEST-17** (tier: unit)       [covers: ITEM-6] file: `src-app/ui/src/modules/mcp/chat-extension/components/elicitationOptions.test.ts` — asserts: `isOtherSelected`/`otherFieldError`/`finalizeValues` for BOTH single and multi (multi Other-merge strips the sentinel + appends the free text; empty text drops it; the sentinel never leaks; an Other-disabled field is never rewritten).
+- **TEST-18** (tier: e2e)        [covers: ITEM-6] file: `src-app/ui/tests/e2e/chat/ask-user-decision-ux.spec.ts` — asserts: choosing Other but leaving the text blank shows the `role=alert` validation error and BLOCKS submit (no accept POST) — the previously-untested gating error path.
+- **TEST-19** (tier: e2e)        [covers: ITEM-4] file: `src-app/ui/tests/e2e/chat/ask-user-decision-ux.spec.ts` — asserts: multi-select checkbox cards round-trip an array of the chosen values through accept (the previously-untested multi branch).

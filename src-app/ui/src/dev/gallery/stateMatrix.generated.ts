@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1869 signals total.
+// 325 surfaces carry renderable-state signals; 1872 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2563,23 +2563,26 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/components/AskUserWizardContent",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "option.recommended", line: 126 },
-      { kind: "branch", condition: "option.description", line: 132 },
-      { kind: "branch", condition: "option.preview", line: 137 },
-      { kind: "branch", condition: "multi", line: 180 },
-      { kind: "branch", condition: "showOther", line: 226 },
-      { kind: "branch", condition: "multi", line: 235 },
-      { kind: "branch", condition: "multi", line: 257 },
-      { kind: "branch", condition: "otherOn", line: 269 },
-      { kind: "error", condition: "fieldState.error?.message", line: 279 },
-      { kind: "branch", condition: "otherErr", line: 337 },
-      { kind: "branch", condition: "otherErr", line: 370 },
-      { kind: "branch", condition: "!zodOk", line: 376 },
-      { kind: "branch", condition: "step > 0", line: 415 },
-      { kind: "branch", condition: "isLast", line: 427 },
-      { kind: "branch", condition: "total > 1", line: 457 },
-      { kind: "branch", condition: "(currentSchema as FieldSchema).title && isChoice", line: 478 },
-      { kind: "branch", condition: "(currentSchema as FieldSchema).description && isChoice", line: 483 },
+      { kind: "branch", condition: "option.recommended", line: 89 },
+      { kind: "branch", condition: "option.description", line: 95 },
+      { kind: "branch", condition: "option.preview", line: 100 },
+      { kind: "branch", condition: "multi", line: 150 },
+      { kind: "branch", condition: "showOther", line: 201 },
+      { kind: "branch", condition: "multi", line: 211 },
+      { kind: "branch", condition: "multi", line: 232 },
+      { kind: "branch", condition: "otherOn", line: 248 },
+      { kind: "error", condition: "fieldState.error?.message", line: 258 },
+      { kind: "branch", condition: "!mounted.current", line: 329 },
+      { kind: "branch", condition: "otherErr", line: 340 },
+      { kind: "branch", condition: "isSubmitting", line: 353 },
+      { kind: "branch", condition: "isSubmitting", line: 367 },
+      { kind: "branch", condition: "!zodOk || firstBad >= 0", line: 378 },
+      { kind: "branch", condition: "step > 0", line: 411 },
+      { kind: "branch", condition: "isLast", line: 423 },
+      { kind: "branch", condition: "total > 1", line: 453 },
+      { kind: "branch", condition: "current && isChoice && currentSchema.title", line: 477 },
+      { kind: "branch", condition: "current && isChoice && currentSchema.description", line: 482 },
+      { kind: "branch", condition: "current", line: 487 },
       { kind: "branch", condition: "isChoice", line: 488 },
     ],
   },

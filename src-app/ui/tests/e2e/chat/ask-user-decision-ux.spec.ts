@@ -143,6 +143,66 @@ test.describe('ask_user rich decision UX', () => {
     expect((body.content as Record<string, unknown>).color).toBe('chartreuse')
   })
 
+  // TEST-11b — Other selected but left blank is a blocking validation error.
+  test('Other selected but blank blocks submit with a validation error', async ({
+    page,
+    testInfra,
+  }) => {
+    const capture = await captureElicitationResponses(page)
+    const elicitId = `eid_otherblank_${Date.now()}`
+    const pending = await injectRich(page, testInfra.baseURL, elicitId, {
+      'x-ziee-askuser': true,
+      type: 'object',
+      properties: {
+        color: { type: 'string', title: 'Color?', enum: ['red', 'green'] },
+      },
+      required: ['color'],
+    })
+
+    await byTestId(page, `elicitation-field-color-opt-${OTHER}`).first().click()
+    await expect(byTestId(page, 'elicitation-field-color-other-input').first()).toBeVisible()
+    // Submit with the Other text still empty → blocked, error shown, no POST.
+    await byTestId(page, 'elicitation-submit').first().click()
+    await expect(pending.getByRole('alert')).toContainText('Other')
+    await expect(
+      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`),
+    ).toHaveCount(0)
+    expect(capture.count()).toBe(0)
+  })
+
+  // TEST-12b — multi-select (checkbox cards) roundtrip.
+  test('multi-select checkbox cards POST an array of the chosen values', async ({
+    page,
+    testInfra,
+  }) => {
+    const capture = await captureElicitationResponses(page)
+    const elicitId = `eid_multi_${Date.now()}`
+    await injectRich(page, testInfra.baseURL, elicitId, {
+      'x-ziee-askuser': true,
+      type: 'object',
+      properties: {
+        tags: {
+          type: 'array',
+          title: 'Which tags?',
+          items: { enum: ['red', 'green', 'blue'] },
+          minItems: 1,
+        },
+      },
+      required: ['tags'],
+    })
+
+    await byTestId(page, 'elicitation-field-tags-opt-red').first().click()
+    await byTestId(page, 'elicitation-field-tags-opt-blue').first().click()
+    await byTestId(page, 'elicitation-submit').first().click()
+
+    await expect(
+      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`).first(),
+    ).toBeVisible({ timeout: 5000 })
+    const body = capture.responses()[0].body as Record<string, unknown>
+    expect(body.action).toBe('accept')
+    expect((body.content as Record<string, unknown>).tags).toEqual(['red', 'blue'])
+  })
+
   // TEST-12 — the Next/Back wizard for 2 questions + single final submit.
   test('two questions render a Next/Back wizard; single Submit returns both answers', async ({
     page,

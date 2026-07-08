@@ -248,7 +248,7 @@ export const STATE_COVERAGE = {
   "modules/llm-repository/components/LlmRepositoryDrawer:open": { via: 'overlay' },
   "modules/llm-repository/components/LlmRepositorySettings:empty": { via: 'page-state-mode' },
   "modules/llm-repository/components/LlmRepositorySettings:error": { via: 'page-state-mode' },
-  "modules/mcp/chat-extension/components/AskUserWizardContent:error": { skip: true, reason: "the 'error' signal is a per-field zod/Other validation message (not a load-error surface); exercised end-to-end by the ask-user-decision-ux wizard-validation e2e spec" },
+  "modules/mcp/chat-extension/components/AskUserWizardContent:error": { skip: true, reason: "the 'error' signal is a per-field zod/Other validation message (not a load-error surface); exercised by ask-user-decision-ux.spec.ts 'Other selected but blank blocks submit with a validation error' (asserts the role=alert error + blocked POST)" },
   "modules/mcp/chat-extension/components/McpMenuItem:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/mcp/chat-extension/components/McpStatusRow:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/mcp/chat-extension/extension:error": { via: 'interaction:deep-chat-mcp-toolcall-error' },

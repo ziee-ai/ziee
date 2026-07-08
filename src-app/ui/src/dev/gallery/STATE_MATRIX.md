@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1869** signals total: 1475 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1872** signals total: 1478 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2818,23 +2818,26 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `option.recommended` | 126 |
-| branch | `option.description` | 132 |
-| branch | `option.preview` | 137 |
-| branch | `multi` | 180 |
-| branch | `showOther` | 226 |
-| branch | `multi` | 235 |
-| branch | `multi` | 257 |
-| branch | `otherOn` | 269 |
-| error | `fieldState.error?.message` | 279 |
-| branch | `otherErr` | 337 |
-| branch | `otherErr` | 370 |
-| branch | `!zodOk` | 376 |
-| branch | `step > 0` | 415 |
-| branch | `isLast` | 427 |
-| branch | `total > 1` | 457 |
-| branch | `(currentSchema as FieldSchema).title && isChoice` | 478 |
-| branch | `(currentSchema as FieldSchema).description && isChoice` | 483 |
+| branch | `option.recommended` | 89 |
+| branch | `option.description` | 95 |
+| branch | `option.preview` | 100 |
+| branch | `multi` | 150 |
+| branch | `showOther` | 201 |
+| branch | `multi` | 211 |
+| branch | `multi` | 232 |
+| branch | `otherOn` | 248 |
+| error | `fieldState.error?.message` | 258 |
+| branch | `!mounted.current` | 329 |
+| branch | `otherErr` | 340 |
+| branch | `isSubmitting` | 353 |
+| branch | `isSubmitting` | 367 |
+| branch | `!zodOk \|\| firstBad >= 0` | 378 |
+| branch | `step > 0` | 411 |
+| branch | `isLast` | 423 |
+| branch | `total > 1` | 453 |
+| branch | `current && isChoice && currentSchema.title` | 477 |
+| branch | `current && isChoice && currentSchema.description` | 482 |
+| branch | `current` | 487 |
 | branch | `isChoice` | 488 |
 
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`

@@ -3,10 +3,13 @@ import assert from 'node:assert/strict'
 import {
   allowsOther,
   buildFormSchema,
+  finalizeValues,
   getRichOptions,
   isChoiceField,
   isMultiChoiceField,
+  isOtherSelected,
   orderRecommendedFirst,
+  otherFieldError,
   OTHER_SENTINEL,
   type FieldSchema,
 } from './elicitationOptions.ts'
@@ -171,4 +174,50 @@ test('OTHER_SENTINEL is distinct from realistic option values', () => {
   for (const v of ['other', 'Other', 'oauth', 'yes', 'no', '', 'null', '__other__']) {
     assert.notEqual(v, OTHER_SENTINEL)
   }
+})
+
+// ── Other-escape ⇄ response-envelope helpers (single + multi) ────────────────
+
+const single: FieldSchema = { type: 'string', enum: ['a', 'b'] }
+const multi: FieldSchema = { type: 'array', items: { enum: ['a', 'b'] } }
+
+test('isOtherSelected detects the sentinel for single and multi', () => {
+  assert.equal(isOtherSelected(single, OTHER_SENTINEL), true)
+  assert.equal(isOtherSelected(single, 'a'), false)
+  assert.equal(isOtherSelected(multi, ['a', OTHER_SENTINEL]), true)
+  assert.equal(isOtherSelected(multi, ['a', 'b']), false)
+})
+
+test('otherFieldError requires the free text only when Other is selected', () => {
+  assert.equal(otherFieldError(single, OTHER_SENTINEL, ''), 'Enter a value for “Other”.')
+  assert.equal(otherFieldError(single, OTHER_SENTINEL, '  '), 'Enter a value for “Other”.')
+  assert.equal(otherFieldError(single, OTHER_SENTINEL, 'custom'), null)
+  assert.equal(otherFieldError(single, 'a', ''), null) // not Other → no error
+  assert.equal(otherFieldError(multi, ['a', OTHER_SENTINEL], ''), 'Enter a value for “Other”.')
+  assert.equal(otherFieldError(multi, ['a', OTHER_SENTINEL], 'z'), null)
+})
+
+test('finalizeValues replaces the single-select sentinel with the free text', () => {
+  const out = finalizeValues({ c: single }, { c: OTHER_SENTINEL }, { c: 'custom' })
+  assert.equal(out.c, 'custom')
+})
+
+test('finalizeValues strips the multi sentinel and appends the free text', () => {
+  const out = finalizeValues({ c: multi }, { c: ['a', OTHER_SENTINEL] }, { c: 'zed' })
+  assert.deepEqual(out.c, ['a', 'zed'])
+  // Empty Other text → sentinel dropped, nothing appended.
+  const empty = finalizeValues({ c: multi }, { c: ['a', OTHER_SENTINEL] }, { c: '  ' })
+  assert.deepEqual(empty.c, ['a'])
+})
+
+test('finalizeValues leaves non-Other answers + Other-disabled fields untouched', () => {
+  // A normal answer passes through.
+  assert.equal(finalizeValues({ c: single }, { c: 'a' }, {}).c, 'a')
+  // A field that does NOT offer Other is never rewritten, even if its value
+  // literally equals the sentinel (the value-space-collision guard).
+  const noOther: FieldSchema = { type: 'string', enum: ['a'], 'x-ziee-allow-other': false }
+  assert.equal(
+    finalizeValues({ c: noOther }, { c: OTHER_SENTINEL }, { c: 'x' }).c,
+    OTHER_SENTINEL,
+  )
 })

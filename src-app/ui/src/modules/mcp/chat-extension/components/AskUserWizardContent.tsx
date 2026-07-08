@@ -1,8 +1,9 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Controller,
   Form,
   Input,
@@ -12,16 +13,18 @@ import {
   type UseFormReturn,
 } from '@/components/ui'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/shadcn/radio-group'
-import { Checkbox } from '@/components/ui/shadcn/checkbox'
 import { SquarePen } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import {
   allowsOther,
   buildFormSchema,
+  finalizeValues,
   getRichOptions,
   isMultiChoiceField,
+  isOtherSelected,
   isSingleChoiceField,
   orderRecommendedFirst,
+  otherFieldError,
   OTHER_SENTINEL,
   type FieldSchema,
   type RichOption,
@@ -40,51 +43,6 @@ interface AskUserWizardContentProps {
  *  it survives step navigation (the per-step field remounts on Back/Next). */
 type OtherText = Record<string, string>
 
-// ─── Pure value helpers (Other-escape ⇄ response envelope) ───────────────────
-
-/** True when a choice value currently sits on the "Other" free-text option. */
-function isOtherSelected(fs: FieldSchema, value: unknown): boolean {
-  if (isSingleChoiceField(fs)) return value === OTHER_SENTINEL
-  if (isMultiChoiceField(fs))
-    return Array.isArray(value) && value.includes(OTHER_SENTINEL)
-  return false
-}
-
-/** Validation message when Other is selected but its free text is empty. */
-function otherFieldError(
-  fs: FieldSchema,
-  value: unknown,
-  otherText: string | undefined,
-): string | null {
-  if (isOtherSelected(fs, value) && !(otherText ?? '').trim())
-    return 'Enter a value for “Other”.'
-  return null
-}
-
-/** Replace the OTHER sentinel with the typed free text before submitting, so the
- *  response envelope never leaks the sentinel and the model gets the real value. */
-function finalizeValues(
-  properties: Record<string, FieldSchema>,
-  values: Record<string, unknown>,
-  otherText: OtherText,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...values }
-  for (const [name, fs] of Object.entries(properties)) {
-    const custom = (otherText[name] ?? '').trim()
-    if (isSingleChoiceField(fs) && out[name] === OTHER_SENTINEL) {
-      out[name] = custom
-    } else if (
-      isMultiChoiceField(fs) &&
-      Array.isArray(out[name]) &&
-      (out[name] as string[]).includes(OTHER_SENTINEL)
-    ) {
-      const kept = (out[name] as string[]).filter(v => v !== OTHER_SENTINEL)
-      out[name] = custom ? [...kept, custom] : kept
-    }
-  }
-  return out
-}
-
 // ─── One selectable option card ──────────────────────────────────────────────
 
 function OptionCard({
@@ -94,6 +52,7 @@ function OptionCard({
   selected,
   htmlFor,
   onSelect,
+  labelId,
 }: {
   fieldName: string
   option: RichOption
@@ -103,6 +62,9 @@ function OptionCard({
   htmlFor?: string
   /** Checkbox path: toggle directly (htmlFor would double-fire the toggle). */
   onSelect?: () => void
+  /** Id of the visible label — the control references it via aria-labelledby so
+   *  the accessible name includes the description/preview/recommended badge. */
+  labelId: string
 }) {
   const optId = `elicitation-field-${fieldName}-opt-${option.value}`
   return (
@@ -116,6 +78,7 @@ function OptionCard({
           the click to the sibling control, idempotent); checkboxes use onSelect
           (htmlFor + a sibling checkbox would double-fire the toggle). */}
       <label
+        id={labelId}
         htmlFor={htmlFor}
         data-testid={optId}
         className="min-w-0 flex-1 cursor-pointer"
@@ -164,9 +127,15 @@ function ChoiceCards({
 }) {
   const uid = useId()
   const multi = isMultiChoiceField(fieldSchema)
-  const options = orderRecommendedFirst(getRichOptions(fieldSchema))
+  const options = useMemo(
+    () => orderRecommendedFirst(getRichOptions(fieldSchema)),
+    [fieldSchema],
+  )
   const showOther = allowsOther(fieldSchema)
   const otherId = `${uid}-other`
+  const otherLabelId = `${uid}-other-label`
+  // The question title/description name the option GROUP for a screen reader.
+  const groupLabel = fieldSchema.title || name
 
   return (
     <Controller
@@ -177,6 +146,7 @@ function ChoiceCards({
 
         const cards = options.map(opt => {
           const ctrlId = `${uid}-${opt.value}`
+          const labelId = `${uid}-${opt.value}-label`
           if (multi) {
             const arr = Array.isArray(field.value) ? (field.value as string[]) : []
             const checked = arr.includes(opt.value)
@@ -191,13 +161,15 @@ function ChoiceCards({
                 option={opt}
                 selected={checked}
                 onSelect={toggle}
+                labelId={labelId}
                 control={
                   <Checkbox
                     id={ctrlId}
                     checked={checked}
                     onCheckedChange={toggle}
                     onBlur={field.onBlur}
-                    aria-label={opt.label}
+                    aria-labelledby={labelId}
+                    data-testid={`${name}-${opt.value}-checkbox`}
                   />
                 }
               />
@@ -210,14 +182,14 @@ function ChoiceCards({
               option={opt}
               selected={field.value === opt.value}
               htmlFor={ctrlId}
+              labelId={labelId}
               control={
-                <RadioGroupItem id={ctrlId} value={opt.value} aria-label={opt.label} />
+                <RadioGroupItem id={ctrlId} value={opt.value} aria-labelledby={labelId} />
               }
             />
           )
         })
 
-        // The always-available Other escape (unless x-ziee-allow-other:false).
         const toggleOtherMulti = () => {
           const arr = Array.isArray(field.value) ? (field.value as string[]) : []
           field.onChange(
@@ -234,36 +206,39 @@ function ChoiceCards({
             selected={otherOn}
             htmlFor={multi ? undefined : otherId}
             onSelect={multi ? toggleOtherMulti : undefined}
+            labelId={otherLabelId}
             control={
               multi ? (
                 <Checkbox
                   id={otherId}
                   checked={otherOn}
                   onCheckedChange={toggleOtherMulti}
-                  aria-label="Other"
+                  aria-labelledby={otherLabelId}
+                  data-testid={`${name}-other-checkbox`}
                 />
               ) : (
-                <RadioGroupItem id={otherId} value={OTHER_SENTINEL} aria-label="Other" />
+                <RadioGroupItem
+                  id={otherId}
+                  value={OTHER_SENTINEL}
+                  aria-labelledby={otherLabelId}
+                />
               )
             }
           />
         ) : null
 
-        const list = (
-          <div className="flex flex-col gap-2">
-            {cards}
-            {otherCard}
-          </div>
-        )
-
         return (
           <div className="flex flex-col gap-2" data-testid={`elicitation-field-${name}`}>
             {multi ? (
-              list
+              <div role="group" aria-label={groupLabel} className="flex flex-col gap-2">
+                {cards}
+                {otherCard}
+              </div>
             ) : (
               <RadioGroup
                 value={typeof field.value === 'string' ? field.value : ''}
                 onValueChange={field.onChange}
+                aria-label={groupLabel}
               >
                 {cards}
                 {otherCard}
@@ -310,29 +285,53 @@ export function AskUserWizardContent({
   properties,
   requiredFields,
 }: AskUserWizardContentProps) {
-  const entries = Object.entries(properties)
+  const entries = useMemo(() => Object.entries(properties), [properties])
   const total = entries.length
 
   const [step, setStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [otherText, setOtherTextState] = useState<OtherText>({})
 
-  const formSchema = buildFormSchema(properties, requiredFields)
-  const defaultValues = Object.fromEntries(
-    entries.map(([key, fs]) => [
-      key,
-      fs.default ?? (isMultiChoiceField(fs) ? [] : undefined),
-    ]),
+  const formSchema = useMemo(
+    () => buildFormSchema(properties, requiredFields),
+    [properties, requiredFields],
+  )
+  const defaultValues = useMemo(
+    () =>
+      Object.fromEntries(
+        entries.map(([key, fs]) => [
+          key,
+          fs.default ?? (isMultiChoiceField(fs) ? [] : undefined),
+        ]),
+      ),
+    [entries],
   )
   const form = useForm<Record<string, unknown>>({
     resolver: zodResolver(formSchema),
     defaultValues,
   })
 
-  const [currentName, currentSchema] = entries[step] ?? entries[0]
+  // Empty `properties` (a malformed ask_user schema) → no field, just message +
+  // actions; NEVER crash the render (the legacy path also tolerated this).
+  const current = entries[step] ?? entries[0]
+  const currentName = current?.[0] ?? ''
+  const currentSchema = (current?.[1] ?? {}) as FieldSchema
   const isLast = step >= total - 1
+  const isChoice = isSingleChoiceField(currentSchema) || isMultiChoiceField(currentSchema)
   const setOtherText = (name: string, t: string) =>
     setOtherTextState(prev => ({ ...prev, [name]: t }))
+
+  // Move focus to the new question on step change (skip the initial mount) and
+  // let the aria-live step indicator announce it — keyboard/SR users keep place.
+  const questionRef = useRef<HTMLDivElement>(null)
+  const mounted = useRef(false)
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true
+      return
+    }
+    questionRef.current?.focus()
+  }, [step])
 
   // Validate the current step (zod for the field + the Other-filled rule).
   const validateStep = async (name: string, fs: FieldSchema): Promise<boolean> => {
@@ -346,39 +345,37 @@ export function AskUserWizardContent({
   }
 
   const handleNext = async () => {
-    if (await validateStep(currentName, currentSchema as FieldSchema))
-      setStep(s => Math.min(s + 1, total - 1))
+    if (await validateStep(currentName, currentSchema)) setStep(s => Math.min(s + 1, total - 1))
   }
   const handleBack = () => setStep(s => Math.max(s - 1, 0))
 
   const handleDecline = async () => {
+    if (isSubmitting) return
     setIsSubmitting(true)
     try {
       await Stores.McpComposer.resolveElicitation(elicitationId, 'decline')
+    } catch (e) {
+      // The store rolls status back on POST failure so the user can retry; swallow
+      // so it doesn't bubble to the chat error boundary.
+      console.warn('ask_user decline failed', e)
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleSubmit = async () => {
-    // Validate EVERY field (zod) + every Other-filled rule; jump to the first
-    // offending step so the user sees what's missing.
+    if (isSubmitting) return // re-entry guard: a double-click must not double-POST
     const zodOk = await form.trigger()
+    // Find the GLOBALLY-first offending step across BOTH zod + Other-filled rules.
+    let firstBad = -1
     for (let i = 0; i < total; i++) {
-      const [name, fs] = entries[i]
-      const otherErr = otherFieldError(
-        fs as FieldSchema,
-        form.getValues(name),
-        otherText[name],
-      )
-      if (otherErr) {
-        form.setError(name, { type: 'other-required', message: otherErr })
-        setStep(i)
-        return
-      }
+      const [name, fs] = entries[i] as [string, FieldSchema]
+      const otherErr = otherFieldError(fs, form.getValues(name), otherText[name])
+      if (otherErr) form.setError(name, { type: 'other-required', message: otherErr })
+      const invalid = otherErr != null || form.formState.errors[name] != null
+      if (invalid && firstBad === -1) firstBad = i
     }
-    if (!zodOk) {
-      const firstBad = entries.findIndex(([name]) => form.formState.errors[name])
+    if (!zodOk || firstBad >= 0) {
       if (firstBad >= 0) setStep(firstBad)
       return
     }
@@ -387,16 +384,11 @@ export function AskUserWizardContent({
       const values = finalizeValues(properties, form.getValues(), otherText)
       await Stores.McpComposer.resolveElicitation(elicitationId, 'accept', values)
     } catch (e) {
-      // The store rolls status back to 'pending' on POST failure so the user can
-      // retry; swallow so it doesn't bubble to the chat error boundary.
       console.warn('ask_user resolve failed', e)
     } finally {
       setIsSubmitting(false)
     }
   }
-
-  const fs = currentSchema as FieldSchema
-  const isChoice = isSingleChoiceField(fs) || isMultiChoiceField(fs)
 
   return (
     <Card
@@ -461,7 +453,8 @@ export function AskUserWizardContent({
         {total > 1 && (
           <Text
             type="secondary"
-            className="ml-auto text-xs whitespace-nowrap"
+            className="ms-auto text-xs whitespace-nowrap"
+            aria-live="polite"
             data-testid="elicitation-wizard-step"
           >
             Step {step + 1} of {total}
@@ -479,27 +472,31 @@ export function AskUserWizardContent({
           data-testid="mcp-elicitation-form"
           onSubmit={() => (isLast ? handleSubmit() : handleNext())}
         >
-          {(currentSchema as FieldSchema).title && isChoice && (
-            <Text strong className="mb-1 block text-sm">
-              {(currentSchema as FieldSchema).title}
-            </Text>
-          )}
-          {(currentSchema as FieldSchema).description && isChoice && (
-            <Text type="secondary" className="mb-2 block text-xs">
-              {(currentSchema as FieldSchema).description}
-            </Text>
-          )}
-          {isChoice ? (
-            <ChoiceCards
-              name={currentName}
-              fieldSchema={fs}
-              form={form}
-              otherText={otherText[currentName] ?? ''}
-              setOtherText={t => setOtherText(currentName, t)}
-            />
-          ) : (
-            renderInputField(currentName, fs, requiredFields.has(currentName))
-          )}
+          {/* tabIndex=-1 so step-change focus lands here (announced by aria-live). */}
+          <div ref={questionRef} tabIndex={-1} className="outline-none">
+            {current && isChoice && currentSchema.title && (
+              <Text strong className="mb-1 block text-sm">
+                {currentSchema.title}
+              </Text>
+            )}
+            {current && isChoice && currentSchema.description && (
+              <Text type="secondary" className="mb-2 block text-xs">
+                {currentSchema.description}
+              </Text>
+            )}
+            {current &&
+              (isChoice ? (
+                <ChoiceCards
+                  name={currentName}
+                  fieldSchema={currentSchema}
+                  form={form}
+                  otherText={otherText[currentName] ?? ''}
+                  setOtherText={t => setOtherText(currentName, t)}
+                />
+              ) : (
+                renderInputField(currentName, currentSchema, requiredFields.has(currentName))
+              ))}
+          </div>
         </Form>
       </div>
     </Card>

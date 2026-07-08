@@ -187,18 +187,15 @@ fn cap_structured_content(
     })
 }
 
-/// Root marker stamped onto the built-in `ask_user` `requested_schema` so the
-/// chat frontend can enable the rich decision UX (per-option cards, the 1–4
-/// question wizard, the Other-escape) for the ziee-internal path ONLY. External
-/// MCP-server elicitation flows through a different path and is never stamped, so
-/// it keeps rendering the flat, spec-compliant form.
-pub(crate) const ASK_USER_SCHEMA_MARKER: &str = "x-ziee-askuser";
+use crate::modules::mcp::elicitation::models::ASK_USER_SCHEMA_MARKER;
 
-/// Stamp [`ASK_USER_SCHEMA_MARKER`] `= true` onto an object schema's root.
-/// Pure + idempotent; a non-object schema (which the FE renders as an empty
-/// form anyway) is returned unchanged so this can never panic. Called AFTER the
-/// size guard + `cap_requested_schema`, so a rejected/oversized schema is never
-/// reached here and the few-byte marker cannot push a within-cap schema over.
+/// Stamp [`ASK_USER_SCHEMA_MARKER`] `= true` onto an object schema's root. This
+/// is the ONLY place the trusted rich-UX marker is added: `cap_requested_schema`
+/// STRIPS any client/server-supplied copy at every ingress, and this stamp runs
+/// AFTER the cap on the ziee-internal `ask_user` path only, so an external MCP
+/// server can never forge it. Pure + idempotent; a non-object schema (which the
+/// FE renders as an empty form anyway) is returned unchanged so this can never
+/// panic. The few-byte marker cannot push a within-cap schema over the limit.
 fn stamp_ask_user_marker(schema: Value) -> Value {
     match schema {
         Value::Object(mut map) => {

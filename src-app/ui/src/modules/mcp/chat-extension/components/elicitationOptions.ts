@@ -245,6 +245,56 @@ export function buildFieldZodSchema(
   return schema
 }
 
+// ─── Other-escape ⇄ response-envelope helpers (pure, unit-tested) ────────────
+
+/** True when a choice value currently sits on the "Other" free-text option. */
+export function isOtherSelected(fs: FieldSchema, value: unknown): boolean {
+  if (isSingleChoiceField(fs)) return value === OTHER_SENTINEL
+  if (isMultiChoiceField(fs))
+    return Array.isArray(value) && value.includes(OTHER_SENTINEL)
+  return false
+}
+
+/** Validation message when Other is selected but its free text is empty (else null). */
+export function otherFieldError(
+  fs: FieldSchema,
+  value: unknown,
+  otherText: string | undefined,
+): string | null {
+  if (isOtherSelected(fs, value) && !(otherText ?? '').trim())
+    return 'Enter a value for “Other”.'
+  return null
+}
+
+/**
+ * Replace the OTHER sentinel with the typed free text before submitting, so the
+ * response envelope never leaks the sentinel and the model gets the real value.
+ * Only touches a field that actually OFFERS Other (`allowsOther`), so a schema
+ * whose enum legitimately contains the sentinel string is never mangled.
+ */
+export function finalizeValues(
+  properties: Record<string, FieldSchema>,
+  values: Record<string, unknown>,
+  otherText: Record<string, string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values }
+  for (const [name, fs] of Object.entries(properties)) {
+    if (!allowsOther(fs)) continue
+    const custom = (otherText[name] ?? '').trim()
+    if (isSingleChoiceField(fs) && out[name] === OTHER_SENTINEL) {
+      out[name] = custom
+    } else if (
+      isMultiChoiceField(fs) &&
+      Array.isArray(out[name]) &&
+      (out[name] as string[]).includes(OTHER_SENTINEL)
+    ) {
+      const kept = (out[name] as string[]).filter(v => v !== OTHER_SENTINEL)
+      out[name] = custom ? [...kept, custom] : kept
+    }
+  }
+  return out
+}
+
 /** Build a zod object schema from all property schemas. */
 export function buildFormSchema(
   properties: Record<string, FieldSchema>,
