@@ -129,87 +129,98 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
       data-file-id={file?.id}
       className="flex flex-col rounded-md overflow-hidden border border-border bg-card"
     >
-      {/* Header row */}
+      {/* Header row. flex-wrap so on a NARROW inline width (mobile / a narrow
+          chat panel) the actions drop to a clean second row instead of the
+          viewer's action group wrapping into vertically-centred fragments (the
+          Space in the viewer headers is nowrap now, and this whole group wraps
+          as a UNIT). On a wide header everything stays on one line. */}
       <div
-        className="flex items-center gap-2 px-3 py-2 bg-muted/60"
+        className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 bg-muted/60"
         style={{
           borderBottom: showBody ? '1px solid var(--border)' : 'none',
         }}
       >
-        <span
-          className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
-          style={{ width: 20, height: 20 }}
-          data-testid="inline-file-preview-icon"
-        >
-          {Icon}
-        </span>
-        <span
-          className="font-medium truncate text-foreground"
-          title={displayName}
-        >
-          {displayName}
-        </span>
-        <span className="text-xs flex-shrink-0 text-muted-foreground">
-          {label ? <>· {label}</> : null}
-          {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
-        </span>
-        <div className="flex-grow" />
-        {HeaderActions ? <HeaderActions {...slotProps} /> : null}
-        {/* Open in side panel — only for backend-owned files (need a File id
-            to drive the panel renderer). */}
-        {file ? (
-          <Tooltip content="Open in side panel">
-            <Button
-              variant="ghost"
-              size="default"
-              icon={<PanelRight />}
-              onClick={handleOpenInPanel}
-              aria-label="Open file in side panel"
-              data-testid="inline-file-preview-open-panel"
-            />
-          </Tooltip>
-        ) : null}
-        <Tooltip content="Open in new tab">
+        {/* Meta group — takes the row (flex-1) so the actions wrap below it when
+            they can't fit; the name truncates, the type/size stays intact. */}
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+          <span
+            className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
+            style={{ width: 20, height: 20 }}
+            data-testid="inline-file-preview-icon"
+          >
+            {Icon}
+          </span>
+          <span
+            className="font-medium truncate text-foreground"
+            title={displayName}
+          >
+            {displayName}
+          </span>
+          <span className="text-xs flex-shrink-0 whitespace-nowrap text-muted-foreground">
+            {label ? <>· {label}</> : null}
+            {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
+          </span>
+        </div>
+        {/* Actions group — one non-wrapping row, right-aligned (ms-auto), wraps
+            to the second line as a whole. */}
+        <div className="flex items-center gap-0.5 flex-shrink-0 ms-auto">
+          {HeaderActions ? <HeaderActions {...slotProps} /> : null}
+          {/* Open in side panel — only for backend-owned files (need a File id
+              to drive the panel renderer). */}
           {file ? (
-            // File-backed: mint a fresh token via the store action (a plain
-            // <a target=_blank> can't carry the bearer header).
+            <Tooltip content="Open in side panel">
+              <Button
+                variant="ghost"
+                size="default"
+                icon={<PanelRight />}
+                onClick={handleOpenInPanel}
+                aria-label="Open file in side panel"
+                data-testid="inline-file-preview-open-panel"
+              />
+            </Tooltip>
+          ) : null}
+          <Tooltip content="Open in new tab">
+            {file ? (
+              // File-backed: mint a fresh token via the store action (a plain
+              // <a target=_blank> can't carry the bearer header).
+              <Button
+                variant="ghost"
+                size="default"
+                icon={<FileOutput />}
+                onClick={handleOpenInNewTab}
+                aria-label="Open file in new tab"
+                data-testid="inline-file-preview-open"
+              />
+            ) : (
+              // External MCP link: open the URL directly.
+              <Button
+                variant="ghost"
+                size="default"
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                icon={<FileOutput />}
+                aria-label="Open file in new tab"
+                data-testid="inline-file-preview-open"
+              />
+            )}
+          </Tooltip>
+          {/* Expand/collapse toggle — trailing (right) edge, matching the app
+              convention used by the execute_command / MCP tool-call cards (chevron
+              on the right). Only render when the viewer actually has an inline body
+              to toggle; otherwise the header is the whole UI and it would be a noop. */}
+          {canInline && Body && (
             <Button
               variant="ghost"
               size="default"
-              icon={<FileOutput />}
-              onClick={handleOpenInNewTab}
-              aria-label="Open file in new tab"
-              data-testid="inline-file-preview-open"
-            />
-          ) : (
-            // External MCP link: open the URL directly.
-            <Button
-              variant="ghost"
-              size="default"
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              icon={<FileOutput />}
-              aria-label="Open file in new tab"
-              data-testid="inline-file-preview-open"
+              aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
+              aria-expanded={!collapsed}
+              icon={collapsed ? <ChevronRight /> : <ChevronDown />}
+              onClick={() => setCollapsed(c => !c)}
+              data-testid="inline-file-preview-chevron"
             />
           )}
-        </Tooltip>
-        {/* Expand/collapse toggle — trailing (right) edge, matching the app
-            convention used by the execute_command / MCP tool-call cards (chevron
-            on the right). Only render when the viewer actually has an inline body
-            to toggle; otherwise the header is the whole UI and it would be a noop. */}
-        {canInline && Body && (
-          <Button
-            variant="ghost"
-            size="default"
-            aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
-            aria-expanded={!collapsed}
-            icon={collapsed ? <ChevronRight /> : <ChevronDown />}
-            onClick={() => setCollapsed(c => !c)}
-            data-testid="inline-file-preview-chevron"
-          />
-        )}
+        </div>
       </div>
 
       {/* Body — viewer's existing component, called with the source variant.

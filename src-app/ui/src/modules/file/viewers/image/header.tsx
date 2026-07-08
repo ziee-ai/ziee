@@ -16,7 +16,7 @@ export function ImageHeader(props: FileViewerSlotProps) {
   // scale-driven mode flips (a zoom switches mode → 'actual').
   const view = Stores.File.imageViewStates.get(file.id) ?? DEFAULT_IMAGE_VIEW
   return (
-    <Space size="small">
+    <Space size="small" wrap={false}>
       <Button
         variant="ghost"
         size="icon"

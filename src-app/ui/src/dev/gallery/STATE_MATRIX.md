@@ -468,22 +468,22 @@ Required states: `empty`
 | branch | `view.sort!.dir === 'asc'` | 153 |
 | branch | `meta.sortable` | 156 |
 | branch | `props.filterable` | 224 |
-| branch | `props.columnChooser && hideable.length > 0` | 236 |
-| branch | `props.toolbarExtra` | 264 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 317 |
-| branch | `!tsv` | 319 |
-| branch | `showVirtual` | 330 |
-| branch | `hasToolbar` | 341 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 372 |
-| branch | `caption != null` | 382 |
-| branch | `resizableTable` | 383 |
-| branch | `meta.resizable` | 403 |
-| branch | `busy` | 410 |
-| empty | `rows.length === 0` | 418 |
-| branch | `meta.resizable` | 529 |
-| branch | `mode === 'none'` | 579 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 584 |
-| branch | `!selectionActive(props, col)` | 591 |
+| branch | `props.columnChooser && hideable.length > 0` | 239 |
+| branch | `props.toolbarExtra` | 267 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 320 |
+| branch | `!tsv` | 322 |
+| branch | `showVirtual` | 333 |
+| branch | `hasToolbar` | 344 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 375 |
+| branch | `caption != null` | 385 |
+| branch | `resizableTable` | 386 |
+| branch | `meta.resizable` | 406 |
+| branch | `busy` | 413 |
+| empty | `rows.length === 0` | 421 |
+| branch | `meta.resizable` | 532 |
+| branch | `mode === 'none'` | 582 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 587 |
+| branch | `!selectionActive(props, col)` | 594 |
 
 ### `components/ui/kit/tabs`
 
@@ -1490,14 +1490,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!el` | 70 |
 | branch | `!file` | 104 |
 | branch | `!file` | 118 |
-| branch | `label` | 153 |
-| branch | `displaySize !== undefined` | 154 |
-| branch | `HeaderActions` | 157 |
-| branch | `file` | 160 |
-| branch | `file` | 173 |
-| branch | `canInline && Body` | 202 |
-| branch | `collapsed` | 208 |
-| branch | `showBody && Body` | 225 |
+| branch | `label` | 160 |
+| branch | `displaySize !== undefined` | 161 |
+| branch | `HeaderActions` | 167 |
+| branch | `file` | 170 |
+| branch | `file` | 183 |
+| branch | `canInline && Body` | 212 |
+| branch | `collapsed` | 218 |
+| branch | `showBody && Body` | 236 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 

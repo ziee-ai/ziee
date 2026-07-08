@@ -7,7 +7,7 @@ export function DelimitedHeader(props: FileViewerSlotProps) {
   if (!('file' in props)) return null
   const { file } = props
   return (
-    <Space size="small">
+    <Space size="small" wrap={false}>
       <RawToggle file={file} />
       <CopyButton file={file} />
       <DownloadButton file={file} />
