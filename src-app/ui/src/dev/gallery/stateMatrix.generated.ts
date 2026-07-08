@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 324 surfaces carry renderable-state signals; 1816 signals total.
+// 324 surfaces carry renderable-state signals; 1820 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1063,14 +1063,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 78 },
-      { kind: "branch", condition: "!el", line: 98 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 117 },
-      { kind: "branch", condition: "!conversationId", line: 146 },
-      { kind: "loading", condition: "loading && !conversation", line: 172 },
-      { kind: "loading", condition: "!loading && !conversation", line: 181 },
-      { kind: "error", condition: "error", line: 184 },
-      { kind: "error", condition: "error", line: 241 },
+      { kind: "branch", condition: "!sentinel", line: 82 },
+      { kind: "branch", condition: "!el", line: 102 },
+      { kind: "branch", condition: "!nativeScroll", line: 117 },
+      { kind: "branch", condition: "y < 0 || y > maxY", line: 126 },
+      { kind: "branch", condition: "maxY - y <= 8", line: 130 },
+      { kind: "branch", condition: "Math.abs(dy) < 6", line: 136 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 156 },
+      { kind: "branch", condition: "!conversationId", line: 185 },
+      { kind: "loading", condition: "loading && !conversation", line: 211 },
+      { kind: "loading", condition: "!loading && !conversation", line: 220 },
+      { kind: "error", condition: "error", line: 223 },
+      { kind: "error", condition: "error", line: 280 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {

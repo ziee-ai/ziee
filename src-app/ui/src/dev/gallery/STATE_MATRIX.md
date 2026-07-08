@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1816** signals total: 1427 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
+- **1820** signals total: 1431 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1205,14 +1205,18 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 78 |
-| branch | `!el` | 98 |
-| branch | `!Stores.Chat.$.conversation` | 117 |
-| branch | `!conversationId` | 146 |
-| loading | `loading && !conversation` | 172 |
-| loading | `!loading && !conversation` | 181 |
-| error | `error` | 184 |
-| error | `error` | 241 |
+| branch | `!sentinel` | 82 |
+| branch | `!el` | 102 |
+| branch | `!nativeScroll` | 117 |
+| branch | `y < 0 \|\| y > maxY` | 126 |
+| branch | `maxY - y <= 8` | 130 |
+| branch | `Math.abs(dy) < 6` | 136 |
+| branch | `!Stores.Chat.$.conversation` | 156 |
+| branch | `!conversationId` | 185 |
+| loading | `loading && !conversation` | 211 |
+| loading | `!loading && !conversation` | 220 |
+| error | `error` | 223 |
+| error | `error` | 280 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

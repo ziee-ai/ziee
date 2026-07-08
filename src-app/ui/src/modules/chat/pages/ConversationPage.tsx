@@ -52,6 +52,10 @@ export default function ConversationPage() {
   // on a wide window the (now narrow) page still gets the overlay drawer.
   const mainAreaRef = useRef<HTMLDivElement>(null)
   const [rightPanelNarrow, setRightPanelNarrow] = useState(false)
+  // Small-screen (native document-scroll) composer auto-hide: hide it when the
+  // user scrolls UP into older messages (more reading room), reveal it when they
+  // scroll DOWN toward newer messages / the bottom.
+  const [composerHidden, setComposerHidden] = useState(false)
   // Conversation id whose initial bottom-jump we've already done.
   const initialScrollConvIdRef = useRef<string | null>(null)
 
@@ -105,6 +109,41 @@ export default function ConversationPage() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [conversation?.id])
+
+  // Composer auto-hide on scroll direction (native document-scroll only — the
+  // mobile mode). Overscroll-guarded + debounced like the header so an iOS
+  // rubber-band bounce can't flip-flop it.
+  useEffect(() => {
+    if (!nativeScroll) {
+      setComposerHidden(false)
+      return
+    }
+    let lastY = window.scrollY
+    let lastToggle = 0
+    const onScroll = () => {
+      const y = window.scrollY
+      const maxY = document.documentElement.scrollHeight - window.innerHeight
+      if (y < 0 || y > maxY) {
+        lastY = Math.max(0, Math.min(y, maxY)) // ignore rubber-band overscroll
+        return
+      }
+      if (maxY - y <= 8) {
+        setComposerHidden(false) // at the newest message → always show
+        lastY = y
+        return
+      }
+      const dy = y - lastY
+      if (Math.abs(dy) < 6) return // jitter
+      const now = performance.now()
+      if (now - lastToggle >= 250) {
+        lastToggle = now
+        setComposerHidden(dy < 0) // scrolling up → hide; down → show
+      }
+      lastY = y
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [nativeScroll])
 
   // Cmd/Ctrl-F opens the in-conversation find bar, overriding the browser's
   // native find (our find covers the same rendered message content — DEC-5).
@@ -304,7 +343,21 @@ export default function ConversationPage() {
             className={cn(
               // pt-0: no gap above the input — the fade below stands in for it.
               'w-full max-w-4xl mx-auto p-4 pt-0',
-              nativeScroll ? 'sticky bottom-0 z-10 bg-background' : 'relative',
+              nativeScroll
+                ? cn(
+                    'bg-background',
+                    // Same trick as HeaderBarContainer: toggle sticky↔relative
+                    // instead of a transform. Hidden → position:relative so the
+                    // composer WIPES AWAY with the page, freeing the bottom edge
+                    // so chat content flows behind iOS Safari's bottom navigation
+                    // bar (a sticky bottom-0 element latches to that bar and
+                    // blocks content from scrolling under it). Shown → sticky,
+                    // pinned to the viewport bottom and sliding back in.
+                    composerHidden
+                      ? 'relative'
+                      : 'sticky bottom-0 z-10 animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out',
+                  )
+                : 'relative',
             )}
             style={
               nativeScroll
@@ -316,7 +369,14 @@ export default function ConversationPage() {
                 dissolves into the surface (bg-card) as it scrolls up, instead of
                 hard-cutting at the input's top edge. The message list carries a
                 matching bottom pad so the last message clears this at rest. */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-card to-transparent" />
+            <div
+              className={cn(
+                'pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-card to-transparent',
+                // The fade belongs to the pinned composer — when the composer
+                // wipes away (scrolled up into history) hide it too.
+                nativeScroll && composerHidden && 'hidden',
+              )}
+            />
             {/* Jump-to-latest: floats just ABOVE the composer (bottom-full anchors
                 it to the composer's top edge, so it clears the input regardless of
                 the input's height). Shown only when scrolled up (ITEM-2). */}
