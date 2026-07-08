@@ -798,7 +798,11 @@ impl LocalDeployment {
         Ok(None)
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "macos"
+    )))]
     pub(crate) fn verify_loopback_bind(_pid: i32, _port: i32) -> bool {
         // Best-effort — the spawn args already force --host 127.0.0.1.
         true

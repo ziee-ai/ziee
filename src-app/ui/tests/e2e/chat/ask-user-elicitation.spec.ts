@@ -61,12 +61,9 @@ test.describe('ask_user elicitation — assistant-initiated form', () => {
     await expect(pending).toContainText('Assistant')
     await expect(pending).toContainText('is requesting input')
 
-    // Pick "green" from the enum Select. Wait for the portal dropdown to open,
-    // pick the option, then wait for it to CLOSE (Escape fallback) so the
-    // floating option list can't overlay + swallow the Submit click.
-    const sel = byTestId(page, 'elicitation-field-color').first()
-    await sel.click({ force: true })
-    await byTestId(page, 'elicitation-field-color-opt-green').click()
+    // Rich rendering: enum options are directly-clickable radio CARDS (no
+    // dropdown to open). Pick "green", then submit (1 question → no wizard).
+    await byTestId(page, 'elicitation-field-color-opt-green').first().click()
 
     await byTestId(page, 'elicitation-submit').first().click()
 
@@ -131,7 +128,9 @@ async function injectAskUser(
 ): Promise<ReturnType<import('@playwright/test').Page['locator']>> {
   const userMessageId = `umsg_${elicitationId}`
   const assistantMessageId = `amsg_${elicitationId}`
-  const requestedSchema = { type: 'object', ...schemaPartial }
+  // The real backend stamps `x-ziee-askuser` on every ask_user schema so the FE
+  // renders the rich decision UX (option cards). Mirror that here.
+  const requestedSchema = { 'x-ziee-askuser': true, type: 'object', ...schemaPartial }
   const message = 'Which color do you want?'
 
   await mockChatTokenStream(page, [

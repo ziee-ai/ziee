@@ -30,6 +30,7 @@ import {
   SHOWCASE_CONVERSATION_ID,
   STREAMING_MESSAGE_ID,
   literaturePanelData,
+  liveAskUser,
   liveElicitation,
   rightPanelFile,
   streamingCassette,
@@ -280,6 +281,16 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
       // The block's own `status: 'pending'` already renders the form; seeding the
       // McpComposer live entry (matching id) makes it the freshest-status source too.
       useMcpComposerStore.getState().addElicitationRequest(liveElicitation)
+    },
+  },
+  {
+    slug: 'deep-chat-ask-user-wizard',
+    title: 'Conversation — ask_user decision wizard (rich)',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.askUser,
+    note: 'the ziee-internal ask_user rich UX: a 2-question wizard of option cards with descriptions, a recommended badge, an inline preview, and the Other escape',
+    setup: async () => {
+      await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.askUser)
+      useMcpComposerStore.getState().addElicitationRequest(liveAskUser)
     },
   },
   {
