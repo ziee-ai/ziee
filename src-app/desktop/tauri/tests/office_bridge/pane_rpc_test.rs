@@ -403,13 +403,13 @@ async fn test13_live_mac_pane_ops() {
 
     eprintln!("\n>>> TEST-13 LIVE: open Excel or Word, type text and leave it SELECTED,");
     eprintln!(">>> then open the ribbon 'Show Ziee Bridge' task pane.");
-    eprintln!(">>> Waiting up to 240s for the pane to connect...\n");
+    eprintln!(">>> Waiting up to 600s (10 min) for the pane to connect — no rush...\n");
 
     // Wait for a real pane to register, then target IT (whatever its doc_key is — an
     // exact key routes by exact match; an empty/unsaved key routes via the sole-pane
     // fallback with a bare-name target).
     let mut target = String::new();
-    for i in 0..240 {
+    for i in 0..600 {
         let keys = broker::connected_pane_keys();
         if let Some(key) = keys.into_iter().next() {
             target = if key.is_empty() { "Untitled".to_string() } else { key };
