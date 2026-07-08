@@ -47,10 +47,11 @@ Backend:
 
 Frontend (all under `src-app/ui/`):
 - `src/modules/mcp/chat-extension/components/elicitationOptions.ts` — NEW shared pure helpers (ITEM-3).
+- `src/modules/mcp/chat-extension/components/elicitationFields.tsx` — NEW shared non-choice field renderer (`renderInputField`), imported by both the legacy renderer and the wizard so they never drift on input types (avoids a circular import ElicitationFormContent⇄AskUserWizardContent). Introduced during implementation (see DRIFT-1). (ITEM-3)
 - `src/modules/mcp/chat-extension/components/AskUserWizardContent.tsx` — NEW rich renderer: wizard + choice-cards + Other + recommended + preview (ITEM-4/5/6/7/8).
-- `src/modules/mcp/chat-extension/components/ElicitationFormContent.tsx` — import shared helpers; delegate PENDING branch to the wizard when rich (ITEM-3/9).
-- `src/dev/gallery/deepStates.tsx` (+ regenerated `galleryCoverage.generated.ts` / `STATE_MATRIX.md` via the gallery gen) — rich ask_user gallery cell (ITEM-10).
-- Tests: `src/modules/mcp/chat-extension/components/elicitationOptions.test.ts` (NEW unit); `tests/e2e/chat/ask-user-elicitation.spec.ts` (extend) + `tests/e2e/chat/ask-user-decision-ux.spec.ts` (NEW e2e for cards/recommended/other/wizard). Helper `tests/e2e/helpers/sse-mock-helpers.ts` may gain a rich-schema fixture.
+- `src/modules/mcp/chat-extension/components/ElicitationFormContent.tsx` — import shared helpers; delegate PENDING branch to the wizard when rich; non-choice branch of `renderField` delegates to `renderInputField` (behavior preserved) (ITEM-3/9).
+- `src/dev/gallery/deepStates.tsx` + `src/dev/gallery/fixtures/chat-deep.ts` (the rich ask_user bundle fixture) + the manual registries `src/dev/gallery/coverage.ts` and `src/dev/gallery/stateCoverage.ts` (new component + its `:error` signal), plus the mechanically-regenerated `galleryCoverage.generated.ts` / `stateMatrix.generated.ts` / `STATE_MATRIX.md` / `components/ui/testIds.generated.ts` — rich ask_user gallery cell (ITEM-10).
+- Tests: `src/modules/mcp/chat-extension/components/elicitationOptions.test.ts` (NEW unit); `tests/e2e/chat/ask-user-elicitation.spec.ts` (extend) + `tests/e2e/chat/ask-user-decision-ux.spec.ts` (NEW e2e for cards/recommended/other/wizard). Helper `tests/e2e/helpers/sse-mock-helpers.ts` accepts arbitrary schemas already — no change needed.
 
 No migration. No OpenAPI regen (no Rust type change — `requested_schema` is already `serde_json::Value`; the stamp is a runtime value, the descriptor a string literal).
 

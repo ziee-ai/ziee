@@ -233,6 +233,94 @@ export const liveElicitation: SSEChatStreamMcpElicitationRequiredData = {
   },
 }
 
+// A DEDICATED conversation ending in a pending ziee-internal `ask_user`
+// elicitation (marked `x-ziee-askuser`), so the RICH decision UX renders: a
+// 2-question wizard of selectable option cards with per-option descriptions, a
+// recommended-first badge, an inline preview, and the always-available Other
+// escape. Distinct from the plain (external-MCP) elicitation cell above.
+const ASKUSER_ID = 'dee90007-0000-4000-8000-000000000007'
+export const LIVE_ASKUSER_ID = 'askuser-live-0001'
+/** The rich ask_user schema — shared by the history block + the live seed. */
+const ASKUSER_SCHEMA = {
+  'x-ziee-askuser': true,
+  type: 'object',
+  properties: {
+    format: {
+      type: 'string',
+      title: 'Which output format do you want?',
+      description: 'Pick the export format that fits your downstream tooling.',
+      enum: ['csv', 'json', 'parquet'],
+      enumNames: ['CSV', 'JSON', 'Parquet'],
+      enumDescriptions: [
+        'Spreadsheet-friendly, untyped, widest compatibility.',
+        'Nested + typed, human-readable, larger files.',
+        'Columnar + typed, compact, best for analytics.',
+      ],
+      enumPreviews: ['id,name\n1,Ann', '{ "id": 1 }', null],
+      'x-ziee-recommended': 'parquet',
+    },
+    compression: {
+      type: 'string',
+      title: 'Which compression?',
+      description: 'Trade file size against read speed.',
+      enum: ['none', 'gzip', 'zstd'],
+      enumNames: ['None', 'gzip', 'zstd'],
+      enumDescriptions: [
+        'Largest, fastest to read.',
+        'Smaller, ubiquitous, slower.',
+        'Smallest with fast reads.',
+      ],
+      'x-ziee-recommended': 'zstd',
+    },
+  },
+  required: ['format', 'compression'],
+}
+const askUser: DeepBundle = {
+  conversation: conversation(ASKUSER_ID, 'ask_user — pick export options'),
+  messages: [
+    message(`${ASKUSER_ID}-m1`, 'user', [
+      { type: 'text', text: 'Export the results — I want to choose the options.' },
+    ]),
+    {
+      id: `${ASKUSER_ID}-m2`,
+      role: 'assistant',
+      contents: [
+        {
+          id: `${ASKUSER_ID}-m2-c0`,
+          message_id: `${ASKUSER_ID}-m2`,
+          content_type: 'elicitation_request',
+          content: {
+            type: 'elicitation_request',
+            status: 'pending',
+            elicitation_id: LIVE_ASKUSER_ID,
+            message_id: `${ASKUSER_ID}-m2`,
+            message: 'A couple of quick choices for the export:',
+            server: 'Assistant',
+            requested_schema: ASKUSER_SCHEMA,
+          },
+          sequence_order: 0,
+          created_at: NOW,
+          updated_at: NOW,
+        } as unknown as MessageContent,
+      ],
+      originated_from_id: '',
+      edit_count: 0,
+      created_at: NOW,
+      model_id: 'claude-opus-4-8',
+    },
+  ],
+  branches: [],
+}
+
+/** Live seed matching the ask_user bundle so the wizard is the freshest-status
+ *  source (mirrors `liveElicitation`). */
+export const liveAskUser: SSEChatStreamMcpElicitationRequiredData = {
+  elicitation_id: LIVE_ASKUSER_ID,
+  message: 'A couple of quick choices for the export:',
+  server: 'Assistant',
+  requested_schema: ASKUSER_SCHEMA,
+}
+
 // A DEDICATED short conversation whose last assistant message is a fork point, so
 // the BranchNavigator (< 1 / 3 >) renders on a VISIBLE message. `forkPoints` is
 // computed by `loadBranches` from an intricate parent/child branch graph; the
@@ -330,6 +418,7 @@ export const chatDeepById: Record<string, DeepBundle> = {
   [TOOL_FAILED_ID]: toolFailed,
   [ATTACHMENTS_ID]: attachments,
   [ELICITATION_ID]: elicitation,
+  [ASKUSER_ID]: askUser,
   [BRANCHED_ID]: branched,
   [RENDERING_SHOWCASE_ID]: renderingShowcase,
 }
@@ -339,6 +428,7 @@ export const CHAT_DEEP_CONVERSATION_IDS = {
   toolFailed: TOOL_FAILED_ID,
   attachments: ATTACHMENTS_ID,
   elicitation: ELICITATION_ID,
+  askUser: ASKUSER_ID,
   branched: BRANCHED_ID,
 } as const
 
