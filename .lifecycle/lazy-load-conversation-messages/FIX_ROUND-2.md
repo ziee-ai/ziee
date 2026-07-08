@@ -30,6 +30,14 @@
 - A fresh blind round-3 verifier reviewed the diff (angles: correctness,
   concurrency, state-management, a11y), scrutinizing the E1 bottom-sentinel
   loop/viewport-yank risk, `loadNewerMessages` wiring, the E2 offset safety, and
-  the F1 live-region structure.
+  the F1 live-region structure. It cleared E2/F1/loadNewer-merge as correct but
+  found two issues on the newly-wired scroll-down (carried into FIX_ROUND-3):
 
-**New confirmed findings:** 0
+  - **G1 (state, med)** bottom-load + smooth-follow could cascade an
+    un-interruptible auto-scroll to the tail when the user sits at the bottom of a
+    mid-conversation window (`isAtBottom && hasMoreAfter`).
+  - **G2 (concurrency, low)** `loadNewerMessages` lacked the in-flight guard
+    `loadOlderMessages` has → the bottom sentinel could fire two concurrent
+    same-cursor fetches.
+
+**New confirmed findings:** 2

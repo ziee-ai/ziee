@@ -559,6 +559,7 @@ export const Chat = defineStore('Chat', {
         hasMoreBefore: snapshot.hasMoreBefore ?? false,
         hasMoreAfter: snapshot.hasMoreAfter ?? false,
         loadingOlder: false,
+        loadingNewer: false,
       })
       console.log(
         `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
