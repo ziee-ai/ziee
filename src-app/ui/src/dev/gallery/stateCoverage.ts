@@ -53,6 +53,15 @@ export const STATE_COVERAGE = {
   // running/failed, attachments, elicitation) that have no single named key.
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
+  // The find bar's `loading` state is a transient in-flight search fetch (the
+  // results-list spinner while a page of matches loads). It can't be captured
+  // as a deterministic gallery snapshot; it's exercised end-to-end by the
+  // server-side find e2e spec (conversation-find.spec.ts / TEST-16).
+  'modules/chat/components/ConversationFindBar:delayed': {
+    skip: true,
+    reason:
+      "transient in-flight search fetch (results-list spinner); not deterministically snapshottable — verified by the server-side find e2e spec (conversation-find.spec.ts)",
+  },
   'modules/file/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-file',
   },

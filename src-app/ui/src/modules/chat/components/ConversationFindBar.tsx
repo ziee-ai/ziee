@@ -263,24 +263,25 @@ export function ConversationFindBar({
           onScroll={handleResultsScroll}
         >
           {matches.map((m, idx) => (
-            <button
+            <Button
               key={m.message_id}
-              type="button"
               data-testid="conversation-find-result"
+              variant="ghost"
+              block
               aria-current={idx === activeIndex ? 'true' : undefined}
               onClick={() => {
                 setActiveIndex(idx)
                 void activateMatch(m)
               }}
               className={cn(
-                'rounded px-2 py-1.5 text-left text-xs hover:bg-accent',
+                'h-auto justify-start whitespace-normal px-2 py-1.5 text-start text-xs',
                 idx === activeIndex && 'bg-accent',
               )}
             >
               <span className="line-clamp-2 text-muted-foreground">
                 {m.snippet}
               </span>
-            </button>
+            </Button>
           ))}
           {loading && (
             <div className="flex justify-center py-1">

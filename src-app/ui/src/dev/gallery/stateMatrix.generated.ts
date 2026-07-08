@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1813 signals total.
+// 323 surfaces carry renderable-state signals; 1830 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -823,11 +823,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/components/ConversationFindBar": {
     surface: "modules/chat/components/ConversationFindBar",
-    requiredStates: ["empty"],
+    requiredStates: ["delayed","empty"],
     signals: [
-      { kind: "branch", condition: "!open", line: 55 },
-      { kind: "branch", condition: "!open", line: 72 },
-      { kind: "empty", condition: "total === 0", line: 76 },
+      { kind: "branch", condition: "!match", line: 57 },
+      { kind: "branch", condition: "!ok", line: 62 },
+      { kind: "branch", condition: "!open", line: 76 },
+      { kind: "branch", condition: "!conversationId || term === ''", line: 78 },
+      { kind: "branch", condition: "cancelled", line: 96 },
+      { kind: "branch", condition: "!open", line: 152 },
+      { kind: "empty", condition: "total === 0", line: 155 },
+      { kind: "branch", condition: "matches.length > 0", line: 259 },
+      { kind: "loading", condition: "loading", line: 286 },
     ],
   },
   "modules/chat/components/ConversationList": {
@@ -875,7 +881,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed"],
     signals: [
       { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 52 },
+      { kind: "branch", condition: "loadingOlder", line: 38 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 64 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -1057,13 +1064,23 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 73 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 94 },
-      { kind: "branch", condition: "!conversationId", line: 123 },
-      { kind: "loading", condition: "loading && !conversation", line: 149 },
-      { kind: "loading", condition: "!loading && !conversation", line: 158 },
-      { kind: "error", condition: "error", line: 161 },
-      { kind: "error", condition: "error", line: 218 },
+      { kind: "branch", condition: "!sentinel", line: 125 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 146 },
+      { kind: "branch", condition: "!conversationId", line: 175 },
+      { kind: "branch", condition: "!sentinel", line: 214 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 218 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 221 },
+      { kind: "loading", condition: "!pending", line: 242 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 245 },
+      { kind: "branch", condition: "!c || !v", line: 251 },
+      { kind: "branch", condition: "newTop == null", line: 253 },
+      { kind: "branch", condition: "!conversation?.id", line: 286 },
+      { kind: "branch", condition: "!m", line: 290 },
+      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 293 },
+      { kind: "loading", condition: "loading && !conversation", line: 314 },
+      { kind: "loading", condition: "!loading && !conversation", line: 323 },
+      { kind: "error", condition: "error", line: 326 },
+      { kind: "error", condition: "error", line: 383 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -3837,7 +3854,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 319 keys.
+ * 320 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3889,6 +3906,7 @@ export type RequiredState =
   | "modules/chat/components/ChatInput:open"
   | "modules/chat/components/ChatMessage:empty"
   | "modules/chat/components/ConversationCard:open"
+  | "modules/chat/components/ConversationFindBar:delayed"
   | "modules/chat/components/ConversationFindBar:empty"
   | "modules/chat/components/ConversationList:delayed"
   | "modules/chat/components/ConversationList:error"
@@ -4211,6 +4229,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/components/ChatInput:open",
   "modules/chat/components/ChatMessage:empty",
   "modules/chat/components/ConversationCard:open",
+  "modules/chat/components/ConversationFindBar:delayed",
   "modules/chat/components/ConversationFindBar:empty",
   "modules/chat/components/ConversationList:delayed",
   "modules/chat/components/ConversationList:error",
