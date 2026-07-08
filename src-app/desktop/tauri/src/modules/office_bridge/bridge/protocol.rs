@@ -180,6 +180,18 @@ mod tests {
     }
 
     #[test]
+    fn response_deserializes_without_jsonrpc_field() {
+        // A peer reply that omits `jsonrpc` must still parse (→ route) rather than
+        // fail deserialization and be silently dropped (which would hang the caller
+        // to the timeout). See the `#[serde(default)]` on `BridgeResponse::jsonrpc`.
+        let raw = json!({ "id": 7, "result": { "text": "ok" } });
+        let resp: BridgeResponse = serde_json::from_value(raw).expect("parses without jsonrpc");
+        assert_eq!(resp.id, Some(json!(7)));
+        assert!(resp.result.is_some());
+        assert!(resp.error.is_none());
+    }
+
+    #[test]
     fn event_method_is_fixed() {
         let ev = BridgeEvent::new(json!({"kind": "selection_changed"}));
         let v = serde_json::to_value(&ev).unwrap();

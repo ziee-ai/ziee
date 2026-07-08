@@ -204,14 +204,17 @@ fn unsupported_on_ppt_err(op: &str) -> AppError {
 /// `platform::active()`. Returns the MCP `tools/call` result body (`content` +
 /// `structuredContent`, mirroring web_search) on success.
 ///
-/// Capability model for this increment:
-/// - `list_open_documents` + `edit_document`(append_paragraph) route to the
-///   native daemon and work now.
+/// Capability model:
+/// - `list_open_documents` + `edit_document`(append_paragraph) route to the native
+///   daemon (`platform::active()` — osascript/COM).
 /// - `read_document` / `get_selection` / `add_comment` / `set_track_changes` /
-///   `get_tracked_changes` are pane-mediated (Office.js) and return a typed
-///   "requires task pane" capability error until that RPC lands.
-/// - `add_comment` / `set_track_changes` targeting a PowerPoint document return
-///   the distinct "unsupported on PowerPoint" error where the host is known.
+///   `get_tracked_changes` are pane-mediated (Office.js) and route to the connected
+///   task pane via `broker::call_pane`, which maps no-pane / timeout / pane-error to
+///   typed errors (`OFFICE_PANE_NOT_CONNECTED` / `OFFICE_PANE_TIMEOUT` /
+///   `OFFICE_PANE_ERROR` / `OFFICE_UNSUPPORTED_ON_HOST`).
+/// - `add_comment` / `set_track_changes` / `get_tracked_changes` (Word-only) first
+///   fast-gate a PowerPoint target natively (`OFFICE_UNSUPPORTED_ON_HOST`) before any
+///   round-trip; a non-Word non-PPT host is caught by the pane's `-32002` → same code.
 pub async fn dispatch_tool(
     platform: &dyn OfficePlatform,
     name: &str,

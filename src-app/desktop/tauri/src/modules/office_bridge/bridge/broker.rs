@@ -157,8 +157,12 @@ fn resolve_pane(candidates: &[(PaneId, String)], doc_full_name: &str) -> Option<
     if let Some((id, _)) = bn.next() {
         return if bn.next().is_none() { Some(*id) } else { None };
     }
-    // 3. Sole pane, only if it is an unsaved doc (empty key).
-    if candidates.len() == 1 && candidates[0].1.is_empty() {
+    // 3. Sole pane, only if it is an unsaved doc (empty key) AND the requested
+    //    target is itself an unsaved-style reference (a bare name, no path
+    //    separator). A NAMED path target must never silently bind to an unsaved
+    //    pane — that would let a mutating op land on the wrong document; it errors
+    //    NOT_CONNECTED instead.
+    if candidates.len() == 1 && candidates[0].1.is_empty() && !is_path_like(doc_full_name) {
         return Some(candidates[0].0);
     }
     None
@@ -168,6 +172,12 @@ fn resolve_pane(candidates: &[(PaneId, String)], doc_full_name: &str) -> Option<
 /// (Windows) separators.
 fn basename(p: &str) -> &str {
     p.rsplit(['/', '\\']).next().unwrap_or(p)
+}
+
+/// Whether a doc identifier looks like a filesystem path (has a separator) rather
+/// than a bare unsaved-document name.
+fn is_path_like(s: &str) -> bool {
+    s.contains('/') || s.contains('\\')
 }
 
 /// Send a JSON-RPC request to the pane serving `doc_full_name` and await the
@@ -299,9 +309,11 @@ mod tests {
         // Sole pane with a KNOWN, non-matching key → none (it is a different doc).
         let known = vec![(30u64, "/Users/x/Other.docx".to_string())];
         assert_eq!(resolve_pane(&known, "/Users/x/Unknown.docx"), None);
-        // Sole pane with an EMPTY key (unsaved doc) → the sole pane.
+        // Sole pane with an EMPTY key (unsaved doc): a bare name binds, but a NAMED
+        // path target must NOT (never silently mutate the wrong document).
         let unsaved = vec![(31u64, String::new())];
         assert_eq!(resolve_pane(&unsaved, "Book1"), Some(31));
+        assert_eq!(resolve_pane(&unsaved, "/Users/x/Report.docx"), None);
 
         // ≥2 panes, no match → none. Empty → none.
         assert_eq!(resolve_pane(&collide, "/x/Nope.docx"), None);

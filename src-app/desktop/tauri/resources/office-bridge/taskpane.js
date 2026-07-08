@@ -55,11 +55,32 @@ function baseName(p) {
   return parts[parts.length - 1];
 }
 
-// Truncate read output to the cap; returns { text, truncated }.
+function isPathLike(p) { return /[\\/]/.test(String(p || '')); }
+
+// Light path normalization for comparison: drop a file:// scheme, unify separators,
+// lowercase (Office file paths are case-insensitive on Win/mac).
+function normPath(p) {
+  return String(p || '').replace(/^file:\/\//i, '').replace(/\\/g, '/').toLowerCase();
+}
+
+// Whether a request target and this pane's own doc key refer to the same document.
+// When BOTH are path-like, compare the full normalized paths (so two docs sharing a
+// filename in different directories do NOT match); otherwise fall back to basename.
+function sameDoc(target, self) {
+  if (isPathLike(target) && isPathLike(self)) { return normPath(target) === normPath(self); }
+  return baseName(target).toLowerCase() === baseName(self).toLowerCase();
+}
+
+// Truncate read output to the cap; returns { text, truncated }. When truncated, an
+// IN-BAND marker is appended to `text` (not only the structured `truncated` flag) so
+// the model can't mistake a cut body for the whole document.
 function capText(s) {
   s = String(s == null ? '' : s);
   if (s.length <= MAX_READ_CHARS) { return { text: s, truncated: false }; }
-  return { text: s.slice(0, MAX_READ_CHARS), truncated: true };
+  return {
+    text: s.slice(0, MAX_READ_CHARS) + '\n…[truncated: document exceeds ' + MAX_READ_CHARS + ' characters]',
+    truncated: true
+  };
 }
 
 // Open the same-origin WSS bridge. The token rides the WebSocket subprotocol
@@ -134,7 +155,7 @@ function dispatchOp(id, method, params) {
   // and the request targets a DIFFERENT one, refuse rather than act on the wrong doc.
   // (Skipped for an unsaved doc whose SELF_DOC_KEY is empty and can't be matched.)
   var target = params && params.doc_full_name;
-  if (SELF_DOC_KEY && target && baseName(target) !== baseName(SELF_DOC_KEY)) {
+  if (SELF_DOC_KEY && target && !sameDoc(target, SELF_DOC_KEY)) {
     return replyErr(id, ERR_TARGET_MISMATCH,
       'this task pane serves "' + baseName(SELF_DOC_KEY) + '", not "' + baseName(target) + '"');
   }
