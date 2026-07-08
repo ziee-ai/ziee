@@ -82,6 +82,13 @@ pub fn next_pane_id() -> PaneId {
     PANE_IDS.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Diagnostic: the `doc_key`s of currently-registered panes. Used by the live Mac
+/// harness test (TEST-13) to target whatever real pane connects, and useful for
+/// operational introspection.
+pub fn connected_pane_keys() -> Vec<String> {
+    panes().values().map(|e| e.doc_key.clone()).collect()
+}
+
 /// Register a connected pane after its `register` hello. Overwrites any prior entry
 /// for the same id (idempotent re-register).
 pub fn register_pane(id: PaneId, host: String, doc_key: String, tx: mpsc::UnboundedSender<Message>) {

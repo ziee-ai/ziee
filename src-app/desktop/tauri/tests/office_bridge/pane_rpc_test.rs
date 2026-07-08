@@ -369,6 +369,89 @@ async fn test12_pane_error_propagates() {
     pane.abort();
 }
 
+/// TEST-13 (live, `#[ignore]`) — the daemon↔pane round-trip through a REAL Office
+/// task pane on macOS. This drives the actual `taskpane.js` Office.js op handlers,
+/// which no headless test can. Run manually:
+///
+///   1. Quit the ziee desktop app so nothing else holds port 44300.
+///   2. `cargo test -p ziee-desktop --test integration_tests -- --ignored --nocapture \
+///        office_bridge::pane_rpc_test::test13_live`
+///   3. When prompted, in a NEW (unsaved) Excel workbook: type some text in a cell and
+///      leave it selected, then open the ribbon "Show Ziee Bridge" task pane.
+///
+/// It binds the fixed 44300 and reuses the app's already-trusted bridge cert from the
+/// data dir, so the WKWebView pane loads prompt-free. Asserts that `get_selection` and
+/// `read_document` round-trip through the live pane and return real content.
+#[tokio::test]
+#[ignore = "live: needs a real Office task pane connected on this macOS session"]
+async fn test13_live_mac_pane_ops() {
+    // Show the bridge's register/reject debug logs so a failed pane connect is
+    // diagnosable (stale token → "/bridge rejected — missing/invalid session token";
+    // success → "pane N registered").
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("info,ziee_desktop::modules::office_bridge=debug")
+        .with_test_writer()
+        .try_init();
+
+    // The app's data dir holds the trusted bridge cert (office-bridge-ca.pem).
+    let home = std::env::var("HOME").expect("HOME");
+    let data_dir = std::path::PathBuf::from(home).join("Library/Application Support/com.ziee.chat");
+
+    let handle = server::start(44300, data_dir)
+        .await
+        .expect("bridge binds 44300 (quit the desktop app first if this fails)");
+
+    eprintln!("\n>>> TEST-13 LIVE: open Excel or Word, type text and leave it SELECTED,");
+    eprintln!(">>> then open the ribbon 'Show Ziee Bridge' task pane.");
+    eprintln!(">>> Waiting up to 240s for the pane to connect...\n");
+
+    // Wait for a real pane to register, then target IT (whatever its doc_key is — an
+    // exact key routes by exact match; an empty/unsaved key routes via the sole-pane
+    // fallback with a bare-name target).
+    let mut target = String::new();
+    for i in 0..240 {
+        let keys = broker::connected_pane_keys();
+        if let Some(key) = keys.into_iter().next() {
+            target = if key.is_empty() { "Untitled".to_string() } else { key };
+            eprintln!(">>> pane connected (target = {target:?}); driving ops...");
+            break;
+        }
+        if i % 10 == 0 && i > 0 {
+            eprintln!(">>> still waiting for a pane... ({}s)", i);
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(!target.is_empty() || broker::connected_pane_keys().len() == 1, "a live task pane must connect");
+    if target.is_empty() {
+        target = "Untitled".to_string();
+    }
+
+    let selection = broker::call_pane_with_timeout(
+        &target,
+        "get_selection",
+        json!({ "doc_full_name": target }),
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("get_selection round-trips through the live pane");
+    eprintln!(">>> get_selection returned: {selection}");
+    assert!(selection.get("text").is_some(), "get_selection returns a text field");
+
+    let doc = broker::call_pane_with_timeout(
+        &target,
+        "read_document",
+        json!({ "doc_full_name": target }),
+        Duration::from_secs(20),
+    )
+    .await
+    .expect("read_document round-trips through the live pane");
+    eprintln!(">>> read_document returned: {doc}");
+    assert!(doc.get("text").is_some(), "read_document returns a text field");
+
+    eprintln!("\n>>> TEST-13 LIVE PASS: both ops round-tripped through the real Office pane.\n");
+    handle.shutdown();
+}
+
 /// TEST-16 — a pane reply with the "unsupported on this host" code (-32002) maps to
 /// OFFICE_UNSUPPORTED_ON_HOST (same code as the native PPT pre-gate), not the generic
 /// OFFICE_PANE_ERROR.

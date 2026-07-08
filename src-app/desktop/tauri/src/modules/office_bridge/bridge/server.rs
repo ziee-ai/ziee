@@ -236,7 +236,13 @@ async fn serve_taskpane() -> Response {
     let html = String::from_utf8_lossy(bytes);
     let injected = html.replace("\"__ZIEE_BRIDGE_TOKEN__\"", &format!("\"{token}\""));
     (
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            // The page carries a FRESH per-session token, so it must never be cached:
+            // a WKWebView/WebView2 serving a cached page would present a stale token to
+            // a restarted bridge (new token store) and its WSS would be rejected.
+            (header::CACHE_CONTROL, "no-store, must-revalidate"),
+        ],
         injected,
     )
         .into_response()
@@ -250,11 +256,15 @@ async fn serve_icon() -> Response {
     serve_static("icon.png")
 }
 
-/// Serve an embedded asset verbatim with its content-type.
+/// Serve an embedded asset verbatim with its content-type. `no-store` so a restarted
+/// bridge never serves a WKWebView/WebView2 a cached (potentially stale) `taskpane.js`.
 fn serve_static(name: &str) -> Response {
     match assets::get(name) {
         Some(b) => (
-            [(header::CONTENT_TYPE, assets::content_type(name))],
+            [
+                (header::CONTENT_TYPE, assets::content_type(name)),
+                (header::CACHE_CONTROL, "no-store, must-revalidate"),
+            ],
             b.to_vec(),
         )
             .into_response(),

@@ -112,6 +112,9 @@ url.workspace = true
 # round-trip + the module's #[cfg(test)] cert assertions.
 futures-util.workspace = true
 http.workspace = true
+# The live TEST-13 harness inits a tracing subscriber so the bridge's
+# register/reject debug logs are visible while driving a real Office pane.
+tracing-subscriber.workspace = true
 x509-parser = "0.16"
 tokio-tungstenite = { version = "0.27", features = ["rustls-tls-webpki-roots"] }
 # Updater signing round-trip test (`tests/updater_signing_test.rs`):
