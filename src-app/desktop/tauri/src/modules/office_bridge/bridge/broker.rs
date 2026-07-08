@@ -145,15 +145,21 @@ pub fn route_response(from_pane: PaneId, resp: BridgeResponse) {
 ///    unsaved document that cannot be matched by path); a sole pane with a known,
 ///    non-matching key is a DIFFERENT document, so it is never overridden.
 fn resolve_pane(candidates: &[(PaneId, String)], doc_full_name: &str) -> Option<PaneId> {
+    // Match case-INSENSITIVELY: office_bridge is desktop-only (Windows/macOS), whose
+    // filesystems are case-insensitive, and the native path (COM/osascript) may differ
+    // in case from the pane's Office.js url; the JS `sameDoc` guard normalizes the same.
     // 1. Exact full-path match.
-    if let Some((id, _)) = candidates.iter().find(|(_, k)| k == doc_full_name) {
+    if let Some((id, _)) = candidates
+        .iter()
+        .find(|(_, k)| k.eq_ignore_ascii_case(doc_full_name))
+    {
         return Some(*id);
     }
     // 2. Unique basename match among panes with a known key.
     let want = basename(doc_full_name);
     let mut bn = candidates
         .iter()
-        .filter(|(_, k)| !k.is_empty() && basename(k) == want);
+        .filter(|(_, k)| !k.is_empty() && basename(k).eq_ignore_ascii_case(want));
     if let Some((id, _)) = bn.next() {
         return if bn.next().is_none() { Some(*id) } else { None };
     }
@@ -306,6 +312,10 @@ mod tests {
         let fmt = vec![(20u64, "file:///Users/x/Report.docx".to_string())];
         assert_eq!(resolve_pane(&fmt, "/Users/x/Report.docx"), Some(20));
 
+        // Case-insensitive match (Windows/macOS filesystems + native-vs-Office.js case).
+        let ci = vec![(40u64, "/Users/x/Report.DOCX".to_string())];
+        assert_eq!(resolve_pane(&ci, "/users/x/report.docx"), Some(40));
+
         // Sole pane with a KNOWN, non-matching key → none (it is a different doc).
         let known = vec![(30u64, "/Users/x/Other.docx".to_string())];
         assert_eq!(resolve_pane(&known, "/Users/x/Unknown.docx"), None);
@@ -451,6 +461,44 @@ mod tests {
 
         let out = handle.await.unwrap().expect("resolves from the right pane");
         assert_eq!(out, json!({ "text": "REAL" }));
+        unregister_pane(id);
+    }
+
+    /// A pane reply carrying NEITHER result nor error is rejected as
+    /// `OFFICE_PANE_ERROR` (malformed), not coerced to `Ok(null)`.
+    #[tokio::test]
+    async fn call_pane_rejects_reply_with_neither_result_nor_error() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+        let id = next_pane_id();
+        let doc = format!("/tmp/ziee-neither-{id}.docx");
+        register_pane(id, "word".into(), doc.clone(), tx);
+
+        let doc2 = doc.clone();
+        let handle = tokio::spawn(async move { call_pane(&doc2, "read_document", json!({})).await });
+
+        let msg = rx.recv().await.expect("request pushed");
+        let text = match msg {
+            Message::Text(t) => t,
+            o => panic!("expected text, got {o:?}"),
+        };
+        let corr = serde_json::from_str::<BridgeRequest>(text.as_str())
+            .unwrap()
+            .id
+            .and_then(|v| v.as_u64())
+            .unwrap();
+
+        route_response(
+            id,
+            BridgeResponse {
+                jsonrpc: JSONRPC_VERSION.to_string(),
+                id: Some(json!(corr)),
+                result: None,
+                error: None,
+            },
+        );
+
+        let err = handle.await.unwrap().err().expect("malformed reply → error");
+        assert_eq!(err.error_code(), OFFICE_PANE_ERROR);
         unregister_pane(id);
     }
 

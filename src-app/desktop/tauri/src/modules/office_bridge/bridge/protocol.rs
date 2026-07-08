@@ -51,9 +51,13 @@ pub struct BridgeRequest {
 /// A JSON-RPC error object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeError {
-    /// Numeric JSON-RPC error code.
+    /// Numeric JSON-RPC error code. `default` on deserialize so a peer reply with a
+    /// partial `error` object still parses + routes (→ a typed pane error) rather
+    /// than failing deserialization and hanging the caller to the timeout.
+    #[serde(default)]
     pub code: i64,
     /// Human-readable error message.
+    #[serde(default)]
     pub message: String,
     /// Optional structured error data.
     #[serde(default, skip_serializing_if = "Option::is_none")]

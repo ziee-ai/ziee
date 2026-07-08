@@ -58,9 +58,12 @@ function baseName(p) {
 function isPathLike(p) { return /[\\/]/.test(String(p || '')); }
 
 // Light path normalization for comparison: drop a file:// scheme, unify separators,
-// lowercase (Office file paths are case-insensitive on Win/mac).
+// lowercase (Office file paths are case-insensitive on Win/mac). A Windows file URL
+// keeps a leading slash before the drive letter (file:///C:/x -> /c:/x); strip it so
+// it matches the native COM path (C:\x -> c:/x) and a legit op isn't falsely rejected.
 function normPath(p) {
-  return String(p || '').replace(/^file:\/\//i, '').replace(/\\/g, '/').toLowerCase();
+  var s = String(p || '').replace(/^file:\/\//i, '').replace(/\\/g, '/').toLowerCase();
+  return s.replace(/^\/([a-z]):\//, '$1:/');
 }
 
 // Whether a request target and this pane's own doc key refer to the same document.
@@ -278,23 +281,33 @@ function onSelectionChanged() {
   }
 }
 
-Office.onReady(function (info) {
-  HOST = info.host ? info.host.toString() : 'unknown';
-  var h = document.getElementById('h');
-  if (h) { h.textContent = 'ziee office bridge — host=' + HOST; }
-  log('Office.onReady host=' + HOST + ' platform=' + info.platform);
+// Bootstrap only inside a real Office host (guarded so the pure helpers below can be
+// required + unit-tested under node, where `Office` is undefined).
+if (typeof Office !== 'undefined' && Office.onReady) {
+  Office.onReady(function (info) {
+    HOST = info.host ? info.host.toString() : 'unknown';
+    var h = document.getElementById('h');
+    if (h) { h.textContent = 'ziee office bridge — host=' + HOST; }
+    log('Office.onReady host=' + HOST + ' platform=' + info.platform);
 
-  openBridge(info);
+    openBridge(info);
 
-  // Register the selection-change handler (best-effort; a host without the event
-  // simply reports a non-success status).
-  try {
-    Office.context.document.addHandlerAsync(
-      Office.EventType.DocumentSelectionChanged,
-      onSelectionChanged,
-      function (r) { log('addHandler status=' + r.status); }
-    );
-  } catch (e) {
-    log('addHandler failed: ' + ((e && e.message) || e));
-  }
-});
+    // Register the selection-change handler (best-effort; a host without the event
+    // simply reports a non-success status).
+    try {
+      Office.context.document.addHandlerAsync(
+        Office.EventType.DocumentSelectionChanged,
+        onSelectionChanged,
+        function (r) { log('addHandler status=' + r.status); }
+      );
+    } catch (e) {
+      log('addHandler failed: ' + ((e && e.message) || e));
+    }
+  });
+}
+
+// Export the PURE helpers for node-based unit testing (taskpane.test.mjs). No effect
+// in the browser (no `module`); the Office.js op handlers still require a real host.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { baseName: baseName, isPathLike: isPathLike, normPath: normPath, sameDoc: sameDoc, capText: capText, MAX_READ_CHARS: MAX_READ_CHARS };
+}

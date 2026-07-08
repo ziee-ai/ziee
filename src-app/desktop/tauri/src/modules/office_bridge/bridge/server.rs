@@ -409,8 +409,12 @@ fn classify_pane_frame(pane_id: u64, tx: &mpsc::UnboundedSender<Message>, text: 
     // Otherwise a frame with `result`/`error` is a reply to a daemon→pane request.
     // Route it bound to THIS pane (broker rejects a corr id routed to another pane).
     if v.get("result").is_some() || v.get("error").is_some() {
-        if let Ok(resp) = serde_json::from_value::<BridgeResponse>(v) {
-            broker::route_response(pane_id, resp);
+        match serde_json::from_value::<BridgeResponse>(v) {
+            Ok(resp) => broker::route_response(pane_id, resp),
+            Err(e) => tracing::debug!(
+                "office_bridge: pane {pane_id} sent an unparsable response frame ({e}); \
+                 dropping (the caller will time out)"
+            ),
         }
     }
     // Neither method nor result/error → ignore.
