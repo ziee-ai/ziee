@@ -3451,8 +3451,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal",
     requiredStates: ["open"],
     signals: [
-      { kind: "overlay", condition: "<Dialog open>", line: 63 },
-      { kind: "branch", condition: "rootError", line: 94 },
+      { kind: "overlay", condition: "<Dialog open>", line: 65 },
+      { kind: "branch", condition: "rootError", line: 96 },
     ],
   },
   "modules/user-llm-providers/chat-extension/extension": {

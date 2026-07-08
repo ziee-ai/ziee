@@ -3777,8 +3777,8 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| overlay | `<Dialog open>` | 63 |
-| branch | `rootError` | 94 |
+| overlay | `<Dialog open>` | 65 |
+| branch | `rootError` | 96 |
 
 ### `modules/user-llm-providers/chat-extension/extension`
 
