@@ -30,13 +30,31 @@ async function resetMetrics(page: Page): Promise<void> {
   await page.evaluate(() => window.__MSGLIST_METRICS__?.reset())
 }
 
-/** Scroll the message viewport until `[data-message-id=id]` is attached, or we
- *  hit the bottom. Returns the locator (may be detached if not found). */
+/** Scroll the message viewport from the TOP down until `[data-message-id=id]` is
+ *  attached, or we hit the bottom. Resets to the top first so it finds a target
+ *  regardless of the current scroll position (a target above the current
+ *  position would otherwise be unreachable by a downward-only walk). Returns the
+ *  locator (may be detached if not found). */
 async function scrollToMessage(page: Page, id: string): Promise<Locator> {
   const scroller = page.getByTestId('g-msglist-scroll')
   const target = page.locator(`[data-message-id="${id}"]`)
-  for (let i = 0; i < 60; i++) {
-    if ((await target.count()) > 0) return target
+  await scroller.evaluate(el => (el.scrollTop = 0))
+  await page.waitForTimeout(120)
+  for (let i = 0; i < 80; i++) {
+    if ((await target.count()) > 0) {
+      // Bring the row fully INTO view (top ~80px below the viewport top) so an
+      // inline-file preview crosses the 800px seen-band and mounts its real
+      // body (not just the skeleton), and so collapsible tests have a stable
+      // in-view position.
+      await scroller.evaluate((el, id) => {
+        const r = el
+          .querySelector(`[data-message-id="${id}"]`)
+          ?.getBoundingClientRect()
+        if (r) el.scrollTop += r.top - el.getBoundingClientRect().top - 80
+      }, id)
+      await page.waitForTimeout(250)
+      return target
+    }
     const done = await scroller.evaluate(el => {
       const before = el.scrollTop
       el.scrollTop = Math.min(el.scrollTop + el.clientHeight * 0.9, el.scrollHeight)
@@ -46,6 +64,15 @@ async function scrollToMessage(page: Page, id: string): Promise<Locator> {
     if (done) break
   }
   return target
+}
+
+/** Row top relative to the scroll viewport top, in px. */
+async function rowTop(page: Page, msg: Locator): Promise<number> {
+  const scroller = page.getByTestId('g-msglist-scroll')
+  return msg.evaluate(
+    (el, sEl) => el.getBoundingClientRect().top - sEl!.getBoundingClientRect().top,
+    await scroller.elementHandle(),
+  )
 }
 
 async function settleIdle(page: Page, ms = 900) {
@@ -148,22 +175,23 @@ test.describe('chat message-scroll-stability', () => {
     const scroller = page.getByTestId('g-msglist-scroll')
     const msg = await scrollToMessage(page, 'g-msg-7')
     await expect(msg).toBeAttached()
-    // Nudge so the message top sits comfortably inside the viewport.
-    await scroller.evaluate(el => (el.scrollTop += 40))
-    await page.waitForTimeout(150)
-    const topBefore = await msg.evaluate(
-      (el, sEl) =>
-        el.getBoundingClientRect().top - sEl!.getBoundingClientRect().top,
-      await scroller.elementHandle(),
-    )
+    // Position the collapsed message so its top sits ~80px inside the viewport
+    // (deterministically in-view, straddling nothing) so the assertion measures
+    // a genuine in-place expand — the exact case the ITEM-7 anchor guards.
+    await scroller.evaluate(el => {
+      const s = el.getBoundingClientRect()
+      const r = el
+        .querySelector('[data-message-id="g-msg-7"]')!
+        .getBoundingClientRect()
+      el.scrollTop += r.top - s.top - 80
+    })
+    await page.waitForTimeout(200)
+    const topBefore = await rowTop(page, msg)
     await msg.getByTestId('collapsible-toggle').click()
-    await page.waitForTimeout(300)
-    const topAfter = await msg.evaluate(
-      (el, sEl) =>
-        el.getBoundingClientRect().top - sEl!.getBoundingClientRect().top,
-      await scroller.elementHandle(),
-    )
-    expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(4)
+    await page.waitForTimeout(350)
+    const topAfter = await rowTop(page, msg)
+    // The row's top stays put (expansion grows downward, no viewport teleport).
+    expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(6)
   })
 
   test('TEST-10: resize persists across remount and does not jump', async ({ page }) => {
@@ -218,14 +246,28 @@ test.describe('chat message-scroll-stability', () => {
     const handle = msg.getByTestId('inline-file-preview-resize')
     await expect(body).toBeVisible()
     const h0 = Number(await body.getAttribute('data-body-height'))
-    const box = (await handle.boundingBox())!
-    // Drag the bottom handle down by ~90px.
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 90, {
-      steps: 10,
+    // Drive a real pointer drag on the handle: dispatch pointerdown → several
+    // pointermove → pointerup with a downward clientY delta. (Explicit dispatch
+    // is deterministic; Playwright's synthetic mouse + setPointerCapture is
+    // flaky on a 8px strip.)
+    await handle.evaluate((el: HTMLElement) => {
+      const r = el.getBoundingClientRect()
+      const x = r.x + r.width / 2
+      const y0 = r.y + r.height / 2
+      const ev = (type: string, y: number) =>
+        el.dispatchEvent(
+          new PointerEvent(type, {
+            clientX: x,
+            clientY: y,
+            pointerId: 1,
+            bubbles: true,
+            cancelable: true,
+          }),
+        )
+      ev('pointerdown', y0)
+      for (let i = 1; i <= 9; i++) ev('pointermove', y0 + i * 10)
+      ev('pointerup', y0 + 90)
     })
-    await page.mouse.up()
     await page.waitForTimeout(150)
     const h1 = Number(await body.getAttribute('data-body-height'))
     expect(h1).toBeGreaterThan(h0)

@@ -23,6 +23,7 @@ import {
 } from '@/modules/chat/core/utils/scrollAnchor.utils'
 import { indexOfMessageId } from '@/modules/chat/core/stores/messageWindow'
 import { estimateMessageHeight } from '@/modules/chat/core/utils/estimateMessageHeight'
+import { inPlaceAnchorSignal } from '@/modules/chat/core/utils/useInPlaceAnchor'
 import {
   buildInitialMeasurementsCache,
   recordMeasurements,
@@ -232,6 +233,37 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       // index shifts).
       getItemKey: i => messagesArray[i]?.id ?? i,
     })
+
+    // ITEM-7: when the user intentionally changes a row's height in place
+    // (show-more / inline-file resize), suppress the virtualizer's OWN
+    // above-fold scroll compensation for THAT row (its key is parked in
+    // inPlaceAnchorSignal) so the row grows downward from its current top instead
+    // of the viewport teleporting when the row straddles the top fold;
+    // useInPlaceAnchor then pins any residual drift. For every other row this
+    // replicates virtual-core's default predicate (adjust above-viewport rows
+    // whose size changes, except re-measures while scrolling backward).
+    // `@tanstack/react-virtual` v3.14.5 READS `shouldAdjustScrollPositionOnItemSizeChange`
+    // as an instance property (resizeItem) but does not accept it as an option,
+    // so it is assigned imperatively here (idempotent per render).
+    ;(
+      virt as unknown as {
+        shouldAdjustScrollPositionOnItemSizeChange?: (
+          item: VirtualItem,
+          delta: number,
+          instance: typeof virt,
+        ) => boolean
+      }
+    ).shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      if (inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key) {
+        return false
+      }
+      const off = instance.scrollOffset ?? 0
+      return (
+        item.start < off &&
+        (!instance.itemSizeCache.has(item.key) ||
+          instance.scrollDirection !== 'backward')
+      )
+    }
 
     // Flush measured heights on unmount (conversation close / navigate away) so
     // the next open seeds from them. Uses widthRef (last-known-good width) — the

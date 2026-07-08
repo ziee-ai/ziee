@@ -22,8 +22,12 @@ import type { MessageContent, MessageWithContent } from '@/api-client/types'
 
 const NOW = new Date('2026-07-08T00:00:00Z').toISOString()
 
-// A tiny inline SVG so images decode instantly + offline (exercises the
-// reserved-image / inline-image height path without a network image).
+// A tiny inline PNG (1x1) so the image viewer claims it (image/png) and decodes
+// instantly + offline — exercises the inline-image body inside the fixed-height
+// box without a network image. (SVG mime is not claimed by the image viewer.)
+const PNG_IMG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+// A larger inline SVG used INSIDE markdown image messages (not a file preview).
 const SVG_IMG =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
@@ -68,9 +72,9 @@ function imageResourceBlock(id: string): MessageContent {
       content: '',
       resource_links: [
         {
-          uri: `${SVG_IMG}#${id}`,
-          name: `chart-${id}.svg`,
-          mime_type: 'image/svg+xml',
+          uri: `${PNG_IMG}#${id}`,
+          name: `chart-${id}.png`,
+          mime_type: 'image/png',
         },
       ],
     },

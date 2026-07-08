@@ -176,7 +176,14 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
   }
   const onHandlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    // setPointerCapture can throw (NotFoundError) if the pointer isn't active
+    // (e.g. a synthetic/dispatched event) — the drag still works via the
+    // element's own move handler, so never let a capture failure abort it.
+    try {
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {
+      /* capture unavailable — proceed without it */
+    }
     dragStart.current = { y: e.clientY, h: bodyHeightPx }
     setDrag(bodyHeightPx)
   }
