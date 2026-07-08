@@ -29,7 +29,8 @@ import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
 
-  const { conversation, messages, loading, error, hasMoreBefore } = Stores.Chat
+  const { conversation, messages, loading, error, hasMoreBefore, hasMoreAfter } =
+    Stores.Chat
   // Native document-scroll on mobile: the message history scrolls the WINDOW
   // (iOS toolbar collapses as you scroll up) while the composer stays pinned via
   // position:sticky. Desktop keeps the fixed inner-scroll shell. The right panel
@@ -66,6 +67,10 @@ export default function ConversationPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   // Top sentinel — when it approaches the viewport top we prepend older msgs.
   const topSentinelRef = useRef<HTMLDivElement>(null)
+  // Bottom sentinel — when it approaches the viewport bottom AND the window is
+  // anchored mid-conversation (`hasMoreAfter`, e.g. after an around= jump) we
+  // append the next NEWER page so the user can scroll DOWN toward the latest.
+  const bottomLoadSentinelRef = useRef<HTMLDivElement>(null)
   // Anchor captured just before a prepend so we can re-pin the view after it.
   const pendingAnchorRef = useRef<{
     anchor: ScrollAnchor
@@ -160,8 +165,21 @@ export default function ConversationPage() {
 
   const findContextValue = useMemo(() => ({ activeMatchId }), [activeMatchId])
 
-  const jumpToLatest = () =>
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const jumpToLatest = async () => {
+    // If the window is anchored mid-conversation (after an around= jump), the
+    // real latest message isn't loaded — `messagesEndRef` is only the bottom of
+    // the loaded slice. Snap to the tail first so "Jump to latest" reaches the
+    // actual latest, then scroll instantly (content just changed).
+    const cid = Stores.Chat.$.conversation?.id
+    if (cid && Stores.Chat.$.hasMoreAfter) {
+      await Stores.Chat.loadMessages(cid)
+      requestAnimationFrame(() =>
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }),
+      )
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
 
   // Initial load: jump to the bottom INSTANTLY (before paint), once per
   // conversation. An animated scroll-through would drag the viewport past
@@ -252,6 +270,26 @@ export default function ConversationPage() {
     // `scrollerReady` re-creates the observer once the OverlayScrollbars
     // viewport exists so `root` is the real scroll box, not the window fallback.
   }, [conversation?.id, hasMoreBefore, getViewport, scrollerReady])
+
+  // Load NEWER messages on scroll-down when the window is anchored mid-
+  // conversation (after an around= jump). No scroll anchoring needed: appending
+  // below the fold doesn't shift what's already visible. The 800px bottom
+  // rootMargin prefetches before the user hits the loaded slice's end.
+  useEffect(() => {
+    const sentinel = bottomLoadSentinelRef.current
+    if (!sentinel) return
+    const view = getViewport()
+    const observer = new IntersectionObserver(
+      entries => {
+        if (!entries[0]?.isIntersecting) return
+        if (!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming) return
+        void Stores.Chat.loadNewerMessages()
+      },
+      { root: view?.root ?? null, rootMargin: '0px 0px 800px 0px', threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [conversation?.id, hasMoreAfter, getViewport, scrollerReady])
 
   // After an older page is PREPENDED, re-pin the captured anchor so the view
   // stays put (DEC-2). Runs before paint; a short-lived ResizeObserver re-applies
@@ -477,6 +515,9 @@ export default function ConversationPage() {
               <ConversationFindContext.Provider value={findContextValue}>
                 <MessageList />
               </ConversationFindContext.Provider>
+              {/* Bottom-load sentinel: triggers loading NEWER messages when the
+                  window is anchored mid-conversation (after an around= jump). */}
+              <div ref={bottomLoadSentinelRef} aria-hidden="true" />
               <div ref={messagesEndRef} />
             </div>
           </DivScrollY>

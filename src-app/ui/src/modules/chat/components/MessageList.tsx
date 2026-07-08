@@ -33,17 +33,24 @@ export function MessageList() {
   return (
     <Flex className={'flex-col gap-1 w-full'} data-testid="chat-messages">
       {/* Top affordance while an OLDER page is being fetched (reverse infinite
-          scroll). Shown only during the fetch; a fully-loaded-to-top or short
-          conversation shows nothing here. */}
-      {loadingOlder && (
-        <div
-          className="flex w-full justify-center py-3"
-          data-testid="chat-loading-older"
-          aria-live="polite"
-        >
-          <Loader2 className="text-xl animate-spin" aria-label="Loading older messages" />
-        </div>
-      )}
+          scroll). The aria-live region is ALWAYS mounted (only its spinner
+          content toggles) so screen readers actually announce the load — a
+          conditionally-mounted, already-populated live region does not announce.
+          A fully-loaded-to-top or short conversation just shows an empty region. */}
+      <div
+        className="flex w-full justify-center"
+        data-testid="chat-loading-older"
+        aria-live="polite"
+      >
+        {loadingOlder && (
+          <div className="py-3">
+            <Loader2
+              className="text-xl animate-spin"
+              aria-label="Loading older messages"
+            />
+          </div>
+        )}
+      </div>
       {/* The message_list_header slot (project chip / context) is rendered as
           pinned chrome in ConversationPage, above this scroll container. */}
       {messagesArray.map((msg, i) => (

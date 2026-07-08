@@ -198,13 +198,18 @@ pub fn build_snippet(text: &str, term: &str) -> String {
         return collapsed;
     }
 
-    // Locate the term (case-insensitive) to center the window on it.
+    // Locate the term (case-insensitive) to center the window on it. The byte
+    // offset from `find` indexes the LOWERCASED string, so count chars in the
+    // lowercased prefix (a valid char boundary) — NEVER slice the original
+    // `collapsed` at that offset (lowercasing can change byte length, e.g.
+    // Turkish `İ`→`i̇`, which would land off a char boundary and panic). Clamp
+    // into the original char vector; centering may be slightly off for scripts
+    // whose lowercasing changes length, but it can't panic or go out of bounds.
     let hay = collapsed.to_lowercase();
     let needle = term.to_lowercase();
-    let match_char_idx = hay.find(&needle).map(|byte_idx| {
-        // Convert the byte offset into a char offset over `collapsed`.
-        collapsed[..byte_idx].chars().count()
-    });
+    let match_char_idx = hay
+        .find(&needle)
+        .map(|byte_idx| hay[..byte_idx].chars().count().min(chars.len()));
 
     let (start, prefix_ellipsis) = match match_char_idx {
         Some(mi) => {
@@ -324,6 +329,19 @@ mod tests {
 
         // Collapses whitespace/newlines.
         assert_eq!(build_snippet("line1\n\n  line2", "line2"), "line1 line2");
+    }
+
+    #[test]
+    fn snippet_does_not_panic_on_length_changing_lowercasing() {
+        // Turkish dotted capital I lowercases to two chars ("i̇"), which shifts
+        // byte/char offsets between the original and lowercased strings. A naive
+        // slice of the original by the lowercased offset would panic / mis-cut.
+        let long = format!("{}İstanbul refund İİİ {}", "x".repeat(300), "y".repeat(300));
+        let snip = build_snippet(&long, "İstanbul");
+        assert!(snip.chars().count() <= SEARCH_SNIPPET_MAX_CHARS + 2);
+        // German sharp-s lowercases 1->1 but exercise a non-ASCII term too.
+        let s2 = build_snippet(&"ß".repeat(400), "ß");
+        assert!(s2.chars().count() <= SEARCH_SNIPPET_MAX_CHARS + 2);
     }
 }
 

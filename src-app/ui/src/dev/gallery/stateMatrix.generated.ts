@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1831 signals total.
+// 323 surfaces carry renderable-state signals; 1834 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -882,8 +882,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["delayed"],
     signals: [
       { kind: "loading", condition: "!loading && messagesArray.length === 0", line: 19 },
-      { kind: "branch", condition: "loadingOlder", line: 38 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 64 },
+      { kind: "branch", condition: "loadingOlder", line: 45 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 71 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -1065,23 +1065,26 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 131 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 152 },
-      { kind: "branch", condition: "!conversationId", line: 181 },
-      { kind: "branch", condition: "!sentinel", line: 220 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 224 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 227 },
-      { kind: "loading", condition: "!pending", line: 261 },
-      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 264 },
-      { kind: "branch", condition: "!c || !v", line: 270 },
-      { kind: "branch", condition: "newTop == null", line: 272 },
-      { kind: "branch", condition: "!conversation?.id", line: 317 },
-      { kind: "branch", condition: "!m", line: 321 },
-      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 324 },
-      { kind: "loading", condition: "loading && !conversation", line: 345 },
-      { kind: "loading", condition: "!loading && !conversation", line: 354 },
-      { kind: "error", condition: "error", line: 357 },
-      { kind: "error", condition: "error", line: 414 },
+      { kind: "branch", condition: "!sentinel", line: 136 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 157 },
+      { kind: "branch", condition: "!conversationId", line: 199 },
+      { kind: "branch", condition: "!sentinel", line: 238 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 242 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 245 },
+      { kind: "branch", condition: "!sentinel", line: 280 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 284 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 285 },
+      { kind: "loading", condition: "!pending", line: 299 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 302 },
+      { kind: "branch", condition: "!c || !v", line: 308 },
+      { kind: "branch", condition: "newTop == null", line: 310 },
+      { kind: "branch", condition: "!conversation?.id", line: 355 },
+      { kind: "branch", condition: "!m", line: 359 },
+      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 362 },
+      { kind: "loading", condition: "loading && !conversation", line: 383 },
+      { kind: "loading", condition: "!loading && !conversation", line: 392 },
+      { kind: "error", condition: "error", line: 395 },
+      { kind: "error", condition: "error", line: 452 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
