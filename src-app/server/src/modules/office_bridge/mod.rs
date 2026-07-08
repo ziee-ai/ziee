@@ -39,6 +39,17 @@ pub fn office_bridge_server_id() -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, b"office_bridge.ziee.internal")
 }
 
+/// Auto-attach registration: office_bridge attaches behind its chat-extension
+/// flag via the mcp module's AUTO_ATTACH_BUILTINS slice (the inversion that lets
+/// `ziee` never name this module — so it can live in the desktop crate). NOT
+/// approval-bypassed: mutating office tools stay behind per-call approval.
+#[distributed_slice(crate::modules::mcp::chat_extension::mcp::AUTO_ATTACH_BUILTINS)]
+static OFFICE_BRIDGE_AUTO_ATTACH: crate::modules::mcp::chat_extension::mcp::AutoAttachEntry =
+    crate::modules::mcp::chat_extension::mcp::AutoAttachEntry {
+        flag: chat_extension::ATTACH_FLAG,
+        server_id: office_bridge_server_id,
+    };
+
 #[distributed_slice(MODULE_ENTRIES)]
 static OFFICE_BRIDGE_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "office_bridge",

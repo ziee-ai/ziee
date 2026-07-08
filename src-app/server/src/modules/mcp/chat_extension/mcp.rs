@@ -8,6 +8,7 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
+use linkme::distributed_slice;
 use uuid::Uuid;
 
 use ai_providers::{ChatRequest, ContentBlock};
@@ -118,6 +119,26 @@ struct AccumulatedToolUse {
 /// attach whenever the model is tool-capable (`model_tools_capable`). All are
 /// fetched by id OUTSIDE the group-gated accessibility path — no per-user grant —
 /// and only for tool-capable models.
+///
+/// A downstream/desktop-only built-in (e.g. `office_bridge`, which lives in the
+/// desktop crate) cannot be referenced by name here. Such modules register an
+/// [`AutoAttachEntry`] into [`AUTO_ATTACH_BUILTINS`] from their own crate; the
+/// loop below auto-attaches them by `{flag → server_id}` without `ziee` naming
+/// them. NOTE: entries here are NOT approval-bypassed (they are absent from
+/// `is_builtin_server_id`), so mutating built-ins stay behind per-call approval.
+#[derive(Clone, Copy)]
+pub struct AutoAttachEntry {
+    /// Metadata flag the module's chat extension sets on a tool-capable chat.
+    pub flag: &'static str,
+    /// Deterministic built-in MCP server id to attach when the flag is set.
+    pub server_id: fn() -> Uuid,
+}
+
+/// Distributed slice of auto-attach registrations contributed by (possibly
+/// downstream) built-in MCP modules. Iterated by `auto_attach_builtin_ids`.
+#[distributed_slice]
+pub static AUTO_ATTACH_BUILTINS: [AutoAttachEntry] = [..];
+
 fn auto_attach_builtin_ids(
     metadata: &std::collections::HashMap<String, serde_json::Value>,
 ) -> Vec<Uuid> {
@@ -162,15 +183,15 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::citations::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::citations::citations_server_id());
     }
-    // `office_bridge` attaches behind the flag set by the office_bridge chat
-    // extension (`attach_office_bridge_mcp`), gated on tool-capable + the
-    // built-in row being enabled/available. Same id-fetch + `s.enabled` guard.
-    // Deliberately NOT added to `is_builtin_server_id` below (DEC-4): the office
-    // tools include MUTATING operations (edit_document/add_comment/
-    // set_track_changes), so — like `control` — they stay behind per-call
-    // approval rather than being approval-bypassed.
-    if flag(crate::modules::office_bridge::chat_extension::ATTACH_FLAG) {
-        ids.push(crate::modules::office_bridge::office_bridge_server_id());
+    // Downstream/desktop-only built-ins (e.g. `office_bridge`, which lives in the
+    // desktop crate and cannot be named here) register via AUTO_ATTACH_BUILTINS.
+    // Same `{flag → server_id}` contract as the hardcoded arms above; NOT
+    // approval-bypassed (absent from `is_builtin_server_id`), so mutating office
+    // tools stay behind per-call approval.
+    for entry in AUTO_ATTACH_BUILTINS {
+        if flag(entry.flag) {
+            ids.push((entry.server_id)());
+        }
     }
     // `control` attaches behind the flag set by the control chat extension
     // (`attach_control_mcp`), gated on the deploy kill-switch + tool-capable.
@@ -3059,40 +3080,49 @@ mod builtin_tests {
         );
     }
 
-    /// TEST-13 — office_bridge attach seam + the security-critical negative
-    /// (DEC-4). office_bridge is auto-attached behind `attach_office_bridge_mcp`
-    /// (the documented silent-failure footgun — the single `mcp.rs`
-    /// `auto_attach_builtin_ids` edit), but is deliberately NOT on the
-    /// approval-bypass list — so a mutating `edit_document`/`add_comment`/
-    /// `set_track_changes` is always forced through approval (mirrors control_mcp).
-    #[test]
-    fn office_bridge_attaches_on_flag_and_is_not_approval_bypassed() {
-        let office = crate::modules::office_bridge::office_bridge_server_id();
+    // TEST-4/TEST-13 — the AUTO_ATTACH_BUILTINS inversion seam. A downstream
+    // built-in (e.g. the desktop-only office_bridge) registers an AutoAttachEntry
+    // from its own crate; `auto_attach_builtin_ids` attaches it by {flag →
+    // server_id} WITHOUT `ziee` naming the module. It must NOT be approval-bypassed
+    // (mutating built-ins stay behind per-call approval — DEC-9), which we prove
+    // with a synthetic entry so the assertion holds even though office_bridge has
+    // left this crate.
+    fn test_auto_attach_server_id() -> Uuid {
+        Uuid::new_v5(&Uuid::NAMESPACE_URL, b"test.auto.attach.builtin")
+    }
+    #[distributed_slice(AUTO_ATTACH_BUILTINS)]
+    static TEST_AUTO_ATTACH: AutoAttachEntry = AutoAttachEntry {
+        flag: "attach_test_auto_builtin",
+        server_id: test_auto_attach_server_id,
+    };
 
-        // Tool-capable model with NO office flag → office_bridge must not attach.
+    /// TEST-4 — a slice-registered builtin auto-attaches on its flag (the
+    /// inversion works); TEST-13 — and is NOT approval-bypassed.
+    #[test]
+    fn auto_attach_builtins_slice_attaches_on_flag_and_is_not_approval_bypassed() {
+        let id = test_auto_attach_server_id();
+
+        // Tool-capable model with NO flag → the slice entry must not attach.
         let mut m: HashMap<String, serde_json::Value> = HashMap::new();
         m.insert("model_tools_capable".into(), json!(true));
         assert!(
-            !auto_attach_builtin_ids(&m).contains(&office),
-            "office_bridge must not attach without its flag"
+            !auto_attach_builtin_ids(&m).contains(&id),
+            "a slice builtin must not attach without its flag"
         );
 
-        // Set the flag → office_bridge server id is auto-attached.
-        m.insert(
-            crate::modules::office_bridge::chat_extension::ATTACH_FLAG.into(),
-            json!("true"),
-        );
+        // Set the flag → the registered server id is auto-attached (proves the
+        // AUTO_ATTACH_BUILTINS loop, which is how office_bridge attaches from the
+        // desktop crate).
+        m.insert("attach_test_auto_builtin".into(), json!("true"));
         assert!(
-            auto_attach_builtin_ids(&m).contains(&office),
-            "attach_office_bridge_mcp must push the office_bridge server id (the mcp.rs edit)"
+            auto_attach_builtin_ids(&m).contains(&id),
+            "a flag-set AUTO_ATTACH_BUILTINS entry must push its server id"
         );
 
-        // The linchpin of "mutating writes require approval": office_bridge is
-        // deliberately absent from is_builtin_server_id, so its writes never
-        // auto-run (DEC-4 — mutating tool stays behind per-call approval).
+        // Mutating built-ins stay behind approval: NOT in is_builtin_server_id.
         assert!(
-            !is_builtin_server_id(office),
-            "office_bridge must NOT be approval-bypassed (mutating tool stays behind approval)"
+            !is_builtin_server_id(id),
+            "an AUTO_ATTACH_BUILTINS entry must NOT be approval-bypassed"
         );
     }
 
