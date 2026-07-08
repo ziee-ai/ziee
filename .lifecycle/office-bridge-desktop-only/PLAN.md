@@ -6,12 +6,16 @@ absent from a plain `ziee` server build** (no COM, bridge listener, Office add-i
 migrations, permissions, routes, or MCP registration). Base = `office-bridge-desktop-only-base`
 (the pre-refactor HEAD `c0ff6ac7`); this feature's diff is the re-architecture only.
 
-Mechanism (proven by investigation): `ziee::MODULE_ENTRIES` and `ziee::…::CHAT_EXTENSIONS` are
-`pub` `linkme` distributed slices — a module defined in the desktop crate registers into them and
-is picked up by `ziee::create_modules()` in the desktop binary, while a standalone `ziee` server
-binary (which never links the desktop crate) sees nothing. The desktop crate already owns a
-`migrations/` dir (`1000…` space, applied by `run_desktop_migrations` + verified by the existing
-build.rs loop), so office_bridge's schema rides that with no new migration infra.
+Mechanism (revised per DEC-1/DEC-2 after Phase-5 codebase evidence — see DECISIONS.md): office_bridge
+becomes a `host_mount`-style `DesktopModule` that registers into `ziee` via **runtime seams**
+(`ziee::register_auto_attach_builtin`, `ziee::chat_extension::register_chat_extension`), mirroring
+the established `code_sandbox::register_sandbox_mount_provider` — NOT cross-crate `#[distributed_slice]`
+(unproven in this repo; zero downstream slice registrations exist). The static seams are pushed
+BEFORE `start_server_with_routes` (which snapshots the chat ExtensionRegistry); the pool-dependent
+work (MCP-row upsert, bridge listener, watcher) runs in the post-server-start hook. A standalone
+`ziee` server binary never calls these seams, so it contains no office_bridge. The desktop crate
+already owns a `migrations/` dir (`1000…` space, applied by `run_desktop_migrations` + verified by
+the existing build.rs loop), so office_bridge's schema rides that with no new migration infra.
 
 ## Items
 

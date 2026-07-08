@@ -251,6 +251,14 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
     // ownership of `config`, so we need our own copy first.
     let cors_config = config.clone();
 
+    // Register office_bridge's STATIC seams (chat extension + auto-attach entry)
+    // BEFORE start_server_with_routes builds the chat module — that init snapshots
+    // the ExtensionRegistry, so a post-start push (the runtime half at line ~350
+    // below) would be too late and the office chat integration would silently
+    // no-op. Pool-free; no-op on a host without Office. The pool-dependent half
+    // (row upsert + bridge + watcher) still runs post-start.
+    crate::modules::office_bridge::register_office_bridge_static(&config);
+
     tauri::async_runtime::spawn(async move {
         match ziee::start_server_with_routes(
             config,
@@ -338,12 +346,12 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                 // at execute_command time.
                 crate::modules::host_mount::register_provider();
 
-                // Register the desktop-only office_bridge built-in MCP server:
-                // upserts its mcp_servers row + registers its chat extension and
-                // auto-attach entry against the generic server seams, and spawns
-                // the add-in bridge listener + document watcher. Safe after
-                // migrations (its office_bridge_* tables now exist). No-op on a
-                // host without Office (probe returns None).
+                // Register the desktop-only office_bridge built-in MCP server's
+                // RUNTIME half: upsert its mcp_servers row + spawn the add-in
+                // bridge listener + document watcher. Safe after migrations (its
+                // office_bridge_* tables now exist). The STATIC half (chat
+                // extension + auto-attach entry) was already registered before
+                // start_server_with_routes above. No-op on a host without Office.
                 if let Some(cfg) = BACKEND_CONFIG.get() {
                     crate::modules::office_bridge::register_office_bridge(cfg);
                 }

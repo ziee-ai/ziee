@@ -81,7 +81,11 @@ impl DesktopModule for OfficeBridgeModule {
 /// MUST be called AFTER the embedded server has initialized `ziee::Repos` (i.e.
 /// from inside / after `start_server_with_routes`), NOT from `DesktopModule::init`
 /// which runs before the pool exists. Call exactly once at boot.
-pub fn register_office_bridge(config: &ziee::Config) {
+/// Config kill-switch + host probe — the two gates shared by both registration
+/// halves. Cheap + idempotent (`probe()` is a pure sync read), so it is safe to
+/// call once from the pre-server-start static half and again from the
+/// post-server-start runtime half.
+fn office_bridge_enabled(config: &ziee::Config) -> bool {
     // FIRST gate — deploy-level kill switch, ON by default (an absent
     // `office_bridge:` config section means enabled). Operators opt OUT with
     // `office_bridge: { enabled: false }`.
@@ -92,7 +96,7 @@ pub fn register_office_bridge(config: &ziee::Config) {
         .unwrap_or(true);
     if !enabled {
         tracing::info!("office_bridge: disabled in config; skipping registration");
-        return;
+        return false;
     }
 
     // SECOND gate — runtime host probe. `None` means no Office automation backend
@@ -104,27 +108,46 @@ pub fn register_office_bridge(config: &ziee::Config) {
                  skipping registration",
                 std::env::consts::OS
             );
-            return;
+            false
         }
         Some(caps) => {
-            tracing::info!(
-                "office_bridge: host probe OK (desktop={}, office_present={}); \
-                 registering built-in MCP server",
+            tracing::debug!(
+                "office_bridge: host probe OK (desktop={}, office_present={})",
                 caps.desktop,
                 caps.office_present
             );
+            true
         }
     }
+}
 
-    // Runtime seams (mirror register_sandbox_mount_provider): register the
-    // auto-attach entry (behind the chat-extension flag; NOT approval-bypassed —
-    // mutating office tools stay behind per-call approval) and the chat extension
-    // itself, so `ziee` never names office_bridge.
+/// STATIC (pool-free) registration — MUST run BEFORE `start_server_with_routes`
+/// builds the chat module, which snapshots the `ExtensionRegistry` at init.
+/// Pushing the chat extension / auto-attach entry *after* that snapshot would
+/// silently no-op the whole office chat integration (the flag would never be set,
+/// so `auto_attach_builtin_ids` would never attach the office server). Registers
+/// only the two static seams (mirror `register_sandbox_mount_provider`): the
+/// auto-attach entry (behind the chat-extension flag; NOT approval-bypassed —
+/// mutating office tools stay behind per-call approval) and the chat extension.
+pub fn register_office_bridge_static(config: &ziee::Config) {
+    if !office_bridge_enabled(config) {
+        return;
+    }
     ziee::register_auto_attach_builtin(ziee::AutoAttachEntry {
         flag: chat_extension::ATTACH_FLAG,
         server_id: office_bridge_server_id,
     });
     ziee::chat_extension::register_chat_extension(chat_extension::extension::extension_entry());
+}
+
+/// RUNTIME (pool-dependent) registration — runs AFTER the server has started and
+/// desktop migrations are applied. Upserts the `mcp_servers` row + spawns the
+/// add-in bridge listener + document watcher. The static seams are registered
+/// separately (and earlier) by [`register_office_bridge_static`].
+pub fn register_office_bridge(config: &ziee::Config) {
+    if !office_bridge_enabled(config) {
+        return;
+    }
 
     // Pin loopback regardless of the configured server host so the built-in MCP
     // URL can never be redirected to a non-loopback host.
