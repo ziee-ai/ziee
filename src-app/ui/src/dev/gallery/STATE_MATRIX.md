@@ -468,22 +468,22 @@ Required states: `empty`
 | branch | `view.sort!.dir === 'asc'` | 153 |
 | branch | `meta.sortable` | 156 |
 | branch | `props.filterable` | 230 |
-| branch | `props.columnChooser && hideable.length > 0` | 245 |
-| branch | `props.toolbarExtra` | 273 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 326 |
-| branch | `!tsv` | 328 |
-| branch | `showVirtual` | 339 |
-| branch | `hasToolbar` | 350 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 381 |
-| branch | `caption != null` | 391 |
-| branch | `resizableTable` | 392 |
-| branch | `meta.resizable` | 412 |
-| branch | `busy` | 419 |
-| empty | `rows.length === 0` | 427 |
-| branch | `meta.resizable` | 538 |
-| branch | `mode === 'none'` | 588 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 593 |
-| branch | `!selectionActive(props, col)` | 600 |
+| branch | `props.columnChooser && hideable.length > 0` | 246 |
+| branch | `props.toolbarExtra` | 274 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 327 |
+| branch | `!tsv` | 329 |
+| branch | `showVirtual` | 340 |
+| branch | `hasToolbar` | 351 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 382 |
+| branch | `caption != null` | 392 |
+| branch | `resizableTable` | 393 |
+| branch | `meta.resizable` | 413 |
+| branch | `busy` | 420 |
+| empty | `rows.length === 0` | 428 |
+| branch | `meta.resizable` | 539 |
+| branch | `mode === 'none'` | 589 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 594 |
+| branch | `!selectionActive(props, col)` | 601 |
 
 ### `components/ui/kit/tabs`
 
@@ -2345,7 +2345,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSidebarCollapsed` | 76 |
+| branch | `isSidebarCollapsed` | 79 |
 
 ### `modules/literature/chat-extension/extension`
 

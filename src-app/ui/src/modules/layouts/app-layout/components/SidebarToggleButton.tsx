@@ -1,5 +1,5 @@
 import { Tooltip, Button } from '@/components/ui'
-import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
+import { PanelLeft, PanelRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'
 
@@ -73,10 +73,13 @@ export function SidebarToggleButton() {
           aria-expanded={!isSidebarCollapsed}
           aria-controls="app-sidebar"
         >
+          {/* Left sidebar: PanelLeft depicts the visible left panel when open;
+              PanelRight when collapsed. size-5 (20px) — lucide icons don't scale
+              with the button's fontSize the way the old react-icons glyphs did. */}
           {isSidebarCollapsed ? (
-            <GoSidebarCollapse aria-hidden="true" />
+            <PanelRight className="size-5" aria-hidden="true" />
           ) : (
-            <GoSidebarExpand aria-hidden="true" />
+            <PanelLeft className="size-5" aria-hidden="true" />
           )}
         </Button>
       </Tooltip>
