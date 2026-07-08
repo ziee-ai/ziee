@@ -59,11 +59,42 @@ Audit of PLAN.md against the actual codebase (worktree off origin/main @ 7f1ef2d
   migration on disk is `132`; this feature adds `0`. ✔ (No schema change → no
   `cargo clean` / build-DB reset needed.)
 
+## Search-endpoint audit (ITEM-12/13)
+
+- **F3 find is client-side today and lazy-load breaks it.** `findMatches.ts` runs
+  over `Stores.Chat.messages` (the loaded window only); `ConversationFindBar`
+  scrolls a loaded `[data-message-id]` into view. Under lazy-load the loaded set
+  is a slice, so matches in unloaded messages become invisible — a regression the
+  server-side search (ITEM-12) fixes. ✔ Verified: `findMatches` imports nothing
+  server-side; `conversation-find.spec.ts` asserts client-only behavior (that
+  spec must be updated to the server-backed flow).
+- **A per-conversation message-search endpoint does NOT exist yet.** The only
+  message-text search is embedded inside `conversations.rs::list_conversations`
+  (across conversations, active-branch EXISTS-join). ITEM-12 is genuinely new but
+  reuses that exact join predicate scoped to one conversation's active branch —
+  no new index needed (`message_contents` text match + `branch_messages` on
+  `branch_id`; the `idx_branch_messages_branch_id` + message_contents PK cover
+  it; substring ILIKE is a scan bounded by the branch size, acceptable for an
+  interactive per-conversation search, matching the existing list-search cost
+  profile). ✔
+- **Branch scoping is a correctness + isolation requirement.** Search MUST be
+  scoped to the conversation's `active_branch_id` (like the list search comment
+  notes) so a superseded edit-branch's content isn't surfaced, and so results are
+  jump-to-able via `around=` (which is active-branch-scoped). Cross-user leakage
+  is prevented by the same `get_conversation(id, user.id)` ownership check the
+  history handler already does. ✔
+- **Result → around jump is already-built plumbing.** ITEM-13 selecting a match
+  reuses ITEM-7 `jumpToMessage` (around=) + ITEM-9 scroll/highlight; "load more
+  around" is the ITEM-9 before / ITEM-7 after infinite-scroll continuing from the
+  jumped position. No new scroll machinery. ✔
+
 ## OpenAPI regen
 
 - **Required (ITEM-5).** ITEM-2 adds a new request query type
   (`MessageHistoryQuery`) and a new response type (`PaginatedMessages`) on the
-  `Message.getHistory` operation → `just openapi-regen` must run for BOTH
+  `Message.getHistory` operation (plus ITEM-12's `Message.searchInConversation` op
+  + `MessageSearchQuery`/`MessageSearchResults`/`MessageSearchMatch` types) →
+  `just openapi-regen` must run for BOTH
   binaries; `npm run check` must pass in BOTH `ui` and `desktop/ui`
   ([[project_openapi_regen_both_binaries]]). The generated `openapi.json` /
   `api-client/types.ts` are excluded from the phase-6 coverage law and phase-3/8
@@ -84,3 +115,5 @@ Audit of PLAN.md against the actual codebase (worktree off origin/main @ 7f1ef2d
 - **ITEM-9** — verdict: CONCERN — the hardest UX-correctness surface (async-height anchor drift + OverlayScrollbars viewport access + native/mobile fallback). Mitigation (anchor-element + useLayoutEffect + short-lived ResizeObserver + `overflow-anchor:none`) is DEC-2, pending user ack. Native-mode fallback flagged above. Not blocked.
 - **ITEM-10** — verdict: CONCERN — new render state ("loading older") needs a gallery cell or `check:state-matrix` (inside `npm run check`) fails phase 8. Budgeted in the item. Not blocked.
 - **ITEM-11** — verdict: PASS — extends the existing A→B-switch `messages: new Map()` reset to the new window fields; branch cursors are correctly scoped to the active branch path.
+- **ITEM-12** — verdict: PASS — new endpoint reusing the proven active-branch text-match join from `conversations.rs`; owner-scoped via the existing conversation ownership check; no new index/migration. New types require regen (ITEM-5).
+- **ITEM-13** — verdict: CONCERN — replaces the client-only F3 find with server-backed search; `conversation-find.spec.ts` must be updated from client-only to the server-backed flow, and a debounce is needed so keystrokes don't storm the endpoint. Result→jump reuses existing plumbing (ITEM-7/9). New results-list render state needs a gallery cell (`check:state-matrix`). Not blocked.

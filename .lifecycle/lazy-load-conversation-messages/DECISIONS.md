@@ -104,15 +104,42 @@ path, so a switch always refetches the tail and clears `oldestLoadedId`/
 refetch; preserving a scroll position across a different message tree is
 meaningless.
 
-### DEC-9: Jump-to-message entry point (deep-links / citations / F3)?
+### DEC-9: Jump-to-message entry points (deep-links / citations / search)?
 **Resolution:** Implement `jumpToMessage(messageId)` in the store (around=) + a
 `#message-<id>` URL-hash handler in `ConversationPage` that centers + highlights
-the target (reusing the F3 highlight ring / `[data-message-id]`). This is the
-enabling primitive; wiring F3's client-side find to SERVER-side search over
-unloaded messages is explicitly OUT OF SCOPE (F3 keeps searching the loaded
-window for now) and noted as a follow-up alongside virtualization.
-**Basis:** user constraint — "design the endpoint for around now, not as a
-retrofit." The hash handler is the concrete, testable deep-link surface (TEST-10).
+the target (reusing the F3 highlight ring / `[data-message-id]`). This primitive
+is consumed by BOTH deep-links/citations AND in-conversation search results
+(DEC-12 / ITEM-13). Search is now IN SCOPE (see DEC-12); only virtualization
+remains deferred.
+**Basis:** user directive — the found message must be jump-to-able and the user
+must be able to "load more around" it. The hash handler + search-result selection
+are the concrete, testable surfaces (TEST-10, TEST-16).
+
+### DEC-12: In-conversation search — server-side endpoint shape + how results display?
+**Resolution:** Add `GET /conversations/{id}/messages/search?q=<term>&limit=<n>`.
+Server-side, case-insensitive substring (`ILIKE`) over `text` content blocks,
+scoped to the conversation's ACTIVE branch (reusing the exact EXISTS-join from
+`conversations.rs::list_conversations`). Response:
+```
+MessageSearchResults {
+  matches: MessageSearchMatch[],   // branch-chronological
+  total: i64,                      // full match count (for "X of Y")
+  truncated: bool,                 // true if matches capped
+}
+MessageSearchMatch { message_id, role, created_at, snippet, ordinal }
+```
+`limit` caps the returned matches (default 200, max 500) — `total` still reflects
+the full count so the "X of Y" readout is honest. The F3 find bar (ITEM-13) runs
+this on a debounced query, DISPLAYS the matches as a selectable snippet list
+under the bar, keeps the "X of Y" + Next/Prev, and on selecting/navigating a
+match: scroll-into-view if it's in the loaded window, else `jumpToMessage`
+(around=) then center + highlight. "Load more around" = the before/after
+infinite-scroll (DEC-2/ITEM-9) continuing from the jumped position.
+**Basis:** user directive + codebase — under lazy-load the client-only
+`findMatches` can only see loaded messages (a regression); server-side search over
+the active branch is the fix, and it reuses the proven active-branch match join.
+Match-level (not offset-level) results match the existing whole-message
+find/highlight model. Surfaced to the user for ack (endpoint + results display).
 
 ### DEC-10: Virtualization?
 **Resolution:** DEFERRED (not in this iteration). Lazy-load only. Documented as a

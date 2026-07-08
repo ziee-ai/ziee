@@ -2,10 +2,21 @@
 
 Lazy-load conversation messages: load the most-recent page first, fetch older
 messages on scroll-up (reverse infinite scroll), and support jump-to a possibly
--unloaded message (citations / deep-links / future server-side search). ziee
-conversations are **branching trees** — pagination walks the ACTIVE BRANCH PATH
-via keyset/cursor (never LIMIT/OFFSET). Virtualization is explicitly DEFERRED
+-unloaded message (citations / deep-links / **in-conversation search results**).
+ziee conversations are **branching trees** — pagination walks the ACTIVE BRANCH
+PATH via keyset/cursor (never LIMIT/OFFSET). Virtualization is explicitly DEFERRED
 (variable-height tool-result cards) — noted as a follow-up.
+
+**Search integration (in scope).** The existing F3 in-conversation find
+(`ConversationFindBar` + `findMatches.ts`) is CLIENT-SIDE over already-loaded
+messages only — lazy-load would silently break it (matches in unloaded messages
+become invisible). So this feature upgrades find to **server-side** search over
+the whole active branch, DISPLAYS the ordered results (with snippets), and makes
+selecting a result **jump to that message id via `around=`** (load the centered
+window, scroll-to-center, highlight); the user can then "load more around" the
+found message by continuing the normal before/after infinite-scroll from there.
+This is the concrete consumer of the `around=` cursor — designed in now, not a
+retrofit.
 
 ## Items
 
@@ -13,21 +24,24 @@ via keyset/cursor (never LIMIT/OFFSET). Virtualization is explicitly DEFERRED
 - **ITEM-2**: Add the response envelope `PaginatedMessages { messages: Vec<MessageWithContent> (chronological ASC), has_more_before: bool, has_more_after: bool }` and the query type `MessageHistoryQuery { before?, after?, around?: Uuid, limit?: i64 }` (with `#[serde(default)]`), in `core/types/message.rs`. Cursor = a `message_id` resolved server-side to its junction-row `created_at` in the active branch (message_id IS the cursor; the window endpoints `messages[0].id` / `messages[last].id` are the next before/after cursors — no opaque blob).
 - **ITEM-3**: Rework the HTTP handler `get_conversation_history` (`core/handlers/messages.rs`) to take `Query<MessageHistoryQuery>`, resolve the conversation's active branch (as today), dispatch to the windowed repo via a new facade method, and return `Json<PaginatedMessages>`. Update `get_conversation_history_docs` (new params + 200 envelope + 400 + 404). Unknown / not-in-active-branch cursor id → 404; ≥2 of before/after/around set → 400.
 - **ITEM-4**: Add the facade method `Repos.chat.core.get_message_window(...)` in `repository/core.rs` delegating to ITEM-1, mirroring the existing `get_conversation_history` facade. Limit clamp (default 30, 1..=100) + cursor-mutual-exclusion validation live in the handler/query type.
-- **ITEM-5**: Regenerate OpenAPI + TS types for BOTH binaries (`just openapi-regen`): server → `ui/`, desktop → `desktop/ui/`. New `MessageHistoryQuery` params on `Message.getHistory` + new `PaginatedMessages` response type in both `api-client/types.ts`.
+- **ITEM-5**: Regenerate OpenAPI + TS types for BOTH binaries (`just openapi-regen`): server → `ui/`, desktop → `desktop/ui/`. New `MessageHistoryQuery` params + `PaginatedMessages` on `Message.getHistory`, AND the new `Message.searchInConversation` op + `MessageSearchQuery`/`MessageSearchResults`/`MessageSearchMatch` types (ITEM-12), in both `api-client/types.ts`.
 - **ITEM-6**: `Chat.store.ts` windowed message state + loaders: add `hasMoreBefore`, `hasMoreAfter`, `loadingOlder`, `oldestLoadedId`, `newestLoadedId`; rework `loadMessages(id)` to load the TAIL page and read the envelope; add `loadOlderMessages()` (before=oldest) that PREPENDS via an ordered-Map rebuild (insertion order is the render order in `MessageList`). Change SSE `complete` / `reloadOpen` to MERGE the tail page (upsert) into the existing window instead of replacing the whole Map (so a user who scrolled up + loaded older pages keeps them; new turns still append at the bottom).
 - **ITEM-7**: `Chat.store.ts` jump-to-message: `jumpToMessage(messageId)` (around=) replaces the window with a centered window + sets flags; `loadNewerMessages()` (after=newest) for scrolling DOWN after a mid-conversation jump. Both reconcile ordered-Map + `has_more_*`.
 - **ITEM-8**: Pure scroll-anchor utilities `core/utils/scrollAnchor.utils.ts`: `captureTopAnchor(viewport, container)` → `{ anchorId, savedTop } | null` (top-most visible `[data-message-id]`), and `computeScrollRestore(viewport, container, anchor)` → the `scrollTop` delta to re-pin it. Pure/DOM-measuring but side-effect-free (returns numbers) so the math is unit-testable.
 - **ITEM-9**: `ConversationPage.tsx` reverse-infinite-scroll wiring: a TOP sentinel + `IntersectionObserver` on the DivScrollY viewport (prefetch threshold via `rootMargin`) that, guarded by `hasMoreBefore && !loadingOlder`, captures the anchor, dispatches `loadOlderMessages`, and restores scroll in `useLayoutEffect` (before paint) — reinforced by a short-lived `ResizeObserver` so late async height (images/katex/mermaid/shiki in the prepended block) doesn't shift the anchor. Set `overflow-anchor: none` on the scroll content to stop the browser's own anchoring from fighting the manual restore. Add a `#message-<id>` hash deep-link handler → `jumpToMessage` → center-scroll + highlight (reuses the F3 highlight ring).
 - **ITEM-10**: `MessageList.tsx` top affordance: a top-loading spinner row shown while `loadingOlder`, and nothing when `!hasMoreBefore` (short/loaded-to-top conversation never paginates). Add the gallery state cell for the new "loading older" render state (satisfies `check:state-matrix`).
 - **ITEM-11**: Branch correctness: `activateBranch` and the `branchChangedDuringStream` reconcile RESET the window to the new active branch's TAIL (cursors are only valid within the active branch path); confirm `loadMessages` clears `oldestLoadedId`/`has_more_*` on every full (non-prepend) load. New-conversation / A→B switch already clears `messages` — extend that reset to the new window fields.
+- **ITEM-12**: Backend in-conversation message SEARCH endpoint: `GET /conversations/{id}/messages/search?q=<term>&limit=<n>` (handler + repo fn + `_docs`). Server-side, case-insensitive substring (`ILIKE`) over `message_contents.content->>'text'` scoped to the conversation's ACTIVE branch (mirrors the active-branch EXISTS-join already in `conversations.rs::list_conversations`), returning ordered matches `MessageSearchMatch { message_id, role, created_at, snippet, ordinal }` (branch-chronological, `ordinal` = 1-based position within the full match set for an "X of Y" readout) plus `total` and `truncated` (cap the returned match set, default 200, to bound payload). This is what makes find work over UNLOADED messages under lazy-load.
+- **ITEM-13**: Upgrade the F3 find UI (`ConversationFindBar.tsx` + `Chat.store.ts`) from client-side `findMatches` to the ITEM-12 server-side search: debounced query → `Message.searchInConversation`; DISPLAY the ordered results as a snippet list under the bar (each row selectable) + keep the "X of Y" readout (Y = server `total`) with Next/Prev; navigating/selecting a match scrolls it into view when it's in the loaded window, else calls `jumpToMessage(matchId)` (ITEM-7, `around=`) and then scroll-centers + highlights (reuse `ConversationFindContext`); after a jump, the before/after infinite-scroll (ITEM-9) lets the user "load more around" the found message. `findMatches.ts` is retained only as the pure snippet/highlight helper (or removed if fully superseded) — the MATCH SET now comes from the server so unloaded matches are found.
 
 ## Files to touch
 
 Backend:
-- `src-app/server/src/modules/chat/core/repository/messages.rs` (ITEM-1 — new windowed fns; existing full-load untouched)
-- `src-app/server/src/modules/chat/core/repository/core.rs` (ITEM-4 — facade method)
-- `src-app/server/src/modules/chat/core/types/message.rs` (ITEM-2 — envelope + query type + `#[cfg(test)]` validation)
-- `src-app/server/src/modules/chat/core/handlers/messages.rs` (ITEM-3 — handler + docs)
+- `src-app/server/src/modules/chat/core/repository/messages.rs` (ITEM-1 — new windowed fns; ITEM-12 — search fn; existing full-load untouched)
+- `src-app/server/src/modules/chat/core/repository/core.rs` (ITEM-4 — window facade; ITEM-12 — search facade)
+- `src-app/server/src/modules/chat/core/types/message.rs` (ITEM-2 — envelope + query type; ITEM-12 — search query/result types; `#[cfg(test)]` validation)
+- `src-app/server/src/modules/chat/core/handlers/messages.rs` (ITEM-3 — history handler + docs; ITEM-12 — search handler + docs)
+- `src-app/server/src/modules/chat/core/routes.rs` (ITEM-12 — register the `/messages/search` route)
 - `src-app/server/openapi/openapi.json` (ITEM-5 — generated)
 - `src-app/server/src/api-client/types.ts` — N/A (server has no client); the UI/desktop clients below are the generated artifacts
 
@@ -36,11 +50,13 @@ Generated (ITEM-5, do not hand-edit):
 - `src-app/desktop/ui/openapi/openapi.json`, `src-app/desktop/ui/src/api-client/types.ts`
 
 Frontend:
-- `src-app/ui/src/modules/chat/core/stores/Chat.store.ts` (ITEM-6, ITEM-7, ITEM-11)
+- `src-app/ui/src/modules/chat/core/stores/Chat.store.ts` (ITEM-6, ITEM-7, ITEM-11, ITEM-13 — search action + jump)
 - `src-app/ui/src/modules/chat/core/utils/scrollAnchor.utils.ts` (ITEM-8 — new)
 - `src-app/ui/src/modules/chat/pages/ConversationPage.tsx` (ITEM-9, ITEM-11)
 - `src-app/ui/src/modules/chat/components/MessageList.tsx` (ITEM-10)
-- `src-app/ui/src/dev/gallery/**` — MessageList "loading older" state cell (ITEM-10)
+- `src-app/ui/src/modules/chat/components/ConversationFindBar.tsx` (ITEM-13 — server-side search + results list + jump)
+- `src-app/ui/src/modules/chat/components/findMatches.ts` (ITEM-13 — reduce to snippet/highlight helper; match set moves server-side)
+- `src-app/ui/src/dev/gallery/**` — MessageList "loading older" state cell (ITEM-10) + find-bar results-list state (ITEM-13)
 - Mirror any of the above that the desktop UI copies (desktop reuses `src-app/ui/src` for chat — verify no desktop-local fork needed).
 
 ## Patterns to follow
@@ -51,5 +67,7 @@ Frontend:
 - **Store windowing** (ITEM-6/7/11): mirror the existing `Chat.store.ts` `loadMessages` / `activateBranch` / `applyStreamFrame` idioms (Map rebuild via `new Map(...)`, `defineStore` `set`/`get`, `Stores.Chat.$.field` reads in handlers). Ordered-Map rebuild follows the same `new Map(array.map(...))` construction already used in `loadMessages`.
 - **Pure util + unit test** (ITEM-8): mirror `core/utils/branchAnchor.utils.ts` (pure, side-effect-free helpers) and `components/findMatches.test.ts` (node `--test` unit spec via `test:unit`).
 - **Reverse-infinite-scroll + observers** (ITEM-9): mirror the existing `ConversationPage.tsx` IntersectionObserver + `useLayoutEffect` scroll idiom already used for the bottom sentinel / initial-jump; thread the viewport element from `DivScrollY`'s forwarded `OverlayScrollbarsComponentRef` (`.osInstance().elements().viewport`).
-- **Find/highlight reuse** (ITEM-9 jump): reuse `ConversationFindContext` + the `[data-message-id]` attribute and `scrollIntoView({ block: 'center' })` already used by `ConversationFindBar`.
-- **Gallery state cell** (ITEM-10): mirror existing MessageList/chat gallery entries under `src/dev/gallery/`.
+- **Find/highlight reuse** (ITEM-9/ITEM-13 jump): reuse `ConversationFindContext` + the `[data-message-id]` attribute and `scrollIntoView({ block: 'center' })` already used by `ConversationFindBar`.
+- **In-conversation search endpoint** (ITEM-12): mirror the ACTIVE-BRANCH text-match EXISTS-join in `repository/conversations.rs::list_conversations` (`message_contents mc JOIN branch_messages bm2 ON ... WHERE bm2.branch_id = <active> AND mc.content_type='text' AND mc.content->>'text' ILIKE '%'||$q||'%'`), and the handler/`_docs`/Query-type shape of the sibling `get_conversation_history`.
+- **Search UI** (ITEM-13): mirror the existing `ConversationFindBar.tsx` structure (input + X-of-Y readout + Next/Prev/Close) and its `scrollIntoView`/`ConversationFindContext` highlight; the results-list rows mirror existing kit list styling used elsewhere in chat.
+- **Gallery state cell** (ITEM-10/ITEM-13): mirror existing MessageList/chat gallery entries under `src/dev/gallery/`.
