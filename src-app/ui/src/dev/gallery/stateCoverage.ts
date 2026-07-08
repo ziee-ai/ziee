@@ -124,6 +124,7 @@ export const STATE_COVERAGE = {
   "modules/chat/components/ConversationList:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/ConversationList:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/MessageList:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
+  "modules/chat/components/MessageList:empty": { skip: true, reason: "the dedicated 'seeded-message-list-empty' gallery surface renders this empty (!loading && count===0) branch directly" },
   "modules/chat/core/components/ChatRightPanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/extensions/registry:empty": { skip: true, reason: "nonvisual surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/extensions/slots:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },

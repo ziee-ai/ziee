@@ -87,18 +87,16 @@ export function lastMessageId(
 }
 
 /**
- * Zero-based index of `id` within the ordered window (render order), or -1 when
- * not loaded. Backs the virtualizer's `scrollToMessageId` (id → index →
- * `scrollToIndex`). Pure — unit-tested.
+ * Zero-based index of `id` within the ordered message array (render order = the
+ * virtualizer's item order), or -1 when not loaded. Backs the virtualizer's
+ * `scrollToMessageId` (id → index → `scrollToIndex`). Pure — unit-tested.
  */
 export function indexOfMessageId(
-  messages: Map<string, MessageWithContent>,
+  messages: readonly MessageWithContent[],
   id: string,
 ): number {
-  let i = 0
-  for (const key of messages.keys()) {
-    if (key === id) return i
-    i++
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].id === id) return i
   }
   return -1
 }

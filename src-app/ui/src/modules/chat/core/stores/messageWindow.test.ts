@@ -92,12 +92,13 @@ test('firstMessageId / lastMessageId read the window boundaries', () => {
   assert.equal(lastMessageId(empty), null)
 })
 
-// TEST-1 (virtualize): id → window index mapping behind scrollToMessageId.
+// TEST-1 (virtualize): id → array index mapping behind scrollToMessageId (the
+// array is the virtualizer's item order, as MessageList calls it).
 test('indexOfMessageId returns the window index or -1 when unloaded', () => {
-  const m = toOrderedMap([msg('a'), msg('b'), msg('c')])
-  assert.equal(indexOfMessageId(m, 'a'), 0)
-  assert.equal(indexOfMessageId(m, 'b'), 1)
-  assert.equal(indexOfMessageId(m, 'c'), 2)
-  assert.equal(indexOfMessageId(m, 'missing'), -1)
-  assert.equal(indexOfMessageId(new Map<string, MessageWithContent>(), 'a'), -1)
+  const arr = [msg('a'), msg('b'), msg('c')]
+  assert.equal(indexOfMessageId(arr, 'a'), 0)
+  assert.equal(indexOfMessageId(arr, 'b'), 1)
+  assert.equal(indexOfMessageId(arr, 'c'), 2)
+  assert.equal(indexOfMessageId(arr, 'missing'), -1)
+  assert.equal(indexOfMessageId([], 'a'), -1)
 })

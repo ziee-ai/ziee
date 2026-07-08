@@ -205,6 +205,9 @@ export default function ConversationPage() {
       // that case — don't yank the view to the bottom over it.
       if (!/^#message-/.test(window.location.hash)) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+        // The messagesEndRef jump lands on ESTIMATED row heights under
+        // virtualization; settle on the true (measured) bottom.
+        messageListRef.current?.scrollToBottom()
       }
     }
   }, [conversationId, conversation, messages])

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1838 signals total.
+// 323 surfaces carry renderable-state signals; 1844 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -879,17 +879,23 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/components/MessageList": {
     surface: "modules/chat/components/MessageList",
-    requiredStates: ["delayed"],
+    requiredStates: ["delayed","empty"],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 84 },
-      { kind: "branch", condition: "!doScroll()", line: 88 },
-      { kind: "branch", condition: "n++ >= 3", line: 95 },
-      { kind: "branch", condition: "!msg", line: 108 },
-      { kind: "branch", condition: "idx < 0", line: 116 },
-      { kind: "loading", condition: "!loading && count === 0", line: 131 },
-      { kind: "branch", condition: "loadingOlder", line: 159 },
-      { kind: "branch", condition: "!msg", line: 183 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 215 },
+      { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 145 },
+      { kind: "branch", condition: "!el", line: 154 },
+      { kind: "empty", condition: "count === 0", line: 161 },
+      { kind: "branch", condition: "virtualize", line: 171 },
+      { kind: "branch", condition: "!msg", line: 176 },
+      { kind: "branch", condition: "!c", line: 184 },
+      { kind: "branch", condition: "virtualize", line: 189 },
+      { kind: "branch", condition: "idx < 0", line: 191 },
+      { kind: "branch", condition: "!c", line: 200 },
+      { kind: "branch", condition: "newTop == null", line: 202 },
+      { kind: "loading", condition: "!loading && count === 0", line: 211 },
+      { kind: "branch", condition: "loadingOlder", line: 237 },
+      { kind: "branch", condition: "virtualize", line: 247 },
+      { kind: "branch", condition: "!msg", line: 262 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 306 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -1074,21 +1080,21 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!sentinel", line: 134 },
       { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 155 },
       { kind: "branch", condition: "!conversationId", line: 197 },
-      { kind: "branch", condition: "!sentinel", line: 242 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 246 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 249 },
-      { kind: "branch", condition: "!sentinel", line: 284 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 288 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 289 },
-      { kind: "loading", condition: "!pending", line: 304 },
-      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 307 },
-      { kind: "branch", condition: "!conversation?.id", line: 316 },
-      { kind: "branch", condition: "!m", line: 320 },
-      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 323 },
-      { kind: "loading", condition: "loading && !conversation", line: 343 },
-      { kind: "loading", condition: "!loading && !conversation", line: 352 },
-      { kind: "error", condition: "error", line: 355 },
-      { kind: "error", condition: "error", line: 412 },
+      { kind: "branch", condition: "!sentinel", line: 245 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 249 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 252 },
+      { kind: "branch", condition: "!sentinel", line: 287 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 291 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 292 },
+      { kind: "loading", condition: "!pending", line: 307 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 310 },
+      { kind: "branch", condition: "!conversation?.id", line: 319 },
+      { kind: "branch", condition: "!m", line: 323 },
+      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 326 },
+      { kind: "loading", condition: "loading && !conversation", line: 346 },
+      { kind: "loading", condition: "!loading && !conversation", line: 355 },
+      { kind: "error", condition: "error", line: 358 },
+      { kind: "error", condition: "error", line: 415 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -3862,7 +3868,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 320 keys.
+ * 321 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3919,6 +3925,7 @@ export type RequiredState =
   | "modules/chat/components/ConversationList:delayed"
   | "modules/chat/components/ConversationList:error"
   | "modules/chat/components/MessageList:delayed"
+  | "modules/chat/components/MessageList:empty"
   | "modules/chat/core/components/ChatRightPanel:empty"
   | "modules/chat/core/extensions/registry:empty"
   | "modules/chat/core/extensions/slots:empty"
@@ -4242,6 +4249,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/components/ConversationList:delayed",
   "modules/chat/components/ConversationList:error",
   "modules/chat/components/MessageList:delayed",
+  "modules/chat/components/MessageList:empty",
   "modules/chat/core/components/ChatRightPanel:empty",
   "modules/chat/core/extensions/registry:empty",
   "modules/chat/core/extensions/slots:empty",
