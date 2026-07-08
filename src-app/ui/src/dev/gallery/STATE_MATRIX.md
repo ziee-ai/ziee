@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **325** surfaces carry at least one renderable-state signal.
-- **1889** signals total: 1494 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **323** surfaces carry at least one renderable-state signal.
+- **1820** signals total: 1431 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,9 +16,9 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 86 |
-| `empty` | 90 |
-| `error` | 75 |
+| `delayed` | 85 |
+| `empty` | 88 |
+| `error` | 74 |
 | `open` | 72 |
 | `panel-open` | 2 |
 
@@ -66,7 +66,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:36 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:89 |
+| `sidebarContent` | `modules/chat/module`:84 |
 
 ## Per-surface required states
 
@@ -911,7 +911,7 @@ Required states: `empty`
 | branch | `attachmentBlocks.length > 0` | 136 |
 | branch | `bubbleBlocks.length > 0` | 165 |
 | branch | `offerCollapse` | 191 |
-| branch | `isUser` | 216 |
+| branch | `isUser` | 215 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -919,10 +919,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 79 |
-| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 90 |
-| branch | `overflowing` | 125 |
-| branch | `collapsed` | 130 |
+| branch | `!el` | 40 |
+| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 51 |
+| branch | `overflowing` | 86 |
+| branch | `collapsed` | 91 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -945,20 +945,13 @@ Required states: `open`
 
 ### `modules/chat/components/ConversationFindBar`
 
-Required states: `delayed`, `empty`
+Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!match` | 67 |
-| branch | `!ok` | 72 |
-| branch | `!open` | 85 |
-| branch | `!conversationId \|\| term === ''` | 90 |
-| branch | `cancelled \|\| gen !== searchGenRef.current` | 108 |
-| branch | `!open` | 143 |
-| branch | `!open` | 178 |
-| empty | `total === 0` | 181 |
-| branch | `matches.length > 0` | 285 |
-| loading | `loading` | 325 |
+| branch | `!open` | 55 |
+| branch | `!open` | 72 |
+| empty | `total === 0` | 76 |
 
 ### `modules/chat/components/ConversationList`
 
@@ -1005,32 +998,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/components/MessageList`
 
-Required states: `delayed`, `empty`
+Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 116 |
-| branch | `w <= 0` | 118 |
-| branch | `!el` | 129 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
-| branch | `!import.meta.env.DEV` | 295 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
-| branch | `!el` | 378 |
-| empty | `count === 0` | 385 |
-| branch | `!el` | 403 |
-| branch | `!item` | 406 |
-| branch | `!msg` | 408 |
-| branch | `!c` | 414 |
-| branch | `virtualize` | 419 |
-| branch | `idx < 0` | 421 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
-| branch | `!c` | 439 |
-| branch | `newTop == null` | 441 |
-| loading | `!loading && count === 0` | 450 |
-| branch | `loadingOlder` | 476 |
-| branch | `virtualize` | 486 |
-| branch | `!msg` | 501 |
-| loading | `(loading \|\| isStreaming)` | 545 |
+| loading | `!loading && messagesArray.length === 0` | 19 |
+| loading | `(loading \|\| isStreaming)` | 52 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1139,12 +1112,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 52 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 69 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 85 |
-| branch | `scopedHref?.startsWith('#')` | 106 |
-| empty | `verdict === 'empty'` | 161 |
-| branch | `verdict === 'allowed'` | 162 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 50 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 67 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 83 |
+| branch | `scopedHref?.startsWith('#')` | 104 |
+| empty | `typeof src !== 'string' \|\| src.length === 0` | 149 |
+| branch | `src.startsWith('/')` | 150 |
+| branch | `u.origin === window.location.origin` | 154 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1231,30 +1205,19 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 143 |
-| branch | `!el` | 163 |
-| branch | `!nativeScroll` | 178 |
-| branch | `y < 0 \|\| y > maxY` | 187 |
-| branch | `maxY - y <= 8` | 191 |
-| branch | `Math.abs(dy) < 6` | 197 |
-| branch | `!Stores.Chat.$.conversation` | 217 |
-| branch | `!conversationId` | 259 |
-| branch | `!sentinel` | 307 |
-| branch | `!entries[0]?.isIntersecting` | 311 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
-| branch | `!sentinel` | 349 |
-| branch | `!entries[0]?.isIntersecting` | 353 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
-| loading | `!pending` | 369 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
-| branch | `!conversation?.id` | 381 |
-| branch | `!m` | 385 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
-| loading | `loading && !conversation` | 408 |
-| loading | `!loading && !conversation` | 417 |
-| error | `error` | 420 |
-| error | `error` | 477 |
-| branch | `nativeScroll && !composerHidden` | 576 |
+| branch | `!sentinel` | 82 |
+| branch | `!el` | 102 |
+| branch | `!nativeScroll` | 117 |
+| branch | `y < 0 \|\| y > maxY` | 126 |
+| branch | `maxY - y <= 8` | 130 |
+| branch | `Math.abs(dy) < 6` | 136 |
+| branch | `!Stores.Chat.$.conversation` | 156 |
+| branch | `!conversationId` | 185 |
+| loading | `loading && !conversation` | 211 |
+| loading | `!loading && !conversation` | 220 |
+| error | `error` | 223 |
+| error | `error` | 280 |
+| branch | `nativeScroll && !composerHidden` | 344 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -1329,8 +1292,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `groups.length === 0` | 25 |
-| branch | `i > 0` | 34 |
+| empty | `groups.length === 0` | 21 |
+| branch | `i > 0` | 30 |
 
 ### `modules/code-sandbox/components/DownloadedRootfsCard`
 
@@ -1347,16 +1310,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.isDefault` | 81 |
-| branch | `anyDraining` | 86 |
-| branch | `variant === 'available'` | 94 |
-| branch | `variant === 'downloaded' && !group.isDefault` | 109 |
-| branch | `showProgress` | 130 |
-| branch | `progressMessage` | 133 |
-| branch | `canManage` | 188 |
-| branch | `f.artifact` | 207 |
-| branch | `f.live > 0` | 224 |
-| branch | `f.artifact` | 234 |
+| branch | `group.isDefault` | 77 |
+| branch | `anyDraining` | 82 |
+| branch | `variant === 'available'` | 90 |
+| branch | `variant === 'downloaded' && !group.isDefault` | 100 |
+| branch | `showProgress` | 121 |
+| branch | `progressMessage` | 124 |
+| branch | `canManage` | 179 |
+| branch | `f.artifact` | 198 |
+| branch | `f.live > 0` | 215 |
+| branch | `f.artifact` | 225 |
 
 ### `modules/code-sandbox/components/SandboxResourceLimitsSection`
 
@@ -1375,15 +1338,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 123 |
-| branch | `pinnedVersion` | 239 |
-| branch | `downloadedFlavors.length > 0` | 250 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 268 |
-| branch | `isDegraded` | 292 |
-| branch | `sseError` | 307 |
-| loading | `loading && groups.length === 0` | 316 |
-| error | `error && groups.length === 0` | 318 |
-| error | `error` | 328 |
+| branch | `!canRead` | 97 |
+| branch | `pinnedVersion` | 213 |
+| branch | `downloadedFlavors.length > 0` | 224 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 242 |
+| branch | `sseError` | 265 |
+| loading | `loading && groups.length === 0` | 274 |
+| error | `error && groups.length === 0` | 276 |
+| error | `error` | 286 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -1393,8 +1355,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!oldV` | 79 |
 | branch | `!name.startsWith(ASSET_PREFIX)` | 119 |
-| branch | `disabledReason` | 422 |
-| branch | `canManage` | 425 |
+| branch | `canManage` | 417 |
 
 ### `modules/file-rag/components/sections/ChunkingSection`
 
@@ -1524,22 +1485,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `view.seen` | 106 |
-| branch | `typeof IntersectionObserver === 'undefined'` | 107 |
-| branch | `!el` | 112 |
-| branch | `!file` | 155 |
-| branch | `!start` | 192 |
-| branch | `dragStart.current == null` | 196 |
-| branch | `next == null` | 220 |
-| branch | `label` | 256 |
-| branch | `displaySize !== undefined` | 257 |
-| branch | `HeaderActions` | 261 |
-| branch | `file` | 262 |
-| branch | `file` | 263 |
-| branch | `hasBody` | 275 |
-| branch | `collapsed` | 285 |
-| branch | `showBodyRegion` | 297 |
-| branch | `view.seen && Body` | 299 |
+| branch | `inView` | 65 |
+| branch | `typeof IntersectionObserver === 'undefined'` | 66 |
+| branch | `!el` | 71 |
+| branch | `!file` | 105 |
+| branch | `label` | 154 |
+| branch | `displaySize !== undefined` | 155 |
+| branch | `HeaderActions` | 161 |
+| branch | `file` | 166 |
+| branch | `file` | 169 |
+| branch | `canInline && Body` | 185 |
+| branch | `collapsed` | 191 |
+| branch | `showBody && Body` | 209 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
@@ -1598,14 +1555,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 75 |
-| branch | `showFullPage` | 78 |
-| branch | `!hideHeader` | 122 |
-| branch | `tooLarge` | 136 |
-| branch | `isViewingOld` | 152 |
-| branch | `oldVersionText === null` | 154 |
-| branch | `tooLarge` | 169 |
-| branch | `Body` | 193 |
+| branch | `HeaderActions` | 68 |
+| branch | `showFullPage` | 71 |
+| branch | `!hideHeader` | 115 |
+| branch | `tooLarge` | 129 |
+| branch | `isViewingOld` | 145 |
+| branch | `oldVersionText === null` | 147 |
+| branch | `tooLarge` | 162 |
+| branch | `Body` | 186 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1717,10 +1674,10 @@ Required states: `error`
 | branch | `href?.startsWith('#')` | 73 |
 | error | `!(err instanceof Error)` | 99 |
 | error | `this.state.error` | 144 |
-| branch | `content === '__error__'` | 210 |
-| branch | `content === null` | 217 |
-| branch | `file` | 224 |
-| branch | `file && mode === 'raw'` | 226 |
+| branch | `content === '__error__'` | 202 |
+| branch | `content === null` | 209 |
+| branch | `file` | 216 |
+| branch | `file && mode === 'raw'` | 218 |
 
 ### `modules/file/viewers/markdown/header`
 
@@ -1762,20 +1719,14 @@ Required states: `delayed`, `error`
 
 ### `modules/file/viewers/shared/RawCodeView`
 
-Required states: `empty`
+Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!filename` | 52 |
-| branch | `!ready` | 208 |
-| branch | `index < 0 \|\| index >= chunks.length` | 209 |
-| branch | `requestedRef.current.has(index)` | 210 |
-| branch | `genRef.current !== gen` | 222 |
-| branch | `cancelled` | 254 |
-| empty | `!readyRef.current \|\| chunks.length === 0` | 296 |
-| branch | `cancelled` | 301 |
-| branch | `!root` | 303 |
-| branch | `truncated` | 342 |
+| branch | `!filename` | 47 |
+| branch | `cancelled` | 153 |
+| branch | `cancelled` | 159 |
+| branch | `truncated` | 184 |
 
 ### `modules/file/viewers/shared/chrome`
 
@@ -1810,8 +1761,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 118 |
-| branch | `truncated` | 161 |
+| branch | `idx < 0` | 154 |
+| branch | `!fileId` | 169 |
+| branch | `truncated` | 201 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1827,14 +1779,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 124 |
-| branch | `sheet.truncated` | 164 |
-| branch | `!fileBinaryContent` | 225 |
-| branch | `!file` | 276 |
-| error | `loadError` | 278 |
-| loading | `!fileBinaryContent \|\| loading` | 287 |
-| empty | `sheets.length === 0` | 291 |
-| branch | `sheets.length === 1` | 295 |
+| branch | `idx < 0` | 128 |
+| branch | `sheet.truncated` | 168 |
+| branch | `!fileBinaryContent` | 229 |
+| branch | `!file` | 279 |
+| error | `loadError` | 281 |
+| loading | `!fileBinaryContent \|\| loading` | 290 |
+| empty | `sheets.length === 0` | 294 |
+| branch | `sheets.length === 1` | 298 |
 
 ### `modules/file/viewers/tabular/body`
 
@@ -1852,7 +1804,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 8 |
+| branch | `!view` | 21 |
+| branch | `!('file' in props)` | 59 |
 
 ### `modules/file/viewers/text/body`
 
@@ -2829,47 +2782,23 @@ Required states: `empty`, `error`
 | branch | `index < repositories.length - 1` | 329 |
 | branch | `totalRepositories > 0` | 338 |
 
-### `modules/mcp/chat-extension/components/AskUserWizardContent`
-
-Required states: `error`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `option.recommended` | 88 |
-| branch | `option.description` | 94 |
-| branch | `option.preview` | 99 |
-| branch | `multi` | 152 |
-| branch | `showOther` | 203 |
-| branch | `multi` | 213 |
-| branch | `multi` | 234 |
-| branch | `otherOn` | 250 |
-| error | `fieldState.error?.message` | 260 |
-| branch | `!mounted.current` | 331 |
-| branch | `otherErr` | 342 |
-| branch | `isSubmitting` | 355 |
-| branch | `isSubmitting` | 369 |
-| branch | `!zodOk \|\| firstBad >= 0` | 386 |
-| branch | `step > 0` | 417 |
-| branch | `isLast` | 429 |
-| branch | `total > 1` | 460 |
-| branch | `current && isChoice && currentSchema.title` | 484 |
-| branch | `current && isChoice && currentSchema.description` | 489 |
-| branch | `current` | 494 |
-| branch | `isChoice` | 495 |
-
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 69 |
-| branch | `isMultiSelect` | 71 |
-| branch | `status === 'accepted'` | 208 |
-| branch | `items.length > 0` | 237 |
-| branch | `status === 'declined'` | 251 |
-| branch | `status === 'cancelled'` | 271 |
-| branch | `isRichAskUser` | 302 |
+| branch | `isSelectField` | 215 |
+| branch | `isMultiSelect` | 217 |
+| branch | `fieldSchema.type === 'boolean'` | 255 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
+| branch | `fieldSchema.format === 'password'` | 336 |
+| branch | `status === 'accepted'` | 464 |
+| branch | `items.length > 0` | 493 |
+| branch | `status === 'declined'` | 507 |
+| branch | `status === 'cancelled'` | 527 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -2904,18 +2833,6 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `mcpServerParenLabel(toolCall.server)` | 170 |
 | branch | `toolCall.input !== undefined` | 183 |
 | branch | `!isControlWrite` | 205 |
-
-### `modules/mcp/chat-extension/components/elicitationFields`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `fieldSchema.type === 'boolean'` | 27 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 41 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 66 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 86 |
-| branch | `fieldSchema.format === 'password'` | 108 |
 
 ### `modules/mcp/chat-extension/extension`
 

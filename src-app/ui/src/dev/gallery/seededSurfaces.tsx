@@ -1058,10 +1058,18 @@ const integratorSeeded: SeededSurfaceEntry[] = [
   {
     slug: 'seeded-delimited-viewer',
     title: 'Tabular viewer — CSV (interactive)',
-    note: 'real DelimitedTable with sort/filter/export/copy/jump/expand',
+    note: 'real DelimitedTable with sort/filter/jump/expand',
     path: '/',
     initialPath: '/',
     component: lazyNamed(() => import('./TableDemos'), 'DelimitedViewerDemo'),
+  },
+  {
+    slug: 'seeded-delimited-viewer-shell',
+    title: 'Tabular viewer — CSV with header actions',
+    note: 'DelimitedHeader (view-aware Export / Copy-selection) over the real DelimitedTable',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(() => import('./TableDemos'), 'DelimitedViewerWithHeaderDemo'),
   },
   {
     slug: 'seeded-xlsx-viewer',

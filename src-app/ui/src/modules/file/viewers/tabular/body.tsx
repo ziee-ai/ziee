@@ -25,7 +25,7 @@ function delimitedBody(delimiter: string) {
       return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
     }
     if (file && mode === 'raw') return <RawCodeView text={content} />
-    return <DelimitedTable text={content} delimiter={delimiter} fileName={file?.filename} />
+    return <DelimitedTable text={content} delimiter={delimiter} fileName={file?.filename} fileId={file?.id} />
   }
 }
 

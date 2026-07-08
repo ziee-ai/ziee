@@ -4,6 +4,7 @@ import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { type ImageViewState, clampScale, zoomStep } from '../viewers/image/zoom'
+import type { TabularViewState } from '../viewers/tabular/tableView'
 
 // Enable Map + Set support in Immer (the store uses Map/Set extensively
 // for caches and upload tracking).
@@ -111,6 +112,11 @@ interface FileExtensionStore {
   fileFindOpen: Map<string, boolean>
   /** Whether word-wrap is on for a file's raw/code view. Default = false. */
   fileWordWrap: Map<string, boolean>
+  /** The tabular viewer's current view snapshot (filtered/sorted rows, visible
+   *  columns, delimiter, selection-as-TSV), published by the body so the
+   *  file-viewer header's Export / Copy-selection can act on the current view.
+   *  Absent = the body hasn't published (header actions disabled). */
+  fileTabularView: Map<string, TabularViewState>
 
   /**
    * Returns cached text content for the file. Triggers load on first call.
@@ -151,6 +157,9 @@ interface FileExtensionStore {
   setFileFindOpen: (fileId: string, open: boolean) => void
   /** Turns word-wrap on/off for a file's raw/code view. */
   setFileWordWrap: (fileId: string, on: boolean) => void
+  /** Publishes the tabular body's current view snapshot for the header's
+   *  Export / Copy-selection actions. */
+  setFileTabularView: (fileId: string, view: TabularViewState) => void
 
   /**
    * Returns the cached file entity for a message file, or the fallback if not yet loaded.
@@ -279,6 +288,7 @@ export const File = defineStore('File', {
     imageViewStates: new Map(),
     fileFindOpen: new Map(),
     fileWordWrap: new Map(),
+    fileTabularView: new Map(),
   } as unknown as Pick<
     FileExtensionStore,
     | 'uploadingFiles'
@@ -303,6 +313,7 @@ export const File = defineStore('File', {
     | 'imageViewStates'
     | 'fileFindOpen'
     | 'fileWordWrap'
+    | 'fileTabularView'
   >,
   actions: (set, getRaw) => {
     const get = getRaw as () => FileExtensionStore
@@ -716,6 +727,14 @@ export const File = defineStore('File', {
       })
     },
 
+    setFileTabularView: (fileId: string, view: TabularViewState) => {
+      set((state) => {
+        const next = new Map(state.fileTabularView)
+        next.set(fileId, view)
+        state.fileTabularView = next
+      })
+    },
+
     // Backup current files (before clearing)
     setBackupFiles: () => {
       const { selectedFiles, uploadingFiles } = get()
@@ -1046,6 +1065,9 @@ export const File = defineStore('File', {
             const ww = new Map(s.fileWordWrap)
             ww.delete(fileId)
             s.fileWordWrap = ww
+            const tv = new Map(s.fileTabularView)
+            tv.delete(fileId)
+            s.fileTabularView = tv
           })
           // Refresh the cached HEAD entity (version/metadata) so open panels
           // re-render against the new head. Async action → outside set().
@@ -1079,6 +1101,7 @@ export const File = defineStore('File', {
             s.imageViewStates = new Map()
             s.fileFindOpen = new Map()
             s.fileWordWrap = new Map()
+            s.fileTabularView = new Map()
           })
         }
         eventBus.on('sync:file', onFileSync, GROUP)

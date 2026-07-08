@@ -97,3 +97,48 @@ export function exportFilename(original: string | undefined, ext: string): strin
   const stem = (original ?? 'export').replace(/\.[^./\\]+$/, '')
   return `${stem || 'export'}-view.${ext}`
 }
+
+/** The tabular viewer's current view snapshot. The body publishes it into
+ *  `FileStore.fileTabularView` (keyed by file id) so the file-viewer header's
+ *  Export / Copy-selection actions can act on the CURRENT view — matching the
+ *  filtered/sorted rows, visible-column subset, and cell selection the user
+ *  sees. Absent entry ⇒ the body hasn't published yet (header actions disabled). */
+export interface TabularViewState {
+  /** Rows in the current (filtered/sorted) view order. */
+  rows: TabularRecord[]
+  /** Visible columns (key + title) in display order (honours the chooser). */
+  columns: ExportColumn[]
+  /** Active delimiter (',' for CSV, '\t' for TSV). */
+  delimiter: string
+  /** Original file name, for the `-view` export filename. */
+  fileName?: string
+  /** The current cell/row selection serialised as TSV ('' when none). */
+  selectionTsv: string
+}
+
+/** Export the current view as a delimited file — only the filtered/sorted rows,
+ *  honouring the visible-column subset. Formerly triggered by the body toolbar;
+ *  now driven from the file-viewer header (chrome). */
+export function exportTabularView(view: TabularViewState): void {
+  const ext = view.delimiter === '\t' ? 'tsv' : 'csv'
+  const text = rowsToDelimited(view.rows, view.columns, view.delimiter)
+  downloadDelimited(text, exportFilename(view.fileName, ext), view.delimiter)
+}
+
+/** The text a Copy-selection writes: the current selection as TSV, or — when
+ *  nothing is selected — the whole view as TSV (formula-neutralized via
+ *  rowsToDelimited). Pure (the clipboard write lives in copyTabularSelection). */
+export function tabularClipboardText(view: TabularViewState): string {
+  return view.selectionTsv || rowsToDelimited(view.rows, view.columns, '\t')
+}
+
+/** Copy the current selection (or the whole view as a fallback) to the clipboard
+ *  as TSV. Returns whether the write succeeded so the caller can toast. */
+export async function copyTabularSelection(view: TabularViewState): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(tabularClipboardText(view))
+    return true
+  } catch {
+    return false
+  }
+}

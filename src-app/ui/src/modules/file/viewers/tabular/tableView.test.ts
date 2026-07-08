@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import {
   type ExportColumn,
   type TabularRecord,
+  type TabularViewState,
   exportFilename,
   rowsToAoa,
   rowsToDelimited,
+  tabularClipboardText,
 } from './tableView.ts'
 
 // Data columns as the viewer builds them (colKey → header title); the `#` gutter
@@ -73,4 +75,18 @@ test('exportFilename swaps the extension and appends -view', () => {
   assert.equal(exportFilename('data.csv', 'csv'), 'data-view.csv')
   assert.equal(exportFilename('sheet.xlsx', 'xlsx'), 'sheet-view.xlsx')
   assert.equal(exportFilename(undefined, 'csv'), 'export-view.csv')
+})
+
+// TEST-25 (copy-selection) — the pure copy-text choice behind the header's
+// Copy-selection action: the live selection when present, else the whole view.
+test('tabularClipboardText prefers the selection, else falls back to the whole view (TSV)', () => {
+  const base: TabularViewState = { rows, columns, delimiter: ',', fileName: 'data.csv', selectionTsv: '' }
+  // A selection (already formula-neutralized TSV by the kit) is used verbatim.
+  assert.equal(tabularClipboardText({ ...base, selectionTsv: 'Banana' }), 'Banana')
+  // No selection → the whole view serialised as TSV (header + rows), regardless
+  // of the view's own delimiter (copy is always TSV).
+  assert.equal(
+    tabularClipboardText(base),
+    'Name\tQty\r\nBanana\t10\r\napple, green\t2',
+  )
 })
