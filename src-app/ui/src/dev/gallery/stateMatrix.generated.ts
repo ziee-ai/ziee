@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 323 surfaces carry renderable-state signals; 1853 signals total.
+// 323 surfaces carry renderable-state signals; 1856 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1574,12 +1574,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["empty"],
     signals: [
       { kind: "branch", condition: "!filename", line: 52 },
-      { kind: "branch", condition: "!ready", line: 164 },
-      { kind: "branch", condition: "index < 0 || index >= chunks.length", line: 165 },
-      { kind: "branch", condition: "requestedRef.current.has(index)", line: 166 },
-      { kind: "branch", condition: "cancelled", line: 205 },
-      { kind: "empty", condition: "!root || chunks.length === 0", line: 241 },
-      { kind: "branch", condition: "truncated", line: 265 },
+      { kind: "branch", condition: "!ready", line: 208 },
+      { kind: "branch", condition: "index < 0 || index >= chunks.length", line: 209 },
+      { kind: "branch", condition: "requestedRef.current.has(index)", line: 210 },
+      { kind: "branch", condition: "genRef.current !== gen", line: 222 },
+      { kind: "branch", condition: "cancelled", line: 254 },
+      { kind: "empty", condition: "!readyRef.current || chunks.length === 0", line: 296 },
+      { kind: "branch", condition: "cancelled", line: 301 },
+      { kind: "branch", condition: "!root", line: 303 },
+      { kind: "branch", condition: "truncated", line: 342 },
     ],
   },
   "modules/file/viewers/shared/chrome": {
@@ -1629,11 +1632,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "idx < 0", line: 124 },
       { kind: "branch", condition: "sheet.truncated", line: 164 },
       { kind: "branch", condition: "!fileBinaryContent", line: 225 },
-      { kind: "branch", condition: "!file", line: 275 },
-      { kind: "error", condition: "loadError", line: 277 },
-      { kind: "loading", condition: "!fileBinaryContent || loading", line: 286 },
-      { kind: "empty", condition: "sheets.length === 0", line: 290 },
-      { kind: "branch", condition: "sheets.length === 1", line: 294 },
+      { kind: "branch", condition: "!file", line: 276 },
+      { kind: "error", condition: "loadError", line: 278 },
+      { kind: "loading", condition: "!fileBinaryContent || loading", line: 287 },
+      { kind: "empty", condition: "sheets.length === 0", line: 291 },
+      { kind: "branch", condition: "sheets.length === 1", line: 295 },
     ],
   },
   "modules/file/viewers/tabular/body": {

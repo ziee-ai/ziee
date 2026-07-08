@@ -8,7 +8,7 @@
 ## Summary
 
 - **323** surfaces carry at least one renderable-state signal.
-- **1853** signals total: 1459 branch, 112 empty, 95 error, 99 loading, 86 overlay, 2 panel.
+- **1856** signals total: 1462 branch, 112 empty, 95 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1756,12 +1756,15 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `!filename` | 52 |
-| branch | `!ready` | 164 |
-| branch | `index < 0 \|\| index >= chunks.length` | 165 |
-| branch | `requestedRef.current.has(index)` | 166 |
-| branch | `cancelled` | 205 |
-| empty | `!root \|\| chunks.length === 0` | 241 |
-| branch | `truncated` | 265 |
+| branch | `!ready` | 208 |
+| branch | `index < 0 \|\| index >= chunks.length` | 209 |
+| branch | `requestedRef.current.has(index)` | 210 |
+| branch | `genRef.current !== gen` | 222 |
+| branch | `cancelled` | 254 |
+| empty | `!readyRef.current \|\| chunks.length === 0` | 296 |
+| branch | `cancelled` | 301 |
+| branch | `!root` | 303 |
+| branch | `truncated` | 342 |
 
 ### `modules/file/viewers/shared/chrome`
 
@@ -1816,11 +1819,11 @@ Required states: `delayed`, `empty`, `error`
 | branch | `idx < 0` | 124 |
 | branch | `sheet.truncated` | 164 |
 | branch | `!fileBinaryContent` | 225 |
-| branch | `!file` | 275 |
-| error | `loadError` | 277 |
-| loading | `!fileBinaryContent \|\| loading` | 286 |
-| empty | `sheets.length === 0` | 290 |
-| branch | `sheets.length === 1` | 294 |
+| branch | `!file` | 276 |
+| error | `loadError` | 278 |
+| loading | `!fileBinaryContent \|\| loading` | 287 |
+| empty | `sheets.length === 0` | 291 |
+| branch | `sheets.length === 1` | 295 |
 
 ### `modules/file/viewers/tabular/body`
 
