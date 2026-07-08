@@ -67,6 +67,24 @@ export function indexRestoreOffset(
   return Math.max(0, offsetForIndex - viewportOffset)
 }
 
+/**
+ * Pure (message-scroll-perf ITEM-6, DEC-6): whether an EXPLICIT anchor restore
+ * is still needed after a prepend, given the scroller's current offset and the
+ * target restore offset. `@tanstack/react-virtual` already adjusts scroll for
+ * above-viewport rows whose size changes (the prepended rows settling from
+ * estimate→measured), so once the anchor is within `tolerance` px of its target
+ * an extra `scrollToOffset` is a redundant no-op that could itself nudge the
+ * view — skip it. This makes the manual restore idempotent on top of the
+ * virtualizer's own correction (no double-adjust jump).
+ */
+export function anchorRestoreNeeded(
+  currentOffset: number,
+  targetOffset: number,
+  tolerance = 2,
+): boolean {
+  return Math.abs(currentOffset - targetOffset) > tolerance
+}
+
 // ── DOM readers (thin; the pure math above is what tests exercise) ───────────
 
 /** Read every `[data-message-id]` box under `container`, in document order. */

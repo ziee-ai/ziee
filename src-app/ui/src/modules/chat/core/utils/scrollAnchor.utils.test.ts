@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  anchorRestoreNeeded,
   indexRestoreOffset,
   pickTopAnchor,
   restoreDelta,
@@ -68,4 +69,32 @@ test('indexRestoreOffset re-pins the anchor index at its captured offset', () =>
   assert.equal(indexRestoreOffset(900, -30), 930)
   // Clamp at the top: never scroll above 0.
   assert.equal(indexRestoreOffset(50, 200), 0)
+})
+
+// TEST-5 (message-scroll-perf ITEM-6): idempotency guard so the explicit
+// prepend anchor-restore doesn't double-adjust on top of the virtualizer's own
+// above-viewport size-change correction.
+test('anchorRestoreNeeded skips a restore already pinned within tolerance', () => {
+  // Virtualizer already put the anchor at (near) the target → no explicit scroll.
+  assert.equal(anchorRestoreNeeded(780, 780), false)
+  assert.equal(anchorRestoreNeeded(781, 780), false) // within default 2px
+  assert.equal(anchorRestoreNeeded(778, 780), false)
+})
+
+test('anchorRestoreNeeded restores when the offset is still off target', () => {
+  assert.equal(anchorRestoreNeeded(600, 780), true)
+  assert.equal(anchorRestoreNeeded(783, 780), true) // beyond 2px
+})
+
+test('anchorRestoreNeeded is idempotent: after a restore to target it is a no-op', () => {
+  const target = indexRestoreOffset(900, 120) // 780
+  // First application: off-target → needs restore.
+  assert.equal(anchorRestoreNeeded(500, target), true)
+  // After scrolling to target, a second pass is a no-op (no double-count).
+  assert.equal(anchorRestoreNeeded(target, target), false)
+})
+
+test('anchorRestoreNeeded honors a custom tolerance', () => {
+  assert.equal(anchorRestoreNeeded(790, 780, 5), true)
+  assert.equal(anchorRestoreNeeded(783, 780, 5), false)
 })

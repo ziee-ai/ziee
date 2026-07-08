@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1874** signals total: 1480 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1877** signals total: 1483 branch, 111 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1009,22 +1009,26 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 150 |
-| branch | `!el` | 159 |
-| empty | `count === 0` | 166 |
-| branch | `!el` | 184 |
-| branch | `!item` | 187 |
-| branch | `!msg` | 189 |
-| branch | `!c` | 195 |
-| branch | `virtualize` | 200 |
-| branch | `idx < 0` | 202 |
-| branch | `!c` | 211 |
-| branch | `newTop == null` | 213 |
-| loading | `!loading && count === 0` | 222 |
-| branch | `loadingOlder` | 248 |
-| branch | `virtualize` | 258 |
-| branch | `!msg` | 273 |
-| loading | `(loading \|\| isStreaming)` | 317 |
+| branch | `!vw \|\| vw <= 0` | 115 |
+| branch | `w <= 0` | 117 |
+| branch | `!el` | 128 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 287 |
+| branch | `!el` | 296 |
+| empty | `count === 0` | 303 |
+| branch | `!el` | 321 |
+| branch | `!item` | 324 |
+| branch | `!msg` | 326 |
+| branch | `!c` | 332 |
+| branch | `virtualize` | 337 |
+| branch | `idx < 0` | 339 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 351 |
+| branch | `!c` | 357 |
+| branch | `newTop == null` | 359 |
+| loading | `!loading && count === 0` | 368 |
+| branch | `loadingOlder` | 394 |
+| branch | `virtualize` | 404 |
+| branch | `!msg` | 419 |
+| loading | `(loading \|\| isStreaming)` | 463 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1133,13 +1137,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 50 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 67 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 83 |
-| branch | `scopedHref?.startsWith('#')` | 104 |
-| empty | `typeof src !== 'string' \|\| src.length === 0` | 149 |
-| branch | `src.startsWith('/')` | 150 |
-| branch | `u.origin === window.location.origin` | 154 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 52 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 69 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 85 |
+| branch | `scopedHref?.startsWith('#')` | 106 |
+| empty | `verdict === 'empty'` | 161 |
+| branch | `verdict === 'allowed'` | 162 |
 
 ### `modules/chat/extensions/export/extension`
 
