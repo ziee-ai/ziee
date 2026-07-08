@@ -1001,21 +1001,21 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 145 |
-| branch | `!el` | 154 |
-| empty | `count === 0` | 161 |
-| branch | `virtualize` | 171 |
-| branch | `!msg` | 176 |
-| branch | `!c` | 184 |
-| branch | `virtualize` | 189 |
-| branch | `idx < 0` | 191 |
-| branch | `!c` | 200 |
-| branch | `newTop == null` | 202 |
-| loading | `!loading && count === 0` | 211 |
-| branch | `loadingOlder` | 237 |
-| branch | `virtualize` | 247 |
-| branch | `!msg` | 262 |
-| loading | `(loading \|\| isStreaming)` | 306 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 150 |
+| branch | `!el` | 159 |
+| empty | `count === 0` | 166 |
+| branch | `virtualize` | 176 |
+| branch | `!msg` | 181 |
+| branch | `!c` | 189 |
+| branch | `virtualize` | 194 |
+| branch | `idx < 0` | 196 |
+| branch | `!c` | 205 |
+| branch | `newTop == null` | 207 |
+| loading | `!loading && count === 0` | 216 |
+| branch | `loadingOlder` | 242 |
+| branch | `virtualize` | 252 |
+| branch | `!msg` | 267 |
+| loading | `(loading \|\| isStreaming)` | 311 |
 
 ### `modules/chat/components/ModelSelector`
 

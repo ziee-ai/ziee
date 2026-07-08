@@ -44,14 +44,19 @@ export interface MessageListHandle {
 }
 
 interface MessageListProps {
-  /** The OverlayScrollbars viewport (from ConversationPage), or null on the
-   *  mobile native-scroll path / before the viewport is ready. When null the
-   *  list renders NON-virtualized (the lazy-load window bounds the count) so the
-   *  mobile window-scroll path keeps working (DOM-based scroll/anchor). */
+  /** The OverlayScrollbars viewport (from ConversationPage), or null before it's
+   *  ready. Only meaningful on the virtualized (desktop) path. */
   getScrollElement?: () => HTMLElement | null
   /** Flips true once the scroll viewport exists, forcing the virtualizer to
    *  observe it (mirrors kit/table.tsx's scroll-ready re-render). */
   scrollerReady?: boolean
+  /** Virtualize the list. True on desktop (inner OS scroll); FALSE on the mobile
+   *  native window-scroll path, where react-virtual can't observe window scroll
+   *  without a window-virtualizer — there the (lazy-load-bounded) window renders
+   *  plainly with a DOM-based scroll/anchor fallback. Keyed on the stable
+   *  `nativeScroll` flag (NOT on scroll-element readiness) so it never flips
+   *  mid-session and thrashes the layout. */
+  virtualize?: boolean
 }
 
 const ESTIMATED_ROW_HEIGHT = 140
@@ -67,7 +72,11 @@ const ESTIMATED_ROW_HEIGHT = 140
  */
 export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
   function MessageList(
-    { getScrollElement = () => null, scrollerReady = false }: MessageListProps,
+    {
+      getScrollElement = () => null,
+      scrollerReady = false,
+      virtualize = true,
+    }: MessageListProps,
     ref,
   ) {
     const { messages, loading, isStreaming, loadingOlder } = Stores.Chat
@@ -75,10 +84,6 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     // Ordered window (insertion order = render order).
     const messagesArray = useMemo(() => Array.from(messages.values()), [messages])
     const count = messagesArray.length
-
-    // Virtualize only when a real inner scroll element is available.
-    const scrollEl = getScrollElement()
-    const virtualize = scrollEl != null
 
     const virt = useVirtualizer({
       count,

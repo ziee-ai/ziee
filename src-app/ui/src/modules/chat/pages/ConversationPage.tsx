@@ -487,6 +487,9 @@ export default function ConversationPage() {
                   ref={messageListRef}
                   getScrollElement={() => getViewport()?.root ?? null}
                   scrollerReady={scrollerReady}
+                  // Desktop (inner OS scroll) virtualizes; mobile native
+                  // window-scroll renders the bounded window plainly.
+                  virtualize={!nativeScroll}
                 />
               </ConversationFindContext.Provider>
               {/* Bottom-load sentinel: triggers loading NEWER messages when the
