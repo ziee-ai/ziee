@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **323** surfaces carry at least one renderable-state signal.
-- **1813** signals total: 1425 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
+- **324** surfaces carry at least one renderable-state signal.
+- **1817** signals total: 1429 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,7 +16,7 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 84 |
+| `delayed` | 85 |
 | `empty` | 88 |
 | `error` | 74 |
 | `open` | 71 |
@@ -533,12 +533,12 @@ Required states: `delayed`
 | branch | `node.disabled` | 181 |
 | branch | `active == null` | 187 |
 | branch | `!row` | 190 |
-| branch | `n.disabled` | 242 |
-| loading | `loading` | 244 |
-| branch | `hasKids` | 246 |
-| branch | `checkable` | 249 |
-| branch | `virtualStyle` | 281 |
-| branch | `!virtual` | 286 |
+| branch | `n.disabled` | 240 |
+| loading | `loading` | 242 |
+| branch | `hasKids` | 244 |
+| branch | `checkable` | 247 |
+| branch | `virtualStyle` | 277 |
+| branch | `!virtual` | 282 |
 
 ### `components/ui/kit/typography`
 
@@ -546,10 +546,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `done` | 49 |
-| branch | `copyable != null` | 77 |
-| branch | `copyable != null` | 132 |
-| branch | `safe == null` | 147 |
+| branch | `done` | 47 |
+| branch | `copyable != null` | 75 |
+| branch | `copyable != null` | 130 |
+| branch | `safe == null` | 145 |
 
 ### `components/ui/kit/upload`
 
@@ -646,7 +646,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `showCloseButton` | 67 |
+| branch | `showCloseButton` | 73 |
 
 ### `components/ui/shadcn/sidebar`
 
@@ -882,6 +882,15 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `index < 0 \|\| index >= total` | 33 |
 | branch | `!branchId \|\| branchId === activeBranchId` | 35 |
 
+### `modules/chat/components/ChatHistorySortControl`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `iconOnly` | 23 |
+| branch | `sort === o.value` | 27 |
+
 ### `modules/chat/components/ChatInput`
 
 Required states: `open`
@@ -950,15 +959,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 135 |
-| loading | `(visibleConversations.length > 0 \|\| loading)` | 142 |
-| branch | `selectedIds.size > 0` | 158 |
-| branch | `canDelete` | 183 |
-| loading | `visibleConversations.length === 0 && !loading` | 207 |
-| error | `error` | 208 |
-| loading | `loading && !isInitialized` | 232 |
-| branch | `visibleConversations.length > 0` | 257 |
-| branch | `hasMore` | 265 |
+| branch | `!getSearchBoxContainer` | 127 |
+| branch | `selectedIds.size > 0` | 134 |
+| branch | `canDelete` | 159 |
+| loading | `visibleConversations.length === 0 && !loading` | 183 |
+| error | `error` | 184 |
+| loading | `loading && !isInitialized` | 208 |
+| branch | `visibleConversations.length > 0` | 233 |
+| branch | `hasMore` | 241 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1182,15 +1190,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/pages/ChatHistoryPage`
 
-Required states: `error`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isNarrow` | 95 |
-| branch | `isNarrow` | 105 |
-| branch | `isNarrow && searchOpenInNarrow` | 139 |
-| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 148 |
-| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 160 |
+| branch | `!isNarrow` | 96 |
+| branch | `isNarrow` | 106 |
+| loading | `(conversations.length > 0 \|\| loading)` | 126 |
+| branch | `isNarrow && searchOpenInNarrow` | 147 |
+| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 156 |
+| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 168 |
 
 ### `modules/chat/pages/ConversationPage`
 
@@ -1546,11 +1555,11 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `HeaderActions` | 67 |
 | branch | `showFullPage` | 70 |
 | branch | `!hideHeader` | 114 |
-| branch | `tooLarge` | 124 |
-| branch | `isViewingOld` | 140 |
-| branch | `oldVersionText === null` | 142 |
-| branch | `tooLarge` | 157 |
-| branch | `Body` | 181 |
+| branch | `tooLarge` | 128 |
+| branch | `isViewingOld` | 144 |
+| branch | `oldVersionText === null` | 146 |
+| branch | `tooLarge` | 161 |
+| branch | `Body` | 185 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1631,14 +1640,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `view.mode === 'fit'` | 98 |
 | branch | `view.mode === 'fit'` | 111 |
 | branch | `!c \|\| typeof ResizeObserver === 'undefined'` | 113 |
-| branch | `!thumbnailUrl` | 126 |
-| branch | `view.mode === 'fit'` | 135 |
-| branch | `o.x <= 0 && o.y <= 0` | 157 |
-| branch | `!d` | 172 |
-| branch | `rafRef.current` | 179 |
-| branch | `!d` | 187 |
+| branch | `!el` | 135 |
+| branch | `!(e.ctrlKey \|\| e.metaKey)` | 137 |
+| branch | `!thumbnailUrl` | 145 |
+| branch | `view.mode === 'fit'` | 154 |
+| branch | `o.x <= 0 && o.y <= 0` | 177 |
+| branch | `!d` | 192 |
+| branch | `rafRef.current` | 199 |
 | branch | `!d` | 207 |
-| branch | `o.x <= 0 && o.y <= 0` | 211 |
+| branch | `!d` | 227 |
+| branch | `o.x <= 0 && o.y <= 0` | 231 |
 
 ### `modules/file/viewers/image/header`
 
@@ -2255,9 +2266,9 @@ Required states: `empty`
 | branch | `Array.isArray(footer)` | 187 |
 | branch | `showOverlay` | 218 |
 | branch | `title != null` | 264 |
-| branch | `typeof title === 'string'` | 269 |
-| branch | `extra != null` | 288 |
-| branch | `closable` | 289 |
+| branch | `closable` | 274 |
+| branch | `typeof title === 'string'` | 279 |
+| branch | `extra != null` | 294 |
 | empty | `noBodyScrollWrap` | 299 |
 | branch | `footerNode != null` | 302 |
 | branch | `title == null` | 319 |
@@ -3306,23 +3317,23 @@ Required states: `delayed`, `open`
 | branch | `cancelled` | 144 |
 | branch | `!conversation?.id \|\| !project` | 152 |
 | branch | `!projectId` | 190 |
-| overlay | `<Confirm open>` | 315 |
-| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 366 |
-| branch | `cancelled` | 368 |
-| branch | `event.data.conversationId !== conversationId` | 386 |
-| branch | `event.data.conversationId !== conversationId` | 400 |
-| loading | `state.kind === 'loading'` | 413 |
-| branch | `state.kind === 'in_project'` | 417 |
-| overlay | `<AddToProjectModal open>` | 454 |
-| branch | `loaded` | 496 |
-| branch | `cancelled` | 498 |
-| branch | `event.data.conversationId !== conversation.id` | 515 |
-| branch | `event.data.conversationId !== conversation.id` | 525 |
-| branch | `!project` | 546 |
-| branch | `!ok` | 553 |
-| branch | `project` | 565 |
-| branch | `loaded` | 582 |
-| overlay | `<AddToProjectModal open>` | 595 |
+| overlay | `<Confirm open>` | 314 |
+| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 365 |
+| branch | `cancelled` | 367 |
+| branch | `event.data.conversationId !== conversationId` | 385 |
+| branch | `event.data.conversationId !== conversationId` | 399 |
+| loading | `state.kind === 'loading'` | 412 |
+| branch | `state.kind === 'in_project'` | 416 |
+| overlay | `<AddToProjectModal open>` | 453 |
+| branch | `loaded` | 495 |
+| branch | `cancelled` | 497 |
+| branch | `event.data.conversationId !== conversation.id` | 514 |
+| branch | `event.data.conversationId !== conversation.id` | 524 |
+| branch | `!project` | 545 |
+| branch | `!ok` | 552 |
+| branch | `project` | 564 |
+| branch | `loaded` | 581 |
+| overlay | `<AddToProjectModal open>` | 594 |
 
 ### `modules/projects/components/AddToProjectModal`
 

@@ -113,7 +113,11 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           hideHeader to skip this and avoid duplication. */}
       {!hideHeader && (
         <div
-          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b"
+          // bg-muted/50: a subtle muted header band (matches the drawer footer /
+          // find-bar convention). Without it the header fell through to the
+          // panel's bg-background — the DARKEST token — reading as a heavy black
+          // bar above the lighter bg-card body.
+          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b bg-muted/50"
         >
           <Title level={5} className="!m-0 flex-1 truncate" title={file.filename}>
             {file.filename}

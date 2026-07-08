@@ -285,8 +285,10 @@ function ProjectTagWithRemove({
     }
   }
 
-  // Mirrors the "Add to project" button: same reveal wrapper + outline button
-  // (with a minus icon), opening a controlled Confirm instead of the modal.
+  // The membership tag IS the remove affordance: it names the project the
+  // conversation is filed under, and its × detaches it (via the confirm below) —
+  // replacing the former standalone "Remove from project" button. Same hover-
+  // reveal wrapper as the other card actions.
   return (
     <>
       <div
@@ -296,21 +298,18 @@ function ProjectTagWithRemove({
             : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
         }`}
       >
-        <Tooltip title={project.name ? `Remove from ${project.name}` : 'Remove from project'}>
-          <Button
-            data-testid="project-trailing-remove-button"
-            variant="outline"
-            size="default"
-            icon={<CircleMinus />}
-            aria-label="Remove from project"
-            onClick={(e: React.MouseEvent) => {
-              e.stopPropagation()
-              setRemoveOpen(true)
-            }}
-          >
-            Remove from project
-          </Button>
-        </Tooltip>
+        <Tag
+          variant="outline"
+          tone="info"
+          icon={<FolderOpen />}
+          className="max-w-[11rem]"
+          title={project.name}
+          data-testid="project-trailing-remove-tag"
+          onClose={() => setRemoveOpen(true)}
+          closeLabel={project.name ? `Remove from ${project.name}` : 'Remove from project'}
+        >
+          <span className="truncate">{project.name}</span>
+        </Tag>
       </div>
       <Confirm
         data-testid="project-trailing-remove-confirm"

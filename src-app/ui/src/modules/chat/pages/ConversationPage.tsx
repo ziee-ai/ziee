@@ -263,7 +263,9 @@ export default function ConversationPage() {
               keep working: OverlayScrollbars scrolls a real viewport element. The
               context chrome above stays a SIBLING of this scroller (K1/K4). */}
           <DivScrollY nativeFlow className="flex-1">
-            <div className="w-full max-w-4xl mx-auto px-4 pt-4">
+            {/* pb-8 matches the composer's h-8 fade so the last message can scroll
+                clear of it at rest (fully readable, not dissolved). */}
+            <div className="w-full max-w-4xl mx-auto px-4 pt-4 pb-8">
               <ConversationFindContext.Provider value={findContextValue}>
                 <MessageList />
               </ConversationFindContext.Provider>
@@ -277,7 +279,8 @@ export default function ConversationPage() {
               jump-to-latest button can anchor to its TOP edge. */}
           <div
             className={cn(
-              'w-full max-w-4xl mx-auto p-4',
+              // pt-0: no gap above the input — the fade below stands in for it.
+              'w-full max-w-4xl mx-auto p-4 pt-0',
               nativeScroll ? 'sticky bottom-0 z-10 bg-background' : 'relative',
             )}
             style={
@@ -286,6 +289,11 @@ export default function ConversationPage() {
                 : undefined
             }
           >
+            {/* Gradient fade above the composer: the tail of the message history
+                dissolves into the surface (bg-card) as it scrolls up, instead of
+                hard-cutting at the input's top edge. The message list carries a
+                matching bottom pad so the last message clears this at rest. */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-card to-transparent" />
             {/* Jump-to-latest: floats just ABOVE the composer (bottom-full anchors
                 it to the composer's top edge, so it clears the input regardless of
                 the input's height). Shown only when scrolled up (ITEM-2). */}

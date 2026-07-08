@@ -501,6 +501,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/ConversationFindBar": { kind: 'via', reason: 'rendered within the chat module page (find-in-conversation)' },
   "modules/chat/components/JumpToLatestButton": { kind: 'via', reason: 'rendered within the chat module page (jump-to-latest)' },
   "modules/file/chat-extension/components/AttachedFileCard": { kind: 'via', reason: 'rendered within the chat module page (message + composer file/image attachments)' },
+  "modules/chat/components/ChatHistorySortControl": { kind: 'via', reason: 'rendered in the chat-history page header (sort selector)' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 

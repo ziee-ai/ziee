@@ -123,6 +123,25 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
   // Cancel any pending rAF on unmount.
   useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
 
+  // Trackpad pinch-zoom. A native NON-passive listener is required so we can
+  // preventDefault (React's onWheel is passive). Only the ZOOM gesture is
+  // intercepted — a trackpad pinch emits a `wheel` with ctrlKey set (as does
+  // ctrl/⌘+wheel on a mouse); a plain wheel-scroll is left alone. Re-attaches on
+  // a mode flip since fit and actual render different root elements. `exp` keeps
+  // a pinch's small deltas smooth; zoomImage clamps to [0.1, 8] and switches the
+  // view to 'actual'.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      Stores.File.zoomImage(fileId, Math.exp(-e.deltaY * 0.0015))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [fileId, view.mode])
+
   if (!thumbnailUrl) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -135,6 +154,7 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
   if (view.mode === 'fit') {
     return (
       <div
+        ref={containerRef}
         className="flex items-center justify-center h-full w-full p-4 overflow-hidden"
         data-testid="image-viewer-body"
         data-view-mode="fit"

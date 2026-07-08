@@ -4,6 +4,7 @@ import { MessageSquare, Plus, Search as SearchIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
+import { ChatHistorySortControl } from '@/modules/chat/components/ChatHistorySortControl'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
@@ -117,6 +118,13 @@ export default function ChatHistoryPage() {
                   aria-pressed={searchOpenInNarrow}
                 />
               </Tooltip>
+            )}
+
+            {/* Sort — between search and new-chat. Icon-only dropdown at the same
+                narrow breakpoint that collapses the search; a Select when wide.
+                Hidden until there's a list to sort. */}
+            {(conversations.length > 0 || loading) && (
+              <ChatHistorySortControl iconOnly={isNarrow} />
             )}
 
             {/* New chat — filled action, navigates to the new-chat page. */}

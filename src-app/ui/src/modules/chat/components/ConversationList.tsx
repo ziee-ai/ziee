@@ -1,22 +1,15 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Card, Button, Select, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
+import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
-import type { ConversationSort } from '@/modules/chat/stores/ChatHistory.store'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
 
-const SORT_OPTIONS: { value: ConversationSort; label: string }[] = [
-  { value: 'recent', label: 'Most recent' },
-  { value: 'oldest', label: 'Oldest first' },
-  { value: 'alpha', label: 'Title A–Z' },
-  { value: 'most_messages', label: 'Most messages' },
-]
 
 interface ConversationListProps {
   /**
@@ -38,7 +31,6 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const {
     conversations,
     searchQuery,
-    sort,
     selectedIds,
     loading,
     loadingMore,
@@ -136,23 +128,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
           <div className="flex justify-end items-center w-full">{searchBox}</div>
         )}
 
-        {/* Sort control (ITEM-6). Body-level toolbar so it's visible in both the
-            wide (header-portaled search) and narrow layouts. Hidden until there
-            is a list to sort. */}
-        {(visibleConversations.length > 0 || loading) && (
-          <div className="max-w-4xl w-full self-center px-3 flex justify-end">
-            <Select
-              data-testid="chat-history-sort-select"
-              aria-label="Sort conversations"
-              value={sort}
-              onChange={value =>
-                Stores.ChatHistory.setSort(value as ConversationSort)
-              }
-              options={SORT_OPTIONS}
-              className="w-40"
-            />
-          </div>
-        )}
+        {/* Sort control moved to the page header (ChatHistorySortControl). */}
 
         {/* Bulk actions bar */}
         {selectedIds.size > 0 && (

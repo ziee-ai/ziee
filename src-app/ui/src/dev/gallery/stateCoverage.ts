@@ -121,6 +121,7 @@ export const STATE_COVERAGE = {
   "modules/chat/core/utils/StreamdownErrorBoundary:error": { skip: true, reason: "nonvisual surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/utils/useStreamdownComponents:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/extensions/export/extension:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
+  "modules/chat/pages/ChatHistoryPage:delayed": { skip: true, reason: "via surface — rendered within its page; loading branch proven by Part 2 runtime coverage" },
   "modules/chat/pages/ChatHistoryPage:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/widgets/RecentConversationsWidget:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/chat/widgets/RecentConversationsWidget:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
