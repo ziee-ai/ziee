@@ -8,7 +8,7 @@
 ## Summary
 
 - **324** surfaces carry at least one renderable-state signal.
-- **1820** signals total: 1431 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
+- **1821** signals total: 1432 branch, 110 empty, 95 error, 96 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1217,6 +1217,7 @@ Required states: `delayed`, `error`
 | loading | `!loading && !conversation` | 220 |
 | error | `error` | 223 |
 | error | `error` | 280 |
+| branch | `nativeScroll && !composerHidden` | 344 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

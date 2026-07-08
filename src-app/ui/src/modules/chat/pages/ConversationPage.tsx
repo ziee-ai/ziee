@@ -334,11 +334,25 @@ export default function ConversationPage() {
               <div ref={messagesEndRef} />
             </div>
           </DivScrollY>
-          {/* Composer: pinned. Native mode → position:sticky at the viewport
-              bottom (with home-indicator safe-area) so messages document-scroll
-              underneath; desktop → normal flow at the column bottom. Made a
-              positioning context (sticky in native, relative on desktop) so the
-              jump-to-latest button can anchor to its TOP edge. */}
+          {/* Bottom backdrop — the mirror of HeaderBarContainer's z-29 top panel.
+              The composer sticks at bottom:5 (not 0) to dodge iOS Safari's
+              bottom-edge sticky latch (same reason the header uses top:5), which
+              leaves a 5px gap below it; this fixed opaque panel fills that gap +
+              the home-indicator safe-area so document-scrolling content can flow
+              behind the iOS bottom navigation bar without peeking through. Only
+              while the composer is shown (mirrors the header's `pinned &&`). */}
+          {nativeScroll && !composerHidden && (
+            <div
+              aria-hidden
+              className="fixed inset-x-0 bottom-0 bg-background animate-in fade-in duration-300"
+              style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5px)', zIndex: 9 }}
+            />
+          )}
+          {/* Composer: pinned. Native mode → position:sticky at bottom:5 (with
+              home-indicator safe-area) so messages document-scroll underneath;
+              desktop → normal flow at the column bottom. Made a positioning
+              context (sticky in native, relative on desktop) so the jump-to-latest
+              button can anchor to its TOP edge. */}
           <div
             className={cn(
               // pt-0: no gap above the input — the fade below stands in for it.
@@ -346,22 +360,28 @@ export default function ConversationPage() {
               nativeScroll
                 ? cn(
                     'bg-background',
-                    // Same trick as HeaderBarContainer: toggle sticky↔relative
-                    // instead of a transform. Hidden → position:relative so the
-                    // composer WIPES AWAY with the page, freeing the bottom edge
-                    // so chat content flows behind iOS Safari's bottom navigation
-                    // bar (a sticky bottom-0 element latches to that bar and
-                    // blocks content from scrolling under it). Shown → sticky,
-                    // pinned to the viewport bottom and sliding back in.
+                    // Auto-hide on scroll: toggle sticky↔relative (NOT a
+                    // transform). Hidden → position:relative so the composer
+                    // wipes away with the page as the user reads history; shown →
+                    // sticky, pinned to the viewport bottom and sliding back in.
                     composerHidden
                       ? 'relative'
-                      : 'sticky bottom-0 z-10 animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out',
+                      : 'sticky z-10 animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out',
                   )
                 : 'relative',
             )}
             style={
               nativeScroll
-                ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }
+                ? {
+                    // bottom:5 dodges iOS Safari's bottom sticky-latch (mirrors the
+                    // header's top:5). The 5px is subtracted from paddingBottom so
+                    // the input keeps its resting position (safe-area + 16) — same
+                    // padding-compensation the header does for its 5px offset. In
+                    // the relative (hidden) state, replicate the offset via
+                    // marginBottom so it doesn't jump 5px when toggling.
+                    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 11px)',
+                    ...(composerHidden ? { marginBottom: 5 } : { bottom: 5 }),
+                  }
                 : undefined
             }
           >
