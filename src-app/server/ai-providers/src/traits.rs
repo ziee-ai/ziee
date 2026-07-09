@@ -2,7 +2,7 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk, FileUpload, FileUploadResponse},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, RerankRequest, RerankResponse, StreamChatChunk, FileUpload, FileUploadResponse},
 };
 use async_trait::async_trait;
 use chrono::Duration;
@@ -109,6 +109,27 @@ pub trait AIProvider: Send + Sync {
         base_url: &str,
         request: EmbeddingsRequest,
     ) -> Result<EmbeddingsResponse, ProviderError>;
+
+    /// Reranks `documents` by relevance to `query` using a cross-encoder model.
+    ///
+    /// Default impl returns an "unsupported" error — only OpenAI-compatible
+    /// providers (incl. the local llama.cpp `--reranking` server reached via the
+    /// same-port proxy) implement it. Mirrors the `embeddings` seam.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProviderError` if the request fails or the provider doesn't
+    /// support reranking.
+    async fn rerank(
+        &self,
+        _api_key: &str,
+        _base_url: &str,
+        _request: RerankRequest,
+    ) -> Result<RerankResponse, ProviderError> {
+        Err(ProviderError::InvalidRequest(
+            "This provider does not support reranking".to_string(),
+        ))
+    }
 
     /// Uploads a file to the provider's Files API (if supported)
     ///

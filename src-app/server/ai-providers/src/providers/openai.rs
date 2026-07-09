@@ -12,7 +12,7 @@
 use crate::{
     error::ProviderError,
     models::{
-        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse,
+        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, RerankRequest, RerankResponse, RerankResult, FileUpload, FileUploadResponse,
         StreamChatChunk,
     },
     traits::AIProvider,
@@ -287,6 +287,30 @@ struct OpenAIEmbeddingsResponse {
 #[derive(Deserialize, Debug)]
 struct OpenAIEmbedding {
     embedding: Vec<f32>,
+}
+
+/// Rerank request (llama.cpp `/rerank` / Jina / Cohere-compatible shape)
+#[derive(Serialize, Debug)]
+struct OpenAIRerankRequest {
+    model: String,
+    query: String,
+    documents: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_n: Option<usize>,
+}
+
+/// Rerank response: `results[{index, relevance_score}]`
+#[derive(Deserialize, Debug)]
+struct OpenAIRerankResponse {
+    results: Vec<OpenAIRerankResult>,
+    #[serde(default)]
+    usage: Option<OpenAIUsage>,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenAIRerankResult {
+    index: usize,
+    relevance_score: f32,
 }
 
 impl OpenAIProvider {
@@ -988,6 +1012,57 @@ impl AIProvider for OpenAIProvider {
                 completion_tokens: 0, // Embeddings don't have completion tokens
                 total_tokens: openai_resp.usage.total_tokens,
                 reasoning_tokens: None, // Embeddings don't use reasoning
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+            }),
+        })
+    }
+
+    async fn rerank(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        request: RerankRequest,
+    ) -> Result<RerankResponse, ProviderError> {
+        let client = super::http_client();
+
+        let body = OpenAIRerankRequest {
+            model: request.model,
+            query: request.query,
+            documents: request.documents,
+            top_n: request.top_n,
+        };
+
+        let response = client
+            .post(format!("{}/rerank", base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        let resp: OpenAIRerankResponse = response.json().await?;
+
+        Ok(RerankResponse {
+            results: resp
+                .results
+                .into_iter()
+                .map(|r| RerankResult {
+                    index: r.index,
+                    score: r.relevance_score,
+                })
+                .collect(),
+            usage: resp.usage.map(|u| crate::models::Usage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: 0,
+                total_tokens: u.total_tokens,
+                reasoning_tokens: None,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
             }),
