@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
-use super::models::{CreateScheduledTask, ScheduledTask, UpdateScheduledTask};
+use super::models::{
+    CreateScheduledTask, NewTaskRun, ScheduledTask, ScheduledTaskRun, UpdateScheduledTask,
+};
 
 /// chrono→time bridge: sqlx binds `timestamptz` params as `time::OffsetDateTime`
 /// (the module is chrono-native because croner is), so convert at the bind edge.
@@ -344,6 +346,64 @@ pub async fn record_outcome(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
+}
+
+/// Insert a per-firing audit row (`scheduled_task_runs`). Returns its id.
+pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError> {
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO scheduled_task_runs (
+            scheduled_task_id, user_id, trigger, status, error_class,
+            error_message, notification_id, workflow_run_id, conversation_id,
+            fired_at, finished_at
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+        RETURNING id
+        "#,
+        run.scheduled_task_id,
+        run.user_id,
+        run.trigger,
+        run.status,
+        run.error_class,
+        run.error_message,
+        run.notification_id,
+        run.workflow_run_id,
+        run.conversation_id,
+        to_offset(run.fired_at),
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row.id)
+}
+
+/// A task's firing history, newest-first (owner-scoped via the task).
+pub async fn list_runs_for_task(
+    pool: &PgPool,
+    user_id: Uuid,
+    task_id: Uuid,
+    limit: i64,
+) -> Result<Vec<ScheduledTaskRun>, AppError> {
+    let rows = sqlx::query_as!(
+        ScheduledTaskRun,
+        r#"
+        SELECT
+            id, scheduled_task_id, user_id, trigger, status, error_class,
+            error_message, notification_id, workflow_run_id, conversation_id,
+            fired_at as "fired_at: _", finished_at as "finished_at: _"
+        FROM scheduled_task_runs
+        WHERE scheduled_task_id = $1 AND user_id = $2
+        ORDER BY fired_at DESC
+        LIMIT $3
+        "#,
+        task_id,
+        user_id,
+        limit.clamp(1, 200),
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
 }
 
 /// Set the bound conversation for a prompt-kind task (first firing).

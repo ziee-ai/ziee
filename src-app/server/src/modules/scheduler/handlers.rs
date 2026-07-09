@@ -13,7 +13,11 @@ use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::sync::{SyncAction, SyncOrigin};
 
 use super::events::{emit_admin_settings, emit_task};
-use super::models::{CreateScheduledTask, ScheduledTask, UpdateScheduledTask, MAX_NAME_LEN, MAX_PROMPT_LEN};
+use super::models::{
+    CreateScheduledTask, ScheduledTask, ScheduledTaskRun, UpdateScheduledTask, MAX_NAME_LEN,
+    MAX_PROMPT_LEN,
+};
+use super::tick;
 use super::permissions::{SchedulerAdminManage, SchedulerAdminRead, SchedulerUse};
 use super::schedule::{self, ScheduleError, ScheduleKind};
 use super::repository;
@@ -227,6 +231,50 @@ pub fn delete_task_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
         .summary("Delete a scheduled task")
         .response::<204, ()>()
+}
+
+/// POST /api/scheduled-tasks/{id}/run-now — fire immediately, off-schedule.
+/// Spawns the firing (a prompt turn can take minutes) and returns 202; the
+/// result lands as a notification. Does NOT touch the schedule bookkeeping.
+#[debug_handler]
+pub async fn run_now(
+    auth: RequirePermissions<(SchedulerUse,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ScheduledTask>> {
+    let task = repository::get_for_user(Repos.pool(), auth.user.id, id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Scheduled task"))?;
+    let config = super::scheduler_config()
+        .ok_or_else(|| AppError::internal_error("scheduler not initialized"))?;
+    let pool = Repos.pool().clone();
+    let fired = task.clone();
+    tokio::spawn(async move {
+        tick::fire_task(&pool, &config, &fired, "run_now", Utc::now()).await;
+    });
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+pub fn run_now_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SchedulerUse,)>(op)
+        .summary("Run a scheduled task now")
+        .description("Fires the task immediately, off-schedule; the result lands as a notification.")
+        .response::<202, Json<ScheduledTask>>()
+}
+
+/// GET /api/scheduled-tasks/{id}/runs — the task's firing history (Runs tab).
+#[debug_handler]
+pub async fn list_task_runs(
+    auth: RequirePermissions<(SchedulerUse,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Vec<ScheduledTaskRun>>> {
+    let runs = repository::list_runs_for_task(Repos.pool(), auth.user.id, id, 100).await?;
+    Ok((StatusCode::OK, Json(runs)))
+}
+
+pub fn list_task_runs_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SchedulerUse,)>(op)
+        .summary("List a scheduled task's run history")
+        .response::<200, Json<Vec<ScheduledTaskRun>>>()
 }
 
 // ── Admin settings ──────────────────────────────────────────────────────

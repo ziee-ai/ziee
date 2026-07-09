@@ -116,6 +116,38 @@ pub struct UpdateScheduledTask {
     pub notify_on: Option<String>,
 }
 
+/// A row of `scheduled_task_runs` — one per firing (the "Runs" history).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
+pub struct ScheduledTaskRun {
+    pub id: Uuid,
+    pub scheduled_task_id: Uuid,
+    pub user_id: Uuid,
+    pub trigger: String, // 'schedule' | 'run_now' | 'catchup'
+    pub status: String,  // 'completed' | 'no_change' | 'failed'
+    pub error_class: Option<String>,
+    pub error_message: Option<String>,
+    pub notification_id: Option<Uuid>,
+    pub workflow_run_id: Option<Uuid>,
+    pub conversation_id: Option<Uuid>,
+    pub fired_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+}
+
+/// Insert shape for a completed firing's audit row.
+#[derive(Debug, Clone)]
+pub struct NewTaskRun {
+    pub scheduled_task_id: Uuid,
+    pub user_id: Uuid,
+    pub trigger: String,
+    pub status: String,
+    pub error_class: Option<String>,
+    pub error_message: Option<String>,
+    pub notification_id: Option<Uuid>,
+    pub workflow_run_id: Option<Uuid>,
+    pub conversation_id: Option<Uuid>,
+    pub fired_at: DateTime<Utc>,
+}
+
 fn empty_object() -> serde_json::Value {
     serde_json::json!({})
 }
