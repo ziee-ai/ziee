@@ -1,77 +1,76 @@
-# PLAN_AUDIT — artifacts-deliverables (v2)
+# PLAN_AUDIT — artifacts-deliverables (v3: WYSIWYG canvas)
 
-Audit of the re-scoped PLAN.md against the codebase. The re-scope itself is the
-biggest audit outcome: a code read proved the agent-authoring + versioning +
-panel-viewing substrate already exists (`files_mcp`, `file_versions`, the `file`
-panel), so v1's new table / new MCP / new permission were redundant and were
-dropped. What remains is the genuinely-missing top layer.
+Audit of the v3 plan against the codebase. Backend (ITEM-1..5) is unchanged from v2
+and low-risk; the WYSIWYG editor (ITEM-6..8, 11) is the new risk surface — a first-of-
+its-kind dependency in an app that currently has NO editor primitive.
 
 ## Breakage risk
 
-- **All backend changes are additive.** ITEM-1 (`POST /files/{id}/versions`) is a new
-  route; ITEM-2 (`convert_to_docx`) is a new fn; ITEM-3/4/5 are new routes/handlers;
-  ITEM-4 adds a new `chat/core/export.rs`. No existing signature changes.
-- **ITEM-1 reuses `commit_new_version`**, which is already the append point for the
-  `files_mcp` edit tools and code-sandbox version-back — so a user-appended version is
-  indistinguishable from a model-appended one downstream (same head-mirror, same sync
-  emit). Risk: a user save racing a model `edit_file` on the same file — mitigated
-  because `append_version` already takes a `SELECT … FOR UPDATE` row lock (serializes
-  writers; last writer wins as a new head, nothing lost since all versions are kept).
-- **ITEM-6 edits the shared `file` panel**, so the edit affordance appears for *every*
-  file, not only model-authored ones. That is acceptable (all files are single-owner
-  and editable by their owner) but must be gated to text types (pdf/image/office have
-  no sane source editor) — an explicit acceptance point + a unit test on the
-  editable-type predicate.
-- **ITEM-7 auto-open** could surprise a user if it fires on every incidental
-  `edit_file`; mitigated by opening only on the *first* appearance of a create/rewrite
-  result per file and reusing the existing (already-non-surprising) panel host.
-- **Frontend**: additive panel states + a new edit body; `rehydrateTabs` already drops
-  unknown panel types, and the `file` panel type is unchanged (still `{fileId,version?}`),
-  so no persisted-tab migration is needed.
+- **Backend additive.** ITEM-1/3/4/5 are new routes; ITEM-2 a new fn. No signature
+  changes. ITEM-1 reuses `commit_new_version` (already the append point + row-locked in
+  `append_version`), so user + model writes serialize safely; all versions kept.
+- **New editor dependency (ITEM-6) is the biggest risk.** `platejs` pulls Slate +
+  remark + a component tree. Risks: (a) **bundle size** — mitigated by lazy-loading
+  (mirror `LazyStreamdown`, so the editor never loads until Edit is entered); (b)
+  **biome guardrails** — Plate components use refs/DOM; they must be adopted into the
+  kit so the raw-DOM/antd bans don't trip (adoption, not raw usage); (c) **syncpack
+  drift** — the dep must be added at identical versions to `ui` and `desktop/ui`
+  (`.syncpackrc.json` lint), an explicit ITEM-12 check; (d) **React/TS peer versions**
+  — Plate must match the repo's pinned React/TS `overrides` (verify at add time).
+- **Markdown round-trip fidelity (ITEM-7)** is a correctness risk: the app **renders**
+  with Streamdown but would **edit** with Plate — two markdown engines. A construct that
+  round-trips lossily (a GFM table edge case, a footnote, raw HTML/MDX) could silently
+  alter the file on save. Mitigations: constrain the editor to the Streamdown-rendered
+  GFM subset; **preserve unknown constructs verbatim** (never drop); normalize-on-save
+  for stable diffs; a dedicated round-trip fidelity test (TEST-3) + a parity check that
+  editor output re-renders identically under Streamdown for the supported subset.
+- **Shared `file` panel edit (ITEM-8)**: the view/edit toggle appears on every file;
+  gated so only `markdown` gets the WYSIWYG (code/csv/binary stay view+export). Must
+  render an arbitrary `fileId` editable outside the file drawer.
+- **a11y (ITEM-11)**: a formatting toolbar adds many icon buttons — each needs an
+  accessible name or the `gate:ui` a11y-name check (MEDIUM) and axe fail. Budgeted.
+- **Frontend regressions**: the `file` panel type/data is unchanged (`{fileId,version?}`),
+  so persisted tabs and existing openers keep working; `rehydrateTabs` unaffected.
 
 ## Pattern conformance
 
-- **ITEM-1** mirrors `versions::restore_version` (ownership + `commit_new_version` +
-  `publish_file_changed`) — conformant; the only delta is request-supplied bytes.
-- **ITEM-2/3/4** reuse `find_pandoc`/`convert_to_pdf` + `content_disposition` +
-  `workspace_export`'s attachment builder — conformant.
-- **ITEM-4** extends `summarizer::message_to_summarizable`'s block handling — conformant.
-- **ITEM-5** mirrors `available_files::resolve_available_files` ownership join — conformant.
-- **ITEM-6** mirrors `CoreMemoryBlocksEditor` edit→save→REST and reuses the viewer
-  registry + `FileVersionBar` — conformant; the "no editor dependency" `Textarea`
-  choice is deliberate (no editor primitive exists in the app — DEC-6).
-- **ITEM-7** mirrors the literature `tool_result` → `displayInRightPanel` pattern —
-  conformant.
-- **ITEM-10** follows the both-workspaces `just openapi-regen` convention — conformant.
+- **ITEM-1/2/3/4/5** conform (see v2 — restore_version / pandoc / content_disposition /
+  summarizer / available_files mirrors).
+- **ITEM-6** conforms to the repo's shadcn component-ownership model (adopt Plate's
+  shadcn components into `components/kit/` rather than consuming a black-box widget) and
+  the `LazyStreamdown` lazy-load idiom. Reuse-first is honored by running
+  `shadcn-component-discovery` before authoring (ITEM-11).
+- **ITEM-7** is new territory (no existing markdown-serialization code beyond Streamdown
+  rendering), so it defines its own utility with explicit fidelity tests — acceptable.
+- **ITEM-8** mirrors `CoreMemoryBlocksEditor` edit→save→REST + the `file` panel pointer
+  pattern.
+- **ITEM-9** mirrors the literature `tool_result`→`displayInRightPanel` pattern.
+- **ITEM-11/12** follow the design-system skills + both-workspace regen conventions.
 
 ## Migration collisions
 
-- **None — this feature introduces NO migration.** Versioning (`file_versions`),
-  permissions (existing file + `conversations::read`), and the conversation↔file
-  association (`file_versions.source_message_id`) all already exist. Verified: no new
-  table, no permission grant, no `created_by` vocabulary change (model files are already
-  `'mcp'`; user saves reuse `'user'`). `ls migrations/` tail `131` is untouched.
+- **None — no migration.** Versioning, permissions (file + `conversations::read`), and
+  the conversation↔file association (`source_message_id`) all exist. No new table, no
+  new column, no `created_by` vocabulary change. `ls migrations/` tail `131` untouched.
 
 ## OpenAPI regen
 
-- **Required (endpoints only, no new domain types).** Four new endpoints
-  (`POST /files/{id}/versions`, `GET /files/{id}/export`, `GET /conversations/{id}/export`,
-  `GET /conversations/{id}/deliverables`) flow through `just openapi-regen` into the
-  `Api.*` client + `types.ts`, in BOTH the server `ui/` and desktop `desktop/ui/`
-  workspaces. The `emit_ts` golden-parity test enforces regen. The `deliverables`
-  response reuses the existing `File`/`FileMetadata` schema (no new schema), so the
-  diff is endpoint surface, not type surface. `SyncEntity` is unchanged (reuses
-  `File`) — no `sync:*` vocabulary change.
+- **Required (endpoints only).** The four new endpoints regen into `Api.*` + `types.ts`
+  in BOTH workspaces; `deliverables` reuses the existing `File` schema (no new domain
+  type). `SyncEntity` unchanged (reuses `File`). The editor + round-trip are pure
+  frontend (no API surface). `emit_ts` golden-parity gates the regen.
 
 ## Per-item verdicts
 
-- **ITEM-1** — verdict: PASS — direct `restore_version` mirror; the genuinely-missing user-write primitive; row-lock already serializes concurrent writers.
-- **ITEM-2** — verdict: PASS — `convert_to_docx` copies the proven `convert_to_pdf` shape; docx is a native pandoc writer (smoke-tested against the embedded 3.7 binary).
-- **ITEM-3** — verdict: PASS — user download in a chosen format; reuses pandoc + `content_disposition`; distinct from the model-only `convert_document`.
-- **ITEM-4** — verdict: CONCERN — the conversation→markdown serializer is genuinely new and must handle every `MessageContentData` variant faithfully (not the lossy `role: text` transcript); bounded and covered by a per-variant unit test.
-- **ITEM-5** — verdict: CONCERN — deriving deliverables via `file_versions.source_message_id` ∈ conversation must reuse the exact `available_files` ownership join or risk a cross-user leak; covered by an ownership integration test.
-- **ITEM-6** — verdict: CONCERN — edits the shared `file` panel; must gate edit-mode to text types and must render an arbitrary `fileId` editable outside the file drawer; covered by a unit predicate test + the e2e edit flow.
-- **ITEM-7** — verdict: PASS — literature `tool_result`→`displayInRightPanel` mirror; first-appearance-only auto-open avoids surprise.
-- **ITEM-8** — verdict: PASS — small menus in existing header slots hitting ITEM-3/4.
-- **ITEM-9** — verdict: CONCERN — new edit/saving/error render states MUST have gallery cells or `check:state-matrix`/`gate:ui` fail; budgeted as its own item.
-- **ITEM-10** — verdict: CONCERN — regen + desktop mirror + `npm run check` in both workspaces are hard gates; endpoints-only (no new type) keeps the surface small but the golden-parity test still gates it.
+- **ITEM-1** — verdict: PASS — `restore_version` mirror; the missing user-write primitive; row-lock serializes writers.
+- **ITEM-2** — verdict: PASS — `convert_to_docx` copies `convert_to_pdf`; docx native writer (smoke-tested).
+- **ITEM-3** — verdict: PASS — user download in a chosen format; reuses pandoc + `content_disposition`.
+- **ITEM-4** — verdict: CONCERN — new conversation→markdown serializer must faithfully handle every `MessageContentData` variant; bounded, per-variant unit test.
+- **ITEM-5** — verdict: CONCERN — deriving deliverables must reuse the `available_files` ownership join or risk a cross-user leak; ownership integration test.
+- **ITEM-6** — verdict: CONCERN — a new heavyweight editor dep: bundle (lazy-load), biome (kit adoption), syncpack (both workspaces same version), React/TS peer pins. All are mitigable + explicitly budgeted; none blocks.
+- **ITEM-7** — verdict: CONCERN — markdown round-trip fidelity across two engines (Plate edit vs Streamdown render) is a real correctness risk; mitigated by a constrained subset, verbatim-preserve of unknowns, normalize-on-save, and a fidelity + render-parity test.
+- **ITEM-8** — verdict: CONCERN — edits the shared `file` panel; must gate WYSIWYG to `markdown` and render an arbitrary editable `fileId`; covered by unit predicate + e2e.
+- **ITEM-9** — verdict: PASS — literature `tool_result`→`displayInRightPanel` mirror; first-appearance-only auto-open.
+- **ITEM-10** — verdict: PASS — small menus in existing header slots.
+- **ITEM-11** — verdict: CONCERN — design-system + a11y + gallery/state-matrix/testid/kit gates for a large new component surface; the toolbar's per-control accessible names are the main a11y load; budgeted as its own item + a gallery e2e.
+- **ITEM-12** — verdict: CONCERN — regen + desktop mirror of the editor + `npm run check` both workspaces (incl. syncpack) are hard gates; endpoints-only API keeps the type surface small.
