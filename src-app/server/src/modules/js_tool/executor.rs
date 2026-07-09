@@ -13,7 +13,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use uuid::Uuid;
@@ -63,10 +63,20 @@ struct Dispatcher {
     trace: Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     /// Bounds concurrent sub-tool dispatches from one script (Promise.all fan-out).
     dispatch_sem: Arc<tokio::sync::Semaphore>,
+    /// Number of approval prompts raised so far + the cap (bounds cumulative
+    /// suspended time so a script can't hold a runtime for hours).
+    approvals_used: Arc<AtomicU64>,
+    max_approvals: u64,
 }
 
 /// Max concurrent sub-tool dispatches per run_js invocation.
 const MAX_CONCURRENT_DISPATCH: usize = 6;
+
+/// Server-wide cap on concurrent `run_js` runtimes (admission control) so a
+/// burst of chat turns can't spin up unbounded 128 MiB interpreters at once.
+const MAX_CONCURRENT_RUNS: usize = 8;
+static GLOBAL_RUN_SEM: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_RUNS);
 
 impl Dispatcher {
     fn push_trace(&self, b: &ToolBinding, status: &str, dur_ms: u64) {
@@ -108,6 +118,14 @@ impl Dispatcher {
                 });
             }
             GateDecision::NeedApproval => {
+                // Bound the number of approval prompts a script may raise, so
+                // cumulative suspended time can't hold the runtime for hours.
+                if self.approvals_used.fetch_add(1, Ordering::SeqCst) >= self.max_approvals {
+                    self.push_trace(&binding, "denied", 0);
+                    return serde_json::json!({
+                        "__error": format!("run_js approval limit reached (max {})", self.max_approvals)
+                    });
+                }
                 match approval::request_approval(
                     &self.approval_ctx,
                     &binding.server_name,
@@ -211,6 +229,10 @@ impl Dispatcher {
 /// Run one `run_js` script and produce the tool result. Never panics: any
 /// interpreter/dispatch failure becomes an error result the model can read.
 pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
+    // Server-wide admission control: bound concurrent run_js runtimes so a burst
+    // of chat turns can't allocate unbounded 128 MiB interpreters at once.
+    let _global = GLOBAL_RUN_SEM.acquire().await.ok();
+
     let bindings = host_bridge::build_bindings(&req.tools);
     let cancel = Arc::new(AtomicBool::new(false));
     let pending = Arc::new(AtomicUsize::new(0));
@@ -233,6 +255,8 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
         },
         trace: Arc::new(std::sync::Mutex::new(Vec::new())),
         dispatch_sem: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_DISPATCH)),
+        approvals_used: Arc::new(AtomicU64::new(0)),
+        max_approvals: req.caps.max_approvals,
     });
 
     // Active-execution wall-clock watchdog: accumulates elapsed time ONLY while

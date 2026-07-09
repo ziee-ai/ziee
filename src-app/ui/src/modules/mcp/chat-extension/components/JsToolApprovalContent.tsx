@@ -23,21 +23,25 @@ interface JsToolApprovalData {
 
 export function JsToolApprovalContent({ content }: ContentRendererProps) {
   const data = content.content as unknown as JsToolApprovalData
-  const [resolved, setResolved] = useState<'approved' | 'denied' | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Derive the resolved state from the elicitationRequests store (the live
+  // source of truth), NOT local state: resolveElicitation flips the entry
+  // optimistically and ROLLS IT BACK to 'pending' on a failed POST, so a failed
+  // approve re-enables the buttons (no false "Approved") and the resolved state
+  // survives a component remount (virtualized list / streaming→final swap).
+  const status = Stores.McpComposer.elicitationRequests.get(data.elicitation_id)?.status
+  const resolved: 'approved' | 'denied' | null =
+    status === 'accepted' ? 'approved' : status === 'declined' || status === 'cancelled' ? 'denied' : null
 
   const resolve = async (action: 'accept' | 'decline') => {
     // Re-entrancy guard: never POST twice to a single-use elicitation.
     if (submitting || resolved !== null) return
     setSubmitting(true)
-    const next = action === 'accept' ? 'approved' : 'denied'
-    setResolved(next)
     try {
+      // resolveElicitation reflects success/failure in the store entry; the
+      // derived `resolved` above reacts (rollback → buttons return for retry).
       await Stores.McpComposer.resolveElicitation(data.elicitation_id, action)
-    } catch (e) {
-      // Roll back so the user can retry.
-      setResolved(null)
-      console.error('[run_js approval] failed to resolve:', e)
     } finally {
       setSubmitting(false)
     }

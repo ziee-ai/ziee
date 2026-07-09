@@ -88,6 +88,18 @@ pub enum ApprovalOutcome {
     Denied(String),
 }
 
+/// Removes the registry entry when dropped — covers the case where the
+/// surrounding future is cancelled externally (server shutdown / task abort)
+/// before any `select!` arm runs, which would otherwise leak the oneshot in the
+/// process-global registry (audit: concurrency). Normal-path removes (respond
+/// consumes the entry; the timeout/closed arms) make this a harmless no-op.
+struct RegistryGuard(Uuid);
+impl Drop for RegistryGuard {
+    fn drop(&mut self) {
+        let _ = registry::remove(self.0);
+    }
+}
+
 /// Increments a shared "approvals in flight" counter for its lifetime so the
 /// executor's wall-clock watchdog pauses while any approval is pending (the
 /// approval-wait must not count toward the active-execution budget).
@@ -128,6 +140,9 @@ pub async fn request_approval(
     // Owner is known synchronously here (unlike ask_user, which binds via the
     // notify listener) — bind immediately so owner_matches is fail-closed.
     registry::bind_owner(id, ctx.user_id);
+    // Cleans up the registry entry on ANY scope exit, including external
+    // cancellation of the surrounding future.
+    let _reg_guard = RegistryGuard(id);
 
     let event = SSEChatStreamEvent::RunJsApprovalRequired(SSEChatStreamRunJsApprovalRequiredData {
         elicitation_id: id.to_string(),
@@ -136,7 +151,6 @@ pub async fn request_approval(
         input: input.clone(),
     });
     if ctx.sse_tx.send(Ok(event.into())).is_err() {
-        registry::remove(id);
         return ApprovalOutcome::Denied("chat stream closed before approval".to_string());
     }
 
@@ -144,8 +158,8 @@ pub async fn request_approval(
     let _pending = PendingGuard::new(ctx.pending.clone());
     let response = tokio::select! {
         r = rx => r.ok(),
-        _ = ctx.sse_tx.closed() => { registry::remove(id); None }
-        _ = tokio::time::sleep(ctx.timeout) => { registry::remove(id); None }
+        _ = ctx.sse_tx.closed() => None,
+        _ = tokio::time::sleep(ctx.timeout) => None,
     };
 
     match response {

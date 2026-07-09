@@ -13,6 +13,10 @@ pub struct JsCaps {
     pub runtime: JsLimits,
     /// Max sub-tool calls one script may make (over-cap → the host fn throws).
     pub max_tool_calls: u64,
+    /// Max per-call approval prompts one script may raise. Bounds cumulative
+    /// suspended time (max_approvals × approval_timeout) so a script can't hold a
+    /// runtime for hours by spamming approvals the user ignores.
+    pub max_approvals: u64,
     /// Active-execution wall-clock backstop (EXCLUDES time spent awaiting an
     /// approval — the executor's watchdog pauses while any approval is pending).
     pub wall: Duration,
@@ -25,6 +29,7 @@ impl Default for JsCaps {
         Self {
             runtime: JsLimits::default(),
             max_tool_calls: 100,
+            max_approvals: 25,
             wall: Duration::from_secs(300),
             approval_timeout: Duration::from_secs(300),
         }

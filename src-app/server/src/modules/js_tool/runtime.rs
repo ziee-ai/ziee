@@ -77,24 +77,40 @@ pub struct JsOutcome {
 /// Wrap a model script as an async IIFE so `await`/`return` work and the
 /// resolved value is captured via `__ziee_set_result`. Uncaught throws are
 /// serialized to `{err,stack}`; a normal completion to `{ok}`.
-fn wrap_script(script: &str) -> String {
+fn wrap_script(script: &str, output_cap: usize) -> String {
     // The inner IIFE is the user's body; the outer one try/catches it and
     // reports exactly one result. `undefined` collapses to JSON `null`.
+    //
+    // Two hardening steps:
+    // - Capture `__ziee_set_result` and DELETE the global before running the
+    //   user body, so the script can't pre-empt/hijack its own result (audit).
+    // - Cap the serialized result JS-SIDE (before it crosses the FFI boundary)
+    //   so a huge return value isn't materialized twice in host memory (audit).
     format!(
         r#"(async () => {{
+  const __set = globalThis.__ziee_set_result;
+  delete globalThis.__ziee_set_result;
+  const __emit = (obj) => {{
+    let __p = JSON.stringify(obj);
+    if (__p.length > {cap}) {{
+      __p = JSON.stringify({{ ok: {{ _truncated: true, _bytes: __p.length, preview: __p.slice(0, 2000) }} }});
+    }}
+    __set(__p);
+  }};
   try {{
     const __r = await (async () => {{
 {script}
     }})();
-    __ziee_set_result(JSON.stringify({{ ok: __r === undefined ? null : __r }}));
+    __emit({{ ok: __r === undefined ? null : __r }});
   }} catch (e) {{
-    __ziee_set_result(JSON.stringify({{
+    __set(JSON.stringify({{
       err: (e && e.message) ? String(e.message) : String(e),
       stack: (e && e.stack) ? String(e.stack) : ""
     }}));
   }}
 }})();
-"#
+"#,
+        cap = output_cap
     )
 }
 
@@ -109,11 +125,12 @@ globalThis.console.error = globalThis.console.log;
 globalThis.console.debug = globalThis.console.log;
 "#;
 
-/// Number of preamble lines `wrap_script` prepends before the user's script
-/// (the outer async IIFE + `try {` + the inner `const __r = await (async () => {`).
+/// Number of preamble lines `wrap_script` prepends before the user's script.
 /// QuickJS numbers lines against the WRAPPED source, so we subtract this to map
-/// back to the user's line numbers (audit: correctness — line was +3 off).
-const PREAMBLE_LINES: u32 = 3;
+/// back to the user's line numbers (audit: correctness — line was off). MUST
+/// equal the line count before `{script}` in `wrap_script`; the
+/// `test_error_line_maps_to_user_line` test guards it against drift.
+const PREAMBLE_LINES: u32 = 12;
 
 /// Parse a best-effort 1-based USER line number out of a QuickJS exception
 /// stack. Frames look like `    at <anonymous> (eval_script:12)` — take the first
@@ -210,7 +227,7 @@ where
     let console_cap = limits.console_bytes;
 
     // Phase 1: install host env + kick off the wrapped script.
-    let wrapped = wrap_script(script);
+    let wrapped = wrap_script(script, limits.output_bytes);
     let eval_err: Option<JsError> = ctx
         .with({
             let console = console.clone();
@@ -235,7 +252,14 @@ where
                         let remaining = console_cap - cur;
                         let piece = if line.len() > remaining {
                             log_dropped.store(true, Ordering::Relaxed);
-                            line.chars().take(remaining).collect::<String>()
+                            // Truncate on a BYTE budget, walked back to a char
+                            // boundary (chars().take() is a CHAR count and could
+                            // overshoot the byte cap on multi-byte input).
+                            let mut end = remaining.min(line.len());
+                            while end > 0 && !line.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            line[..end].to_string()
                         } else {
                             line
                         };
@@ -320,8 +344,18 @@ where
                 }
                 Ok(v) => {
                     let raw = v.get("ok").cloned().unwrap_or(serde_json::Value::Null);
-                    let (value, truncated) = cap_output(raw, limits.output_bytes);
-                    JsOutcome { value, console: console_out, error: None, truncated_output: truncated }
+                    // The wrapper caps oversized results JS-side (emitting a
+                    // `{_truncated:true,...}` marker); host cap_output is the
+                    // backstop. Either firing means the output was truncated.
+                    let js_truncated =
+                        raw.get("_truncated").and_then(|t| t.as_bool()).unwrap_or(false);
+                    let (value, host_truncated) = cap_output(raw, limits.output_bytes);
+                    JsOutcome {
+                        value,
+                        console: console_out,
+                        error: None,
+                        truncated_output: js_truncated || host_truncated,
+                    }
                 }
                 Err(e) => JsOutcome {
                     value: serde_json::Value::Null,
@@ -494,6 +528,38 @@ mod tests {
         assert_eq!(out.value["deno"], "undefined");
         assert_eq!(out.value["xhr"], "undefined");
         assert_eq!(out.value["zieeIsObject"], true);
+    }
+
+    // A catastrophic-backtracking regex is killed by the gas interrupt — quickjs-ng
+    // polls the runtime interrupt handler inside libregexp (`lre_poll_timeout` →
+    // `lre_check_timeout`), unlike stock QuickJS. This proves a bad regex can't
+    // pin the thread forever (audit: resource-limits — the "no back-edges"
+    // premise doesn't hold for quickjs-ng).
+    #[tokio::test]
+    async fn test_catastrophic_regex_is_interruptible() {
+        let limits = JsLimits { gas: 2_000_000, ..JsLimits::default() };
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            evaluate(
+                "return /(a+)+$/.test('a'.repeat(60) + '!');",
+                &limits,
+                Arc::new(AtomicBool::new(false)),
+                no_inject,
+            ),
+        )
+        .await
+        .expect("catastrophic regex hung past the interrupt — quickjs-ng regex poll failed");
+        // It is killed (error), not allowed to backtrack to completion.
+        assert!(out.error.is_some(), "expected the regex to be interrupted, got {:?}", out.value);
+    }
+
+    // Reported error line maps back to the USER's line (preamble subtracted).
+    #[tokio::test]
+    async fn test_error_line_maps_to_user_line() {
+        // throw is on user line 1 → must report 1, not 4.
+        let out = run("throw new Error('x');").await;
+        let err = out.error.expect("expected error");
+        assert_eq!(err.line, Some(1), "line should map to the user's line 1");
     }
 
     // Cancel flag (wall-clock backstop) terminates a post-await runaway.

@@ -12,7 +12,7 @@ import {
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
-import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent } from '@/api-client/types'
+import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
 import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
@@ -606,6 +606,20 @@ const mcpExtension: ChatExtension = createExtension({
       // endpoint (the same in-process oneshot ask_user uses), NOT the
       // turn-boundary tool_approvals flow — a live script stack can't survive a
       // request boundary.
+      //
+      // Register an elicitationRequests entry keyed by elicitation_id so
+      // resolveElicitation can reflect the resolved status there (and roll it
+      // back to 'pending' on a failed POST) — the component reads its status
+      // from the store, so a failed approve re-enables the buttons and the
+      // resolved state survives a component remount.
+      Stores.McpComposer.addElicitationRequest({
+        elicitation_id: data.elicitation_id,
+        message: `run_js wants to call ${data.tool_name}`,
+        requested_schema: {},
+        server: data.server,
+        message_id: null,
+      } as unknown as SSEChatStreamMcpElicitationRequiredData)
+
       const chatState = get()
       const streamingMessage = chatState.streamingMessage
       const now = new Date().toISOString()
