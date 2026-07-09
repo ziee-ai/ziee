@@ -155,6 +155,16 @@ lazy_static = "1.4"
 libc = "0.2"
 include_dir = "0.7"
 
+# Embedded JavaScript runtime (js_tool / run_js programmatic tool calling).
+# QuickJS-NG via rquickjs, run IN-PROCESS in the server. `futures` gives async
+# host functions (Rust future <-> JS Promise) so a script can `await` a real
+# MCP tool dispatch (incl. a user-approval suspend). Keep the DEFAULT allocator
+# (do NOT add `rust-alloc`/`allocator`) or `set_memory_limit` is a silent no-op;
+# do NOT enable the experimental `parallel` feature. Bundled QuickJS-NG source
+# ships pre-generated Linux/macOS/Windows bindings (needs only a C compiler,
+# already required for pgvector).
+rquickjs = { version = "0.12", default-features = false, features = ["macro", "futures"] }
+
 # Remote access tunnel — embedded ngrok client (Remote Access feature).
 # `ngrok` provides the agent that connects to ngrok's edge from inside
 # the desktop process and forwards traffic to the local backend; we

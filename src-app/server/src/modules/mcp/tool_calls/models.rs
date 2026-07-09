@@ -51,6 +51,10 @@ pub enum McpToolCallSource {
     Sampling,
     /// A tool call made by a workflow `tool` step (the workflow ToolDispatcher).
     Workflow,
+    /// A tool call made by a `run_js` script's injected `ziee.tools.*` host
+    /// function (the js_tool executor). Intermediate results stay in the script;
+    /// this row is how the call surfaces in tool-call history.
+    Script,
 }
 
 impl McpToolCallSource {
@@ -62,6 +66,7 @@ impl McpToolCallSource {
             McpToolCallSource::Approval => "approval",
             McpToolCallSource::Sampling => "sampling",
             McpToolCallSource::Workflow => "workflow",
+            McpToolCallSource::Script => "script",
         }
     }
 }
