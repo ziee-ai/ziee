@@ -43,7 +43,7 @@ most want confirmed are flagged `⟵ CONFIRM`.
 **Basis:** convention — matches the feature name; `voice` leaves room for the out-of-scope future modes without a rename.
 
 ### DEC-10: Permission granularity — the llm runtime's 9-perm split or a `use`+`admin::{read,manage}` split?
-**Resolution:** **`voice::transcribe` (users) + `voice::admin::{read,manage}` (admins)** — the cleaner web_search-style split. Admin is auto-covered by the Administrators `*` wildcard; only `voice::transcribe` needs an explicit `Users` grant (migration 133).
+**Resolution:** **`voice::transcribe` (users) + `voice::admin::{read,manage}` (admins)** — the cleaner web_search-style split. Admin is auto-covered by the Administrators `*` wildcard; only `voice::transcribe` needs an explicit `Users` grant (migration 134).
 **Basis:** convention — `web_search`/`lit_search` use this modern split; the llm runtime's finer split is historical.
 
 ### DEC-11: Push-to-talk interaction model.

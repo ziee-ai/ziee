@@ -34,6 +34,7 @@ pub mod summarization;
 pub mod sync;
 pub mod tool_result_mcp;
 pub mod user;
+pub mod voice;
 pub mod web_search;
 pub mod workflow;
 pub mod workflow_mcp;

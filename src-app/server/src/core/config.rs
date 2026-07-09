@@ -18,6 +18,11 @@ pub struct Config {
     pub lit_search: Option<LitSearchConfig>,
     #[serde(default)]
     pub web_search: Option<WebSearchConfig>,
+
+    /// Voice dictation (managed whisper.cpp speech-to-text runtime). Absent =
+    /// enabled. Deploy-level kill switch: `voice: { enabled: false }`.
+    #[serde(default)]
+    pub voice: Option<VoiceConfig>,
     #[serde(default)]
     pub control_mcp: Option<ControlMcpConfig>,
     #[serde(default)]
@@ -262,6 +267,31 @@ impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
             enabled: default_web_search_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `voice` dictation runtime (managed whisper.cpp
+/// speech-to-text). Fully local — no cloud STT. `voice: { enabled: false }` is a
+/// **deploy-level** kill switch an admin cannot re-enable (distinct from the
+/// runtime `voice_runtime_settings.enabled` toggle). When false, `init()`
+/// returns before spawning the reaper / registering surfaces.
+#[derive(Debug, Deserialize, Clone)]
+pub struct VoiceConfig {
+    /// Master switch. When false, the module's `init()` returns early. Defaults
+    /// to true.
+    #[serde(default = "default_voice_enabled")]
+    pub enabled: bool,
+}
+
+fn default_voice_enabled() -> bool {
+    true
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_voice_enabled(),
         }
     }
 }

@@ -67,9 +67,9 @@ variants, `MODULE_ENTRIES` auto-registration (no central dispatch edit).
 ## Migration collisions
 
 `ls migrations/` — highest existing is
-`00000000000131_rewrite_hub_ids_phibya_to_ziee_ai.sql`. The plan uses **132**
+`00000000000131_rewrite_hub_ids_phibya_to_ziee_ai.sql`. The plan uses **133**
 (`create_voice`: `voice_runtime_versions` + `voice_runtime_instance` +
-`voice_runtime_settings`) and **133** (`grant_voice_permissions_to_users`) — both
+`voice_runtime_settings`) and **134** (`grant_voice_permissions_to_users`) — both
 free. Naming + create/grant split follow 97/98, 100/101, 103/104. Singleton PK
 idiom (`id BOOLEAN PK CHECK(id=TRUE)`) and the `array_append` grant idiom already
 in-tree. No FK collisions (new tables reference only themselves + optional
@@ -104,7 +104,7 @@ the diff as UI work (the hand-written `ui/**` items do — hence the e2e tests).
 - **ITEM-10** — verdict: PASS — `reaper.rs` copy; single-instance drain.
 - **ITEM-11** — verdict: PASS — migration mirrors 20/66/67/68 minus per-model + `allow_unsigned_downloads`; `cargo clean` once so build.rs re-runs migrations.
 - **ITEM-12** — verdict: PASS — `PermissionCheck` structs per `web_search/permissions.rs`.
-- **ITEM-13** — verdict: PASS — 132/133 free; grant mirrors 98.
+- **ITEM-13** — verdict: PASS — 133/134 free (132 taken by add_openrouter on origin/main); grant mirrors 98.
 - **ITEM-14** — verdict: PASS — `Option<VoiceConfig>{enabled}` additive/back-compatible.
 - **ITEM-15** — verdict: CONCERN — needs `just openapi-regen`; careful temp-file cleanup + WAV validation + forwarding to the loopback whisper-server; ensure-running failure must return a clear 409/503, not a 500.
 - **ITEM-16** — verdict: PASS — `web_search`/`llm_local_runtime` module skeleton; pick a free `MODULE_ENTRIES` order.

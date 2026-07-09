@@ -124,6 +124,13 @@ pub enum SyncEntity {
     /// Deployment-wide literature search settings + connector config (singleton).
     /// Notify-only; the frontend refetches settings + the connector catalog.
     LitSearchSettings,
+    /// Deployment-wide voice dictation settings (singleton). Notify-only;
+    /// delivered to holders of `voice::admin::read` — the admin UI refetches
+    /// `GET /api/voice/settings`.
+    VoiceSettings,
+    /// Voice whisper-server runtime version list changed (install/delete/set-default).
+    /// Notify-only; delivered to holders of `voice::admin::read`.
+    VoiceRuntimeVersion,
     /// Deployment-wide MCP user policy (singleton `mcp_user_policy`): which
     /// transports regular users may install + the enforced stdio sandbox
     /// flavor + tool-call retention. Delivered to holders of `mcp_servers::read`
