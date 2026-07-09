@@ -4,6 +4,7 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { useFileStore } from './stores/File.store'
 import { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'
 import { useFileVersionsStore } from './stores/FileVersions.store'
+import { useDeliverablesStore } from './stores/Deliverables.store'
 import { ProjectFiles } from './project-extension/stores/ProjectFiles.store'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -62,6 +63,7 @@ export default createModule({
     { name: 'File', store: useFileStore },
     { name: 'FilePreviewDrawer', store: useFilePreviewDrawerStore },
     { name: 'FileVersions', store: useFileVersionsStore },
+    { name: 'Deliverables', store: useDeliverablesStore },
     // defineStore handle already carries its { name, store } — name once.
     ProjectFiles,
   ],

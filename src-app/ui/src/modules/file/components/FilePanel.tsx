@@ -10,6 +10,7 @@ import {
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { FileEditBody } from '@/modules/file/components/FileEditBody'
 import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
+import { DeliverablePinButton } from '@/modules/file/components/DeliverablePinButton'
 import { editableKind } from '@/modules/file/utils/editableTypes'
 import { Stores } from '@/core/stores'
 
@@ -79,6 +80,8 @@ export function FilePanelHeaderActions({
       {/* Export-as (format conversion) for text deliverables — distinct from the
           plain Download of original bytes below. */}
       {editableKind(file) === 'markdown' ? <FileExportMenu file={file} /> : null}
+      {/* Pin/unpin as a deliverable of the active conversation (no-op outside one). */}
+      <DeliverablePinButton file={file} />
       {/* Download is a shell-level affordance guaranteed for EVERY file type. */}
       <DownloadButton file={file} />
       {showFullPage ? <FullPageButton file={file} /> : null}
