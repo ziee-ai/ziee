@@ -103,3 +103,22 @@ rquickjs crate maturity, frontend tool-call/approval rendering.
 - **ITEM-13** — verdict: CONCERN — reuses `ToolCallPendingApprovalContent` visual + `resolveElicitation`; depends on DEC-2's approval-mechanism resolution; must land in both ui workspaces.
 - **ITEM-14** — verdict: PASS — one-line source tone + gallery deep-states mirror the existing `deep-chat-tool-approval` cell to satisfy state-matrix/gallery-coverage.
 - **ITEM-15** — verdict: CONCERN — mandatory `just openapi-regen` for BOTH binaries; `npm run check` green in both workspaces (golden parity test enforces server side).
+
+## Admin-configurable limits increment (ITEM-16..27) — audit vs codebase
+
+Reviewed against the `code_sandbox` §6 reference (the exact pattern this mirrors),
+the `declare_repositories!` macro, the `SyncEntity` enum, the permission→TS-enum
+generation, and the tokio version (1.52.3 → `add_permits`+`forget_permits` present).
+
+- **ITEM-16** — verdict: PASS — singleton-table shape is copied field-for-field from migration 41; next free number is 135 (`ls migrations` → highest is 134); admin-only, so no grant migration (matches migration 41's trailing note).
+- **ITEM-17** — verdict: PASS — `JsToolSettings`/`UpdateJsToolSettings`/`validate()` mirror `resource_limits.rs`; DB columns are `i64`/`i32`, converted to `usize`/`u64`/`Duration` in the mapping (ITEM-20), so no type mismatch.
+- **ITEM-18** — verdict: PASS — `impl JsToolRepository { get/update_settings }` mirrors the code_sandbox impl-in-settings-file idiom; adding `js_tool` to `declare_repositories!` (repository.rs:198-229) is a one-line addition; `JsToolRepository::new(pool)` already exists.
+- **ITEM-19** — verdict: PASS — `settings_cache.rs` mirrors `resource_limits_cache.rs` (`OnceLock<RwLock<Arc>>`); no new dep.
+- **ITEM-20** — verdict: CONCERN — extending `JsCaps` with 2 fields touches its only constructor sites (`Default` + the new `from_settings`); `mcp.rs:437` is the sole external `JsCaps::default()` caller (ITEM-22 changes it). No other caller breaks (verified by grep — only executor reads `req.caps.*`).
+- **ITEM-21** — verdict: CONCERN — replacing the `static GLOBAL_RUN_SEM: Semaphore` with an `OnceLock<Semaphore>` changes the admission-acquire site (executor.rs:257); the live-resize is a NEW idiom (code_sandbox re-creates per-boot instead), but `add_permits`/`forget_permits` are API-supported in tokio 1.52.3. Shrink is best-effort (in-flight runs keep their slot) — acceptable + documented. Promoting `MAX_CONCURRENT_DISPATCH`/`MAX_TRACE_ENTRIES` consts to `JsCaps` fields is mechanical.
+- **ITEM-22** — verdict: PASS — one call-site swap (`JsCaps::default()` → `JsCaps::from_settings(&settings_cache::get().await?)`); `execute_run_js_call` is already `async` and already returns a `Result`, so the `?` on the cache read fits.
+- **ITEM-23** — verdict: PASS — permission structs mirror `code_sandbox/permissions.rs`; they surface to TS only via the `with_permission` docs in ITEM-24 (accounted for) + regen (ITEM-27).
+- **ITEM-24** — verdict: CONCERN — handlers/routes/docs mirror code_sandbox exactly; requires `just openapi-regen` (new operations) — folded into ITEM-27. `sync_publish` + `Audience::perm::<JsToolSettingsRead>()` + `Uuid::nil()` match the code_sandbox emit site.
+- **ITEM-25** — verdict: PASS — one `SyncEntity` variant; `snake_case` → `js_tool_settings`; TS union + EventBus key auto-generate (no manual TS edit) — matches how `CodeSandboxSettings` works.
+- **ITEM-26** — verdict: CONCERN — new `ui` frontend module mirroring `modules/code-sandbox/`; UI-only (no `desktop/ui/modules/code-sandbox` exists, confirmed), so no desktop module. Introduces new render states (loaded/loading/no-permission) → needs gallery/state-matrix coverage or an allowlist entry (budgeted in TESTS as an e2e + `npm run check`).
+- **ITEM-27** — verdict: CONCERN — mandatory `just openapi-regen` for BOTH binaries; `types_ts_parity` golden test enforces the server side; `npm run check` in `ui` (and desktop/ui only carries the regen). Same regen discipline as ITEM-15.

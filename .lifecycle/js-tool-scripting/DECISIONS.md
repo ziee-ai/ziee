@@ -82,3 +82,33 @@ below with a recommendation.
 ### DEC-19: JS ↔ Rust value marshalling.
 **Resolution:** Marshal across the boundary via QuickJS's built-in JSON: host-fn args → `ctx.json_stringify(value)` → `serde_json::from_str` → the dispatcher's `serde_json::Value`; the `ToolResult` text/`structured_content` → serialized JSON → `ctx.json_parse(...)` back into a JS value the script consumes. No extra rquickjs `serde` feature required.
 **Basis:** convention — QuickJS ships JSON; a stringify/parse bridge is dependency-free and keeps the marshalling explicit and auditable.
+
+## Admin-configurable limits increment
+
+### DEC-20: Which run_js limits become admin-configurable vs stay fixed defaults?
+**Resolution:** Exactly the 7 the user named — `memory_bytes`, `max_stack_bytes`, `wall_secs`, `approval_timeout_secs`, `max_concurrent_runs`, `max_concurrent_dispatch`, `max_trace_entries`. The remaining caps (`gas`, `output_bytes`, `console_bytes`, `max_tool_calls`, `max_approvals`) stay compile-time defaults and are NOT surfaced in the settings table/UI.
+**Basis:** user — explicit field list in the request.
+
+### DEC-21: Bounds for each configurable field (footgun guards)?
+**Resolution:** `memory_bytes` 16 MiB..4 GiB; `max_stack_bytes` 64 KiB..64 MiB; `wall_secs` 1..3600; `approval_timeout_secs` 5..3600; `max_concurrent_runs` 1..256; `max_concurrent_dispatch` 1..64; `max_trace_entries` 1..10000. Enforced in BOTH the SQL `CHECK` constraints (last line of defense) and `validate()` (clear 422). The upper bounds specifically prevent an admin from OOMing the server (`max_concurrent_runs × memory_bytes` blowup) or hanging a runtime for hours (`wall_secs`).
+**Basis:** convention — mirrors code_sandbox migration-41 `CHECK` + `validate()` bounds style, sized to the run_js defaults.
+
+### DEC-22: How is the process-global `max_concurrent_runs` made live-configurable given it is a `static` Semaphore today?
+**Resolution:** Replace the fixed `static GLOBAL_RUN_SEM: Semaphore` with an `OnceLock<Semaphore>` primed on first run from the cached setting, plus `set_max_concurrent_runs(new)` that grows via `Semaphore::add_permits(delta)` and shrinks via `Semaphore::forget_permits(delta)`. The PUT handler calls it after the cache invalidate so the new cap takes effect immediately; shrink is best-effort (in-flight runs keep their slot, the reduction applies as slots free).
+**Basis:** codebase — tokio resolves to 1.52.3 (both methods ≥1.44.0 present); a strictly better version of code_sandbox's per-boot fixed-Semaphore pattern, chosen so "invalidate on change" also applies to the global cap.
+
+### DEC-23: Where do `max_concurrent_dispatch` + `max_trace_entries` (executor `const`s today) live once configurable?
+**Resolution:** Promote both to fields on `JsCaps` (the per-run caps struct already threaded into the executor via `req.caps`). The executor reads `req.caps.max_concurrent_dispatch` / `req.caps.max_trace_entries` instead of the module `const`s. `JsCaps::from_settings` populates them.
+**Basis:** convention — consistent with the existing "per-run caps ride on `JsCaps`" model; keeps a single settings→caps mapping point.
+
+### DEC-24: Settings-page route + admin-sidebar slot placement?
+**Resolution:** Route `/settings/js-tool`, gated by `Permissions.JsToolSettingsRead` under `SettingsLayoutDef`; a `settingsAdminPages` slot entry `{id:'js-tool', label:'Programmatic Tools', path:'js-tool', order:27, permission: JsToolSettingsRead}` (order 27, just after Code Sandbox's 26).
+**Basis:** user (mirror the Code Sandbox 'Resource limits' page) + codebase (code-sandbox `module.tsx` slot at order 26).
+
+### DEC-25: Desktop parity for the settings page?
+**Resolution:** Frontend module is `src-app/ui` ONLY. `desktop/ui` receives ONLY the OpenAPI regen (generated `openapi.json`+`types.ts`, incl. the new `SyncEntity`/`Permissions`). No `desktop/ui/src/modules/js-tool`.
+**Basis:** codebase — `desktop/ui/src/modules/` has NO `code-sandbox` module (confirmed by `ls`), so the reference admin-settings surface is ui-only; matches [[project_openapi_regen_both_binaries]] (regen both, module in one).
+
+### DEC-26: UI units for the byte-cap fields?
+**Resolution:** `memory_bytes` edited in MiB, `max_stack_bytes` edited in KiB, converted to bytes in `formToPatch` (and back in `rowToForm`); the raw bytes are the wire/DB value.
+**Basis:** convention — mirrors code_sandbox's MiB `InputNumber` + `rowToForm`/`formToPatch` byte converters.

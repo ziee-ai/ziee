@@ -41,6 +41,22 @@ approval (an async host fn that resolves on approve/deny).
 - **ITEM-14**: `script` source tone in `McpToolCallsTab` (both workspaces); gallery deep-states for the run_js call card + the inner-tool approval prompt (`dev/gallery/deepStates.tsx` + `dev/gallery/fixtures/chat-deep.ts`) so `check:state-matrix` / `check:gallery-coverage` pass.
 - **ITEM-15**: OpenAPI regen for BOTH binaries (`just openapi-regen`) → `openapi.json` + `api-client/types.ts` in `ui` and `desktop/ui`, picking up the new `McpToolCallSource` `Script` value + any new elicitation render-hint field.
 
+### Backend — admin-configurable limits (`js_tool_settings`, mirrors code_sandbox §6)
+- **ITEM-16**: Migration `00000000000135_create_js_tool_settings.sql` — a singleton `js_tool_settings` table (`id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id = TRUE)`) with the 7 admin-tunable columns `memory_bytes`, `max_stack_bytes`, `wall_secs`, `approval_timeout_secs`, `max_concurrent_runs`, `max_concurrent_dispatch`, `max_trace_entries`, each `NOT NULL DEFAULT` = the CURRENT hardcoded value (128 MiB / 512 KiB / 300 / 300 / 8 / 6 / 256), `CHECK`-constraint range guards mirroring `validate()`, `created_at`/`updated_at`, and a seed `INSERT (id) VALUES (TRUE) ON CONFLICT DO NOTHING`. Admin-only: no grant migration (Administrators hold read+manage via `*`). Mirrors migration 41.
+- **ITEM-17**: `js_tool/settings.rs` — `JsToolSettings` (`FromRow`+`JsonSchema`, columns as fields) + `UpdateJsToolSettings` (PATCH, all `Option<T>`) + `validate()` returning a 422 `AppError` (`JS_TOOL_LIMIT_OUT_OF_RANGE`) on any out-of-range field. Mirrors `code_sandbox/resource_limits.rs` model+validate.
+- **ITEM-18**: `impl JsToolRepository { get_settings, update_settings }` — `SELECT … WHERE id = TRUE` + `UPDATE … SET col = COALESCE($n, col) … RETURNING …` (PATCH). Register `js_tool: JsToolRepository => crate::modules::js_tool` in the `declare_repositories!` list so `Repos.js_tool` exists.
+- **ITEM-19**: `js_tool/settings_cache.rs` — `static CACHE: OnceLock<RwLock<Arc<JsToolSettings>>>` with `async get()` (lazy DB load via `Repos.js_tool.get_settings()`), `invalidate(&row)` (swap the Arc), and `defaults()` (matches the SQL DEFAULTs). Mirrors `resource_limits_cache.rs`.
+- **ITEM-20**: `JsCaps::from_settings(&JsToolSettings)` — maps `memory_bytes`/`max_stack_bytes` into `JsLimits`, `wall_secs`/`approval_timeout_secs` into `Duration`s, and (see ITEM-21) `max_concurrent_dispatch`+`max_trace_entries` into two NEW `JsCaps` fields; leaves `gas`/`output_bytes`/`console_bytes`/`max_tool_calls`/`max_approvals` at their existing defaults (out of the admin-tunable set per DEC-20).
+- **ITEM-21**: Executor reads per-run caps from `req.caps` instead of constants: `dispatch_sem = Semaphore::new(req.caps.max_concurrent_dispatch)` and the trace cap = `req.caps.max_trace_entries` (both promoted from `const` to `JsCaps` fields). Replace the fixed `static GLOBAL_RUN_SEM` with a settings-backed **live-resizable** global semaphore: `OnceLock<Semaphore>` primed on first run from the cached `max_concurrent_runs`, plus `set_max_concurrent_runs(new)` that grows via `Semaphore::add_permits` / shrinks via `Semaphore::forget_permits` (both available in tokio 1.52.3) so an admin change takes effect immediately.
+- **ITEM-22**: `mcp.rs::execute_run_js_call` builds `JsCaps::from_settings(&settings_cache::get().await?)` instead of `JsCaps::default()` — so every run reads the live DB-backed caps.
+- **ITEM-23**: Permissions `JsToolSettingsRead` (`js_tool::settings::read`) + `JsToolSettingsManage` (`js_tool::settings::manage`) in `js_tool/permissions.rs`; admin-only (held via `*`, surfaced to the TS enum by the handler `with_permission` docs).
+- **ITEM-24**: Handlers `get_settings_handler` (`RequirePermissions<(JsToolSettingsRead,)>`) + `update_settings_handler` (`RequirePermissions<(JsToolSettingsManage,)>` + `SyncOrigin`: `validate()?` → `update_settings` → `settings_cache::invalidate` + `executor::set_max_concurrent_runs` → `sync_publish(SyncEntity::JsToolSettings, Update, Uuid::nil(), Audience::perm::<JsToolSettingsRead>(), origin.0)`) + their `_docs` fns (`with_permission`, `.id("JsTool.getSettings"/"JsTool.updateSettings")`). Routes `GET/PUT /js-tool/settings` via typed `api_route(get_with(...).put_with(...))` merged in the js_tool `register_routes`.
+- **ITEM-25**: Sync entity `SyncEntity::JsToolSettings` (one variant + doc in `sync/event.rs`; `snake_case` → `js_tool_settings`; TS union + `sync:js_tool_settings` EventBus key auto-generate).
+
+### Frontend — admin settings page (`src-app/ui` ONLY; code-sandbox settings is ui-only, so desktop gets regen-only per DEC-25)
+- **ITEM-26**: `src-app/ui/src/modules/js-tool/` — `stores/JsToolSettings.store.ts` (`defineStore`: `loadSettings`/`saveSettings` + `init` subscribing `sync:js_tool_settings`+`sync:reconnect`, self-gated on `Permissions.JsToolSettingsRead`, initial load); `types.ts` (declare-merge `JsToolSettings` into `RegisteredStores`); `components/JsToolSettingsSection.tsx` (a Card + `Form` + `zod` schema mirroring `validate()` bounds, `InputNumber` fields in MiB/KiB for the byte caps, `SettingsFormActions` footer with required testids, `usePermission`-gated with a no-permission `Alert`); `components/JsToolSettingsPage.tsx` (`SettingsPageContainer` wrapping the section); `module.tsx` (route `/settings/js-tool` gated by `Permissions.JsToolSettingsRead` under `SettingsLayoutDef` + a `settingsAdminPages` slot entry `{id:'js-tool', label:'Programmatic Tools', path:'js-tool', order:27, permission: JsToolSettingsRead}` + the store registration). Mirrors `modules/code-sandbox/`.
+- **ITEM-27**: OpenAPI regen for BOTH binaries (`just openapi-regen`) → `JsTool.getSettings`/`updateSettings` operations, `JsToolSettings`/`UpdateJsToolSettings` schemas, `SyncEntity::JsToolSettings`, and `Permissions.JsToolSettings{Read,Manage}` flow into `ui` + `desktop/ui` `openapi.json`+`types.ts`; `npm run check` green in each touched workspace (the `types_ts_parity` golden test enforces the server side).
+
 ## Files to touch
 
 ### Backend — new
@@ -81,6 +97,31 @@ approval (an async host fn that resolves on approve/deny).
 - `src-app/ui/tests/e2e/chat/run-js-tool-scripting.spec.ts`
 - `src-app/ui/tests/e2e/chat/run-js-inner-approval.spec.ts`
 
+### Backend — admin-configurable limits increment
+- `src-app/server/migrations/00000000000135_create_js_tool_settings.sql` (new)
+- `src-app/server/src/modules/js_tool/settings.rs` (new — model + validate)
+- `src-app/server/src/modules/js_tool/settings_cache.rs` (new — cache)
+- `src-app/server/src/modules/js_tool/repository.rs` (edited — get/update_settings)
+- `src-app/server/src/modules/js_tool/permissions.rs` (edited — Read/Manage)
+- `src-app/server/src/modules/js_tool/handlers.rs` (edited — get/update settings handlers + docs)
+- `src-app/server/src/modules/js_tool/routes.rs` (edited — /js-tool/settings GET/PUT)
+- `src-app/server/src/modules/js_tool/limits.rs` (edited — JsCaps fields + from_settings)
+- `src-app/server/src/modules/js_tool/executor.rs` (edited — read req.caps + resizable GLOBAL_RUN_SEM)
+- `src-app/server/src/modules/js_tool/mod.rs` (edited — expose settings_cache; module wiring)
+- `src-app/server/src/modules/mcp/chat_extension/mcp.rs` (edited — JsCaps::from_settings)
+- `src-app/server/src/core/repository.rs` (edited — declare_repositories! js_tool)
+- `src-app/server/src/modules/sync/event.rs` (edited — SyncEntity::JsToolSettings)
+
+### Frontend — admin settings page increment (`src-app/ui` only)
+- `src-app/ui/src/modules/js-tool/module.tsx` (new)
+- `src-app/ui/src/modules/js-tool/types.ts` (new)
+- `src-app/ui/src/modules/js-tool/stores/JsToolSettings.store.ts` (new)
+- `src-app/ui/src/modules/js-tool/components/JsToolSettingsSection.tsx` (new)
+- `src-app/ui/src/modules/js-tool/components/JsToolSettingsPage.tsx` (new)
+- `src-app/ui/src/api-client/types.ts` + `src-app/ui/openapi/openapi.json` (regenerated)
+- `src-app/desktop/ui/src/api-client/types.ts` + `src-app/desktop/ui/openapi/openapi.json` (regenerated ONLY)
+- `src-app/ui/tests/e2e/settings/js-tool-settings.spec.ts` (new — e2e)
+
 ## Patterns to follow
 - **Built-in MCP server (thin) + boot upsert + deterministic id** → closest: `src-app/server/src/modules/memory_mcp/` (`mod.rs`/`handlers.rs`/`routes.rs`/`tools.rs`/`repository.rs`). Reuse the JSON-RPC envelope + `ConversationIdHeader` from `code_sandbox::types` (do not re-declare).
 - **Attach-flag chat extension + deploy kill switch** → `src-app/server/src/modules/web_search/chat_extension/` + `web_search`'s `core/config.rs` `WebSearchConfig`/`default_web_search_enabled` block.
@@ -91,3 +132,11 @@ approval (an async host fn that resolves on approve/deny).
 - **Frontend approval reuse** → `modules/mcp/chat-extension/components/ToolCallPendingApprovalContent.tsx` (visual) + `ElicitationFormContent` + `McpComposer.store.ts::resolveElicitation` (side-channel resolve). Tool-call card is reused verbatim (`McpToolUseGroup`/`McpToolCallUI`/`McpToolUseRenderer`).
 - **Gallery deep-state** → the existing `deep-chat-tool-approval` cell in `dev/gallery/deepStates.tsx` + fixtures in `dev/gallery/fixtures/chat-deep.ts`.
 - **E2E** → `src-app/ui/tests/e2e/chat/mcp-tool-approval-optimistic.spec.ts` + `tests/e2e/helpers/sse-mock-helpers.ts` (mocked SSE two-call sequence); `mcp-tool-approval-real-llm.spec.ts` for the real-LLM variant.
+
+### Admin-configurable limits increment
+- **Singleton settings table + model + validate + repo + cache + handlers + sync** → closest: `src-app/server/src/modules/code_sandbox/` — migration `00000000000041_create_code_sandbox_settings.sql`, `resource_limits.rs` (row + `Update*` PATCH + `validate()`), `resource_limits_cache.rs` (`OnceLock<RwLock<Arc>>` get/invalidate/defaults), `handlers.rs::{get,update}_resource_limits_handler` (+`_docs` with `with_permission`), `routes.rs` (`api_route(get_with(...).put_with(...))`). Mirror field-for-field.
+- **Admin-only permission pair** → `code_sandbox/permissions.rs::{CodeSandboxResourceLimitsRead,CodeSandboxResourceLimitsManage}` — a `PermissionCheck` struct becomes a real perm only when referenced in a handler `with_permission::<(P,)>` docs fn (then regen).
+- **Sync entity (admin-scoped)** → `sync/event.rs::SyncEntity::CodeSandboxSettings` variant + `Audience::perm::<ReadPerm>()` at the emit site; `Uuid::nil()` id for a singleton.
+- **Settings-backed concurrency cap** → code_sandbox reads `vm_max_concurrent_execs` per-VM-boot into a fixed `Semaphore` (`backend/mac_vm.rs`, `backend/wsl2.rs`); for the process-global `max_concurrent_runs` we go one better with a **live-resizable** `Semaphore` (`add_permits`/`forget_permits`, tokio 1.52.3) so a PUT takes effect immediately.
+- **Frontend admin settings page (store + section card + page + module slot)** → `src-app/ui/src/modules/code-sandbox/` — `stores/SandboxResourceLimits.store.ts` (defineStore + `init` sync-sub + `hasPermissionNow` self-gate + load), `components/SandboxResourceLimitsSection.tsx` (Card + `Form` + `zod` schema + `SettingsFormActions` footer + `usePermission` gate + MiB `InputNumber`s), `components/SandboxSettingsPage.tsx` (`SettingsPageContainer`), `module.tsx` (route + stores + `settingsAdminPages` slot), `types.ts` (declare-merge). Code-sandbox settings is **ui-only** — no `desktop/ui` module (DEC-25).
+- **Settings admin-page e2e** → mirror an existing settings e2e that drives an admin page load + form save (e.g. `src-app/ui/tests/e2e/` sandbox/settings specs) with `loginAsAdmin`, testid-based field edits, and a persisted-value assertion.
