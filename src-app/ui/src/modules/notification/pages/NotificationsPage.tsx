@@ -38,6 +38,7 @@ export function NotificationsPage() {
     >
       <Flex className="mb-3 items-center justify-between">
         <Segmented
+          data-standalone-control
           data-testid="notifications-filter"
           value={unreadOnly ? 'unread' : 'all'}
           onChange={v => Stores.Notifications.setUnreadOnly(v === 'unread')}
@@ -81,9 +82,9 @@ export function NotificationsPage() {
                 {!n.read_at && (
                   <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                 )}
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 text-left"
+                <Button
+                  variant="ghost"
+                  className="h-auto min-w-0 flex-1 flex-col items-start gap-0.5 whitespace-normal text-start"
                   onClick={() => open(n)}
                   data-testid={`notification-open-${n.id}`}
                 >
@@ -96,7 +97,7 @@ export function NotificationsPage() {
                   <Text className="text-muted-foreground text-xs">
                     {new Date(n.created_at).toLocaleString()}
                   </Text>
-                </button>
+                </Button>
                 <Flex className="gap-1">
                   {!n.read_at && (
                     <Button

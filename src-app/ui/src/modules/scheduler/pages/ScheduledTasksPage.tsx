@@ -94,7 +94,9 @@ function TaskRow({ task }: { task: ScheduledTask }) {
         </div>
         <Flex className="items-center gap-1">
           <Switch
+            data-standalone-control
             data-testid={`task-enabled-${task.id}`}
+            aria-label={task.enabled ? 'Disable task' : 'Enable task'}
             checked={task.enabled}
             onCheckedChange={v =>
               void Stores.ScheduledTasks.setEnabled(task.id, v)

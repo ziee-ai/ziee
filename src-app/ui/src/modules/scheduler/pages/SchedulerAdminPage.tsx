@@ -8,9 +8,14 @@ import {
   Flex,
   InputNumber,
   Spin,
-  Text,
   message,
 } from '@/components/ui'
+import {
+  Field,
+  FieldContent,
+  FieldGroup,
+  FieldTitle,
+} from '@/components/ui/shadcn/field'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
@@ -90,62 +95,72 @@ export function SchedulerAdminPage() {
         )}
         {f && (
           <Flex className="flex-col gap-3">
-            <Flex className="items-center justify-between gap-2">
-              <Text className="text-sm">Max active tasks per user</Text>
-              <InputNumber
-                data-testid="scheduler-max-active"
-                min={1}
-                max={1000}
-                value={f.max_active_tasks_per_user}
-                disabled={!canManage}
-                onChange={v =>
-                  setF({ ...f, max_active_tasks_per_user: Number(v ?? 1) })
-                }
-              />
-            </Flex>
-            <Flex className="items-center justify-between gap-2">
-              <Text className="text-sm">Minimum interval (seconds)</Text>
-              <InputNumber
-                data-testid="scheduler-min-interval"
-                min={60}
-                max={86400}
-                value={f.min_interval_seconds}
-                disabled={!canManage}
-                onChange={v =>
-                  setF({ ...f, min_interval_seconds: Number(v ?? 300) })
-                }
-              />
-            </Flex>
-            <Flex className="items-center justify-between gap-2">
-              <Text className="text-sm">
-                Auto-pause after N consecutive failures
-              </Text>
-              <InputNumber
-                data-testid="scheduler-max-failures"
-                min={1}
-                max={100}
-                value={f.max_consecutive_failures}
-                disabled={!canManage}
-                onChange={v =>
-                  setF({ ...f, max_consecutive_failures: Number(v ?? 5) })
-                }
-              />
-            </Flex>
-            <Flex className="items-center justify-between gap-2">
-              <Text className="text-sm">
-                Notification retention (days, 0 = forever)
-              </Text>
-              <InputNumber
-                data-testid="scheduler-retention"
-                min={0}
-                max={3650}
-                value={f.notification_retention_days}
-                disabled={!canManage}
-                onChange={v =>
-                  setF({ ...f, notification_retention_days: Number(v ?? 30) })
-                }
-              />
-            </Flex>
+            <FieldGroup>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Max active tasks per user</FieldTitle>
+                </FieldContent>
+                <InputNumber
+                  data-testid="scheduler-max-active"
+                  min={1}
+                  max={1000}
+                  value={f.max_active_tasks_per_user}
+                  disabled={!canManage}
+                  onChange={v =>
+                    setF({ ...f, max_active_tasks_per_user: Number(v ?? 1) })
+                  }
+                />
+              </Field>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Minimum interval (seconds)</FieldTitle>
+                </FieldContent>
+                <InputNumber
+                  data-testid="scheduler-min-interval"
+                  min={60}
+                  max={86400}
+                  value={f.min_interval_seconds}
+                  disabled={!canManage}
+                  onChange={v =>
+                    setF({ ...f, min_interval_seconds: Number(v ?? 300) })
+                  }
+                />
+              </Field>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>
+                    Auto-pause after N consecutive failures
+                  </FieldTitle>
+                </FieldContent>
+                <InputNumber
+                  data-testid="scheduler-max-failures"
+                  min={1}
+                  max={100}
+                  value={f.max_consecutive_failures}
+                  disabled={!canManage}
+                  onChange={v =>
+                    setF({ ...f, max_consecutive_failures: Number(v ?? 5) })
+                  }
+                />
+              </Field>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>
+                    Notification retention (days, 0 = forever)
+                  </FieldTitle>
+                </FieldContent>
+                <InputNumber
+                  data-testid="scheduler-retention"
+                  min={0}
+                  max={3650}
+                  value={f.notification_retention_days}
+                  disabled={!canManage}
+                  onChange={v =>
+                    setF({ ...f, notification_retention_days: Number(v ?? 30) })
+                  }
+                />
+              </Field>
+            </FieldGroup>
             {canManage && (
               <Flex className="justify-end">
                 <Button

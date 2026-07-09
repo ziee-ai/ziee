@@ -113,10 +113,9 @@ export function ScheduleBuilder({ value, onChange }: Props) {
       {value.schedule_kind === 'once' ? (
         <label className="flex flex-col gap-1">
           <Text className="text-sm">Run at</Text>
-          <input
+          <Input
             data-testid="schedule-run-at"
             type="datetime-local"
-            className="rounded-md border bg-background px-2 py-1"
             value={value.run_at ? value.run_at.slice(0, 16) : ''}
             onChange={e =>
               onChange({
@@ -143,10 +142,10 @@ export function ScheduleBuilder({ value, onChange }: Props) {
           {preset !== 'custom' && (
             <label className="flex flex-col gap-1">
               <Text className="text-sm">Time</Text>
-              <input
+              <Input
                 data-testid="schedule-time"
                 type="time"
-                className="w-40 rounded-md border bg-background px-2 py-1"
+                className="w-40"
                 value={timeStr}
                 onChange={e => {
                   const [h, m] = e.target.value.split(':').map(Number)

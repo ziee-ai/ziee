@@ -47,14 +47,14 @@ export function NotificationBellWidget() {
       ) : (
         <Flex className="flex-col gap-1">
           {recent.map(n => (
-            <button
+            <Button
               key={n.id}
-              type="button"
+              variant="ghost"
               data-testid={`notification-bell-item-${n.id}`}
               onClick={() => goTo(n)}
-              className="w-full rounded-md px-2 py-2 text-left hover:bg-accent"
+              className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal px-2 py-2 text-start"
             >
-              <Flex className="items-center gap-2">
+              <Flex className="w-full items-center gap-2">
                 {!n.read_at && (
                   <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
                 )}
@@ -68,7 +68,7 @@ export function NotificationBellWidget() {
               <Text className="text-muted-foreground text-xs">
                 {new Date(n.created_at).toLocaleString()}
               </Text>
-            </button>
+            </Button>
           ))}
         </Flex>
       )}
