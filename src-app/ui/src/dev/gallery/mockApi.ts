@@ -122,6 +122,11 @@ const SSE_SUBSCRIPTION = /\/api\/chat\/stream\/subscription$/
 // Raw file bytes: the PDF.js viewer fetches `/files/{id}/raw` as binary. Answer
 // with the sample PDF fixture so the viewer renders a real document offline.
 const FILE_RAW = /^\/api\/files\/[^/]+\/raw$/
+// Extracted text for a file — the artifact canvas edit-mode (FileEditBody) fetches
+// `/files/{id}/text` to seed the editor. Serve a small markdown sample.
+const FILE_TEXT = /^\/api\/files\/[^/]+\/text$/
+const SAMPLE_CANVAS_MD =
+  '# Assay Methods\n\nSamples were prepared with **care** and *precision* using `buffer A`.\n\n- RNA extraction\n- Reverse transcription\n\n> Keep samples on ice.\n'
 let sseCassette: SseFrame[] = []
 /** Register the frame sequence the next `/api/chat/stream` request replays. */
 export function setSseCassette(frames: SseFrame[]): void {
@@ -312,6 +317,14 @@ export function installMockApi(cassette?: Cassette): void {
         )
       }
       return makeBinaryResponse(base64ToBytes(SAMPLE_PDF_BASE64), 'application/pdf')
+    }
+
+    // Extracted text for the artifact canvas editor (FileEditBody).
+    if (FILE_TEXT.test(parsed.pathname) && method === 'GET') {
+      return new Response(SAMPLE_CANVAS_MD, {
+        status: 200,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      })
     }
 
     // Apply the data-state mode. GET reads carry the state; mutations (POST/PUT/

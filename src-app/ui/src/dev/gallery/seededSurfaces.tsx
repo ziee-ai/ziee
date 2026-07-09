@@ -151,6 +151,28 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       },
     ),
   },
+  {
+    slug: 'seeded-artifact-canvas-edit-body',
+    title: 'Artifact canvas — edit mode (toolbar + editor + save bar)',
+    note: 'the full markdown edit body: toolbar, WYSIWYG content, Save/Cancel',
+    path: '/gallery/artifact-edit',
+    initialPath: '/gallery/artifact-edit',
+    component: lazyProps(
+      () => import('@/modules/file/components/FileEditBody'),
+      'FileEditBody',
+      {
+        file: {
+          id: 'gallery-md-file',
+          filename: 'methods.md',
+          mime_type: 'text/markdown',
+          version: 1,
+          file_size: 200,
+          user_id: 'u1',
+        },
+        onDone: () => {},
+      },
+    ),
+  },
   // ── ProviderHeader inline RENAME form — an INTERACTION-gated surface. The header
   //    renders the name as a Title with an edit (pencil) button; clicking it swaps
   //    in the inline `layout="inline"` rename Form. The `rename` recipe drives that
