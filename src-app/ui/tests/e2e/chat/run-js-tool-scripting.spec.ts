@@ -176,6 +176,9 @@ test.describe('run_js tool scripting', () => {
     const sourceTag = page.getByTestId(`mcp-tool-call-source-${rowId}`)
     await expect(sourceTag).toBeVisible({ timeout: 15000 })
     await expect(sourceTag).toHaveText('script')
+    // Rendered with the `script` source's OWN tone (SOURCE_TONE.script = 'info' →
+    // `text-info`), not the fallback `default` tone (`text-foreground/80`).
+    await expect(sourceTag).toHaveClass(/text-info/)
   })
 })
 

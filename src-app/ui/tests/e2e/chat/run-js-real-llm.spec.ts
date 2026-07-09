@@ -78,5 +78,13 @@ test.describe('run_js — real LLM (provider-agnostic)', () => {
       .locator('[data-testid^="mcp-toolcall-card-"]')
       .filter({ hasText: 'run_js' })
     await expect(runJsCard.first()).toBeVisible({ timeout: 150_000 })
+
+    // Prove the script actually EXECUTED and produced the value (not merely that
+    // a card mounted): the run_js call reaches its `completed` state (no error),
+    // and the model's continuation reflects the computed result (6*7 = 42).
+    await expect(
+      page.locator('[data-testid^="mcp-toolcall-status-"][data-status="completed"]').first(),
+    ).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('42', { exact: false }).first()).toBeVisible({ timeout: 60_000 })
   })
 })

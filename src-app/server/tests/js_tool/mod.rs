@@ -94,6 +94,34 @@ async fn wait_for_script_rows(pool: &sqlx::PgPool, user_id: Uuid, want: i64) -> 
     Vec::new()
 }
 
+/// The `name` of every `tool_use` content block in the persisted message
+/// history — i.e. every tool call that actually reached the MODEL's context.
+/// A sub-tool call made INSIDE a run_js script must NOT appear here (it stays in
+/// the script; only the single run_js result is a context block) — this is the
+/// PTC-economics invariant.
+async fn context_tool_use_names(server: &TestServer, user: &TestUser, conversation_id: &str) -> Vec<String> {
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/conversations/{conversation_id}/messages?limit=100")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get messages");
+    assert!(resp.status().is_success(), "get messages must succeed");
+    let v: Value = resp.json().await.unwrap();
+    let msgs = v["messages"].as_array().cloned().unwrap_or_default();
+    let mut names = Vec::new();
+    for m in &msgs {
+        for c in m["contents"].as_array().cloned().unwrap_or_default() {
+            if c["content_type"] == "tool_use" {
+                if let Some(n) = c["content"]["name"].as_str() {
+                    names.push(n.to_string());
+                }
+            }
+        }
+    }
+    names
+}
+
 /// POST a JSON-RPC body to the run_js loopback endpoint.
 async fn jsonrpc(server: &TestServer, token: &str, body: Value) -> (reqwest::StatusCode, Value) {
     let resp = reqwest::Client::new()
@@ -217,6 +245,21 @@ async fn test_run_js_loop_records_all_sub_calls() {
     let uid = Uuid::parse_str(&user.user_id).unwrap();
     let rows = wait_for_script_rows(&pool(&server).await, uid, 3).await;
     assert_eq!(rows.len(), 3, "three sub-calls recorded with source=script: {rows:?}");
+
+    // PTC economics (the core claim): the 3 sub-tool calls happened INSIDE the
+    // script, so they must NOT surface as `tool_use` context blocks — only the
+    // single run_js call reaches the model's context. Without this, a naive tool
+    // loop (N context tool_results) would pass the row-count check above too.
+    let ctx_calls = context_tool_use_names(&server, &user, &conv).await;
+    assert!(
+        ctx_calls.iter().any(|n| n.contains("run_js")),
+        "the run_js call itself IS a context tool_use block: {ctx_calls:?}"
+    );
+    assert!(
+        !ctx_calls.iter().any(|n| n.contains("get_tool_result")),
+        "the in-script sub-calls must NOT appear as tool_use blocks in the model's context \
+         (they stay in the script; only the run_js summary is a context block): {ctx_calls:?}"
+    );
 }
 /// TEST-27 + TEST-28: a script that returns a value surfaces it to the model;
 /// a script that throws surfaces an error with the (preamble-corrected) line.
@@ -227,7 +270,7 @@ async fn test_run_js_value_and_error() {
     let stub = StubChat::start().await;
     let model_id = crate::common::stub_chat::register_stub_model(&server, &user.token, &user.user_id, &stub.base_url, true, None).await;
 
-    // Value: `return 6*42` → the model's continuation echoes "42".
+    // Value: `return 6 * 7` (=42) → the model's continuation echoes "42".
     let (conv, branch) = create_conversation(&server, &user, &model_id).await;
     let text = send_collect(&server, &user, &conv, &branch, &model_id, "STUB_PLAN=run_js_value go").await;
     assert!(text.contains("42"), "run_js return value 42 reaches the model: {text}");
