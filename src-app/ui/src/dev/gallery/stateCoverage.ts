@@ -54,20 +54,22 @@ export const STATE_COVERAGE = {
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
   // Voice surfaces: gallery cells deferred (DRIFT-1). The required states are
-  // derived from the components' real render branches; each flow IS exercised by
-  // a committed Playwright spec under tests/e2e/14-voice/, so the skip is backed
-  // by real automated coverage (not a fictional reference).
-  'modules/chat/extensions/voice/components/MicButton:open': { skip: true, reason: 'privacy-hint popover; deferred gallery cell — covered by 14-voice/mic-not-ready.spec.ts' },
-  'modules/voice/components/AvailableVersionsCard:empty': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-runtime-admin.spec.ts' },
-  'modules/voice/components/AvailableVersionsCard:error': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-runtime-admin.spec.ts' },
-  'modules/voice/components/InstalledVersionsCard:delayed': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-runtime-admin.spec.ts' },
-  'modules/voice/components/InstalledVersionsCard:empty': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/admin-empty-state.spec.ts' },
-  'modules/voice/components/InstalledVersionsCard:error': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-runtime-admin.spec.ts' },
-  'modules/voice/components/ModelCard:delayed': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-settings-admin.spec.ts' },
-  'modules/voice/components/ModelCard:error': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-settings-admin.spec.ts' },
-  'modules/voice/components/VoiceConfigCard:error': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/voice-settings-admin.spec.ts' },
-  'modules/voice/components/VoiceInstanceCard:delayed': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/admin-empty-state.spec.ts' },
-  'modules/voice/components/VoiceInstanceCard:error': { skip: true, reason: 'deferred gallery cell — covered by 14-voice/admin-empty-state.spec.ts' },
+  // derived from the components' real render branches. The HAPPY-PATH + loading
+  // (delayed) + populated/empty flows ARE exercised by committed 14-voice specs
+  // (referenced below). The ERROR branches (a failed voice GET) are NOT yet
+  // driven by any spec (routeVoice serves 200s) — those are an honest, tracked
+  // coverage gap (DRIFT-1), not a claim of coverage.
+  'modules/chat/extensions/voice/components/MicButton:open': { skip: true, reason: 'privacy-hint popover; deferred gallery cell — rendered/dismissed by 14-voice/dictation-inserts-not-sends.spec.ts' },
+  'modules/voice/components/AvailableVersionsCard:empty': { skip: true, reason: 'deferred gallery cell; no-published-binaries empty branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/AvailableVersionsCard:error': { skip: true, reason: 'deferred gallery cell; check-updates error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/InstalledVersionsCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/voice-runtime-admin.spec.ts' },
+  'modules/voice/components/InstalledVersionsCard:empty': { skip: true, reason: 'deferred gallery cell — no-installed-versions empty state exercised by 14-voice/admin-empty-state.spec.ts' },
+  'modules/voice/components/InstalledVersionsCard:error': { skip: true, reason: 'deferred gallery cell; versions-list error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/ModelCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/voice-settings-admin.spec.ts' },
+  'modules/voice/components/ModelCard:error': { skip: true, reason: 'deferred gallery cell; model-status error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/VoiceConfigCard:error': { skip: true, reason: 'deferred gallery cell; settings-load error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/VoiceInstanceCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/admin-empty-state.spec.ts' },
+  'modules/voice/components/VoiceInstanceCard:error': { skip: true, reason: 'deferred gallery cell; instance-load error branch not yet exercised by a spec (DRIFT-1)' },
   // The find bar's `loading` state is a transient in-flight search fetch (the
   // results-list spinner while a page of matches loads). It can't be captured
   // as a deterministic gallery snapshot; it's exercised end-to-end by the

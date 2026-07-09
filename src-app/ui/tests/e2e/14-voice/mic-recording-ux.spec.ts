@@ -24,10 +24,14 @@ test.describe('Voice — recording UX (TEST-35)', () => {
   }) => {
     const { baseURL } = testInfra
     await installVoiceBrowserMocks(page)
+    // max_clip_seconds=3 gives a stable ~3s recording window to assert the timer
+    // + "Recording started" announcement WITHOUT racing the auto-stop (which
+    // overwrites the shared live region with "Transcribing"); the auto-stop is
+    // still exercised (no Stop click) when the 3s cap fires.
     await routeVoice(
       page,
       defaultVoiceState({
-        capability: readyCapability({ max_clip_seconds: 1 }),
+        capability: readyCapability({ max_clip_seconds: 3 }),
       }),
     )
     // A slow transcribe so the "Starting…" → "Transcribing…" staging is visible.
