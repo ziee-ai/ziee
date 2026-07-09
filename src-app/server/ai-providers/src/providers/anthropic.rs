@@ -542,16 +542,18 @@ impl AnthropicProvider {
             return false;
         }
         // Phrases Anthropic uses when a param is not accepted at all for the model
-        // (restricted model, or thinking-active temperature).
+        // (restricted model, or thinking-active temperature). Kept specific so a
+        // value-validation 400 that merely mentions the param isn't misread as
+        // unsupported (e.g. bare "unexpected"/"not allowed" would over-match).
         const UNSUPPORTED_HINTS: [&str; 8] = [
-            "not permitted",
-            "not supported",
-            "unsupported",
-            "unexpected",
-            "extra input",
-            "only be set to 1",
-            "not allowed",
-            "cannot be used",
+            "not permitted",       // pydantic: "Extra inputs are not permitted"
+            "extra input",         // pydantic: "Extra inputs ..."
+            "not supported",       // "temperature is not supported ..."
+            "unsupported",         // "unsupported_parameter" / "unsupported ..."
+            "only be set to 1",    // thinking-active temperature
+            "unexpected keyword",  // "unexpected keyword argument ..."
+            "unexpected parameter",
+            "cannot be used with", // "temperature cannot be used with thinking"
         ];
         UNSUPPORTED_HINTS.iter().any(|h| m.contains(h))
     }
@@ -571,22 +573,21 @@ impl AnthropicProvider {
         removed
     }
 
-    /// Build a clean `ProviderError` from an Anthropic HTTP error — prefer the
-    /// parsed `type`+`message` (human-readable) over the raw JSON blob. The
-    /// untrusted message is bounded + newline-collapsed via `sanitize_error_body`
-    /// (same control the raw-body `from_status_code` path applies), so a hostile
-    /// or oversized provider message can't bloat/forge logs or the UI.
+    /// Build a clean `ProviderError` from an Anthropic HTTP error. For a **400**
+    /// with a parseable envelope, prefer the human-readable `type`+`message` (via
+    /// `from_anthropic_error`, which sanitizes both) over the raw JSON blob. Other
+    /// statuses keep the existing status-driven `from_status_code` mapping (also
+    /// sanitized) so a non-400 isn't silently reclassified by its error `type`.
     fn clean_http_error(
         status: u16,
         parsed: Option<(String, String)>,
         raw: &str,
     ) -> ProviderError {
         match parsed {
-            Some((ty, msg)) => ProviderError::from_anthropic_error(
-                &ty,
-                &crate::error::sanitize_error_body(&msg),
-            ),
-            None => ProviderError::from_status_code(status, raw.to_string()),
+            Some((ty, msg)) if status == 400 => {
+                ProviderError::from_anthropic_error(&ty, &msg)
+            }
+            _ => ProviderError::from_status_code(status, raw.to_string()),
         }
     }
 
@@ -801,7 +802,7 @@ impl AIProvider for AnthropicProvider {
                 // `request.model` is untrusted (operator-supplied) — sanitize it
                 // before logging to prevent CR/LF log-forging.
                 tracing::warn!(
-                    "Anthropic 400 on unsupported sampling params for model {}; stripping temperature/top_p/top_k and retrying once",
+                    "Anthropic: 400 on unsupported sampling params for model {}; stripping temperature/top_p/top_k and retrying once",
                     crate::error::sanitize_error_body(&request.model)
                 );
                 continue;
@@ -1452,6 +1453,13 @@ mod tests {
                 "temperature: Input should be less than or equal to 1"
             ));
             assert!(!AnthropicProvider::is_unsupported_sampling_error("temperature must be <= 1"));
+            // Broad words that merely appear must NOT over-match (hints are specific).
+            assert!(!AnthropicProvider::is_unsupported_sampling_error(
+                "temperature triggered an unexpected internal error"
+            ));
+            assert!(!AnthropicProvider::is_unsupported_sampling_error(
+                "temperature: value not allowed for this range"
+            ));
             // Unrelated 400 (no sampling param named) -> not a repair.
             assert!(!AnthropicProvider::is_unsupported_sampling_error(
                 "max_tokens: must be greater than 0"
@@ -1682,6 +1690,37 @@ mod tests {
             })
             .await
             .expect("test timed out");
+        }
+
+        #[tokio::test]
+        async fn stream_chat_retries_at_most_once_on_persistent_sampling_400() {
+            // The `attempted_repair` guard: if the stripped retry ALSO 400s, we
+            // must NOT loop — exactly two requests, then a clean surfaced error.
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                use crate::traits::AIProvider;
+
+                let unsupported = err_body("temperature: Extra inputs are not permitted");
+                let (base_url, server, bodies) =
+                    spawn_mock(vec![http_400(&unsupported), http_400(&unsupported)]).await;
+
+                let request = chat_request("claude-3-5-sonnet", 0.5);
+                let err = match AnthropicProvider
+                    .stream_chat("test-key", &base_url, request)
+                    .await
+                {
+                    Ok(_) => panic!("a persistently-400ing retry must surface an error"),
+                    Err(e) => e,
+                };
+                server.await.unwrap();
+
+                assert!(matches!(err, ProviderError::InvalidRequest(_)));
+                let captured = bodies.lock().unwrap();
+                assert_eq!(captured.len(), 2, "retry at most once, then give up");
+                assert!(captured[0].contains("\"temperature\""), "first request carries temperature");
+                assert!(!captured[1].contains("\"temperature\""), "retry stripped temperature");
+            })
+            .await
+            .expect("test timed out — the attempted_repair guard may have regressed");
         }
     }
 }

@@ -11,7 +11,7 @@
 //!
 //! Coverage — the consumer wiring the crate's Tier-1 unit tests can't reach:
 //!   * sampling: `model.parameters` reach the wire; OpenAI omits `top_k`; empty
-//!     params fall back to the temperature/max_tokens defaults.
+//!     params omit temperature (no forced default) but still default `max_tokens`.
 //!   * thinking: registry-gated enable emits `reasoning_effort` (+ non-streaming
 //!     for gpt-5); an unknown model gets no thinking; a model's `reasoning_content`
 //!     is persisted as a thinking content block with `ThinkingMetadata.token_count`.
@@ -191,16 +191,17 @@ async fn model_params_reach_provider_request() {
 }
 
 #[tokio::test]
-async fn empty_model_params_fall_back_to_defaults() {
+async fn empty_model_params_omit_temperature_and_default_max_tokens() {
     let (stub, _turn) = run_turn("default_user", StubPlan::default(), "stub-model", None).await;
 
     let req = stub.last_request();
-    // 0.7 is not exact in f32 — assert ~0.7 rather than exact-eq.
-    let temp = req["temperature"].as_f64().expect("temperature present");
+    // No forced temperature default: an unset model temperature is omitted so the
+    // provider applies its own default (we never send a value it might reject).
     assert!(
-        (temp - 0.7).abs() < 1e-4,
-        "default temperature should be ~0.7, got {temp}"
+        req.get("temperature").is_none(),
+        "unset temperature must be omitted (no forced 0.7), got: {req}"
     );
+    // max_tokens still falls back to the default.
     assert_eq!(req["max_tokens"], 8192, "default max_tokens");
 }
 

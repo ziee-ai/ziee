@@ -117,9 +117,14 @@ impl ProviderError {
         }
     }
 
-    /// Creates error from Anthropic error event
+    /// Creates error from an Anthropic error event. Both fields are untrusted
+    /// provider output (HTTP error body or SSE `error` event), so each is bounded +
+    /// newline-collapsed via `sanitize_error_body` before being embedded — a
+    /// hostile/oversized `type` or `message` can't bloat or forge logs/UI.
     pub fn from_anthropic_error(error_type: &str, message: &str) -> Self {
-        match error_type {
+        let error_type = sanitize_error_body(error_type);
+        let message = sanitize_error_body(message);
+        match error_type.as_str() {
             "overloaded_error" => Self::rate_limit(format!("Overloaded: {}", message)),
             "rate_limit_error" => Self::rate_limit(message),
             "authentication_error" => Self::auth(message),
