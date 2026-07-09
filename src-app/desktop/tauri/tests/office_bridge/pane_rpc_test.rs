@@ -376,14 +376,16 @@ async fn test12_pane_error_propagates() {
 ///   1. Quit the ziee desktop app so nothing else holds port 44300.
 ///   2. `cargo test -p ziee-desktop --test integration_tests -- --ignored --nocapture \
 ///        office_bridge::pane_rpc_test::test13_live`
-///   3. When prompted, in a NEW (unsaved) Excel workbook: type some text in a cell and
-///      leave it selected, then open the ribbon "Show Ziee Bridge" task pane.
+///   3. The test OPENS Excel for you (workbook + `A1 = "hello ziee"`, selected). When
+///      prompted, click the ribbon "Show Ziee Bridge" to open the task pane — that
+///      single click is the only step that can't be automated for an Office add-in.
 ///
 /// It binds the fixed 44300 and reuses the app's already-trusted bridge cert from the
 /// data dir, so the WKWebView pane loads prompt-free. Asserts that `get_selection` and
 /// `read_document` round-trip through the live pane and return real content.
+#[cfg(target_os = "macos")]
 #[tokio::test]
-#[ignore = "live: needs a real Office task pane connected on this macOS session"]
+#[ignore = "live: drives real Office.js in an Excel task pane on this macOS session"]
 async fn test13_live_mac_pane_ops() {
     // Show the bridge's register/reject debug logs so a failed pane connect is
     // diagnosable (stale token → "/bridge rejected — missing/invalid session token";
@@ -401,8 +403,28 @@ async fn test13_live_mac_pane_ops() {
         .await
         .expect("bridge binds 44300 (quit the desktop app first if this fails)");
 
-    eprintln!("\n>>> TEST-13 LIVE: open Excel or Word, type text and leave it SELECTED,");
-    eprintln!(">>> then open the ribbon 'Show Ziee Bridge' task pane.");
+    // Ensure Excel is OPEN with a selected cell, so the only manual step left is
+    // clicking the ribbon button (an Office add-in task pane can't be opened via
+    // automation). Every earlier harness miss was simply Excel being closed — there
+    // was no document, hence no pane to connect.
+    let _ = std::process::Command::new("open")
+        .args(["-a", "Microsoft Excel"])
+        .status();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(
+            r#"tell application "Microsoft Excel"
+                activate
+                if (count of workbooks) = 0 then make new workbook
+                set value of range "A1" of active sheet of active workbook to "hello ziee"
+                select range "A1" of active sheet of active workbook
+            end tell"#,
+        )
+        .status();
+
+    eprintln!("\n>>> TEST-13 LIVE: Excel is now open with A1 = \"hello ziee\" selected.");
+    eprintln!(">>> NOW click the ribbon: Home -> Ziee -> 'Show Ziee Bridge' to open the task pane.");
     eprintln!(">>> Waiting up to 600s (10 min) for the pane to connect — no rush...\n");
 
     // Wait for a real pane to register, then target IT (whatever its doc_key is — an
