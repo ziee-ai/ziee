@@ -28,6 +28,7 @@ mod memory;
 mod memory_mcp;
 mod onboarding;
 mod project;
+mod scheduler;
 mod server_update;
 mod skill;
 mod summarization;
