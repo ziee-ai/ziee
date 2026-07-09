@@ -17,13 +17,11 @@
 //! shared `cancel` flag, which the interrupt handler observes on the next JS
 //! instruction.
 
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
-use rquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Object};
 use rquickjs::prelude::Func;
+use rquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Object};
 
 /// Caps applied to a single `run_js` evaluation. Defaults mirror DEC-10.
 #[derive(Clone, Debug)]
@@ -140,7 +138,7 @@ fn line_from_stack(stack: &str) -> Option<u32> {
 /// wall-clock backstop). The handler ALSO trips when `gas` is exhausted.
 pub async fn evaluate<F>(script: &str, limits: &JsLimits, cancel: Arc<AtomicBool>, inject: F) -> JsOutcome
 where
-    F: for<'js> FnOnce(&Ctx<'js>, &Object<'js>) -> rquickjs::Result<()>,
+    F: for<'js> FnOnce(&Ctx<'js>) -> rquickjs::Result<()> + Send,
 {
     let rt = match AsyncRuntime::new() {
         Ok(rt) => rt,
@@ -186,12 +184,14 @@ where
         }
     };
 
-    // Shared sinks (single-threaded runtime → Rc/RefCell are fine; without the
-    // `parallel` feature `ParallelSend` is a no-op marker).
-    let console: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
-    let console_bytes = Rc::new(Cell::new(0usize));
-    let console_dropped = Rc::new(Cell::new(false));
-    let result: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    // Shared sinks. `Arc`/atomics (not `Rc`/`Cell`) so the closures capturing
+    // them are `Send` — required because `parallel` gives the runtime its `Send`
+    // marker and the `ctx.with` closure must then be `Send`. The runtime is
+    // still single-threaded (one driving task), so there is no real contention.
+    let console: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let console_bytes = Arc::new(AtomicUsize::new(0));
+    let console_dropped = Arc::new(AtomicBool::new(false));
+    let result: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let console_cap = limits.console_bytes;
 
@@ -213,20 +213,22 @@ where
                 globals.set(
                     "__ziee_log",
                     Func::from(move |line: String| {
-                        let cur = log_bytes.get();
+                        let cur = log_bytes.load(Ordering::Relaxed);
                         if cur >= console_cap {
-                            log_dropped.set(true);
+                            log_dropped.store(true, Ordering::Relaxed);
                             return;
                         }
                         let remaining = console_cap - cur;
                         let piece = if line.len() > remaining {
-                            log_dropped.set(true);
+                            log_dropped.store(true, Ordering::Relaxed);
                             line.chars().take(remaining).collect::<String>()
                         } else {
                             line
                         };
-                        log_bytes.set(cur + piece.len());
-                        log_console.borrow_mut().push(piece);
+                        log_bytes.store(cur + piece.len(), Ordering::Relaxed);
+                        if let Ok(mut c) = log_console.lock() {
+                            c.push(piece);
+                        }
                     }),
                 )?;
 
@@ -236,9 +238,10 @@ where
                     "__ziee_set_result",
                     Func::from(move |payload: String| {
                         // First writer wins (the wrapper calls it exactly once).
-                        let mut slot = set_result.borrow_mut();
-                        if slot.is_none() {
-                            *slot = Some(payload);
+                        if let Ok(mut slot) = set_result.lock() {
+                            if slot.is_none() {
+                                *slot = Some(payload);
+                            }
                         }
                     }),
                 )?;
@@ -246,10 +249,12 @@ where
                 // console shim.
                 ctx.eval::<(), _>(CONSOLE_PRELUDE)?;
 
-                // Caller-injected host functions on a fresh `ziee` global.
+                // Caller-injected host functions. Set an empty `ziee` global
+                // FIRST so an injector may eval a JS prelude that references
+                // `globalThis.ziee` (host_bridge does).
                 let ziee = Object::new(ctx.clone())?;
-                inject(&ctx, &ziee)?;
                 globals.set("ziee", ziee)?;
+                inject(&ctx)?;
 
                 // Kick off the script. A synchronous runaway (`while(true){}`
                 // with no await) is interrupted HERE and surfaces as an Err.
@@ -273,14 +278,14 @@ where
 
     // Assemble the outcome.
     let console_out = {
-        let mut v = console.borrow().clone();
-        if console_dropped.get() {
+        let mut v = console.lock().map(|c| c.clone()).unwrap_or_default();
+        if console_dropped.load(Ordering::Relaxed) {
             v.push("[console output truncated]".to_string());
         }
         v
     };
 
-    let captured = result.borrow().clone();
+    let captured = result.lock().ok().and_then(|r| r.clone());
     match captured {
         Some(payload) => {
             // payload is `{ok: <value>}` or `{err, stack}`.
@@ -352,7 +357,7 @@ fn cap_output(value: serde_json::Value, cap: usize) -> (serde_json::Value, bool)
 mod tests {
     use super::*;
 
-    fn no_inject<'js>(_c: &Ctx<'js>, _z: &Object<'js>) -> rquickjs::Result<()> {
+    fn no_inject<'js>(_c: &Ctx<'js>) -> rquickjs::Result<()> {
         Ok(())
     }
 
