@@ -68,6 +68,11 @@ export interface AttachCitationsRequest {
   entry_ids: string[]
 }
 
+/** Attach already-uploaded files to a KB by id. */
+export interface AttachDocumentsRequest {
+  file_ids: string[]
+}
+
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
@@ -737,6 +742,11 @@ export interface CreateGroupRequest {
   description?: string
   name: string
   permissions: string[]
+}
+
+export interface CreateKnowledgeBaseRequest {
+  description?: string
+  name: string
 }
 
 /** Request to create a new LLM model */
@@ -1465,6 +1475,9 @@ export interface FileRagAdminSettings {
   fts_rrf_k: number
   id: number
   max_chunks_per_file: number
+  rerank_candidate_k: number
+  rerank_enabled: boolean
+  reranker_model_id?: string
   semantic_enabled: boolean
   updated_at: string
 }
@@ -2321,6 +2334,11 @@ export interface ListCitationsQuery {
 
 export interface ListCitationsResponse {
   entries: BibliographyEntry[]
+}
+
+export interface ListDocsQuery {
+  limit?: number
+  offset?: number
 }
 
 /**
@@ -3455,6 +3473,12 @@ export interface ModelCapabilities {
   context_length?: number
   /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
+  /**
+   * Reranker (cross-encoder) capability - scores query/document relevance for
+   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
+   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
+   */
+  rerank?: boolean
   /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
   /** Tools capability - can use function calling/tools */
@@ -3468,6 +3492,11 @@ export interface ModelCapabilities2 {
   chat?: boolean
   code_interpreter?: boolean
   image_generator?: boolean
+  /**
+   * Reranker (cross-encoder) capability. `default` so pre-existing manifests
+   *  (which omit it) still parse.
+   */
+  rerank?: boolean
   text_embedding?: boolean
   tools?: boolean
   vision?: boolean
@@ -5079,7 +5108,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5190,6 +5219,16 @@ export interface TestWorkflowRequest {
 /** Text page query params */
 export interface TextPageQuery {
   page?: number
+}
+
+/**
+ * Query for the citation text-rects endpoint: a byte range into the page's
+ *  cleaned text (a chunk's char_start/char_end).
+ */
+export interface TextRectsQuery {
+  end: number
+  page: number
+  start: number
 }
 
 /** Metadata for thinking content */
@@ -5370,6 +5409,9 @@ export interface UpdateFileRagAdminSettingsRequest {
   fts_min_rank?: number
   fts_rrf_k?: number
   max_chunks_per_file?: number
+  rerank_candidate_k?: number
+  rerank_enabled?: boolean
+  reranker_model_id?: string
   semantic_enabled?: boolean
 }
 
@@ -5405,6 +5447,11 @@ export interface UpdateGroupSystemSkillsRequest {
  */
 export interface UpdateGroupSystemWorkflowsRequest {
   workflow_ids: string[]
+}
+
+export interface UpdateKnowledgeBaseRequest {
+  description?: string
+  name?: string
 }
 
 /**
@@ -6253,6 +6300,8 @@ export enum Permissions {
   HubModelsRead = 'hub::models::read',
   HubModelsRefresh = 'hub::models::refresh',
   HubModelsVersionRead = 'hub::models::read_version',
+  KnowledgeBaseManage = 'knowledge_base::manage',
+  KnowledgeBaseUse = 'knowledge_base::use',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
   LitSearchUse = 'lit_search::use',
@@ -6384,6 +6433,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsRead: 'View hub models',
   HubModelsRefresh: 'Refresh hub models from GitHub',
   HubModelsVersionRead: 'View hub models version information',
+  KnowledgeBaseManage: 'Create, rename, delete knowledge bases and manage their documents.',
+  KnowledgeBaseUse: 'Search your knowledge bases and attach them to conversations/projects.',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LitSearchUse: 'Use the literature search + screening tools.',
@@ -6641,6 +6692,7 @@ export const ApiEndpoints = {
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
   'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalLlmProxy.rerank': 'POST /api/local-llm/v1/rerank',
   'LocalRuntime.clearFailed': 'POST /api/local-runtime/models/{model_id}/clear-failed',
   'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
@@ -6994,6 +7046,7 @@ export type ApiEndpointParameters = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalLlmProxy.rerank': void
   'LocalRuntime.clearFailed': { model_id: string }
   'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
@@ -7347,6 +7400,7 @@ export type ApiEndpointResponses = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalLlmProxy.rerank': void
   'LocalRuntime.clearFailed': ClearFailedResponse
   'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse
