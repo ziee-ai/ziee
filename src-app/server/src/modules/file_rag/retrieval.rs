@@ -105,8 +105,17 @@ pub async fn semantic_search(
     } else {
         None
     };
+    // When a reranker is configured, retrieve a WIDER candidate pool
+    // (rerank_candidate_k) so a doc ranked outside the initial top_k can be
+    // promoted into the final results by the cross-encoder.
+    let rerank_active = admin.rerank_enabled && admin.reranker_model_id.is_some();
+    let effective_top = if rerank_active {
+        (admin.rerank_candidate_k as i64).max(top_k)
+    } else {
+        top_k
+    };
     // Fetch one extra hit so `truncated` is precise rather than a heuristic.
-    let probe = top_k.saturating_add(1);
+    let probe = effective_top.saturating_add(1);
 
     let (mut hits, mode): (Vec<SemanticHit>, RetrievalMode) =
         match (plan_arm(vector_emb_id.is_some(), admin.fts_enabled), vector_emb_id) {
@@ -162,6 +171,42 @@ pub async fn semantic_search(
             // combos (plan_arm only returns Hybrid/Vector when has_vector is true).
             _ => (Vec::new(), RetrievalMode::None),
         };
+
+    // Rerank stage: retrieve-wide → cross-encoder rerank → top-k. Reorders the
+    // candidate pool by the reranker's relevance scores; on any error we keep the
+    // pre-rerank order (never fail the search). Recompute `truncated` AFTER, since
+    // the candidate pool was widened above.
+    if rerank_active && hits.len() > 1 {
+        if let Some(reranker_id) = admin.reranker_model_id {
+            let docs: Vec<String> = hits.iter().map(|h| h.content.clone()).collect();
+            match crate::modules::memory::engine::dispatch::rerank(reranker_id, query, &docs).await {
+                Ok(order) if !order.is_empty() => {
+                    // Reorder without cloning: take() each hit out of its slot in
+                    // the reranker's order; append any the reranker omitted.
+                    let mut slots: Vec<Option<SemanticHit>> =
+                        std::mem::take(&mut hits).into_iter().map(Some).collect();
+                    let mut reordered = Vec::with_capacity(slots.len());
+                    for (idx, _score) in &order {
+                        if let Some(slot) = slots.get_mut(*idx) {
+                            if let Some(h) = slot.take() {
+                                reordered.push(h);
+                            }
+                        }
+                    }
+                    for slot in slots.iter_mut() {
+                        if let Some(h) = slot.take() {
+                            reordered.push(h);
+                        }
+                    }
+                    hits = reordered;
+                }
+                Ok(_) => {} // empty rerank result → keep pre-rerank order
+                Err(e) => {
+                    tracing::warn!("file_rag.search: rerank failed ({e}); keeping pre-rerank order");
+                }
+            }
+        }
+    }
 
     let truncated = hits.len() as i64 > top_k;
     hits.truncate(top_k.max(0) as usize);

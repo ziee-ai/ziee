@@ -67,6 +67,18 @@ pub enum SyncEntity {
     /// `McpSession::call_tool`, so the per-server "Calls" tab refreshes live.
     /// Notify-only; the client refetches via `GET /api/mcp/tool-calls`.
     McpToolCall,
+    /// A user-owned file's RAG index lifecycle state changed
+    /// (`file_index_state`: pending/indexing/indexed/failed/no_text). Emitted
+    /// owner-scoped from the `file_rag` ingest path on each transition so the
+    /// knowledge-base documents UI reflects per-doc indexing status live. `id`
+    /// is the file_id; the client refetches the KB's document status.
+    FileIndexState,
+    /// A user-owned knowledge base changed (create/rename/delete or its document
+    /// set). Owner-scoped; the client refetches the KB list / detail.
+    KnowledgeBase,
+    /// A document within a knowledge base changed (attach/detach/status). Owner-
+    /// scoped; `id` is the knowledge_base id; the client refetches its documents.
+    KnowledgeBaseDocument,
     /// The caller's own default MCP settings for new conversations changed
     /// (approval mode / auto-approved tools / disabled servers / loop
     /// settings). Owner-scoped; notify-only — the client refetches

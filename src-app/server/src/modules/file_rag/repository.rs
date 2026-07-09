@@ -51,6 +51,9 @@ impl FileRagRepository {
                 fts_rrf_k,
                 fts_candidate_multiplier,
                 fts_min_rank,
+                reranker_model_id,
+                rerank_enabled,
+                rerank_candidate_k,
                 updated_at as "updated_at: _"
             FROM file_rag_admin_settings
             WHERE id = 1
@@ -81,9 +84,14 @@ impl FileRagRepository {
         fts_rrf_k: Option<i32>,
         fts_candidate_multiplier: Option<i32>,
         fts_min_rank: Option<f32>,
+        reranker_model_id: Option<Option<Uuid>>,
+        rerank_enabled: Option<bool>,
+        rerank_candidate_k: Option<i32>,
     ) -> Result<FileRagAdminSettings, AppError> {
         let embedding_set = embedding_model_id.is_some();
         let embedding_val = embedding_model_id.flatten();
+        let reranker_set = reranker_model_id.is_some();
+        let reranker_val = reranker_model_id.flatten();
 
         let row = sqlx::query_as!(
             FileRagAdminSettings,
@@ -102,6 +110,9 @@ impl FileRagRepository {
                 fts_rrf_k                = COALESCE($12, fts_rrf_k),
                 fts_candidate_multiplier = COALESCE($13, fts_candidate_multiplier),
                 fts_min_rank             = COALESCE($14, fts_min_rank),
+                reranker_model_id        = CASE WHEN $15::bool THEN $16 ELSE reranker_model_id END,
+                rerank_enabled           = COALESCE($17, rerank_enabled),
+                rerank_candidate_k       = COALESCE($18, rerank_candidate_k),
                 updated_at               = NOW()
             WHERE id = 1
             RETURNING
@@ -120,6 +131,9 @@ impl FileRagRepository {
                 fts_rrf_k,
                 fts_candidate_multiplier,
                 fts_min_rank,
+                reranker_model_id,
+                rerank_enabled,
+                rerank_candidate_k,
                 updated_at as "updated_at: _"
             "#,
             enabled,
@@ -136,6 +150,10 @@ impl FileRagRepository {
             fts_rrf_k,
             fts_candidate_multiplier,
             fts_min_rank,
+            reranker_set,
+            reranker_val,
+            rerank_enabled,
+            rerank_candidate_k,
         )
         .fetch_one(&self.pool)
         .await
