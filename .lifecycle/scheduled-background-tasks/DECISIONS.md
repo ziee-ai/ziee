@@ -96,6 +96,14 @@ Each resolution has a basis; the handful I most want the user to confirm before
 **Resolution:** In-app only for v1 (durable inbox + toast/badge + realtime sync). Email / push / Slack are DEFERRED.
 **Basis:** codebase + landscape — the notification-precedent research found ziee has **no** email/push infrastructure today; cloud assistants deliver via email+push, but adding an outbound channel is separate infra. In-app inbox is the honest v1 surface; the `notification` module is the seam a channel would later hang off.
 
+### DEC-24: Dry-run vs run-now — two distinct, v1 affordances.
+**Resolution:** Ship BOTH, kept distinct: **Dry-run / Test** (ITEM-34/35) executes the target ONCE with every schedule side-effect suppressed (no durable run row, no notification, no bound-conversation append, no `next_run_at` change) and streams the result inline — the pre-save "does this do what I meant?" check; **Run-now** (DEC-13) is a real, side-effecting firing of a saved task. Schedule-*timing* preview ("next N runs", ITEM-23) is the third, separate validation. The `workflow` kind reuses the existing `run_for_test` dry-run; the `prompt` kind runs a suppressed one-shot against a throwaway conversation.
+**Basis:** codebase + user — the user identified that "Run now" isn't a true dry run; the workflow module ALREADY ships a real dry-run (`/dry-run`, `run_for_test`, `run_kind` CHECK includes `dry_run`/`test`, `persist_artifacts:false`), so a zero-side-effect test is reuse, not new machinery. Without it, the first sign of a misconfigured schedule is a bad notification a week later.
+
+### DEC-25: Task duplicate.
+**Resolution:** DEFERRED (not v1). A "duplicate task" convenience (clone config with a name suffix) mirrors `project`/`workflow` duplicate but adds no capability; can land any time post-v1.
+**Basis:** convention — a pure convenience with an obvious later seam (the `project` duplicate handler); omitting it does not compromise the lifecycle.
+
 ---
 
 ## Landscape research (informing the decisions above)

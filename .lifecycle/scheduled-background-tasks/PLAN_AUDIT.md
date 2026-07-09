@@ -109,6 +109,22 @@ mcp/tool_calls, citations modules) before any code.
 - **ITEM-31** — verdict: PASS — list + REST + drawer tab mirror `mcp_tool_calls`/`McpServerDrawer` exactly; owner-scoped 404.
 - **ITEM-32** — verdict: CONCERN — the continue-in-chat endpoint reuses `create_conversation` + a seeded system/context message; must cap the seeded output size (the run's final output can be large — reuse the chat result caps) and be owner-scoped on the `run_id`. No new execution path.
 - **ITEM-33** — verdict: PASS — pure frontend surfacing on existing stores/components; e2e budgeted (TEST-36..38).
+- **ITEM-34** — verdict: CONCERN — the `workflow` kind cleanly reuses `run_for_test` (proven dry-run path); the `prompt` kind must guarantee **zero** side effects — the throwaway conversation must be created + torn down (or created ephemeral, mirroring migration 128's `ephemeral` workflow rows) and the notification/append seams explicitly bypassed, not just skipped by omission. Verify no `scheduled_task_runs` row and no `next_run_at` mutation on the test path.
+- **ITEM-35** — verdict: PASS — a "Test" action + inline result panel; mirrors the workflow dev dry-run UI; e2e budgeted (TEST-41).
+
+## Lifecycle completeness check (so the plan stops leaking affordances)
+
+The plan now covers the full task lifecycle end-to-end: **author** (create form,
+target picker) → **validate** (schedule preview + dry-run "Test" before save,
+ITEM-23/34/35) → **save/enable** → **fire** (tick + catch-up) / **test live**
+(run-now) → **deliver** (inbox + triage, ITEM-14/29) → **follow up** (bound
+conversation / continue-in-chat, ITEM-30/32) → **observe** (run history,
+ITEM-31) → **recover** (failure taxonomy + auto-pause + resume, ITEM-28/33) →
+**edit/disable/delete** (CRUD, ITEM-12). Deliberately **deferred** (with hooks,
+not dead-ends): change-detection/only-on-change (DEC-20), digest batching
+(DEC-19), natural-language scheduling (DEC-3), email/push channels (DEC-23), and
+task **duplicate** (a `project`/`workflow`-style convenience, DEC-25) — none
+block v1 and each has a clear later seam.
 
 ## Feature-research reconciliation (why the plan grew)
 

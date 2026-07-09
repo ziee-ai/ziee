@@ -56,6 +56,12 @@ tests — [[feedback_no_cosmetic_tests]]). The tick loop uses the debug
 - **TEST-37** (tier: e2e) [covers: ITEM-32] file: `src-app/ui/tests/e2e/14-scheduler/failure-and-history.spec.ts` — asserts: from a workflow-result notification, "Continue in chat" opens a seeded conversation the user can keep chatting in.
 - **TEST-38** (tier: e2e) [covers: ITEM-30] file: `src-app/ui/tests/e2e/14-scheduler/bound-conversation.spec.ts` — asserts: opening a recurring prompt task's bound conversation shows the accumulated runs, and a follow-up message continues it inline.
 
+## Dry-run / test-fire tests
+
+- **TEST-39** (tier: unit) [covers: ITEM-34] file: `src-app/server/src/modules/scheduler/dryrun.rs` — asserts: the workflow test-fire builds a dispatch with `run_kind='dry_run'` + `persist_artifacts=false`; the prompt test-fire builder marks the conversation throwaway and flags notification/append **suppressed** (pure builder, no I/O).
+- **TEST-40** (tier: integration) [covers: ITEM-34] file: `src-app/server/tests/scheduler/test_fire_test.rs` — asserts: `POST /api/scheduled-tasks/test-fire` with an **unsaved** prompt config returns the model output AND writes **no** notification row, **no** durable `scheduled_task_runs` row, **no** conversation append, and (for a saved task) does **not** mutate `next_run_at`/`last_run_at`; the throwaway conversation is cleaned up; owner-scoped (403 without `scheduler::use`).
+- **TEST-41** (tier: e2e) [covers: ITEM-35] file: `src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts` — asserts: user fills the create drawer, clicks **Test**, sees the streamed result inline without the task being saved/listed, then saves.
+
 ## Coverage note
 
 - Backend-only items are covered without an e2e (ITEM-1..20, plus the module

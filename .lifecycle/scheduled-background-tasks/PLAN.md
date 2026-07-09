@@ -72,6 +72,8 @@ for this category. These items close them.
 - **ITEM-31**: Per-task run history — `repository::list_task_runs(task_id)` + `GET /api/scheduled-tasks/{id}/runs` + a "Runs" section in the task detail drawer (fired-at / status / link to the run or conversation). Owner-scoped.
 - **ITEM-32**: "Continue in chat" for `workflow`-kind results — a workflow run isn't a conversation, so add a backend seam + `POST /api/scheduled-tasks/runs/{run_id}/continue` that opens a NEW conversation seeded with the run's final output as context, and a "Continue in chat" / "Discuss this result" button on the run + its notification. (The `prompt` kind needs none — it's already a conversation, ITEM-30.)
 - **ITEM-33**: Frontend surfacing of the above — paused-state badge + `paused_reason`, a resume action, the `notify_mode` toggle in the form drawer, and the run-history list + continue-in-chat button. Mirrors settings-card + `McpServerDrawer` "Calls" tab.
+- **ITEM-34**: Dry-run / test-fire (backend) — `POST /api/scheduled-tasks/test-fire` accepting either an **unsaved** task config or a saved `task_id`, executing the target **once with all schedule side-effects suppressed**: NO durable `scheduled_task_runs` row, NO notification, NO bound-conversation append, NO `next_run_at`/`last_run_at` mutation. `workflow` kind reuses the existing `runner::run_for_test` dry-run path (`run_kind='dry_run'`, `persist_artifacts:false`); `prompt` kind runs a one-shot turn against a throwaway conversation and returns the output inline, then discards it. Gated `SchedulerUse`, owner-scoped. Distinct from `run-now` (DEC-13), which is a real side-effecting firing.
+- **ITEM-35**: Dry-run "Test" button (frontend) — in `ScheduledTaskFormDrawer`, a **Test** action fires the *currently-edited, unsaved* config through `test-fire` and streams/renders the result inline, so the user validates the prompt/inputs/model **before** committing to a cadence. Mirrors the workflow dev dry-run result panel.
 
 ## Files to touch
 
@@ -82,7 +84,7 @@ for this category. These items close them.
 - `src-app/server/migrations/00000000000135_grant_scheduler_notifications_permissions_to_users.sql`
 - `src-app/server/migrations/00000000000136_add_scheduled_invocation_source.sql`
 - `src-app/server/migrations/00000000000137_scheduled_task_runs_and_columns.sql`
-- `src-app/server/src/modules/scheduler/{mod,models,repository,permissions,schedule,tick,dispatch,failure,settings,routes,handlers,events}.rs`
+- `src-app/server/src/modules/scheduler/{mod,models,repository,permissions,schedule,tick,dispatch,failure,dryrun,settings,routes,handlers,events}.rs`
 - `src-app/server/src/modules/notification/{mod,models,repository,permissions,routes,handlers,events,prune}.rs`
 
 ### Backend (edit)
@@ -115,3 +117,4 @@ for this category. These items close them.
 - **Failure auto-pause / flap cap (ITEM-28)** → `llm_local_runtime/auto_start.rs` (exponential backoff + give-up-after-N-crashes cap) — the same shape applied to consecutive task-firing failures.
 - **Per-task run history UI (ITEM-31/33)** → `McpServerDrawer` "Calls" tab (owner-scoped per-parent history list + realtime refresh), backed by `scheduled_task_runs` (the `mcp_tool_calls` analog).
 - **Continue-in-chat seeding (ITEM-32)** → the chat `create_conversation` + a seeded first message (same primitives as ITEM-10's prompt dispatch).
+- **Dry-run / test-fire (ITEM-34/35)** → the workflow module's existing dry-run (`handlers/dev.rs` `/dry-run`, `runner::run_for_test`, `run_kind='dry_run'`, `persist_artifacts:false`) — reused directly for the workflow kind; the prompt kind mirrors ITEM-10 with side-effects suppressed + a throwaway conversation.
