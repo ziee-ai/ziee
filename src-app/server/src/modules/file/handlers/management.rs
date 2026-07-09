@@ -299,6 +299,7 @@ pub async fn get_text_rects(
 
 pub fn get_text_rects_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(FilesRead,)>(op)
+        .id("File.getTextRects")
         .summary("Citation highlight rectangles for a chunk's span on a page.")
 }
 

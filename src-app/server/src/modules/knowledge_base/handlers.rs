@@ -256,7 +256,7 @@ pub async fn list_kbs(
     Ok((StatusCode::OK, Json(Repos.knowledge_base.list(auth.user.id).await?)))
 }
 pub fn list_kbs_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("List the caller's knowledge bases.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.list").summary("List the caller's knowledge bases.")
 }
 
 pub async fn create_kb(
@@ -276,7 +276,7 @@ pub async fn create_kb(
     Ok((StatusCode::CREATED, Json(kb)))
 }
 pub fn create_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).summary("Create a knowledge base.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.create").summary("Create a knowledge base.")
 }
 
 pub async fn get_kb(
@@ -291,7 +291,7 @@ pub async fn get_kb(
     Ok((StatusCode::OK, Json(kb)))
 }
 pub fn get_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("Get one knowledge base.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.get").summary("Get one knowledge base.")
 }
 
 pub async fn update_kb(
@@ -311,7 +311,7 @@ pub async fn update_kb(
     Ok((StatusCode::OK, Json(kb)))
 }
 pub fn update_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).summary("Rename / describe a knowledge base.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.update").summary("Rename / describe a knowledge base.")
 }
 
 pub async fn delete_kb(
@@ -327,7 +327,7 @@ pub async fn delete_kb(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn delete_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).summary("Delete a knowledge base.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.delete").summary("Delete a knowledge base.")
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -355,7 +355,9 @@ pub async fn list_documents(
     Ok((StatusCode::OK, Json(docs)))
 }
 pub fn list_documents_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("List a KB's documents with index status.")
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.listDocuments")
+        .summary("List a KB's documents with index status.")
 }
 
 pub async fn attach_documents(
@@ -384,7 +386,7 @@ pub async fn attach_documents(
     Ok((StatusCode::OK, Json(result)))
 }
 pub fn attach_documents_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).summary("Attach existing files to a KB.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.attachDocuments").summary("Attach existing files to a KB.")
 }
 
 pub async fn remove_document(
@@ -404,7 +406,7 @@ pub async fn remove_document(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn remove_document_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).summary("Remove a document from a KB (join only).")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.removeDocument").summary("Remove a document from a KB (join only).")
 }
 
 pub async fn reindex_document(
@@ -418,7 +420,7 @@ pub async fn reindex_document(
     Ok((StatusCode::ACCEPTED, ()))
 }
 pub fn reindex_document_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).summary("Retry indexing a KB document.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.reindexDocument").summary("Retry indexing a KB document.")
 }
 
 // ── attach to conversation / project ────────────────────────────────────
@@ -435,7 +437,7 @@ pub async fn attach_conversation(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn attach_conversation_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("Attach a KB to a conversation.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.attachConversation").summary("Attach a KB to a conversation.")
 }
 
 pub async fn detach_conversation(
@@ -448,7 +450,7 @@ pub async fn detach_conversation(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn detach_conversation_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("Detach a KB from a conversation.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.detachConversation").summary("Detach a KB from a conversation.")
 }
 
 pub async fn attach_project(
@@ -463,7 +465,7 @@ pub async fn attach_project(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn attach_project_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("Attach a KB to a project.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.attachProject").summary("Attach a KB to a project.")
 }
 
 pub async fn detach_project(
@@ -476,5 +478,5 @@ pub async fn detach_project(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn detach_project_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).summary("Detach a KB from a project.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.detachProject").summary("Detach a KB from a project.")
 }

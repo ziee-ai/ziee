@@ -6597,6 +6597,7 @@ export const ApiEndpoints = {
   'File.getPreview': 'GET /api/files/{file_id}/preview',
   'File.getRaw': 'GET /api/files/{file_id}/raw',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
+  'File.getTextRects': 'GET /api/files/{file_id}/text-rects',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
@@ -6644,6 +6645,19 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'KnowledgeBase.attachConversation': 'PUT /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.attachDocuments': 'POST /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.attachProject': 'PUT /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.create': 'POST /api/knowledge-bases',
+  'KnowledgeBase.delete': 'DELETE /api/knowledge-bases/{id}',
+  'KnowledgeBase.detachConversation': 'DELETE /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.detachProject': 'DELETE /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.get': 'GET /api/knowledge-bases/{id}',
+  'KnowledgeBase.list': 'GET /api/knowledge-bases',
+  'KnowledgeBase.listDocuments': 'GET /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
+  'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
+  'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -6951,6 +6965,7 @@ export type ApiEndpointParameters = {
   'File.getPreview': { file_id: string; page?: number }
   'File.getRaw': { file_id: string }
   'File.getTextContent': { file_id: string; page?: number }
+  'File.getTextRects': { file_id: string; end: number; page: number; start: number }
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
@@ -6998,6 +7013,19 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'KnowledgeBase.attachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.attachDocuments': { id: string } & AttachDocumentsRequest
+  'KnowledgeBase.attachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.create': CreateKnowledgeBaseRequest
+  'KnowledgeBase.delete': { id: string }
+  'KnowledgeBase.detachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.detachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.get': { id: string }
+  'KnowledgeBase.list': void
+  'KnowledgeBase.listDocuments': { id: string; limit?: number; offset?: number }
+  'KnowledgeBase.reindexDocument': { id: string; file_id: string }
+  'KnowledgeBase.removeDocument': { id: string; file_id: string }
+  'KnowledgeBase.update': { id: string } & UpdateKnowledgeBaseRequest
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7305,6 +7333,7 @@ export type ApiEndpointResponses = {
   'File.getPreview': Blob
   'File.getRaw': Blob
   'File.getTextContent': Blob
+  'File.getTextRects': any
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse
@@ -7352,6 +7381,19 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'KnowledgeBase.attachConversation': any
+  'KnowledgeBase.attachDocuments': any
+  'KnowledgeBase.attachProject': any
+  'KnowledgeBase.create': any
+  'KnowledgeBase.delete': any
+  'KnowledgeBase.detachConversation': any
+  'KnowledgeBase.detachProject': any
+  'KnowledgeBase.get': any
+  'KnowledgeBase.list': any
+  'KnowledgeBase.listDocuments': any
+  'KnowledgeBase.reindexDocument': any
+  'KnowledgeBase.removeDocument': any
+  'KnowledgeBase.update': any
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
