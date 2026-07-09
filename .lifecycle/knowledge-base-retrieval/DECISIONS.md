@@ -92,7 +92,11 @@ resolved by codebase convention. No unresolved markers remain.
 **Resolution:** Planned inline as a dependency of this feature (the KB's quality bar needs it), but structured as its own item cluster (Part R) so it could be landed/reviewed as a distinct commit range. It is not gated behind the KB module and independently benefits `files_mcp`.
 **Basis:** convention — it mirrors the embedding capability precisely and is additive/opt-in; splitting into a separate lifecycle is optional, not required for correctness.
 
-Every decision above is resolved. The four headline calls (DEC-5/6/7/8) are
+### DEC-23: KB ↔ project relationship — standalone-reusable vs project-owned. **(user: standalone-reusable)**
+**Resolution:** KBs are a **standalone, reusable library** owned by the user (managed at `/knowledge`); a project or a chat **attaches** the KBs it needs (many-to-many via `project_knowledge_bases` / `conversation_knowledge_bases`). The same KB can be attached to multiple projects and chats; a chat can pull from multiple KBs. This is distinct from — and coexists with — the existing per-project *files* (the raw-prepend `project_files` path), which KB retrieval supersedes for scale. Project-owned (1:1, KB-inside-project) is explicitly NOT the model.
+**Basis:** user + codebase — already the data model in DEC-2 / ITEM-9 (join tables, not a project FK) / ITEM-22 (project-extension attaches, does not own). Confirmed by the user over the project-owned and "both" alternatives.
+
+Every decision above is resolved. The five headline calls (DEC-5/6/7/8/23) are
 user-confirmed. Two convention-resolved points worth the user's awareness (not
 blockers): **no reranker GGUF is bundled** — an admin must supply/select one
 before rerank does anything (DEC-9); and the v1 highlight overlay is **PDF-only,
