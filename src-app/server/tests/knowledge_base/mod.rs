@@ -430,3 +430,34 @@ async fn test_28_mutations_emit_owner_scoped_sync() {
     // The other user receives NOTHING (owner-scoped audience).
     other_probe.expect_silence(std::time::Duration::from_secs(2)).await;
 }
+
+// ─────────────────────────── TEST-23: attach-existing triggers reindex ───────────────────────────
+
+#[tokio::test]
+async fn test_23_attaching_unchunked_file_triggers_reindex() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_reindex").await;
+
+    let fid = upload_text(&server, &user, "reindex.txt", "reindexable marmot beacon phrase").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+
+    // Simulate a file that was never chunked (e.g. uploaded before file_rag, or a
+    // chunk purge): drop its chunks so the KB attach path must reindex it.
+    let fuid = Uuid::parse_str(&fid).unwrap();
+    sqlx::query("DELETE FROM file_chunks WHERE file_id = $1").bind(fuid)
+        .execute(&pool).await.unwrap();
+    let n0: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(fuid).fetch_one(&pool).await.unwrap();
+    assert_eq!(n0, 0, "chunks purged");
+
+    // Attaching the 0-chunk file to a KB triggers a reindex (handler: "reindex any
+    // attached file that has no chunks yet").
+    let kb = create_kb(&server, &user, "Reindex KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&fid]).await.status(), 200);
+
+    // Chunks reappear → the file becomes searchable via the KB.
+    wait_for_chunks(&pool, &fid, 1).await;
+    let sc = search_knowledge(&server, &user.token, "marmot beacon", &[&kb]).await;
+    assert!(!sc["hits"].as_array().unwrap().is_empty(), "reindexed file is searchable: {sc}");
+}
