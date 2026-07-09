@@ -81,3 +81,7 @@ src-app/ui/src/modules/js-tool/module.tsx	1	50	correctness-and-security,patterns
 src-app/ui/src/modules/js-tool/stores/JsToolSettings.store.ts	1	79	correctness-and-security,patterns-conformance,state-management,error-handling,api-contract
 src-app/ui/src/modules/js-tool/types.ts	1	12	patterns-conformance,error-handling,api-contract
 src-app/ui/tests/e2e/settings/js-tool-settings.spec.ts	1	122	tests-quality,error-handling,api-contract
+src-app/server/macros/build.rs	82	96	correctness,build-system,patterns-conformance,error-handling
+src-app/server/macros/build.rs	256	258	build-system,patterns-conformance,correctness
+src-app/server/macros/build.rs	261	262	build-system,patterns-conformance,correctness
+src-app/server/src/modules/chat/core/types/streaming.rs	259	287	tests-quality,correctness,patterns-conformance
