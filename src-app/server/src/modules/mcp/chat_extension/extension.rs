@@ -195,8 +195,6 @@ pub enum SSEChatStreamEventVariants {
     /// A tool created an artifact file (via MCP resource_link) that should be shown as a file card
     ArtifactCreated(SSEChatStreamArtifactCreatedData),
 }
-// NOTE: the `macros` build script regenerates the composed SSE-event enum from
-// this variant list (content-hashed `rerun-if-changed`); keep it authoritative.
 
 // ============================================================================
 // Content Block Delta Variants
