@@ -61,15 +61,22 @@ export function FileExportMenu({ file }: { file: FileEntity }) {
   const menu = (
     <div className="flex flex-col">
       {EXPORT_FORMATS.map(f => (
-        <button
+        <div
           key={f.key}
-          type="button"
+          role="button"
+          tabIndex={0}
           data-testid={`file-export-${f.key}`}
           className="cursor-pointer rounded-md px-3 py-1.5 text-left text-foreground text-sm whitespace-nowrap hover:bg-muted focus-visible:outline focus-visible:outline-2"
           onClick={() => doExport(f)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              doExport(f)
+            }
+          }}
         >
           {f.label}
-        </button>
+        </div>
       ))}
     </div>
   )
