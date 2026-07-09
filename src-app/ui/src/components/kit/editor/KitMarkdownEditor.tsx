@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { serializeMd } from '@platejs/markdown'
 import { MarkdownPlugin } from '@platejs/markdown'
 import { BasicBlocksPlugin, BasicMarksPlugin } from '@platejs/basic-nodes/react'
+import { ListPlugin } from '@platejs/list/react'
 import { Plate, PlateContent, usePlateEditor } from 'platejs/react'
 import { markdownToEditor } from '@/modules/file/utils/markdownRoundtrip'
 
@@ -33,7 +34,7 @@ export const KitMarkdownEditor = forwardRef<
   KitMarkdownEditorProps
 >(function KitMarkdownEditor({ initialMarkdown, onDirty }, ref) {
   const editor = usePlateEditor({
-    plugins: [BasicBlocksPlugin, BasicMarksPlugin, MarkdownPlugin],
+    plugins: [BasicBlocksPlugin, BasicMarksPlugin, ListPlugin, MarkdownPlugin],
     value: markdownToEditor(initialMarkdown),
   })
 

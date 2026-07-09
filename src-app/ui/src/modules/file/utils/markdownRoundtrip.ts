@@ -8,6 +8,7 @@
 
 import { deserializeMd, MarkdownPlugin, serializeMd } from '@platejs/markdown'
 import { BaseBasicBlocksPlugin, BaseBasicMarksPlugin } from '@platejs/basic-nodes'
+import { BaseListPlugin } from '@platejs/list'
 import { createSlateEditor, type Value } from 'platejs'
 
 /**
@@ -20,6 +21,7 @@ import { createSlateEditor, type Value } from 'platejs'
 const roundtripPlugins = [
   BaseBasicBlocksPlugin,
   BaseBasicMarksPlugin,
+  BaseListPlugin,
   MarkdownPlugin,
 ]
 
