@@ -1,4 +1,4 @@
-# PLAN — artifacts-deliverables (v3: WYSIWYG canvas)
+# PLAN — artifacts-deliverables (v4: WYSIWYG canvas + multi-file safety + selection→LLM)
 
 **Goal:** let users get FINISHED WORK OUT of the app — a persistent, versioned,
 co-editable **deliverable** beside the chat, edited in a **rich WYSIWYG editor**, and
@@ -40,6 +40,10 @@ back to GFM markdown on save.
 - **ITEM-10**: Export affordances — an "Export as… (md/docx/pdf)" menu in the file-panel header (hits ITEM-3) and an "Export conversation" menu in the chat header (hits ITEM-4).
 - **ITEM-11**: Design-system + coverage — run `shadcn-component-discovery`/`shadcn-component-review` on the adopted editor + toolbar; register gallery/`STATE_MATRIX` cells for the canvas states (view / edit-empty / edit-with-content / saving / error) and the toolbar; satisfy `check:kit-manifest`, `check:testid-registry`, `check:design-spec`, `check:state-matrix`, `check:gallery-coverage`, and `gate:ui` (runtime-health, AA contrast, a11y-name on every toolbar control, Layer A/axe) in BOTH `ui` and `desktop/ui`.
 - **ITEM-12**: OpenAPI + TS regen + desktop parity — `just openapi-regen` for the four new endpoints in both workspaces; mirror the editor + panel edits into `src-app/desktop/ui/`; verify `npm run check` in both `ui` and `desktop/ui`.
+- **ITEM-13**: Multi-file / dirty-state safety — the right panel is already tabbed (`rightPanel.tabs[]`), so multiple open deliverables = multiple tabs for free. Add a **per-tab dirty flag** while a canvas is in Edit mode and an **unsaved-changes guard** (Save / Discard / Cancel) when the user switches the active tab, closes a tab, or navigates away. Track edit-mode state per `fileId` so switching tabs never silently drops edits.
+- **ITEM-14**: Concurrent-edit reconciliation (UI) — while a canvas is in Edit mode, subscribe to `sync:file` for the open `fileId`; if the head version advances underneath the editor (a model `edit_file`/`rewrite_file`, or another device), show a non-destructive banner — **"This document changed · Reload latest / Keep my changes (save as new version)"** — comparing the editor's base version to the new head. Never silently overwrite; a "keep mine" simply appends a new head via ITEM-1 (last-writer-new-version, nothing lost). Data-layer safety already holds (DEC-4 row-lock); this is the missing UI half.
+- **ITEM-15**: Selection → ask (Q&A, non-mutating) — a **selection popover** in the canvas (view and edit) with **"Ask about this"**: the selected text is threaded into the chat composer as a quoted context block referencing the file; the model answers in chat. No document mutation, no new backend (reuses the existing message-send + the file already being in `available_files`).
+- **ITEM-16**: Selection → edit (scoped, mutating) — a **"Edit this section"** action in the same popover: sends the selected text + the user's instruction so the model performs a **targeted `edit_file(old_str=<selection>)`** (the selection is the unique match), landing as a new version in the canvas. Frontend composes the structured request; reuses `files_mcp::edit_file` + the canvas auto-refresh on `sync:file`. No new backend endpoint (a small structured-context field on the send is the only wire change, picked up by regen).
 
 ## Files to touch
 
@@ -58,7 +62,8 @@ New (frontend, mirrored in `src-app/desktop/ui/`):
 - `src-app/ui/src/components/kit/editor/KitMarkdownEditor.tsx` (+ lazy wrapper `LazyMarkdownEditor.tsx`)
 - `src-app/ui/src/components/kit/editor/*` (adopted Plate shadcn components: toolbar, nodes)
 - `src-app/ui/src/modules/file/utils/markdownRoundtrip.ts` (ITEM-7)
-- `src-app/ui/src/modules/file/components/FileEditBody.tsx` (edit-mode host)
+- `src-app/ui/src/modules/file/components/FileEditBody.tsx` (edit-mode host + dirty-state + change-underneath banner)
+- `src-app/ui/src/modules/file/components/CanvasSelectionPopover.tsx` (selection → ask / edit)
 
 Edited (frontend, mirrored in `src-app/desktop/ui/`):
 - `src-app/ui/package.json` + `src-app/desktop/ui/package.json` (Plate deps; syncpack-aligned)
@@ -100,3 +105,11 @@ redundant with `files_mcp`/`file_versions`/the file panel. v2 used a plain `Text
 edit-mode; **v3 replaces that with a real WYSIWYG editor (Plate)** per the requirement
 that direct editing be rich, matching ChatGPT Canvas / Gemini Canvas / Claude Artifacts
 (all of which allow direct WYSIWYG editing, versioned on save). See DEC-6.
+
+**v4** adds two capabilities requested after v3: **multi-file editing safety**
+(ITEM-13/14 — per-tab dirty guard + "head changed underneath you" reconciliation) and
+**selection → LLM** (ITEM-15/16 — ask-about + scoped edit-selection), the latter
+un-deferring v3's DEC-16. Still explicitly out of v1: direct code/CSV user editing,
+multi-user sharing/ACL, real-time co-editing, version-diff view, comment/suggestion
+mode, pin-as-deliverable, project-level deliverables, workflow-run bundling, extra
+export formats, live HTML/React execution, image upload-embed.

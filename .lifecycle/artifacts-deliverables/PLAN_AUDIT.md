@@ -1,4 +1,4 @@
-# PLAN_AUDIT — artifacts-deliverables (v3: WYSIWYG canvas)
+# PLAN_AUDIT — artifacts-deliverables (v4: + multi-file safety + selection→LLM)
 
 Audit of the v3 plan against the codebase. Backend (ITEM-1..5) is unchanged from v2
 and low-risk; the WYSIWYG editor (ITEM-6..8, 11) is the new risk surface — a first-of-
@@ -74,3 +74,20 @@ its-kind dependency in an app that currently has NO editor primitive.
 - **ITEM-10** — verdict: PASS — small menus in existing header slots.
 - **ITEM-11** — verdict: CONCERN — design-system + a11y + gallery/state-matrix/testid/kit gates for a large new component surface; the toolbar's per-control accessible names are the main a11y load; budgeted as its own item + a gallery e2e.
 - **ITEM-12** — verdict: CONCERN — regen + desktop mirror of the editor + `npm run check` both workspaces (incl. syncpack) are hard gates; endpoints-only API keeps the type surface small.
+- **ITEM-13** — verdict: PASS — the tabbed right panel already supports multiple open files (`rightPanel.tabs[]`); the dirty guard is additive per-tab UI state; the `beforeunload`/tab-switch prompt is a standard pattern with no backend impact.
+- **ITEM-14** — verdict: CONCERN — correctness-sensitive: the editor must compare its base version to the incoming `sync:file` head and NEVER auto-clobber; "keep mine" must go through the ITEM-1 append path (new head), so no version is lost. Reuses the existing `sync:file` + `SyncEntity::File` head-change signal (no new wire). Covered by a concurrent-edit e2e.
+- **ITEM-15** — verdict: PASS — pure frontend: quotes the selection into the composer as context; reuses the existing send path + the file already being in `available_files`; no mutation, no new endpoint.
+- **ITEM-16** — verdict: CONCERN — relies on the selection being a UNIQUE substring so `edit_file(old_str=<selection>)` matches exactly once; a non-unique selection must degrade gracefully (fall back to instruction-only or widen context) rather than mis-edit. Reuses `files_mcp::edit_file` (no new endpoint); a small structured-context field on the send is the only wire change (regen-covered). Covered by unit (selection→old_str shaping) + e2e.
+
+## v4 addenda — breakage / concurrency
+
+- ITEM-14 is the one genuinely new concurrency surface at the UI layer. The data layer
+  is already safe (DEC-4: `append_version` row-lock + append-only + content-addressed
+  no-op), so the worst case without ITEM-14 is a stale editor overwriting with a new
+  head — recoverable via restore, but confusing. ITEM-14 turns that into an explicit,
+  non-destructive choice. No new server code; it consumes the existing `sync:file`.
+- ITEM-16's structured-selection context must NOT bypass the model's normal `edit_file`
+  approval/versioning path — it only *shapes the request*; the actual edit still flows
+  through `files_mcp::edit_file` (append-only, restorable). No trust boundary changes.
+- ITEM-15/16 selection popovers are new interactive surfaces → a11y-name + testid +
+  gallery coverage folded into ITEM-11's design-system gate.

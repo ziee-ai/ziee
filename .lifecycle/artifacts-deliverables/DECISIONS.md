@@ -1,4 +1,4 @@
-# DECISIONS — artifacts-deliverables (v3: WYSIWYG canvas)
+# DECISIONS — artifacts-deliverables (v4: + multi-file safety + selection→LLM)
 
 Resolved up front. v3 keeps v2's reuse-the-file-substrate core and upgrades the editing
 surface from a plain textarea to a rich WYSIWYG editor per requirement.
@@ -117,7 +117,39 @@ Verify `npm run check` (incl. syncpack for the Plate dep) in both workspaces.
 **Basis:** memory — desktop embeds the server; both-workspace regen + check convention.
 
 ### DEC-16: Selection-scoped "have the model edit this highlighted range" in v1?
-**Resolution:** Deferred beyond v1 (direct WYSIWYG edit + the existing model
-`create_file`/`edit_file` surface ship in v1; a future selection→instruction affordance
-can seed `edit_file`'s `old_str`).
-**Basis:** external research (nice-to-have, not baseline) + scope control.
+**Resolution:** **In v1** (un-deferred per requirement). Two flavors: **query-about**
+(non-mutating — quote the selection into chat, model answers) and **edit-selection**
+(mutating — seed a targeted `edit_file(old_str=<selection>)` that lands as a new
+version). A selection popover exposes both in the canvas.
+**Basis:** user directive + external research (Claude "Edit with Claude" / ChatGPT /
+Gemini all ship selection editing) + codebase (`files_mcp::edit_file` already does
+unique-`old_str` targeted edits, so edit-selection is prompt-shaping, not new backend).
+
+### DEC-17: Multiple open deliverables + unsaved edits.
+**Resolution:** Multiple deliverables open as **tabs** in the existing tabbed right
+panel (no new surface). Edit state is tracked **per tab/`fileId`**; switching tabs,
+closing a tab, or navigating away while a canvas is dirty raises an unsaved-changes
+guard (Save / Discard / Cancel). One canvas is edited at a time (the active tab).
+**Basis:** codebase — `rightPanel.tabs[]` + `displayInRightPanel` already give tabbed
+multi-file; the dirty guard mirrors standard `beforeunload`/route-leave patterns.
+
+### DEC-18: The model (or another device) changes a file the user is editing — how is it reconciled?
+**Resolution:** Turn it into an explicit, non-destructive choice. While editing, the
+canvas watches `sync:file` for its `fileId`; if the head advances past the editor's
+base version, it shows a banner — **Reload latest** (discard local, load new head) or
+**Keep my changes** (append the user's edit as a new head via the ITEM-1 path). Never
+auto-overwrite. The model always reads the current head on its next turn.
+**Basis:** codebase — `append_version` already row-locks + is append-only
+(nothing lost), and `SyncEntity::File` already fires on head change; this adds only the
+UI reconciliation on top of existing signals.
+
+### DEC-19: How is selection→edit wired without a new endpoint or a trust-boundary change?
+**Resolution:** The selection popover composes a normal chat send carrying the exact
+selected text + the user's instruction as a small structured-context field; the model
+performs the edit through the standard `files_mcp::edit_file` tool
+(`old_str=<selection>`), which is append-only + restorable. If the selection is not a
+unique substring, degrade to instruction-only (never emit an ambiguous `old_str`).
+Query-about carries the selection as quoted context only (no tool call).
+**Basis:** codebase — `edit_file` requires a unique `old_str` and already versions +
+gates edits; shaping the request client-side reuses that path with no new server route
+and no new trust boundary. (Supersedes v3 DEC-16's "deferred".)

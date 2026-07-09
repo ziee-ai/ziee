@@ -1,4 +1,4 @@
-# TESTS — artifacts-deliverables (v3: WYSIWYG canvas)
+# TESTS — artifacts-deliverables (v4: + multi-file safety + selection→LLM)
 
 Every ITEM covered by ≥1 TEST; UI items also get `tier: e2e`. Mock only the external
 boundary (the LLM in the real-flow e2e). The markdown round-trip gets a dedicated
@@ -28,3 +28,12 @@ fidelity test because it edits with Plate but renders with Streamdown.
 - **TEST-14** (tier: e2e) [covers: ITEM-5] file: `src-app/ui/tests/e2e/14-artifacts/deliverables.spec.ts` — asserts: the conversation's deliverables surface lists the model-authored file and re-opens it in the canvas.
 - **TEST-15** (tier: e2e) [covers: ITEM-11] file: `src-app/ui/tests/e2e/visual/canvas-editor.gallery.spec.ts` — asserts: the gallery renders the canvas states (view / edit-empty / edit-with-content / saving / error) and the editor toolbar with zero runtime-health HIGH findings (no console error, no failed request, no AA-contrast failure, every toolbar control has an accessible name) and Layer A/axe pass.
 - **TEST-16** (tier: e2e) [covers: ITEM-12] file: `src-app/ui/tests/e2e/14-artifacts/canvas-wysiwyg.spec.ts` — asserts: the flow runs green against the regenerated api-client (edit + export hit the new endpoints), standing in for the identical desktop mirror; paired with `npm run check` (incl. syncpack) in both `ui` and `desktop/ui` at phase 8.
+
+## v4 additions — multi-file safety + selection→LLM
+
+- **TEST-17** (tier: unit) [covers: ITEM-13] file: `src-app/ui/src/modules/file/components/FileEditBody.tsx` — asserts: the per-tab dirty flag flips true on first edit and false after Save; switching/closing a tab with a dirty canvas triggers the unsaved-changes guard (Save / Discard / Cancel) rather than dropping edits.
+- **TEST-18** (tier: unit) [covers: ITEM-16] file: `src-app/ui/src/modules/file/components/CanvasSelectionPopover.tsx` — asserts: "Edit this section" composes an `edit_file` request whose `old_str` equals the exact selection when the selection is a unique substring, and falls back to instruction-only (no `old_str`) when the selection is non-unique — never emitting an ambiguous `old_str`.
+- **TEST-19** (tier: e2e) [covers: ITEM-13] file: `src-app/ui/tests/e2e/14-artifacts/multi-file.spec.ts` — asserts: with two deliverables open as tabs, editing one and switching tabs prompts the unsaved-changes guard; Save then switch preserves both files' content; each tab keeps its own version state.
+- **TEST-20** (tier: e2e) [covers: ITEM-14] file: `src-app/ui/tests/e2e/14-artifacts/concurrent-edit.spec.ts` — asserts: while the user is editing a canvas, a model `edit_file` (or a second-client save) that advances the head shows the "document changed" banner; "Keep my changes" appends the user's version as a new head with the model's version preserved (both restorable), and nothing is silently overwritten.
+- **TEST-21** (tier: e2e) [covers: ITEM-15] file: `src-app/ui/tests/e2e/14-artifacts/selection-ask.spec.ts` — asserts: selecting text in the canvas and choosing "Ask about this" quotes that selection into the chat composer as context and the model's reply references it, with the document unchanged (no new version).
+- **TEST-22** (tier: e2e) [covers: ITEM-16] file: `src-app/ui/tests/e2e/14-artifacts/selection-edit.spec.ts` — asserts: selecting a paragraph and choosing "Edit this section" with an instruction results in a targeted model edit that changes only that span, lands as a new version in the canvas, and leaves the rest of the document intact.
