@@ -548,3 +548,90 @@ async fn test_26_search_knowledge_reranks_via_provider() {
     assert!(top["file_id"].is_string() && top["page"].is_number() && top["score"].is_number(),
         "hit carries provenance (file/page/score): {top}");
 }
+
+// ─────────────────────────── TEST-4: dispatch rerank capability gate ───────────────────────────
+
+#[tokio::test]
+async fn test_4_rerank_rejects_a_non_rerank_model() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "kb_rr_gate").await;
+    let client = reqwest::Client::new();
+    let (rerank_url, _hits) = start_mock_reranker().await;
+
+    // A provider + a CHAT model (NO rerank capability).
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "P", "provider_type": "openai", "enabled": true,
+            "api_key": "sk-x", "base_url": rerank_url }))
+        .send().await.unwrap().json().await.unwrap();
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": prov["id"], "name": "chat-only", "display_name": "Chat",
+            "enabled": true, "engine_type": "llamacpp", "file_format": "gguf",
+            "capabilities": { "chat": true, "rerank": false } }))
+        .send().await.unwrap().json().await.unwrap();
+
+    // Setting it as the reranker probes dispatch::rerank, which rejects a model
+    // not flagged with the rerank capability → 400 (never a 500).
+    let put = client.put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "reranker_model_id": model["id"] }))
+        .send().await.unwrap();
+    assert_eq!(put.status(), 400, "a non-rerank model is rejected: {}", put.text().await.unwrap_or_default());
+}
+
+// ─────────────────────────── TEST-7: promotion from OUTSIDE top_k ───────────────────────────
+
+#[tokio::test]
+async fn test_7_reranker_promotes_a_doc_from_outside_top_k() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_rr_promote").await;
+    let client = reqwest::Client::new();
+    let (rerank_url, hits) = start_mock_reranker().await;
+
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "P", "provider_type": "openai", "enabled": true,
+            "api_key": "sk-x", "base_url": rerank_url }))
+        .send().await.unwrap().json().await.unwrap();
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": prov["id"], "name": "rr", "display_name": "RR",
+            "enabled": true, "engine_type": "llamacpp", "file_format": "gguf",
+            "capabilities": { "rerank": true } }))
+        .send().await.unwrap().json().await.unwrap();
+
+    // top_k=3 but candidate_k=30: the reranker must be able to pull a doc from
+    // the WIDE candidate pool into the final top-3, proving candidate expansion
+    // (not a top_k reshuffle).
+    let put = client.put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "reranker_model_id": model["id"], "rerank_enabled": true,
+            "rerank_candidate_k": 30, "default_top_k": 3 }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "enable rerank: {}", put.text().await.unwrap_or_default());
+
+    // 10 docs matching the query; only the LAST carries the promote marker (so by
+    // plain lexical rank it is one-of-ten, not guaranteed in the top-3).
+    let kb = create_kb(&server, &user, "Promote KB").await;
+    let mut ids: Vec<String> = Vec::new();
+    for i in 0..9 {
+        let f = upload_text(&server, &user, &format!("d{i}.txt"), "shared retrieval query token").await;
+        wait_for_chunks(&pool, &f, 1).await;
+        ids.push(f);
+    }
+    let promoted = upload_text(&server, &user, "promote.txt",
+        "shared retrieval query token PROMOTE_ME distinctive").await;
+    wait_for_chunks(&pool, &promoted, 1).await;
+    ids.push(promoted.clone());
+    let idrefs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+    assert_eq!(attach_docs(&server, &user, &kb, &idrefs).await.status(), 200);
+
+    let sc = search_knowledge(&server, &user.token, "shared retrieval query token", &[&kb]).await;
+    let arr = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert!(hits.load(std::sync::atomic::Ordering::SeqCst) > 0, "reranker was called");
+    assert!(arr.len() <= 3, "final result truncated to top_k=3: {}", arr.len());
+    assert!(!arr.is_empty() && arr[0]["content"].as_str().unwrap().contains("PROMOTE_ME"),
+        "the reranker pulled the marked doc from the wide pool into the top-k #1 slot: {sc}");
+}
