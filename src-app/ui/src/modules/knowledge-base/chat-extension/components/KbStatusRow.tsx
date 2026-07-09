@@ -1,4 +1,4 @@
-import { Tag } from '@/components/ui'
+import { Tag, message } from '@/components/ui'
 import { BookOpen } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
@@ -24,7 +24,11 @@ export function KbStatusRow() {
             key={id}
             tone="info"
             icon={<BookOpen />}
-            onClose={() => void Stores.KnowledgeBaseComposer.detach(id)}
+            onClose={() =>
+              Stores.KnowledgeBaseComposer.detach(id).catch((e: unknown) =>
+                message.error(e instanceof Error ? e.message : 'Failed to detach'),
+              )
+            }
             closeLabel="Remove"
             className="m-0"
             data-testid={`kb-chip-${id}`}

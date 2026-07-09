@@ -1,4 +1,4 @@
-import { Popover } from '@/components/ui'
+import { Popover, message } from '@/components/ui'
 import { BookOpen, Check, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
@@ -19,8 +19,13 @@ export function KbMenuItem() {
   if (kbs.length === 0) return null
 
   const toggle = (id: string) => {
-    if (selectedKbIds.has(id)) void Stores.KnowledgeBaseComposer.detach(id)
-    else void Stores.KnowledgeBaseComposer.attach(id)
+    const p = selectedKbIds.has(id)
+      ? Stores.KnowledgeBaseComposer.detach(id)
+      : Stores.KnowledgeBaseComposer.attach(id)
+    // Surface a failed attach/detach instead of a silent unhandled rejection.
+    p.catch((e: unknown) =>
+      message.error(e instanceof Error ? e.message : 'Failed to update knowledge bases'),
+    )
   }
 
   const popoverContent = (

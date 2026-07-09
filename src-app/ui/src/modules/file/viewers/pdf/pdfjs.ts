@@ -236,13 +236,18 @@ export function createPdfController(
       })
     },
     setHighlights: (page: number, rects: HighlightRect[]) => {
+      // Clamp to a valid page so a stale/off-by-one citation can't drive the
+      // viewer out of range (pdf.js ignores an out-of-range set, but the layer
+      // would then never render).
+      const total = pdfViewer.pagesCount || 1
+      const clamped = Math.min(Math.max(1, Math.floor(page) || 1), total)
       // Drop the old page's layer before switching target pages.
-      if (hlPage != null && hlPage !== page) {
+      if (hlPage != null && hlPage !== clamped) {
         pageDivFor(hlPage)?.querySelector(`.${HL_LAYER_CLASS}`)?.remove()
       }
-      hlPage = page
+      hlPage = clamped
       hlRects = rects
-      pdfViewer.currentPageNumber = page
+      pdfViewer.currentPageNumber = clamped
       // The target page may already be rendered (same-doc re-target); inject now.
       // If not yet rendered, `pagerendered` will inject it.
       renderHighlights()

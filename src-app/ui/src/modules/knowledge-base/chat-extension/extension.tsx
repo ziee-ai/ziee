@@ -40,12 +40,27 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   priority: 70,
 
   initialize: async () => {
-    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
+    const { registerPanelRenderer, useChatStore } = await import(
+      '@/modules/chat/core/stores/Chat.store'
+    )
+    const { Stores } = await import('@/core/stores')
     const { KbSourcePanel } = await import('./components/KbSourcePanel')
     registerPanelRenderer('kb_source', {
       icon: <BookOpen />,
       component: KbSourcePanel,
     })
+    // Reset the composer selection when the active conversation changes to a
+    // NEW (unsaved) chat — onConversationLoad only fires for EXISTING
+    // conversations, so without this the pending buffer from conversation A
+    // would leak into a fresh chat and get attached on first send. Mirrors the
+    // file extension's conversation-change subscription. A change to a real id
+    // is handled by onConversationLoad (which re-hydrates from the server).
+    useChatStore.subscribe(
+      state => state.conversation?.id,
+      id => {
+        if (!id) Stores.KnowledgeBaseComposer.setCurrentConversation(null)
+      },
+    )
   },
 
   slots: {

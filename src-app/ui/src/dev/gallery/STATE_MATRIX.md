@@ -31,7 +31,7 @@ conversation page.
 | panel type | registered in |
 |---|---|
 | `file` | `modules/file/chat-extension/extension`:151 |
-| `kb_source` | `modules/knowledge-base/chat-extension/extension`:45 |
+| `kb_source` | `modules/knowledge-base/chat-extension/extension`:48 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
 
 ## Slot registrations
@@ -2329,7 +2329,7 @@ Required states: `panel-open`
 
 | kind | condition | line |
 |---|---|---|
-| panel | `registerPanelRenderer('kb_source')` | 45 |
+| panel | `registerPanelRenderer('kb_source')` | 48 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseCard`
 

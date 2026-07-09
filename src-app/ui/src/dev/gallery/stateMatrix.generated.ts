@@ -2108,7 +2108,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/knowledge-base/chat-extension/extension",
     requiredStates: ["panel-open"],
     signals: [
-      { kind: "panel", condition: "registerPanelRenderer('kb_source')", line: 45 },
+      { kind: "panel", condition: "registerPanelRenderer('kb_source')", line: 48 },
     ],
   },
   "modules/knowledge-base/components/KnowledgeBaseCard": {
@@ -4010,7 +4010,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
 /** Right-panel renderers — each is a distinct right-panel-open state to render. */
 export const PANEL_RENDERERS: PanelRegistration[] = [
   { type: "file", surface: "modules/file/chat-extension/extension", line: 151 },
-  { type: "kb_source", surface: "modules/knowledge-base/chat-extension/extension", line: 45 },
+  { type: "kb_source", surface: "modules/knowledge-base/chat-extension/extension", line: 48 },
   { type: "literature", surface: "modules/literature/chat-extension/extension", line: 27 },
 ]
 
