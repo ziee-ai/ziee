@@ -4,6 +4,10 @@ use aide::axum::routing::{delete_with, get_with, post_with};
 use aide::axum::ApiRouter;
 use axum::extract::DefaultBodyLimit;
 
+use super::deliverables::{
+    list_deliverables, list_deliverables_docs, pin_deliverable, pin_deliverable_docs,
+    unpin_deliverable, unpin_deliverable_docs,
+};
 use super::handlers::*;
 
 /// (see main.rs); this route opts into a higher ceiling. Set to 200 MB
@@ -54,6 +58,16 @@ pub fn file_router() -> ApiRouter {
         .api_route(
             "/files/{file_id}",
             delete_with(delete_file, delete_file_docs),
+        )
+        // Conversation deliverables (derived model-authored files ∪ pinned − hidden)
+        .api_route(
+            "/conversations/{id}/deliverables",
+            get_with(list_deliverables, list_deliverables_docs),
+        )
+        .api_route(
+            "/conversations/{id}/deliverables/{file_id}",
+            post_with(pin_deliverable, pin_deliverable_docs)
+                .delete_with(unpin_deliverable, unpin_deliverable_docs),
         )
 }
 

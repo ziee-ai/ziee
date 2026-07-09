@@ -12,6 +12,7 @@ use crate::ModuleContext;
 pub mod available_files;
 pub mod chat_extension;
 pub mod config;
+pub mod deliverables;
 pub mod handlers;
 pub mod ingest;
 pub mod models;
