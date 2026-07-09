@@ -118,3 +118,5 @@ src-app/ui/tests/e2e/14-voice/visual-states.spec.ts	1	169	tests-quality,correctn
 src-app/ui/tests/e2e/14-voice/voice-helpers.ts	1	514	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-voice/voice-runtime-admin.spec.ts	1	89	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-voice/voice-settings-admin.spec.ts	1	81	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/plugins/vite-plugin-testid-unique.js	48	122	correctness,security,patterns-conformance
+src-app/ui/src/components/ui/testIds.generated.ts	559	559	correctness,patterns-conformance,tests-quality
