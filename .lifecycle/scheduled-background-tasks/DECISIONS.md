@@ -12,9 +12,9 @@ Each resolution has a basis; the handful I most want the user to confirm before
 **Resolution:** A polymorphic `target_kind` with two kinds at launch: (a) `workflow` — a saved workflow + inputs + model; (b) `prompt` — an assistant (task's or the user's default) + a prompt message + model, run as a fresh conversation. The two map 1:1 to the two proven internal execution seams. The `target_kind` column makes adding kinds later (e.g. a saved-search "recipe") a code-only change.
 **Basis:** codebase — `workflow::runner::spawn_run` and `chat::StreamingService::start_generation` are the only two production seams that run an LLM turn without a browser; the user's examples ("re-run a workflow on a cron" → workflow; "check PubMed weekly and summarize" → an agentic assistant turn with lit_search/web_search tools) require both.
 
-### DEC-3: Recurring-schedule format + timezone.
-**Resolution:** Standard 5-field cron (`min hour dom mon dow`) parsed by the `croner` crate, plus a per-task IANA `timezone` string; `once` tasks store a single UTC `run_at`. `next_run_at` is always stored in UTC. The create form offers common presets (daily/weekly/monthly) that emit cron under the hood, with a raw-cron escape hatch.
-**Basis:** convention — cron is the least-surprising recurring vocabulary (matches ChatGPT/Gemini scheduled-tasks and every comparable agent tool); storing UTC + an explicit tz avoids DST ambiguity.
+### DEC-3: Recurring-schedule format + timezone. [CONFIRM]
+**Resolution:** Store a standard 5-field cron (`min hour dom mon dow`) parsed by `croner`, plus a per-task IANA `timezone`; `once` tasks store a single UTC `run_at`; `next_run_at` always UTC. The create form is **preset-first** — daily/weekly/monthly/weekday pickers that emit cron under the hood — with a raw-cron escape hatch for power users. An **optional natural-language → schedule** helper (the user types "every weekday at 9am"; we resolve it to cron via the already-present LLM, shown for confirmation before save) is planned as a follow-on enhancement, NOT in the first cut — the deterministic cron value stays the stored source of truth.
+**Basis:** convention + landscape (see appendix) — ChatGPT/Gemini lead with *natural-language* scheduling (conversational but non-deterministic); the deliberate tradeoff here is a deterministic cron core (precise, testable, DST-correct) with NL as sugar on top rather than the substrate, so a scheduled run's timing is never ambiguous. Storing UTC + explicit tz avoids DST drift.
 
 ### DEC-4: Model resolution for a scheduled run (no conversation to inherit from).
 **Resolution:** `model_id` is required at task-create time (NOT NULL for `prompt`; required for a `workflow` that has LLM steps) and validated against the creating user's model access. Stored as a snapshot FK (`ON DELETE SET NULL`); a NULLed model disables the task with an error notification.
@@ -26,11 +26,11 @@ Each resolution has a basis; the handful I most want the user to confirm before
 
 ### DEC-6: Catch-up semantics on downtime.
 **Resolution:** Coalesced single fire. On boot / first tick, any task whose `next_run_at` is in the past fires **once**, then `next_run_at` advances to the first occurrence after `now` (missed intermediate occurrences are skipped, not backfilled). A `once` task past its time still fires once on the next tick, then disables.
-**Basis:** convention — matches ChatGPT Tasks and mirrors `workflow::startup_sweep` (which reconciles in-flight state at boot rather than replaying); backfilling N identical LLM runs would waste tokens and spam the inbox.
+**Basis:** convention — matches ChatGPT Tasks and mirrors `workflow::startup_sweep` (which reconciles in-flight state at boot rather than replaying); backfilling N identical LLM runs would waste tokens and spam the inbox. NOTE: durable job frameworks (pg-boss / Graphile Worker) offer a bounded "crontab fill / backfill window" as the alternative; rejected here because a scheduled task is an LLM run (costly + a coalesced result is what the user wants, not a burst of stale duplicates). Not exposed as a knob in v1.
 
 ### DEC-7: Per-user quota + abuse floor.
 **Resolution:** A deployment-wide, admin-configurable `max_active_tasks_per_user` (default 20) enforced with a **422** on create, plus a `min_interval_seconds` floor (default 300) rejecting sub-5-minute crons. Both live in the `scheduler_admin_settings` singleton, read fresh each create/tick.
-**Basis:** convention — ChatGPT caps active tasks per plan (3–15); ziee has no plans, so a single admin cap fits; the 422-on-cap + admin-singleton patterns already exist (`project` cap, `memory_admin_settings`).
+**Basis:** convention — ChatGPT caps active tasks per plan at 3–15 and power users report hitting the 10-task ceiling within days, so a default of 20 (admin-raisable) is deliberately more generous; ziee has no plan tiers, so a single admin cap fits; the 422-on-cap + admin-singleton patterns already exist (`project` cap, `memory_admin_settings`).
 
 ### DEC-8: Desktop vs server — does a schedule run only when the app is open? [CONFIRM]
 **Resolution:** The scheduler module is NOT desktop-blocklisted; it runs inside the embedded server, so on desktop it fires only while the app (or headless mode) is running. Missed firings during app-closed time are handled by DEC-6 catch-up on next launch. A short note in the create UI states this on desktop. No cloud/always-on execution is in scope.
@@ -61,5 +61,35 @@ Each resolution has a basis; the handful I most want the user to confirm before
 **Basis:** convention — mirrors ChatGPT's dedicated "Scheduled" sidebar page (a primary surface), and reuses ziee's `sidebarBottom` slot (where `DownloadIndicatorWidget` already lives) for the bell.
 
 ### DEC-15: New dependency — `croner`.
-**Resolution:** Add `croner` (MIT, chrono-compatible, actively maintained) to `[workspace.dependencies]` + the server crate for cron parsing / next-occurrence computation. Not vendored.
-**Basis:** convention — cron math is subtle (DST, dow/dom semantics); a maintained crate beats hand-rolling, and `chrono` is already a workspace dep so integration is clean.
+**Resolution:** Add `croner` (MIT, chrono-compatible, actively maintained) to `[workspace.dependencies]` + the server crate for cron parsing / `find_next_occurrence`. Not vendored. Note its weekday numbering is POSIX/Vixie (`0`=Sunday) — NOT Quartz (`saffron`/`cron` crates use `1`=Sunday); the preset builder + any NL helper must emit POSIX-numbered expressions, and unit tests pin this.
+**Basis:** convention + landscape — `croner` explicitly combines `cron`+`saffron`, is POSIX/Vixie-compliant, exposes `find_next_occurrence`, and documents DST gap/overlap behavior (fixed-time jobs fire at the first valid instant after a spring-forward gap; fire once in a fall-back overlap) — exactly the correctness this feature needs; hand-rolling cron+DST math would be a bug farm.
+
+### DEC-16: Due-claim + status update in one transaction.
+**Resolution:** The tick's `claim_due_tasks` `SELECT ... FOR UPDATE SKIP LOCKED` and the row's "advance `next_run_at` / set `last_run_at`" UPDATE happen in the **same transaction**, so a task can never be double-fired by a concurrent tick and a crash mid-dispatch leaves `next_run_at` already advanced (the run itself is idempotent-at-least-once, and the notification is the visible record). The actual LLM dispatch is spawned *after* the claim tx commits.
+**Basis:** convention + landscape — this is the documented best practice across pg-boss / Solid Queue / Graphile Worker ("update the job's status within the same transaction where you acquire the lock"); `memory/reaper.rs` already uses `FOR UPDATE SKIP LOCKED` batch claiming in-tree.
+
+---
+
+## Landscape research (informing the decisions above)
+
+Comparable products & prior art surveyed:
+
+- **ChatGPT Tasks / Gemini Scheduled Actions** — lead with *natural-language*
+  scheduling; per-plan active-task caps (3–15, users hit the 10-cap in days);
+  results delivered via push notification + an in-app message and a dedicated
+  "Scheduled" sidebar page. LLM-accuracy caveat (models embellish) → we link
+  every notification to the real run/conversation so the user can verify.
+  → shaped DEC-2 (dedicated primary surface), DEC-3 (NL as sugar over a
+  deterministic core), DEC-7 (generous cap), DEC-11 (inbox + deep-link).
+- **Rust cron crates** (`croner` vs `cron` vs `saffron` vs `cronexpr`) — `croner`
+  chosen (POSIX/Vixie, DST-documented, tz-aware, `find_next_occurrence`); weekday
+  numbering divergence noted. → DEC-15.
+- **Postgres durable schedulers** (pg-boss, Solid Queue, Graphile Worker,
+  DBOS) — all use `FOR UPDATE SKIP LOCKED` + cron recurrence + claim/status in one
+  tx; some offer a bounded backfill window (we reject backfill, DEC-6). → DEC-1,
+  DEC-6, DEC-16.
+
+Sources: OpenAI Help Center (Scheduled Tasks); ofzenandcomputing / developersdigest
+write-ups on ChatGPT Tasks limits; `github.com/Hexagon/croner-rust` + `docs.rs/croner`;
+Cloudflare "one cron parser everywhere / Saffron"; mfyz "Durable Queue Workers With
+Just Postgres"; Graphile Worker; rails/solid_queue; DBOS "Making Postgres Queues Scale".
