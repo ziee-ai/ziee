@@ -38,6 +38,13 @@ let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
 let requestTimeout: ReturnType<typeof setTimeout> | null = null
 let recordStartedAt = 0
 /**
+ * In-progress latch for `stopRecording`'s finalization window. `status` stays
+ * `'recording'` and `mediaRecorder` stays non-null until the onstop promise
+ * resolves, so without this a second stop dispatched in that sub-millisecond gap
+ * (e.g. the max-clip auto-stop timer racing a user Stop click) would re-enter.
+ */
+let finalizing = false
+/**
  * Monotonic token guarding the async getUserMedia await. Bumped whenever a
  * pending permission request must be abandoned (cancel / timeout / unmount) so
  * a late-resolving prompt discards its stream instead of latching a mic the
@@ -247,7 +254,10 @@ export const createVoiceStore = defineExtensionStore({
     }
 
     const stopRecording = async () => {
-        if (get().status !== 'recording' || !mediaRecorder) return
+        // The `finalizing` latch closes the re-entrancy window during the onstop
+        // await (status/mediaRecorder remain 'live' across it).
+        if (get().status !== 'recording' || !mediaRecorder || finalizing) return
+        finalizing = true
         clearTimers()
         const recorder = mediaRecorder
         // Supersession token, captured BEFORE the finalization await. cancelRecording
@@ -272,6 +282,9 @@ export const createVoiceStore = defineExtensionStore({
             resolve(new Blob(chunks, { type: 'audio/webm' }))
           }
         })
+        // Finalization window closed — re-entry past here is already blocked by
+        // the status check (status flips to 'transcribing' below).
+        finalizing = false
         stopStream()
         chunks = []
 
@@ -338,6 +351,7 @@ export const createVoiceStore = defineExtensionStore({
       // announcement when this runs as an unmount cleanup while already idle.
       const status = get().status
       if (status === 'idle') return
+      finalizing = false
       clearTimers()
       // Abandon a pending getUserMedia prompt so a late resolve discards its
       // stream instead of re-latching the mic (escapes the 'requesting' spinner).
