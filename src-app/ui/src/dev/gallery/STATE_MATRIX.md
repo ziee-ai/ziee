@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1889** signals total: 1494 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1810,8 +1810,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 118 |
-| branch | `truncated` | 161 |
+| branch | `idx < 0` | 117 |
+| branch | `!fileId` | 131 |
+| branch | `!fileId` | 160 |
+| branch | `truncated` | 180 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1852,7 +1854,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 8 |
+| branch | `!v` | 26 |
+| branch | `!v.selectionTsv` | 29 |
+| branch | `!v` | 38 |
+| branch | `!('file' in props)` | 75 |
 
 ### `modules/file/viewers/text/body`
 

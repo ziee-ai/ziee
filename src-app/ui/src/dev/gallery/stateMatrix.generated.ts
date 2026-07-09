@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1889 signals total.
+// 325 surfaces carry renderable-state signals; 1894 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1625,8 +1625,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/DelimitedTable",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "idx < 0", line: 118 },
-      { kind: "branch", condition: "truncated", line: 161 },
+      { kind: "branch", condition: "idx < 0", line: 117 },
+      { kind: "branch", condition: "!fileId", line: 131 },
+      { kind: "branch", condition: "!fileId", line: 160 },
+      { kind: "branch", condition: "truncated", line: 180 },
     ],
   },
   "modules/file/viewers/tabular/ExpandableCell": {
@@ -1663,7 +1665,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/tabular/header",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 8 },
+      { kind: "branch", condition: "!v", line: 26 },
+      { kind: "branch", condition: "!v.selectionTsv", line: 29 },
+      { kind: "branch", condition: "!v", line: 38 },
+      { kind: "branch", condition: "!('file' in props)", line: 75 },
     ],
   },
   "modules/file/viewers/text/body": {
