@@ -21,6 +21,7 @@ members = [
     "server/macros",
     "desktop/tauri",
     "stub-engine",
+    "stub-whisper-server",
     "sandbox-guest-agent",
     "sandbox-vm-launcher",
     "sandbox-vm-protocol",

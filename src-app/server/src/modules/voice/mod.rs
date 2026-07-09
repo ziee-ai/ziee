@@ -20,13 +20,19 @@ use sqlx::PgPool;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
+pub mod auto_start;
 pub mod binary_manager;
+pub mod deployment;
+pub mod engine;
 pub mod handlers;
+pub mod instance_handlers;
 pub mod model;
 pub mod models;
 pub mod permissions;
+pub mod reaper;
 pub mod repository;
 pub mod routes;
+pub mod runtime_version;
 
 pub use repository::VoiceRepository;
 
@@ -78,8 +84,10 @@ impl AppModule for VoiceModule {
             return Ok(());
         }
 
-        // The reaper (idle-unload + health monitor) is spawned once the
-        // deployment/reaper layer is wired in; nothing to spawn yet.
+        // Spawn the idle-unload + health-monitor reaper (uses the global
+        // Repos.pool()). The whisper-server instance itself is lazily started on
+        // the first transcribe request (auto_start::ensure_running).
+        reaper::spawn();
         tracing::info!("voice: enabled (whisper runtime lazily started on first transcribe)");
         Ok(())
     }

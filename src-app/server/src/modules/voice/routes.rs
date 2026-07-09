@@ -17,4 +17,8 @@ pub fn voice_router() -> ApiRouter {
             get_with(handlers::get_settings, handlers::get_settings_docs)
                 .put_with(handlers::update_settings, handlers::update_settings_docs),
         )
+        // Admin: whisper runtime version registry + install/update/delete.
+        .merge(super::runtime_version::voice_version_router())
+        // Admin: managed instance control + model status/download.
+        .merge(super::instance_handlers::voice_instance_router())
 }
