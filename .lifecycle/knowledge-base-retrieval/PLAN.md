@@ -75,6 +75,11 @@ over the proven `file_rag` engine. Recorded so they aren't re-discovered later.
 - **Element-typed / table-atomic chunking.** Tables as atomic chunks glued to
   caption + table number; section-label metadata per chunk. Depends on the
   structure-aware parser above (char-window chunking cannot produce it).
+  **Licensing constraint (verified):** for a commercial/self-hostable build use
+  only permissive parsers — GROBID (Apache-2.0), Docling (MIT), Unstructured
+  (Apache-2.0 core). **Avoid Marker** (GPL-3 code + weights free only under $2M
+  revenue/funding) and **Nougat** (weights CC-BY-NC, non-commercial) — both are
+  legal blockers, not preferences.
 - **Metadata-filtered retrieval.** Enrich chunks with `{doi, pmid, year, journal,
   publication_type, mesh_terms, organism, oa_status, section}` (reuse `lit_search`
   connectors + `citations` DOI/PMID resolver + add OpenAlex CC0 offline snapshot),
