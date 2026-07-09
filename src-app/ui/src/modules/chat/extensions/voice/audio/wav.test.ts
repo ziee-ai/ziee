@@ -1,6 +1,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { encodeWav, resampleLinear } from './wav.ts'
+import { downmixToMono, encodeWav, resampleLinear } from './wav.ts'
+
+/**
+ * Minimal AudioBuffer stand-in — downmixToMono only touches numberOfChannels,
+ * length, and getChannelData(c), so we don't need a real WebAudio buffer.
+ */
+function fakeAudioBuffer(channels: Float32Array[]): AudioBuffer {
+  return {
+    numberOfChannels: channels.length,
+    length: channels[0]?.length ?? 0,
+    getChannelData: (c: number) => channels[c],
+  } as unknown as AudioBuffer
+}
 
 // Read the little-endian header fields back out of the encoded WAV Blob.
 async function headerOf(blob: Blob) {
@@ -71,4 +83,49 @@ test('resampleLinear upsamples 8 kHz -> 16 kHz to double the samples', () => {
   const input = new Float32Array(800)
   const out = resampleLinear(input, 8000, 16000)
   assert.equal(out.length, 1600)
+})
+
+test('resampleLinear linearly interpolates midpoints when 2x upsampling', () => {
+  // A non-zero ramp so wrong interpolation is observable in the VALUES, not
+  // just the length. 2x upsample places a true midpoint between each pair.
+  const input = new Float32Array([0, 1, 2, 3])
+  const out = resampleLinear(input, 1, 2)
+  // round(4 * 2) = 8 samples; last index clamps to the final input sample.
+  assert.equal(out.length, 8)
+  const expected = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3]
+  for (let i = 0; i < expected.length; i++) {
+    assert.ok(
+      Math.abs(out[i] - expected[i]) < 1e-6,
+      `sample ${i}: got ${out[i]}, expected ${expected[i]}`,
+    )
+  }
+})
+
+test('resampleLinear interpolates on downsample (3 -> 2)', () => {
+  // ratio = 2/3; srcPos for i=1 is 1.5 → midpoint of input[1] & input[2].
+  const input = new Float32Array([0, 10, 20])
+  const out = resampleLinear(input, 3, 2)
+  assert.equal(out.length, 2) // round(3 * 2/3) = 2
+  assert.ok(Math.abs(out[0] - 0) < 1e-6, `sample 0: got ${out[0]}`)
+  assert.ok(Math.abs(out[1] - 15) < 1e-6, `sample 1: got ${out[1]}`) // 10*.5 + 20*.5
+})
+
+test('downmixToMono averages all channels sample-by-sample', () => {
+  const left = new Float32Array([0, 1, 0.5])
+  const right = new Float32Array([1, 0, -0.5])
+  const mono = downmixToMono(fakeAudioBuffer([left, right]))
+  const expected = [0.5, 0.5, 0] // per-sample average of L and R
+  assert.equal(mono.length, expected.length)
+  for (let i = 0; i < expected.length; i++) {
+    assert.ok(
+      Math.abs(mono[i] - expected[i]) < 1e-6,
+      `sample ${i}: got ${mono[i]}, expected ${expected[i]}`,
+    )
+  }
+})
+
+test('downmixToMono returns the sole channel unchanged for mono input', () => {
+  const only = new Float32Array([0.2, -0.4, 0.8])
+  const mono = downmixToMono(fakeAudioBuffer([only]))
+  assert.strictEqual(mono, only, 'mono input is returned as-is (no copy/averaging)')
 })

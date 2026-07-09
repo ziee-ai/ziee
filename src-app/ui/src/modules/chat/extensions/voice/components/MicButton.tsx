@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Loader2, Mic, Square, X } from 'lucide-react'
 import { Button, Popover, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -6,6 +6,7 @@ import { Stores } from '@/core/stores'
 import { isRecordingSupported } from '../Voice.store'
 
 const PRIVACY_HINT_KEY = 'ziee.voice.privacyHintDismissed'
+const NOT_READY_HELP_ID = 'voice-mic-not-ready-help'
 
 function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000)
@@ -20,17 +21,33 @@ function formatElapsed(ms: number): string {
  * Visibility / states:
  *   - HIDDEN when the feature is disabled, capability hasn't resolved, or the
  *     browser can't record (insecure context / no getUserMedia).
- *   - DISABLED (with an explanatory tooltip) when enabled but the server isn't
- *     set up to transcribe yet (no runtime / model).
+ *   - DISABLED-LOOKING (but keyboard-focusable, with an accessible remediation
+ *     description) when enabled but the server isn't set up to transcribe yet.
  *   - Idle → click to record. Recording → pulsing dot + timer + Stop + Cancel.
+ *     Requesting → spinner + Cancel (escape a hung permission prompt).
  *     Transcribing → spinner with the staged status text.
+ *
+ * A11y: a SINGLE persistent `aria-live` region (rendered in every visible
+ * state) announces only DISCRETE transitions from `VoiceStore.announcement`
+ * ("Recording started" / "Transcribing" / "Transcript added" / errors). The
+ * per-second timer is intentionally kept OUT of any live region so screen
+ * readers don't re-announce it every tick.
  */
 export function MicButton() {
-  const { status, elapsedMs, capability, capabilityLoaded, stageText } =
+  const { status, elapsedMs, capability, capabilityLoaded, stageText, announcement } =
     Stores.Chat.VoiceStore
   const [hintOpen, setHintOpen] = useState(
     () => typeof localStorage !== 'undefined' && localStorage.getItem(PRIVACY_HINT_KEY) == null,
   )
+
+  // Stop the recorder, release the MediaStream (mic off), and clear timers when
+  // the composer unmounts mid-flow — otherwise navigating away leaves the mic
+  // live until max_clip auto-stop fires and transcribes into a left conversation.
+  useEffect(() => {
+    return () => {
+      Stores.Chat.VoiceStore.cancelRecording()
+    }
+  }, [])
 
   // Hidden: feature off, capability not yet known, or recording unsupported.
   if (!capabilityLoaded || !capability || !capability.enabled) return null
@@ -39,7 +56,8 @@ export function MicButton() {
   const notReady = !capability.can_transcribe
   const isRecording = status === 'recording'
   const isTranscribing = status === 'transcribing'
-  const isBusy = status === 'requesting' || isTranscribing
+  const isRequesting = status === 'requesting'
+  const isBusy = isRequesting || isTranscribing
 
   const dismissHint = () => {
     try {
@@ -50,26 +68,48 @@ export function MicButton() {
     setHintOpen(false)
   }
 
-  // Not-ready posture: a single disabled button with a guiding tooltip.
+  // One persistent live region for the whole button — mounted in every visible
+  // state so an inserted message is reliably announced (a region mounted with
+  // text already in it often isn't).
+  const liveRegion = (
+    <span aria-live="polite" aria-atomic="true" className="sr-only">
+      {announcement}
+    </span>
+  )
+
+  // Not-ready posture: a muted-but-FOCUSABLE button whose remediation is exposed
+  // to AT via aria-describedby (not tooltip-only, which is unreachable on a
+  // disabled/untabbable control).
   if (notReady) {
     return (
-      <Tooltip content="Voice dictation isn't set up yet — contact an administrator">
-        <span className="inline-flex shrink-0">
-          <Button
-            data-testid="voice-mic-button"
-            data-tooltip-wrapped=""
-            icon={<Mic className="size-4" />}
-            variant="ghost"
-            size="default"
-            disabled
-            aria-label="Voice dictation (unavailable)"
-          />
+      <>
+        <Tooltip content="Voice dictation isn't set up yet — contact an administrator">
+          <span className="inline-flex shrink-0">
+            <Button
+              data-testid="voice-mic-button"
+              data-tooltip-wrapped=""
+              icon={<Mic className="size-4" />}
+              variant="ghost"
+              size="default"
+              aria-disabled={true}
+              aria-label="Voice dictation (unavailable)"
+              aria-describedby={NOT_READY_HELP_ID}
+              className="opacity-50"
+              onClick={e => e.preventDefault()}
+            />
+          </span>
+        </Tooltip>
+        <span id={NOT_READY_HELP_ID} className="sr-only">
+          Voice dictation isn't set up yet. Contact an administrator to install a
+          speech runtime and model.
         </span>
-      </Tooltip>
+        {liveRegion}
+      </>
     )
   }
 
-  // Recording: pulsing indicator + elapsed timer + Stop + Cancel.
+  // Recording: pulsing indicator + elapsed timer + Stop + Cancel. The visible
+  // timer is aria-hidden — the live region carries the discrete announcements.
   if (isRecording) {
     return (
       <div
@@ -84,6 +124,7 @@ export function MicButton() {
         <span
           className="text-xs tabular-nums text-muted-foreground min-w-9"
           data-testid="voice-elapsed"
+          aria-hidden="true"
         >
           {formatElapsed(elapsedMs)}
         </span>
@@ -110,23 +151,33 @@ export function MicButton() {
             onClick={() => Stores.Chat.VoiceStore.cancelRecording()}
           />
         </Tooltip>
-        <span aria-live="polite" className="sr-only">
-          Recording, {formatElapsed(elapsedMs)}
-        </span>
+        {liveRegion}
       </div>
     )
   }
 
-  // Transcribing / requesting: spinner + staged status text.
+  // Requesting / transcribing: spinner + staged status text. Requesting also
+  // gets a Cancel button so a never-answered permission prompt is escapable.
   if (isBusy) {
     const label = isTranscribing ? stageText || 'Transcribing…' : 'Starting…'
     return (
       <div className="flex items-center gap-1.5" data-testid="voice-transcribing">
         <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="text-xs text-muted-foreground truncate max-w-40">{label}</span>
-        <span aria-live="polite" className="sr-only">
-          {label}
-        </span>
+        {isRequesting && (
+          <Tooltip content="Cancel">
+            <Button
+              data-testid="voice-cancel-button"
+              data-tooltip-wrapped=""
+              icon={<X className="size-4" />}
+              variant="ghost"
+              size="default"
+              aria-label="Cancel microphone request"
+              onClick={() => Stores.Chat.VoiceStore.cancelRecording()}
+            />
+          </Tooltip>
+        )}
+        {liveRegion}
       </div>
     )
   }
@@ -150,34 +201,42 @@ export function MicButton() {
 
   if (hintOpen) {
     return (
-      <Popover
-        open
-        onOpenChange={open => {
-          if (!open) dismissHint()
-        }}
-        align="start"
-        side="top"
-        className="w-auto max-w-64"
-        content={
-          <div className="flex flex-col gap-2 p-1" data-testid="voice-privacy-hint">
-            <p className="text-xs text-muted-foreground">
-              Audio is transcribed locally on your server — never sent to the cloud.
-            </p>
-            <Button
-              data-testid="voice-privacy-hint-dismiss"
-              size="default"
-              variant="outline"
-              onClick={dismissHint}
-            >
-              Got it
-            </Button>
-          </div>
-        }
-      >
-        {micButtonTrigger}
-      </Popover>
+      <>
+        <Popover
+          open
+          onOpenChange={open => {
+            if (!open) dismissHint()
+          }}
+          align="start"
+          side="top"
+          className="w-auto max-w-64"
+          content={
+            <div className="flex flex-col gap-2 p-1" data-testid="voice-privacy-hint">
+              <p className="text-xs text-muted-foreground">
+                Audio is transcribed locally on your server — never sent to the cloud.
+              </p>
+              <Button
+                data-testid="voice-privacy-hint-dismiss"
+                size="default"
+                variant="outline"
+                onClick={dismissHint}
+              >
+                Got it
+              </Button>
+            </div>
+          }
+        >
+          {micButtonTrigger}
+        </Popover>
+        {liveRegion}
+      </>
     )
   }
 
-  return <Tooltip content="Dictate a message">{micButtonTrigger}</Tooltip>
+  return (
+    <>
+      <Tooltip content="Dictate a message">{micButtonTrigger}</Tooltip>
+      {liveRegion}
+    </>
+  )
 }

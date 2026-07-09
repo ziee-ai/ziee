@@ -315,7 +315,14 @@ impl WhisperDownloader {
 
         // Always clean up the temp archive, even on extract failure.
         let _ = std::fs::remove_file(&temp_archive);
-        extract_result?;
+        // On ANY extract error, remove the partially-populated cache dir. The
+        // binary (an early entry) can already be on disk when a later entry
+        // fails; leaving it would make a retry short-circuit on
+        // `binary_path.exists()` above and return an incomplete install.
+        if let Err(e) = extract_result {
+            let _ = std::fs::remove_dir_all(&cache_dir);
+            return Err(e);
+        }
 
         #[cfg(unix)]
         ensure_executable(&binary_path)?;

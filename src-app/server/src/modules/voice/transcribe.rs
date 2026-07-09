@@ -33,9 +33,23 @@ pub async fn transcribe(
         return Err(AppError::conflict("voice dictation is disabled").into());
     }
 
-    // Pull the `file` field bytes.
-    let mut audio: Option<Vec<u8>> = None;
-    while let Ok(Some(field)) = multipart.next_field().await {
+    // Pull the `file` field bytes. Keep the `Bytes` (refcounted) rather than
+    // copying into a `Vec` — it is forwarded to whisper-server as-is below.
+    let mut audio: Option<axum::body::Bytes> = None;
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(f)) => f,
+            Ok(None) => break,
+            // A transport/parse error must surface as a clear 400, not fall
+            // through to the "no audio" error below.
+            Err(e) => {
+                return Err(AppError::bad_request(
+                    "VOICE_BAD_UPLOAD",
+                    format!("malformed multipart upload: {e}"),
+                )
+                .into());
+            }
+        };
         if field.name() == Some("file") {
             let bytes = field
                 .bytes()
@@ -48,7 +62,7 @@ pub async fn transcribe(
                 )
                 .into());
             }
-            audio = Some(bytes.to_vec());
+            audio = Some(bytes);
         }
     }
     let audio = audio.ok_or_else(|| {
@@ -120,8 +134,16 @@ pub fn transcribe_docs(op: TransformOperation) -> TransformOperation {
 
 /// POST the WAV to whisper-server's native `/inference` endpoint (multipart) and
 /// parse the `{ "text": ... }` response.
-async fn forward_to_whisper(base_url: &str, audio: Vec<u8>, lang: &str) -> Result<String, AppError> {
-    let part = reqwest::multipart::Part::bytes(audio)
+async fn forward_to_whisper(
+    base_url: &str,
+    audio: axum::body::Bytes,
+    lang: &str,
+) -> Result<String, AppError> {
+    // `Part::stream_with_length` over the refcounted `Bytes` avoids the extra
+    // full-clip copy `Part::bytes` (which needs an owned `Vec`) would force,
+    // while still sending a known Content-Length (not chunked).
+    let len = audio.len() as u64;
+    let part = reqwest::multipart::Part::stream_with_length(reqwest::Body::from(audio), len)
         .file_name("audio.wav")
         .mime_str("audio/wav")
         .map_err(AppError::internal_with_id)?;

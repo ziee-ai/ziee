@@ -77,9 +77,12 @@ CREATE TABLE voice_runtime_settings (
     -- Server-side clip length cap (seconds).
     max_clip_seconds INTEGER NOT NULL DEFAULT 120
         CHECK (max_clip_seconds BETWEEN 1 AND 3600),
-    -- Server-side upload size cap (bytes); default 32 MiB.
+    -- Server-side upload size cap (bytes); default 32 MiB. Ceiling is 64 MiB to
+    -- match the per-route DefaultBodyLimit (VOICE_TRANSCRIBE_BODY_LIMIT) — a
+    -- higher setting would be rejected with a 413 before the handler's logical
+    -- cap ever ran. 64 MiB is ample (a 120s 16kHz mono WAV is ~3.8 MB).
     max_upload_bytes BIGINT NOT NULL DEFAULT 33554432
-        CHECK (max_upload_bytes BETWEEN 1024 AND 268435456),
+        CHECK (max_upload_bytes BETWEEN 1024 AND 67108864),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

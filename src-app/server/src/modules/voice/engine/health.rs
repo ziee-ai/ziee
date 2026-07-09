@@ -360,6 +360,22 @@ impl HealthStateMachine {
         }
     }
 
+    /// Move the machine into `Starting` to begin a (re)start attempt.
+    ///
+    /// Called by the auto-start spawn path *before* `do_start`. Without this a
+    /// machine restored from a persisted `Stopped` state (the singleton row's
+    /// default) is stuck in the all-absorbing `Stopped` arm
+    /// (`(Failed|Stopped, _) => NoOp`): a later `StartedOk` never reaches
+    /// `Healthy` and a later `Crashed` never advances the flap window, so the
+    /// crash-loop give-up can never fire. A `Failed` machine is intentionally
+    /// NOT moved — auto-start gates on `is_failed()` first, and only an explicit
+    /// `ClearFailed` may leave `Failed`.
+    pub fn mark_starting(&mut self) {
+        if !matches!(self.state, InstanceState::Failed { .. }) {
+            self.state = InstanceState::Starting;
+        }
+    }
+
     /// Manual reset for a Failed instance. Driven in production by the admin
     /// `/voice/instance/restart` retry path via the `HealthEvent::ClearFailed`
     /// arm.
@@ -514,6 +530,51 @@ mod tests {
         // Non-terminal persisted state falls back to Starting, counter preserved.
         assert_eq!(sm2.state.name(), "starting");
         assert_eq!(sm2.restart_attempts, 1);
+    }
+
+    #[test]
+    fn persisted_stopped_restarts_then_flaps_to_failed() {
+        // Regression: a machine restored from the singleton row's default
+        // `stopped` state must be able to leave `Stopped` on a start attempt,
+        // reach `Healthy`, and then have a runtime crash-loop trip give-up.
+        // Before `mark_starting`, `Stopped` absorbed every event
+        // ((Failed|Stopped, _) => NoOp): never Healthy, flap never fired.
+        let mut sm = HealthStateMachine::from_persisted(100, "stopped", 0, None);
+        assert_eq!(sm.state.name(), "stopped");
+
+        // A start attempt must move the machine OUT of the absorbing state.
+        sm.mark_starting();
+        assert_eq!(sm.state.name(), "starting");
+
+        // First start succeeds → healthy (was impossible from Stopped before).
+        let t = sm.on_event(HealthEvent::StartedOk);
+        assert!(matches!(t, Transition::StateChanged { ref to, .. } if to == "healthy"));
+        assert_eq!(sm.state.name(), "healthy");
+
+        // Now a crash-loop must advance the flap window and eventually give up.
+        let t0 = Instant::now();
+        for i in 0..5 {
+            let tr = sm.on_event_at(HealthEvent::Crashed(None), t0 + Duration::from_secs(i));
+            assert!(
+                matches!(tr, Transition::Restart { .. }),
+                "crash {i} should schedule a restart, got {tr:?}"
+            );
+            sm.on_event_at(HealthEvent::RestartAttempt, t0 + Duration::from_secs(i));
+        }
+        let last = sm.on_event_at(HealthEvent::Crashed(None), t0 + Duration::from_secs(6));
+        assert!(
+            matches!(last, Transition::GiveUp { .. }),
+            "6th crash within the window must trip give-up, got {last:?}"
+        );
+        assert_eq!(sm.state.name(), "failed");
+    }
+
+    #[test]
+    fn mark_starting_does_not_disturb_failed() {
+        let mut sm = HealthStateMachine::from_persisted(5, "failed", 3, Some("boom".into()));
+        sm.mark_starting();
+        // A Failed machine stays Failed (only ClearFailed may leave it).
+        assert_eq!(sm.state.name(), "failed");
     }
 
     #[test]

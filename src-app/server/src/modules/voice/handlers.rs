@@ -48,6 +48,22 @@ pub async fn update_settings(
         )
         .into());
     }
+    if let Some(ref lang) = body.language {
+        // Accept `auto` (whisper auto-detect) or a 2-letter ISO 639-1 code, so a
+        // bad value fails with a clean 400 here instead of an opaque 503 on the
+        // next transcribe. Empty is tolerated (treated as `auto` downstream).
+        let l = lang.trim();
+        let ok = l.is_empty()
+            || l.eq_ignore_ascii_case("auto")
+            || (l.len() == 2 && l.bytes().all(|b| b.is_ascii_alphabetic()));
+        if !ok {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "language must be 'auto' or a 2-letter ISO 639-1 code (e.g. en, es, zh)",
+            )
+            .into());
+        }
+    }
     if let Some(n) = body.idle_unload_secs
         && !(0..=86_400).contains(&n)
     {
@@ -84,11 +100,13 @@ pub async fn update_settings(
         .into());
     }
     if let Some(n) = body.max_upload_bytes
-        && !(1_024..=268_435_456).contains(&n)
+        && !(1_024..=67_108_864).contains(&n)
     {
+        // Ceiling matches VOICE_TRANSCRIBE_BODY_LIMIT (64 MiB) so a larger
+        // setting can't yield a 413 before the handler's logical cap runs.
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
-            "max_upload_bytes out of range (1024..=268435456)",
+            "max_upload_bytes out of range (1024..=67108864)",
         )
         .into());
     }

@@ -1,5 +1,10 @@
 import { ApiClient } from '@/api-client'
-import type { DownloadSnapshot2, DownloadVersionRequest2 } from '@/api-client/types'
+import {
+  Permissions,
+  type DownloadSnapshot2,
+  type DownloadVersionRequest2,
+} from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 import { Stores } from '@/core/stores'
 
@@ -29,6 +34,9 @@ export const VoiceDownloadProgress = defineStore('VoiceDownloadProgress', {
   },
   actions: set => ({
     loadActive: async (): Promise<void> => {
+      // This hits the admin-only downloads endpoint; self-gate like the sibling
+      // VoiceConfig/VoiceInstance stores so non-admins don't 403 on app load.
+      if (!hasPermissionNow(Permissions.VoiceAdminRead)) return
       set({ loadingActive: true, error: null })
       try {
         const resp = await ApiClient.Voice.listVersionDownloads()
@@ -81,6 +89,11 @@ export const useVoiceDownloadProgressStore = VoiceDownloadProgress.store
 /** Open an SSE subscription for a download key. Idempotent per key. */
 function subscribeToKey(key: string): void {
   if (sseAborts.has(key)) return
+  // Claim the key SYNCHRONOUSLY so a rapid second call is deduped — the real
+  // AbortController arrives later in the async `__init` callback, and without a
+  // synchronous placeholder the `has(key)` guard above is racy (two calls both
+  // pass it before either sets the entry).
+  sseAborts.set(key, new AbortController())
   ApiClient.Voice.subscribeVersionDownloadEvents(
     { key },
     {

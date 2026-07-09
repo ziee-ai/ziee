@@ -118,7 +118,7 @@ function InstalledVersionRow({ version }: { version: RuntimeVersionResponse2 }) 
         </div>
         <div className="flex flex-wrap gap-1 items-center justify-end">
           {canManage && !version.is_system_default && (
-            <Tooltip content="Make this the runtime new sessions use">
+            <Tooltip content="Make this the default runtime for new sessions">
               <Button
                 variant="ghost"
                 icon={<Star />}
@@ -127,14 +127,14 @@ function InstalledVersionRow({ version }: { version: RuntimeVersionResponse2 }) 
                 data-testid={`voice-version-set-default-${version.version}`}
                 aria-label={`Set version ${version.version} as default`}
               >
-                Set as Default
+                Set as default
               </Button>
             </Tooltip>
           )}
           {canManage && (
             <Confirm
               data-testid={`voice-version-delete-confirm-${version.version}`}
-              title="Delete Runtime Version"
+              title="Delete runtime version"
               description={
                 <Flex direction="column" gap="small" className="[&_*]:!m-0">
                   <Text>Are you sure you want to delete version {version.version}?</Text>

@@ -130,6 +130,13 @@ crate::sse_event_enum! {
 
 pub static DOWNLOAD_TASKS: Lazy<DashMap<String, Arc<DownloadTask>>> = Lazy::new(DashMap::new);
 
+/// Serializes the terminal-entry replacement decision in [`start_or_join`] so
+/// two concurrent re-POSTs for the same key can't both observe the old terminal
+/// task and each spawn a runner (two live runners → same shared temp archive
+/// path + a UNIQUE-constraint race). Held across the async status check + the
+/// replacing insert, making the check-then-replace atomic.
+static START_OR_JOIN_LOCK: Mutex<()> = Mutex::const_new(());
+
 /// Graceful-shutdown signal. Each runner races its download against this
 /// `Notify`; `shutdown_all()` wakes every in-flight runner so it tears down
 /// cleanly (Failed + SSE Failed) instead of being abruptly aborted mid-transfer.
@@ -170,13 +177,18 @@ pub async fn start_or_join(
 ) -> Result<Arc<DownloadTask>, AppError> {
     let key = task_key(&version, &backend);
 
+    // Serialize the whole decision so two concurrent callers can't both spawn a
+    // runner for the same key (see `START_OR_JOIN_LOCK`).
+    let _serialize = START_OR_JOIN_LOCK.lock().await;
+
     let cell = DOWNLOAD_TASKS
         .entry(key.clone())
         .or_insert_with(|| spawn_runner(&version, &platform, &arch, &backend, &key))
         .clone();
 
     // Replace a stuck terminal entry on a re-POST so a failed download can be
-    // retried without restarting the server.
+    // retried without restarting the server. Atomic under the lock above: only
+    // one caller ever observes the terminal task and spawns the replacement.
     let status = cell.state.lock().await.status;
     if status.is_terminal() {
         let replacement = spawn_runner(&version, &platform, &arch, &backend, &key);

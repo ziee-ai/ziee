@@ -87,6 +87,40 @@ async fn note_event(event: HealthEvent) -> Transition {
         .on_event(event)
 }
 
+/// Move the in-memory state machine into `Starting` before a spawn attempt.
+///
+/// The singleton row defaults to `state = 'stopped'`, so a freshly-restored
+/// machine sits in the all-absorbing `Stopped` state where `StartedOk` /
+/// `Crashed` are both `NoOp` — the machine would never reach `Healthy` and the
+/// crash-loop give-up could never fire. Calling this at the top of `do_start`
+/// leaves `Stopped` so the subsequent `StartedOk` → `Healthy` and any later
+/// `Crashed` advances the flap window normally. A `Failed` machine is left
+/// alone (auto-start already gates on `is_failed()` before reaching here).
+async fn mark_starting() {
+    ensure_restored().await;
+    let mut guard = HEALTH.lock().await;
+    guard
+        .get_or_insert_with(|| HealthStateMachine::new(MAX_RESTART_ATTEMPTS))
+        .mark_starting();
+}
+
+/// Feed a detected runtime process-death into the state machine (the reaper's
+/// liveness pass found the child exited). Returns `Some(new_state_name)` when
+/// the crash drove a transition (so the caller persists the new `state`), and
+/// persists the `failed` row itself when the crash tripped give-up. `None` when
+/// the machine absorbed the event (already terminal).
+pub async fn report_crashed() -> Option<String> {
+    match note_event(HealthEvent::Crashed(None)).await {
+        Transition::GiveUp { reason } => {
+            persist_failed(&reason).await;
+            Some("failed".to_string())
+        }
+        Transition::Restart { .. } => Some("restarting".to_string()),
+        Transition::StateChanged { to, .. } => Some(to),
+        Transition::NoOp => None,
+    }
+}
+
 async fn is_failed() -> bool {
     ensure_restored().await;
     matches!(
@@ -365,6 +399,11 @@ async fn live_handle_if_current(
 async fn do_start(
     settings: &crate::modules::voice::models::VoiceSettings,
 ) -> Result<InstanceHandle, AppError> {
+    // Leave the absorbing `Stopped` state so `StartedOk`/`Crashed` below drive
+    // real transitions (see `mark_starting`). Without this a persisted-`stopped`
+    // machine never becomes `Healthy` and its crash-loop never trips give-up.
+    mark_starting().await;
+
     let binary = crate::modules::voice::binary_manager::ensure_binary_path().await?;
     let model_path = crate::modules::voice::model::ensure_model(&settings.model).await?;
 

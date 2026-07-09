@@ -104,8 +104,14 @@ pub async fn run_one_tick() -> Result<(), AppError> {
     Ok(())
 }
 
-/// Probe the running instance's `/` and feed the result into the state machine;
+/// Probe the running instance and feed the result into the state machine;
 /// persist any resulting `state` transition. Best-effort.
+///
+/// Detects an actual process EXIT (via `poll_liveness`) before the `/` probe: a
+/// runtime crash must feed the state machine a `Crashed` event so the flap
+/// window advances and a crash-loop trips give-up. A bare `/`-probe failure only
+/// ever produced `Unhealthy`, which never advances the flap counter — so a
+/// process that died at runtime would otherwise be respawned forever.
 async fn monitor_health() {
     let dep = get_deployment_manager().local();
     let status = dep.status().await;
@@ -115,23 +121,37 @@ async fn monitor_health() {
     if !status.running {
         return;
     }
+
+    // A real process exit is a crash — advance the flap window, don't just mark
+    // Unhealthy. `poll_liveness` reaps + clears the slot on exit.
+    if dep.poll_liveness().await == Some(false) {
+        if let Some(to) = auto_start::report_crashed().await {
+            persist_health_state(&to).await;
+        }
+        return;
+    }
+
     let base_url = format!("http://127.0.0.1:{port}");
     let healthy = dep.health_check(&base_url).await.unwrap_or(false);
     if let Some((from, to)) = auto_start::report_health(healthy, "whisper-server / probe failed").await
     {
-        if let Err(e) = sqlx::query!(
-            r#"UPDATE voice_runtime_instance
-               SET state = $1, state_changed_at = NOW(), updated_at = NOW()
-               WHERE id = TRUE"#,
-            to,
-        )
-        .execute(Repos.pool())
-        .await
-        {
-            tracing::warn!("voice::reaper: health state persist failed: {e}");
-        } else {
-            tracing::debug!("voice::reaper: health state {from} -> {to}");
-        }
+        persist_health_state(&to).await;
+        tracing::debug!("voice::reaper: health state {from} -> {to}");
+    }
+}
+
+/// Persist the state-machine `state` name to the singleton row. Best-effort.
+async fn persist_health_state(to: &str) {
+    if let Err(e) = sqlx::query!(
+        r#"UPDATE voice_runtime_instance
+           SET state = $1, state_changed_at = NOW(), updated_at = NOW()
+           WHERE id = TRUE"#,
+        to,
+    )
+    .execute(Repos.pool())
+    .await
+    {
+        tracing::warn!("voice::reaper: health state persist failed: {e}");
     }
 }
 

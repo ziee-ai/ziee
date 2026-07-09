@@ -8,11 +8,11 @@
 //! model lives) AND the streaming, sha256-verified, size-capped download used by
 //! the auto-start path and the admin download endpoint.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncWriteExt;
 
 use crate::common::AppError;
 
@@ -20,8 +20,9 @@ use crate::common::AppError;
 ///
 /// A downloaded file whose digest does not match its pinned entry is deleted and
 /// the download fails — the model bytes are never trusted from the network
-/// alone. Models with no entry here skip verification (logged) so a new
-/// [`SUPPORTED_MODELS`] entry isn't hard-blocked before its hash is pinned.
+/// alone. A model with NO entry here (or an all-zero placeholder) is likewise
+/// rejected (fail-closed): a supported model must carry a real pin before it can
+/// be installed from the network.
 ///
 // Real digests: the git-LFS `oid sha256` of each `ggml-<name>.bin` from
 // https://huggingface.co/ggerganov/whisper.cpp (the LFS oid IS the file's
@@ -179,9 +180,12 @@ where
         ));
     }
 
-    // Stream to a temp file, hashing as we go, with a hard byte cap.
+    // Stream to a temp file, hashing as we go, with a hard byte cap. The file
+    // writes go through `tokio::fs` so a multi-hundred-MB download never blocks
+    // the executor thread (this can run under the auto-start START_LOCK).
     let tmp = dir.join(format!("{}.tmp", model_filename(name)));
-    let mut file = std::fs::File::create(&tmp)
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
         .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
@@ -200,10 +204,12 @@ where
             }
             hasher.update(&chunk);
             file.write_all(&chunk)
+                .await
                 .map_err(|e| AppError::internal_error(format!("write model chunk: {e}")))?;
             cb(downloaded, total);
         }
         file.flush()
+            .await
             .map_err(|e| AppError::internal_error(format!("flush model file: {e}")))?;
         Ok(())
     }
@@ -223,26 +229,34 @@ where
         )));
     }
 
-    // Verify sha256 against the pinned table (skip only when unpinned).
+    // Verify sha256 against the pinned table. Fail CLOSED: a model with no real
+    // pin (missing entry or an all-zero placeholder) is rejected rather than
+    // installed unverified — we never trust network bytes for a supported model
+    // without a real digest. All shipped models have real pins, so this only
+    // hardens the future add-a-model path.
     let actual = hex_lower(&hasher.finalize());
-    if let Some(expected) = known_sha256(name) {
-        // Defensive: an all-zero pin would mean "not yet pinned" — skip rather
-        // than reject (all shipped pins are real, so this never triggers today;
-        // it keeps a newly-added-but-unpinned model from hard-failing).
-        let is_placeholder = expected.bytes().all(|b| b == b'0');
-        if !is_placeholder && !expected.eq_ignore_ascii_case(&actual) {
+    match known_sha256(name) {
+        Some(expected) if expected.bytes().all(|b| b == b'0') => {
             let _ = std::fs::remove_file(&tmp);
             return Err(AppError::internal_error(format!(
-                "sha256 mismatch for whisper model {name}: expected {expected}, got {actual}"
+                "voice: model {name} has a placeholder sha256 pin; refusing to install \
+                 unverified bytes (pin the real digest before enabling this model)"
             )));
         }
-        if is_placeholder {
-            tracing::warn!(
-                "voice: model {name} sha256 pin is a placeholder; skipping verification (got {actual})"
-            );
+        Some(expected) => {
+            if !expected.eq_ignore_ascii_case(&actual) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(AppError::internal_error(format!(
+                    "sha256 mismatch for whisper model {name}: expected {expected}, got {actual}"
+                )));
+            }
         }
-    } else {
-        tracing::warn!("voice: model {name} has no pinned sha256; skipping verification");
+        None => {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(AppError::internal_error(format!(
+                "voice: model {name} has no pinned sha256; refusing to install unverified bytes"
+            )));
+        }
     }
 
     // Atomically publish.

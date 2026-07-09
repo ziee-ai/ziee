@@ -35,7 +35,18 @@ let chunks: Blob[] = []
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let stageTimer: ReturnType<typeof setTimeout> | null = null
 let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
+let requestTimeout: ReturnType<typeof setTimeout> | null = null
 let recordStartedAt = 0
+/**
+ * Monotonic token guarding the async getUserMedia await. Bumped whenever a
+ * pending permission request must be abandoned (cancel / timeout / unmount) so
+ * a late-resolving prompt discards its stream instead of latching a mic the
+ * user already backed out of. See startRecording / cancelRecording.
+ */
+let requestGeneration = 0
+
+/** getUserMedia can hang forever on an unanswered permission prompt; escape it. */
+const GET_USER_MEDIA_TIMEOUT_MS = 15000
 
 function stopStream(): void {
   if (mediaStream) {
@@ -54,6 +65,26 @@ function clearTimers(): void {
     clearTimeout(stageTimer)
     stageTimer = null
   }
+  if (requestTimeout !== null) {
+    clearTimeout(requestTimeout)
+    requestTimeout = null
+  }
+}
+
+/**
+ * Return keyboard focus to the composer textarea after a dictation flow ends
+ * (transcript inserted or recording cancelled) — the mic controls unmount on
+ * the status change, so without this focus falls to <body>. No-op when the
+ * composer isn't mounted (e.g. this ran from an unmount cleanup).
+ */
+function focusComposer(): void {
+  if (typeof document === 'undefined' || typeof requestAnimationFrame === 'undefined') return
+  requestAnimationFrame(() => {
+    const el = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="chat-message-textarea"]',
+    )
+    el?.focus()
+  })
 }
 
 /**
@@ -83,8 +114,15 @@ export const createVoiceStore = defineExtensionStore({
     capabilityLoaded: false,
     /** Staged status line shown while transcribing (cold-start aware). */
     stageText: '',
-    /** Last error message (for the aria-live region). */
+    /** Last error message (surfaced to the user via the persistent live region). */
     errorMessage: null as string | null,
+    /**
+     * Discrete screen-reader announcement for the single persistent live region
+     * in MicButton. Set only on STATE TRANSITIONS ("Recording started",
+     * "Transcribing", "Transcript added", "Recording cancelled", or an error
+     * message) — never the per-second timer, which must not be re-announced.
+     */
+    announcement: '',
   },
   actions: (set, get) => {
     const revertToIdleSoon = () => {
@@ -99,10 +137,18 @@ export const createVoiceStore = defineExtensionStore({
 
     const fail = (msg: string) => {
       clearTimers()
+      // Abandon any pending permission prompt whose stream might still resolve.
+      requestGeneration++
       stopStream()
       chunks = []
       message.error(msg)
-      set({ status: 'error', errorMessage: msg, elapsedMs: 0, stageText: '' })
+      set({
+        status: 'error',
+        errorMessage: msg,
+        announcement: msg,
+        elapsedMs: 0,
+        stageText: '',
+      })
       revertToIdleSoon()
     }
 
@@ -128,11 +174,33 @@ export const createVoiceStore = defineExtensionStore({
           fail('Voice recording is not supported in this browser.')
           return
         }
-        set({ status: 'requesting', errorMessage: null, elapsedMs: 0, stageText: '' })
+        const gen = ++requestGeneration
+        set({
+          status: 'requesting',
+          errorMessage: null,
+          announcement: '',
+          elapsedMs: 0,
+          stageText: '',
+        })
+        // Backstop: an unanswered permission prompt never rejects getUserMedia,
+        // so time it out and return to idle rather than spinning forever.
+        requestTimeout = setTimeout(() => {
+          requestTimeout = null
+          if (requestGeneration === gen && get().status === 'requesting') {
+            fail('Microphone permission timed out. Try again when you’re ready.')
+          }
+        }, GET_USER_MEDIA_TIMEOUT_MS)
         let stream: MediaStream
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         } catch (err) {
+          if (requestTimeout !== null) {
+            clearTimeout(requestTimeout)
+            requestTimeout = null
+          }
+          // A cancel/timeout/unmount already superseded this request and reset
+          // state — swallow the (now irrelevant) rejection.
+          if (requestGeneration !== gen) return
           const denied =
             err instanceof DOMException &&
             (err.name === 'NotAllowedError' || err.name === 'SecurityError')
@@ -141,6 +209,16 @@ export const createVoiceStore = defineExtensionStore({
               ? 'Microphone access was denied. Allow it in your browser to dictate.'
               : 'Could not start recording — no microphone available.',
           )
+          return
+        }
+        if (requestTimeout !== null) {
+          clearTimeout(requestTimeout)
+          requestTimeout = null
+        }
+        // Cancelled/superseded while the prompt was open: discard the live stream
+        // instead of leaving the mic on.
+        if (requestGeneration !== gen || get().status !== 'requesting') {
+          for (const track of stream.getTracks()) track.stop()
           return
         }
         mediaStream = stream
@@ -157,7 +235,7 @@ export const createVoiceStore = defineExtensionStore({
           return
         }
         recordStartedAt = Date.now()
-        set({ status: 'recording', elapsedMs: 0 })
+        set({ status: 'recording', elapsedMs: 0, announcement: 'Recording started' })
         const maxMs = (capability?.max_clip_seconds ?? 60) * 1000
         elapsedTimer = setInterval(() => {
           const elapsed = Date.now() - recordStartedAt
@@ -191,7 +269,11 @@ export const createVoiceStore = defineExtensionStore({
           return
         }
 
-        set({ status: 'transcribing', stageText: 'Starting voice engine…' })
+        set({
+          status: 'transcribing',
+          stageText: 'Starting voice engine…',
+          announcement: 'Transcribing',
+        })
         // Cold-start staging: whisper-server may autostart on the first clip, so
         // start with "Starting…" and flip to "Transcribing…" if it lingers.
         stageTimer = setTimeout(() => {
@@ -210,19 +292,32 @@ export const createVoiceStore = defineExtensionStore({
             const current = textStore.getText()
             textStore.setText(current ? `${current} ${text}` : text)
           }
-          set({ status: 'idle', elapsedMs: 0, stageText: '', errorMessage: null })
+          set({
+            status: 'idle',
+            elapsedMs: 0,
+            stageText: '',
+            errorMessage: null,
+            announcement: text ? 'Transcript added' : 'No speech detected',
+          })
+          focusComposer()
         } catch (err) {
-          fail(
-            err instanceof Error && err.message
-              ? `Transcription failed: ${err.message}`
-              : 'Transcription failed.',
-          )
+          // Keep the raw backend detail (loopback URLs, engine jargon) in the
+          // console for debugging; never leak it into the user-facing toast.
+          console.error('[voice] transcription failed', err)
+          fail('Couldn’t transcribe your recording. Please try again.')
         }
     }
 
     const cancelRecording = () => {
+      // Nothing to unwind from a settled state — avoid a spurious focus-steal /
+      // announcement when this runs as an unmount cleanup while already idle.
+      const status = get().status
+      if (status === 'idle') return
       clearTimers()
-      if (mediaRecorder && get().status === 'recording') {
+      // Abandon a pending getUserMedia prompt so a late resolve discards its
+      // stream instead of re-latching the mic (escapes the 'requesting' spinner).
+      requestGeneration++
+      if (mediaRecorder && status === 'recording') {
         mediaRecorder.ondataavailable = null
         mediaRecorder.onstop = null
         try {
@@ -233,7 +328,14 @@ export const createVoiceStore = defineExtensionStore({
       }
       stopStream()
       chunks = []
-      set({ status: 'idle', elapsedMs: 0, stageText: '', errorMessage: null })
+      set({
+        status: 'idle',
+        elapsedMs: 0,
+        stageText: '',
+        errorMessage: null,
+        announcement: 'Recording cancelled',
+      })
+      focusComposer()
     }
 
     return { fetchCapability, startRecording, stopRecording, cancelRecording }

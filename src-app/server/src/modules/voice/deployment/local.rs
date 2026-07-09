@@ -290,6 +290,38 @@ impl LocalDeployment {
             .map(|p| p.active_model.clone())
     }
 
+    /// Reap-and-check the managed child's liveness.
+    ///
+    /// Unlike [`status`](Self::status) (which reports a live PID until the
+    /// `Child` is dropped, so it cannot see a process that exited on its own),
+    /// this non-blocking `try_wait` distinguishes a runtime EXIT from a healthy
+    /// process. On exit it clears the slot (reaps the zombie) so the next
+    /// transcribe re-spawns. Returns:
+    ///   - `Some(true)`  — a child is present and still running;
+    ///   - `Some(false)` — a child had exited at runtime (now reaped + cleared);
+    ///   - `None`        — nothing was running.
+    ///
+    /// An exit here is always a crash: the graceful `stop()` path removes the
+    /// slot first, so a process this method still finds and observes exited was
+    /// never asked to stop.
+    pub async fn poll_liveness(&self) -> Option<bool> {
+        let mut slot = self.process.write().await;
+        let info = slot.as_mut()?;
+        match info.child.try_wait() {
+            Ok(Some(status)) => {
+                tracing::warn!("voice: whisper-server exited at runtime: {status}");
+                *slot = None; // reap + clear so status() reports not-running
+                Some(false)
+            }
+            Ok(None) => Some(true),
+            Err(e) => {
+                // Uncertain — treat as alive; the `/` health probe still runs.
+                tracing::warn!("voice: try_wait on whisper-server failed: {e}");
+                Some(true)
+            }
+        }
+    }
+
     /// Coarse liveness snapshot (running / pid / port / uptime).
     pub async fn status(&self) -> InstanceStatus {
         let slot = self.process.read().await;
