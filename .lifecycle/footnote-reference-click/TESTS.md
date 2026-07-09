@@ -1,0 +1,12 @@
+# TESTS — enumerated up front
+
+Every ITEM is covered by ≥1 TEST; UI diff includes ≥1 e2e test. (ITEM-5/6/7 ARE the test-writing
+items; the TEST entries below are the tests they deliver.)
+
+- **TEST-1** (tier: unit) [covers: ITEM-1, ITEM-3, ITEM-5] file: `src-app/ui/src/modules/chat/core/utils/footnoteScope.test.ts` — asserts: `scopeFootnoteId('user-content-user-content-fn-1','c9')` returns `'c9-fn-1'` (THE double-prefix regression) and `scopeFootnoteId('user-content-fn-1','c9')` returns `'c9-fn-1'` (single-prefix parity, no regression)
+- **TEST-2** (tier: unit) [covers: ITEM-1, ITEM-3, ITEM-5] file: `src-app/ui/src/modules/chat/core/utils/footnoteScope.test.ts` — asserts: `scopeFootnoteId` handles zero-prefix (`fn-1`), custom label (`fn-note`), fnref kind, and multi-use suffix (`fnref-1-2`); returns a non-footnote id (e.g. `some-heading`) unchanged
+- **TEST-3** (tier: unit) [covers: ITEM-1, ITEM-2, ITEM-5] file: `src-app/ui/src/modules/chat/core/utils/footnoteScope.test.ts` — asserts: `scopeHref` maps `#user-content-fn-1` and `#fn-1` to `#c9-fn-1`; a plain hash `#Some Section` to `#c9-h-some-section` (heading path via slugifyHeading/safeDecode); leaves an external `https://x` href and `undefined` unchanged
+- **TEST-4** (tier: unit) [covers: ITEM-4, ITEM-5] file: `src-app/ui/src/modules/chat/core/utils/footnoteScope.test.ts` — asserts: `isFootnoteLabel` is true for `footnote-label`, `user-content-footnote-label`, and `user-content-user-content-footnote-label`; false for `user-content-fn-1` and undefined
+- **TEST-5** (tier: e2e) [covers: ITEM-2, ITEM-3, ITEM-6] file: `src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts` — asserts: seeding `See[^1].\n\n[^1]: body\n\n> excerpt`, clicking the `sup a` footnote reference makes `details.footnote-section` open, makes the inner `.footnote-quote` details open, and the element with the ref's `href` target id exists in the DOM (getElementById resolves — proving the fix)
+- **TEST-6** (tier: e2e) [covers: ITEM-7] file: `src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts` — asserts: two assistant messages each with `[^1]`; clicking message 2's reference opens message 2's `details.footnote-section` while message 1's stays closed (per-message contentId scoping)
+- **TEST-7** (tier: e2e) [covers: ITEM-4] file: `src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts` — asserts: the seeded footnote message renders no stray visible "Footnotes" heading outside the References `<summary>` (the sr-only label stays suppressed) — folded into TEST-5's spec body

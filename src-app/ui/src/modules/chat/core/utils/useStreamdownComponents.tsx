@@ -3,7 +3,6 @@ import { MarkdownTable } from '@/components/common/MarkdownTable'
 import {
   nodeToText,
   slugifyHeading,
-  safeDecode,
   HEADING_CLASS,
   LINK_CLASS,
 } from '@/components/common/markdownHeadings'
@@ -11,6 +10,11 @@ import { renderGfmAlert } from '@/components/common/gfmAlert'
 import { BlockedImage } from '@/components/common/BlockedImage'
 import { ReservedImage } from '@/components/common/ReservedImage'
 import { classifyImageSrc } from '@/components/common/imageSrcPolicy'
+import {
+  scopeFootnoteId,
+  scopeHref,
+  isFootnoteLabel,
+} from '@/modules/chat/core/utils/footnoteScope'
 import { cn } from '@/lib/utils'
 
 /**
@@ -49,11 +53,10 @@ export function useStreamdownComponents(contentId: string) {
       h5: makeHeading(5),
       h6: makeHeading(6),
       h2(props: JSX.IntrinsicElements['h2']) {
-        if (
-          props.id === 'footnote-label' ||
-          props.id === 'user-content-footnote-label'
-        ) {
-          // Suppressed — the section override renders "References" via <summary>
+        if (isFootnoteLabel(props.id)) {
+          // Suppressed — the section override renders "References" via <summary>.
+          // Prefix-agnostic: Streamdown v2 double-prefixes the id
+          // (`user-content-user-content-footnote-label`).
           return null
         }
         return (
@@ -90,18 +93,14 @@ export function useStreamdownComponents(contentId: string) {
         }
         // Scope footnote IDs/hrefs to this content block so clicking [1] in message 2
         // scrolls to message 2's references, not message 1's (duplicate DOM IDs issue).
-        const scopedId = id?.startsWith('user-content-fnref-')
-          ? `${contentId}-fnref-${id.slice('user-content-fnref-'.length)}`
-          : id
-        const scopedHref = href?.startsWith('#user-content-fn-')
-          ? `#${contentId}-fn-${href.slice('#user-content-fn-'.length)}`
-          : href?.startsWith('#user-content-fnref-')
-          ? `#${contentId}-fnref-${href.slice('#user-content-fnref-'.length)}`
-          : href?.startsWith('#')
-          ? // A plain in-markdown hash link (`[Section](#section)`): re-target it
-            // at this message's slugged heading id (same slugify as the heading).
-            `#${contentId}-h-${slugifyHeading(safeDecode(href.slice(1)))}`
-          : href
+        // Prefix-count-agnostic: Streamdown v2 double-prefixes ids
+        // (`user-content-user-content-fn-N`) but leaves the href single-prefixed —
+        // scopeFootnoteId/scopeHref tolerate any prefix count so the ref href and
+        // the definition <li> id resolve to the SAME scoped element. A plain
+        // in-markdown hash link (`[Section](#section)`) is re-targeted at this
+        // message's slugged heading id inside scopeHref.
+        const scopedId = scopeFootnoteId(id, contentId)
+        const scopedHref = scopeHref(href, contentId)
         // All hash links — scroll within the current page
         if (scopedHref?.startsWith('#')) {
           return (
@@ -166,10 +165,11 @@ export function useStreamdownComponents(contentId: string) {
       },
       li(props: JSX.IntrinsicElements['li']) {
         const { id, className, ...rest } = props
-        // Scope footnote definition IDs to avoid cross-message duplicates
-        const scopedId = id?.startsWith('user-content-fn-')
-          ? `${contentId}-fn-${id.slice('user-content-fn-'.length)}`
-          : id
+        // Scope footnote definition IDs to avoid cross-message duplicates. This
+        // is the click TARGET the `a` override's scopedHref points at; keeping
+        // it prefix-count-agnostic (Streamdown v2 double-prefixes) is what makes
+        // reference clicks resolve.
+        const scopedId = scopeFootnoteId(id, contentId)
         // GFM task-list items (`- [ ] …`) carry their own checkbox, so drop the
         // list bullet (list-none) — otherwise it reads as "• ☐ text". The
         // checkbox is styled via a descendant selector on the item (accent color
