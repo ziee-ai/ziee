@@ -73,7 +73,7 @@ futures.workspace = true
 # `json` (catch-all parser for SSE/REST) and `blocking` (used by the
 # embedded-postgres startup probe) are added on top of the workspace's
 # rustls-tls + charset + http2 baseline.
-reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
+reqwest = { workspace = true, features = ["json", "blocking", "stream", "multipart"] }
 # web_search page fetch: readability-style extraction + HTML→markdown.
 dom_smoothie.workspace = true
 htmd.workspace = true

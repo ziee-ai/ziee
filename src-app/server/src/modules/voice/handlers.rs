@@ -152,3 +152,26 @@ pub fn get_capability_docs(op: TransformOperation) -> TransformOperation {
         .summary("Voice dictation readiness for the composer mic button")
         .response::<200, Json<VoiceCapability>>()
 }
+
+// ─────────────────────── sync-cache (admin convenience) ──────────────────────
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub struct SyncCacheResult {
+    /// Number of on-disk whisper binaries back-filled into the registry.
+    pub synced: i64,
+}
+
+pub async fn sync_cache(
+    _auth: RequirePermissions<(VoiceAdminManage,)>,
+) -> ApiResult<Json<SyncCacheResult>> {
+    let synced = super::binary_manager::sync_cache().await? as i64;
+    Ok((StatusCode::OK, Json(SyncCacheResult { synced })))
+}
+
+pub fn sync_cache_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(VoiceAdminManage,)>(op)
+        .id("Voice.syncVersionCache")
+        .tag("Voice")
+        .summary("Back-fill the runtime-version registry from cached whisper binaries on disk")
+        .response::<200, Json<SyncCacheResult>>()
+}
