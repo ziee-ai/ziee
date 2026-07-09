@@ -10,6 +10,7 @@ pub mod control_mcp;
 pub mod elicitation_mcp;
 pub mod file;
 pub mod file_rag;
+pub mod knowledge_base;
 pub mod lit_search;
 pub mod files_mcp;
 pub mod code_sandbox;

@@ -28,6 +28,8 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
+pub use repository::KnowledgeBaseRepository;
+
 /// Deterministic UUID for the built-in knowledge_base MCP server row.
 /// Stable across deployments (mirrors `citations_server_id`).
 pub fn knowledge_base_server_id() -> Uuid {

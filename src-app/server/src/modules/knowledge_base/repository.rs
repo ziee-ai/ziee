@@ -93,7 +93,9 @@ impl KnowledgeBaseRepository {
     ) -> Result<Option<KnowledgeBase>, AppError> {
         let base = sqlx::query!(
             r#"
-            SELECT kb.id, kb.name, kb.description, kb.created_at, kb.updated_at,
+            SELECT kb.id, kb.name, kb.description,
+                   kb.created_at AS "created_at: chrono::DateTime<chrono::Utc>",
+                   kb.updated_at AS "updated_at: chrono::DateTime<chrono::Utc>",
                    (SELECT COUNT(*) FROM knowledge_base_documents d
                     WHERE d.knowledge_base_id = kb.id) AS "document_count!"
             FROM knowledge_bases kb
@@ -122,7 +124,9 @@ impl KnowledgeBaseRepository {
     pub async fn list(&self, user_id: Uuid) -> Result<Vec<KnowledgeBase>, AppError> {
         let rows = sqlx::query!(
             r#"
-            SELECT kb.id, kb.name, kb.description, kb.created_at, kb.updated_at,
+            SELECT kb.id, kb.name, kb.description,
+                   kb.created_at AS "created_at: chrono::DateTime<chrono::Utc>",
+                   kb.updated_at AS "updated_at: chrono::DateTime<chrono::Utc>",
                    (SELECT COUNT(*) FROM knowledge_base_documents d
                     WHERE d.knowledge_base_id = kb.id) AS "document_count!"
             FROM knowledge_bases kb
@@ -371,7 +375,8 @@ impl KnowledgeBaseRepository {
         }
         let rows = sqlx::query!(
             r#"
-            SELECT d.file_id, f.filename, d.added_at,
+            SELECT d.file_id, f.filename,
+                   d.added_at AS "added_at: chrono::DateTime<chrono::Utc>",
                    COALESCE(s.status, 'pending') AS "index_status!",
                    COALESCE(s.chunk_count, 0)    AS "chunk_count!"
             FROM knowledge_base_documents d
@@ -551,8 +556,8 @@ impl KnowledgeBaseRepository {
                 OR kb.id IN (
                     SELECT pkb.knowledge_base_id
                     FROM project_knowledge_bases pkb
-                    JOIN conversations c ON c.project_id = pkb.project_id
-                    WHERE c.id = $2
+                    JOIN project_conversations pc ON pc.project_id = pkb.project_id
+                    WHERE pc.conversation_id = $2
                 )
             )
             "#,
@@ -563,6 +568,26 @@ impl KnowledgeBaseRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(rows)
+    }
+
+    /// Filenames for a set of (owner's) file_ids, for rendering search hits.
+    pub async fn filenames_for(
+        &self,
+        user_id: Uuid,
+        file_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, String>, AppError> {
+        if file_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows = sqlx::query!(
+            "SELECT id, filename FROM files WHERE user_id = $1 AND id = ANY($2)",
+            user_id,
+            file_ids,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(rows.into_iter().map(|r| (r.id, r.filename)).collect())
     }
 
     /// Just the names, for the chat-extension note.

@@ -162,6 +162,11 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::citations::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::citations::citations_server_id());
     }
+    // Knowledge base — attaches behind `attach_knowledge_base_mcp` (set only when
+    // ≥1 KB is bound to the conversation); read-only search, approval-bypassed.
+    if flag(crate::modules::knowledge_base::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::knowledge_base::knowledge_base_server_id());
+    }
     // `control` attaches behind the flag set by the control chat extension
     // (`attach_control_mcp`), gated on the deploy kill-switch + tool-capable.
     // Unlike the read-only built-ins it is NOT approval-bypassed (see
@@ -248,6 +253,10 @@ fn is_builtin_server_id(id: Uuid) -> bool {
         // on the caller's own verified library and never invent data (fabricated
         // DOIs return not_found), so it is approval-bypassed like the others.
         || id == crate::modules::citations::citations_server_id()
+        // knowledge_base is approval-bypassed: `search_knowledge` /
+        // `list_knowledge_bases` are read-only retrieval over the caller's own
+        // KBs; results are treated as untrusted data.
+        || id == crate::modules::knowledge_base::knowledge_base_server_id()
         // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
         // read-only reads of skills already installed + available to the caller,
         // auto-attached for tool-capable chats with ≥1 available skill.
