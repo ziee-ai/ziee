@@ -95,6 +95,8 @@ already contains migration `00000000000132_add_openrouter_provider_type.sql`).
 - **ITEM-19** — verdict: CONCERN — new render states MUST have gallery cells or `check:state-matrix` (inside `npm run check`) fails phase 8; budgeted as its own item.
 - **ITEM-20** — verdict: PASS — desktop parity is regen + `npm run check`; pgvector proven available on desktop (memory/file_rag run there).
 - **ITEM-21** — verdict: PASS — docs-only; mirrors existing module sections in CLAUDE.md.
+- **ITEM-22** — verdict: PASS — render-only panel over data the `search_knowledge` tool result already carries; no backend change. Reuses the tool-result rendering seam.
+- **ITEM-23** — verdict: PASS — copy-only change to the tool description (ITEM-8) + chat-extension note (ITEM-9); the untrusted-content guard note already exists, this extends it with a grounding instruction. No new surface.
 
 No `BLOCKED` verdicts. The three `CONCERN`s (ITEM-6/12 regen, ITEM-10 wiring,
 ITEM-19 gallery) are all handled by explicit items + tests, not plan changes.

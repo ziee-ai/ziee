@@ -53,10 +53,43 @@ embedding model), so all KBs are comparable.
 - **ITEM-15**: KB detail page + store — `KnowledgeBaseDetailPage.tsx` + `KnowledgeBaseDetail.store.ts` (rename/describe, document list with per-doc index-status badge, bulk drag-drop upload with progress, attach-existing-files, remove-doc). Mirrors `ProjectFilesManagePanel`.
 - **ITEM-16**: Conversation KB attachment control — a picker (store + UI) in the chat conversation surface to attach/detach KBs for the current conversation; reflects attached KBs.
 - **ITEM-17**: `knowledge_kinds` project-extension "Knowledge bases" — `knowledge-base/project-extension/extension.tsx` (inline preview + manage panel) letting a project bind KBs (mirrors the citations "References" project-extension).
-- **ITEM-18**: Chat citation rendering — render `search_knowledge` tool-result hits (from `structuredContent`) as citation chips that open `FilePreviewDrawer` at `page_number` via `Stores.File.requestPreviewPage`; reuses the existing PDF page-image viewer.
+- **ITEM-18**: Chat citation rendering — render `search_knowledge` tool-result hits (from `structuredContent`) as **numbered citation chips with a hover preview of the cited text**; clicking opens `FilePreviewDrawer` at `page_number` via `Stores.File.requestPreviewPage`; reuses the existing PDF page-image viewer. (Competitor research: click-citation→source is the #1 trust interaction for this audience. Char-span *highlight overlay* on the page image is deferred — see DEC-7 — because the PDF viewer renders page images, not a selectable text layer.)
+- **ITEM-22**: Retrieval-transparency panel — an expandable "Sources searched / chunks used" affordance under an agent turn that used `search_knowledge`, listing each retrieved chunk (file name, page, score, snippet). The tool result already carries these; this is a render-only addition. (Competitor research: retrieval transparency is cheap and high-trust; opacity is a named anti-pattern.)
+- **ITEM-23**: Grounded-answer nudge — the `search_knowledge` tool description + the chat-extension system note instruct the model to answer **only** from returned KB results and to say "not found in the knowledge base" rather than invent, and to cite the hit it used. (Competitor research: strict visible grounding is NotebookLM's top trust driver; blended untraceable synthesis is a named anti-pattern.) Extends ITEM-8/ITEM-9 copy; no new module.
 - **ITEM-19**: Gallery coverage — `gallery-page-*` entries + loading/empty/error state cells for the KB list page, KB detail page, and the project-extension panel, satisfying `check:state-matrix` (both `ui` and `desktop/ui`).
 - **ITEM-20**: Desktop UI parity — confirm the module loads on the embedded desktop server (pgvector present, like memory/file_rag; no blocklist entry), desktop `api-client` regenerated, `npm run check` green in `src-app/desktop/ui`.
 - **ITEM-21**: `CLAUDE.md` "Knowledge Base Retrieval" section — document the module, the reuse-of-`file_rag` contract, the `search_knowledge` tool, scoping, and the debug/test seams (mirrors the web_search / lit_search / citations sections).
+
+## Out of scope for v1 (recorded v2 roadmap, from the two deep-research passes)
+
+These are deliberately excluded to keep v1 a focused collection+retrieval layer
+over the proven `file_rag` engine. Recorded so they aren't re-discovered later.
+
+- **Structure-aware scientific-PDF ingest (SEPARATE INITIATIVE).** Replacing the
+  `file` module's flat PDFium text extraction with GROBID (Apache-2.0 sidecar,
+  scholarly papers → IMRaD sections + parsed references) and/or Docling (MIT,
+  office/slides/clinical), PDFium as fail-soft fallback — mirroring the `bio_mcp`
+  managed-sidecar + `build_helper` extract-on-first-use pattern. This is a
+  `file`-module ingest upgrade that benefits ALL consumers (file_rag, lit_search
+  full-text, KB) and should be its own feature-lifecycle, not folded into KB.
+- **Element-typed / table-atomic chunking.** Tables as atomic chunks glued to
+  caption + table number; section-label metadata per chunk. Depends on the
+  structure-aware parser above (char-window chunking cannot produce it).
+- **Metadata-filtered retrieval.** Enrich chunks with `{doi, pmid, year, journal,
+  publication_type, mesh_terms, organism, oa_status, section}` (reuse `lit_search`
+  connectors + `citations` DOI/PMID resolver + add OpenAlex CC0 offline snapshot),
+  then pre-filter before vector search. Often a bigger relevance win for science
+  than swapping the embedder.
+- **Cross-encoder reranker.** BGE-reranker-v2-m3 (MIT) default; A/B MedCPT
+  cross-encoder (public-domain, biomedical) for PubMed-heavy corpora. Research: the
+  reranker — NOT the base embedder — is where domain specialization earns its keep.
+- **MeSH synonym query expansion** (public/air-gap-able); UMLS/gene-normalization
+  behind its license gate, opt-in, later.
+- **SPECTER2/SciNCL doc-level "related papers" space** (separate embedding space,
+  never the chunk store) — complements `citations` dedup.
+- **Char-span highlight overlay** on the cited page (needs a text-layer or PDFium
+  char-rects; see DEC-7), **Elicit-style extraction tables**, and a **three-pane
+  sources|chat|notes** workspace with notes-as-sources.
 
 ## Files to touch
 
@@ -87,7 +120,7 @@ Frontend (`src-app/ui/src/modules/knowledge-base/` — mirrored into `src-app/de
 - `module.tsx`, `types.ts`
 - `stores/KnowledgeBases.store.ts`, `stores/KnowledgeBaseDetail.store.ts`, `stores/ConversationKnowledgeBases.store.ts`
 - `pages/KnowledgeBasesListPage.tsx`, `pages/KnowledgeBaseDetailPage.tsx`
-- `components/KnowledgeBaseDocumentsPanel.tsx`, `components/KnowledgeBaseFormDrawer.tsx`, `components/ConversationKnowledgeBasePicker.tsx`, `components/KnowledgeCitationChip.tsx`
+- `components/KnowledgeBaseDocumentsPanel.tsx`, `components/KnowledgeBaseFormDrawer.tsx`, `components/ConversationKnowledgeBasePicker.tsx`, `components/KnowledgeCitationChip.tsx`, `components/KnowledgeRetrievalTransparency.tsx`
 - `project-extension/extension.tsx`, `project-extension/components/*`
 - gallery: `src-app/ui/src/dev/gallery/` entries for the new surfaces
 - E2E: `src-app/ui/tests/e2e/14-knowledge-base/*.spec.ts` (new)

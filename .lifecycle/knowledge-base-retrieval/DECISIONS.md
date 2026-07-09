@@ -29,9 +29,9 @@ message for override before any code is written.
 **Resolution:** **MCP tool** `search_knowledge`, auto-attached when ≥1 KB is bound to the conversation; **no `before_llm_call` chunk injection**. The chat extension only sets the attach flag + injects a one-line note naming the available KBs (data-not-instructions). This is deliberately the opposite of the current raw-prepend path.
 **Basis:** convention + research §7 — Anthropic's "just-in-time context loading" and every recent built-in (web_search/lit_search/citations) expose retrieval as an on-demand tool; injecting 500 docs' worth of context on every turn is exactly the anti-pattern this feature removes.
 
-### DEC-7: Citation / source-linking.
-**Resolution:** `search_knowledge` returns each hit's `{file_id, file name, page_number, char_start, char_end, score}` in `structuredContent`. The chat UI renders citation chips that open `FilePreviewDrawer` at `page_number` via `Stores.File.requestPreviewPage`. Char-span highlight overlay is **out of scope for v1** (page-level deep-link only; the PDF viewer renders server-side page images, not selectable text).
-**Basis:** codebase — `SemanticHit` already carries page + char span (retrieval.rs:36-45); the PDF viewer already deep-links to a page image (`file/viewers/pdf/body.tsx`). Char-highlight would need a text-layer viewer (not present).
+### DEC-7: Citation / source-linking. **(elevated by competitor research)**
+**Resolution:** `search_knowledge` returns each hit's `{file_id, file name, page_number, char_start, char_end, score}` in `structuredContent`. The chat UI renders **numbered citation chips with a hover preview of the cited text**; clicking opens `FilePreviewDrawer` at `page_number`. v1 also ships a **retrieval-transparency panel** (DEC-16). Char-span **highlight overlay** on the page is **deferred to v1.5/v2** (the PDF viewer renders server-side page *images*, not a selectable text layer; an overlay needs PDFium char-rects or a text-layer viewer). **(confirm with user)** — for a verification-demanding audience this is the single highest-value UX; flag whether the highlight overlay should be pulled into v1.
+**Basis:** codebase + user-facing research — `SemanticHit` carries page + char span (retrieval.rs:31-45); the viewer deep-links to a page image (`file/viewers/pdf/body.tsx`). Competitor research ranks click-citation→exact-passage the #1 trust interaction (NotebookLM) and names "cite filename/page only, no passage" an anti-pattern — hence chips+hover+transparency in v1 and the overlay flagged rather than silently dropped.
 
 ### DEC-8: Scoping — per-user / per-project / shared? **(confirm with user)**
 **Resolution:** **v1 = user-owned KBs** (owner-scoped, like memory/file_rag chunks which are `user_id`-scoped). A KB may be **attached** to the owner's conversations and projects. **Shared / org-wide / admin KBs are out of scope for v1** — they require chunks readable across users, a cross-cutting RBAC change to `file_chunks`' owner-scoping. Documented as the primary v2 extension.
@@ -65,7 +65,17 @@ message for override before any code is written.
 **Resolution:** Denormalized `knowledge_bases.document_count`, updated inside the same transaction as attach/remove; a repository invariant test guards it. (Alternative — always `COUNT(*)` — rejected to keep list views cheap at 2000 docs/KB.)
 **Basis:** convention — matches the denormalized-count pattern used elsewhere; correctness pinned by TEST-9.
 
-Every decision above is resolved. Four are flagged **(confirm with user)** —
-DEC-5 (defer rerank), DEC-6 (tool vs inject), DEC-8 (user-owned vs shared KBs),
-and by extension DEC-4 (single shared embedding model) — and are repeated in the
-halt message for override before implementation begins.
+### DEC-16: Retrieval transparency + grounded answers in v1. **(new, from competitor research)**
+**Resolution:** v1 ships (a) a "Sources searched / chunks used" transparency panel under any agent turn that called `search_knowledge` (render-only over the tool result), and (b) a grounding instruction in the tool description + chat-extension note: answer only from returned KB results, say "not found in the knowledge base" rather than invent, cite the hit used. Both are cheap (no new backend/data).
+**Basis:** convention + research — retrieval transparency and strict visible grounding are the top trust drivers (NotebookLM/Onyx/Open WebUI); opacity and untraceable blended synthesis are named anti-patterns. Low cost, high trust ⇒ v1.
+
+### DEC-17: Scientific-RAG quality upgrades (structure-aware ingest, metadata filtering, reranker) are a SEPARATE follow-on, not this feature.
+**Resolution:** Keep v1 on the existing `file`/`file_rag` ingest + char-window chunking + general shared embedder + hybrid retrieval. Structure-aware PDF parsing (GROBID/Docling sidecar), table-atomic/element-typed chunking, metadata enrichment + filtered retrieval (reuse `lit_search`/`citations` + OpenAlex), a cross-encoder reranker (BGE-reranker-v2-m3; A/B MedCPT), and MeSH query expansion are recorded in PLAN.md "Out of scope (v2 roadmap)" and, in the parser case, warrant their own feature-lifecycle (they touch the shared `file` ingest and benefit all consumers).
+**Basis:** convention + research — the life-science pass is explicit that (i) a strong general embedder + hybrid + reranker beats a 2023 domain embedder, so the domain budget goes to the reranker (v2), and (ii) the base embedder + chunker must be chosen together, which is exactly why structure-aware chunking is gated on the parser upgrade — a bigger, shared initiative, not KB-local. Scoping it out keeps v1 shippable.
+
+Every decision above is resolved. Five are flagged **(confirm with user)** —
+DEC-6 (tool vs inject), DEC-8 (user-owned vs shared KBs), DEC-7 (pull the
+citation highlight overlay into v1?), DEC-5 (defer rerank), and by extension
+DEC-4 (single shared embedding model) — and are repeated in the halt message for
+override before implementation begins. The second research pass added no new
+open question; it confirmed DEC-4/5 and refined DEC-7 + added DEC-16/17.
