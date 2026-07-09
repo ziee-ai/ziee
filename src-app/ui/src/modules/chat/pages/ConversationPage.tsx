@@ -591,14 +591,17 @@ export default function ConversationPage() {
               'w-full max-w-4xl mx-auto p-4 pt-0',
               nativeScroll
                 ? cn(
-                    'bg-card',
-                    // Auto-hide on scroll: toggle sticky↔relative (NOT a
-                    // transform). Hidden → position:relative so the composer
-                    // wipes away with the page as the user reads history; shown →
-                    // sticky, pinned to the viewport bottom and sliding back in.
+                    // Auto-hide on scroll: keep the composer sticky-pinned and
+                    // slide it DOWN off the bottom edge via a transform transition
+                    // (smooth both ways). Previously this toggled sticky↔relative,
+                    // which teleported the composer into the document flow far
+                    // below the fold — an instant drop with no motion, so the hide
+                    // ended abruptly. A transform is visual-only, so the element
+                    // keeps its pinned layout slot while it animates away.
+                    'bg-card sticky z-10 transition-transform duration-300 ease-out',
                     composerHidden
-                      ? 'relative'
-                      : 'sticky z-10 animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out',
+                      ? 'translate-y-[calc(100%+1.25rem)]'
+                      : 'translate-y-0',
                   )
                 : 'relative',
             )}
@@ -608,11 +611,11 @@ export default function ConversationPage() {
                     // bottom:5 dodges iOS Safari's bottom sticky-latch (mirrors the
                     // header's top:5). The 5px is subtracted from paddingBottom so
                     // the input keeps its resting position (safe-area + 16) — same
-                    // padding-compensation the header does for its 5px offset. In
-                    // the relative (hidden) state, replicate the offset via
-                    // marginBottom so it doesn't jump 5px when toggling.
+                    // padding-compensation the header does for its 5px offset. The
+                    // composer stays sticky in both states (hide = a transform), so
+                    // the offset is constant — no toggle jump.
                     paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 11px)',
-                    ...(composerHidden ? { marginBottom: 5 } : { bottom: 5 }),
+                    bottom: 5,
                   }
                 : undefined
             }
