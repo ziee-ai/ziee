@@ -29,6 +29,7 @@
     "modules/chat/components/ConversationList": "Inline delete-Confirm on a conversation list row. List rendered in the gallery; reached via a row action. Tracked.",
     "modules/chat/extensions/export/extension": "Composer export-format Popover \u2014 opens on a click on the 'Export conversation' row in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
     "modules/knowledge-base/chat-extension/components/KbMenuItem": "Composer knowledge-base picker Popover \u2014 opens on a click in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
+    "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": "Attach-KB picker Popover on the project knowledge drawer \u2014 opens on the 'Attach' button click. Panel rendered inside the project knowledge drawer; reached via a button interaction. Tracked.",
     "modules/citations/components/CitationCard": "Inline remove-Confirm on a citation card. Card rendered on the citations page; reached via a card action. Tracked.",
     "modules/code-sandbox/components/RootfsVersionGroup": "Inline evict-Confirm on a cached rootfs version row. Rendered on the sandbox settings page; reached via a row action. Tracked.",
     "modules/file/project-extension/components/ProjectFilesManagePanel": "Inline detach-Confirm on a project-file row. Panel rendered on the project detail page; reached via a row action. Tracked.",

@@ -102,7 +102,7 @@ export function SearchKnowledgeToolResultCard(props: ContentRendererProps) {
                 <Button
                   size="default"
                   variant="link"
-                  className="ml-auto"
+                  className="ms-auto"
                   onClick={() => openSource(h)}
                   data-testid={`kb-hit-open-${i}`}
                 >

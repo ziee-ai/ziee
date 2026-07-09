@@ -74,6 +74,14 @@ export interface CreatePdfControllerOptions extends PdfControllerCallbacks {
   initialScaleValue?: ScaleValue
 }
 
+/** A citation-highlight rectangle, fraction-normalized to the page (0..1). */
+export interface HighlightRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 /** Imperative handle over a mounted `PDFViewer`, used by the toolbar. */
 export interface PdfController {
   readonly pagesCount: number
@@ -85,6 +93,15 @@ export interface PdfController {
   find(query: string): void
   findAgain(query: string, previous: boolean): void
   clearFind(): void
+  /**
+   * Scroll to `page` and overlay `rects` (fraction-normalized, top-left origin)
+   * as citation highlights. Rects are positioned in PERCENT inside PDF.js's own
+   * `.page` div, so they auto-track zoom without recomputation; they're
+   * re-injected on `pagerendered` (pdf.js clears page content on re-render).
+   * Empty `rects` clears any existing highlight.
+   */
+  setHighlights(page: number, rects: HighlightRect[]): void
+  clearHighlights(): void
   destroy(): void
 }
 
@@ -96,6 +113,12 @@ interface PageChangingEvt {
 interface MatchesCountEvt {
   matchesCount?: { current: number; total: number }
 }
+interface PageRenderedEvt {
+  pageNumber: number
+  source?: { div?: HTMLElement }
+}
+
+const HL_LAYER_CLASS = 'ziee-citation-highlight-layer'
 
 export function createPdfController(
   opts: CreatePdfControllerOptions,
@@ -113,6 +136,39 @@ export function createPdfController(
   })
   linkService.setViewer(pdfViewer)
 
+  // Citation highlight state. Rects are page-fraction (0..1); a page div in
+  // pdf.js is `position: relative` and sized in px to the current scale, so
+  // positioning children in PERCENT makes them track zoom for free.
+  let hlPage: number | null = null
+  let hlRects: HighlightRect[] = []
+
+  const pageDivFor = (page: number): HTMLElement | null =>
+    opts.viewer.querySelector<HTMLElement>(`.page[data-page-number="${page}"]`)
+
+  const renderHighlightsInto = (pageDiv: HTMLElement) => {
+    // Clear any stale layer first (idempotent across re-renders / re-injects).
+    pageDiv.querySelector(`.${HL_LAYER_CLASS}`)?.remove()
+    if (hlRects.length === 0) return
+    const layer = document.createElement('div')
+    layer.className = HL_LAYER_CLASS
+    layer.style.cssText =
+      'position:absolute;inset:0;pointer-events:none;z-index:2;'
+    for (const r of hlRects) {
+      const box = document.createElement('div')
+      box.style.cssText = `position:absolute;left:${r.x * 100}%;top:${
+        r.y * 100
+      }%;width:${r.w * 100}%;height:${r.h * 100}%;background:color-mix(in srgb, var(--color-warning, #f59e0b) 32%, transparent);border-radius:2px;mix-blend-mode:multiply;`
+      layer.appendChild(box)
+    }
+    pageDiv.appendChild(layer)
+  }
+
+  const renderHighlights = () => {
+    if (hlPage == null) return
+    const pageDiv = pageDivFor(hlPage)
+    if (pageDiv) renderHighlightsInto(pageDiv)
+  }
+
   const onPagesInit = () => {
     pdfViewer.currentScaleValue = opts.initialScaleValue ?? 'page-width'
   }
@@ -120,12 +176,21 @@ export function createPdfController(
   const onMatches = (e: MatchesCountEvt) =>
     opts.onMatchesCount(e.matchesCount?.current ?? 0, e.matchesCount?.total ?? 0)
   const onScaleChanging = () => opts.onScaleChange(pdfViewer.currentScale)
+  // pdf.js rebuilds a page's DOM on (re-)render (incl. zoom), wiping our layer —
+  // re-inject whenever the highlighted page renders.
+  const onPageRendered = (e: PageRenderedEvt) => {
+    if (hlPage != null && e.pageNumber === hlPage) {
+      const div = e.source?.div ?? pageDivFor(hlPage)
+      if (div) renderHighlightsInto(div)
+    }
+  }
 
   eventBus.on('pagesinit', onPagesInit)
   eventBus.on('pagechanging', onPageChanging)
   eventBus.on('updatefindmatchescount', onMatches)
   eventBus.on('updatefindcontrolstate', onMatches)
   eventBus.on('scalechanging', onScaleChanging)
+  eventBus.on('pagerendered', onPageRendered)
 
   pdfViewer.setDocument(opts.doc)
   linkService.setDocument(opts.doc, null)
@@ -170,12 +235,32 @@ export function createPdfController(
         findPrevious: false,
       })
     },
+    setHighlights: (page: number, rects: HighlightRect[]) => {
+      // Drop the old page's layer before switching target pages.
+      if (hlPage != null && hlPage !== page) {
+        pageDivFor(hlPage)?.querySelector(`.${HL_LAYER_CLASS}`)?.remove()
+      }
+      hlPage = page
+      hlRects = rects
+      pdfViewer.currentPageNumber = page
+      // The target page may already be rendered (same-doc re-target); inject now.
+      // If not yet rendered, `pagerendered` will inject it.
+      renderHighlights()
+    },
+    clearHighlights: () => {
+      if (hlPage != null) {
+        pageDivFor(hlPage)?.querySelector(`.${HL_LAYER_CLASS}`)?.remove()
+      }
+      hlPage = null
+      hlRects = []
+    },
     destroy: () => {
       eventBus.off('pagesinit', onPagesInit)
       eventBus.off('pagechanging', onPageChanging)
       eventBus.off('updatefindmatchescount', onMatches)
       eventBus.off('updatefindcontrolstate', onMatches)
       eventBus.off('scalechanging', onScaleChanging)
+      eventBus.off('pagerendered', onPageRendered)
       // Cancel in-flight page renders, then RESET the viewer: setDocument(null)
       // empties the `.pdfViewer` element (removes rendered canvases) and drops
       // pagesCount to 0, which makes any scroll/resize listener pdf.js attached

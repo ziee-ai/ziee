@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **336** surfaces carry at least one renderable-state signal.
-- **1927** signals total: 1516 branch, 119 empty, 98 error, 101 loading, 90 overlay, 3 panel.
+- **338** surfaces carry at least one renderable-state signal.
+- **1941** signals total: 1526 branch, 122 empty, 98 error, 102 loading, 90 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,8 +16,8 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 88 |
-| `empty` | 95 |
+| `delayed` | 89 |
+| `empty` | 97 |
 | `error` | 77 |
 | `open` | 76 |
 | `panel-open` | 3 |
@@ -1762,15 +1762,17 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 30 |
-| branch | `status !== 'ready' \|\| !doc \|\| !api` | 49 |
-| branch | `!container \|\| !viewer` | 52 |
-| branch | `!c` | 93 |
-| branch | `!c` | 101 |
-| branch | `findOpen` | 227 |
-| loading | `status === 'loading'` | 276 |
-| error | `status === 'error'` | 281 |
-| error | `error` | 290 |
+| branch | `!('file' in props)` | 31 |
+| branch | `status !== 'ready' \|\| !doc \|\| !api` | 55 |
+| branch | `!container \|\| !viewer` | 58 |
+| branch | `status !== 'ready'` | 93 |
+| branch | `!c` | 95 |
+| branch | `!c` | 110 |
+| branch | `!c` | 118 |
+| branch | `findOpen` | 244 |
+| loading | `status === 'loading'` | 293 |
+| error | `status === 'error'` | 298 |
+| error | `error` | 307 |
 
 ### `modules/file/viewers/shared/RawCodeView`
 
@@ -2297,7 +2299,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!file` | 32 |
+| branch | `cancelled` | 47 |
+| branch | `!file` | 60 |
 
 ### `modules/knowledge-base/chat-extension/components/KbStatusRow`
 
@@ -2381,6 +2384,31 @@ Required states: `delayed`, `error`, `open`
 | loading | `loading` | 78 |
 | error | `error` | 82 |
 | overlay | `<KnowledgeBaseFormDrawer open>` | 113 |
+
+### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!projectId` | 19 |
+| empty | `count === 0` | 52 |
+
+### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel`
+
+Required states: `delayed`, `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!projectId` | 26 |
+| branch | `!projectId` | 51 |
+| branch | `!projectId` | 63 |
+| branch | `!projectId` | 75 |
+| empty | `attachable.length === 0` | 85 |
+| branch | `canUse` | 125 |
+| loading | `loading && attached.length === 0` | 134 |
+| empty | `attached.length === 0` | 138 |
+| branch | `canUse` | 161 |
 
 ### `modules/layouts/app-layout/AppLayout`
 

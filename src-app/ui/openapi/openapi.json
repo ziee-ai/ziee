@@ -3651,6 +3651,16 @@
                 }
               }
             }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextRectsResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -25974,6 +25984,33 @@
           "conversation_id"
         ]
       },
+      "HighlightRect": {
+        "type": "object",
+        "properties": {
+          "h": {
+            "type": "number",
+            "format": "float"
+          },
+          "w": {
+            "type": "number",
+            "format": "float"
+          },
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ]
+      },
       "HubAssistant": {
         "description": "Hub assistant entry.\n\n Like HubModel, the identity envelope is reverse-DNS via `name`. The\n body has a single `dependencies[]` list instead of separate\n `recommended_models` / `recommended_mcp_servers` / `use_cases` /\n `example_prompts` / `popularity_score` fields.",
         "type": "object",
@@ -35551,6 +35588,31 @@
           "page",
           "start",
           "end"
+        ]
+      },
+      "TextRectsResponse": {
+        "type": "object",
+        "properties": {
+          "page_h": {
+            "type": "number",
+            "format": "float"
+          },
+          "page_w": {
+            "description": "Rects are fraction-normalized to the page (0..1), origin top-left, so the\n UI overlays them on the page image without knowing the render scale.",
+            "type": "number",
+            "format": "float"
+          },
+          "rects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HighlightRect"
+            }
+          }
+        },
+        "required": [
+          "page_w",
+          "page_h",
+          "rects"
         ]
       },
       "ThinkingMetadata": {

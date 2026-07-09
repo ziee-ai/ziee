@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 336 surfaces carry renderable-state signals; 1927 signals total.
+// 338 surfaces carry renderable-state signals; 1941 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1579,15 +1579,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/pdf/pdfjs-body",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 30 },
-      { kind: "branch", condition: "status !== 'ready' || !doc || !api", line: 49 },
-      { kind: "branch", condition: "!container || !viewer", line: 52 },
-      { kind: "branch", condition: "!c", line: 93 },
-      { kind: "branch", condition: "!c", line: 101 },
-      { kind: "branch", condition: "findOpen", line: 227 },
-      { kind: "loading", condition: "status === 'loading'", line: 276 },
-      { kind: "error", condition: "status === 'error'", line: 281 },
-      { kind: "error", condition: "error", line: 290 },
+      { kind: "branch", condition: "!('file' in props)", line: 31 },
+      { kind: "branch", condition: "status !== 'ready' || !doc || !api", line: 55 },
+      { kind: "branch", condition: "!container || !viewer", line: 58 },
+      { kind: "branch", condition: "status !== 'ready'", line: 93 },
+      { kind: "branch", condition: "!c", line: 95 },
+      { kind: "branch", condition: "!c", line: 110 },
+      { kind: "branch", condition: "!c", line: 118 },
+      { kind: "branch", condition: "findOpen", line: 244 },
+      { kind: "loading", condition: "status === 'loading'", line: 293 },
+      { kind: "error", condition: "status === 'error'", line: 298 },
+      { kind: "error", condition: "error", line: 307 },
     ],
   },
   "modules/file/viewers/shared/RawCodeView": {
@@ -2079,7 +2081,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/knowledge-base/chat-extension/components/KbSourcePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!file", line: 32 },
+      { kind: "branch", condition: "cancelled", line: 47 },
+      { kind: "branch", condition: "!file", line: 60 },
     ],
   },
   "modules/knowledge-base/chat-extension/components/KbStatusRow": {
@@ -2155,6 +2158,29 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading", line: 78 },
       { kind: "error", condition: "error", line: 82 },
       { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 113 },
+    ],
+  },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview": {
+    surface: "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!projectId", line: 19 },
+      { kind: "empty", condition: "count === 0", line: 52 },
+    ],
+  },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": {
+    surface: "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel",
+    requiredStates: ["delayed","empty"],
+    signals: [
+      { kind: "branch", condition: "!projectId", line: 26 },
+      { kind: "branch", condition: "!projectId", line: 51 },
+      { kind: "branch", condition: "!projectId", line: 63 },
+      { kind: "branch", condition: "!projectId", line: 75 },
+      { kind: "empty", condition: "attachable.length === 0", line: 85 },
+      { kind: "branch", condition: "canUse", line: 125 },
+      { kind: "loading", condition: "loading && attached.length === 0", line: 134 },
+      { kind: "empty", condition: "attached.length === 0", line: 138 },
+      { kind: "branch", condition: "canUse", line: 161 },
     ],
   },
   "modules/layouts/app-layout/AppLayout": {
@@ -4030,7 +4056,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 339 keys.
+ * 342 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4189,6 +4215,9 @@ export type RequiredState =
   | "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed"
   | "modules/knowledge-base/pages/KnowledgeBasesListPage:error"
   | "modules/knowledge-base/pages/KnowledgeBasesListPage:open"
+  | "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview:empty"
+  | "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:delayed"
+  | "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:empty"
   | "modules/layouts/app-layout/AppLayout:open"
   | "modules/layouts/app-layout/components/Drawer:empty"
   | "modules/layouts/app-layout/components/ResizeHandle:empty"
@@ -4531,6 +4560,9 @@ export const REQUIRED_STATE_KEYS = [
   "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed",
   "modules/knowledge-base/pages/KnowledgeBasesListPage:error",
   "modules/knowledge-base/pages/KnowledgeBasesListPage:open",
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview:empty",
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:delayed",
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:empty",
   "modules/layouts/app-layout/AppLayout:open",
   "modules/layouts/app-layout/components/Drawer:empty",
   "modules/layouts/app-layout/components/ResizeHandle:empty",

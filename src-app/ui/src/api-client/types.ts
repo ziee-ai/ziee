@@ -1727,6 +1727,13 @@ export interface HideSkillInConversationRequest {
   conversation_id: string
 }
 
+export interface HighlightRect {
+  h: number
+  w: number
+  x: number
+  y: number
+}
+
 /**
  * Hub assistant entry.
  *
@@ -5281,6 +5288,16 @@ export interface TextRectsQuery {
   start: number
 }
 
+export interface TextRectsResponse {
+  page_h: number
+  /**
+   * Rects are fraction-normalized to the page (0..1), origin top-left, so the
+   *  UI overlays them on the page image without knowing the render scale.
+   */
+  page_w: number
+  rects: HighlightRect[]
+}
+
 /** Metadata for thinking content */
 export interface ThinkingMetadata {
   /** Opaque data for a redacted-thinking block (Anthropic). */
@@ -7387,7 +7404,7 @@ export type ApiEndpointResponses = {
   'File.getPreview': Blob
   'File.getRaw': Blob
   'File.getTextContent': Blob
-  'File.getTextRects': any
+  'File.getTextRects': TextRectsResponse
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse

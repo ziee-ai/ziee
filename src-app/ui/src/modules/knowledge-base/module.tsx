@@ -3,11 +3,17 @@ import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import {
+  useKnowledgeBaseComposerStore,
   useKnowledgeBaseDetailStore,
   useKnowledgeBasesStore,
 } from '@/modules/knowledge-base/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/knowledge-base/types' // store-merge declaration
+// Side-effect imports — register the chat composer/tool-result integration and
+// the project "Knowledge bases" knowledge kind even when the respective
+// auto-discovery globs don't reach this module first.
+import '@/modules/knowledge-base/chat-extension/extension'
+import '@/modules/knowledge-base/project-extension/extension'
 
 const KnowledgeBasesListPage = lazyWithPreload(() =>
   import('./pages/KnowledgeBasesListPage').then(m => ({
@@ -31,6 +37,7 @@ export default createModule({
   stores: [
     { name: 'KnowledgeBases', store: useKnowledgeBasesStore },
     { name: 'KnowledgeBaseDetail', store: useKnowledgeBaseDetailStore },
+    { name: 'KnowledgeBaseComposer', store: useKnowledgeBaseComposerStore },
   ],
   routes: [
     {
