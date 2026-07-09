@@ -60,7 +60,10 @@ export function SidebarToggleButton() {
           variant="ghost"
           data-testid="layout-sidebar-toggle-button"
           onClick={() => Stores.AppLayout.toggleSidebar()}
-          className="flex items-center justify-center"
+          // No background in any state — the ghost variant otherwise paints
+          // hover:bg-muted AND a persistent aria-expanded:bg-muted (the toggle
+          // sets aria-expanded when the sidebar is open). Keep it a bare icon.
+          className="flex items-center justify-center hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
           style={{
             width: dimension,
             height: dimension,

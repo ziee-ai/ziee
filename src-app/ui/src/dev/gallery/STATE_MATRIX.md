@@ -2362,7 +2362,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSidebarCollapsed` | 79 |
+| branch | `isSidebarCollapsed` | 82 |
 
 ### `modules/literature/chat-extension/extension`
 

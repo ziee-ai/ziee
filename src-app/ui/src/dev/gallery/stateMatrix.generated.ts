@@ -2142,7 +2142,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/layouts/app-layout/components/SidebarToggleButton",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isSidebarCollapsed", line: 79 },
+      { kind: "branch", condition: "isSidebarCollapsed", line: 82 },
     ],
   },
   "modules/literature/chat-extension/extension": {
