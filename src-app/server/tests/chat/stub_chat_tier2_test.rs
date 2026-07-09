@@ -306,3 +306,50 @@ async fn cache_read_tokens_surface_on_complete_frame() {
         complete.data
     );
 }
+
+// ── Empty-completion guard ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn empty_completion_reports_finish_reason_empty() {
+    // The model streams reasoning but NO answer text and NO tool call — the
+    // "silent stop" case. The terminal `complete` frame must carry
+    // finish_reason "empty" (not a bare "stop"), and NO `error` frame is
+    // emitted (an empty completion is a benign notice, not a hard error).
+    let plan = StubPlan::text("").with_reasoning("thinking, but I produced no answer", 5);
+    let (_stub, turn) = run_turn("empty_completion_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "empty",
+        "a reasoning-only / no-tool-call turn must report finish_reason \"empty\", got: {}",
+        complete.data
+    );
+    assert!(
+        turn.frames.iter().all(|f| f.event_type != "error"),
+        "no error frame should be emitted for an empty completion, got frames: {:?}",
+        turn.frames.iter().map(|f| &f.event_type).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn normal_text_completion_reports_stop() {
+    // Control: a turn that DID produce answer text keeps the provider's normal
+    // terminal finish_reason ("stop") — the empty-completion guard must not fire.
+    let plan = StubPlan::text("here is the answer");
+    let (_stub, turn) = run_turn("normal_completion_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "stop",
+        "a normal text turn must keep finish_reason \"stop\", got: {}",
+        complete.data
+    );
+}
