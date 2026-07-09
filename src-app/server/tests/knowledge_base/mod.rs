@@ -314,3 +314,119 @@ async fn test_46_claude_md_documents_the_feature() {
     assert!(claude_md.contains("rerank"), "names the rerank capability");
     assert!(claude_md.contains("file_index_state"), "names the index-state table");
 }
+
+// ─────────────────────────── TEST-22: shared chunks data-integrity ───────────────────────────
+
+#[tokio::test]
+async fn test_22_shared_chunks_survive_kb_removal_and_delete() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_shared").await;
+
+    let fid = upload_text(&server, &user, "shared.txt", "shared chunk survival phrase").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let n0: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert!(n0 >= 1);
+
+    let kb_a = create_kb(&server, &user, "KB-A").await;
+    let kb_b = create_kb(&server, &user, "KB-B").await;
+    assert_eq!(attach_docs(&server, &user, &kb_a, &[&fid]).await.status(), 200);
+    assert_eq!(attach_docs(&server, &user, &kb_b, &[&fid]).await.status(), 200);
+
+    // Remove F from KB-A → still retrievable via KB-B, and file_chunks UNCHANGED
+    // (the join row is deleted, never the shared chunks).
+    let del = reqwest::Client::new()
+        .delete(server.api_url(&format!("/knowledge-bases/{kb_a}/documents/{fid}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(del.status().is_success(), "remove doc: {}", del.status());
+    let n1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(n0, n1, "removing from KB-A must not touch shared file_chunks");
+    let via_b = search_knowledge(&server, &user.token, "shared chunk survival", &[&kb_b]).await;
+    assert!(!via_b["hits"].as_array().unwrap().is_empty(), "still retrievable via KB-B");
+
+    // Delete KB-A entirely → the file + its chunks survive (only join rows cascade).
+    let delkb = reqwest::Client::new()
+        .delete(server.api_url(&format!("/knowledge-bases/{kb_a}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(delkb.status().is_success());
+    let n2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(n0, n2, "deleting KB-A must not delete the shared file's chunks");
+    let file_alive: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(file_alive, 1, "the file itself survives KB deletion");
+}
+
+// ─────────────────────────── TEST-27: conversation + project attachment ───────────────────────────
+
+#[tokio::test]
+async fn test_27_conversation_and_project_attachment() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "kb_attach").await;
+    let client = reqwest::Client::new();
+    let kb = create_kb(&server, &user, "Attach KB").await;
+
+    // conversation attach → GET lists it → detach → empty
+    let conv: Value = client.post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({})).send().await.unwrap().json().await.unwrap();
+    let cid = conv["id"].as_str().unwrap();
+    let put = client.put(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap();
+    assert!(put.status().is_success(), "attach conv: {}", put.status());
+    let listed: Value = client.get(server.api_url(&format!("/conversations/{cid}/knowledge-bases")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1, "conversation lists its attached KB");
+    let det = client.delete(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap();
+    assert!(det.status().is_success());
+    let listed2: Value = client.get(server.api_url(&format!("/conversations/{cid}/knowledge-bases")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(listed2.as_array().unwrap().len(), 0, "detach removes it");
+
+    // project attach → GET lists it
+    let proj: Value = client.post(server.api_url("/projects"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "P" })).send().await.unwrap().json().await.unwrap();
+    let pid = proj["id"].as_str().unwrap();
+    let pput = client.put(server.api_url(&format!("/projects/{pid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap();
+    assert!(pput.status().is_success());
+    let plisted: Value = client.get(server.api_url(&format!("/projects/{pid}/knowledge-bases")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(plisted.as_array().unwrap().len(), 1, "project lists its attached KB");
+
+    // foreign KB attach → 404 (another user's conversation/kb)
+    let other = power_user(&server, "kb_attach_other").await;
+    let foreign = client.put(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", other.token)).send().await.unwrap();
+    assert_eq!(foreign.status(), 404, "attaching to another user's conversation → 404");
+}
+
+// ─────────────────────────── TEST-28: owner-scoped sync emit ───────────────────────────
+
+#[tokio::test]
+async fn test_28_mutations_emit_owner_scoped_sync() {
+    use crate::common::sync_probe::SyncProbe;
+    let server = TestServer::start().await;
+    let owner = power_user(&server, "kb_sync_owner").await;
+    let other = power_user(&server, "kb_sync_other").await;
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let kb_id = create_kb(&server, &owner, "Synced KB").await;
+
+    // The owner receives a knowledge_base/create carrying the new id.
+    let frame = owner_probe
+        .expect_event("knowledge_base", "create", std::time::Duration::from_secs(5))
+        .await;
+    assert_eq!(frame.id, kb_id, "sync frame carries the new KB id");
+
+    // The other user receives NOTHING (owner-scoped audience).
+    other_probe.expect_silence(std::time::Duration::from_secs(2)).await;
+}
