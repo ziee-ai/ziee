@@ -116,6 +116,13 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
   // the head version. Entering edit replaces the read-only viewer body.
   const [editing, setEditing] = useState(false)
   const canEdit = editableKind(file) !== null && !tooLarge
+  // Exit edit mode when the panel is reused for a DIFFERENT file (the global
+  // FilePreviewDrawer swaps the `file` prop without remounting FilePanel). Without
+  // this, a stale editor could Save one file's content onto another. Belt-and-
+  // suspenders with the `key={file.id}` on FileEditBody below (fresh remount).
+  useEffect(() => {
+    setEditing(false)
+  }, [file.id])
   const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
   // Read versionTextCache REACTIVELY so the body re-renders when the async text
   // load lands. getVersionText() reads via getState() + kicks off the load but
@@ -174,7 +181,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           text read-only instead (the viewers are head-bound). */}
       <div className="flex-1 overflow-hidden bg-card">
         {editing
-          ? <FileEditBody file={file} onDone={() => setEditing(false)} />
+          ? <FileEditBody key={file.id} file={file} onDone={() => setEditing(false)} />
           : isViewingOld
           ? (
             oldVersionText === null

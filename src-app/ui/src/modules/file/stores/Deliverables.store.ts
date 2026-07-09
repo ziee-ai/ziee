@@ -20,8 +20,19 @@ export const Deliverables = defineStore('Deliverables', {
   actions: (set, get) => {
     const load = async (conversationId: string): Promise<void> => {
       // `sync:reconnect` fires for every store regardless of audience; skip the
-      // refetch for users lacking the read perm (the endpoint would 403).
-      if (!hasPermissionNow(Permissions.ConversationsRead)) return
+      // refetch for users lacking the read perm (the endpoint would 403). Cache an
+      // empty list so a render-triggered getForConversation() doesn't re-schedule
+      // a no-op load every frame (mirrors FileVersions.loadVersions).
+      if (!hasPermissionNow(Permissions.ConversationsRead)) {
+        if (!get().byConversation.has(conversationId)) {
+          set(s => {
+            const m = new Map(s.byConversation)
+            m.set(conversationId, [])
+            s.byConversation = m
+          })
+        }
+        return
+      }
       set(s => {
         const ls = new Set(s.loadingSet)
         ls.add(conversationId)

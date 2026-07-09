@@ -90,8 +90,14 @@ pub async fn list_deliverable_files(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    // Ownership double-check + full File load in one batched query.
-    Repos.file.get_by_ids_and_user(&ids, user_id).await
+    // Ownership double-check + full File load in one batched query. The `id = ANY`
+    // query does NOT preserve input order, so re-sort to the derived∪pinned order
+    // we built above.
+    let mut files = Repos.file.get_by_ids_and_user(&ids, user_id).await?;
+    let pos: std::collections::HashMap<Uuid, usize> =
+        ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    files.sort_by_key(|f| pos.get(&f.id).copied().unwrap_or(usize::MAX));
+    Ok(files)
 }
 
 async fn upsert_pin(conversation_id: Uuid, file_id: Uuid, pinned: bool) -> Result<(), AppError> {

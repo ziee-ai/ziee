@@ -163,7 +163,6 @@ pub struct AppendVersionRequest {
 pub async fn append_version(
     auth: RequirePermissions<(FilesUpload,)>,
     Path(file_id): Path<Uuid>,
-    origin: crate::modules::sync::SyncOrigin,
     Json(req): Json<AppendVersionRequest>,
 ) -> ApiResult<Json<File>> {
     let user_id = auth.user.id;
@@ -175,8 +174,10 @@ pub async fn append_version(
 
     // Append-only: `commit_new_version` returns None when the bytes match the
     // current head (content-addressed no-op), so a "save" with no change never
-    // creates an empty version.
-    let committed = crate::modules::file::versioning::commit_new_version(
+    // creates an empty version. It ALSO emits the `SyncEntity::File` change +
+    // spawns the RAG reindex internally on a successful commit — so we must NOT
+    // do either again here (that would double the sync events + reindex work).
+    crate::modules::file::versioning::commit_new_version(
         user_id,
         &file,
         req.content.into_bytes(),
@@ -184,11 +185,6 @@ pub async fn append_version(
         None,
     )
     .await?;
-
-    if committed.is_some() {
-        crate::modules::file::sync::publish_file_changed_with_origin(user_id, file_id, origin.0);
-        crate::modules::file_rag::ingest::spawn_reindex(user_id, file_id);
-    }
 
     let updated = Repos
         .file

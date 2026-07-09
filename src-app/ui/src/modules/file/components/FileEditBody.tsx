@@ -44,7 +44,11 @@ export function FileEditBody({
   const changedUnderneath =
     loadedHeadRef.current !== null &&
     currentHead > loadedHeadRef.current &&
-    !dismissedChange
+    !dismissedChange &&
+    // Suppress during our OWN save: appendVersion bumps the head (via loadVersions)
+    // before onDone() unmounts us, which would otherwise flash a false "changed
+    // elsewhere" banner for the version we just wrote.
+    !saving
 
   useEffect(() => {
     let cancelled = false
@@ -117,7 +121,16 @@ export function FileEditBody({
           <span className="flex-1">This document changed elsewhere.</span>
           <Button
             variant="outline"
-            onClick={() => setReloadKey(k => k + 1)}
+            disabled={saving}
+            onClick={() => {
+              // Unmount the editor (text=null → spinner) so it REMOUNTS with the
+              // freshly-fetched content. Without the null, bumping reloadKey
+              // remounts synchronously with the still-stale `text` (the async
+              // refetch lands after) and Plate's usePlateEditor never rebuilds on
+              // a prop-only value change — so the reload would show old content.
+              setText(null)
+              setReloadKey(k => k + 1)
+            }}
             data-testid="canvas-reload-latest"
           >
             Reload latest
@@ -151,7 +164,11 @@ export function FileEditBody({
       <div className="flex items-center justify-end gap-2 border-border border-t px-3 py-2">
         <Button
           variant="ghost"
-          onClick={onDone}
+          onClick={() => {
+            // Confirm before discarding unsaved edits (parity with the
+            // beforeunload guard — Cancel is an equally common exit path).
+            if (!dirty || window.confirm('Discard unsaved changes?')) onDone()
+          }}
           disabled={saving}
           data-testid="canvas-cancel"
         >
