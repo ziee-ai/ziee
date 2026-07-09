@@ -15,6 +15,8 @@ use crate::common::TestServer;
 use crate::common::stub_chat::StubChat;
 use crate::common::test_helpers::{TestUser, create_user_with_permissions};
 
+mod settings;
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 /// A user with all permissions (provider/model/mcp management + js_tool::use).

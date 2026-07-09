@@ -12,7 +12,7 @@
 //! suspend the script in-process for approval (see `approval`).
 
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -67,30 +67,62 @@ struct Dispatcher {
     /// suspended time so a script can't hold a runtime for hours).
     approvals_used: Arc<AtomicU64>,
     max_approvals: u64,
+    /// Per-run cap on retained trace entries (admin-tunable via JsCaps). Denied/
+    /// failed dispatches push a trace entry WITHOUT consuming the tool-call
+    /// budget, so under ApprovalMode::Disabled a tight deny-loop could otherwise
+    /// grow the Vec to hundreds of MB before gas trips (audit: resource-limits).
+    max_trace_entries: usize,
 }
-
-/// Max concurrent sub-tool dispatches per run_js invocation.
-const MAX_CONCURRENT_DISPATCH: usize = 6;
-
-/// Server-wide cap on concurrent `run_js` runtimes (admission control) so a
-/// burst of chat turns can't spin up unbounded 128 MiB interpreters at once.
-const MAX_CONCURRENT_RUNS: usize = 8;
-static GLOBAL_RUN_SEM: tokio::sync::Semaphore =
-    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_RUNS);
 
 /// How long a run waits for a global admission slot before failing fast.
 const GLOBAL_ACQUIRE_TIMEOUT_SECS: u64 = 15;
 
-/// Hard cap on trace entries. Denied/failed dispatches push a trace entry
-/// WITHOUT consuming the tool-call budget, so under ApprovalMode::Disabled a
-/// tight deny-loop could otherwise grow the Vec to hundreds of MB before gas
-/// trips (audit: resource-limits).
-const MAX_TRACE_ENTRIES: usize = 256;
+/// Server-wide cap on concurrent `run_js` runtimes (admission control) so a
+/// burst of chat turns can't spin up unbounded interpreters at once. Settings-
+/// backed + LIVE-RESIZABLE (DEC-22): primed from `js_tool_settings.
+/// max_concurrent_runs` on the first run, adjusted by
+/// [`set_max_concurrent_runs`] on an admin PUT.
+static GLOBAL_RUN_SEM: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+static CONFIGURED_RUNS: AtomicUsize = AtomicUsize::new(0);
+
+/// Get the global admission semaphore, priming it exactly once with `initial`
+/// permits (the current configured `max_concurrent_runs`).
+fn global_run_sem(initial: usize) -> &'static tokio::sync::Semaphore {
+    GLOBAL_RUN_SEM.get_or_init(|| {
+        let n = initial.max(1);
+        CONFIGURED_RUNS.store(n, Ordering::SeqCst);
+        tokio::sync::Semaphore::new(n)
+    })
+}
+
+/// Live-resize the global admission cap. Called by the settings PUT handler
+/// after the cache invalidate so a new cap takes effect immediately. Grows via
+/// `add_permits`; shrinks via `forget_permits` (best-effort — in-flight runs
+/// keep their slot, the reduction applies as slots free). No-op if the sem
+/// hasn't been primed yet (the first run reads the fresh cap from the cache).
+pub fn set_max_concurrent_runs(new: usize) {
+    let Some(sem) = GLOBAL_RUN_SEM.get() else {
+        return;
+    };
+    apply_resize(sem, &CONFIGURED_RUNS, new);
+}
+
+/// Pure resize step (extracted for testability): move `configured` to `new` and
+/// grow/shrink `sem`'s permits by the delta. Floor of 1.
+fn apply_resize(sem: &tokio::sync::Semaphore, configured: &AtomicUsize, new: usize) {
+    let new = new.max(1);
+    let cur = configured.swap(new, Ordering::SeqCst);
+    if new > cur {
+        sem.add_permits(new - cur);
+    } else if new < cur {
+        sem.forget_permits(cur - new);
+    }
+}
 
 impl Dispatcher {
     fn push_trace(&self, b: &ToolBinding, status: &str, dur_ms: u64) {
         if let Ok(mut t) = self.trace.lock() {
-            if t.len() >= MAX_TRACE_ENTRIES {
+            if t.len() >= self.max_trace_entries {
                 return;
             }
             t.push(serde_json::json!({
@@ -247,14 +279,23 @@ impl Dispatcher {
 /// interpreter/dispatch failure becomes an error result the model can read.
 pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
     // Server-wide admission control: bound concurrent run_js runtimes so a burst
-    // of chat turns can't allocate unbounded 128 MiB interpreters at once. BOUND
-    // the acquire so a saturated server FAILS FAST with a "busy" result rather
-    // than stalling the assistant turn (run_js executes inline in the tool loop)
-    // — audit: without the timeout, 8 runs stuck on ignored approvals would block
+    // of chat turns can't allocate unbounded interpreters at once. BOUND the
+    // acquire so a saturated server FAILS FAST with a "busy" result rather than
+    // stalling the assistant turn (run_js executes inline in the tool loop)
+    // — audit: without the timeout, runs stuck on ignored approvals would block
     // every run_js server-wide for the whole suspend window.
+    //
+    // The cap is settings-backed: prime the global sem from the cached
+    // `max_concurrent_runs` (subsequent admin changes flow via
+    // `set_max_concurrent_runs`). Fall back to the default on a cache-read error.
+    let global_max = match super::settings_cache::get().await {
+        Ok(s) => s.max_concurrent_runs.max(1) as usize,
+        Err(_) => super::settings_cache::defaults().max_concurrent_runs as usize,
+    };
+    let sem = global_run_sem(global_max);
     let global_permit = match tokio::time::timeout(
         Duration::from_secs(GLOBAL_ACQUIRE_TIMEOUT_SECS),
-        GLOBAL_RUN_SEM.acquire(),
+        sem.acquire(),
     )
     .await
     {
@@ -296,9 +337,10 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
             timeout: req.caps.approval_timeout,
         },
         trace: Arc::new(std::sync::Mutex::new(Vec::new())),
-        dispatch_sem: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_DISPATCH)),
+        dispatch_sem: Arc::new(tokio::sync::Semaphore::new(req.caps.max_concurrent_dispatch.max(1))),
         approvals_used: Arc::new(AtomicU64::new(0)),
         max_approvals: req.caps.max_approvals,
+        max_trace_entries: req.caps.max_trace_entries.max(1),
     });
 
     // Active-execution wall-clock watchdog: accumulates elapsed time ONLY while
@@ -456,6 +498,31 @@ fn build_result(
 mod tests {
     use super::*;
     use crate::modules::js_tool::runtime::{JsError, JsOutcome};
+
+    // TEST-41: the global-run-sem resize math — grow adds permits, shrink forgets,
+    // and a floor of 1 holds. Uses a LOCAL sem so it doesn't touch the process
+    // global (which the real runtime primes).
+    #[tokio::test]
+    async fn test_apply_resize_grows_and_shrinks() {
+        let sem = tokio::sync::Semaphore::new(4);
+        let configured = AtomicUsize::new(4);
+        assert_eq!(sem.available_permits(), 4);
+
+        // Grow 4 → 6: +2 permits.
+        apply_resize(&sem, &configured, 6);
+        assert_eq!(sem.available_permits(), 6);
+        assert_eq!(configured.load(Ordering::SeqCst), 6);
+
+        // Shrink 6 → 2: forget 4 permits.
+        apply_resize(&sem, &configured, 2);
+        assert_eq!(sem.available_permits(), 2);
+        assert_eq!(configured.load(Ordering::SeqCst), 2);
+
+        // Floor: 0 clamps to 1.
+        apply_resize(&sem, &configured, 0);
+        assert_eq!(sem.available_permits(), 1);
+        assert_eq!(configured.load(Ordering::SeqCst), 1);
+    }
 
     // Result assembly: success → final value in content, trace in structured.
     #[test]

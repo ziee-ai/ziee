@@ -17,3 +17,24 @@ impl PermissionCheck for JsToolUse {
         "Use the built-in run_js tool (programmatic tool calling in an embedded JS runtime).";
     const MODULE: &'static str = "js_tool";
 }
+
+/// Read the admin-configurable run_js limits (js_tool_settings). Admin-only —
+/// held via the Administrators `*` wildcard; NOT granted to the Users group.
+pub struct JsToolSettingsRead;
+impl PermissionCheck for JsToolSettingsRead {
+    const NAME: &'static str = "JsToolSettingsRead";
+    const PERMISSION: &'static str = "js_tool::settings::read";
+    const DESCRIPTION: &'static str = "Read the run_js (js_tool) resource-limits configuration.";
+    const MODULE: &'static str = "js_tool";
+}
+
+/// Update the admin-configurable run_js limits (memory/stack/wall/approval/
+/// concurrency/trace caps). Admin-only — held via `*`.
+pub struct JsToolSettingsManage;
+impl PermissionCheck for JsToolSettingsManage {
+    const NAME: &'static str = "JsToolSettingsManage";
+    const PERMISSION: &'static str = "js_tool::settings::manage";
+    const DESCRIPTION: &'static str =
+        "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.";
+    const MODULE: &'static str = "js_tool";
+}

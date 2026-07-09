@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 326 surfaces carry renderable-state signals; 1900 signals total.
+// 327 surfaces carry renderable-state signals; 1904 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2058,6 +2058,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "searchTerm || selectedTags.length > 0", line: 91 },
     ],
   },
+  "modules/js-tool/components/JsToolSettingsSection": {
+    surface: "modules/js-tool/components/JsToolSettingsSection",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "branch", condition: "!canRead", line: 144 },
+      { kind: "error", condition: "error", line: 158 },
+      { kind: "loading", condition: "loading && !settings", line: 167 },
+      { kind: "branch", condition: "!canManage", line: 193 },
+    ],
+  },
   "modules/layouts/app-layout/AppLayout": {
     surface: "modules/layouts/app-layout/AppLayout",
     requiredStates: ["open"],
@@ -3908,6 +3918,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/code-sandbox/module", line: 62 },
   { slot: "settingsAdminPages", surface: "modules/file-rag/module", line: 31 },
   { slot: "settingsAdminPages", surface: "modules/hardware/module", line: 45 },
+  { slot: "settingsAdminPages", surface: "modules/js-tool/module", line: 39 },
   { slot: "settingsAdminPages", surface: "modules/literature/module", line: 65 },
   { slot: "settingsAdminPages", surface: "modules/llm-local-runtime/module", line: 89 },
   { slot: "settingsAdminPages", surface: "modules/llm-provider/module", line: 137 },
@@ -3942,7 +3953,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 325 keys.
+ * 327 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4087,6 +4098,8 @@ export type RequiredState =
   | "modules/hub/modules/workflow/components/WorkflowHubCard:open"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:empty"
+  | "modules/js-tool/components/JsToolSettingsSection:delayed"
+  | "modules/js-tool/components/JsToolSettingsSection:error"
   | "modules/layouts/app-layout/AppLayout:open"
   | "modules/layouts/app-layout/components/Drawer:empty"
   | "modules/layouts/app-layout/components/ResizeHandle:empty"
@@ -4415,6 +4428,8 @@ export const REQUIRED_STATE_KEYS = [
   "modules/hub/modules/workflow/components/WorkflowHubCard:open",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:empty",
+  "modules/js-tool/components/JsToolSettingsSection:delayed",
+  "modules/js-tool/components/JsToolSettingsSection:error",
   "modules/layouts/app-layout/AppLayout:open",
   "modules/layouts/app-layout/components/Drawer:empty",
   "modules/layouts/app-layout/components/ResizeHandle:empty",

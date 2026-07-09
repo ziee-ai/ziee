@@ -87,3 +87,77 @@ fn error_response(id: Option<Value>, http: StatusCode, err: JsonRpcError) -> Res
     )
         .into_response()
 }
+
+// =====================================================================
+// Admin-configurable limits (js_tool_settings) — GET/PUT /api/js-tool/settings.
+// Mirrors code_sandbox's resource-limits handlers.
+// =====================================================================
+
+use crate::core::repository::Repos;
+use crate::modules::js_tool::permissions::{JsToolSettingsManage, JsToolSettingsRead};
+use crate::modules::js_tool::settings::{JsToolSettings, UpdateJsToolSettings};
+use crate::modules::permissions::openapi::with_permission;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+
+/// GET /js-tool/settings — read the singleton run_js limits (admin-only).
+pub async fn get_settings_handler(
+    _auth: RequirePermissions<(JsToolSettingsRead,)>,
+) -> crate::common::ApiResult<Json<JsToolSettings>> {
+    let row = Repos.js_tool.get_settings().await?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn get_settings_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(JsToolSettingsRead,)>(op)
+        .id("JsTool.getSettings")
+        .tag("Programmatic Tools")
+        .summary("Read the singleton run_js (js_tool) limits configuration")
+        .description(
+            "Returns the current memory / stack / wall-clock / approval-timeout / \
+             concurrency / trace caps applied on every run_js invocation. Admin-only.",
+        )
+        .response::<200, Json<JsToolSettings>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+/// PUT /js-tool/settings — update the singleton run_js limits (admin-only).
+pub async fn update_settings_handler(
+    _auth: RequirePermissions<(JsToolSettingsManage,)>,
+    origin: SyncOrigin,
+    Json(patch): Json<UpdateJsToolSettings>,
+) -> crate::common::ApiResult<Json<JsToolSettings>> {
+    patch.validate()?;
+    let row = Repos.js_tool.update_settings(&patch).await?;
+    // Invalidate the cached snapshot the run_js hot path reads from so the new
+    // caps take effect on the very next invocation, and live-resize the global
+    // admission semaphore (max_concurrent_runs) immediately.
+    crate::modules::js_tool::settings_cache::invalidate(&row);
+    crate::modules::js_tool::executor::set_max_concurrent_runs(row.max_concurrent_runs.max(1) as usize);
+    sync_publish(
+        SyncEntity::JsToolSettings,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::perm::<JsToolSettingsRead>(),
+        origin.0,
+    );
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn update_settings_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(JsToolSettingsManage,)>(op)
+        .id("JsTool.updateSettings")
+        .tag("Programmatic Tools")
+        .summary("Update the singleton run_js (js_tool) limits configuration")
+        .description(
+            "PATCH semantics: any field omitted from the body preserves its existing \
+             value. Validation rejects out-of-range values with 422; the new caps take \
+             effect on the very next run_js invocation.",
+        )
+        .response::<200, Json<JsToolSettings>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<422, (), _>(|r| r.description("Value out of range"))
+}

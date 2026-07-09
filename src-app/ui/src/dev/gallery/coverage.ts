@@ -254,6 +254,8 @@ export const GALLERY_COVERAGE = {
   "modules/code-sandbox/components/SandboxRootfsVersionsSection": { kind: 'via', reason: 'rendered within the code-sandbox module page' },
   "modules/code-sandbox/components/SandboxSettingsPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/code-sandbox/components/_rootfsShared": { kind: 'via', reason: 'rendered within the code-sandbox module page' },
+  "modules/js-tool/components/JsToolSettingsSection": { kind: 'via', reason: 'rendered within the js-tool settings page' },
+  "modules/js-tool/components/JsToolSettingsPage": { kind: 'flow', reason: 'admin run_js limits page; loaded/loading/no-permission states covered by tests/e2e/settings/js-tool-settings.spec.ts' },
   "modules/file-rag/components/sections/ChunkingSection": { kind: 'via', reason: 'rendered within the file-rag module page' },
   "modules/file-rag/components/sections/EmbeddingSection": { kind: 'via', reason: 'rendered within the file-rag module page' },
   "modules/file-rag/components/sections/EnableSection": { kind: 'via', reason: 'rendered within the file-rag module page' },

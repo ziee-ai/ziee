@@ -15,6 +15,12 @@ impl JsToolRepository {
         Self { pool }
     }
 
+    /// Shared pool accessor (used by the settings get/update impls in
+    /// `settings.rs`, mirroring `CodeSandboxRepository::pool`).
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// Idempotent upsert of the built-in `run_js` MCP server row. On conflict
     /// only re-asserts identity + the live loopback port (mirrors memory_mcp);
     /// admin-editable columns (enabled/display_name/…) are left untouched.

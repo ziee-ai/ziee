@@ -423,6 +423,14 @@ impl McpChatExtension {
             .cloned()
             .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0);
 
+        // Read the admin-configurable caps from the DB-backed cache (falling back
+        // to defaults if the cache/DB is momentarily unavailable) so an admin
+        // change to js_tool_settings applies to the very next run_js invocation.
+        let caps = match crate::modules::js_tool::settings_cache::get().await {
+            Ok(s) => JsCaps::from_settings(&s),
+            Err(_) => JsCaps::default(),
+        };
+
         let run = executor::JsToolRun {
             session_manager: self.session_manager.clone(),
             user_id: context.user_id,
@@ -434,7 +442,7 @@ impl McpChatExtension {
             approval_mode: approval_mode.clone(),
             auto_approved,
             sse_tx,
-            caps: JsCaps::default(),
+            caps,
         };
         executor::run(run, &script).await
     }

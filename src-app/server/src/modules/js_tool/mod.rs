@@ -47,7 +47,11 @@ pub mod permissions;
 pub mod repository;
 pub mod routes;
 pub mod runtime;
+pub mod settings;
+pub mod settings_cache;
 pub mod tools;
+
+pub use repository::JsToolRepository;
 
 /// Deterministic UUID for the built-in `run_js` MCP server row. Stable across
 /// deployments (mirrors `memory_mcp_server_id`).

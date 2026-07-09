@@ -482,11 +482,19 @@ fn script(
         // `script` is chosen by the sub-plan, then echo the run_js result on the
         // continuation. Scripts are hardcoded (not parsed from the message) so
         // arbitrary JS never has to survive STUB_PLAN tokenization.
-        "run_js_value" | "run_js_echo" | "run_js_loop" | "run_js_error" | "run_js_gated" => {
+        "run_js_value" | "run_js_echo" | "run_js_loop" | "run_js_error" | "run_js_gated"
+        | "run_js_bigalloc" => {
             if let (false, Some(wire)) = (had_tool_result, resolve_wire_name(tool_names, "run_js")) {
                 let src = match plan {
                     // Basic run, no sub-tool.
                     "run_js_value" => "return 6 * 7;",
+                    // Allocate ~40 MiB of live strings. Fits under the 128 MiB
+                    // default cap but OOMs under a low (e.g. 16 MiB) memory_bytes
+                    // setting — used to prove the DB-configured cap is honored at
+                    // execution (TEST-47).
+                    "run_js_bigalloc" => {
+                        "const a = []; for (let i = 0; i < 40; i++) { a.push('x'.repeat(1024 * 1024)); } return a.length;"
+                    }
                     // Call the always-available `get_tool_result` built-in once
                     // (a real sub-tool dispatch, recorded source='script'); it
                     // errors on a fake id, which the script swallows.
