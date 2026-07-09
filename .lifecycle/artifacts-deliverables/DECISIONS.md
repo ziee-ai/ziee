@@ -1,4 +1,4 @@
-# DECISIONS — artifacts-deliverables (v4: + multi-file safety + selection→LLM)
+# DECISIONS — artifacts-deliverables (v5: + code/CSV editing + diff + pin + image + multi-format)
 
 Resolved up front. v3 keeps v2's reuse-the-file-substrate core and upgrades the editing
 surface from a plain textarea to a rich WYSIWYG editor per requirement.
@@ -30,12 +30,13 @@ on its next turn.
 (turn-based is correct for a single-panel chat).
 
 ### DEC-5: Which types are user-editable in v1, and with what?
-**Resolution:** v1 direct user editing = **`markdown` only, via the WYSIWYG editor**.
-`code`/`csv`/binary stay **view + export** (the model still edits them via `files_mcp`);
-a code editor (e.g. CodeMirror) and an editable grid are deferred fast-follows.
-**Basis:** scope + fit — WYSIWYG is a prose surface (wrong tool for code/CSV); markdown
-reports are the flagship deliverable; deferring keeps v1 coherent without blocking the
-agent's own edits.
+**Resolution:** three editable types, each with the right tool — **`markdown` →
+Plate WYSIWYG**, **`code` → CodeMirror** (plain-text, syntax-highlighted), **`csv` →
+an editable data grid** (extending the tabular viewer). Binary/pdf/image stay
+**view + export**. Every editor Saves via the same append-version path (ITEM-1).
+**Basis:** user selection pulled code/CSV editing into v1. Fit — WYSIWYG suits prose,
+CodeMirror suits code (no round-trip risk, plain text), a grid suits tabular data; each
+maps to the file's type. (Supersedes v3/v4's "markdown only".)
 
 ### DEC-6: Which WYSIWYG editor?
 **Resolution:** **Plate (`platejs`) + `@platejs/markdown`**, lazy-loaded, with Plate's
@@ -82,12 +83,15 @@ tool result; keep inline preview + manual "Open in side panel". No new pin flag 
 **Basis:** codebase (literature `tool_result`→`displayInRightPanel`; the file
 chat-extension already renders tool-returned files inline) + UX.
 
-### DEC-11: Deliverables list — new table or derived?
-**Resolution:** Derived — `GET /api/conversations/{id}/deliverables` queries files with
-`source_message_id` ∈ conversation + `created_by IN ('mcp','llm')`, reusing
-`available_files` scoping. No new table.
-**Basis:** codebase — `create_file` already stamps `source_message_id`; the association
-exists.
+### DEC-11: Deliverables list — derived, curated, or both?
+**Resolution:** **Both.** The base list is derived (`source_message_id` ∈
+conversation + `created_by IN ('mcp','llm')`), UNION user-**pinned** files, MINUS
+user-**hidden** ones — curation stored in a new `conversation_deliverables` link table
+(migration 132, mirrors `project_files`; `pinned=false` = hidden). Pin/unpin emits a new
+owner-scoped `SyncEntity::Deliverable`.
+**Basis:** user selected pin-as-deliverable. Derived alone can't promote a plain upload
+or hide noise; a thin curation table over the derived base gives both without changing
+how files are authored. (Supersedes v2–v4's "derived, no table".)
 
 ### DEC-12: Which export formats, delivered how?
 **Resolution:** `md` (raw), `docx` (pandoc native), `pdf` (pandoc + typst); streamed
@@ -153,3 +157,49 @@ Query-about carries the selection as quoted context only (no tool call).
 **Basis:** codebase — `edit_file` requires a unique `old_str` and already versions +
 gates edits; shaping the request client-side reuses that path with no new server route
 and no new trust boundary. (Supersedes v3 DEC-16's "deferred".)
+
+### DEC-20: How is code edited, and does it share the markdown round-trip risk?
+**Resolution:** `code` files edit in a lazy-loaded, kit-adopted **CodeMirror** editor as
+**plain text** (syntax highlighting only) — no markdown/AST round-trip, so Save writes
+the exact bytes. Same lazy-load + syncpack + peer-pin discipline as Plate (DEC-9).
+**Basis:** research/codebase — CodeMirror is the standard React code editor; plain-text
+editing sidesteps the fidelity risk that markdown WYSIWYG carries (DEC-7).
+
+### DEC-21: How is CSV edited, and how is round-trip fidelity kept?
+**Resolution:** `csv` files edit in an **editable data grid** that extends the existing
+tabular viewer (PR #119) — parse CSV → grid on open, serialize grid → CSV on Save,
+reusing the viewer's existing CSV parser (not a new one). Quoting/embedded-delimiter/
+header fidelity is round-trip-tested.
+**Basis:** codebase — the tabular viewer already parses + renders CSV/TSV; making it
+editable reuses that rather than adding a parser, and keeps the file canonical as CSV.
+
+### DEC-22: How are images added to a markdown deliverable?
+**Resolution:** Drag-drop or paste into the WYSIWYG uploads via the existing
+`POST /api/files/upload` (existing size/type limits enforced) and inserts a **markdown
+image reference** at the cursor — so the image survives the ITEM-7 serialize as a link,
+not embedded bytes.
+**Basis:** codebase — reuses the upload endpoint + the markdown-canonical rule (DEC-7);
+Plate has a first-class image plugin.
+
+### DEC-23: How does the version-diff view work — frontend or backend?
+**Resolution:** Frontend-only. A **Compare** control in `FileVersionBar` fetches two
+versions' text via the existing `GET /api/files/{id}/versions/{v}/text` and renders an
+added/removed line (or word) diff with a small diff library. No backend, for
+text/markdown/code types.
+**Basis:** codebase — the per-version text endpoint already exists; a client diff avoids
+any server change.
+
+### DEC-24: Which export formats does v5 expose, and via what?
+**Resolution:** `md` (raw), `pdf` (typst), `docx | odt | rtf | html` (native pandoc
+writers) — a generalized `convert_to(format)` replaces the single `convert_to_docx`, and
+the `?format=` enum on the file + conversation export endpoints widens accordingly. Each
+format is smoke-tested against the embedded pandoc.
+**Basis:** codebase — pandoc 3.7 ships odt/rtf/html writers needing no engine; the
+generalization is a small extension of the ITEM-2 converter. (Extends DEC-12.)
+
+### DEC-25: What stays OUT of v1 after the v5 additions?
+**Resolution:** Deferred (available on request): comment/suggestion (track-changes) mode,
+project-level deliverables, workflow-run artifact bundling, multi-user sharing/ACL,
+real-time co-editing, and live HTML/React execution.
+**Basis:** user selection — these were presented and not chosen for v1; each is additive
+later without reworking the v5 data model.

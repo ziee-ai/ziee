@@ -1,4 +1,4 @@
-# TESTS — artifacts-deliverables (v4: + multi-file safety + selection→LLM)
+# TESTS — artifacts-deliverables (v5: + code/CSV editing + diff + pin + image + multi-format)
 
 Every ITEM covered by ≥1 TEST; UI items also get `tier: e2e`. Mock only the external
 boundary (the LLM in the real-flow e2e). The markdown round-trip gets a dedicated
@@ -37,3 +37,15 @@ fidelity test because it edits with Plate but renders with Streamdown.
 - **TEST-20** (tier: e2e) [covers: ITEM-14] file: `src-app/ui/tests/e2e/14-artifacts/concurrent-edit.spec.ts` — asserts: while the user is editing a canvas, a model `edit_file` (or a second-client save) that advances the head shows the "document changed" banner; "Keep my changes" appends the user's version as a new head with the model's version preserved (both restorable), and nothing is silently overwritten.
 - **TEST-21** (tier: e2e) [covers: ITEM-15] file: `src-app/ui/tests/e2e/14-artifacts/selection-ask.spec.ts` — asserts: selecting text in the canvas and choosing "Ask about this" quotes that selection into the chat composer as context and the model's reply references it, with the document unchanged (no new version).
 - **TEST-22** (tier: e2e) [covers: ITEM-16] file: `src-app/ui/tests/e2e/14-artifacts/selection-edit.spec.ts` — asserts: selecting a paragraph and choosing "Edit this section" with an instruction results in a targeted model edit that changes only that span, lands as a new version in the canvas, and leaves the rest of the document intact.
+
+## v5 additions — code/CSV editing + diff + pin + image + multi-format
+
+- **TEST-23** (tier: integration) [covers: ITEM-17] file: `src-app/server/tests/file/deliverables_test.rs` — asserts: `POST/DELETE /api/conversations/{id}/deliverables/{file_id}` pins/unpins; the list returns derived model-authored ∪ pinned − hidden; migration 132 table cascades on conversation/file delete; pin/unpin emits owner-scoped `SyncEntity::Deliverable`; cross-user → 404.
+- **TEST-24** (tier: unit) [covers: ITEM-20] file: `src-app/ui/src/modules/file/components/CsvGridEditor.tsx` — asserts: CSV parse→grid→serialize is lossless for quoted fields, embedded commas/newlines, and a header row; editing a cell then serializing produces valid CSV.
+- **TEST-25** (tier: unit) [covers: ITEM-22] file: `src-app/ui/src/modules/file/components/FileVersionDiff.tsx` — asserts: the diff between two version texts marks added/removed lines correctly and renders nothing spurious for identical inputs.
+- **TEST-26** (tier: integration) [covers: ITEM-23] file: `src-app/server/tests/file/export_test.rs` — asserts: `GET /api/files/{id}/export?format=odt|rtf|html` each returns the correct `Content-Type` + attachment and non-empty, format-valid bytes from the embedded pandoc (odt = PK zip, html contains `<html`), alongside the existing md/docx/pdf.
+- **TEST-27** (tier: e2e) [covers: ITEM-19] file: `src-app/ui/tests/e2e/14-artifacts/code-edit.spec.ts` — asserts: a `code` deliverable opens in the CodeMirror editor with syntax highlighting; the user edits and Saves; a new version is created and the content round-trips exactly (plain text, no reformatting).
+- **TEST-28** (tier: e2e) [covers: ITEM-20] file: `src-app/ui/tests/e2e/14-artifacts/csv-edit.spec.ts` — asserts: a `csv` deliverable opens in the editable grid; the user edits a cell and adds a row, Saves, and the downloaded CSV reflects the change losslessly.
+- **TEST-29** (tier: e2e) [covers: ITEM-18] file: `src-app/ui/tests/e2e/14-artifacts/deliverables.spec.ts` — asserts: pinning a plain uploaded file adds it to the deliverables list and unpinning/hiding removes it, reflected live via `sync:deliverable`.
+- **TEST-30** (tier: e2e) [covers: ITEM-21] file: `src-app/ui/tests/e2e/14-artifacts/image-embed.spec.ts` — asserts: pasting/dropping an image into the markdown canvas uploads it and inserts an image at the cursor that persists after Save + reload (survives markdown serialize as a link).
+- **TEST-31** (tier: e2e) [covers: ITEM-22] file: `src-app/ui/tests/e2e/14-artifacts/version-diff.spec.ts` — asserts: selecting two versions in the version bar and choosing Compare shows an added/removed diff; the gallery cell for the diff view passes runtime-health.

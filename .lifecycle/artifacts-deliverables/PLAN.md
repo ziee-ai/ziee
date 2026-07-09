@@ -1,4 +1,4 @@
-# PLAN — artifacts-deliverables (v4: WYSIWYG canvas + multi-file safety + selection→LLM)
+# PLAN — artifacts-deliverables (v5: WYSIWYG + code/CSV editing + diff + pin + image + multi-format)
 
 **Goal:** let users get FINISHED WORK OUT of the app — a persistent, versioned,
 co-editable **deliverable** beside the chat, edited in a **rich WYSIWYG editor**, and
@@ -44,11 +44,20 @@ back to GFM markdown on save.
 - **ITEM-14**: Concurrent-edit reconciliation (UI) — while a canvas is in Edit mode, subscribe to `sync:file` for the open `fileId`; if the head version advances underneath the editor (a model `edit_file`/`rewrite_file`, or another device), show a non-destructive banner — **"This document changed · Reload latest / Keep my changes (save as new version)"** — comparing the editor's base version to the new head. Never silently overwrite; a "keep mine" simply appends a new head via ITEM-1 (last-writer-new-version, nothing lost). Data-layer safety already holds (DEC-4 row-lock); this is the missing UI half.
 - **ITEM-15**: Selection → ask (Q&A, non-mutating) — a **selection popover** in the canvas (view and edit) with **"Ask about this"**: the selected text is threaded into the chat composer as a quoted context block referencing the file; the model answers in chat. No document mutation, no new backend (reuses the existing message-send + the file already being in `available_files`).
 - **ITEM-16**: Selection → edit (scoped, mutating) — a **"Edit this section"** action in the same popover: sends the selected text + the user's instruction so the model performs a **targeted `edit_file(old_str=<selection>)`** (the selection is the unique match), landing as a new version in the canvas. Frontend composes the structured request; reuses `files_mcp::edit_file` + the canvas auto-refresh on `sync:file`. No new backend endpoint (a small structured-context field on the send is the only wire change, picked up by regen).
+- **ITEM-17**: Pin-as-deliverable (backend) — migration `132_create_conversation_deliverables.sql`: link table `conversation_deliverables(conversation_id, file_id, pinned BOOL NOT NULL DEFAULT true, title TEXT NULL, created_at)` (composite PK, both FKs `ON DELETE CASCADE`; `pinned=false` = user-hidden). `POST/DELETE /api/conversations/{id}/deliverables/{file_id}` to pin/unpin; the ITEM-5 list becomes **derived (model-authored) ∪ curated (pinned), minus hidden**. New owner-scoped `SyncEntity::Deliverable` emitted on pin/unpin. Mirrors `project_files`.
+- **ITEM-18**: Pin-as-deliverable (frontend) — a pin/unpin toggle in the deliverables list + the canvas header; the list refetches on `sync:deliverable` (self-gated). Lets users curate what counts as a deliverable (promote an upload, hide noise).
+- **ITEM-19**: Code editing — a **CodeMirror** edit-mode for `code` files (plain-text, no markdown round-trip risk), lazy-loaded + kit-adopted, with syntax highlighting; Save → append version via ITEM-1. Editable-types set expands to `markdown` (Plate), `code` (CodeMirror).
+- **ITEM-20**: CSV editing — an **editable data grid** edit-mode for `csv` files, extending the existing kit Table / tabular viewer (PR #119) into an editable grid; parse CSV → grid, edit cells/rows, serialize grid → CSV on Save → append version. Editable-types set adds `csv`.
+- **ITEM-21**: Image upload/paste embed — in the markdown WYSIWYG, drag-drop or paste an image → upload via the existing `POST /api/files/upload` → insert a markdown image reference at the cursor; reuses the upload path + the round-trip layer (image stays a markdown link so it survives serialize).
+- **ITEM-22**: Version-diff view — a **Compare** affordance in `FileVersionBar` that renders an added/removed line (or word) diff between two selected versions for text/markdown/code, reusing the existing `GET /api/files/{id}/versions/{v}/text`; frontend-only (a diff lib), no backend.
+- **ITEM-23**: Extra export formats — generalize `convert_to_docx` into `convert_to(format)` covering `docx|odt|rtf|html` (native pandoc writers) alongside `pdf` (typst) and raw `md`; extend the `format` query param on the ITEM-3 (file) + ITEM-4 (conversation) export endpoints and the export menus.
 
 ## Files to touch
 
 New (backend):
 - `src-app/server/src/modules/chat/core/export.rs`
+- `src-app/server/migrations/00000000000132_create_conversation_deliverables.sql`
+- `src-app/server/src/modules/file/deliverables.rs` (pin/unpin repo + list merge) or extend `available_files.rs`
 
 Edited (backend):
 - `src-app/server/src/modules/file/handlers/versions.rs` (`append_version`)
@@ -64,6 +73,10 @@ New (frontend, mirrored in `src-app/desktop/ui/`):
 - `src-app/ui/src/modules/file/utils/markdownRoundtrip.ts` (ITEM-7)
 - `src-app/ui/src/modules/file/components/FileEditBody.tsx` (edit-mode host + dirty-state + change-underneath banner)
 - `src-app/ui/src/modules/file/components/CanvasSelectionPopover.tsx` (selection → ask / edit)
+- `src-app/ui/src/components/kit/editor/KitCodeEditor.tsx` (+ lazy wrapper) — CodeMirror for `code` types
+- `src-app/ui/src/modules/file/components/CsvGridEditor.tsx` — editable grid for `csv` types
+- `src-app/ui/src/modules/file/components/FileVersionDiff.tsx` — version-diff view
+- `src-app/ui/src/modules/file/components/DeliverablesList.tsx` — pin/unpin + derived∪curated list
 
 Edited (frontend, mirrored in `src-app/desktop/ui/`):
 - `src-app/ui/package.json` + `src-app/desktop/ui/package.json` (Plate deps; syncpack-aligned)
@@ -106,10 +119,16 @@ edit-mode; **v3 replaces that with a real WYSIWYG editor (Plate)** per the requi
 that direct editing be rich, matching ChatGPT Canvas / Gemini Canvas / Claude Artifacts
 (all of which allow direct WYSIWYG editing, versioned on save). See DEC-6.
 
-**v4** adds two capabilities requested after v3: **multi-file editing safety**
-(ITEM-13/14 — per-tab dirty guard + "head changed underneath you" reconciliation) and
-**selection → LLM** (ITEM-15/16 — ask-about + scoped edit-selection), the latter
-un-deferring v3's DEC-16. Still explicitly out of v1: direct code/CSV user editing,
-multi-user sharing/ACL, real-time co-editing, version-diff view, comment/suggestion
-mode, pin-as-deliverable, project-level deliverables, workflow-run bundling, extra
-export formats, live HTML/React execution, image upload-embed.
+**v4** added **multi-file editing safety** (ITEM-13/14) and **selection → LLM**
+(ITEM-15/16).
+
+**v5** folds in five more per user selection: **pin-as-deliverable** (ITEM-17/18,
+reintroduces one migration — `132`), **code editing** (ITEM-19, CodeMirror),
+**CSV editing** (ITEM-20, editable grid), **image upload/paste embed** (ITEM-21),
+**version-diff view** (ITEM-22), and **extra export formats odt/rtf/html** (ITEM-23).
+Editable types now = markdown (Plate) + code (CodeMirror) + csv (grid); binary/pdf/image
+stay view+export.
+
+**Still explicitly OUT of v1** (available on request): comment/suggestion (track-changes)
+mode, project-level deliverables, workflow-run artifact bundling, multi-user
+sharing/ACL, real-time co-editing, live HTML/React execution.

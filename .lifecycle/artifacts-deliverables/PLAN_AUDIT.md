@@ -1,4 +1,4 @@
-# PLAN_AUDIT — artifacts-deliverables (v4: + multi-file safety + selection→LLM)
+# PLAN_AUDIT — artifacts-deliverables (v5: + code/CSV editing + diff + pin + image + multi-format)
 
 Audit of the v3 plan against the codebase. Backend (ITEM-1..5) is unchanged from v2
 and low-risk; the WYSIWYG editor (ITEM-6..8, 11) is the new risk surface — a first-of-
@@ -49,9 +49,11 @@ its-kind dependency in an app that currently has NO editor primitive.
 
 ## Migration collisions
 
-- **None — no migration.** Versioning, permissions (file + `conversations::read`), and
-  the conversation↔file association (`source_message_id`) all exist. No new table, no
-  new column, no `created_by` vocabulary change. `ls migrations/` tail `131` untouched.
+- **One migration — `132_create_conversation_deliverables.sql`** (pin-as-deliverable,
+  ITEM-17); `ls migrations/` tail is `131`, so `132` is free (no collision). Pure link
+  table mirroring `project_files` — no ALTER, no `created_by` change, no permission
+  grant (reuses file + `conversations::read`). Everything else (versioning, the
+  `source_message_id` association) still reuses existing schema.
 
 ## OpenAPI regen
 
@@ -91,3 +93,14 @@ its-kind dependency in an app that currently has NO editor primitive.
   through `files_mcp::edit_file` (append-only, restorable). No trust boundary changes.
 - ITEM-15/16 selection popovers are new interactive surfaces → a11y-name + testid +
   gallery coverage folded into ITEM-11's design-system gate.
+
+## v5 addenda — verdicts + notes
+
+- **ITEM-17** — verdict: CONCERN — reintroduces a migration (`132`, verified free) + a new `SyncEntity::Deliverable` (needs regen so the `sync:deliverable` TS key exists; owner-scoped emit only). Link table mirrors `project_files`; the list becomes derived∪pinned−hidden — covered by an integration test on the merge + ownership.
+- **ITEM-18** — verdict: PASS — pin/unpin UI + `sync:deliverable` self-gated refetch mirrors the existing store sync pattern.
+- **ITEM-19** — verdict: CONCERN — a second editor dependency (CodeMirror): same lazy-load + kit-adopt + syncpack + peer-pin mitigations as Plate (ITEM-6). Simpler than Plate (plain text, no markdown round-trip), so lower fidelity risk.
+- **ITEM-20** — verdict: CONCERN — CSV parse↔serialize round-trip (quoting, embedded commas/newlines, header row) must be lossless; reuse the tabular viewer's existing CSV parse (PR #119) rather than a new parser; covered by a round-trip unit test.
+- **ITEM-21** — verdict: PASS — reuses `POST /api/files/upload`; the embedded image is a markdown link that survives the ITEM-7 serialize; Plate has an image plugin. Guard: enforce the existing upload size/type limits.
+- **ITEM-22** — verdict: PASS — frontend diff over the existing `versions/{v}/text` endpoint; no backend; a diff lib is a small, well-scoped dep.
+- **ITEM-23** — verdict: CONCERN — generalizing to `docx|odt|rtf|html` widens the pandoc-writer matrix; odt/rtf/html are native pandoc writers (no engine), but each format×content combination needs a smoke test to confirm the embedded 3.7 binary produces valid output; covered by a per-format export integration test.
+- **OpenAPI (v5 update):** now includes a new domain schema surface — `SyncEntity::Deliverable` + the deliverables/pin endpoints + the widened `export?format=` enum — so regen touches types (not just endpoints) in BOTH workspaces; `emit_ts` golden-parity gates it.
