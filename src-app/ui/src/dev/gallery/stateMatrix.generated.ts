@@ -1006,12 +1006,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/utils/useStreamdownComponents",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "props.id === 'footnote-label' || props.id === 'user-content-footnote-label'", line: 52 },
-      { kind: "branch", condition: "(rest as Record<string, unknown>)['data-footnotes'] === undefined", line: 69 },
-      { kind: "branch", condition: "className?.includes('data-footnote-backref') || (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined", line: 85 },
-      { kind: "branch", condition: "scopedHref?.startsWith('#')", line: 106 },
-      { kind: "empty", condition: "verdict === 'empty'", line: 161 },
-      { kind: "branch", condition: "verdict === 'allowed'", line: 162 },
+      { kind: "branch", condition: "isFootnoteLabel(props.id)", line: 56 },
+      { kind: "branch", condition: "(rest as Record<string, unknown>)['data-footnotes'] === undefined", line: 72 },
+      { kind: "branch", condition: "className?.includes('data-footnote-backref') || (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined", line: 88 },
+      { kind: "branch", condition: "scopedHref?.startsWith('#')", line: 105 },
+      { kind: "empty", condition: "verdict === 'empty'", line: 160 },
+      { kind: "branch", condition: "verdict === 'allowed'", line: 161 },
     ],
   },
   "modules/chat/extensions/export/extension": {
