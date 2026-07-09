@@ -37,6 +37,73 @@ pub fn find_pandoc() -> Result<PathBuf, AppError> {
     }
 }
 
+/// Convert a document to `output_path`, inferring the pandoc writer from the
+/// output file extension. PDF routes through the bundled typst engine (see
+/// `convert_to_pdf`); `docx`/`odt`/`rtf`/`html` are native pandoc writers that
+/// need no engine. Same 60s wall-clock timeout hardening as `convert_to_pdf`.
+pub async fn convert_to(input_path: &PathBuf, output_path: &PathBuf) -> Result<(), AppError> {
+    // PDF needs the bundled typst engine — delegate to the hardened PDF path.
+    let is_pdf = output_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if is_pdf {
+        return convert_to_pdf(input_path, output_path).await;
+    }
+
+    let pandoc_path = find_pandoc()?;
+    let input_path = input_path.clone();
+    let output_path = output_path.clone();
+
+    let result = tokio::time::timeout(
+        PANDOC_TIMEOUT,
+        tokio::task::spawn_blocking(move || {
+            Command::new(&pandoc_path)
+                .arg(&input_path)
+                .arg("-o")
+                .arg(&output_path)
+                // Harmless for the native writers (docx/odt/rtf/html); kept for
+                // defense-in-depth parity with the PDF path.
+                .env("openout_any", "p")
+                .env("openin_any", "p")
+                .output()
+        }),
+    )
+    .await;
+
+    let output = match result {
+        Err(_) => {
+            return Err(AppError::internal_error(
+                "Pandoc conversion timed out after 60 seconds",
+            ));
+        }
+        Ok(Err(e)) => {
+            return Err(AppError::internal_error(format!(
+                "Pandoc task panicked: {}",
+                e
+            )));
+        }
+        Ok(Ok(Err(e))) => {
+            return Err(AppError::internal_error(format!(
+                "Failed to run Pandoc: {}",
+                e
+            )));
+        }
+        Ok(Ok(Ok(output))) => output,
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::internal_error(format!(
+            "Pandoc conversion failed: {}",
+            stderr
+        )));
+    }
+
+    Ok(())
+}
+
 /// Convert document to PDF using Pandoc
 pub async fn convert_to_pdf(
     input_path: &PathBuf,

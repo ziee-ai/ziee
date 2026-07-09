@@ -29,9 +29,14 @@ pub fn file_router() -> ApiRouter {
         .api_route("/files/{file_id}/thumbnail", get_with(get_thumbnail, get_thumbnail_docs))
         .api_route("/files/{file_id}/text", get_with(get_text_content, get_text_content_docs))
         .api_route("/files/{file_id}/download", get_with(download_file, download_file_docs))
+        .api_route("/files/{file_id}/export", get_with(export_file, export_file_docs))
         .api_route("/files/{file_id}/download-with-token", get_with(download_with_token, download_with_token_docs))
         // Version endpoints (also before /files/{file_id})
-        .api_route("/files/{file_id}/versions", get_with(list_versions, list_versions_docs))
+        .api_route(
+            "/files/{file_id}/versions",
+            get_with(list_versions, list_versions_docs)
+                .post_with(append_version, append_version_docs),
+        )
         .api_route("/files/{file_id}/head", get_with(get_head_version, get_head_version_docs))
         .api_route("/files/{file_id}/versions/{version}", get_with(get_version, get_version_docs))
         .api_route("/files/{file_id}/versions/{version}/download", get_with(download_version, download_version_docs))
