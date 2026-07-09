@@ -88,6 +88,22 @@ mod tests {
         }
     }
 
+    // TEST-2 (ITEM-2): the reranker gate keys strictly on `capabilities.rerank`.
+    #[test]
+    fn rerank_gate_requires_rerank_capability() {
+        let with = ModelCapabilities { rerank: Some(true), ..Default::default() };
+        assert_eq!(rerank_unsupported_reason("bge-reranker", &with), None);
+        let without = ModelCapabilities { rerank: Some(false), ..Default::default() };
+        let r = rerank_unsupported_reason("gpt-chat", &without)
+            .expect("a non-rerank model must be rejected");
+        assert!(r.contains("gpt-chat"), "reason names the model: {r}");
+        // an unflagged (None) model is likewise not a reranker
+        assert!(
+            rerank_unsupported_reason("plain", &ModelCapabilities::default()).is_some(),
+            "an unflagged model is not a reranker"
+        );
+    }
+
     #[test]
     fn embedding_only_model_is_rejected() {
         let reason = generation_unsupported_reason("nomic-embed", &caps(Some(true), None));

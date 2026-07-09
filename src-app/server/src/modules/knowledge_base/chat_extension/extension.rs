@@ -26,3 +26,16 @@ static KNOWLEDGE_BASE_EXTENSION: ExtensionEntry = ExtensionEntry {
     order: METADATA.order,
     factory: create,
 };
+
+#[cfg(test)]
+mod order_tests {
+    use super::METADATA;
+
+    // TEST-17 (ITEM-21): the KB chat extension runs at order 23 — BEFORE the MCP
+    // collector (30) so its attach flag is seen, and clear of the neighboring
+    // built-ins (24 summarization … 29 citations).
+    #[test]
+    fn extension_order_is_23() {
+        assert_eq!(METADATA.order, 23);
+    }
+}

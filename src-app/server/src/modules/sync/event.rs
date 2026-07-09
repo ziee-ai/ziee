@@ -370,3 +370,18 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod kb_wire_tests {
+    use super::SyncEntity;
+
+    // TEST-19 (ITEM-21): the KB sync entities serialize to the exact snake_case
+    // wire strings the generated TS `sync:<entity>` keys depend on.
+    #[test]
+    fn kb_entities_serialize_snake_case() {
+        let s = |e: SyncEntity| serde_json::to_value(e).unwrap().as_str().unwrap().to_string();
+        assert_eq!(s(SyncEntity::KnowledgeBase), "knowledge_base");
+        assert_eq!(s(SyncEntity::KnowledgeBaseDocument), "knowledge_base_document");
+        assert_eq!(s(SyncEntity::FileIndexState), "file_index_state");
+    }
+}

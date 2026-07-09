@@ -3207,3 +3207,18 @@ mod builtin_tests {
         assert_eq!(unique.len(), all.len(), "built-in server ids must be unique");
     }
 }
+
+#[cfg(test)]
+mod kb_builtin_tests {
+    use super::is_builtin_server_id;
+    use crate::modules::knowledge_base::knowledge_base_server_id;
+    use uuid::Uuid;
+
+    // TEST-18 (ITEM-21): the KB built-in server id is approval-bypassed (read-only
+    // retrieval over the caller's own KBs); an arbitrary id is not.
+    #[test]
+    fn knowledge_base_id_is_a_builtin() {
+        assert!(is_builtin_server_id(knowledge_base_server_id()));
+        assert!(!is_builtin_server_id(Uuid::new_v4()));
+    }
+}
