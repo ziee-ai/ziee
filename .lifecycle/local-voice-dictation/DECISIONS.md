@@ -85,3 +85,27 @@ most want confirmed are flagged `⟵ CONFIRM`.
 ### DEC-20: `MODULE_ENTRIES` order for the `voice` backend module.
 **Resolution:** Register at a free `order` slot with no cross-module dependency (voice needs no `mcp_servers` row and no provider ordering); a slot near the other runtime modules (~32–36 range, first free) is fine. `init()` spawns the reaper.
 **Basis:** codebase — voice has no ordering constraint (unlike `web_search` after `mcp`).
+
+### DEC-21: Mic button placement / discoverability.
+**Resolution:** An **always-visible** `Mic` icon in the composer `toolbar_actions` slot (next to `+`), not buried in the `+` menu — dictation is a flagship, one-tap affordance.
+**Basis:** convention/UX — flagship input affordances live inline in the toolbar; the `+` menu is for occasional actions. ⟵ CONFIRM (inline vs `+` menu).
+
+### DEC-22: Normal-user experience when the feature is enabled but NOT provisioned (only admins can download runtime/model).
+**Resolution:** Three distinct states driven by a non-admin `GET /api/voice/capability` (`{enabled, runtime_ready, model_ready, can_transcribe}`): (1) **ready** → mic enabled; (2) **enabled but runtime/model missing** → mic **disabled with tooltip "Voice dictation isn't set up yet — contact an administrator"** (discoverable, honest); (3) **feature/deploy flag off, or browser lacks `getUserMedia`/secure-context** → mic **hidden**. A normal user can NEVER trigger a model/runtime download (admin-gated) — no lazy multi-hundred-MB fetch on a mic tap.
+**Basis:** convention/UX + the admin-only provisioning constraint; mirrors code_sandbox's "not installed" honesty. ⟵ CONFIRM (disabled-with-tooltip vs fully hidden when unprovisioned).
+
+### DEC-23: Cold-start latency messaging.
+**Resolution:** The transcribing UI shows a **staged status** — "Starting voice engine…" while the idle-unloaded `whisper-server` auto-starts + loads the model (first use after idle), then "Transcribing…" — via `aria-live` so it never looks hung.
+**Basis:** UX — the managed instance's cold start can be several seconds; the LLM runtime has the same auto-start latency and surfaces status similarly.
+
+### DEC-24: Maximum clip length handling.
+**Resolution:** The recorder **auto-stops** at `max_clip_seconds` (default 120) with a visible countdown as it approaches and a "Reached maximum length" note; the captured audio is still transcribed (not discarded).
+**Basis:** convention — matches the server-side `max_clip_seconds` cap; avoids a silent truncation surprise.
+
+### DEC-25: Privacy reassurance (the local/air-gap differentiator).
+**Resolution:** A **dismissible one-time first-use hint** near the mic: "Audio is transcribed locally on your server — never sent to the cloud." Reinforces ziee's self-hosted/private positioning at the exact moment of doubt.
+**Basis:** product positioning ([[project_life_science_initiative]] privacy stance) — cheap trust signal at first use.
+
+### DEC-26: Admin onboarding step + live volume meter — in v1 or deferred?
+**Resolution:** **Defer both.** v1 relies on the settings-page empty-state banner + install/download cards for admin setup guidance (no dedicated getting-started "voice-setup" step yet), and a simple pulsing indicator + timer for recording (no live waveform/volume meter).
+**Basis:** scope control — the settings empty-state already guides setup; a `memory`-style onboarding step and a waveform meter are additive polish, noted as future.
