@@ -23,25 +23,26 @@ use crate::common::AppError;
 /// alone. Models with no entry here skip verification (logged) so a new
 /// [`SUPPORTED_MODELS`] entry isn't hard-blocked before its hash is pinned.
 ///
-// TODO verify: these are PLACEHOLDER digests. Before shipping, replace each with
-// the real sha256 of the corresponding `ggml-<name>.bin` from
-// https://huggingface.co/ggerganov/whisper.cpp (e.g. `sha256sum ggml-base.bin`).
+// Real digests: the git-LFS `oid sha256` of each `ggml-<name>.bin` from
+// https://huggingface.co/ggerganov/whisper.cpp (the LFS oid IS the file's
+// sha256). Fetched from the HF raw LFS pointers. A downloaded file that does not
+// match its pinned digest is deleted and the download fails.
 pub const KNOWN_MODEL_SHA256: &[(&str, &str)] = &[
     (
         "tiny",
-        "0000000000000000000000000000000000000000000000000000000000000000",
+        "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
     ),
     (
         "base",
-        "0000000000000000000000000000000000000000000000000000000000000000",
+        "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
     ),
     (
         "base.en",
-        "0000000000000000000000000000000000000000000000000000000000000000",
+        "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
     ),
     (
         "small",
-        "0000000000000000000000000000000000000000000000000000000000000000",
+        "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
     ),
 ];
 
@@ -225,8 +226,9 @@ where
     // Verify sha256 against the pinned table (skip only when unpinned).
     let actual = hex_lower(&hasher.finalize());
     if let Some(expected) = known_sha256(name) {
-        // A placeholder all-zero pin means "not yet pinned" — skip (see TODO on
-        // KNOWN_MODEL_SHA256) rather than reject every real download pre-pinning.
+        // Defensive: an all-zero pin would mean "not yet pinned" — skip rather
+        // than reject (all shipped pins are real, so this never triggers today;
+        // it keeps a newly-added-but-unpinned model from hard-failing).
         let is_placeholder = expected.bytes().all(|b| b == b'0');
         if !is_placeholder && !expected.eq_ignore_ascii_case(&actual) {
             let _ = std::fs::remove_file(&tmp);
