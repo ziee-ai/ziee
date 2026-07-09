@@ -111,6 +111,8 @@ mcp/tool_calls, citations modules) before any code.
 - **ITEM-33** — verdict: PASS — pure frontend surfacing on existing stores/components; e2e budgeted (TEST-36..38).
 - **ITEM-34** — verdict: CONCERN — the `workflow` kind cleanly reuses `run_for_test` (proven dry-run path); the `prompt` kind must guarantee **zero** side effects — the throwaway conversation must be created + torn down (or created ephemeral, mirroring migration 128's `ephemeral` workflow rows) and the notification/append seams explicitly bypassed, not just skipped by omission. Verify no `scheduled_task_runs` row and no `next_run_at` mutation on the test path.
 - **ITEM-35** — verdict: PASS — a "Test" action + inline result panel; mirrors the workflow dev dry-run UI; e2e budgeted (TEST-41).
+- **ITEM-36** — verdict: CONCERN — change-detection is v1 (user-chosen). Exact set-diff is clean when the result carries identifiable IDs (reuse `lit_search::dedup`); the fallback normalized-text fingerprint must be stable against benign volatility (timestamps/ordering) or `on_change` will over- or under-fire — the normalization rules need care + explicit unit coverage. The "unchanged → suppress notification but still record the run" path must not skip fingerprint persistence.
+- **ITEM-37** — verdict: PASS — a `notify_on` toggle + delta line; mirrors the `notify_mode` control; e2e budgeted (TEST-44).
 
 ## Lifecycle completeness check (so the plan stops leaking affordances)
 
@@ -120,11 +122,11 @@ ITEM-23/34/35) → **save/enable** → **fire** (tick + catch-up) / **test live*
 (run-now) → **deliver** (inbox + triage, ITEM-14/29) → **follow up** (bound
 conversation / continue-in-chat, ITEM-30/32) → **observe** (run history,
 ITEM-31) → **recover** (failure taxonomy + auto-pause + resume, ITEM-28/33) →
-**edit/disable/delete** (CRUD, ITEM-12). Deliberately **deferred** (with hooks,
-not dead-ends): change-detection/only-on-change (DEC-20), digest batching
-(DEC-19), natural-language scheduling (DEC-3), email/push channels (DEC-23), and
-task **duplicate** (a `project`/`workflow`-style convenience, DEC-25) — none
-block v1 and each has a clear later seam.
+**edit/disable/delete** (CRUD, ITEM-12). **Change-detection / only-on-change is now IN v1**
+(DEC-20, ITEM-36/37). Deliberately **deferred** (with hooks, not dead-ends):
+digest batching (DEC-19), natural-language scheduling (DEC-3), email/push
+channels (DEC-23), and task **duplicate** (DEC-25) — none block v1 and each has a
+clear later seam.
 
 ## Feature-research reconciliation (why the plan grew)
 
@@ -135,9 +137,9 @@ treats as core: **failure surfacing + auto-pause** (Claude/ChatGPT show per-run
 success/failure and pause on repeated failure), **run history/activity feed**
 (all three expose it), **delivery triage** (interrupt only on actionable), and
 **native follow-up on results** (the user's own question; ChatGPT binds a task
-to an expandable conversation). Three dimensions are deliberately **deferred**
-with schema hooks so v1 stays shippable — change-detection/"only-notify-on-change"
-(DEC-20, the top monitoring differentiator, needs result-diff + prompt work),
-digest batching windows (DEC-19), and natural-language scheduling (DEC-3). None
-of the deferrals paint us into a corner (`last_result_fingerprint` +
-`notify_mode` + cron-as-source-of-truth leave the door open).
+to an expandable conversation). The user then **pulled change-detection/"only-notify-on-change" into v1**
+(DEC-20, ITEM-36/37 — the top monitoring differentiator for the life-science
+use case). Remaining deferred-with-hooks: digest batching windows (DEC-19),
+natural-language scheduling (DEC-3), email/push channels (DEC-23), task duplicate
+(DEC-25). None paint us into a corner (`notify_mode` + cron-as-source-of-truth +
+the `notification` module seam leave the doors open).

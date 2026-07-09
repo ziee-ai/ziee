@@ -62,6 +62,12 @@ tests — [[feedback_no_cosmetic_tests]]). The tick loop uses the debug
 - **TEST-40** (tier: integration) [covers: ITEM-34] file: `src-app/server/tests/scheduler/test_fire_test.rs` — asserts: `POST /api/scheduled-tasks/test-fire` with an **unsaved** prompt config returns the model output AND writes **no** notification row, **no** durable `scheduled_task_runs` row, **no** conversation append, and (for a saved task) does **not** mutate `next_run_at`/`last_run_at`; the throwaway conversation is cleaned up; owner-scoped (403 without `scheduler::use`).
 - **TEST-41** (tier: e2e) [covers: ITEM-35] file: `src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts` — asserts: user fills the create drawer, clicks **Test**, sees the streamed result inline without the task being saved/listed, then saves.
 
+## Change-detection tests (DEC-20, v1)
+
+- **TEST-42** (tier: unit) [covers: ITEM-36] file: `src-app/server/src/modules/scheduler/change.rs` — asserts: the fingerprint is stable across identical results and across benign volatility (reordering / timestamp noise) but differs on a real content change; the item-set extractor pulls DOIs/PMIDs/arXiv IDs via the reused normalization; set-diff yields exactly the added items.
+- **TEST-43** (tier: integration) [covers: ITEM-36] file: `src-app/server/tests/scheduler/change_detection_test.rs` — asserts: for a `notify_on='on_change'` task, two firings with identical results notify **only once** (the second records a no-change run, no notification), a third firing with one new item notifies with a "1 new" delta; an `always`-mode task notifies on every success. Fingerprint/signature is persisted even on the suppressed run.
+- **TEST-44** (tier: e2e) [covers: ITEM-37] file: `src-app/ui/tests/e2e/14-scheduler/change-detection.spec.ts` — asserts: the create drawer exposes the "only when something changed" toggle; with it on, a seeded unchanged run produces no inbox item while a seeded changed run produces one showing the delta line.
+
 ## Coverage note
 
 - Backend-only items are covered without an e2e (ITEM-1..20, plus the module
