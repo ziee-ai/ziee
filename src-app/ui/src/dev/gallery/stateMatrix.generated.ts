@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 326 surfaces carry renderable-state signals; 1897 signals total.
+// 326 surfaces carry renderable-state signals; 1900 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2625,9 +2625,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/components/JsToolApprovalContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "mcpServerParenLabel(data.server)", line: 53 },
-      { kind: "branch", condition: "data.input !== undefined", line: 65 },
-      { kind: "branch", condition: "resolved === null", line: 75 },
+      { kind: "branch", condition: "submitting || resolved !== null", line: 39 },
+      { kind: "branch", condition: "resolved === 'approved'", line: 51 },
+      { kind: "branch", condition: "resolved === 'denied'", line: 51 },
+      { kind: "branch", condition: "mcpServerParenLabel(data.server)", line: 62 },
+      { kind: "branch", condition: "data.input !== undefined", line: 74 },
+      { kind: "branch", condition: "resolved === null", line: 84 },
     ],
   },
   "modules/mcp/chat-extension/components/McpMenuItem": {
@@ -2696,8 +2699,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "isExpanded", line: 301 },
       { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 326 },
       { kind: "branch", condition: "!mcpStore", line: 356 },
-      { kind: "branch", condition: "!streamingMessage", line: 745 },
-      { kind: "branch", condition: "!toolUseId", line: 760 },
+      { kind: "branch", condition: "!streamingMessage", line: 779 },
+      { kind: "branch", condition: "!toolUseId", line: 794 },
     ],
   },
   "modules/mcp/components/McpConfigModal": {

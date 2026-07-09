@@ -8,7 +8,7 @@
 ## Summary
 
 - **326** surfaces carry at least one renderable-state signal.
-- **1897** signals total: 1502 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1900** signals total: 1505 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2882,9 +2882,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `mcpServerParenLabel(data.server)` | 53 |
-| branch | `data.input !== undefined` | 65 |
-| branch | `resolved === null` | 75 |
+| branch | `submitting \|\| resolved !== null` | 39 |
+| branch | `resolved === 'approved'` | 51 |
+| branch | `resolved === 'denied'` | 51 |
+| branch | `mcpServerParenLabel(data.server)` | 62 |
+| branch | `data.input !== undefined` | 74 |
+| branch | `resolved === null` | 84 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -2959,8 +2962,8 @@ Required states: `error`
 | branch | `isExpanded` | 301 |
 | branch | `!run \|\| countToolUses(run) < 2` | 326 |
 | branch | `!mcpStore` | 356 |
-| branch | `!streamingMessage` | 745 |
-| branch | `!toolUseId` | 760 |
+| branch | `!streamingMessage` | 779 |
+| branch | `!toolUseId` | 794 |
 
 ### `modules/mcp/components/McpConfigModal`
 
