@@ -24,6 +24,12 @@ pub const PREVIEW_PAGE_CAP: u32 = 50;
 #[derive(Debug, Clone, Default)]
 pub struct ProcessingResult {
     pub text_pages: Vec<String>,
+    /// Per-page citation geometry (JSON), aligned 1:1 with `text_pages` when
+    /// present. Each entry is a JSON array of per-cleaned-char fraction boxes so
+    /// a chunk's cleaned `[char_start, char_end)` span maps directly to
+    /// highlight rectangles. Empty for non-PDF / geometry-less pages (the
+    /// citation UI degrades to a page-level deep-link).
+    pub geometry_pages: Vec<String>,
     pub metadata: ProcessingMetadata,
     pub thumbnails: Vec<Vec<u8>>,
     pub images: Vec<Vec<u8>>,
@@ -81,6 +87,15 @@ impl ProcessingManager {
                 let metadata_json = processor.extract_metadata(data, mime_type).await?;
                 result.metadata = serde_json::from_value(metadata_json)
                     .unwrap_or_default();
+                // Citation geometry: only PDFs carry per-char boxes today. Best-
+                // effort — a failure just means the citation UI opens the page
+                // without an exact-passage highlight.
+                if mime_type == "application/pdf" {
+                    result.geometry_pages = pdf::PdfProcessor
+                        .extract_geometry_pages(data)
+                        .await
+                        .unwrap_or_default();
+                }
                 break;
             }
         }

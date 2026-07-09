@@ -327,6 +327,7 @@ impl ImageGenerator for SpreadsheetImageGenerator {
 
         Ok(ProcessingResult {
             text_pages: vec![], // Text extraction handled by other processors
+            geometry_pages: vec![],
             metadata: Default::default(),
             thumbnails, // Single element array
             images,     // Multiple elements (one per sheet)

@@ -104,6 +104,42 @@ impl FileStorage for FilesystemStorage {
         Ok(path)
     }
 
+    async fn save_geometry_page(
+        &self,
+        user_id: Uuid,
+        file_id: Uuid,
+        page_num: u32,
+        geometry_json: &str,
+    ) -> StorageResult<PathBuf> {
+        let path = self
+            .get_user_path(user_id, "geometry")
+            .join(file_id.to_string())
+            .join(format!("page_{}.json", page_num));
+        self.ensure_dir(&path).await?;
+        fs::write(&path, geometry_json).await.map_err(|e| {
+            tracing::error!(error = %e, "save_geometry_page write failed");
+            AppError::internal_error("Storage error")
+        })?;
+        Ok(path)
+    }
+
+    async fn load_geometry_page(
+        &self,
+        user_id: Uuid,
+        file_id: Uuid,
+        page_num: u32,
+    ) -> StorageResult<String> {
+        let path = self
+            .get_user_path(user_id, "geometry")
+            .join(file_id.to_string())
+            .join(format!("page_{}.json", page_num));
+        reject_if_symlink(&path).await?;
+        fs::read_to_string(&path).await.map_err(|e| {
+            tracing::warn!(error = %e, page = page_num, "load_geometry_page failed");
+            AppError::not_found("Geometry page")
+        })
+    }
+
     async fn save_image(
         &self,
         user_id: Uuid,

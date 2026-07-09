@@ -72,6 +72,20 @@ pub async fn ingest_bytes(
             );
         }
     }
+    // Per-page citation geometry (PDF only; aligned 1:1 with text pages).
+    for (n, geom) in processing_result.geometry_pages.iter().enumerate() {
+        if let Err(e) = storage
+            .save_geometry_page(user_id, file_id, (n + 1) as u32, geom)
+            .await
+        {
+            tracing::warn!(
+                "ingest_bytes: failed to save geometry page {} for {}: {}",
+                n + 1,
+                file_id,
+                e
+            );
+        }
+    }
     if let Some(thumb) = processing_result.thumbnails.first() {
         if let Err(e) = storage.save_image(user_id, file_id, 1, true, thumb).await {
             tracing::warn!(

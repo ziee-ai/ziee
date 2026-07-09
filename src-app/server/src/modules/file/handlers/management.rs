@@ -144,6 +144,164 @@ pub async fn get_raw(
     Ok((StatusCode::OK, (headers, file_data).into_response()))
 }
 
+/// Query for the citation text-rects endpoint: a byte range into the page's
+/// cleaned text (a chunk's char_start/char_end).
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct TextRectsQuery {
+    pub page: u32,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub struct HighlightRect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub struct TextRectsResponse {
+    /// Rects are fraction-normalized to the page (0..1), origin top-left, so the
+    /// UI overlays them on the page image without knowing the render scale.
+    pub page_w: f32,
+    pub page_h: f32,
+    pub rects: Vec<HighlightRect>,
+}
+
+#[derive(serde::Deserialize)]
+struct PageGeometry {
+    text: String,
+    boxes: Vec<[f32; 4]>,
+}
+
+/// Relocate a chunk's cleaned span within the raw page text (whitespace-
+/// insensitive) and return the merged line-level highlight rects. Empty when the
+/// span can't be located (the UI falls back to a page-level open).
+fn align_span_to_boxes(cleaned_substr: &str, geom: &PageGeometry) -> Vec<HighlightRect> {
+    let raw_chars: Vec<char> = geom.text.chars().collect();
+    // Indices (into raw_chars / boxes) of the non-whitespace chars.
+    let raw_nows: Vec<usize> = raw_chars
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !c.is_whitespace())
+        .map(|(i, _)| i)
+        .collect();
+    let raw_nows_chars: Vec<char> = raw_nows.iter().map(|&i| raw_chars[i]).collect();
+    let needle: Vec<char> = cleaned_substr.chars().filter(|c| !c.is_whitespace()).collect();
+    if needle.is_empty() || needle.len() > raw_nows_chars.len() {
+        return Vec::new();
+    }
+    let mut matched: Option<usize> = None;
+    for start in 0..=(raw_nows_chars.len() - needle.len()) {
+        if raw_nows_chars[start..start + needle.len()] == needle[..] {
+            matched = Some(start);
+            break;
+        }
+    }
+    let Some(mp) = matched else { return Vec::new() };
+
+    // Boxes for the matched raw chars (skip degenerate zero boxes).
+    let mut sel: Vec<[f32; 4]> = raw_nows[mp..mp + needle.len()]
+        .iter()
+        .filter_map(|&i| geom.boxes.get(i).copied())
+        .filter(|b| b[2] > 0.0 && b[3] > 0.0)
+        .collect();
+    if sel.is_empty() {
+        return Vec::new();
+    }
+    // Merge into line-level rects: group boxes whose vertical center is close.
+    sel.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap_or(std::cmp::Ordering::Equal));
+    let mut lines: Vec<[f32; 4]> = Vec::new(); // [minx, miny, maxx, maxy]
+    for b in sel {
+        let (bx, by, br, bb) = (b[0], b[1], b[0] + b[2], b[1] + b[3]);
+        if let Some(last) = lines.last_mut() {
+            let last_cy = (last[1] + last[3]) / 2.0;
+            let b_cy = (by + bb) / 2.0;
+            if (last_cy - b_cy).abs() < 0.012 {
+                last[0] = last[0].min(bx);
+                last[1] = last[1].min(by);
+                last[2] = last[2].max(br);
+                last[3] = last[3].max(bb);
+                continue;
+            }
+        }
+        lines.push([bx, by, br, bb]);
+    }
+    lines
+        .into_iter()
+        .map(|l| HighlightRect {
+            x: l[0],
+            y: l[1],
+            w: (l[2] - l[0]).max(0.0),
+            h: (l[3] - l[1]).max(0.0),
+        })
+        .collect()
+}
+
+/// Citation highlight geometry: the fraction-normalized rectangles bounding a
+/// chunk's cleaned `[start, end)` span on a page, for the exact-passage overlay.
+/// Owner-scoped (foreign file → 404); non-PDF / no-geometry → `200 {rects:[]}`.
+pub async fn get_text_rects(
+    auth: RequirePermissions<(FilesRead,)>,
+    Path(file_id): Path<Uuid>,
+    Query(q): Query<TextRectsQuery>,
+) -> ApiResult<Json<TextRectsResponse>> {
+    let user_id = auth.user.id;
+    let file = Repos
+        .file
+        .get_by_id_and_user(file_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
+
+    let empty = TextRectsResponse {
+        page_w: 1.0,
+        page_h: 1.0,
+        rects: Vec::new(),
+    };
+
+    let storage = get_file_storage();
+    let geom_json = match storage
+        .load_geometry_page(user_id, file.blob_version_id, q.page)
+        .await
+    {
+        Ok(s) => s,
+        Err(_) => return Ok((StatusCode::OK, Json(empty))), // non-PDF / not-yet-backfilled
+    };
+    let geom: PageGeometry = match serde_json::from_str(&geom_json) {
+        Ok(g) => g,
+        Err(_) => return Ok((StatusCode::OK, Json(empty))),
+    };
+
+    let page_text = storage
+        .load_text_page(user_id, file.blob_version_id, q.page)
+        .await
+        .unwrap_or_default();
+    let start = q.start.min(page_text.len());
+    let end = q.end.min(page_text.len()).max(start);
+    // Slice on a char boundary defensively.
+    let cleaned_substr = page_text
+        .get(start..end)
+        .unwrap_or("")
+        .to_string();
+
+    let rects = align_span_to_boxes(&cleaned_substr, &geom);
+    Ok((
+        StatusCode::OK,
+        Json(TextRectsResponse {
+            page_w: 1.0,
+            page_h: 1.0,
+            rects,
+        }),
+    ))
+}
+
+pub fn get_text_rects_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(FilesRead,)>(op)
+        .summary("Citation highlight rectangles for a chunk's span on a page.")
+}
+
 /// Get file thumbnail (300px, single thumbnail from first page)
 pub async fn get_thumbnail(
     auth: RequirePermissions<(FilesPreview,)>,
