@@ -14,6 +14,15 @@ export interface AllSettingsResponse {
   settings: SettingItem[]
 }
 
+/** Body for `POST /files/{id}/versions`. */
+export interface AppendVersionRequest {
+  /**
+   * New full text content for the file. A new head version is appended;
+   *  byte-identical content is a no-op.
+   */
+  content: string
+}
+
 /** Approval mode for conversation MCP settings */
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
@@ -584,6 +593,12 @@ export interface Conversation {
   model_id?: string
   updated_at: string
   user_id: string
+}
+
+/** `?format=` for `GET /conversations/{id}/export`. */
+export interface ConversationExportQuery {
+  /** Target format: `md | docx | pdf | odt | rtf | html`. */
+  format: string
 }
 
 /**
@@ -1413,7 +1428,13 @@ export interface EnvironmentInfo {
   mounted: boolean
 }
 
+/** `?format=` for `GET /files/{id}/export`. */
 export interface ExportQuery {
+  /** Target format: `md | docx | pdf | odt | rtf | html`. */
+  format: string
+}
+
+export interface ExportQuery2 {
   /** csljson | bibtex | ris | text (default text) */
   format?: string
   project_id?: string
@@ -3835,6 +3856,15 @@ export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
 }
 
+/** Body for `POST /conversations/{id}/deliverables/{file_id}`. */
+export interface PinDeliverableRequest {
+  /**
+   * `true` promotes the file into the deliverables list; `false` hides a
+   *  derived file. Defaults to `true`.
+   */
+  pinned?: boolean
+}
+
 export interface PingResponse {
   ok: boolean
 }
@@ -5241,7 +5271,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -6731,6 +6761,7 @@ export const ApiEndpoints = {
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
+  'Chat.exportConversation': 'GET /api/conversations/{id}/export',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
   'ChatStream.subscribe': 'GET /api/chat/stream',
@@ -6770,10 +6801,12 @@ export const ApiEndpoints = {
   'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
   'DesktopSettings.getAll': 'GET /api/desktop/settings',
   'DesktopSettings.set': 'PUT /api/desktop/settings/{key}',
+  'File.appendVersion': 'POST /api/files/{file_id}/versions',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
   'File.downloadVersion': 'GET /api/files/{file_id}/versions/{version}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
+  'File.export': 'GET /api/files/{file_id}/export',
   'File.generateDownloadToken': 'POST /api/files/{file_id}/download-token',
   'File.get': 'GET /api/files/{file_id}',
   'File.getHeadVersion': 'GET /api/files/{file_id}/head',
@@ -6783,10 +6816,13 @@ export const ApiEndpoints = {
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
+  'File.listDeliverables': 'GET /api/conversations/{id}/deliverables',
   'File.listVersions': 'GET /api/files/{file_id}/versions',
+  'File.pinDeliverable': 'POST /api/conversations/{id}/deliverables/{file_id}',
   'File.previewVersion': 'GET /api/files/{file_id}/versions/{version}/preview',
   'File.restore': 'POST /api/files/{file_id}/restore',
   'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
+  'File.unpinDeliverable': 'DELETE /api/conversations/{id}/deliverables/{file_id}',
   'File.upload': 'POST /api/files/upload',
   'FileRagAdmin.backfill': 'POST /api/file-rag/backfill',
   'FileRagAdmin.get': 'GET /api/file-rag/admin-settings',
@@ -7110,6 +7146,7 @@ export type ApiEndpointParameters = {
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
+  'Chat.exportConversation': { id: string; format: string }
   'Chat.getUserLlmProviders': { limit?: number; offset?: number }
   'ChatStream.setSubscription': SetSubscriptionRequest
   'ChatStream.subscribe': void
@@ -7149,10 +7186,12 @@ export type ApiEndpointParameters = {
   'DesktopSettings.get': { key: string }
   'DesktopSettings.getAll': void
   'DesktopSettings.set': { key: string } & SetSettingRequest
+  'File.appendVersion': { file_id: string } & AppendVersionRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
   'File.downloadVersion': { file_id: string; version: string }
   'File.downloadWithToken': { file_id: string; token: string }
+  'File.export': { file_id: string; format: string }
   'File.generateDownloadToken': { file_id: string; version?: number }
   'File.get': { file_id: string }
   'File.getHeadVersion': { file_id: string }
@@ -7162,10 +7201,13 @@ export type ApiEndpointParameters = {
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
+  'File.listDeliverables': { id: string }
   'File.listVersions': { file_id: string; limit?: number; offset?: number }
+  'File.pinDeliverable': { id: string; file_id: string } & PinDeliverableRequest
   'File.previewVersion': { file_id: string; version: string; page?: number }
   'File.restore': { file_id: string } & RestoreVersionRequest
   'File.textVersion': { file_id: string; version: string; page?: number }
+  'File.unpinDeliverable': { id: string; file_id: string }
   'File.upload': FormData
   'FileRagAdmin.backfill': void
   'FileRagAdmin.get': void
@@ -7489,6 +7531,7 @@ export type ApiEndpointResponses = {
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
+  'Chat.exportConversation': any
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'ChatStream.setSubscription': void
   'ChatStream.subscribe': ChatStreamSseEvent
@@ -7528,10 +7571,12 @@ export type ApiEndpointResponses = {
   'DesktopSettings.get': SettingResponse
   'DesktopSettings.getAll': AllSettingsResponse
   'DesktopSettings.set': SuccessResponse
+  'File.appendVersion': any
   'File.delete': void
   'File.download': Blob
   'File.downloadVersion': Blob
   'File.downloadWithToken': Blob
+  'File.export': any
   'File.generateDownloadToken': DownloadTokenResponse
   'File.get': File
   'File.getHeadVersion': FileVersion
@@ -7541,10 +7586,13 @@ export type ApiEndpointResponses = {
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse
+  'File.listDeliverables': any
   'File.listVersions': FileVersion[]
+  'File.pinDeliverable': any
   'File.previewVersion': Blob
   'File.restore': File
   'File.textVersion': Blob
+  'File.unpinDeliverable': any
   'File.upload': File
   'FileRagAdmin.backfill': TriggerResponse
   'FileRagAdmin.get': FileRagAdminSettings
