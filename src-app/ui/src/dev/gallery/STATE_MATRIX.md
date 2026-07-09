@@ -2962,8 +2962,8 @@ Required states: `error`
 | branch | `isExpanded` | 301 |
 | branch | `!run \|\| countToolUses(run) < 2` | 326 |
 | branch | `!mcpStore` | 356 |
-| branch | `!streamingMessage` | 779 |
-| branch | `!toolUseId` | 794 |
+| branch | `!streamingMessage` | 783 |
+| branch | `!toolUseId` | 798 |
 
 ### `modules/mcp/components/McpConfigModal`
 

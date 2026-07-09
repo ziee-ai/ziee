@@ -2699,8 +2699,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "isExpanded", line: 301 },
       { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 326 },
       { kind: "branch", condition: "!mcpStore", line: 356 },
-      { kind: "branch", condition: "!streamingMessage", line: 779 },
-      { kind: "branch", condition: "!toolUseId", line: 794 },
+      { kind: "branch", condition: "!streamingMessage", line: 783 },
+      { kind: "branch", condition: "!toolUseId", line: 798 },
     ],
   },
   "modules/mcp/components/McpConfigModal": {
