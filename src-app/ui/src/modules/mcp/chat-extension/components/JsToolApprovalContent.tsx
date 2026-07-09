@@ -1,0 +1,113 @@
+import { useState } from 'react'
+import { Alert, Button, Space, Text } from '@/components/ui'
+import { Check, Clock, X } from 'lucide-react'
+import { Stores } from '@/core/stores'
+import type { ContentRendererProps } from '@/modules/chat/core/extensions/types'
+import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
+
+/**
+ * Renders the approve/deny prompt for a gated sub-tool call a `run_js` script
+ * wants to make while it is SUSPENDED in-process. Unlike the turn-boundary MCP
+ * approval flow, this resolves via the side-channel elicitation `/respond`
+ * endpoint (the same in-process oneshot `ask_user` uses) so the live script
+ * resumes — `accept` runs the sub-tool, `decline` throws `ToolApprovalDenied`
+ * into the script. Injected as a `run_js_approval` content block by the
+ * `runJsApprovalRequired` SSE handler.
+ */
+interface JsToolApprovalData {
+  elicitation_id: string
+  tool_name: string
+  server: string
+  input?: Record<string, unknown>
+}
+
+export function JsToolApprovalContent({ content }: ContentRendererProps) {
+  const data = content.content as unknown as JsToolApprovalData
+  const [resolved, setResolved] = useState<'approved' | 'denied' | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const resolve = async (action: 'accept' | 'decline') => {
+    setSubmitting(true)
+    const next = action === 'accept' ? 'approved' : 'denied'
+    setResolved(next)
+    try {
+      await Stores.McpComposer.resolveElicitation(data.elicitation_id, action)
+    } catch (e) {
+      // Roll back so the user can retry.
+      setResolved(null)
+      console.error('[run_js approval] failed to resolve:', e)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="my-2" data-testid={`run-js-approval-${data.elicitation_id}`}>
+      <Alert
+        tone={resolved === 'approved' ? 'success' : resolved === 'denied' ? 'neutral' : 'warning'}
+        data-testid="run-js-approval-alert"
+        icon={<Clock />}
+        title={
+          <div>
+            <Text strong>run_js wants to call: {data.tool_name}</Text>
+            {mcpServerParenLabel(data.server) && (
+              <Text type="secondary" className="ml-2 text-xs whitespace-nowrap">
+                {mcpServerParenLabel(data.server)}
+              </Text>
+            )}
+          </div>
+        }
+        description={
+          <div className="mt-2">
+            <Text className="text-sm">
+              A running script wants to call this tool. Approve to let the script continue.
+            </Text>
+            {data.input !== undefined && (
+              <div className="mt-2">
+                <Text strong className="text-xs">
+                  Arguments:
+                </Text>
+                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs">
+                  {JSON.stringify(data.input, null, 2)}
+                </pre>
+              </div>
+            )}
+            {resolved === null ? (
+              <div className="mt-3">
+                <Space>
+                  <Button
+                    icon={<Check />}
+                    onClick={() => resolve('accept')}
+                    loading={submitting}
+                    size="default"
+                    data-testid="run-js-approval-approve"
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    icon={<X />}
+                    onClick={() => resolve('decline')}
+                    loading={submitting}
+                    size="default"
+                    data-testid="run-js-approval-deny"
+                  >
+                    Deny
+                  </Button>
+                </Space>
+              </div>
+            ) : (
+              <Text
+                type="secondary"
+                className="mt-2 block text-xs"
+                data-testid={`run-js-approval-${resolved}`}
+              >
+                {resolved === 'approved' ? 'Approved — script resumed.' : 'Denied.'}
+              </Text>
+            )}
+          </div>
+        }
+      />
+    </div>
+  )
+}

@@ -16867,162 +16867,6 @@
         ]
       }
     },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/workflows": {
       "get": {
         "tags": [
@@ -18748,6 +18592,162 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
           }
         },
         "security": [
@@ -33178,6 +33178,23 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "runJsApprovalRequired"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamRunJsApprovalRequiredData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "titleUpdated"
               }
             },
@@ -33359,6 +33376,33 @@
         },
         "required": [
           "tool_use_id",
+          "tool_name",
+          "server",
+          "input"
+        ]
+      },
+      "SSEChatStreamRunJsApprovalRequiredData": {
+        "description": "Event data for a `run_js` script's per-call tool approval.\n\n Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's\n decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a\n turn-boundary flow resumed by re-sending the message), this is resolved by a\n SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same\n in-process oneshot mechanism `ask_user` uses — because a live QuickJS call\n stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;\n `decline`/`cancel` → the host fn throws a catchable error into the script.",
+        "type": "object",
+        "properties": {
+          "elicitation_id": {
+            "description": "Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond",
+            "type": "string"
+          },
+          "input": {
+            "description": "Sub-tool input parameters"
+          },
+          "server": {
+            "description": "MCP server that owns the sub-tool (display name)",
+            "type": "string"
+          },
+          "tool_name": {
+            "description": "Name of the sub-tool the script wants to call",
+            "type": "string"
+          }
+        },
+        "required": [
+          "elicitation_id",
           "tool_name",
           "server",
           "input"

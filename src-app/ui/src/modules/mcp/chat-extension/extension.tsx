@@ -19,6 +19,7 @@ import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
+import { JsToolApprovalContent } from '@/modules/mcp/chat-extension/components/JsToolApprovalContent'
 
 /**
  * MCP Tool Call UI Component
@@ -598,6 +599,57 @@ const mcpExtension: ChatExtension = createExtension({
       }
     },
 
+    runJsApprovalRequired: async (data, get, set) => {
+      // A run_js script is SUSPENDED awaiting approval of a gated sub-tool call.
+      // Inject a `run_js_approval` content block so JsToolApprovalContent renders
+      // approve/deny; resolution goes via the side-channel elicitation /respond
+      // endpoint (the same in-process oneshot ask_user uses), NOT the
+      // turn-boundary tool_approvals flow — a live script stack can't survive a
+      // request boundary.
+      const chatState = get()
+      const streamingMessage = chatState.streamingMessage
+      const now = new Date().toISOString()
+
+      const approvalContent = {
+        id: '',
+        message_id: '',
+        content_type: 'run_js_approval',
+        content: {
+          type: 'run_js_approval',
+          status: 'pending',
+          elicitation_id: data.elicitation_id,
+          tool_name: data.tool_name,
+          server: data.server,
+          input: data.input,
+        },
+        sequence_order: 0,
+        created_at: now,
+        updated_at: now,
+      } as unknown as MessageContent
+
+      if (streamingMessage) {
+        // Dedup by the unique per-approval elicitation_id.
+        const exists = streamingMessage.contents.some(
+          c =>
+            c.content_type === 'run_js_approval' &&
+            (c.content as unknown as { elicitation_id: string }).elicitation_id === data.elicitation_id,
+        )
+        if (!exists) {
+          approvalContent.id = `${streamingMessage.id}-runjs-${data.elicitation_id}`
+          approvalContent.message_id = streamingMessage.id
+          approvalContent.sequence_order = streamingMessage.contents.length
+
+          const updatedMessage = {
+            ...streamingMessage,
+            contents: [...streamingMessage.contents, approvalContent],
+          }
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(updatedMessage.id, updatedMessage)
+          set({ streamingMessage: updatedMessage, messages: newMessages })
+        }
+      }
+    },
+
     mcpElicitationRequired: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpElicitationRequiredData
       const mcpStore = Stores.McpComposer
@@ -986,6 +1038,7 @@ const mcpExtension: ChatExtension = createExtension({
   contentTypes: {
     tool_use: McpToolUseGroup,
     elicitation_request: ElicitationFormContent,
+    run_js_approval: JsToolApprovalContent,
   },
 
   // Register slot components

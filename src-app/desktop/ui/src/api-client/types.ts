@@ -4480,6 +4480,7 @@ export type SSEChatStreamEvent = {
   mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
   mcpToolProgress: SSEChatStreamMcpToolProgressData
   artifactCreated: SSEChatStreamArtifactCreatedData
+  runJsApprovalRequired: SSEChatStreamRunJsApprovalRequiredData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -4557,6 +4558,28 @@ export interface SSEChatStreamMcpToolStartData {
   tool_name: string
   /** Unique identifier for this tool use */
   tool_use_id: string
+}
+
+/**
+ * Event data for a `run_js` script's per-call tool approval.
+ *
+ *  Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's
+ *  decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a
+ *  turn-boundary flow resumed by re-sending the message), this is resolved by a
+ *  SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same
+ *  in-process oneshot mechanism `ask_user` uses — because a live QuickJS call
+ *  stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;
+ *  `decline`/`cancel` → the host fn throws a catchable error into the script.
+ */
+export interface SSEChatStreamRunJsApprovalRequiredData {
+  /** Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond */
+  elicitation_id: string
+  /** Sub-tool input parameters */
+  input: unknown
+  /** MCP server that owns the sub-tool (display name) */
+  server: string
+  /** Name of the sub-tool the script wants to call */
+  tool_name: string
 }
 
 /**
