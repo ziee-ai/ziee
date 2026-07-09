@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 332 surfaces carry renderable-state signals; 1936 signals total.
+// 332 surfaces carry renderable-state signals; 1937 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3041,13 +3041,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/notification/pages/NotificationsPage",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading && items.length === 0", line: 60 },
-      { kind: "error", condition: "error && items.length === 0", line: 64 },
-      { kind: "empty", condition: "items.length === 0", line: 72 },
-      { kind: "branch", condition: "!n.read_at", line: 82 },
-      { kind: "branch", condition: "n.body", line: 92 },
-      { kind: "branch", condition: "!n.read_at", line: 102 },
-      { kind: "branch", condition: "total > perPage", line: 127 },
+      { kind: "loading", condition: "loading && items.length === 0", line: 66 },
+      { kind: "error", condition: "error && items.length === 0", line: 70 },
+      { kind: "empty", condition: "items.length === 0", line: 78 },
+      { kind: "branch", condition: "!n.read_at", line: 88 },
+      { kind: "branch", condition: "n.body", line: 98 },
+      { kind: "branch", condition: "!n.read_at", line: 108 },
+      { kind: "branch", condition: "total > perPage", line: 133 },
     ],
   },
   "modules/onboarding/OnboardingPage": {
@@ -3266,11 +3266,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/scheduler/components/ScheduleBuilder",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 113 },
-      { kind: "branch", condition: "preset !== 'custom'", line: 142 },
-      { kind: "branch", condition: "preset === 'weekly'", line: 158 },
-      { kind: "branch", condition: "preset === 'monthly'", line: 167 },
-      { kind: "branch", condition: "preset === 'custom'", line: 182 },
+      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 127 },
+      { kind: "branch", condition: "!raw", line: 136 },
+      { kind: "branch", condition: "preset !== 'custom'", line: 163 },
+      { kind: "branch", condition: "preset === 'weekly'", line: 179 },
+      { kind: "branch", condition: "preset === 'monthly'", line: 189 },
+      { kind: "branch", condition: "preset === 'custom'", line: 202 },
     ],
   },
   "modules/scheduler/components/ScheduledTaskFormDrawer": {
@@ -3278,13 +3279,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["open"],
     signals: [
       { kind: "branch", condition: "!open", line: 69 },
-      { kind: "branch", condition: "err", line: 140 },
-      { kind: "branch", condition: "err", line: 163 },
-      { kind: "overlay", condition: "<Drawer open>", line: 193 },
-      { kind: "branch", condition: "canUse", line: 218 },
-      { kind: "branch", condition: "f.target_kind === 'prompt'", line: 254 },
-      { kind: "branch", condition: "testing", line: 332 },
-      { kind: "branch", condition: "testResult", line: 337 },
+      { kind: "branch", condition: "err", line: 145 },
+      { kind: "branch", condition: "err", line: 168 },
+      { kind: "overlay", condition: "<Drawer open>", line: 198 },
+      { kind: "branch", condition: "canUse", line: 223 },
+      { kind: "branch", condition: "f.target_kind === 'prompt'", line: 259 },
+      { kind: "branch", condition: "testing", line: 337 },
+      { kind: "branch", condition: "testResult", line: 342 },
     ],
   },
   "modules/scheduler/pages/ScheduledTasksPage": {

@@ -8,7 +8,7 @@
 ## Summary
 
 - **332** surfaces carry at least one renderable-state signal.
-- **1936** signals total: 1529 branch, 116 empty, 99 error, 102 loading, 88 overlay, 2 panel.
+- **1937** signals total: 1530 branch, 116 empty, 99 error, 102 loading, 88 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **31** slot registrations (sidebar / settings / chat mount points).
 
@@ -3331,13 +3331,13 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && items.length === 0` | 60 |
-| error | `error && items.length === 0` | 64 |
-| empty | `items.length === 0` | 72 |
-| branch | `!n.read_at` | 82 |
-| branch | `n.body` | 92 |
-| branch | `!n.read_at` | 102 |
-| branch | `total > perPage` | 127 |
+| loading | `loading && items.length === 0` | 66 |
+| error | `error && items.length === 0` | 70 |
+| empty | `items.length === 0` | 78 |
+| branch | `!n.read_at` | 88 |
+| branch | `n.body` | 98 |
+| branch | `!n.read_at` | 108 |
+| branch | `total > perPage` | 133 |
 
 ### `modules/onboarding/OnboardingPage`
 
@@ -3575,11 +3575,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `value.schedule_kind === 'once'` | 113 |
-| branch | `preset !== 'custom'` | 142 |
-| branch | `preset === 'weekly'` | 158 |
-| branch | `preset === 'monthly'` | 167 |
-| branch | `preset === 'custom'` | 182 |
+| branch | `value.schedule_kind === 'once'` | 127 |
+| branch | `!raw` | 136 |
+| branch | `preset !== 'custom'` | 163 |
+| branch | `preset === 'weekly'` | 179 |
+| branch | `preset === 'monthly'` | 189 |
+| branch | `preset === 'custom'` | 202 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3588,13 +3589,13 @@ Required states: `open`
 | kind | condition | line |
 |---|---|---|
 | branch | `!open` | 69 |
-| branch | `err` | 140 |
-| branch | `err` | 163 |
-| overlay | `<Drawer open>` | 193 |
-| branch | `canUse` | 218 |
-| branch | `f.target_kind === 'prompt'` | 254 |
-| branch | `testing` | 332 |
-| branch | `testResult` | 337 |
+| branch | `err` | 145 |
+| branch | `err` | 168 |
+| overlay | `<Drawer open>` | 198 |
+| branch | `canUse` | 223 |
+| branch | `f.target_kind === 'prompt'` | 259 |
+| branch | `testing` | 337 |
+| branch | `testResult` | 342 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
