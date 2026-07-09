@@ -1,8 +1,8 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 73,
-    "hosts": 54,
+    "total": 75,
+    "hosts": 56,
     "triggers": 19,
     "wiredOpen": 37
   },
@@ -450,6 +450,19 @@
       ]
     },
     {
+      "surface": "modules/notification/components/NotificationBellWidget",
+      "class": "host",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
       "surface": "modules/projects/chat-extension/components/ProjectConversationsList",
       "class": "host",
       "primitives": [
@@ -516,6 +529,19 @@
     },
     {
       "surface": "modules/projects/components/ProjectKnowledgeSection",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/scheduler/components/ScheduledTaskFormDrawer",
       "class": "host",
       "primitives": [
         "Drawer"

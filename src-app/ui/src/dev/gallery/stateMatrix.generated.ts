@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1894 signals total.
+// 332 surfaces carry renderable-state signals; 1936 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3016,6 +3016,40 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading && !settings", line: 47 },
     ],
   },
+  "modules/notification/components/NotificationBellWidget": {
+    surface: "modules/notification/components/NotificationBellWidget",
+    requiredStates: ["empty","open"],
+    signals: [
+      { kind: "branch", condition: "unread > 0", line: 32 },
+      { kind: "empty", condition: "recent.length === 0", line: 42 },
+      { kind: "branch", condition: "!n.read_at", line: 58 },
+      { kind: "branch", condition: "n.body", line: 63 },
+      { kind: "overlay", condition: "<Popover open>", line: 91 },
+    ],
+  },
+  "modules/notification/components/NotificationToastListener": {
+    surface: "modules/notification/components/NotificationToastListener",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "event.data.action !== 'create'", line: 22 },
+      { kind: "branch", condition: "!hasPermissionNow(Permissions.NotificationsRead)", line: 23 },
+      { kind: "branch", condition: "!id || id === '00000000-0000-0000-0000-000000000000'", line: 26 },
+      { kind: "branch", condition: "!n.interrupt", line: 29 },
+    ],
+  },
+  "modules/notification/pages/NotificationsPage": {
+    surface: "modules/notification/pages/NotificationsPage",
+    requiredStates: ["delayed","empty","error"],
+    signals: [
+      { kind: "loading", condition: "loading && items.length === 0", line: 60 },
+      { kind: "error", condition: "error && items.length === 0", line: 64 },
+      { kind: "empty", condition: "items.length === 0", line: 72 },
+      { kind: "branch", condition: "!n.read_at", line: 82 },
+      { kind: "branch", condition: "n.body", line: 92 },
+      { kind: "branch", condition: "!n.read_at", line: 102 },
+      { kind: "branch", condition: "total > perPage", line: 127 },
+    ],
+  },
   "modules/onboarding/OnboardingPage": {
     surface: "modules/onboarding/OnboardingPage",
     requiredStates: [],
@@ -3226,6 +3260,56 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!layoutDef", line: 111 },
       { kind: "branch", condition: "guards.length > 0", line: 177 },
       { kind: "branch", condition: "protectedRoutes.length > 0", line: 191 },
+    ],
+  },
+  "modules/scheduler/components/ScheduleBuilder": {
+    surface: "modules/scheduler/components/ScheduleBuilder",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 113 },
+      { kind: "branch", condition: "preset !== 'custom'", line: 142 },
+      { kind: "branch", condition: "preset === 'weekly'", line: 158 },
+      { kind: "branch", condition: "preset === 'monthly'", line: 167 },
+      { kind: "branch", condition: "preset === 'custom'", line: 182 },
+    ],
+  },
+  "modules/scheduler/components/ScheduledTaskFormDrawer": {
+    surface: "modules/scheduler/components/ScheduledTaskFormDrawer",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "!open", line: 69 },
+      { kind: "branch", condition: "err", line: 140 },
+      { kind: "branch", condition: "err", line: 163 },
+      { kind: "overlay", condition: "<Drawer open>", line: 193 },
+      { kind: "branch", condition: "canUse", line: 218 },
+      { kind: "branch", condition: "f.target_kind === 'prompt'", line: 254 },
+      { kind: "branch", condition: "testing", line: 332 },
+      { kind: "branch", condition: "testResult", line: 337 },
+    ],
+  },
+  "modules/scheduler/pages/ScheduledTasksPage": {
+    surface: "modules/scheduler/pages/ScheduledTasksPage",
+    requiredStates: ["delayed","empty","error"],
+    signals: [
+      { kind: "branch", condition: "task.paused_reason", line: 51 },
+      { kind: "branch", condition: "expanded", line: 74 },
+      { kind: "branch", condition: "!runs", line: 76 },
+      { kind: "empty", condition: "runs.length === 0", line: 78 },
+      { kind: "loading", condition: "loading && tasks.length === 0", line: 162 },
+      { kind: "error", condition: "error && tasks.length === 0", line: 166 },
+      { kind: "empty", condition: "tasks.length === 0", line: 174 },
+    ],
+  },
+  "modules/scheduler/pages/SchedulerAdminPage": {
+    surface: "modules/scheduler/pages/SchedulerAdminPage",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "branch", condition: "!f", line: 49 },
+      { kind: "loading", condition: "loading && !settings", line: 58 },
+      { kind: "branch", condition: "!canManage", line: 78 },
+      { kind: "error", condition: "error", line: 87 },
+      { kind: "branch", condition: "f", line: 96 },
+      { kind: "branch", condition: "canManage", line: 164 },
     ],
   },
   "modules/server-update/AboutSettings": {
@@ -3902,6 +3986,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/llm-repository/module", line: 56 },
   { slot: "settingsAdminPages", surface: "modules/mcp/module", line: 141 },
   { slot: "settingsAdminPages", surface: "modules/memory/module", line: 71 },
+  { slot: "settingsAdminPages", surface: "modules/scheduler/module", line: 78 },
   { slot: "settingsAdminPages", surface: "modules/server-update/module", line: 35 },
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
@@ -3930,7 +4015,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 325 keys.
+ * 336 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4164,6 +4249,11 @@ export type RequiredState =
   | "modules/memory/components/sections/SemanticSearchSection:open"
   | "modules/memory/pages/MemoryAdminPage:delayed"
   | "modules/memory/pages/MemoryAdminPage:error"
+  | "modules/notification/components/NotificationBellWidget:empty"
+  | "modules/notification/components/NotificationBellWidget:open"
+  | "modules/notification/pages/NotificationsPage:delayed"
+  | "modules/notification/pages/NotificationsPage:empty"
+  | "modules/notification/pages/NotificationsPage:error"
   | "modules/onboarding/OnboardingRedirect:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty"
@@ -4187,6 +4277,12 @@ export type RequiredState =
   | "modules/projects/pages/ProjectDetailPage:empty"
   | "modules/projects/pages/ProjectsListPage:delayed"
   | "modules/projects/pages/ProjectsListPage:error"
+  | "modules/scheduler/components/ScheduledTaskFormDrawer:open"
+  | "modules/scheduler/pages/ScheduledTasksPage:delayed"
+  | "modules/scheduler/pages/ScheduledTasksPage:empty"
+  | "modules/scheduler/pages/ScheduledTasksPage:error"
+  | "modules/scheduler/pages/SchedulerAdminPage:delayed"
+  | "modules/scheduler/pages/SchedulerAdminPage:error"
   | "modules/server-update/AboutSettings:error"
   | "modules/skill/components/ConversationSkillsPanel:delayed"
   | "modules/skill/components/ConversationSkillsPanel:empty"
@@ -4492,6 +4588,11 @@ export const REQUIRED_STATE_KEYS = [
   "modules/memory/components/sections/SemanticSearchSection:open",
   "modules/memory/pages/MemoryAdminPage:delayed",
   "modules/memory/pages/MemoryAdminPage:error",
+  "modules/notification/components/NotificationBellWidget:empty",
+  "modules/notification/components/NotificationBellWidget:open",
+  "modules/notification/pages/NotificationsPage:delayed",
+  "modules/notification/pages/NotificationsPage:empty",
+  "modules/notification/pages/NotificationsPage:error",
   "modules/onboarding/OnboardingRedirect:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty",
@@ -4515,6 +4616,12 @@ export const REQUIRED_STATE_KEYS = [
   "modules/projects/pages/ProjectDetailPage:empty",
   "modules/projects/pages/ProjectsListPage:delayed",
   "modules/projects/pages/ProjectsListPage:error",
+  "modules/scheduler/components/ScheduledTaskFormDrawer:open",
+  "modules/scheduler/pages/ScheduledTasksPage:delayed",
+  "modules/scheduler/pages/ScheduledTasksPage:empty",
+  "modules/scheduler/pages/ScheduledTasksPage:error",
+  "modules/scheduler/pages/SchedulerAdminPage:delayed",
+  "modules/scheduler/pages/SchedulerAdminPage:error",
   "modules/server-update/AboutSettings:error",
   "modules/skill/components/ConversationSkillsPanel:delayed",
   "modules/skill/components/ConversationSkillsPanel:empty",
