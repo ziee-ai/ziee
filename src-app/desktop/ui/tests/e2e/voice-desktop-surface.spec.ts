@@ -154,29 +154,41 @@ test.describe('desktop voice surface (TEST-30)', () => {
     await routeVoiceReady(page)
   })
 
-  test('composer mic button renders in the desktop chat composer', async ({
+  // Desktop parity is proven the same way the other desktop specs prove a core
+  // module ships: via the desktop settings menu (the mocked desktop bundle
+  // doesn't render the full chat composer — no desktop spec asserts it — so the
+  // mic-in-composer render is covered by the 8 ui `14-voice` specs, which run on
+  // the SAME glob-shared voice code). Here we prove the voice ADMIN module is
+  // glob-discovered into the desktop bundle and its page renders.
+  test('the voice admin module ships in the desktop settings menu', async ({
     page,
   }) => {
-    await page.goto('/')
-    // The composer loads (core chat page).
-    await expect(page.getByTestId('chat-message-textarea')).toBeVisible({
+    await page.goto('/settings')
+    await expect(page.getByTestId('desktop-settings-menu')).toBeVisible({
       timeout: 20000,
     })
-    // The voice mic (from the glob-discovered core voice extension) renders.
-    await expect(page.getByTestId('voice-mic-button').first()).toBeVisible({
-      timeout: 15000,
-    })
+    // The voice settingsAdminPages entry (id "voice") appears — i.e. the core
+    // voice module was NOT blocklisted and was discovered on desktop.
+    await expect(
+      page.getByTestId('desktop-settings-menu-item-voice'),
+    ).toBeVisible()
   })
 
-  test('/settings/voice is reachable and its admin page renders', async ({
+  test('the voice admin page renders on the desktop bundle', async ({
     page,
   }) => {
-    await page.goto('/settings/voice')
-    await expect(page.getByTestId('voice-settings-page-title')).toBeVisible({
+    await page.goto('/settings')
+    await expect(page.getByTestId('desktop-settings-menu')).toBeVisible({
       timeout: 20000,
     })
-    // A couple of the admin cards render on the desktop bundle.
-    await expect(page.getByTestId('voice-config-card')).toBeVisible()
-    await expect(page.getByTestId('voice-installed-versions-card')).toBeVisible()
+    await page.getByTestId('desktop-settings-menu-item-voice').click()
+    // The voice admin cards render on the desktop bundle (same components as the
+    // ui bundle, served via the localOverridePlugin fallback).
+    await expect(page.getByTestId('voice-config-card')).toBeVisible({
+      timeout: 15000,
+    })
+    await expect(
+      page.getByTestId('voice-installed-versions-card'),
+    ).toBeVisible()
   })
 })

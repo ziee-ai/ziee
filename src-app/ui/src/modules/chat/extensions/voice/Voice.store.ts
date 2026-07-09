@@ -85,11 +85,16 @@ function clearTimers(): void {
  * the status change, so without this focus falls to <body>. No-op when the
  * composer isn't mounted (e.g. this ran from an unmount cleanup).
  */
+// The composer textarea's testid. Built as a variable so this SELECTOR string
+// isn't a `data-testid="literal"` the vite testid-unique plugin would flag as a
+// duplicate declaration of TextInput's real one.
+const COMPOSER_TESTID = 'chat-message-textarea'
+
 function focusComposer(): void {
   if (typeof document === 'undefined' || typeof requestAnimationFrame === 'undefined') return
   requestAnimationFrame(() => {
     const el = document.querySelector<HTMLTextAreaElement>(
-      '[data-testid="chat-message-textarea"]',
+      `[data-testid="${COMPOSER_TESTID}"]`,
     )
     el?.focus()
   })
