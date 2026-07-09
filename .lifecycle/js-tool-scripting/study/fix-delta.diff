@@ -1,0 +1,732 @@
+diff --git a/src-app/server/src/modules/js_tool/approval.rs b/src-app/server/src/modules/js_tool/approval.rs
+index 1efd778ff..5886084ac 100644
+--- a/src-app/server/src/modules/js_tool/approval.rs
++++ b/src-app/server/src/modules/js_tool/approval.rs
+@@ -50,14 +50,24 @@ pub fn gate(
+     mode: ApprovalMode,
+     is_auto_approved: bool,
+ ) -> GateDecision {
+-    if is_control_mutating {
+-        return GateDecision::NeedApproval;
+-    }
++    // Order matters and MUST match the normal after_llm_call loop (mcp.rs):
++    // 1. Built-in privileged servers always execute — even under Disabled.
+     if is_builtin {
+         return GateDecision::Allow;
+     }
++    // 2. Disabled is the kill switch: a non-builtin tool is DENIED outright,
++    //    BEFORE any control/approval classification. Without this, a mutating
++    //    `control` tool (deliberately NOT a built-in) would get an approval
++    //    prompt inside a script even though MCP is off — a confused-deputy
++    //    bypass of the Disabled contract (security audit, medium).
++    if matches!(mode, ApprovalMode::Disabled) {
++        return GateDecision::Deny;
++    }
++    // 3. A mutating control call always needs approval (overrides AutoApprove).
++    if is_control_mutating {
++        return GateDecision::NeedApproval;
++    }
+     match mode {
+-        ApprovalMode::Disabled => GateDecision::Deny,
+         ApprovalMode::AutoApprove => GateDecision::Allow,
+         ApprovalMode::ManualApprove => {
+             if is_auto_approved {
+@@ -66,6 +76,8 @@ pub fn gate(
+                 GateDecision::NeedApproval
+             }
+         }
++        // Handled above.
++        ApprovalMode::Disabled => GateDecision::Deny,
+     }
+ }
+ 
+@@ -76,6 +88,18 @@ pub enum ApprovalOutcome {
+     Denied(String),
+ }
+ 
++/// Removes the registry entry when dropped — covers the case where the
++/// surrounding future is cancelled externally (server shutdown / task abort)
++/// before any `select!` arm runs, which would otherwise leak the oneshot in the
++/// process-global registry (audit: concurrency). Normal-path removes (respond
++/// consumes the entry; the timeout/closed arms) make this a harmless no-op.
++struct RegistryGuard(Uuid);
++impl Drop for RegistryGuard {
++    fn drop(&mut self) {
++        let _ = registry::remove(self.0);
++    }
++}
++
+ /// Increments a shared "approvals in flight" counter for its lifetime so the
+ /// executor's wall-clock watchdog pauses while any approval is pending (the
+ /// approval-wait must not count toward the active-execution budget).
+@@ -116,6 +140,9 @@ pub async fn request_approval(
+     // Owner is known synchronously here (unlike ask_user, which binds via the
+     // notify listener) — bind immediately so owner_matches is fail-closed.
+     registry::bind_owner(id, ctx.user_id);
++    // Cleans up the registry entry on ANY scope exit, including external
++    // cancellation of the surrounding future.
++    let _reg_guard = RegistryGuard(id);
+ 
+     let event = SSEChatStreamEvent::RunJsApprovalRequired(SSEChatStreamRunJsApprovalRequiredData {
+         elicitation_id: id.to_string(),
+@@ -124,7 +151,6 @@ pub async fn request_approval(
+         input: input.clone(),
+     });
+     if ctx.sse_tx.send(Ok(event.into())).is_err() {
+-        registry::remove(id);
+         return ApprovalOutcome::Denied("chat stream closed before approval".to_string());
+     }
+ 
+@@ -132,13 +158,22 @@ pub async fn request_approval(
+     let _pending = PendingGuard::new(ctx.pending.clone());
+     let response = tokio::select! {
+         r = rx => r.ok(),
+-        _ = ctx.sse_tx.closed() => { registry::remove(id); None }
+-        _ = tokio::time::sleep(ctx.timeout) => { registry::remove(id); None }
++        _ = ctx.sse_tx.closed() => None,
++        _ = tokio::time::sleep(ctx.timeout) => None,
+     };
+ 
+     match response {
+         Some(r) if r.action == "accept" => ApprovalOutcome::Approved,
+-        Some(r) => ApprovalOutcome::Denied(format!("tool call {}ed by user", r.action)),
++        Some(r) => {
++            // Map the action to a correct past-tense verb (not `{action}ed`,
++            // which yields "declineed"). Vocabulary is accept|decline|cancel.
++            let verb = match r.action.as_str() {
++                "decline" => "declined",
++                "cancel" => "cancelled",
++                other => return ApprovalOutcome::Denied(format!("tool call {other} by user")),
++            };
++            ApprovalOutcome::Denied(format!("tool call {verb} by user"))
++        }
+         None => ApprovalOutcome::Denied("tool approval timed out or was cancelled".to_string()),
+     }
+ }
+diff --git a/src-app/server/src/modules/js_tool/chat_extension/extension.rs b/src-app/server/src/modules/js_tool/chat_extension/extension.rs
+index 99903973c..c3319691e 100644
+--- a/src-app/server/src/modules/js_tool/chat_extension/extension.rs
++++ b/src-app/server/src/modules/js_tool/chat_extension/extension.rs
+@@ -12,12 +12,12 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
+     name: "js_tool",
+     // MUST run BEFORE the MCP extension (order 30): `before_llm_call` sets the
+     // `attach_run_js_mcp` metadata flag, which the MCP extension reads in
+-    // `auto_attach_builtin_ids` when building the tool list. 29 lands it after
+-    // the other attach-flag extensions (web_search 26 … citations 29), before
+-    // MCP (30). The nudge is generic (points the model at `ziee.toolList()`), so
+-    // it needs no knowledge of the assembled tool set and the tie with citations
+-    // (also 29) is benign.
+-    order: 29,
++    // `auto_attach_builtin_ids` when building the tool list. Order 23 is a free,
++    // DISTINCT slot (control 22 … summarization 24) — every attach-flag
++    // extension has a unique order (no ties), so registration stays
++    // deterministic. The nudge is generic (points the model at
++    // `ziee.toolList()`), so its position among the flag-setters doesn't matter.
++    order: 23,
+ };
+ 
+ pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
+diff --git a/src-app/server/src/modules/js_tool/executor.rs b/src-app/server/src/modules/js_tool/executor.rs
+index 5eb5dd3f4..ffd331a06 100644
+--- a/src-app/server/src/modules/js_tool/executor.rs
++++ b/src-app/server/src/modules/js_tool/executor.rs
+@@ -13,7 +13,7 @@
+ 
+ use std::collections::HashSet;
+ use std::sync::Arc;
+-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+ use std::time::{Duration, Instant};
+ 
+ use uuid::Uuid;
+@@ -61,8 +61,23 @@ struct Dispatcher {
+     budget: CallBudget,
+     approval_ctx: ApprovalCtx,
+     trace: Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
++    /// Bounds concurrent sub-tool dispatches from one script (Promise.all fan-out).
++    dispatch_sem: Arc<tokio::sync::Semaphore>,
++    /// Number of approval prompts raised so far + the cap (bounds cumulative
++    /// suspended time so a script can't hold a runtime for hours).
++    approvals_used: Arc<AtomicU64>,
++    max_approvals: u64,
+ }
+ 
++/// Max concurrent sub-tool dispatches per run_js invocation.
++const MAX_CONCURRENT_DISPATCH: usize = 6;
++
++/// Server-wide cap on concurrent `run_js` runtimes (admission control) so a
++/// burst of chat turns can't spin up unbounded 128 MiB interpreters at once.
++const MAX_CONCURRENT_RUNS: usize = 8;
++static GLOBAL_RUN_SEM: tokio::sync::Semaphore =
++    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_RUNS);
++
+ impl Dispatcher {
+     fn push_trace(&self, b: &ToolBinding, status: &str, dur_ms: u64) {
+         if let Ok(mut t) = self.trace.lock() {
+@@ -82,12 +97,6 @@ impl Dispatcher {
+             return serde_json::json!({ "__error": format!("unknown tool '{js_name}'") });
+         };
+ 
+-        if !self.budget.try_claim() {
+-            return serde_json::json!({
+-                "__error": format!("run_js tool-call budget exhausted (max {})", self.budget.max())
+-            });
+-        }
+-
+         // Gate exactly like the normal after_llm_call classification.
+         let is_builtin =
+             crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(binding.server_id);
+@@ -109,6 +118,14 @@ impl Dispatcher {
+                 });
+             }
+             GateDecision::NeedApproval => {
++                // Bound the number of approval prompts a script may raise, so
++                // cumulative suspended time can't hold the runtime for hours.
++                if self.approvals_used.fetch_add(1, Ordering::SeqCst) >= self.max_approvals {
++                    self.push_trace(&binding, "denied", 0);
++                    return serde_json::json!({
++                        "__error": format!("run_js approval limit reached (max {})", self.max_approvals)
++                    });
++                }
+                 match approval::request_approval(
+                     &self.approval_ctx,
+                     &binding.server_name,
+@@ -127,12 +144,28 @@ impl Dispatcher {
+             GateDecision::Allow => {}
+         }
+ 
++        // Claim a budget slot only for a call that will ACTUALLY dispatch (after
++        // the gate resolves to Allow/Approved) — so denied/declined calls don't
++        // consume capacity (audit: correctness).
++        if !self.budget.try_claim() {
++            return serde_json::json!({
++                "__error": format!("run_js tool-call budget exhausted (max {})", self.budget.max())
++            });
++        }
++
++        // Bound concurrent sub-tool dispatches (a script's `Promise.all` of many
++        // gated calls could otherwise fan out 100 simultaneous code_sandbox /
++        // web_search dispatches) — audit: resource-limits.
++        let _permit = self.dispatch_sem.clone().acquire_owned().await.ok();
++
+         // Dispatch through the chokepoint (records with source=script).
+         let t0 = Instant::now();
+         let synthetic_id = Uuid::new_v4().to_string();
+-        let session_arc = match self
+-            .session_manager
+-            .get_or_create_with_context(
++        // Bound session establishment so a hung MCP server (stalled initialize)
++        // can't block rt.idle() past the wall-clock (audit: error-handling).
++        let session_arc = match tokio::time::timeout(
++            std::time::Duration::from_secs(30),
++            self.session_manager.get_or_create_with_context(
+                 binding.server_id,
+                 self.user_id,
+                 Some(self.conversation_id),
+@@ -140,14 +173,19 @@ impl Dispatcher {
+                 self.message_id,
+                 Some(synthetic_id),
+                 McpToolCallSource::Script,
+-            )
+-            .await
++            ),
++        )
++        .await
+         {
+-            Ok(a) => a,
+-            Err(e) => {
++            Ok(Ok(a)) => a,
++            Ok(Err(e)) => {
+                 self.push_trace(&binding, "error", t0.elapsed().as_millis() as u64);
+                 return serde_json::json!({ "__error": format!("dispatch failed: {e}") });
+             }
++            Err(_) => {
++                self.push_trace(&binding, "timeout", t0.elapsed().as_millis() as u64);
++                return serde_json::json!({ "__error": "tool dispatch timed out establishing a session" });
++            }
+         };
+ 
+         let (result, _is_final) = {
+@@ -179,8 +217,11 @@ impl Dispatcher {
+                 }
+             })
+         } else {
+-            self.push_trace(&binding, "completed", dur);
+-            serde_json::json!({ "value": null })
++            // Defensive: execute_tool always yields ToolResult today, but if the
++            // enum ever gains another variant, surface an error the script can
++            // catch rather than a false null-success (audit: error-handling).
++            self.push_trace(&binding, "error", dur);
++            serde_json::json!({ "__error": "unexpected tool result shape" })
+         }
+     }
+ }
+@@ -188,6 +229,10 @@ impl Dispatcher {
+ /// Run one `run_js` script and produce the tool result. Never panics: any
+ /// interpreter/dispatch failure becomes an error result the model can read.
+ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
++    // Server-wide admission control: bound concurrent run_js runtimes so a burst
++    // of chat turns can't allocate unbounded 128 MiB interpreters at once.
++    let _global = GLOBAL_RUN_SEM.acquire().await.ok();
++
+     let bindings = host_bridge::build_bindings(&req.tools);
+     let cancel = Arc::new(AtomicBool::new(false));
+     let pending = Arc::new(AtomicUsize::new(0));
+@@ -209,6 +254,9 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
+             timeout: req.caps.approval_timeout,
+         },
+         trace: Arc::new(std::sync::Mutex::new(Vec::new())),
++        dispatch_sem: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_DISPATCH)),
++        approvals_used: Arc::new(AtomicU64::new(0)),
++        max_approvals: req.caps.max_approvals,
+     });
+ 
+     // Active-execution wall-clock watchdog: accumulates elapsed time ONLY while
+diff --git a/src-app/server/src/modules/js_tool/limits.rs b/src-app/server/src/modules/js_tool/limits.rs
+index de3e6ca22..df20dd214 100644
+--- a/src-app/server/src/modules/js_tool/limits.rs
++++ b/src-app/server/src/modules/js_tool/limits.rs
+@@ -13,6 +13,10 @@ pub struct JsCaps {
+     pub runtime: JsLimits,
+     /// Max sub-tool calls one script may make (over-cap → the host fn throws).
+     pub max_tool_calls: u64,
++    /// Max per-call approval prompts one script may raise. Bounds cumulative
++    /// suspended time (max_approvals × approval_timeout) so a script can't hold a
++    /// runtime for hours by spamming approvals the user ignores.
++    pub max_approvals: u64,
+     /// Active-execution wall-clock backstop (EXCLUDES time spent awaiting an
+     /// approval — the executor's watchdog pauses while any approval is pending).
+     pub wall: Duration,
+@@ -25,6 +29,7 @@ impl Default for JsCaps {
+         Self {
+             runtime: JsLimits::default(),
+             max_tool_calls: 100,
++            max_approvals: 25,
+             wall: Duration::from_secs(300),
+             approval_timeout: Duration::from_secs(300),
+         }
+diff --git a/src-app/server/src/modules/js_tool/runtime.rs b/src-app/server/src/modules/js_tool/runtime.rs
+index 9a0b8ae88..31f1bea4f 100644
+--- a/src-app/server/src/modules/js_tool/runtime.rs
++++ b/src-app/server/src/modules/js_tool/runtime.rs
+@@ -77,24 +77,40 @@ pub struct JsOutcome {
+ /// Wrap a model script as an async IIFE so `await`/`return` work and the
+ /// resolved value is captured via `__ziee_set_result`. Uncaught throws are
+ /// serialized to `{err,stack}`; a normal completion to `{ok}`.
+-fn wrap_script(script: &str) -> String {
++fn wrap_script(script: &str, output_cap: usize) -> String {
+     // The inner IIFE is the user's body; the outer one try/catches it and
+     // reports exactly one result. `undefined` collapses to JSON `null`.
++    //
++    // Two hardening steps:
++    // - Capture `__ziee_set_result` and DELETE the global before running the
++    //   user body, so the script can't pre-empt/hijack its own result (audit).
++    // - Cap the serialized result JS-SIDE (before it crosses the FFI boundary)
++    //   so a huge return value isn't materialized twice in host memory (audit).
+     format!(
+         r#"(async () => {{
++  const __set = globalThis.__ziee_set_result;
++  delete globalThis.__ziee_set_result;
++  const __emit = (obj) => {{
++    let __p = JSON.stringify(obj);
++    if (__p.length > {cap}) {{
++      __p = JSON.stringify({{ ok: {{ _truncated: true, _bytes: __p.length, preview: __p.slice(0, 2000) }} }});
++    }}
++    __set(__p);
++  }};
+   try {{
+     const __r = await (async () => {{
+ {script}
+     }})();
+-    __ziee_set_result(JSON.stringify({{ ok: __r === undefined ? null : __r }}));
++    __emit({{ ok: __r === undefined ? null : __r }});
+   }} catch (e) {{
+-    __ziee_set_result(JSON.stringify({{
++    __set(JSON.stringify({{
+       err: (e && e.message) ? String(e.message) : String(e),
+       stack: (e && e.stack) ? String(e.stack) : ""
+     }}));
+   }}
+ }})();
+-"#
++"#,
++        cap = output_cap
+     )
+ }
+ 
+@@ -109,9 +125,16 @@ globalThis.console.error = globalThis.console.log;
+ globalThis.console.debug = globalThis.console.log;
+ "#;
+ 
+-/// Parse a best-effort 1-based line number out of a QuickJS exception stack.
+-/// QuickJS frames look like `    at <anonymous> (eval_script:12)` — we take the
+-/// first integer following the last colon on a frame line.
++/// Number of preamble lines `wrap_script` prepends before the user's script.
++/// QuickJS numbers lines against the WRAPPED source, so we subtract this to map
++/// back to the user's line numbers (audit: correctness — line was off). MUST
++/// equal the line count before `{script}` in `wrap_script`; the
++/// `test_error_line_maps_to_user_line` test guards it against drift.
++const PREAMBLE_LINES: u32 = 12;
++
++/// Parse a best-effort 1-based USER line number out of a QuickJS exception
++/// stack. Frames look like `    at <anonymous> (eval_script:12)` — take the first
++/// integer following the last colon, then subtract the wrapper preamble.
+ fn line_from_stack(stack: &str) -> Option<u32> {
+     for frame in stack.lines() {
+         if let Some(colon) = frame.rfind(':') {
+@@ -121,7 +144,7 @@ fn line_from_stack(stack: &str) -> Option<u32> {
+                 .collect();
+             if let Ok(n) = tail.parse::<u32>() {
+                 if n > 0 {
+-                    return Some(n);
++                    return Some(n.saturating_sub(PREAMBLE_LINES).max(1));
+                 }
+             }
+         }
+@@ -165,9 +188,17 @@ where
+             if cancel.load(Ordering::Relaxed) {
+                 return true;
+             }
+-            // saturating decrement; kill when exhausted
+-            let prev = gas.fetch_sub(1, Ordering::Relaxed);
+-            prev == 0
++            // STICKY gas: once exhausted, stay tripped forever. `fetch_sub` on an
++            // AtomicU64 WRAPS (0 → u64::MAX), so a naive `prev == 0` would fire
++            // exactly once and then re-enable the guard for ~2^64 ops — letting a
++            // catchable interrupt (`try{while(true){}}catch{}`) or the idle()
++            // drain phase run CPU-unbounded. Guard the load first so termination
++            // latches (audit: resource-limits/concurrency, high).
++            if gas.load(Ordering::Relaxed) == 0 {
++                return true;
++            }
++            gas.fetch_sub(1, Ordering::Relaxed);
++            false
+         })))
+         .await;
+     }
+@@ -196,7 +227,7 @@ where
+     let console_cap = limits.console_bytes;
+ 
+     // Phase 1: install host env + kick off the wrapped script.
+-    let wrapped = wrap_script(script);
++    let wrapped = wrap_script(script, limits.output_bytes);
+     let eval_err: Option<JsError> = ctx
+         .with({
+             let console = console.clone();
+@@ -221,7 +252,14 @@ where
+                         let remaining = console_cap - cur;
+                         let piece = if line.len() > remaining {
+                             log_dropped.store(true, Ordering::Relaxed);
+-                            line.chars().take(remaining).collect::<String>()
++                            // Truncate on a BYTE budget, walked back to a char
++                            // boundary (chars().take() is a CHAR count and could
++                            // overshoot the byte cap on multi-byte input).
++                            let mut end = remaining.min(line.len());
++                            while end > 0 && !line.is_char_boundary(end) {
++                                end -= 1;
++                            }
++                            line[..end].to_string()
+                         } else {
+                             line
+                         };
+@@ -306,8 +344,18 @@ where
+                 }
+                 Ok(v) => {
+                     let raw = v.get("ok").cloned().unwrap_or(serde_json::Value::Null);
+-                    let (value, truncated) = cap_output(raw, limits.output_bytes);
+-                    JsOutcome { value, console: console_out, error: None, truncated_output: truncated }
++                    // The wrapper caps oversized results JS-side (emitting a
++                    // `{_truncated:true,...}` marker); host cap_output is the
++                    // backstop. Either firing means the output was truncated.
++                    let js_truncated =
++                        raw.get("_truncated").and_then(|t| t.as_bool()).unwrap_or(false);
++                    let (value, host_truncated) = cap_output(raw, limits.output_bytes);
++                    JsOutcome {
++                        value,
++                        console: console_out,
++                        error: None,
++                        truncated_output: js_truncated || host_truncated,
++                    }
+                 }
+                 Err(e) => JsOutcome {
+                     value: serde_json::Value::Null,
+@@ -482,6 +530,38 @@ mod tests {
+         assert_eq!(out.value["zieeIsObject"], true);
+     }
+ 
++    // A catastrophic-backtracking regex is killed by the gas interrupt — quickjs-ng
++    // polls the runtime interrupt handler inside libregexp (`lre_poll_timeout` →
++    // `lre_check_timeout`), unlike stock QuickJS. This proves a bad regex can't
++    // pin the thread forever (audit: resource-limits — the "no back-edges"
++    // premise doesn't hold for quickjs-ng).
++    #[tokio::test]
++    async fn test_catastrophic_regex_is_interruptible() {
++        let limits = JsLimits { gas: 2_000_000, ..JsLimits::default() };
++        let out = tokio::time::timeout(
++            std::time::Duration::from_secs(10),
++            evaluate(
++                "return /(a+)+$/.test('a'.repeat(60) + '!');",
++                &limits,
++                Arc::new(AtomicBool::new(false)),
++                no_inject,
++            ),
++        )
++        .await
++        .expect("catastrophic regex hung past the interrupt — quickjs-ng regex poll failed");
++        // It is killed (error), not allowed to backtrack to completion.
++        assert!(out.error.is_some(), "expected the regex to be interrupted, got {:?}", out.value);
++    }
++
++    // Reported error line maps back to the USER's line (preamble subtracted).
++    #[tokio::test]
++    async fn test_error_line_maps_to_user_line() {
++        // throw is on user line 1 → must report 1, not 4.
++        let out = run("throw new Error('x');").await;
++        let err = out.error.expect("expected error");
++        assert_eq!(err.line, Some(1), "line should map to the user's line 1");
++    }
++
+     // Cancel flag (wall-clock backstop) terminates a post-await runaway.
+     // Needs a multi-thread runtime: the cancel-setter task must run on another
+     // worker while `idle()` monopolizes a thread in the synchronous FFI loop
+diff --git a/src-app/server/src/modules/mcp/chat_extension/mcp.rs b/src-app/server/src/modules/mcp/chat_extension/mcp.rs
+index ea5c92d69..4c4251b1e 100644
+--- a/src-app/server/src/modules/mcp/chat_extension/mcp.rs
++++ b/src-app/server/src/modules/mcp/chat_extension/mcp.rs
+@@ -320,6 +320,26 @@ impl McpChatExtension {
+         };
+ 
+         let run_js_id = run_js_mcp_server_id();
++
++        // Deploy-level kill switch enforced at EXECUTION, not just attachment:
++        // the attach flag is already suppressed when disabled, but a
++        // hallucinated or history-replayed `run_js` tool_use could still reach
++        // here — refuse to execute (audit: perms).
++        if !crate::modules::js_tool::is_enabled(&self.config) {
++            return McpContentData::ToolResult {
++                tool_use_id: tool_use_id.to_string(),
++                name: Some("run_js".to_string()),
++                server_id: Some(run_js_id.to_string()),
++                content: "run_js is disabled on this deployment".to_string(),
++                is_error: Some(true),
++                attachment: None,
++                images: None,
++                resource_links: None,
++                hidden_content: None,
++                structured_content: None,
++            };
++        }
++
+         let script = input
+             .get("script")
+             .and_then(|v| v.as_str())
+diff --git a/src-app/server/src/modules/mcp/repository.rs b/src-app/server/src/modules/mcp/repository.rs
+index 6c34dbd6d..c46368a15 100644
+--- a/src-app/server/src/modules/mcp/repository.rs
++++ b/src-app/server/src/modules/mcp/repository.rs
+@@ -1669,7 +1669,7 @@ pub async fn list_system_mcp_servers(
+           -- Excluding them in SQL (not client-side) also keeps the pagination
+           -- total/label honest. The other built-ins
+           -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
+-          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12, $13)
++          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           AND ($3::text IS NULL
+                OR name ILIKE '%' || $3 || '%'
+                OR display_name ILIKE '%' || $3 || '%'
+@@ -1691,6 +1691,9 @@ pub async fn list_system_mcp_servers(
+         crate::modules::citations::citations_server_id(),
+         crate::modules::skill_mcp::skill_mcp_server_id(),
+         crate::modules::workflow_mcp::workflow_mcp_server_id(),
++        // run_js is a zero-config loopback built-in executed inline (never over
++        // the loopback), so it has no editable surface here — hide it.
++        crate::modules::js_tool::run_js_mcp_server_id(),
+     )
+     .fetch_all(pool)
+     .await?;
+@@ -1740,7 +1743,7 @@ pub async fn list_system_mcp_servers(
+           -- (files, memory, elicitation, web_search, tool_result, lit_search,
+           -- citations, skill_mcp, workflow_mcp) so the pagination total stays in
+           -- sync with the page.
+-          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9, $10, $11)
++          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           AND ($1::text IS NULL
+                OR name ILIKE '%' || $1 || '%'
+                OR display_name ILIKE '%' || $1 || '%'
+@@ -1758,6 +1761,7 @@ pub async fn list_system_mcp_servers(
+         crate::modules::citations::citations_server_id(),
+         crate::modules::skill_mcp::skill_mcp_server_id(),
+         crate::modules::workflow_mcp::workflow_mcp_server_id(),
++        crate::modules::js_tool::run_js_mcp_server_id(),
+     )
+     .fetch_one(pool)
+     .await?
+@@ -1807,7 +1811,11 @@ pub async fn update_system_mcp_server(
+         // '{}', no editable surface); an admin PUT must not be able to change
+         // their url/transport and break load_skill / workflow tool dispatch.
+         || existing.id == crate::modules::skill_mcp::skill_mcp_server_id()
+-        || existing.id == crate::modules::workflow_mcp::workflow_mcp_server_id();
++        || existing.id == crate::modules::workflow_mcp::workflow_mcp_server_id()
++        // run_js is a zero-config loopback built-in executed inline; its url must
++        // stay the live loopback (assembly connects to it to list the descriptor),
++        // so it is immutable here.
++        || existing.id == crate::modules::js_tool::run_js_mcp_server_id();
+     // NOTE: control is intentionally NOT in this immutable set (like bio_mcp) —
+     // it is shown on the System MCP page so admins can toggle `enabled` (and the
+     // runtime auto-attach honors that column immediately). The boot upsert
+diff --git a/src-app/ui/src/modules/mcp/chat-extension/components/JsToolApprovalContent.tsx b/src-app/ui/src/modules/mcp/chat-extension/components/JsToolApprovalContent.tsx
+index 5b53249ac..740d6b20c 100644
+--- a/src-app/ui/src/modules/mcp/chat-extension/components/JsToolApprovalContent.tsx
++++ b/src-app/ui/src/modules/mcp/chat-extension/components/JsToolApprovalContent.tsx
+@@ -23,35 +23,44 @@ interface JsToolApprovalData {
+ 
+ export function JsToolApprovalContent({ content }: ContentRendererProps) {
+   const data = content.content as unknown as JsToolApprovalData
+-  const [resolved, setResolved] = useState<'approved' | 'denied' | null>(null)
+   const [submitting, setSubmitting] = useState(false)
+ 
++  // Derive the resolved state from the elicitationRequests store (the live
++  // source of truth), NOT local state: resolveElicitation flips the entry
++  // optimistically and ROLLS IT BACK to 'pending' on a failed POST, so a failed
++  // approve re-enables the buttons (no false "Approved") and the resolved state
++  // survives a component remount (virtualized list / streaming→final swap).
++  const status = Stores.McpComposer.elicitationRequests.get(data.elicitation_id)?.status
++  const resolved: 'approved' | 'denied' | null =
++    status === 'accepted' ? 'approved' : status === 'declined' || status === 'cancelled' ? 'denied' : null
++
+   const resolve = async (action: 'accept' | 'decline') => {
++    // Re-entrancy guard: never POST twice to a single-use elicitation.
++    if (submitting || resolved !== null) return
+     setSubmitting(true)
+-    const next = action === 'accept' ? 'approved' : 'denied'
+-    setResolved(next)
+     try {
++      // resolveElicitation reflects success/failure in the store entry; the
++      // derived `resolved` above reacts (rollback → buttons return for retry).
+       await Stores.McpComposer.resolveElicitation(data.elicitation_id, action)
+-    } catch (e) {
+-      // Roll back so the user can retry.
+-      setResolved(null)
+-      console.error('[run_js approval] failed to resolve:', e)
+     } finally {
+       setSubmitting(false)
+     }
+   }
+ 
++  const icon =
++    resolved === 'approved' ? <Check /> : resolved === 'denied' ? <X /> : <Clock />
++
+   return (
+     <div className="my-2" data-testid={`run-js-approval-${data.elicitation_id}`}>
+       <Alert
+         tone={resolved === 'approved' ? 'success' : resolved === 'denied' ? 'neutral' : 'warning'}
+-        data-testid="run-js-approval-alert"
+-        icon={<Clock />}
++        data-testid={`run-js-approval-alert-${data.elicitation_id}`}
++        icon={icon}
+         title={
+           <div>
+             <Text strong>run_js wants to call: {data.tool_name}</Text>
+             {mcpServerParenLabel(data.server) && (
+-              <Text type="secondary" className="ml-2 text-xs whitespace-nowrap">
++              <Text type="secondary" className="ms-2 text-xs whitespace-nowrap">
+                 {mcpServerParenLabel(data.server)}
+               </Text>
+             )}
+@@ -67,7 +76,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
+                 <Text strong className="text-xs">
+                   Arguments:
+                 </Text>
+-                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs">
++                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs bg-muted">
+                   {JSON.stringify(data.input, null, 2)}
+                 </pre>
+               </div>
+@@ -80,7 +89,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
+                     onClick={() => resolve('accept')}
+                     loading={submitting}
+                     size="default"
+-                    data-testid="run-js-approval-approve"
++                    data-testid={`run-js-approval-approve-${data.elicitation_id}`}
+                   >
+                     Approve
+                   </Button>
+@@ -90,7 +99,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
+                     onClick={() => resolve('decline')}
+                     loading={submitting}
+                     size="default"
+-                    data-testid="run-js-approval-deny"
++                    data-testid={`run-js-approval-deny-${data.elicitation_id}`}
+                   >
+                     Deny
+                   </Button>
+@@ -100,7 +109,8 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
+               <Text
+                 type="secondary"
+                 className="mt-2 block text-xs"
+-                data-testid={`run-js-approval-${resolved}`}
++                data-testid={`run-js-approval-status-${data.elicitation_id}`}
++                data-status={resolved}
+               >
+                 {resolved === 'approved' ? 'Approved — script resumed.' : 'Denied.'}
+               </Text>
+diff --git a/src-app/ui/src/modules/mcp/chat-extension/extension.tsx b/src-app/ui/src/modules/mcp/chat-extension/extension.tsx
+index a29ef4da9..2c683caa7 100644
+--- a/src-app/ui/src/modules/mcp/chat-extension/extension.tsx
++++ b/src-app/ui/src/modules/mcp/chat-extension/extension.tsx
+@@ -12,7 +12,7 @@ import {
+ } from '@/modules/chat/core/extensions'
+ import { Stores } from '@/core/stores'
+ import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+-import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent } from '@/api-client/types'
++import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+ import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
+ import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem'
+ import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
+@@ -606,6 +606,20 @@ const mcpExtension: ChatExtension = createExtension({
+       // endpoint (the same in-process oneshot ask_user uses), NOT the
+       // turn-boundary tool_approvals flow — a live script stack can't survive a
+       // request boundary.
++      //
++      // Register an elicitationRequests entry keyed by elicitation_id so
++      // resolveElicitation can reflect the resolved status there (and roll it
++      // back to 'pending' on a failed POST) — the component reads its status
++      // from the store, so a failed approve re-enables the buttons and the
++      // resolved state survives a component remount.
++      Stores.McpComposer.addElicitationRequest({
++        elicitation_id: data.elicitation_id,
++        message: `run_js wants to call ${data.tool_name}`,
++        requested_schema: {},
++        server: data.server,
++        message_id: null,
++      } as unknown as SSEChatStreamMcpElicitationRequiredData)
++
+       const chatState = get()
+       const streamingMessage = chatState.streamingMessage
+       const now = new Date().toISOString()
+@@ -647,6 +661,26 @@ const mcpExtension: ChatExtension = createExtension({
+           newMessages.set(updatedMessage.id, updatedMessage)
+           set({ streamingMessage: updatedMessage, messages: newMessages })
+         }
++      } else {
++        // No streaming message (e.g. after reload / SSE-resume, since generation
++        // is a detached server task) — create one so the approval prompt renders
++        // and the suspended script can still be resumed. Mirrors
++        // mcpElicitationRequired's else-branch.
++        const messageId = `streaming-${Date.now()}`
++        approvalContent.id = `${messageId}-runjs-${data.elicitation_id}`
++        approvalContent.message_id = messageId
++
++        const newMessage: MessageWithContent = {
++          id: messageId,
++          role: 'assistant',
++          contents: [approvalContent],
++          originated_from_id: '',
++          edit_count: 0,
++          created_at: now,
++        }
++        const newMessages = new Map(chatState.messages)
++        newMessages.set(newMessage.id, newMessage)
++        set({ streamingMessage: newMessage, messages: newMessages })
+       }
+     },
+ 
