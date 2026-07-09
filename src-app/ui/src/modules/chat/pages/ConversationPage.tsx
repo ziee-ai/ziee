@@ -63,23 +63,6 @@ export default function ConversationPage() {
   // user scrolls UP into older messages (more reading room), reveal it when they
   // scroll DOWN toward newer messages / the bottom.
   const [composerHidden, setComposerHidden] = useState(false)
-  // Two-phase auto-hide: `composerHidden` is the scroll INTENT; `composerParked`
-  // is the committed end-state. Hiding first SLIDES the composer out (animating
-  // the sticky `bottom` inset — iOS-safe, unlike a transform which breaks
-  // position:sticky on Safari), then commits to position:relative once it's
-  // off-screen — preserving the intentional wipe-away-with-the-page / no-reflow /
-  // no-iOS-latch behavior (mirrors the header) while making the hide smooth.
-  const composerRef = useRef<HTMLDivElement>(null)
-  const [composerParked, setComposerParked] = useState(false)
-  // Armed one frame AFTER hiding starts, so the off-screen `bottom` is applied
-  // only once the transition is in place → the slide animates instead of
-  // snapping. Kept OUT of the resting/shown state so the pinned composer carries
-  // NO `bottom` transition there (a persistent transition made it lag iOS
-  // Safari's collapsing toolbar → it stopped sitting flush under the nav bar).
-  const [composerSlideOut, setComposerSlideOut] = useState(false)
-  // The measured slide distance (composer height + a margin), so `bottom`
-  // animates it fully below the viewport edge regardless of the input's height.
-  const [composerHideOffset, setComposerHideOffset] = useState(-360)
   // Conversation id whose initial bottom-jump we've already done.
   const initialScrollConvIdRef = useRef<string | null>(null)
 
@@ -222,33 +205,6 @@ export default function ConversationPage() {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [nativeScroll])
-
-  // Drive the two-phase hide: when the scroll intent flips to hidden, measure the
-  // composer and let it slide out (the `bottom` transition below), then commit to
-  // relative after the slide. Un-hiding un-parks immediately so the show slides
-  // back in. useLayoutEffect measures + sets the offset before paint so the
-  // `bottom` transition starts from its resting 5px (no first-frame jump).
-  useLayoutEffect(() => {
-    if (!nativeScroll || !composerHidden) {
-      setComposerParked(false)
-      setComposerSlideOut(false)
-      return
-    }
-    const h = composerRef.current?.offsetHeight ?? 320
-    setComposerHideOffset(-(h + 16))
-    // Arm the transition first (this render applies `transition-[bottom]` while
-    // bottom is still 5), then flip the off-screen offset on the NEXT frame so
-    // the browser animates from 5 → offset instead of snapping.
-    const raf = requestAnimationFrame(() => setComposerSlideOut(true))
-    // Park (→ relative) only AFTER the 300ms slide has carried the composer fully
-    // off-screen — a buffer past the transition end so the position swap to
-    // relative happens while it's already invisible (no end-of-slide pop).
-    const t = window.setTimeout(() => setComposerParked(true), 400)
-    return () => {
-      cancelAnimationFrame(raf)
-      window.clearTimeout(t)
-    }
-  }, [composerHidden, nativeScroll])
 
   // Cmd/Ctrl-F opens the in-conversation find bar, overriding the browser's
   // native find (our find covers the same rendered message content — DEC-5).
@@ -617,7 +573,7 @@ export default function ConversationPage() {
               the home-indicator safe-area so document-scrolling content can flow
               behind the iOS bottom navigation bar without peeking through. Only
               while the composer is shown (mirrors the header's `pinned &&`). */}
-          {nativeScroll && !composerParked && (
+          {nativeScroll && !composerHidden && (
             <div
               aria-hidden
               className="fixed inset-x-0 bottom-0 bg-card animate-in fade-in duration-300"
@@ -630,25 +586,19 @@ export default function ConversationPage() {
               context (sticky in native, relative on desktop) so the jump-to-latest
               button can anchor to its TOP edge. */}
           <div
-            ref={composerRef}
             className={cn(
               // pt-0: no gap above the input — the fade below stands in for it.
               'w-full max-w-4xl mx-auto p-4 pt-0',
               nativeScroll
                 ? cn(
                     'bg-card',
-                    // Auto-hide on scroll (two-phase — see composerParked effect):
-                    //  • parked → position:relative: fully hidden, wipes away with
-                    //    the page as the user reads history (no reflow — sticky
-                    //    reserves the same flow slot; dodges iOS's sticky-latch).
-                    //  • hiding → sticky, `bottom` transitions off-screen: the
-                    //    smooth slide-OUT (a transform would break sticky on iOS).
-                    //  • shown → sticky at bottom:5, slides back IN.
-                    composerParked
+                    // Auto-hide on scroll: toggle sticky↔relative (NOT a
+                    // transform). Hidden → position:relative so the composer
+                    // wipes away with the page as the user reads history; shown →
+                    // sticky, pinned to the viewport bottom and sliding back in.
+                    composerHidden
                       ? 'relative'
-                      : composerHidden
-                        ? 'sticky z-10 transition-[bottom] duration-300 ease-in'
-                        : 'sticky z-10 animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out',
+                      : 'sticky z-10 animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out',
                   )
                 : 'relative',
             )}
@@ -657,19 +607,12 @@ export default function ConversationPage() {
                 ? {
                     // bottom:5 dodges iOS Safari's bottom sticky-latch (mirrors the
                     // header's top:5). The 5px is subtracted from paddingBottom so
-                    // the input keeps its resting position (safe-area + 16). Hiding
-                    // animates `bottom` to the measured off-screen offset; parked
-                    // replicates the 5px offset via marginBottom (relative) so it
-                    // doesn't jump when toggling.
+                    // the input keeps its resting position (safe-area + 16) — same
+                    // padding-compensation the header does for its 5px offset. In
+                    // the relative (hidden) state, replicate the offset via
+                    // marginBottom so it doesn't jump 5px when toggling.
                     paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 11px)',
-                    ...(composerParked
-                      ? { marginBottom: 5 }
-                      : {
-                          bottom:
-                            composerHidden && composerSlideOut
-                              ? composerHideOffset
-                              : 5,
-                        }),
+                    ...(composerHidden ? { marginBottom: 5 } : { bottom: 5 }),
                   }
                 : undefined
             }
