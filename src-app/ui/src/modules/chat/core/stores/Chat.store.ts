@@ -563,6 +563,9 @@ export const Chat = defineStore('Chat', {
         streamingMessage: snapshot.streamingMessage,
         tempUserMessageId: snapshot.tempUserMessageId,
         isStreaming: snapshot.isStreaming,
+        // Not snapshotted (transient live signal): a restored conversation is
+        // not a fresh interruption, so clear it to avoid a stale suppression.
+        lastTurnInterrupted: false,
         hasMoreBefore: snapshot.hasMoreBefore ?? false,
         hasMoreAfter: snapshot.hasMoreAfter ?? false,
         loadingOlder: false,
@@ -722,6 +725,7 @@ export const Chat = defineStore('Chat', {
           tempUserMessageId: null,
           streamingAbortController: null,
           streamingMessageId: null,
+          lastTurnInterrupted: false,
           messages: new Map(),
           hasMoreBefore: false,
           hasMoreAfter: false,
@@ -1532,7 +1536,12 @@ export const Chat = defineStore('Chat', {
             streamingAbortController: null,
             streamingMessageId: null,
             messages: newMessages,
-            lastTurnInterrupted: cancelled,
+            // Only track for the displayed conversation — a BACKGROUND
+            // conversation completing must not overwrite the on-screen flag
+            // (lastTurnInterrupted is a single global signal).
+            lastTurnInterrupted: isOnOriginalConversation
+              ? cancelled
+              : state.lastTurnInterrupted,
           }
         })
 
