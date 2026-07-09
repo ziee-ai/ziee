@@ -52,7 +52,7 @@ export function FileVersionDiff({
                 : 'text-muted-foreground'
           }`}
         >
-          <span className="select-none pr-2 opacity-60">
+          <span className="select-none pe-2 opacity-60">
             {l.type === 'add' ? '+' : l.type === 'del' ? '-' : ' '}
           </span>
           {l.text || ' '}

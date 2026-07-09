@@ -66,7 +66,7 @@ export function FileExportMenu({ file }: { file: FileEntity }) {
           role="button"
           tabIndex={0}
           data-testid={`file-export-${f.key}`}
-          className="cursor-pointer rounded-md px-3 py-1.5 text-left text-foreground text-sm whitespace-nowrap hover:bg-muted focus-visible:outline focus-visible:outline-2"
+          className="cursor-pointer rounded-md px-3 py-1.5 text-start text-foreground text-sm whitespace-nowrap hover:bg-muted focus-visible:outline focus-visible:outline-2"
           onClick={() => doExport(f)}
           onKeyDown={e => {
             if (e.key === 'Enter' || e.key === ' ') {
