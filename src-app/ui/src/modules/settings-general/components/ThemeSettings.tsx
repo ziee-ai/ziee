@@ -29,7 +29,7 @@ export function ThemeSettings() {
           label + description on the left, the control on the right. FieldGroup
           supplies the uniform inter-row gap. */}
       <FieldGroup>
-        <Field orientation="horizontal">
+        <Field orientation="responsive">
           <FieldContent>
             <FieldTitle>Theme</FieldTitle>
             <FieldDescription>
@@ -50,7 +50,7 @@ export function ThemeSettings() {
           />
         </Field>
 
-        <Field orientation="horizontal">
+        <Field orientation="responsive">
           <FieldContent>
             <FieldTitle>Accent color</FieldTitle>
             <FieldDescription>
