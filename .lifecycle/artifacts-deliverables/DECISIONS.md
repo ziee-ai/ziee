@@ -1,164 +1,123 @@
-# DECISIONS — artifacts-deliverables
+# DECISIONS — artifacts-deliverables (v2)
 
-Every product/human input the implementation needs, resolved up front so
-implementation runs nonstop. Resolutions prefer existing convention + the
-substrate study; the external design research (Claude Artifacts / ChatGPT
-Canvas / Gemini / Notion / Cursor) informs the model-facing and co-edit choices.
+Resolved up front so implementation runs nonstop. v2 reflects the code-grounded
+re-scope: reuse the existing file substrate; build only the missing top layer.
 
-### DEC-1: Is an artifact a new entity or a file-store file with a type?
-**Resolution:** A file-store `File` (which already carries content + versions +
-viewers + sync + export) **designated** as a conversation deliverable by a thin
-`artifacts` link row (`id, conversation_id, file_id, title, artifact_type`). Not
-a parallel content/version subsystem.
-**Basis:** codebase — files are already versioned (`file_versions`,
-`commit_new_version`), viewered, synced (`SyncEntity::File`), and pandoc-exportable;
-the link-table-over-a-real-entity shape mirrors `project_files`/`project_bibliography`.
-Research also recommends building ON an existing file-store rather than a bespoke silo.
+### DEC-1: Do we build a new artifact entity / MCP / permission, or reuse the file substrate?
+**Resolution:** Reuse. An "artifact/deliverable" is a file-store `File`. Agent
+authoring stays on the existing `files_mcp` tools (`create_file`/`edit_file`/
+`edit_file_lines`/`rewrite_file`); versioning stays on `file_versions` +
+`commit_new_version`; viewing stays on the `file` right-panel. NO new `artifacts`
+table, NO new `artifacts` MCP, NO new permission, NO migration.
+**Basis:** codebase — `files_mcp::create_file` is documented as "author a document the
+user can view and revise across turns," `edit_file` already does unique
+`old_str`→`new_str` with restorable versions, and `create_file` stamps
+`source_message_id`. The v1 plan's artifacts table/MCP/permission duplicated all of
+this. (Supersedes v1 DEC-1..DEC-5, DEC-14, DEC-16, DEC-17, DEC-18.)
 
-### DEC-2: How is version history stored — full snapshots or diffs?
-**Resolution:** Full snapshots per version, reusing `file_versions` (append-only,
-content-addressed sha256 no-op, restore-appends-new-version). No diff chains.
-**Basis:** codebase (that is exactly how `file_versions` works) + research
-(snapshot-per-version is the simple, fragility-free choice for small text docs).
+### DEC-2: What is the genuinely-missing work?
+**Resolution:** Three things: (a) **user editing** (the panel is read-only; no user
+REST appends content), (b) **auto-open + deliverable framing** (created files open on
+click, not automatically), (c) **export** (only model-tool md→PDF exists; no docx, no
+user button, no conversation export).
+**Basis:** codebase — verified `file/handlers/versions.rs` has list/get/restore but no
+append; `FilePanel`/viewers are "head-bound" read-only; `convert_document` is
+markdown→PDF, model-tool-only.
 
-### DEC-3: How is an artifact identified/referenced across turns?
-**Resolution:** A **server-issued** `artifact_id` (uuid) returned in the
-`create_artifact` tool result; the model MUST pass it to
-`update_artifact`/`rewrite_artifact`/`get_artifact`.
-**Basis:** research — Claude's model-chosen string identifiers silently fork a
-duplicate artifact on a typo; a server-issued id eliminates that failure class.
+### DEC-3: How does the user save an edit — new endpoint or reuse an existing one?
+**Resolution:** New `POST /api/files/{id}/versions` appending a version via
+`commit_new_version(created_by='user')`. No existing endpoint writes file content.
+**Basis:** codebase — the `/api/files/*` routes expose upload + restore only;
+`restore_version` is the closest write path to mirror (ownership + `commit_new_version`
++ sync), differing only in that the bytes come from the request.
 
-### DEC-4: How does the model create/update — full replace, targeted edit, or diff?
-**Resolution:** Four tools: `create_artifact(title, artifact_type, content)`,
-`update_artifact(artifact_id, old_str, new_str)` (exact-literal replace,
-must match **exactly once**), `rewrite_artifact(artifact_id, content)`
-(full replace for structural changes), `get_artifact(artifact_id)`.
-**Basis:** research (Claude's create/update/rewrite is the proven, token-cheap
-shape) + codebase (`files_mcp::edits` already implements exact str-replace-once —
-reuse it). Explicitly NOT OpenAI's LLM-authored regex `update` (a ReDoS +
-wrong-span-match correctness risk).
+### DEC-4: How are user + model edits reconciled?
+**Resolution:** Turn-based single-writer via the existing append-only model. Every save
+(user REST or model tool) appends a new head through `commit_new_version`; the
+`append_version` `SELECT … FOR UPDATE` row lock serializes concurrent writers; nothing
+is lost (all versions kept, any restorable). The model always operates on the current
+head, so it naturally sees user edits on its next turn.
+**Basis:** codebase (`append_version` already row-locks + is content-addressed no-op) +
+external research (turn-based single-writer is the correct model for a single-panel
+chat; real-time OT/CRDT is unwarranted).
 
-### DEC-5: Do artifact tool calls require per-call approval or bypass it?
-**Resolution:** Bypass approval — add `artifacts_server_id()` to
-`is_builtin_server_id`. No `is_trusted_resource_emitter` edit (the tools return
-`is_saved:true` structuredContent, never `ziee://<host-path>` links).
-**Basis:** codebase — artifact writes touch only the caller's own,
-append-only-versioned, always-restorable data; `files_mcp`/`citations` (own-data,
-low-risk) bypass, while `control_mcp` (mutates external API state) does not. Artifacts
-match the former.
+### DEC-5: Which file types are user-editable in the canvas?
+**Resolution:** Text types only — `markdown | code | csv | text`. PDF / image / office
+stay view-only (no sane source editor; they are already rendered by their viewers).
+**Basis:** codebase (the viewer registry already routes these) + external research
+(Claude restricts direct editing to Markdown/text).
 
-### DEC-6: How are concurrent model + user edits reconciled?
-**Resolution:** Turn-based single-writer. Each save (model tool OR user `PUT`)
-appends a new version that becomes head. The model always re-reads the latest via
-`get_artifact`; a stale `update_artifact` (`old_str` not uniquely present in the
-current head) returns a fail-loud `is_error`, prompting a re-read. No real-time
-OT/CRDT.
-**Basis:** research (turn-based single-writer is the correct, cheap model for a
-single-panel chat; real-time collab is expensive and low-value here) + codebase
-(`commit_new_version` is already the atomic append point).
+### DEC-6: What editing widget does the canvas use?
+**Resolution:** A markdown-**source** `Textarea` with an explicit Save. No new
+rich-text/code-editor dependency.
+**Basis:** codebase — there is NO editor primitive in the app
+(no TipTap/ProseMirror/CodeMirror/Monaco/contentEditable); `CoreMemoryBlocksEditor`'s
+`Textarea`+Save is the established idiom.
 
-### DEC-7: What is the user's editing surface in the canvas?
-**Resolution:** A markdown-**source** `Textarea` edit-mode with an explicit Save,
-for text types only (`markdown|code|csv`); the view mode reuses the existing file
-viewer registry for rich rendering. No new rich-text/code-editor dependency.
-**Basis:** codebase — there is NO editor primitive in the app today
-(no TipTap/ProseMirror/CodeMirror/Monaco/contentEditable); the `Textarea`+Save
-idiom is established by `CoreMemoryBlocksEditor`. Research supports restricting
-direct editing to text types (Claude edits Markdown only).
+### DEC-7: Do we add an "artifact panel" type, or edit the existing `file` panel?
+**Resolution:** Edit the existing `file` panel (add a view/edit toggle). No new panel
+type; the panel data stays `{ fileId, version? }` (pointer + server fetch).
+**Basis:** codebase — the `file` panel already renders any file with a version bar; a
+parallel panel type would duplicate it. Every file becomes editable by its owner, which
+is acceptable (single-owner model).
 
-### DEC-8: What does the panel tab persist — inline content or a pointer?
-**Resolution:** A pointer `{ artifactId, fileId, version? }`; content is fetched
-live from `Stores.Artifact`/`Stores.File`.
-**Basis:** codebase — the `file` panel already uses the pointer pattern; the
-literature panel's inline-serialized `data` lives in a 30-day-TTL localStorage
-snapshot, which is wrong for a durable, syncable, shareable deliverable.
+### DEC-8: How does the canvas surface automatically (the "deliverable" feel)?
+**Resolution:** Auto-open the `file` panel on the FIRST appearance of a
+`create_file`/`rewrite_file` tool result; keep the existing inline preview +
+"Open in side panel" for manual re-open. No new "pin" flag in v1.
+**Basis:** codebase (literature's `tool_result`→`displayInRightPanel`; the file
+chat-extension already renders tool-returned files inline) + UX (the deliverable should
+appear the moment it is authored) + scope control.
 
-### DEC-9: How does the canvas open?
-**Resolution:** Auto-open the canvas on a `create_artifact` tool result; provide a
-persistent inline `ArtifactToolResultCard` ("Open canvas") to re-open it later.
-**Basis:** codebase (literature's `tool_result` card → `displayInRightPanel`) +
-UX (the deliverable should surface the moment it is created).
+### DEC-9: How is "the list of deliverables in this conversation" obtained — new table or derived?
+**Resolution:** Derived. `GET /api/conversations/{id}/deliverables` queries files whose
+`file_versions.source_message_id` is in the conversation and `created_by IN ('mcp','llm')`,
+reusing the `available_files` ownership join. No new table, no new column.
+**Basis:** codebase — `create_file` already stamps `source_message_id`, and
+`resolve_available_files` already scopes files to a conversation by ownership; the
+association exists and only needs a read query.
 
-### DEC-10: Which export formats, and how are they delivered?
-**Resolution:** `md` (raw serializer output), `docx` (pandoc native writer),
-`pdf` (pandoc + embedded typst engine). Delivered as a streamed HTTP attachment
-via the RFC-5987 `content_disposition` helper.
-**Basis:** codebase — pandoc 3.7 + typst are embedded and both md→docx and
-md→pdf were smoke-tested against the shipped binaries; `convert_to_pdf` +
-`content_disposition` + `workspace_export` are the reuse templates.
+### DEC-10: Which export formats, and how delivered?
+**Resolution:** `md` (raw), `docx` (pandoc native writer), `pdf` (pandoc + embedded
+typst). Delivered as a streamed HTTP attachment via the RFC-5987 `content_disposition`
+helper. A new `convert_to_docx` sibling of `convert_to_pdf` is the only new converter.
+**Basis:** codebase — pandoc 3.7 + typst are embedded; md→docx and md→pdf were
+smoke-tested against the shipped binaries; `convert_to_pdf` + `content_disposition` +
+`workspace_export` are the reuse templates.
 
-### DEC-11: How is a conversation rendered to markdown for export?
-**Resolution:** A new serializer emitting `## User`/`## Assistant` role headers,
-text as prose, `tool_use`/`tool_result`/`thinking`/code as fenced blocks, and
-`file_attachment`/`image` as links — extending the block-filtering approach of
-`summarization::summarizer::message_to_summarizable`.
+### DEC-11: Is file export the same thing as the model's `convert_document`?
+**Resolution:** No — keep them separate. `convert_document` is a model tool that
+saves a PDF back into the file store. The new `GET /api/files/{id}/export?format=` is a
+user-facing **download** in a chosen format (md/docx/pdf), not a save.
+**Basis:** codebase — different callers (model vs user), different outcomes (persist vs
+download), different format sets.
+
+### DEC-12: How is a conversation rendered to markdown for export?
+**Resolution:** A new serializer emitting `## User`/`## Assistant` headers, text as
+prose, `tool_use`/`tool_result`/`thinking`/code as fenced blocks, `file_attachment`/
+`image` as links — extending `summarizer::message_to_summarizable`'s block handling.
 **Basis:** codebase — only a lossy `role: text` transcript builder exists today; a
-faithful markdown renderer is genuinely new but bounded to the known
+faithful renderer is the one non-trivial new backend piece, bounded to the known
 `MessageContentData` variant set.
 
-### DEC-12: What is the scoping / sharing model?
-**Resolution:** Single-owner (the conversation's owner). No multi-user ACL /
-sharing. Cross-user access returns 404. "Co-edit" means the agent and the owning
-user both append versions to one file.
-**Basis:** codebase — neither `files` nor `projects` has any ACL primitive (both
-are strictly `user_id` + `ON DELETE CASCADE`, "no sharing" explicit in the
-projects migration). Adding an ACL is out of scope; handoff is via export.
+### DEC-13: What is the scoping / sharing model, and which permissions gate the new endpoints?
+**Resolution:** Single-owner (no ACL / sharing; handoff is via export). File
+append-version + file export reuse the file endpoints' existing ownership + permission
+gating (mirror `restore_version`); conversation export + deliverables reuse
+`conversations::read` + ownership. No new permission.
+**Basis:** codebase — neither `files` nor `projects` has any ACL primitive; the existing
+file/conversation permissions already gate the reused paths.
 
-### DEC-13: How does an artifact relate to projects?
-**Resolution:** v1 artifacts are conversation-scoped. The underlying file remains
-attachable to a project through the existing `project_files` mechanism (no new
-project↔artifact UI in v1).
-**Basis:** codebase (`project_files` already links arbitrary files to projects) +
-scope control (keeps v1 focused on the conversation deliverable + export).
+### DEC-14: Desktop parity + OpenAPI.
+**Resolution:** All endpoints are server-side and desktop embeds the server, so they
+work on desktop unchanged; the frontend edits are mirrored into `src-app/desktop/ui/`
+and `just openapi-regen` regenerates BOTH api-clients. The `deliverables` response reuses
+the existing `File` schema, so the regen is endpoint-surface only (no new domain type).
+**Basis:** memory — desktop embeds the server; `just openapi-regen` covers both
+workspaces, each with its own types/Permissions; verify `npm run check` in both.
 
-### DEC-14: What permission gates the feature?
-**Resolution:** A new `artifacts::use`, granted to the default `Users` group by
-migration 133; admins inherit via `*`. It gates the whole MCP surface + the user
-REST + artifact export; conversation-owned reads additionally enforce ownership.
-Conversation export reuses `conversations::read`.
-**Basis:** codebase — mirrors `citations::use`/`web_search::use` (one permission
-gating a built-in's whole surface, granted to Users via an idempotent migration).
-
-### DEC-15: How does this behave on desktop?
-**Resolution:** Fully available. Artifacts is a server-side module and the desktop
-app embeds the server, so no module blocklist entry is added; the `artifact`
-frontend module is mirrored into `src-app/desktop/ui/` and both api-clients are
-regenerated.
-**Basis:** memory — desktop embeds the server; `just openapi-regen` regenerates
-BOTH `ui/` and `desktop/ui/`, each with its own types/Permissions/AppEvents.
-
-### DEC-16: Which migration numbers?
-**Resolution:** `132_create_artifacts_table.sql` and
-`133_grant_artifacts_permissions_to_users.sql`.
-**Basis:** codebase — `ls migrations/` tail is `131_…`; 132/133 are the next free
-numbers, verified no collision.
-
-### DEC-17: What is the artifact-type vocabulary?
-**Resolution:** `markdown | code | csv | html` for v1. Each maps to a file
-extension/mime so the existing viewer registry routes rendering; `markdown|code|csv`
-are user-editable, `html` is view+export only.
-**Basis:** research (prose/code first-class everywhere; a first-class tabular type
-fits the life-science audience) + codebase (the viewer registry already renders
-markdown/tabular/code/web). Live React/HTML *execution* is deliberately excluded
-(no concrete need; would require sandbox wiring).
-
-### DEC-18: What chat-extension order does the attach-flag extension use?
-**Resolution:** `23` (between `file`=20/`control_mcp`=22 and the built-ins at
-24–29), which is < the MCP collector's `30`.
-**Basis:** codebase — the order table requires any flag-setting extension to run
-before the collector at 30; 23 is a free slot.
-
-### DEC-19: Is a new user REST endpoint needed to append content, or can an existing one be reused?
-**Resolution:** A new `PUT /api/artifacts/{id}` (title and/or content) appends a
-version via `commit_new_version` (`created_by='user'`).
-**Basis:** codebase — the existing `/api/files/*` routes expose upload + restore
-but NO "append a version from user-supplied bytes"; the user side of co-edit needs
-this new endpoint.
-
-### DEC-20: Is selection-scoped "have the model edit this highlighted range" in v1?
-**Resolution:** Deferred beyond v1. v1 ships direct user edit (DEC-7) plus the full
-model `create`/`update`/`rewrite`/`get` surface. A future selection→instruction
-affordance can seed `update_artifact`'s `old_str` server-side.
-**Basis:** research (a nice-to-have, not core to any incumbent's baseline) + scope
-control. Non-blocking for the v1 data model or tool surface (it is purely additive
-later).
+### DEC-15: Is selection-scoped "have the model edit this highlighted range" in v1?
+**Resolution:** Deferred beyond v1. v1 ships direct user edit + the existing model
+`create_file`/`edit_file`/`rewrite_file` surface. A future selection→instruction
+affordance can seed `edit_file`'s `old_str` server-side — purely additive.
+**Basis:** external research (a nice-to-have, not baseline) + scope control.
