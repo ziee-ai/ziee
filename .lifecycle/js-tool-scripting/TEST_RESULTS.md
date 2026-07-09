@@ -92,11 +92,12 @@ apply; ui diff → the frontend gate + e2e apply.
 - **TEST-48**: PASS (PUT emits SyncEntity::JsToolSettings/update to the read audience; a user without read stays silent, via SyncProbe)
 
 ### E2E (`tests/e2e/settings/js-tool-settings.spec.ts`, Playwright `--workers=1`)
-Each spec PASSED (no assertion failure ever observed). The backend-start
-failures seen in some runs are the known environmental combo — the stale
-`macros` proc-macro warmup-build gotcha ([[project_macros_stale_chat_extensions]])
-+ shared-host concurrent-e2e load exceeding the hardcoded 120 s server-start
-budget ([[project_e2e_test_contention]]) — never a test-logic failure.
+**Clean 4/4 pass in 3.3 min** against a freshly-built warm binary (0 failures).
+The backend-start failures in some earlier runs were purely environmental — the
+stale `macros` proc-macro warmup-build gotcha
+([[project_macros_stale_chat_extensions]]) + shared-host concurrent-e2e load
+exceeding the hardcoded 120 s server-start budget ([[project_e2e_test_contention]])
+— never a test-logic failure (no assertion ever failed).
 - **TEST-50**: PASS (admin edits wall_secs + Save; value persists across a reload — GET/PUT round-trip; waits on the PUT response before reload)
 - **TEST-51**: PASS (out-of-range value clamps to the bound on blur; a direct absurd PUT returns 422 — validation-rejects-absurd, visible)
 - **TEST-52**: PASS (a REST change to max_concurrent_runs on device A reflects live on device B via sync:js_tool_settings, no reload)
