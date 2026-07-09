@@ -87,3 +87,16 @@ pub struct KnowledgeSearchHit {
 
 /// Max documents per knowledge base (DEC-14). Well above the 500-doc bar.
 pub const KB_MAX_DOCUMENTS: i64 = 2000;
+
+#[cfg(test)]
+mod cap_tests {
+    use super::KB_MAX_DOCUMENTS;
+
+    // TEST-15 (ITEM-18): the per-KB document cap is 2000. (document_count is a
+    // live COUNT(*) projection, not a stored column — see repository::list; a
+    // stored counter would drift on an external cascade delete.)
+    #[test]
+    fn kb_max_documents_is_2000() {
+        assert_eq!(KB_MAX_DOCUMENTS, 2000);
+    }
+}

@@ -103,3 +103,22 @@ impl AppModule for KnowledgeBaseModule {
         router.merge(routes::knowledge_base_router())
     }
 }
+
+#[cfg(test)]
+mod id_tests {
+    use super::knowledge_base_server_id;
+    use uuid::Uuid;
+
+    // TEST-14 (ITEM-16): the built-in server id is a STABLE deterministic v5
+    // UUID (a change to the namespace input would orphan every existing
+    // mcp_servers row / conversation attachment).
+    #[test]
+    fn knowledge_base_server_id_is_stable() {
+        let expected = Uuid::parse_str("70577fd2-afe1-52c7-a629-9464c01fb1e5").unwrap();
+        assert_eq!(knowledge_base_server_id(), expected);
+        // pure + deterministic
+        assert_eq!(knowledge_base_server_id(), knowledge_base_server_id());
+        // distinct from the URL namespace itself (sanity)
+        assert_ne!(knowledge_base_server_id(), Uuid::NAMESPACE_URL);
+    }
+}
