@@ -22,6 +22,10 @@ pub fn scheduler_router() -> ApiRouter {
                 .delete_with(handlers::delete_task, handlers::delete_task_docs),
         )
         .api_route(
+            "/scheduled-tasks/test-fire",
+            aide::axum::routing::post_with(handlers::test_fire, handlers::test_fire_docs),
+        )
+        .api_route(
             "/scheduled-tasks/{id}/run-now",
             aide::axum::routing::post_with(handlers::run_now, handlers::run_now_docs),
         )

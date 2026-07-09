@@ -36,6 +36,7 @@ pub fn scheduler_config() -> Option<Arc<Config>> {
 
 pub mod change;
 pub mod dispatch;
+pub mod dryrun;
 pub mod events;
 pub mod failure;
 pub mod handlers;

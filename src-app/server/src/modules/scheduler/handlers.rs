@@ -17,6 +17,7 @@ use super::models::{
     CreateScheduledTask, ScheduledTask, ScheduledTaskRun, UpdateScheduledTask, MAX_NAME_LEN,
     MAX_PROMPT_LEN,
 };
+use super::dryrun::{self, TestFireRequest, TestFireResult};
 use super::tick;
 use super::permissions::{SchedulerAdminManage, SchedulerAdminRead, SchedulerUse};
 use super::schedule::{self, ScheduleError, ScheduleKind};
@@ -275,6 +276,27 @@ pub fn list_task_runs_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
         .summary("List a scheduled task's run history")
         .response::<200, Json<Vec<ScheduledTaskRun>>>()
+}
+
+/// POST /api/scheduled-tasks/test-fire — run the target ONCE, side-effect-free,
+/// and return the result inline (the drawer's "Test" button). Blocks until the
+/// turn/run completes; no notification, no history, no schedule change.
+#[debug_handler]
+pub async fn test_fire(
+    auth: RequirePermissions<(SchedulerUse,)>,
+    Json(body): Json<TestFireRequest>,
+) -> ApiResult<Json<TestFireResult>> {
+    let config = super::scheduler_config()
+        .ok_or_else(|| AppError::internal_error("scheduler not initialized"))?;
+    let result = dryrun::test_fire(Repos.pool(), &config, auth.user.id, &body).await;
+    Ok((StatusCode::OK, Json(result)))
+}
+
+pub fn test_fire_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SchedulerUse,)>(op)
+        .summary("Test-fire a task target (dry run)")
+        .description("Runs the target once with no side effects; returns the result inline.")
+        .response::<200, Json<TestFireResult>>()
 }
 
 // ── Admin settings ──────────────────────────────────────────────────────

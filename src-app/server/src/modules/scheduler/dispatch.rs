@@ -138,7 +138,7 @@ async fn dispatch_workflow(pool: &PgPool, task: &ScheduledTask) -> Result<RawRes
 
 /// Build a text digest from a workflow run's `final_output_json`
 /// (`{ output_name: { value_preview, .. } }`) for change-detection + the body.
-fn summarize_workflow_output(final_output: Option<&serde_json::Value>) -> String {
+pub fn summarize_workflow_output(final_output: Option<&serde_json::Value>) -> String {
     let Some(obj) = final_output.and_then(|v| v.as_object()) else {
         return String::new();
     };
