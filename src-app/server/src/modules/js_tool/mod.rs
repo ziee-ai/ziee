@@ -128,3 +128,33 @@ impl AppModule for JsToolModule {
         router.merge(routes::js_tool_router())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::module_api::AppModule;
+
+    // TEST-17: the built-in server id is deterministic + distinct from peers.
+    #[test]
+    fn server_id_is_stable_and_distinct() {
+        assert_eq!(run_js_mcp_server_id(), run_js_mcp_server_id());
+        assert!(!run_js_mcp_server_id().is_nil());
+        assert_ne!(
+            run_js_mcp_server_id(),
+            crate::modules::memory_mcp::memory_mcp_server_id()
+        );
+    }
+
+    // TEST-29: the module + its AppModule impl are present.
+    #[test]
+    fn module_present() {
+        assert_eq!(JsToolModule::new().name(), "js_tool");
+    }
+
+    // TEST-26: config defaults to enabled; an explicit false disables.
+    #[test]
+    fn config_default_enabled() {
+        assert!(crate::core::config::JsToolConfig::default().enabled);
+        assert!(!crate::core::config::JsToolConfig { enabled: false }.enabled);
+    }
+}

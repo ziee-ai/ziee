@@ -161,3 +161,20 @@ pub struct McpCallContext {
     /// (so the ~5 other `get_or_create_with_context` call sites are untouched).
     pub workflow_run_id: Option<Uuid>,
 }
+
+#[cfg(test)]
+mod js_tool_source_tests {
+    use super::McpToolCallSource;
+
+    // TEST-23: the Script source stringifies + serde-roundtrips as "script".
+    #[test]
+    fn script_source_as_str_and_serde() {
+        assert_eq!(McpToolCallSource::Script.as_str(), "script");
+        assert_eq!(
+            serde_json::to_value(McpToolCallSource::Script).unwrap(),
+            serde_json::json!("script")
+        );
+        let back: McpToolCallSource = serde_json::from_value(serde_json::json!("script")).unwrap();
+        assert_eq!(back, McpToolCallSource::Script);
+    }
+}

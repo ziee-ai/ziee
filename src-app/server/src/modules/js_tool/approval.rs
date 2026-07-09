@@ -231,4 +231,24 @@ mod tests {
         let out = request_approval(&ctx, "srv", "tool", &serde_json::json!({})).await;
         assert!(matches!(out, ApprovalOutcome::Denied(_)));
     }
+
+    // TEST-13: an approval that is never answered times out → Denied. `_rx` is
+    // kept alive so the stream-closed arm doesn't fire; the tiny timeout drives
+    // the sleep arm.
+    #[tokio::test]
+    async fn test_request_approval_times_out() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let ctx = ApprovalCtx {
+            user_id: Uuid::new_v4(),
+            sse_tx: tx,
+            pending: Arc::new(AtomicUsize::new(0)),
+            timeout: Duration::from_millis(120),
+        };
+        let out = request_approval(&ctx, "srv", "tool", &serde_json::json!({})).await;
+        match out {
+            ApprovalOutcome::Denied(msg) => assert!(msg.contains("timed out") || msg.contains("cancel"), "msg: {msg}"),
+            ApprovalOutcome::Approved => panic!("timeout must deny, not approve"),
+        }
+    }
+
 }

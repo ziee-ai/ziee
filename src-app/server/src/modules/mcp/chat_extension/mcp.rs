@@ -3295,6 +3295,22 @@ mod builtin_tests {
         ));
     }
 
+    // TEST-21: the two run_js mcp.rs edits — the model SEES run_js (auto_attach)
+    // and the script START auto-approves (is_builtin_server_id).
+    #[test]
+    fn run_js_auto_attach_and_builtin_seam() {
+        let run_js_id = crate::modules::js_tool::run_js_mcp_server_id();
+        // Approval-bypassed (script START runs without a prompt).
+        assert!(is_builtin_server_id(run_js_id));
+        // Attached when the flag is set (the model sees run_js).
+        let mut md = std::collections::HashMap::new();
+        md.insert("attach_run_js_mcp".to_string(), serde_json::json!("true"));
+        assert!(auto_attach_builtin_ids(&md).contains(&run_js_id));
+        // NOT attached without the flag.
+        let empty = std::collections::HashMap::new();
+        assert!(!auto_attach_builtin_ids(&empty).contains(&run_js_id));
+    }
+
     #[test]
     fn builtin_server_id_recognizes_zero_config_builtins() {
         assert!(is_builtin_server_id(
