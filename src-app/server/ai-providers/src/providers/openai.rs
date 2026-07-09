@@ -1355,3 +1355,35 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod rerank_wire_tests {
+    use super::{OpenAIRerankRequest, OpenAIRerankResponse};
+
+    // TEST-1 (ITEM-1): the rerank request serializes to the llama.cpp/Jina
+    // `{model,query,documents}` shape (top_n omitted when None), and the response
+    // parses `results[{index,relevance_score}]`.
+    #[test]
+    fn rerank_request_serializes_expected_shape() {
+        let req = OpenAIRerankRequest {
+            model: "bge".into(),
+            query: "q".into(),
+            documents: vec!["a".into(), "b".into()],
+            top_n: None,
+        };
+        let v: serde_json::Value = serde_json::to_value(&req).unwrap();
+        assert_eq!(v["model"], "bge");
+        assert_eq!(v["query"], "q");
+        assert_eq!(v["documents"], serde_json::json!(["a", "b"]));
+        assert!(v.get("top_n").is_none(), "top_n omitted when None");
+    }
+
+    #[test]
+    fn rerank_response_parses_index_and_score() {
+        let body = r#"{"results":[{"index":1,"relevance_score":0.9},{"index":0,"relevance_score":0.1}]}"#;
+        let resp: OpenAIRerankResponse = serde_json::from_str(body).unwrap();
+        assert_eq!(resp.results.len(), 2);
+        assert_eq!(resp.results[0].index, 1);
+        assert!((resp.results[0].relevance_score - 0.9).abs() < 1e-6);
+    }
+}

@@ -240,6 +240,60 @@ fn align_span_to_boxes(cleaned_substr: &str, geom: &PageGeometry) -> Vec<Highlig
         .collect()
 }
 
+#[cfg(test)]
+mod align_tests {
+    use super::{align_span_to_boxes, PageGeometry};
+
+    // Build per-char boxes on a given line-y; each char is `w` wide stepping in x.
+    fn line(chars: &str, y: f32, x0: f32, w: f32) -> Vec<[f32; 4]> {
+        chars
+            .chars()
+            .enumerate()
+            .map(|(i, _)| [x0 + i as f32 * w, y, w, 0.02])
+            .collect()
+    }
+
+    // TEST-31 (ITEM-22): a cleaned span relocates onto the RAW page geometry
+    // whitespace-insensitively (raw text may have collapsed multi-spaces), and
+    // the matched char boxes merge into line-level rects bounding the CORRECT
+    // passage — not merely a non-empty result.
+    #[test]
+    fn divergent_whitespace_span_bounds_correct_chars() {
+        // Raw page text has a DOUBLE space that cleaning collapsed to one.
+        let text = "Hello  world".to_string(); // 12 chars incl. 2 spaces
+        let boxes = line("Hello  world", 0.10, 0.10, 0.05);
+        let geom = PageGeometry { text, boxes };
+
+        // The cleaned span uses a single space — must still match.
+        let rects = align_span_to_boxes("Hello world", &geom);
+        assert_eq!(rects.len(), 1, "one line → one merged rect");
+        let r = &rects[0];
+        // Bounds the 'H' (index 0, x=0.10) through 'd' (index 11, x=0.10+11*0.05).
+        assert!((r.x - 0.10).abs() < 1e-4, "left edge at 'H': {}", r.x);
+        let right = r.x + r.w;
+        assert!((right - (0.10 + 12.0 * 0.05)).abs() < 1e-4, "right edge at 'd': {right}");
+        assert!((r.y - 0.10).abs() < 1e-4);
+    }
+
+    #[test]
+    fn multiline_span_yields_one_rect_per_line() {
+        // "foo" on line 1 (y=0.10), "bar" on line 2 (y=0.50).
+        let mut boxes = line("foo", 0.10, 0.10, 0.05);
+        boxes.extend(line("bar", 0.50, 0.10, 0.05));
+        let geom = PageGeometry { text: "foobar".to_string(), boxes };
+        let rects = align_span_to_boxes("foobar", &geom);
+        assert_eq!(rects.len(), 2, "two visually-separated lines → two rects");
+        assert!(rects[0].y < rects[1].y);
+    }
+
+    #[test]
+    fn unlocatable_span_returns_empty() {
+        let geom = PageGeometry { text: "abc".to_string(), boxes: line("abc", 0.1, 0.1, 0.05) };
+        assert!(align_span_to_boxes("xyz", &geom).is_empty());
+        assert!(align_span_to_boxes("", &geom).is_empty());
+    }
+}
+
 /// Citation highlight geometry: the fraction-normalized rectangles bounding a
 /// chunk's cleaned `[start, end)` span on a page, for the exact-passage overlay.
 /// Owner-scoped (foreign file → 404); non-PDF / no-geometry → `200 {rects:[]}`.
