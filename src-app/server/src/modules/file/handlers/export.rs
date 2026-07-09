@@ -3,8 +3,6 @@
 // model-only `files_mcp::convert_document`, which SAVES a PDF back into the store
 // — this streams a download in the user's chosen format and persists nothing.
 
-use std::path::PathBuf;
-
 use aide::transform::TransformOperation;
 use axum::extract::{Path, Query};
 use axum::http::{header, StatusCode};
@@ -18,7 +16,7 @@ use crate::core::Repos;
 use crate::modules::file::handlers::download::content_disposition;
 use crate::modules::file::permissions::FilesDownload;
 use crate::modules::file::storage::manager::get_file_storage;
-use crate::modules::file::utils::pandoc;
+use crate::modules::file::utils::export::{export_mime, render_to_format};
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
 
@@ -27,19 +25,6 @@ use crate::modules::permissions::openapi::with_permission;
 pub struct ExportQuery {
     /// Target format: `md | docx | pdf | odt | rtf | html`.
     pub format: String,
-}
-
-/// Map a supported format to its MIME type, or `None` for an unsupported one.
-fn export_mime(format: &str) -> Option<&'static str> {
-    Some(match format {
-        "md" => "text/markdown; charset=utf-8",
-        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "pdf" => "application/pdf",
-        "odt" => "application/vnd.oasis.opendocument.text",
-        "rtf" => "application/rtf",
-        "html" => "text/html; charset=utf-8",
-        _ => return None,
-    })
 }
 
 /// Export a file's head content in a chosen format as a download.
@@ -86,31 +71,7 @@ pub async fn export_file(
         .unwrap_or_else(|| file.filename.clone());
     let out_name = format!("{}.{}", stem, format);
 
-    let out_bytes = if format == "md" {
-        bytes
-    } else {
-        // Write the source to a temp input carrying its native extension so
-        // pandoc infers the reader, convert to the target, read it back, and
-        // always clean up the temp dir (even on error).
-        let dir = std::env::temp_dir().join(format!("ziee-export-{}", Uuid::new_v4()));
-        tokio::fs::create_dir_all(&dir)
-            .await
-            .map_err(|e| AppError::internal_error(format!("export temp dir: {e}")))?;
-        let in_path: PathBuf = dir.join(format!("input.{}", src_ext));
-        let out_path: PathBuf = dir.join(format!("output.{}", format));
-        let converted = async {
-            tokio::fs::write(&in_path, &bytes)
-                .await
-                .map_err(|e| AppError::internal_error(format!("export temp write: {e}")))?;
-            pandoc::convert_to(&in_path, &out_path).await?;
-            tokio::fs::read(&out_path)
-                .await
-                .map_err(|e| AppError::internal_error(format!("export read output: {e}")))
-        }
-        .await;
-        let _ = tokio::fs::remove_dir_all(&dir).await;
-        converted?
-    };
+    let out_bytes = render_to_format(&bytes, &src_ext, &format).await?;
 
     let headers = [
         (header::CONTENT_TYPE, mime.to_string()),
