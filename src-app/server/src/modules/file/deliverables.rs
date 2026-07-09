@@ -174,6 +174,8 @@ pub async fn list_deliverables(
 
 pub fn list_deliverables_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(ConversationsRead,)>(op)
+        .id("File.listDeliverables")
+        .tag("Files")
         .summary("List conversation deliverables")
         .description(
             "The files a conversation produced: model-authored files (derived) plus \
@@ -204,6 +206,8 @@ pub async fn pin_deliverable(
 
 pub fn pin_deliverable_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(ConversationsEdit,)>(op)
+        .id("File.pinDeliverable")
+        .tag("Files")
         .summary("Pin/hide a conversation deliverable")
         .description("Promote a file into (pinned=true) or hide it from (pinned=false) the deliverables list.")
 }
@@ -223,6 +227,8 @@ pub async fn unpin_deliverable(
 
 pub fn unpin_deliverable_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(ConversationsEdit,)>(op)
+        .id("File.unpinDeliverable")
+        .tag("Files")
         .summary("Remove a conversation deliverable curation")
         .description("Delete the pin/hide row for a file, reverting it to the derived default.")
 }

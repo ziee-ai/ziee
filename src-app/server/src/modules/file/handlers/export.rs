@@ -83,6 +83,8 @@ pub async fn export_file(
 
 pub fn export_file_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(FilesDownload,)>(op)
+        .id("File.export")
+        .tag("Files")
         .summary("Export a file")
         .description(
             "Download the file's head content converted to md/docx/pdf/odt/rtf/html \

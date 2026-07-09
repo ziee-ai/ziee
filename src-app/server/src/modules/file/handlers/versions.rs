@@ -200,6 +200,8 @@ pub async fn append_version(
 
 pub fn append_version_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(FilesUpload,)>(op)
+        .id("File.appendVersion")
+        .tag("Files")
         .summary("Append a file version")
         .description(
             "Append a new head version from user-supplied text content (the user side of \

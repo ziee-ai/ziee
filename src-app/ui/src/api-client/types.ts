@@ -6567,10 +6567,12 @@ export const ApiEndpoints = {
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
   'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
+  'File.appendVersion': 'POST /api/files/{file_id}/versions',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
   'File.downloadVersion': 'GET /api/files/{file_id}/versions/{version}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
+  'File.export': 'GET /api/files/{file_id}/export',
   'File.generateDownloadToken': 'POST /api/files/{file_id}/download-token',
   'File.get': 'GET /api/files/{file_id}',
   'File.getHeadVersion': 'GET /api/files/{file_id}/head',
@@ -6580,10 +6582,13 @@ export const ApiEndpoints = {
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
+  'File.listDeliverables': 'GET /api/conversations/{id}/deliverables',
   'File.listVersions': 'GET /api/files/{file_id}/versions',
+  'File.pinDeliverable': 'POST /api/conversations/{id}/deliverables/{file_id}',
   'File.previewVersion': 'GET /api/files/{file_id}/versions/{version}/preview',
   'File.restore': 'POST /api/files/{file_id}/restore',
   'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
+  'File.unpinDeliverable': 'DELETE /api/conversations/{id}/deliverables/{file_id}',
   'File.upload': 'POST /api/files/upload',
   'FileRagAdmin.backfill': 'POST /api/file-rag/backfill',
   'FileRagAdmin.get': 'GET /api/file-rag/admin-settings',
@@ -6921,10 +6926,12 @@ export type ApiEndpointParameters = {
   'CoreMemory.delete': { assistant_id: string; block_label: string }
   'CoreMemory.list': { assistant_id: string }
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
+  'File.appendVersion': { file_id: string } & AppendVersionRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
   'File.downloadVersion': { file_id: string; version: string }
   'File.downloadWithToken': { file_id: string; token: string }
+  'File.export': { file_id: string; format: string }
   'File.generateDownloadToken': { file_id: string; version?: number }
   'File.get': { file_id: string }
   'File.getHeadVersion': { file_id: string }
@@ -6934,10 +6941,13 @@ export type ApiEndpointParameters = {
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
+  'File.listDeliverables': { id: string }
   'File.listVersions': { file_id: string; limit?: number; offset?: number }
+  'File.pinDeliverable': { id: string; file_id: string } & PinDeliverableRequest
   'File.previewVersion': { file_id: string; version: string; page?: number }
   'File.restore': { file_id: string } & RestoreVersionRequest
   'File.textVersion': { file_id: string; version: string; page?: number }
+  'File.unpinDeliverable': { id: string; file_id: string }
   'File.upload': FormData
   'FileRagAdmin.backfill': void
   'FileRagAdmin.get': void
@@ -7275,10 +7285,12 @@ export type ApiEndpointResponses = {
   'CoreMemory.delete': void
   'CoreMemory.list': CoreMemoryBlock[]
   'CoreMemory.upsert': CoreMemoryBlock
+  'File.appendVersion': any
   'File.delete': void
   'File.download': Blob
   'File.downloadVersion': Blob
   'File.downloadWithToken': Blob
+  'File.export': any
   'File.generateDownloadToken': DownloadTokenResponse
   'File.get': File
   'File.getHeadVersion': FileVersion
@@ -7288,10 +7300,13 @@ export type ApiEndpointResponses = {
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse
+  'File.listDeliverables': any
   'File.listVersions': FileVersion[]
+  'File.pinDeliverable': any
   'File.previewVersion': Blob
   'File.restore': File
   'File.textVersion': Blob
+  'File.unpinDeliverable': any
   'File.upload': File
   'FileRagAdmin.backfill': TriggerResponse
   'FileRagAdmin.get': FileRagAdminSettings
