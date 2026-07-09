@@ -10,6 +10,15 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+/** Body for `POST /files/{id}/versions`. */
+export interface AppendVersionRequest {
+  /**
+   * New full text content for the file. A new head version is appended;
+   *  byte-identical content is a no-op.
+   */
+  content: string
+}
+
 /** Approval mode for conversation MCP settings */
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
@@ -542,6 +551,12 @@ export interface Conversation {
   model_id?: string
   updated_at: string
   user_id: string
+}
+
+/** `?format=` for `GET /conversations/{id}/export`. */
+export interface ConversationExportQuery {
+  /** Target format: `md | docx | pdf | odt | rtf | html`. */
+  format: string
 }
 
 /**
@@ -1371,7 +1386,13 @@ export interface EnvironmentInfo {
   mounted: boolean
 }
 
+/** `?format=` for `GET /files/{id}/export`. */
 export interface ExportQuery {
+  /** Target format: `md | docx | pdf | odt | rtf | html`. */
+  format: string
+}
+
+export interface ExportQuery2 {
   /** csljson | bibtex | ris | text (default text) */
   format?: string
   project_id?: string
@@ -3744,6 +3765,15 @@ export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
 }
 
+/** Body for `POST /conversations/{id}/deliverables/{file_id}`. */
+export interface PinDeliverableRequest {
+  /**
+   * `true` promotes the file into the deliverables list; `false` hides a
+   *  derived file. Defaults to `true`.
+   */
+  pinned?: boolean
+}
+
 export interface PingResponse {
   ok: boolean
 }
@@ -5079,7 +5109,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -6502,6 +6532,7 @@ export const ApiEndpoints = {
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
+  'Chat.exportConversation': 'GET /api/conversations/{id}/export',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
   'ChatStream.subscribe': 'GET /api/chat/stream',
@@ -6855,6 +6886,7 @@ export type ApiEndpointParameters = {
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
+  'Chat.exportConversation': { id: string; format: string }
   'Chat.getUserLlmProviders': { limit?: number; offset?: number }
   'ChatStream.setSubscription': SetSubscriptionRequest
   'ChatStream.subscribe': void
@@ -7208,6 +7240,7 @@ export type ApiEndpointResponses = {
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
+  'Chat.exportConversation': any
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'ChatStream.setSubscription': void
   'ChatStream.subscribe': ChatStreamSseEvent
