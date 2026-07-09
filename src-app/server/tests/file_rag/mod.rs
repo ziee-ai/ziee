@@ -1949,3 +1949,85 @@ async fn test_6_reranker_settings_roundtrip_and_validation() {
         rejected.text().await.unwrap_or_default()
     );
 }
+
+// ─────────────────────────── TEST-11: file_index_state emit (Part I) ───────────────────────────
+
+/// Poll `file_index_state.status` until it is a terminal value or timeout.
+async fn wait_index_status(pool: &sqlx::PgPool, file_id: &str) -> String {
+    let fid = Uuid::parse_str(file_id).unwrap();
+    for _ in 0..40 {
+        let s: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM file_index_state WHERE file_id = $1",
+        )
+        .bind(fid)
+        .fetch_optional(pool)
+        .await
+        .expect("query index state");
+        if let Some(st) = s {
+            if st == "indexed" || st == "no_text" || st == "failed" {
+                return st;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!("timed out waiting for a terminal file_index_state for {file_id}");
+}
+
+#[tokio::test]
+async fn test_11_index_state_reaches_indexed_and_emits_owner_scoped() {
+    use crate::common::sync_probe::SyncProbe;
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let owner = power_user(&server, "fis_owner").await;
+    let other = power_user(&server, "fis_other").await;
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    // A text file is FTS-indexable with no embedder → reaches `indexed`.
+    let fid = upload_text(&server, &owner, "idx.txt", "indexed content here").await;
+
+    let frame = owner_probe
+        .expect_event("file_index_state", "update", Duration::from_secs(10))
+        .await;
+    assert_eq!(frame.id, fid, "the index-state sync frame carries the file id");
+    // The other user never sees it (owner-scoped audience).
+    other_probe.expect_silence(Duration::from_secs(1)).await;
+
+    let status = wait_index_status(&pool, &fid).await;
+    assert_eq!(status, "indexed", "a text file with extractable text reaches indexed");
+}
+
+#[tokio::test]
+async fn test_11b_no_text_file_lands_no_text() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "fis_notext").await;
+
+    // A 1x1 PNG has no extractable text → the distinct `no_text` terminal state.
+    const PNG_1X1: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(PNG_1X1.to_vec())
+            .file_name("pixel.png")
+            .mime_str("image/png")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 201, "png upload: {}", resp.text().await.unwrap_or_default());
+    let fid = resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+
+    let status = wait_index_status(&pool, &fid).await;
+    assert_eq!(status, "no_text", "an image (no extractable text) lands no_text, not indexed/failed");
+}
