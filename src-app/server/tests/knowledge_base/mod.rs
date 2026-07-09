@@ -461,3 +461,90 @@ async fn test_23_attaching_unchunked_file_triggers_reindex() {
     let sc = search_knowledge(&server, &user.token, "marmot beacon", &[&kb]).await;
     assert!(!sc["hits"].as_array().unwrap().is_empty(), "reindexed file is searchable: {sc}");
 }
+
+// ─────────────────────────── TEST-26: search_knowledge with reranking ───────────────────────────
+
+/// Loopback reranker: POST /rerank → `results[{index,relevance_score}]`. A doc
+/// containing `PROMOTE_ME` gets the top score regardless of input order, so the
+/// test can prove the rerank stage ran and reordered the candidate pool. Returns
+/// (base_url, hit_counter).
+async fn start_mock_reranker() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use axum::{routing::post, Router, Json};
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    let hits = Arc::new(AtomicUsize::new(0));
+    let hits2 = hits.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/rerank",
+        post(move |Json(body): Json<Value>| {
+            let hits = hits2.clone();
+            async move {
+                hits.fetch_add(1, Ordering::SeqCst);
+                let docs = body["documents"].as_array().cloned().unwrap_or_default();
+                let mut results: Vec<Value> = docs.iter().enumerate().map(|(i, d)| {
+                    let score = if d.as_str().unwrap_or("").contains("PROMOTE_ME") { 1.0 } else { 0.1 };
+                    json!({ "index": i, "relevance_score": score })
+                }).collect();
+                results.sort_by(|a, b| b["relevance_score"].as_f64().unwrap()
+                    .partial_cmp(&a["relevance_score"].as_f64().unwrap()).unwrap());
+                Json(json!({ "results": results }))
+            }
+        }),
+    );
+    tokio::spawn(async move { let _ = axum::serve(listener, app.into_make_service()).await; });
+    (format!("http://127.0.0.1:{port}"), hits)
+}
+
+#[tokio::test]
+async fn test_26_search_knowledge_reranks_via_provider() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_rerank").await;
+    let client = reqwest::Client::new();
+    let (rerank_url, hits) = start_mock_reranker().await;
+
+    // A provider whose base_url is the loopback reranker + a rerank-capable model.
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Rerank Prov", "provider_type": "openai",
+            "enabled": true, "api_key": "sk-x", "base_url": rerank_url }))
+        .send().await.unwrap().json().await.unwrap();
+    let pid = prov["id"].as_str().expect("provider id");
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": pid, "name": "bge-rerank-test",
+            "display_name": "Rerank Test", "enabled": true,
+            "engine_type": "llamacpp", "file_format": "gguf",
+            "capabilities": { "rerank": true } }))
+        .send().await.unwrap().json().await.unwrap();
+    let model_id = model["id"].as_str().expect("model id");
+
+    // Turn on reranking in file_rag admin (the PUT probes the model → loopback).
+    let put = client.put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "reranker_model_id": model_id, "rerank_enabled": true, "rerank_candidate_k": 20 }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "enable rerank: {}", put.text().await.unwrap_or_default());
+
+    // Two docs both matching the query; only the second carries the promote marker.
+    let f1 = upload_text(&server, &user, "d1.txt", "orbital resonance analysis summary alpha").await;
+    let f2 = upload_text(&server, &user, "d2.txt", "orbital resonance analysis summary PROMOTE_ME beta").await;
+    wait_for_chunks(&pool, &f1, 1).await;
+    wait_for_chunks(&pool, &f2, 1).await;
+    let kb = create_kb(&server, &user, "Rerank KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&f1, &f2]).await.status(), 200);
+
+    // search_knowledge → the reranker ran and the PROMOTE_ME doc is ranked first,
+    // with full provenance (file/page/score).
+    let sc = search_knowledge(&server, &user.token, "orbital resonance analysis", &[&kb]).await;
+    let hits_arr = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert!(hits_arr.len() >= 2, "both docs retrieved before rerank: {sc}");
+    assert!(hits.load(std::sync::atomic::Ordering::SeqCst) > 0,
+        "the reranker endpoint was actually called");
+    assert!(hits_arr[0]["content"].as_str().unwrap().contains("PROMOTE_ME"),
+        "the reranker promoted the marked doc to #1: {sc}");
+    let top = &hits_arr[0];
+    assert!(top["file_id"].is_string() && top["page"].is_number() && top["score"].is_number(),
+        "hit carries provenance (file/page/score): {top}");
+}
