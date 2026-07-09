@@ -90,6 +90,14 @@ async fn dispatch_workflow(pool: &PgPool, task: &ScheduledTask) -> Result<RawRes
     let workflow = crate::modules::workflow::repository::find_by_id(pool, workflow_id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
+    // Re-check access at fire time (owner scope / group assignment): a workflow
+    // the user lost access to — or never had — must not run. `find_by_id` is
+    // id-scoped only, so this is the real authorization gate.
+    if !crate::modules::workflow::repository::user_can_access(pool, task.user_id, workflow_id)
+        .await?
+    {
+        return Err(AppError::not_found("Workflow"));
+    }
 
     let run_id = spawn_run(
         pool,
@@ -164,6 +172,13 @@ async fn dispatch_prompt(
     let model_id = task
         .model_id
         .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Re-check assistant access at fire time (defense-in-depth; also gated at create).
+    if let Some(aid) = task.assistant_id {
+        if Repos.assistant.get_for_user(aid, task.user_id).await?.is_none() {
+            return Err(AppError::not_found("Assistant"));
+        }
+    }
 
     // Resolve the bound conversation (reuse or create), and its active branch.
     let (conversation_id, branch_id) = match task.bound_conversation_id {

@@ -81,6 +81,49 @@ pub async fn create_task(
         }
     }
 
+    // A workflow target must be one the user can actually run (owner / group
+    // assignment) — re-checked at fire time too, but reject early here (404, not
+    // leaking existence).
+    if body.target_kind == "workflow" {
+        if let Some(wf_id) = body.workflow_id {
+            if !crate::modules::workflow::repository::user_can_access(
+                Repos.pool(),
+                auth.user.id,
+                wf_id,
+            )
+            .await?
+            {
+                return Err(AppError::not_found("Workflow").into());
+            }
+        }
+    }
+
+    // A prompt target's assistant (if any) must belong to the user — don't let a
+    // scheduled task inject a foreign assistant's system prompt.
+    if body.target_kind == "prompt" {
+        if let Some(aid) = body.assistant_id {
+            if Repos
+                .assistant
+                .get_for_user(aid, auth.user.id)
+                .await?
+                .is_none()
+            {
+                return Err(AppError::not_found("Assistant").into());
+            }
+        }
+    }
+
+    // Delivery-mode enums (400, not a DB-CHECK 500).
+    if !matches!(body.notify_mode.as_str(), "always" | "silent")
+        || !matches!(body.notify_on.as_str(), "always" | "on_change")
+    {
+        return Err(AppError::bad_request(
+            "SCHEDULER_BAD_NOTIFY_MODE",
+            "notify_mode must be always|silent and notify_on must be always|on_change",
+        )
+        .into());
+    }
+
     let kind = parse_kind(&body.schedule_kind)?;
     let admin = settings::get(Repos.pool()).await?;
 

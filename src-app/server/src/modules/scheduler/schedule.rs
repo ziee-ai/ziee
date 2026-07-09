@@ -121,21 +121,26 @@ pub fn validate_schedule(
             let expr = cron_expr.ok_or(ScheduleError::MissingField("cron_expr"))?;
             let cron = parse_cron(expr)?;
             let tz = parse_tz(timezone)?;
-            // Compute two consecutive occurrences and require their gap to meet
-            // the floor. This catches sub-minute / every-minute crons regardless
-            // of field shape.
-            let start = now.with_timezone(&tz);
-            let first = cron
-                .find_next_occurrence(&start, false)
+            // Walk several consecutive occurrences and require the MINIMUM gap to
+            // meet the floor. Checking a single gap is `now`-dependent and misses
+            // uneven multi-time crons (e.g. `0,1 0 * * *` fires 00:00 & 00:01 then
+            // waits ~24h — the first gap sampled could be the long one). Sampling
+            // a window catches the tight gap regardless of where `now` lands.
+            let mut cursor = now.with_timezone(&tz);
+            let mut prev = cron
+                .find_next_occurrence(&cursor, false)
                 .map_err(|_| ScheduleError::NoOccurrence)?;
-            let second = cron
-                .find_next_occurrence(&first, false)
-                .map_err(|_| ScheduleError::NoOccurrence)?;
-            let gap = (second - first).num_seconds();
-            if gap < min_interval_seconds {
-                return Err(ScheduleError::TooFrequent {
-                    min_interval_seconds,
-                });
+            for _ in 0..24 {
+                cursor = prev;
+                let next = cron
+                    .find_next_occurrence(&cursor, false)
+                    .map_err(|_| ScheduleError::NoOccurrence)?;
+                if (next - prev).num_seconds() < min_interval_seconds {
+                    return Err(ScheduleError::TooFrequent {
+                        min_interval_seconds,
+                    });
+                }
+                prev = next;
             }
             Ok(())
         }

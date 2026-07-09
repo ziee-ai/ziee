@@ -57,6 +57,10 @@ pub fn classify(status: StatusCode, is_timeout: bool) -> FailureClass {
         StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => FailureClass::Validation,
         StatusCode::NOT_FOUND => FailureClass::TargetMissing,
         s if s.is_server_error() => FailureClass::Transient,
+        // 409 = a generation is already in flight in the bound conversation (the
+        // user is chatting there, or an overlapping firing). Retryable, not a
+        // real failure — don't count it toward auto-pause.
+        StatusCode::CONFLICT => FailureClass::Transient,
         StatusCode::TOO_MANY_REQUESTS | StatusCode::REQUEST_TIMEOUT => FailureClass::Transient,
         _ => FailureClass::Internal,
     }

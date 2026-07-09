@@ -125,6 +125,11 @@ export function ScheduledTaskFormDrawer() {
       return 'Workflow is required'
     if (f.target_kind === 'prompt' && !f.prompt.trim())
       return 'Prompt is required'
+    if (f.schedule.schedule_kind === 'once' && !f.schedule.run_at)
+      return 'A run date/time is required'
+    if (f.schedule.schedule_kind === 'recurring' && !f.schedule.cron_expr?.trim())
+      return 'A schedule is required'
+    if (!f.schedule.timezone.trim()) return 'A timezone is required'
     if (f.target_kind === 'workflow') {
       try {
         JSON.parse(f.inputs_json || '{}')

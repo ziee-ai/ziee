@@ -239,10 +239,14 @@ pub async fn delete(pool: &PgPool, user_id: Uuid, id: Uuid) -> Result<u64, AppEr
 }
 
 /// Claim up to `limit` due tasks for firing: enabled, not paused, with
-/// `next_run_at <= now`. `FOR UPDATE SKIP LOCKED` so concurrent ticks never
-/// double-claim; the claimant advances `next_run_at` in the SAME transaction
-/// (DEC-16) — done by the caller via `mark_fired` inside the tx. Here we return
-/// the claimed rows for the caller to dispatch after commit.
+/// `next_run_at <= now`. `FOR UPDATE SKIP LOCKED` is retained as defense-in-depth
+/// for a future multi-instance deployment, but in the single-process model
+/// (DEC-10) the row lock is released when this SELECT auto-commits; the caller
+/// (`tick::run_once`) then advances `next_run_at` via `mark_fired` immediately —
+/// BEFORE spawning the dispatch — so the next sequential tick can't re-claim the
+/// row and a slow dispatch can't starve the loop. (A crash in the claim→advance
+/// window leaves the row un-advanced → at-least-once, not exactly-once; a true
+/// single-tx claim+advance would be required for exactly-once across replicas.)
 pub async fn claim_due_tasks(
     pool: &PgPool,
     now: DateTime<Utc>,

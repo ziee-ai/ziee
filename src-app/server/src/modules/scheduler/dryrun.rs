@@ -96,6 +96,11 @@ async fn test_workflow(
     let workflow = crate::modules::workflow::repository::find_by_id(pool, workflow_id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
+    // Access re-check (see dispatch::dispatch_workflow) — test-fire must not run
+    // a workflow the user can't access.
+    if !crate::modules::workflow::repository::user_can_access(pool, user_id, workflow_id).await? {
+        return Err(AppError::not_found("Workflow"));
+    }
     let run_id = spawn_run(
         pool,
         &workflow,
@@ -149,6 +154,14 @@ async fn test_prompt(
         .clone()
         .filter(|p| !p.trim().is_empty())
         .ok_or_else(|| AppError::bad_request("SCHEDULER_BAD_TARGET", "prompt required"))?;
+
+    // A test-fire config is unsaved (never hit create's gate), so validate the
+    // assistant belongs to the user here too.
+    if let Some(aid) = req.assistant_id {
+        if Repos.assistant.get_for_user(aid, user_id).await?.is_none() {
+            return Err(AppError::not_found("Assistant"));
+        }
+    }
 
     // Throwaway conversation — deleted in every exit path below.
     let conv = Repos

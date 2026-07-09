@@ -23,6 +23,12 @@ export function NotificationsPage() {
 
   useEffect(() => {
     void Stores.Notifications.load()
+    // On leaving the inbox, restore the store to its default (page 1, all) so the
+    // sidebar bell — which shares Stores.Notifications.items — shows the latest
+    // notifications, not this page's paginated / unread-only slice.
+    return () => {
+      Stores.Notifications.setUnreadOnly(false)
+    }
   }, [])
 
   const open = (n: (typeof items)[number]) => {

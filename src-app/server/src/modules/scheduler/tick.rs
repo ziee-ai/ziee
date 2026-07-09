@@ -63,14 +63,47 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
     };
 
     for task in due {
-        fire_task(pool, config, &task, "schedule", now).await;
+        // Advance `next_run_at` SYNCHRONOUSLY before dispatch (coalesced catch-up:
+        // skip missed intervals). This both prevents the next tick from re-claiming
+        // the row and — crucially — means a slow/hung dispatch can't starve the
+        // loop, because the actual firing is spawned off the tick.
+        let kind = task.schedule_kind();
+        let next = schedule::next_occurrence(
+            kind,
+            task.run_at,
+            task.cron_expr.as_deref(),
+            &task.timezone,
+            now,
+        )
+        .unwrap_or(None);
+        // `once` (and a recurring task with no future occurrence) disables after firing.
+        let next_to_set = if matches!(kind, ScheduleKind::Once) || next.is_none() {
+            None
+        } else {
+            next
+        };
+        if let Err(e) = repository::mark_fired(pool, task.id, next_to_set, now, None).await {
+            tracing::warn!("scheduler.tick: mark_fired {} failed: {e:?}", task.id);
+            continue;
+        }
+
+        // Dispatch + record OFF the tick loop so one slow task never blocks the
+        // rest of the due batch (or the next sweep).
+        let pool = pool.clone();
+        let config = config.clone();
+        tokio::spawn(async move {
+            fire_task(&pool, &config, &task, "schedule", now).await;
+        });
     }
     Ok(())
 }
 
-/// Advance the task's `next_run_at` (coalesced), then dispatch + record. Used by
-/// both the tick and the run-now path (`trigger`). Errors are captured into the
-/// run record, never propagated (one bad task can't kill the sweep).
+/// Dispatch a task's target, then (for scheduled firings) record the outcome +
+/// auto-pause on failure, and always append a run-history row + emit sync. The
+/// `next_run_at` advance is done by the caller (`run_once`) for scheduled
+/// firings; `run-now` deliberately does NOT mutate the task's schedule / failure
+/// / change-detection bookkeeping — it is an off-schedule manual trigger.
+/// Never panics; a bad task can't kill the sweep.
 pub async fn fire_task(
     pool: &PgPool,
     config: &Arc<Config>,
@@ -78,66 +111,45 @@ pub async fn fire_task(
     trigger: &str,
     now: DateTime<Utc>,
 ) {
-    // Coalesced next occurrence strictly after `now` (skips missed intervals).
-    let kind = task.schedule_kind();
-    let next = match schedule::next_occurrence(
-        kind,
-        task.run_at,
-        task.cron_expr.as_deref(),
-        &task.timezone,
-        now,
-    ) {
-        Ok(n) => n,
-        Err(_) => None, // unschedulable now → disable
-    };
-    // A recurring task with no future occurrence, or a spent `once`, disables.
-    let disable_reason = if trigger == "run_now" {
-        // run-now never mutates the schedule bookkeeping.
-        None
-    } else if matches!(kind, ScheduleKind::Once) || next.is_none() {
-        // once always disables after firing; recurring w/ no next also disables.
-        Some(())
-    } else {
-        None
-    };
-
-    if trigger != "run_now" {
-        let next_to_set = if disable_reason.is_some() { None } else { next };
-        if let Err(e) = repository::mark_fired(pool, task.id, next_to_set, now, None).await {
-            tracing::warn!("scheduler.tick: mark_fired {} failed: {e:?}", task.id);
-        }
-    }
-
     // Dispatch (never returns Err — captures failures into the outcome).
     let outcome: DispatchOutcome = dispatch::dispatch(pool, config, task, trigger).await;
 
-    // Persist the outcome on the task (failure counter / fingerprint / auto-pause).
-    let admin_max = settings::get(pool)
-        .await
-        .map(|s| s.max_consecutive_failures)
-        .unwrap_or(5);
-    let pause_reason = if !outcome.success {
-        let will_be = task.consecutive_failures + 1;
-        if super::failure::should_autopause(will_be, admin_max) {
-            Some("max_failures")
-        } else {
+    // run-now must NOT touch the task's failure counter / change-detection
+    // signature / auto-pause state (handler contract). Only scheduled firings do.
+    if trigger != "run_now" {
+        let admin_max = settings::get(pool)
+            .await
+            .map(|s| s.max_consecutive_failures)
+            .unwrap_or(5);
+        // Auto-pause: a TERMINAL failure (target missing / auth / permission /
+        // validation) pauses immediately with its class as the reason; a
+        // transient failure pauses only once it crosses the consecutive-failure
+        // cap. Success clears (record_outcome resets the counter).
+        let pause_reason: Option<String> = if outcome.success {
             None
+        } else {
+            let class = outcome.error_class.as_deref().unwrap_or("internal");
+            if class == "transient" {
+                let will_be = task.consecutive_failures + 1;
+                super::failure::should_autopause(will_be, admin_max)
+                    .then(|| "max_failures".to_string())
+            } else {
+                Some(class.to_string())
+            }
+        };
+        if let Err(e) = repository::record_outcome(
+            pool,
+            task.id,
+            outcome.status,
+            outcome.success,
+            outcome.fingerprint.as_deref(),
+            outcome.signature.as_ref(),
+            pause_reason.as_deref(),
+        )
+        .await
+        {
+            tracing::warn!("scheduler.tick: record_outcome {} failed: {e:?}", task.id);
         }
-    } else {
-        None
-    };
-    if let Err(e) = repository::record_outcome(
-        pool,
-        task.id,
-        outcome.status,
-        outcome.success,
-        outcome.fingerprint.as_deref(),
-        outcome.signature.as_ref(),
-        pause_reason,
-    )
-    .await
-    {
-        tracing::warn!("scheduler.tick: record_outcome {} failed: {e:?}", task.id);
     }
 
     // Record the firing in the audit history.
