@@ -52,8 +52,11 @@ the GFM subset via remark. `shadcn-component-discovery`/`review` runs before aut
 ### DEC-7: The file's native content stays canonical — how does the editor round-trip it?
 **Resolution:** The file (markdown / source / CSV) is canonical. Markdown deserializes
 on open and serializes back on save via `@platejs/markdown`, constrained to the
-Streamdown-rendered GFM subset, with normalize-on-save for minimal diffs; constructs the
-editor does not model are preserved verbatim (never dropped).
+Streamdown-rendered GFM subset, with normalize-on-save for minimal diffs. **CORRECTION
+(runtime-verified — DRIFT-1.6):** Plate does NOT preserve unmodeled constructs, it DROPS
+them; so every supported GFM construct MUST have its Plate plugin (marks/headings via
+basic-nodes, lists via `@platejs/list`, tables/links/images/code via the markdown plugin)
+or it is lost on save. The full subset is proven lossless by `markdownRoundtrip.test.ts`.
 **Basis:** codebase — files store their native format and Streamdown renders markdown;
 keeping the format canonical keeps `files_mcp`/export/RAG working unchanged. Research —
 GFM round-trip fidelity is imperfect, so the subset is constrained + tested.
