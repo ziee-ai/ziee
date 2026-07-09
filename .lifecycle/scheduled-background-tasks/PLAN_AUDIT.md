@@ -1,0 +1,104 @@
+# PLAN_AUDIT — scheduled-background-tasks
+
+Plan audited against the live codebase (workflow, sync, memory, chat, project,
+mcp/tool_calls, citations modules) before any code.
+
+## Breakage risk
+
+- **`invocation_source` CHECK widening (ITEM-5)** is additive — migration 106
+  already reserves `agent`/`mcp_tool` as future values, so adding `scheduled`
+  follows the established forward-compat pattern and breaks no existing caller.
+  `SpawnRunOpts.invocation_source` is a `&'static str`, so passing `"scheduled"`
+  is a pure caller change; no signature change to `spawn_run`.
+- **No existing caller touched.** The scheduler *consumes* `spawn_run` and
+  `StreamingService::start_generation` as-is; it adds no parameters to either.
+  Risk is one-directional (we depend on them), so their contracts are pinned by
+  their own tests.
+- **`resolve_run_model` requires an explicit model when `conversation_id` is
+  `None`** (returns `WORKFLOW_NO_MODEL_SOURCE`). The plan makes `model_id`
+  **required** for both target kinds (schema NOT NULL for `prompt`; required for
+  `workflow` when the workflow has LLM steps). Enforced at create-time
+  validation → no runtime surprise. Captured in DEC-4.
+- **`dispatch_prompt` creates a real conversation per run.** Left unbounded this
+  could accumulate conversations. Mitigated: notification links the conversation
+  so it's discoverable, and the per-user active-task quota (ITEM-11) bounds the
+  fan-out. Retention of run-created conversations is DEC-9 (out-of-scope: they
+  are normal user conversations, user-deletable).
+
+## Pattern conformance
+
+- **ITEM-6/7 (module skeleton + repo)** mirror `citations/mod.rs` (linkme
+  `ModuleEntry`, `AppModule::init` spawning loops) and `project/repository.rs`
+  (owner-scoped CRUD). Conforms.
+- **ITEM-9 tick loop** mirrors `memory/reaper.rs` (thin `run_loop` → testable
+  `run_once`) + the `LLM_RUNTIME_REAPER_TICK_MS` debug-interval seam. Conforms.
+- **ITEM-14/17 notification module** is a near-exact structural copy of
+  `mcp/tool_calls/` (owner-scoped history + `prune.rs` retention loop reading
+  admin settings each tick). Conforms.
+- **ITEM-11 quota-422** mirrors `project` handlers returning 422 on the 100-file
+  cap. Conforms.
+- **ITEM-18 sync entity** follows the `event.rs` "add a variant, pick Audience at
+  every emit site" contract; the 3 tiers chosen (owner/owner/admin-perm) match
+  the read-perm each refetch endpoint enforces (no-403 rule). Conforms.
+- **ITEM-21/25 stores** mirror `McpToolCalls.store.ts` (sync-subscribe +
+  `sync:reconnect` + `hasPermissionNow` self-gate). Conforms.
+- **ITEM-26 bell** mirrors `DownloadIndicatorWidget` `sidebarBottom` slot +
+  `Badge`/`Popover`. Conforms.
+- **DEC risk:** the scheduler introduces the *first* boot-persistent background
+  loop that WRITES cross-user rows on a timer. It's single-process/in-memory like
+  every existing loop; multi-instance HA is explicitly out of scope (DEC-10),
+  consistent with `registry.rs`'s documented single-process assumption.
+
+## Migration collisions
+
+- Latest committed migration is `..131_rewrite_hub_ids_phibya_to_ziee_ai.sql`.
+  The plan claims `132–136` — **no collision** (`ls migrations/ | tail` confirms
+  131 is highest). Numbers are contiguous and correctly ordered (tables before
+  the grant that references the Users group; grant before nothing depends on it).
+- `scheduled_tasks.workflow_id`/`assistant_id`/`model_id` FKs reference existing
+  tables (`workflows`, `assistants`, `llm_models`) — all present. `ON DELETE SET
+  NULL` chosen so deleting a referenced workflow/model disables (not deletes) the
+  task; the tick loop treats a NULL target as a hard error → notification +
+  auto-disable (DEC-6).
+
+## OpenAPI regen
+
+- **Required — `just openapi-regen` for BOTH binaries (ITEM-20).** New response/
+  request types (`ScheduledTask`, `Notification`, admin settings), new endpoints,
+  3 new `SyncEntity` values, and 3 new permission strings all flow into
+  `openapi.json` + `api-client/types.ts` + `Permissions` + the `sync:<entity>` TS
+  union in BOTH `ui/` and `desktop/ui/`. The golden `types_ts_parity` test fails
+  if not regenerated. Desktop has its own `types.ts`/`Permissions`/`AppEvents`, so
+  the regen must run for the desktop binary too ([[project_openapi_regen_both_binaries]]).
+- Generated files are excluded from the phase-6 audit-coverage law and do NOT
+  make this a "UI diff" for the phase-3/8 frontend gates — but the *hand-written*
+  frontend modules (ITEM-21..26) DO, so an e2e tier is mandatory (see TESTS.md).
+
+## Per-item verdicts
+
+- **ITEM-1** — verdict: PASS — new table; no collision (132 > 131); FKs exist.
+- **ITEM-2** — verdict: PASS — new table; mirrors `mcp_tool_calls` shape.
+- **ITEM-3** — verdict: PASS — singleton mirrors `memory_admin_settings`/`session_settings`.
+- **ITEM-4** — verdict: PASS — grant mirrors migration 104/107; targets the `Users` system-default group.
+- **ITEM-5** — verdict: CONCERN — CHECK widening is additive/safe, but must land as its own migration AND `cargo clean` is needed so build.rs re-runs migrations (per CLAUDE.md); noted for phase 5.
+- **ITEM-6** — verdict: PASS — mirrors `citations`/`memory` module skeleton + `MODULE_ENTRIES`.
+- **ITEM-7** — verdict: PASS — owner-scoped repo mirrors `project`; `FOR UPDATE SKIP LOCKED` claim mirrors `memory/reaper.rs`.
+- **ITEM-8** — verdict: CONCERN — depends on the `croner` crate (ITEM-19) not yet in the tree; resolve the dep first. Timezone handling must be explicit (DEC-3).
+- **ITEM-9** — verdict: PASS — thin-loop/testable-body + debug interval seam mirror `memory/reaper.rs`/`llm_local_runtime/reaper.rs`.
+- **ITEM-10** — verdict: CONCERN — reuses `spawn_run` (clean) and `StreamingService::start_generation` (heavier: needs a conversation+branch+extension registry). Verify the extension registry is constructible off-request in a background task (DEC-5); fall back to the direct `Provider::chat_stream` pattern (summarizer.rs) if registry construction needs request state.
+- **ITEM-11** — verdict: PASS — 422-on-cap mirrors `project`; singleton seed mirrors `session_settings::seed_from_config_once`.
+- **ITEM-12** — verdict: PASS — REST CRUD mirrors `project/routes.rs`; owner-scope 404 mirrors `mcp/tool_calls`.
+- **ITEM-13** — verdict: PASS — emit sites mirror workflow `events.rs`; origin threaded from `SyncOrigin`, `None` from the loop.
+- **ITEM-14** — verdict: PASS — structural copy of `mcp/tool_calls/`.
+- **ITEM-15** — verdict: PASS — owner-scoped REST; same-perm mutations justified (per-user data, citations precedent).
+- **ITEM-16** — verdict: PASS — `create_and_emit` mirrors the detached-emit convention (`mcp/client/session.rs`).
+- **ITEM-17** — verdict: PASS — exact `mcp/tool_calls/prune.rs` analog.
+- **ITEM-18** — verdict: PASS — additive enum variants + vocab test; Audience tiers match refetch perms.
+- **ITEM-19** — verdict: CONCERN — adds a new third-party crate (`croner`); must land in `[workspace.dependencies]` and both member Cargo.tomls, and `cargo check --workspace` must pass. Licence (MIT) is compatible. Resolve before ITEM-8.
+- **ITEM-20** — verdict: CONCERN — regen BOTH binaries or the golden parity test + desktop build fail; mechanical but mandatory.
+- **ITEM-21** — verdict: PASS — store mirrors `McpToolCalls.store.ts`.
+- **ITEM-22** — verdict: PASS — settings-card style ([[feedback_match_settings_card_style]]).
+- **ITEM-23** — verdict: CONCERN — the ScheduleBuilder (cron UX + "next 3 runs" preview) is net-new UI with no direct in-repo analog; budget a design pass + gallery states (loaded/empty/error) and an e2e for the create flow.
+- **ITEM-24** — verdict: PASS — admin settings page mirrors existing `settingsAdminPages` slot pages.
+- **ITEM-25** — verdict: PASS — toast listener mirrors `LlmModelDownloadNotifications.tsx`.
+- **ITEM-26** — verdict: PASS — bell mirrors `DownloadIndicatorWidget`; desktop keeps it (not blocklisted, DEC-8).
