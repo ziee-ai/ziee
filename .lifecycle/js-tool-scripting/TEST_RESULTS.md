@@ -1,9 +1,9 @@
 # TEST_RESULTS — js-tool-scripting
 
-Phase 8 complete. All enumerated tests (unit + integration + e2e) are green.
-Backend diff → the cargo tiers apply; ui diff → the frontend gate + e2e apply.
-The one real-LLM smoke was descoped from the gate (external engine offline) — see
-DRIFT-2; its capability is covered by TEST-15 + TEST-20 + TEST-35.
+Phase 8 complete. All enumerated tests (unit + integration + e2e) are green,
+including the real-LLM smoke (TEST-36), which ran GREEN against the live Qwen
+bridge once the engine came up (DRIFT-2, resolved). Backend diff → the cargo tiers
+apply; ui diff → the frontend gate + e2e apply.
 
 ## Frontend static gate (ui workspace)
 
@@ -71,12 +71,4 @@ DRIFT-2; its capability is covered by TEST-15 + TEST-20 + TEST-35.
 - **TEST-32**: PASS (run-js-tool-scripting.spec.ts — the McpToolCallsTab renders the `script` source tag with its own tone, not the fallback)
 - **TEST-33**: PASS (gallery runtime-health via `npm run gate:ui` — the run_js surfaces contribute zero HIGH; see the UI evaluator gate note above)
 - **TEST-35**: PASS (run-js-tool-scripting.spec.ts — a mocked run_js call renders exactly ONE run_js tool card carrying the final summary, not N intermediate cards)
-
-## Descoped (not gated) — real-LLM smoke
-
-- `run-js-real-llm.spec.ts` retained as an opt-in smoke (self-skips unless
-  `OPENAI_BASE_URL` + `ZIEE_TEST_LLM_MODEL` are set). Wired + attempted against the
-  local LLM bridge; the shared vLLM engine behind it (`127.0.0.1:8000`) is OFFLINE
-  in this environment and may not be restarted (shared GPU box). See DRIFT-2. The
-  capability is covered by TEST-20 (provider-agnostic attach) + TEST-15 (model-emitted
-  run_js executes end-to-end through the real dispatcher + real rquickjs) + TEST-35.
+- **TEST-36**: PASS (run-js-real-llm.spec.ts — ran GREEN against the live Qwen bridge, `qwen3.6-35b-a3b`, 1 passed / no retries: the real model chose run_js, the embedded runtime executed it end-to-end (`ToolUse(run_js)`→`ToolResult(run_js)`), the card reached `completed`, and the answer reflected 6*7=42 — provider-independence proven end-to-end. Self-skips without `OPENAI_BASE_URL`/`ZIEE_TEST_LLM_MODEL`. See DRIFT-2 (resolved).)
