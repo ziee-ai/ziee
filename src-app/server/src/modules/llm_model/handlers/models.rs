@@ -56,6 +56,7 @@ pub async fn list_models(
     if let Some(ref cap) = params.capability {
         const ALLOWED_CAPABILITIES: &[&str] = &[
             "text_embedding",
+            "rerank",
             "vision",
             "audio",
             "tools",

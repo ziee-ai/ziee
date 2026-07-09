@@ -202,6 +202,7 @@ impl LocalDeployment {
         s: &LlamaCppSettings,
         api_key: &str,
         embeddings: bool,
+        reranking: bool,
     ) -> AppResult<Vec<String>> {
         let mut a = vec![
             "--model".to_string(),
@@ -276,6 +277,12 @@ impl LocalDeployment {
 
         if embeddings {
             a.push("--embeddings".to_string());
+        }
+        if reranking {
+            // llama.cpp couples reranking to rank pooling — both are required.
+            a.push("--reranking".to_string());
+            a.push("--pooling".to_string());
+            a.push("rank".to_string());
         }
         Ok(a)
     }
@@ -1029,7 +1036,13 @@ impl Deployment for LocalDeployment {
                     .get("embeddings")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                Self::llamacpp_argv(model_path, port, &s, &api_key, embeddings)?
+                // Reranker models inject a top-level `reranking: true` (from the
+                // `rerank` capability) in resolve_model_inputs.
+                let reranking = config
+                    .get("reranking")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                Self::llamacpp_argv(model_path, port, &s, &api_key, embeddings, reranking)?
             }
             "mistralrs" => {
                 let s = Self::parse_mistralrs_settings(config);

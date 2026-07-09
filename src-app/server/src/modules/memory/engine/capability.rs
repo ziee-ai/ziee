@@ -63,6 +63,19 @@ pub fn embedding_unsupported_reason(name: &str, caps: &ModelCapabilities) -> Opt
     None
 }
 
+/// Returns a human reason a model can't rerank, or `None` if it can. Mirrors
+/// `embedding_unsupported_reason` — a reranker is a cross-encoder, neither a
+/// chat nor an embedding model.
+pub fn rerank_unsupported_reason(name: &str, caps: &ModelCapabilities) -> Option<String> {
+    if caps.rerank != Some(true) {
+        return Some(format!(
+            "model '{name}' is not flagged with the rerank capability and cannot \
+             rerank; configure a reranker model (e.g. bge-reranker-v2-m3 from the Hub)"
+        ));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
