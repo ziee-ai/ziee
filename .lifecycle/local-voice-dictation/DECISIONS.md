@@ -1,68 +1,87 @@
-# DECISIONS — local-voice-dictation
+# DECISIONS — local-voice-dictation (full managed whisper runtime)
 
-Every human/product input the implementation needs, resolved up front so the
-build runs nonstop. Each resolution is my recommendation grounded in a codebase
-convention or an external fact; the ones I most want the user to confirm are
-flagged `⟵ CONFIRM` and are echoed in the SendMessage summary.
+Every human/product input the implementation needs, resolved up front. Each is my
+recommendation grounded in a codebase convention or an external fact; the ones I
+most want confirmed are flagged `⟵ CONFIRM`.
 
 ---
 
-### DEC-1: How is the whisper.cpp engine delivered — download prebuilt per-triple (biomcp), build-from-source + embed (pgvector), or in-process FFI via `whisper-rs`?
-**Resolution:** Build the `whisper-cli` executable from a **vendored git submodule** via cmake (statically linked) in `build_helper/whisper.rs`, **embed it per-triple with `include_bytes!`**, extract-on-first-use, and invoke it as a subprocess — i.e. pgvector's build-from-source half fused with biomcp's embed+extract+subprocess half. Reject the "download prebuilt per-triple" option because whisper.cpp publishes **no official Linux/macOS per-triple binaries** (only Windows zips + third-party wheels), making it unreliable. Reject `whisper-rs` in-process FFI as the primary path because a cargo-feature FFI can't deliver the *runtime* fail-soft the constraint demands (a missing toolchain would fail the whole build, not degrade to a disabled mic).
-**Basis:** codebase (`build_helper/pgvector.rs` + `biomcp.rs` + `bio_mcp/embedded.rs`) + external fact (no official whisper.cpp Linux/macOS release binaries) + the hard fail-soft constraint. `whisper-rs` is noted as the considered alternative (simpler, in-process, lower latency) worth revisiting if in-process transcription is later preferred. ⟵ CONFIRM
+### DEC-1: Whisper engine delivery — build-at-`build.rs`+embed, upstream prebuilt, or a ziee fork + download-on-demand?
+**Resolution:** **A ziee-owned `ziee-ai/whisper.cpp` fork whose CI builds `whisper-server` from source per `{platform}-{arch}-{backend}` and publishes GitHub Releases; the ziee server downloads on demand at runtime** — the exact model already used for `ziee-ai/llama.cpp` / `ziee-ai/mistral.rs`. Reject "download upstream prebuilt" (whisper.cpp ships **no** official Linux/macOS per-triple binaries). Reject "build at `build.rs` time + embed" because a build host can only compile its **own** triple, so an embedded binary would silently fail on every other platform; it also forces cmake onto every ziee build and bloats the binary.
+**Basis:** codebase (`llm_local_runtime/engine/download.rs`, `ziee-ai/llama.cpp`) + external fact (no official binaries; cross-triple builds infeasible at `build.rs` time). This supersedes the earlier build-and-embed plan.
 
-### DEC-2: Whisper MODEL delivery — embed in the binary, or download-on-demand?
-**Resolution:** Embed the **binary** (small, build-coupled) but **download the model** (large, data). The model manager fetches `ggml-<model>.bin` by direct URL from the pinned HF repo on demand, caches it under `get_app_data_dir()/voice-models/`, and detects a pre-staged file for air-gapped operators. Bundle **no** model in the binary.
-**Basis:** convention — this is exactly the split the codebase already makes (binaries embedded via `build_helper`; LLM model files downloaded via `llm_model`), and it keeps the shipped binary small.
+### DEC-2: Scope — one-shot `whisper-cli` per clip, or a FULL managed runtime like `llm_local_runtime`?
+**Resolution:** **Full managed runtime.** Run `whisper-server` as a managed, long-lived instance with the complete lifecycle mirrored from `llm_local_runtime`: version registry + download + update flow + admin UI + runtime settings + health state machine + idle-reaper + drain + crash-restart. The transcribe endpoint forwards to the loopback instance.
+**Basis:** user directive ("we need a full feature; check how llm runtime is managed, download, update"). `whisper-server`'s HTTP mode makes a managed instance natural. ⟵ CONFIRM (full runtime is a large surface — confirm the scope vs a leaner one-shot `whisper-cli`).
 
-### DEC-3: Which whisper model is the default, and which are selectable?
-**Resolution:** Default **`base`** (multilingual, ~142 MB) for the accuracy/speed/size balance on CPU. Admin-selectable set: `tiny` (~75 MB, fastest), `base`, `base.en` (English-only, more accurate for English at the same size), `small` (~466 MB, most accurate/slowest). Quantized variants can be added later.
-**Basis:** convention/research — whisper.cpp model sizes; `base` is the standard on-device balance. ⟵ CONFIRM (default model + whether to offer `small`).
+### DEC-3: Instance topology — per-model instances (like llm runtime) or a single hot-swappable instance?
+**Resolution:** **A single managed `whisper-server` instance** loaded with the admin-configured model; a model change drains+restarts (or uses whisper-server's model hot-swap). Whisper transcribes with one model at a time, so the per-model fan-out of `llm_local_runtime` is unnecessary complexity.
+**Basis:** external fact (whisper-server hot-swaps a single model) + simplification. Keeps `auto_start`/`reaper` to one instance key.
 
-### DEC-4: How is the downloaded model integrity-verified (HF has no per-file `.sha256` sidecar)?
-**Resolution:** Pin the **known sha256** of each offered `ggml-*.bin` in an in-code constant table and verify after download (abort + delete on mismatch); this matches ziee's verify-everything ethos. The pinned model version is fixed alongside the hashes.
-**Basis:** convention — mirrors `code_sandbox/known_revisions.toml` and biomcp's mandatory-sha256 posture; there is no upstream sidecar to fetch.
+### DEC-4: Code reuse — extend `llm_local_runtime`'s `EngineType`, or copy-adapt into a new `voice` module?
+**Resolution:** **Copy-adapt** the engine/version/health/reaper/download patterns into a self-contained `modules/voice/`. Do **not** add `EngineType::Whisper` to `llm_local_runtime` — whisper is a speech runtime, not an LLM inference engine; coupling it into the provider/model machinery would be wrong.
+**Basis:** codebase separation of concerns; the research recommended "mirror this layout," not "extend it."
 
-### DEC-5: Audio capture + format pipeline — where is the audio decoded/resampled?
-**Resolution:** Capture with `getUserMedia` + `MediaRecorder` in the browser, then **decode + resample to 16 kHz mono and encode a WAV `Blob` in the browser** (Web Audio API), and POST the WAV. The server writes it to a temp file and feeds `whisper-cli` directly. This keeps the **server ffmpeg-free** (whisper-cli reads 16 kHz WAV natively).
-**Basis:** external fact (whisper-cli expects 16 kHz mono WAV) + convention (the server bundles no ffmpeg; browser Web Audio is universally available). ⟵ CONFIRM (accept browser-side resampling vs. adding a server-side decoder).
+### DEC-5: Both binary AND model downloaded — nothing embedded?
+**Resolution:** **Yes.** The `whisper-server` **binary** downloads like the LLM engines (fork releases), and the ggml **model** downloads like the LLM model files (direct HF URL). Nothing whisper-sized is baked into the ziee binary. One consistent story.
+**Basis:** convention — matches the binary-vs-model split already in the codebase; keeps the shipped binary small.
 
-### DEC-6: Transcribe endpoint shape + permission gate.
-**Resolution:** `POST /api/voice/transcribe`, `multipart/form-data` with field `file` (the WAV), gated by `RequirePermissions<(VoiceTranscribe,)>` (`voice::transcribe`, granted to the `Users` group by migration 133). Returns `{ text: string, language: string, duration_ms: number }`. Per-route `DefaultBodyLimit` above the 16 MB global; logical caps from settings.
-**Basis:** convention — `file/handlers/upload.rs` multipart + `web_search` permission/`api_route` idioms.
+### DEC-6: Default model + selectable set + integrity verification.
+**Resolution:** Default **`base`** (multilingual, ~142 MB) for the CPU accuracy/speed/size balance; selectable `tiny` / `base` / `base.en` / `small`. Verify each downloaded `ggml-*.bin` against a **pinned in-code sha256 table** (HF has no per-file sidecar); engine binaries verify against the fork release's `.sha256` sidecar (cosign `.sig` slot reserved, matching the LLM runtime's TOFU-today posture).
+**Basis:** research (whisper model sizes) + ziee's verify-everything ethos (`code_sandbox/known_revisions`). ⟵ CONFIRM (default model + whether to offer `small`).
 
-### DEC-7: Module / permission / settings naming.
-**Resolution:** Backend module **`voice`** (broad enough to house future voice features), permission `voice::transcribe` + `voice::admin::{read,manage}`, config section `voice`, singleton table `voice_settings`, frontend chat extension `voice`, admin page `/settings/voice` ("Voice Dictation").
-**Basis:** convention — matches the feature name and the `<module>::use`/`<module>::admin::*` permission convention; `voice` leaves room for the out-of-scope future modes without a rename.
+### DEC-7: Audio capture + format pipeline.
+**Resolution:** Capture with `getUserMedia`+`MediaRecorder`, then **decode+resample to 16 kHz mono and encode WAV in the browser** (Web Audio API); POST the WAV; the server forwards it to whisper-server `/inference`. Keeps the **server ffmpeg-free** (whisper-server needs 16 kHz mono PCM).
+**Basis:** external fact (whisper-server input requirement) + convention (no ffmpeg bundled). ⟵ CONFIRM (browser-side resample vs a server-side decoder).
 
-### DEC-8: Push-to-talk interaction model — hold-to-talk or click-to-toggle?
-**Resolution:** **Click-to-toggle** (click to start, click to stop) with a visible recording indicator (pulsing dot + elapsed timer) and a cancel/discard affordance. Hold-to-talk is rejected for v1 as hostile to keyboard/switch-access a11y.
-**Basis:** convention/a11y — toggle is keyboard-operable and screen-reader-friendly (`aria-pressed`); a global hotkey can be added later via the existing keyboard extension. ⟵ CONFIRM (toggle vs hold).
+### DEC-8: whisper-server request path — native `/inference` or OpenAI `/v1/audio/transcriptions`?
+**Resolution:** Use whisper-server's **native `/inference`** with `response_format=json` and the `language` param; the OpenAI-compatible `/v1/audio/transcriptions` endpoint is available but the native one is the stable primary. Pin the exact request/response shape against the fork's tagged `whisper-server --help`.
+**Basis:** external fact (whisper-server exposes both); native endpoint is the documented primary.
 
-### DEC-9: Transcript insertion behavior.
-**Resolution:** **Append** the transcript to the current composer draft (space-joined if non-empty) via `Stores.Chat.TextStore.getText()/setText()`; **never** auto-send. The user reviews and presses Send.
-**Basis:** user requirement (review-before-send) + convention (`TextStore` is the composer's text broker; `sendMessage` is never called).
+### DEC-9: Module / permission / settings naming.
+**Resolution:** Backend module **`voice`** (with internal `engine/`, `runtime_version/`, `runtime_settings/`, `model/`, `deployment/` submodules mirroring `llm_local_runtime`); permissions `voice::transcribe` + `voice::admin::{read,manage}`; config section `voice`; tables `voice_runtime_versions` / `voice_runtime_instance` / `voice_runtime_settings`; frontend chat extension `voice` + admin module `voice`; admin page `/settings/voice` ("Voice Dictation").
+**Basis:** convention — matches the feature name; `voice` leaves room for the out-of-scope future modes without a rename.
 
-### DEC-10: Language — auto-detect or explicit, per-recording or global?
-**Resolution:** A **deployment/admin default language** in `voice_settings.language` (`auto` by default, whisper's auto-detect), applied to every transcription in v1. Per-recording language override in the composer is deferred (noted future) to keep the mic UI minimal.
-**Basis:** convention — settings singleton holds deployment defaults; keeps the composer uncluttered. ⟵ CONFIRM (global default acceptable for v1).
+### DEC-10: Permission granularity — the llm runtime's 9-perm split or a `use`+`admin::{read,manage}` split?
+**Resolution:** **`voice::transcribe` (users) + `voice::admin::{read,manage}` (admins)** — the cleaner web_search-style split. Admin is auto-covered by the Administrators `*` wildcard; only `voice::transcribe` needs an explicit `Users` grant (migration 133).
+**Basis:** convention — `web_search`/`lit_search` use this modern split; the llm runtime's finer split is historical.
 
-### DEC-11: CPU vs GPU whisper, and latency/caps.
-**Resolution:** **CPU-only** whisper build for v1 (portable, no CUDA/Metal per-backend build matrix; matches the self-host/air-gap posture). GPU deferred (whisper.cpp CUDA/Metal is a per-backend build like llama.cpp). Caps: `max_clip_seconds` default **120**, `max_upload_bytes` default **32 MB** (a 120 s 16 kHz mono WAV is ≈ 3.8 MB, so 32 MB is generous headroom); the transcribe route layers `DefaultBodyLimit::max(32 MB)`.
-**Basis:** convention/research — CPU keeps the delivery simple and universal; caps sized from the WAV bitrate. Expected latency: `base` on CPU transcribes a short clip in ~1–3 s plus a one-time model load per subprocess invocation.
+### DEC-11: Push-to-talk interaction model.
+**Resolution:** **Click-to-toggle** (click start / click stop) with a recording indicator (pulsing dot + elapsed timer) and a cancel/discard affordance. Hold-to-talk rejected for v1 (hostile to keyboard/switch a11y).
+**Basis:** a11y/convention — toggle is keyboard-operable (`aria-pressed`); a hotkey can come later via the keyboard extension. ⟵ CONFIRM (toggle vs hold).
 
-### DEC-12: Model-management depth for v1 — lazy-on-first-use vs explicit admin download; SSE progress?
-**Resolution:** **Explicit admin "Download model" action** on the settings page (`POST /api/voice/model/download`) + a `GET /api/voice/model/status`; the mic button is disabled until a model is present. Transcribe does **not** trigger a large blocking download inside the request. SSE download progress is **deferred** (a simple pending/complete status suffices for v1); the streaming downloader already reports progress internally if we later wire SSE.
-**Basis:** convention — avoids a multi-hundred-MB blocking fetch on a user's first mic tap; mirrors `code_sandbox` admin pre-fetch. ⟵ CONFIRM (explicit admin download vs lazy-on-first-use; SSE in/out).
+### DEC-12: Transcript insertion.
+**Resolution:** **Append** to the current composer draft (space-joined) via `Stores.Chat.TextStore.getText()/setText()`; **never** auto-send.
+**Basis:** user requirement (review-before-send) + convention (TextStore is the composer text broker).
 
-### DEC-13: Desktop native microphone permission.
-**Resolution:** Add macOS `NSMicrophoneUsageDescription` (+ the microphone entitlement) to the Tauri config so `getUserMedia` prompts correctly in the macOS webview; rely on WebView2's built-in prompt on Windows (verify on the Windows build host). The voice extension + settings page **ship on desktop** (server is embedded) — not added to `CORE_MODULE_BLOCKLIST`.
-**Basis:** convention/platform — Tauri/macOS requires the usage-description string or `getUserMedia` fails silently; `project_desktop_embeds_server` means the embedded server already carries whisper.
+### DEC-13: Language — auto-detect vs explicit; global vs per-recording.
+**Resolution:** A single **deployment default** `voice_runtime_settings.language` (`auto` by default), applied to every transcription in v1; per-recording override deferred (keeps the mic UI minimal).
+**Basis:** convention (settings singleton holds deployment defaults). ⟵ CONFIRM (global default acceptable for v1).
 
-### DEC-14: How does the integration transcribe test (TEST-7) avoid a green-washing skip?
-**Resolution:** Pre-stage a **`tiny`** model on the Linux CI/build host (small, ~75 MB) and ship a short fixture WAV so TEST-7 runs the **real embedded whisper-cli** for real. The `#[ignore]`-style gate is only a fallback for a stub-whisper build (genuine asset unavailability), never used to make a red suite green.
-**Basis:** convention ([[feedback_no_ignore_unless_platform]] + [[feedback_no_cosmetic_tests]]) — the transcription claim is backed by a real-path test; only the external model asset is staged.
+### DEC-14: CPU vs GPU + resource caps.
+**Resolution:** **CPU backend only** in v1 (the fork's matrix reserves cuda/metal/vulkan slots for later; the runtime's `{backend}` axis + `recommend_backend` are wired but only `cpu` publishes/downloads). Caps: `max_clip_seconds` default **120**, `max_upload_bytes` default **32 MB**; transcribe route layers a matching `DefaultBodyLimit`. Idle-unload default **1800 s**; auto-start/drain timeouts **30 s** (mirroring the llm runtime defaults).
+**Basis:** convention/research — CPU keeps delivery universal; caps sized from the 16 kHz WAV bitrate (~3.8 MB for 120 s); timeouts copied from `llm_runtime_settings`.
 
-### DEC-15: `MODULE_ENTRIES` ordering for the `voice` backend module.
-**Resolution:** Register at a free `order` slot with no cross-module dependency (voice is **not** an MCP server and needs no `mcp_servers` row), so ordering is unconstrained — pick the next free slot after the built-in feature modules.
-**Basis:** codebase — unlike `web_search` (order 96, after `mcp` at 65 because it upserts an MCP row), voice has no such dependency.
+### DEC-15: Model & version management UX depth — SSE progress in v1?
+**Resolution:** **Yes — full SSE progress**, because we're mirroring the llm runtime's detached download-task + `RuntimeDownloadProgress` SSE consumer (reload-safe). Admin installs/updates engine versions and downloads models from `/settings/voice` with live `<Progress>` bars; the mic button is disabled until a model + a runtime binary are present.
+**Basis:** convention — reuse `runtime_version/download_task.rs` + the frontend SSE store rather than inventing a lesser progress mechanism.
+
+### DEC-16: Fail-soft trigger set.
+**Resolution:** The mic self-disables + the module logs "voice disabled" when ANY of: `voice.enabled=false` (deploy kill switch), no runtime binary resolvable (no release/asset, air-gap not staged), no model present, or the browser lacks `getUserMedia`/permission. The server always boots; admin surfaces stay reachable so an admin can fix (download binary/model).
+**Basis:** hard requirement (fail-soft like pgvector/biomcp) + convention (config gate returns early in `init()`).
+
+### DEC-17: Air-gapped operation.
+**Resolution:** Support pre-staging **both** the `whisper-server` binary (into the version cache dir) and the ggml model (into `voice-models/`); the runtime detects staged assets and skips all network. Mirrors the sandbox-rootfs + LLM-model air-gap stories.
+**Basis:** convention + the LOCAL/air-gap positioning.
+
+### DEC-18: How does the real-transcription integration test avoid a green-washing skip?
+**Resolution:** Pre-stage a **`tiny`** model + a real (fork-built or locally-built) `whisper-server` on the Linux CI/build host + ship a short fixture WAV, so TEST-11 runs the **real** managed instance for real. The `#[ignore]` gate is only a fallback for a genuine stub-binary/model-absent build, never used to hide a red suite. Version/download/update/lifecycle tests use `stub-whisper-server` + `MockReleaseServer` (real code paths, mocked release/model hosts only).
+**Basis:** convention ([[feedback_no_ignore_unless_platform]], [[feedback_no_cosmetic_tests]]) — the transcription claim is backed by a real-path test.
+
+### DEC-19: Desktop native microphone permission.
+**Resolution:** Add macOS `NSMicrophoneUsageDescription` (+ mic entitlement) to the Tauri config so `getUserMedia` prompts in the macOS webview; rely on WebView2's prompt on Windows (verify on the Windows build host). The voice extension + admin page **ship on desktop** (server embedded) — not added to `CORE_MODULE_BLOCKLIST`.
+**Basis:** platform requirement + `project_desktop_embeds_server`.
+
+### DEC-20: `MODULE_ENTRIES` order for the `voice` backend module.
+**Resolution:** Register at a free `order` slot with no cross-module dependency (voice needs no `mcp_servers` row and no provider ordering); a slot near the other runtime modules (~32–36 range, first free) is fine. `init()` spawns the reaper.
+**Basis:** codebase — voice has no ordering constraint (unlike `web_search` after `mcp`).
