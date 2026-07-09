@@ -9,6 +9,7 @@ import {
 } from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { FileEditBody } from '@/modules/file/components/FileEditBody'
+import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
 import { Stores } from '@/core/stores'
 
 /** Text types the canvas can edit in the WYSIWYG editor (v1: markdown only). */
@@ -80,6 +81,9 @@ export function FilePanelHeaderActions({
       {/* Viewer-specific chrome (toggles / copy / zoom …), when the matched
           viewer declares any. */}
       {HeaderActions ? <HeaderActions file={file} /> : null}
+      {/* Export-as (format conversion) for text deliverables — distinct from the
+          plain Download of original bytes below. */}
+      {isEditableMarkdown(file) ? <FileExportMenu file={file} /> : null}
       {/* Download is a shell-level affordance guaranteed for EVERY file type. */}
       <DownloadButton file={file} />
       {showFullPage ? <FullPageButton file={file} /> : null}
