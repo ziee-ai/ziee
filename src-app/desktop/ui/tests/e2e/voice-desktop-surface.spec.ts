@@ -1,0 +1,182 @@
+import { test, expect } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { installTauriMock, mockBackendDefaults } from './helpers/tauri-mock'
+
+/**
+ * TEST-30 — Voice dictation surface on the DESKTOP bundle.
+ *
+ * The voice module + chat mic extension live in `ui-core` and are
+ * glob-discovered by the desktop loader (not blocklisted), so they must appear
+ * in the desktop build too:
+ *   - the composer mic button renders on the chat page, and
+ *   - `/settings/voice` is reachable (its admin page renders).
+ *
+ * Fully mocked (tauri auto-login + mocked backend + intercepted `/api/voice`),
+ * matching the other mocked desktop specs — no real backend needed.
+ */
+
+// Minimal in-browser capture mocks so the mic's isRecordingSupported() is true
+// on the desktop bundle (secure context + getUserMedia + MediaRecorder present).
+async function installVoiceBrowserMocks(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      Object.defineProperty(window, 'isSecureContext', {
+        configurable: true,
+        get: () => true,
+      })
+    } catch {
+      /* best effort */
+    }
+    class FakeMediaRecorder {
+      state = 'inactive'
+      mimeType = 'audio/wav'
+      ondataavailable: unknown = null
+      onstop: unknown = null
+      start() {
+        this.state = 'recording'
+      }
+      stop() {
+        this.state = 'inactive'
+      }
+      static isTypeSupported() {
+        return true
+      }
+    }
+    try {
+      Object.defineProperty(window, 'MediaRecorder', {
+        configurable: true,
+        writable: true,
+        value: FakeMediaRecorder,
+      })
+    } catch {
+      ;(window as unknown as Record<string, unknown>).MediaRecorder =
+        FakeMediaRecorder
+    }
+    const getUserMedia = async () => ({
+      getTracks: () => [{ stop() {}, kind: 'audio' }],
+    })
+    try {
+      const existing = navigator.mediaDevices
+      if (existing) {
+        ;(existing as unknown as Record<string, unknown>).getUserMedia =
+          getUserMedia
+      } else {
+        Object.defineProperty(navigator, 'mediaDevices', {
+          configurable: true,
+          get: () => ({ getUserMedia }),
+        })
+      }
+    } catch {
+      /* ignore */
+    }
+  })
+}
+
+// Intercept `/api/voice/**` with a ready, provisioned deployment so both the
+// mic and the admin page render. Registered AFTER mockBackendDefaults so it
+// wins (route matching is LIFO).
+async function routeVoiceReady(page: Page): Promise<void> {
+  const now = new Date().toISOString()
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  })
+  await page.route('**/api/voice/**', async (route, request) => {
+    const seg = new URL(request.url()).pathname.replace(/^.*\/api\/voice\/?/, '')
+    if (seg === 'capability')
+      return route.fulfill(
+        json({
+          enabled: true,
+          runtime_ready: true,
+          model_ready: true,
+          can_transcribe: true,
+          model: 'base',
+          max_clip_seconds: 60,
+        }),
+      )
+    if (seg === 'settings')
+      return route.fulfill(
+        json({
+          enabled: true,
+          model: 'base',
+          language: 'auto',
+          idle_unload_secs: 300,
+          auto_start_timeout_secs: 30,
+          drain_timeout_secs: 30,
+          max_clip_seconds: 60,
+          max_upload_bytes: 26214400,
+          updated_at: now,
+        }),
+      )
+    if (seg === 'versions')
+      return route.fulfill(
+        json({
+          versions: [
+            {
+              id: 'ver-v1.0.0',
+              version: 'v1.0.0',
+              backend: 'cpu',
+              platform: 'linux',
+              arch: 'x86_64',
+              binary_path: '/cache/whisper/v1.0.0/whisper-server',
+              is_system_default: true,
+              created_at: now,
+            },
+          ],
+        }),
+      )
+    if (seg === 'versions/check-updates')
+      return route.fulfill(json({ platform: 'linux', arch: 'x86_64', versions: [] }))
+    if (seg === 'versions/downloads') return route.fulfill(json({ downloads: [] }))
+    if (seg === 'model/status')
+      return route.fulfill(json({ model: 'base', present: true, size_bytes: 147456000 }))
+    if (seg === 'instance')
+      return route.fulfill(
+        json({
+          status: 'running',
+          state: 'healthy',
+          active_model: 'ggml-base.bin',
+          local_port: 51789,
+          restart_attempts: 0,
+          state_changed_at: now,
+        }),
+      )
+    return route.fulfill(json({}))
+  })
+}
+
+test.describe('desktop voice surface (TEST-30)', () => {
+  test.beforeEach(async ({ page }) => {
+    await installVoiceBrowserMocks(page)
+    await installTauriMock(page)
+    await mockBackendDefaults(page)
+    await routeVoiceReady(page)
+  })
+
+  test('composer mic button renders in the desktop chat composer', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    // The composer loads (core chat page).
+    await expect(page.getByTestId('chat-message-textarea')).toBeVisible({
+      timeout: 20000,
+    })
+    // The voice mic (from the glob-discovered core voice extension) renders.
+    await expect(page.getByTestId('voice-mic-button').first()).toBeVisible({
+      timeout: 15000,
+    })
+  })
+
+  test('/settings/voice is reachable and its admin page renders', async ({
+    page,
+  }) => {
+    await page.goto('/settings/voice')
+    await expect(page.getByTestId('voice-settings-page-title')).toBeVisible({
+      timeout: 20000,
+    })
+    // A couple of the admin cards render on the desktop bundle.
+    await expect(page.getByTestId('voice-config-card')).toBeVisible()
+    await expect(page.getByTestId('voice-installed-versions-card')).toBeVisible()
+  })
+})
