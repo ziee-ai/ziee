@@ -182,3 +182,56 @@ async fn discover_anthropic_sends_version_header_and_populates_models() {
         "no fallback note expected on a successful probe: {notes:?}"
     );
 }
+
+#[tokio::test]
+async fn discover_anthropic_probe_failure_keeps_catalog_and_notes() {
+    // The graceful-degradation contract (backend half of the e2e regression): when
+    // the live Anthropic /v1/models probe fails (here a hard 400 like the original
+    // symptom), discovery still returns 200 with the curated catalog retained AND a
+    // non-blocking fallback note — the picker is never left empty.
+    let upstream = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(400).set_body_string("Bad Request"))
+        .mount(&upstream)
+        .await;
+
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("LLM_DISCOVER_ALLOW_LOOPBACK".to_string(), "1".to_string())],
+        ..Default::default()
+    })
+    .await;
+
+    let admin = create_user_with_permissions(
+        &server,
+        "discover_anthropic_fallback",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
+
+    let provider_id = create_provider(&server, &admin.token, "anthropic", &upstream.uri()).await;
+
+    let resp = reqwest::Client::new()
+        .get(server.api_url(&format!("/llm-providers/{provider_id}/discover-models")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "discovery returns 200 even on probe failure");
+    let body: serde_json::Value = resp.json().await.unwrap();
+
+    // Catalog is retained (picker is not empty) — a known Claude model is present.
+    let models = body["models"].as_array().expect("models array");
+    let m = models
+        .iter()
+        .find(|m| m["id"] == "claude-opus-4-8")
+        .expect("catalog Claude model retained on probe failure");
+    assert_eq!(m["source"].as_str(), Some("catalog"), "curated catalog entry");
+
+    // The failure is surfaced non-blockingly as a fallback note.
+    let notes = body["notes"].as_array().expect("notes array");
+    assert!(
+        notes.iter().any(|n| n.as_str().unwrap_or("").contains("falling back to catalog")),
+        "fallback note expected on probe failure: {notes:?}"
+    );
+}

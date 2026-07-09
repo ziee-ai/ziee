@@ -310,11 +310,13 @@ pub(crate) fn parse_live_models(provider_type: &str, body: &serde_json::Value) -
 
 fn parse_one_live_model(id: String, item: &serde_json::Value) -> LiveModel {
     // A human label when it differs from the id: OpenRouter sets `name`; Anthropic
-    // sets `display_name` (its /v1/models has no `name`); OpenAI omits both.
+    // sets `display_name` (its /v1/models has no `name`); OpenAI omits both. Fall
+    // back to `display_name` whenever `name` is not a usable string (absent, null,
+    // or non-string) — not just when the key is missing.
     let display_name = item
         .get("name")
-        .or_else(|| item.get("display_name"))
         .and_then(|v| v.as_str())
+        .or_else(|| item.get("display_name").and_then(|v| v.as_str()))
         .filter(|n| !n.is_empty() && *n != id)
         .map(|s| s.to_string());
 
@@ -456,6 +458,27 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "claude-haiku-4-5");
         assert!(out[0].display_name.is_none());
+    }
+
+    #[test]
+    fn display_name_equal_to_id_or_empty_is_dropped() {
+        // The dedup/empty filter applies to the `display_name` branch too: a label
+        // identical to the id (or empty) is not a useful display name → None.
+        let same = json!({ "data": [{ "id": "claude-x", "display_name": "claude-x" }] });
+        assert!(parse_live_models("anthropic", &same)[0].display_name.is_none());
+        let empty = json!({ "data": [{ "id": "claude-y", "display_name": "" }] });
+        assert!(parse_live_models("anthropic", &empty)[0].display_name.is_none());
+    }
+
+    #[test]
+    fn null_name_falls_back_to_display_name() {
+        // A non-string/null `name` must not short-circuit the `display_name`
+        // fallback (regression guard for the absence-vs-usable-string fix).
+        let body = json!({
+            "data": [{ "id": "claude-z", "name": null, "display_name": "Claude Z" }]
+        });
+        let out = parse_live_models("anthropic", &body);
+        assert_eq!(out[0].display_name.as_deref(), Some("Claude Z"));
     }
 
     #[test]
