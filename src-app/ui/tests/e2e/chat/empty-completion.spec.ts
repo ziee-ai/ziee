@@ -21,11 +21,13 @@ import {
  * Empty-completion notice spec (TEST-4).
  *
  * When a turn finalises with only reasoning (or nothing) and no tool call, the
- * backend emits `finish_reason: "empty"` and the persisted assistant message has
- * no user-visible answer. `ChatMessage.tsx` detects that at render time and
+ * persisted assistant message has no user-visible answer. `ChatMessage.tsx`
+ * detects that from the message CONTENT at render time (it does NOT consume the
+ * stream's `finish_reason`; the backend's `finish_reason: "empty"` is an
+ * independent telemetry signal asserted separately in the backend test) and
  * shows an inline notice so the chat never appears to silently hang. Because the
- * detection is render-time (not a transient stream event) it must also survive a
- * page reload — this spec asserts both.
+ * detection is render-time it must also survive a page reload — this spec
+ * asserts the notice appears after `complete` and again after a reload.
  */
 
 // An assistant message whose only content is a thinking block — the reported

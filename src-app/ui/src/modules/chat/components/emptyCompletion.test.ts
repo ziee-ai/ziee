@@ -1,7 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { MessageContent, MessageWithContent } from '@/api-client/types'
-import { hasVisibleAnswer, isVisibleAnswerBlock } from './emptyCompletion.ts'
+import {
+  hasVisibleAnswer,
+  isVisibleAnswerBlock,
+  shouldShowEmptyCompletionNotice,
+} from './emptyCompletion.ts'
 
 // Minimal content-block factory (only the fields the predicate reads).
 function block(content_type: string, content: unknown = {}): MessageContent {
@@ -45,4 +49,52 @@ test('hasVisibleAnswer: true when any visible block is present', () => {
     true,
   )
   assert.equal(hasVisibleAnswer(assistant([block('tool_use', {})])), true)
+})
+
+const thinkingOnly = assistant([block('thinking', { thinking: 'reasoning' })])
+const withAnswer = assistant([block('text', { text: 'answer' })])
+
+test('shouldShowEmptyCompletionNotice: shows for a finalised, non-interrupted, answerless assistant turn', () => {
+  assert.equal(
+    shouldShowEmptyCompletionNotice({
+      isUser: false,
+      isStreaming: false,
+      interrupted: false,
+      message: thinkingOnly,
+    }),
+    true,
+  )
+  // Fully-empty finalised assistant turn too.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({
+      isUser: false,
+      isStreaming: false,
+      interrupted: false,
+      message: assistant([]),
+    }),
+    true,
+  )
+})
+
+test('shouldShowEmptyCompletionNotice: suppressed while streaming, for users, when interrupted, or when an answer exists', () => {
+  // Live streaming turn (momentarily thinking-only) must not flash the notice.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: true, interrupted: false, message: thinkingOnly }),
+    false,
+  )
+  // User messages never show it.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: true, isStreaming: false, interrupted: false, message: thinkingOnly }),
+    false,
+  )
+  // Cancelled / errored / aborted turns are partials, not empty completions.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: true, message: thinkingOnly }),
+    false,
+  )
+  // A turn that produced an answer never shows it.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: false, message: withAnswer }),
+    false,
+  )
 })

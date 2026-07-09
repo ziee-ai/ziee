@@ -29,3 +29,21 @@ export function isVisibleAnswerBlock(block: MessageContent): boolean {
 export function hasVisibleAnswer(message: MessageWithContent): boolean {
   return (message.contents ?? []).some(isVisibleAnswerBlock)
 }
+
+// Whether to render the inline "empty completion" notice for a message.
+//
+// Only for a FINALISED assistant turn (`!isStreaming`, so a live turn that
+// momentarily has only a thinking block never flashes the notice) that produced
+// no visible answer — AND was not `interrupted` (a user-cancelled / stream-
+// errored / aborted turn is a partial, not a genuine empty completion, so the
+// notice would misattribute the cause; the caller passes the store's
+// per-turn interruption signal).
+export function shouldShowEmptyCompletionNotice(opts: {
+  isUser: boolean
+  isStreaming: boolean
+  interrupted: boolean
+  message: MessageWithContent
+}): boolean {
+  const { isUser, isStreaming, interrupted, message } = opts
+  return !isUser && !isStreaming && !interrupted && !hasVisibleAnswer(message)
+}

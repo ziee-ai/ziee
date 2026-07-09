@@ -7,7 +7,7 @@ import type {
 } from '@/api-client/types'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
-import { hasVisibleAnswer } from '@/modules/chat/components/emptyCompletion'
+import { shouldShowEmptyCompletionNotice } from '@/modules/chat/components/emptyCompletion'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
 import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
 import { MessageActions } from '@/modules/chat/components/MessageActions'
@@ -19,10 +19,14 @@ import { useConversationFind } from '@/modules/chat/components/ConversationFindC
 export const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming = false,
+  interrupted = false,
 }: {
   message: MessageWithContent
   /** True only for the message currently streaming — it is never collapsed. */
   isStreaming?: boolean
+  /** True when this turn was cancelled / errored / aborted (a partial, not a
+   *  genuine empty completion) — suppresses the empty-completion notice. */
+  interrupted?: boolean
 }) {
   const isUser = message.role === 'user'
   const { activeMatchId } = useConversationFind()
@@ -55,14 +59,17 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message, isStreaming, isActiveMatch])
 
   // Does this assistant turn contain a user-visible answer (text / tool call /
-  // attachment), or only reasoning / nothing? A FINALISED assistant turn with no
-  // visible answer is the "empty completion" case — surface an inline notice
-  // instead of rendering nothing (the silent-stop bug). Gate on `!isStreaming`
-  // so a live turn that momentarily has only a thinking block (before its answer
-  // streams in) never flashes the notice.
+  // attachment), or only reasoning / nothing? A FINALISED, non-interrupted
+  // assistant turn with no visible answer is the "empty completion" case —
+  // surface an inline notice instead of rendering nothing (the silent-stop bug).
+  // Memoized like `offerCollapse`: this component re-renders on every find-
+  // highlight change, and the gate need only recompute when its inputs do.
   const contents = message.contents ?? []
-  const showEmptyCompletionNotice =
-    !isUser && !isStreaming && !hasVisibleAnswer(message)
+  const showEmptyCompletionNotice = useMemo(
+    () =>
+      shouldShowEmptyCompletionNotice({ isUser, isStreaming, interrupted, message }),
+    [isUser, isStreaming, interrupted, message],
+  )
 
   // Check if message has any content to render. A finalised, empty assistant
   // turn has no blocks but still renders the notice below, so don't bail then.

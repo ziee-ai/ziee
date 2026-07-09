@@ -184,6 +184,14 @@ impl StreamingService {
             const SAFETY_MAX_ITERATIONS: u32 = 1000;
             let mut iteration = 1u32;
 
+            // Whether ANY iteration of this turn persisted a user-visible answer.
+            // The per-iteration `DeltaAccumulator` is recreated each loop, so its
+            // own `produced_visible_content` reflects only the latest LLM response;
+            // this OR-accumulates across iterations so the terminal
+            // "empty completion" signal matches the WHOLE assistant message (which
+            // is what the frontend inspects), not just the final iteration.
+            let mut turn_produced_visible_content = false;
+
             // OPTIMIZATION: Fetch history ONCE before loop, cache in memory
             // On Continue action, we append new content to cache instead of re-fetching
             let mut history = match Repos.chat.core.get_conversation_history(branch_id).await {
@@ -555,6 +563,11 @@ impl StreamingService {
                         let _ = tx.send(Err(e));
                         return;
                     }
+                    // Carry this iteration's visibility into the turn-level flag
+                    // (the accumulator is dropped/recreated next iteration).
+                    if acc.produced_visible_content {
+                        turn_produced_visible_content = true;
+                    }
                 }
 
                 // Check extension action FIRST to decide if we should continue or complete
@@ -666,13 +679,9 @@ impl StreamingService {
                     }
                     _ => {
                         // Complete or None - send complete event and stop looping
-                        let (finish_reason, usage, produced_visible_content) = {
+                        let (finish_reason, usage) = {
                             let acc = accumulator.lock().await;
-                            (
-                                acc.finish_reason.clone(),
-                                acc.usage.clone(),
-                                acc.produced_visible_content,
-                            )
+                            (acc.finish_reason.clone(), acc.usage.clone())
                         };
 
                         // Use finish_reason from provider, or default to "stop" if not provided
@@ -680,15 +689,16 @@ impl StreamingService {
                             finish_reason.unwrap_or_else(|| "stop".to_string());
 
                         // Empty-completion guard: the turn terminated (no tool call to
-                        // run) but produced NO user-visible answer — only reasoning, or
-                        // nothing. Without this the client just sees a bare `stop` and
-                        // the chat appears to hang. Override the terminal finish_reason
-                        // to "empty" (an authoritative signal for telemetry + the client)
-                        // and log it. The frontend renders an inline notice for such a
-                        // turn; it does NOT branch on finish_reason, so this is
-                        // non-breaking. We deliberately do NOT emit an Err here (that
-                        // would render as a hard conversation-level error banner).
-                        if !produced_visible_content {
+                        // run) but produced NO user-visible answer across ANY iteration
+                        // — only reasoning, or nothing. Without this the client just
+                        // sees a bare `stop` and the chat appears to hang. Override the
+                        // terminal finish_reason to "empty" (an authoritative signal for
+                        // telemetry + the client) and log it. The frontend renders an
+                        // inline notice for such a turn; it does NOT branch on
+                        // finish_reason, so this is non-breaking. We deliberately do NOT
+                        // emit an Err here (that would render as a hard
+                        // conversation-level error banner).
+                        if !turn_produced_visible_content {
                             tracing::warn!(
                                 conversation_id = %conversation_id,
                                 message_id = %assistant_message_id,
@@ -1494,9 +1504,14 @@ impl DeltaAccumulator {
                 next_seq += 1;
 
                 // Extension content (tool_use / tool_result / attachments / …) is a
-                // user-visible answer. `content_type` here is never "text"/"thinking",
-                // so the text arg is unused (pass "").
-                if is_visible_answer(&content_type, "") {
+                // user-visible answer. Extract any `text` field so an extension that
+                // emits a text-typed block (the text extension declares text/thinking)
+                // is classified on its actual content, not assumed non-empty.
+                let text = content_json
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if is_visible_answer(&content_type, text) {
                     self.produced_visible_content = true;
                 }
             }

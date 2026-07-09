@@ -336,6 +336,26 @@ async fn empty_completion_reports_finish_reason_empty() {
 }
 
 #[tokio::test]
+async fn fully_empty_completion_reports_finish_reason_empty() {
+    // Harsher variant: NO answer text, NO reasoning, NO tool call — the model
+    // returned a completely empty completion. `finalize` persists zero content
+    // blocks; the guard must still report finish_reason "empty".
+    let plan = StubPlan::text("");
+    let (_stub, turn) = run_turn("fully_empty_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "empty",
+        "a fully-empty completion must report finish_reason \"empty\", got: {}",
+        complete.data
+    );
+}
+
+#[tokio::test]
 async fn normal_text_completion_reports_stop() {
     // Control: a turn that DID produce answer text keeps the provider's normal
     // terminal finish_reason ("stop") — the empty-completion guard must not fire.
