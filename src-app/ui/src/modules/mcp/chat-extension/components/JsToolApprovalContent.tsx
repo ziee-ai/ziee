@@ -27,6 +27,8 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
   const [submitting, setSubmitting] = useState(false)
 
   const resolve = async (action: 'accept' | 'decline') => {
+    // Re-entrancy guard: never POST twice to a single-use elicitation.
+    if (submitting || resolved !== null) return
     setSubmitting(true)
     const next = action === 'accept' ? 'approved' : 'denied'
     setResolved(next)
@@ -41,17 +43,20 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
     }
   }
 
+  const icon =
+    resolved === 'approved' ? <Check /> : resolved === 'denied' ? <X /> : <Clock />
+
   return (
     <div className="my-2" data-testid={`run-js-approval-${data.elicitation_id}`}>
       <Alert
         tone={resolved === 'approved' ? 'success' : resolved === 'denied' ? 'neutral' : 'warning'}
-        data-testid="run-js-approval-alert"
-        icon={<Clock />}
+        data-testid={`run-js-approval-alert-${data.elicitation_id}`}
+        icon={icon}
         title={
           <div>
             <Text strong>run_js wants to call: {data.tool_name}</Text>
             {mcpServerParenLabel(data.server) && (
-              <Text type="secondary" className="ml-2 text-xs whitespace-nowrap">
+              <Text type="secondary" className="ms-2 text-xs whitespace-nowrap">
                 {mcpServerParenLabel(data.server)}
               </Text>
             )}
@@ -67,7 +72,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
                 <Text strong className="text-xs">
                   Arguments:
                 </Text>
-                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs">
+                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs bg-muted">
                   {JSON.stringify(data.input, null, 2)}
                 </pre>
               </div>
@@ -80,7 +85,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
                     onClick={() => resolve('accept')}
                     loading={submitting}
                     size="default"
-                    data-testid="run-js-approval-approve"
+                    data-testid={`run-js-approval-approve-${data.elicitation_id}`}
                   >
                     Approve
                   </Button>
@@ -90,7 +95,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
                     onClick={() => resolve('decline')}
                     loading={submitting}
                     size="default"
-                    data-testid="run-js-approval-deny"
+                    data-testid={`run-js-approval-deny-${data.elicitation_id}`}
                   >
                     Deny
                   </Button>
@@ -100,7 +105,8 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
               <Text
                 type="secondary"
                 className="mt-2 block text-xs"
-                data-testid={`run-js-approval-${resolved}`}
+                data-testid={`run-js-approval-status-${data.elicitation_id}`}
+                data-status={resolved}
               >
                 {resolved === 'approved' ? 'Approved — script resumed.' : 'Denied.'}
               </Text>

@@ -320,6 +320,26 @@ impl McpChatExtension {
         };
 
         let run_js_id = run_js_mcp_server_id();
+
+        // Deploy-level kill switch enforced at EXECUTION, not just attachment:
+        // the attach flag is already suppressed when disabled, but a
+        // hallucinated or history-replayed `run_js` tool_use could still reach
+        // here — refuse to execute (audit: perms).
+        if !crate::modules::js_tool::is_enabled(&self.config) {
+            return McpContentData::ToolResult {
+                tool_use_id: tool_use_id.to_string(),
+                name: Some("run_js".to_string()),
+                server_id: Some(run_js_id.to_string()),
+                content: "run_js is disabled on this deployment".to_string(),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: None,
+            };
+        }
+
         let script = input
             .get("script")
             .and_then(|v| v.as_str())

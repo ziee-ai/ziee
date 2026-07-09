@@ -50,14 +50,24 @@ pub fn gate(
     mode: ApprovalMode,
     is_auto_approved: bool,
 ) -> GateDecision {
-    if is_control_mutating {
-        return GateDecision::NeedApproval;
-    }
+    // Order matters and MUST match the normal after_llm_call loop (mcp.rs):
+    // 1. Built-in privileged servers always execute — even under Disabled.
     if is_builtin {
         return GateDecision::Allow;
     }
+    // 2. Disabled is the kill switch: a non-builtin tool is DENIED outright,
+    //    BEFORE any control/approval classification. Without this, a mutating
+    //    `control` tool (deliberately NOT a built-in) would get an approval
+    //    prompt inside a script even though MCP is off — a confused-deputy
+    //    bypass of the Disabled contract (security audit, medium).
+    if matches!(mode, ApprovalMode::Disabled) {
+        return GateDecision::Deny;
+    }
+    // 3. A mutating control call always needs approval (overrides AutoApprove).
+    if is_control_mutating {
+        return GateDecision::NeedApproval;
+    }
     match mode {
-        ApprovalMode::Disabled => GateDecision::Deny,
         ApprovalMode::AutoApprove => GateDecision::Allow,
         ApprovalMode::ManualApprove => {
             if is_auto_approved {
@@ -66,6 +76,8 @@ pub fn gate(
                 GateDecision::NeedApproval
             }
         }
+        // Handled above.
+        ApprovalMode::Disabled => GateDecision::Deny,
     }
 }
 
@@ -138,7 +150,16 @@ pub async fn request_approval(
 
     match response {
         Some(r) if r.action == "accept" => ApprovalOutcome::Approved,
-        Some(r) => ApprovalOutcome::Denied(format!("tool call {}ed by user", r.action)),
+        Some(r) => {
+            // Map the action to a correct past-tense verb (not `{action}ed`,
+            // which yields "declineed"). Vocabulary is accept|decline|cancel.
+            let verb = match r.action.as_str() {
+                "decline" => "declined",
+                "cancel" => "cancelled",
+                other => return ApprovalOutcome::Denied(format!("tool call {other} by user")),
+            };
+            ApprovalOutcome::Denied(format!("tool call {verb} by user"))
+        }
         None => ApprovalOutcome::Denied("tool approval timed out or was cancelled".to_string()),
     }
 }

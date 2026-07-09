@@ -376,6 +376,7 @@ export const GALLERY_COVERAGE = {
   "modules/mcp/chat-extension/components/AskUserWizardContent": { kind: 'via', reason: 'rendered within the mcp module page (ask_user rich wizard) — gallery cell deep-chat-ask-user-wizard' },
   "modules/mcp/chat-extension/components/elicitationFields": { kind: 'via', reason: 'shared non-choice field renderer used by the elicitation form + ask_user wizard' },
   "modules/mcp/chat-extension/components/ElicitationFormContent": { kind: 'via', reason: 'rendered within the mcp module page' },
+  "modules/mcp/chat-extension/components/JsToolApprovalContent": { kind: 'via', reason: 'run_js inner-tool approval prompt, rendered inline in a chat message via the run_js_approval content-block renderer' },
   "modules/mcp/chat-extension/components/McpInitializer": { kind: 'via', reason: 'rendered within the mcp module page' },
   "modules/mcp/chat-extension/components/McpMenuItem": { kind: 'via', reason: 'rendered within the mcp module page' },
   "modules/mcp/chat-extension/components/McpStatusRow": { kind: 'via', reason: 'rendered within the mcp module page' },

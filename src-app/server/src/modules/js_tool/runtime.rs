@@ -109,9 +109,15 @@ globalThis.console.error = globalThis.console.log;
 globalThis.console.debug = globalThis.console.log;
 "#;
 
-/// Parse a best-effort 1-based line number out of a QuickJS exception stack.
-/// QuickJS frames look like `    at <anonymous> (eval_script:12)` — we take the
-/// first integer following the last colon on a frame line.
+/// Number of preamble lines `wrap_script` prepends before the user's script
+/// (the outer async IIFE + `try {` + the inner `const __r = await (async () => {`).
+/// QuickJS numbers lines against the WRAPPED source, so we subtract this to map
+/// back to the user's line numbers (audit: correctness — line was +3 off).
+const PREAMBLE_LINES: u32 = 3;
+
+/// Parse a best-effort 1-based USER line number out of a QuickJS exception
+/// stack. Frames look like `    at <anonymous> (eval_script:12)` — take the first
+/// integer following the last colon, then subtract the wrapper preamble.
 fn line_from_stack(stack: &str) -> Option<u32> {
     for frame in stack.lines() {
         if let Some(colon) = frame.rfind(':') {
@@ -121,7 +127,7 @@ fn line_from_stack(stack: &str) -> Option<u32> {
                 .collect();
             if let Ok(n) = tail.parse::<u32>() {
                 if n > 0 {
-                    return Some(n);
+                    return Some(n.saturating_sub(PREAMBLE_LINES).max(1));
                 }
             }
         }
@@ -165,9 +171,17 @@ where
             if cancel.load(Ordering::Relaxed) {
                 return true;
             }
-            // saturating decrement; kill when exhausted
-            let prev = gas.fetch_sub(1, Ordering::Relaxed);
-            prev == 0
+            // STICKY gas: once exhausted, stay tripped forever. `fetch_sub` on an
+            // AtomicU64 WRAPS (0 → u64::MAX), so a naive `prev == 0` would fire
+            // exactly once and then re-enable the guard for ~2^64 ops — letting a
+            // catchable interrupt (`try{while(true){}}catch{}`) or the idle()
+            // drain phase run CPU-unbounded. Guard the load first so termination
+            // latches (audit: resource-limits/concurrency, high).
+            if gas.load(Ordering::Relaxed) == 0 {
+                return true;
+            }
+            gas.fetch_sub(1, Ordering::Relaxed);
+            false
         })))
         .await;
     }

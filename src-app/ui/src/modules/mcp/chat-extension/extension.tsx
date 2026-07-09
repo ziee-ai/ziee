@@ -647,6 +647,26 @@ const mcpExtension: ChatExtension = createExtension({
           newMessages.set(updatedMessage.id, updatedMessage)
           set({ streamingMessage: updatedMessage, messages: newMessages })
         }
+      } else {
+        // No streaming message (e.g. after reload / SSE-resume, since generation
+        // is a detached server task) — create one so the approval prompt renders
+        // and the suspended script can still be resumed. Mirrors
+        // mcpElicitationRequired's else-branch.
+        const messageId = `streaming-${Date.now()}`
+        approvalContent.id = `${messageId}-runjs-${data.elicitation_id}`
+        approvalContent.message_id = messageId
+
+        const newMessage: MessageWithContent = {
+          id: messageId,
+          role: 'assistant',
+          contents: [approvalContent],
+          originated_from_id: '',
+          edit_count: 0,
+          created_at: now,
+        }
+        const newMessages = new Map(chatState.messages)
+        newMessages.set(newMessage.id, newMessage)
+        set({ streamingMessage: newMessage, messages: newMessages })
       }
     },
 

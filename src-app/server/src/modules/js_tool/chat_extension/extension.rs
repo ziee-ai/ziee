@@ -12,12 +12,12 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
     name: "js_tool",
     // MUST run BEFORE the MCP extension (order 30): `before_llm_call` sets the
     // `attach_run_js_mcp` metadata flag, which the MCP extension reads in
-    // `auto_attach_builtin_ids` when building the tool list. 29 lands it after
-    // the other attach-flag extensions (web_search 26 … citations 29), before
-    // MCP (30). The nudge is generic (points the model at `ziee.toolList()`), so
-    // it needs no knowledge of the assembled tool set and the tie with citations
-    // (also 29) is benign.
-    order: 29,
+    // `auto_attach_builtin_ids` when building the tool list. Order 23 is a free,
+    // DISTINCT slot (control 22 … summarization 24) — every attach-flag
+    // extension has a unique order (no ties), so registration stays
+    // deterministic. The nudge is generic (points the model at
+    // `ziee.toolList()`), so its position among the flag-setters doesn't matter.
+    order: 23,
 };
 
 pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {

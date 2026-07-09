@@ -82,12 +82,6 @@ impl Dispatcher {
             return serde_json::json!({ "__error": format!("unknown tool '{js_name}'") });
         };
 
-        if !self.budget.try_claim() {
-            return serde_json::json!({
-                "__error": format!("run_js tool-call budget exhausted (max {})", self.budget.max())
-            });
-        }
-
         // Gate exactly like the normal after_llm_call classification.
         let is_builtin =
             crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(binding.server_id);
@@ -125,6 +119,15 @@ impl Dispatcher {
                 }
             }
             GateDecision::Allow => {}
+        }
+
+        // Claim a budget slot only for a call that will ACTUALLY dispatch (after
+        // the gate resolves to Allow/Approved) — so denied/declined calls don't
+        // consume capacity (audit: correctness).
+        if !self.budget.try_claim() {
+            return serde_json::json!({
+                "__error": format!("run_js tool-call budget exhausted (max {})", self.budget.max())
+            });
         }
 
         // Dispatch through the chokepoint (records with source=script).
@@ -179,8 +182,11 @@ impl Dispatcher {
                 }
             })
         } else {
-            self.push_trace(&binding, "completed", dur);
-            serde_json::json!({ "value": null })
+            // Defensive: execute_tool always yields ToolResult today, but if the
+            // enum ever gains another variant, surface an error the script can
+            // catch rather than a false null-success (audit: error-handling).
+            self.push_trace(&binding, "error", dur);
+            serde_json::json!({ "__error": "unexpected tool result shape" })
         }
     }
 }
