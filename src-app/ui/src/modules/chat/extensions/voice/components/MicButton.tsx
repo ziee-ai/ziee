@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Loader2, Mic, Square, X } from 'lucide-react'
 import { Button, Popover, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -68,20 +68,33 @@ export function MicButton() {
     setHintOpen(false)
   }
 
-  // One persistent live region for the whole button — mounted in every visible
-  // state so an inserted message is reliably announced (a region mounted with
-  // text already in it often isn't).
-  const liveRegion = (
-    <span aria-live="polite" aria-atomic="true" className="sr-only">
-      {announcement}
+  // The primary mic affordance (idle), reused by the plain + privacy-hint states.
+  const micButtonTrigger = (
+    <span className="inline-flex shrink-0">
+      <Button
+        data-testid="voice-mic-button"
+        data-tooltip-wrapped=""
+        icon={<Mic className={cn('size-4', status === 'error' && 'text-destructive')} />}
+        variant="ghost"
+        size="default"
+        aria-label="Start voice dictation"
+        aria-pressed={false}
+        onClick={() => Stores.Chat.VoiceStore.startRecording()}
+      />
     </span>
   )
 
-  // Not-ready posture: a muted-but-FOCUSABLE button whose remediation is exposed
-  // to AT via aria-describedby (not tooltip-only, which is unreachable on a
-  // disabled/untabbable control).
+  // Build the state-specific content, then render it BELOW one persistent live
+  // region (see the single return). The live region must be a stable DOM node
+  // across every transition — a region remounted with its text already present
+  // is frequently NOT announced — so it lives at a fixed position above this
+  // branch switch rather than inside each branch.
+  let content: ReactNode
   if (notReady) {
-    return (
+    // Not-ready posture: a muted-but-FOCUSABLE button whose remediation is
+    // exposed to AT via aria-describedby (not tooltip-only, which is unreachable
+    // on a disabled/untabbable control).
+    content = (
       <>
         <Tooltip content="Voice dictation isn't set up yet — contact an administrator">
           <span className="inline-flex shrink-0">
@@ -103,15 +116,12 @@ export function MicButton() {
           Voice dictation isn't set up yet. Contact an administrator to install a
           speech runtime and model.
         </span>
-        {liveRegion}
       </>
     )
-  }
-
-  // Recording: pulsing indicator + elapsed timer + Stop + Cancel. The visible
-  // timer is aria-hidden — the live region carries the discrete announcements.
-  if (isRecording) {
-    return (
+  } else if (isRecording) {
+    // Recording: pulsing indicator + elapsed timer + Stop + Cancel. The visible
+    // timer is aria-hidden — the live region carries the discrete announcements.
+    content = (
       <div
         className="flex items-center gap-1"
         role="group"
@@ -151,16 +161,13 @@ export function MicButton() {
             onClick={() => Stores.Chat.VoiceStore.cancelRecording()}
           />
         </Tooltip>
-        {liveRegion}
       </div>
     )
-  }
-
-  // Requesting / transcribing: spinner + staged status text. Requesting also
-  // gets a Cancel button so a never-answered permission prompt is escapable.
-  if (isBusy) {
+  } else if (isBusy) {
+    // Requesting / transcribing: spinner + staged status text. Requesting also
+    // gets a Cancel button so a never-answered permission prompt is escapable.
     const label = isTranscribing ? stageText || 'Transcribing…' : 'Starting…'
-    return (
+    content = (
       <div className="flex items-center gap-1.5" data-testid="voice-transcribing">
         <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="text-xs text-muted-foreground truncate max-w-40">{label}</span>
@@ -177,66 +184,57 @@ export function MicButton() {
             />
           </Tooltip>
         )}
-        {liveRegion}
       </div>
     )
-  }
-
-  // Idle: the primary mic affordance. A one-time privacy hint is shown as a
-  // popover anchored to the button; once dismissed, a plain tooltip replaces it.
-  const micButtonTrigger = (
-    <span className="inline-flex shrink-0">
-      <Button
-        data-testid="voice-mic-button"
-        data-tooltip-wrapped=""
-        icon={<Mic className={cn('size-4', status === 'error' && 'text-destructive')} />}
-        variant="ghost"
-        size="default"
-        aria-label="Start voice dictation"
-        aria-pressed={false}
-        onClick={() => Stores.Chat.VoiceStore.startRecording()}
-      />
-    </span>
-  )
-
-  if (hintOpen) {
-    return (
-      <>
-        <Popover
-          open
-          onOpenChange={open => {
-            if (!open) dismissHint()
-          }}
-          align="start"
-          side="top"
-          className="w-auto max-w-64"
-          content={
-            <div className="flex flex-col gap-2 p-1" data-testid="voice-privacy-hint">
-              <p className="text-xs text-muted-foreground">
-                Audio is transcribed locally on your server — never sent to the cloud.
-              </p>
-              <Button
-                data-testid="voice-privacy-hint-dismiss"
-                size="default"
-                variant="outline"
-                onClick={dismissHint}
-              >
-                Got it
-              </Button>
-            </div>
-          }
-        >
-          {micButtonTrigger}
-        </Popover>
-        {liveRegion}
-      </>
+  } else if (hintOpen) {
+    // Idle + one-time privacy hint (popover anchored to the button).
+    content = (
+      <Popover
+        open
+        onOpenChange={open => {
+          if (!open) dismissHint()
+        }}
+        align="start"
+        side="top"
+        className="w-auto max-w-64"
+        content={
+          <div className="flex flex-col gap-2 p-1" data-testid="voice-privacy-hint">
+            <p className="text-xs text-muted-foreground">
+              Audio is transcribed locally on your server — never sent to the cloud.
+            </p>
+            <Button
+              data-testid="voice-privacy-hint-dismiss"
+              size="default"
+              variant="outline"
+              onClick={dismissHint}
+            >
+              Got it
+            </Button>
+          </div>
+        }
+      >
+        {micButtonTrigger}
+      </Popover>
     )
+  } else {
+    // Idle (hint dismissed): plain mic affordance.
+    content = <Tooltip content="Dictate a message">{micButtonTrigger}</Tooltip>
   }
 
+  // ONE persistent live region (stable position-0 node) + the state content.
+  // Only `announcement`'s text changes across transitions; the node itself never
+  // remounts, so "Recording started" / "Transcript added" / errors are announced.
   return (
     <>
-      <Tooltip content="Dictate a message">{micButtonTrigger}</Tooltip>
-      {liveRegion}
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="voice-live-region"
+      >
+        {announcement}
+      </span>
+      {content}
     </>
   )
 }

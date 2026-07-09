@@ -274,6 +274,13 @@ export const createVoiceStore = defineExtensionStore({
           stageText: 'Starting voice engine…',
           announcement: 'Transcribing',
         })
+        // Supersession token for the transcribe phase: cancelRecording (incl. the
+        // unmount cleanup) bumps requestGeneration, so a POST that resolves AFTER
+        // the user cancelled / left the conversation is dropped instead of
+        // appending its transcript into a composer that has since changed. The
+        // in-flight fetch itself isn't aborted (the generated client takes no
+        // signal), so this guard is the safety net.
+        const gen = requestGeneration
         // Cold-start staging: whisper-server may autostart on the first clip, so
         // start with "Starting…" and flip to "Transcribing…" if it lingers.
         stageTimer = setTimeout(() => {
@@ -285,6 +292,9 @@ export const createVoiceStore = defineExtensionStore({
           const formData = new FormData()
           formData.append('file', wav, 'dictation.wav')
           const result = await ApiClient.Voice.transcribe(formData)
+          // A cancel/unmount superseded this transcription while it was in flight
+          // — drop the result (state was already reset by cancelRecording).
+          if (requestGeneration !== gen) return
           clearTimers()
           const text = result.text?.trim() ?? ''
           if (text) {
@@ -301,6 +311,8 @@ export const createVoiceStore = defineExtensionStore({
           })
           focusComposer()
         } catch (err) {
+          // Superseded by a cancel/unmount — swallow the (now irrelevant) error.
+          if (requestGeneration !== gen) return
           // Keep the raw backend detail (loopback URLs, engine jargon) in the
           // console for debugging; never leak it into the user-facing toast.
           console.error('[voice] transcription failed', err)

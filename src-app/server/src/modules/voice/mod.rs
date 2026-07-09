@@ -49,11 +49,21 @@ static VOICE_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 pub struct VoiceModule {
     #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
+    /// Deploy-level kill switch, resolved from config in `init()`. When false,
+    /// `register_routes` merges NOTHING — the voice REST surface (incl.
+    /// transcribe) is never mounted, so an operator's `voice: { enabled: false }`
+    /// truly disables the feature (mirrors the control_mcp pattern).
+    enabled: bool,
 }
 
 impl VoiceModule {
     pub fn new() -> Self {
-        Self { pool: None }
+        // Default enabled (an absent `voice:` config section means on); `init`
+        // overwrites this from the resolved config before `register_routes`.
+        Self {
+            pool: None,
+            enabled: true,
+        }
     }
 }
 
@@ -80,8 +90,9 @@ impl AppModule for VoiceModule {
         // false }`; an admin cannot re-enable it (distinct from the runtime
         // `voice_runtime_settings.enabled` toggle).
         let enabled = ctx.config.voice.as_ref().map(|c| c.enabled).unwrap_or(true);
+        self.enabled = enabled;
         if !enabled {
-            tracing::info!("voice: disabled in config; skipping registration");
+            tracing::info!("voice: disabled in config; skipping reaper + route registration");
             return Ok(());
         }
 
@@ -94,6 +105,13 @@ impl AppModule for VoiceModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        // Deploy kill switch also guards route registration: when disabled, the
+        // voice surface (transcribe/capability/admin) is never mounted, so a
+        // `voice::transcribe` user cannot reach it and no whisper-server is ever
+        // spawned. Without this the config toggle would be bypassable.
+        if !self.enabled {
+            return router;
+        }
         router.merge(routes::voice_router())
     }
 }
