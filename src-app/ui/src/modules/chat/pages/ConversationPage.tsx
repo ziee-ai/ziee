@@ -585,62 +585,72 @@ export default function ConversationPage() {
               desktop → normal flow at the column bottom. Made a positioning
               context (sticky in native, relative on desktop) so the jump-to-latest
               button can anchor to its TOP edge. */}
+          {/* Outer = the sticky positioning shell. It carries the `bottom:5`
+              sticky offset and NOTHING else visual — crucially NO transform: a
+              transform on a position:sticky element breaks stickiness on iOS
+              Safari (the composer would unpin from the bottom edge and stop
+              sitting under the home-indicator / nav bar). The slide-to-hide
+              transform lives on the inner element instead. */}
           <div
             className={cn(
-              // pt-0: no gap above the input — the fade below stands in for it.
-              'w-full max-w-4xl mx-auto p-4 pt-0',
+              'w-full',
               nativeScroll
-                ? cn(
-                    // Auto-hide on scroll: keep the composer sticky-pinned and
-                    // slide it DOWN off the bottom edge via a transform transition
-                    // (smooth both ways). Previously this toggled sticky↔relative,
-                    // which teleported the composer into the document flow far
-                    // below the fold — an instant drop with no motion, so the hide
-                    // ended abruptly. A transform is visual-only, so the element
-                    // keeps its pinned layout slot while it animates away.
-                    'bg-card sticky z-10 transition-transform duration-300 ease-out',
+                ? cn('sticky z-10', composerHidden && 'pointer-events-none')
+                : 'relative',
+            )}
+            // bottom:5 dodges iOS Safari's bottom sticky-latch (mirrors the
+            // header's top:5); the fixed bottom backdrop fills that 5px gap.
+            style={nativeScroll ? { bottom: 5 } : undefined}
+          >
+            {/* Inner = the visual composer. Auto-hide slides it DOWN off the
+                bottom edge via a transform transition (smooth both ways); the
+                transform is visual-only so the sticky outer keeps its pinned slot.
+                pt-0: no gap above the input — the fade below stands in for it. */}
+            <div
+              className={cn(
+                'relative max-w-4xl mx-auto p-4 pt-0',
+                nativeScroll &&
+                  cn(
+                    'bg-card transition-transform duration-300 ease-out',
                     composerHidden
                       ? 'translate-y-[calc(100%+1.25rem)]'
                       : 'translate-y-0',
-                  )
-                : 'relative',
-            )}
-            style={
-              nativeScroll
-                ? {
-                    // bottom:5 dodges iOS Safari's bottom sticky-latch (mirrors the
-                    // header's top:5). The 5px is subtracted from paddingBottom so
-                    // the input keeps its resting position (safe-area + 16) — same
-                    // padding-compensation the header does for its 5px offset. The
-                    // composer stays sticky in both states (hide = a transform), so
-                    // the offset is constant — no toggle jump.
-                    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 11px)',
-                    bottom: 5,
-                  }
-                : undefined
-            }
-          >
-            {/* Gradient fade above the composer: the tail of the message history
-                dissolves into the surface (bg-card) as it scrolls up, instead of
-                hard-cutting at the input's top edge. The message list carries a
-                matching bottom pad so the last message clears this at rest. */}
-            <div
-              className={cn(
-                'pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-card to-transparent',
-                // The fade belongs to the pinned composer — when the composer
-                // wipes away (scrolled up into history) hide it too.
-                nativeScroll && composerHidden && 'hidden',
+                  ),
               )}
-            />
-            {/* Jump-to-latest: floats just ABOVE the composer (bottom-full anchors
-                it to the composer's top edge, so it clears the input regardless of
-                the input's height). Shown only when scrolled up (ITEM-2). */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 z-20 flex justify-center">
-              <div className="pointer-events-auto">
-                <JumpToLatestButton visible={!atBottom} onClick={jumpToLatest} />
+              style={
+                nativeScroll
+                  ? {
+                      // The 5px sticky offset is subtracted from paddingBottom so
+                      // the input keeps its resting position (safe-area + 16) —
+                      // same padding-compensation the header does for its offset.
+                      paddingBottom:
+                        'calc(env(safe-area-inset-bottom, 0px) + 11px)',
+                    }
+                  : undefined
+              }
+            >
+              {/* Gradient fade above the composer: the tail of the message history
+                  dissolves into the surface (bg-card) as it scrolls up, instead of
+                  hard-cutting at the input's top edge. The message list carries a
+                  matching bottom pad so the last message clears this at rest. */}
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-card to-transparent',
+                  // The fade belongs to the pinned composer — when the composer
+                  // wipes away (scrolled up into history) hide it too.
+                  nativeScroll && composerHidden && 'hidden',
+                )}
+              />
+              {/* Jump-to-latest: floats just ABOVE the composer (bottom-full anchors
+                  it to the composer's top edge, so it clears the input regardless of
+                  the input's height). Shown only when scrolled up (ITEM-2). */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 z-20 flex justify-center">
+                <div className="pointer-events-auto">
+                  <JumpToLatestButton visible={!atBottom} onClick={jumpToLatest} />
+                </div>
               </div>
+              <ChatInput />
             </div>
-            <ChatInput />
           </div>
         </div>
 
