@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1894 signals total.
+// 328 surfaces carry renderable-state signals; 1905 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1018,10 +1018,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/export/extension",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!conversation", line: 35 },
-      { kind: "branch", condition: "!conversation", line: 70 },
-      { kind: "branch", condition: "!conversation", line: 99 },
-      { kind: "empty", condition: "messages.length === 0", line: 159 },
+      { kind: "branch", condition: "!conversation", line: 36 },
+      { kind: "branch", condition: "!conversation", line: 78 },
+      { kind: "empty", condition: "messages.length === 0", line: 165 },
     ],
   },
   "modules/chat/extensions/keyboard/extension": {
@@ -1397,6 +1396,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!fileStore", line: 283 },
     ],
   },
+  "modules/file/components/DeliverablePinButton": {
+    surface: "modules/file/components/DeliverablePinButton",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!convId", line: 16 },
+      { kind: "branch", condition: "isDeliverable", line: 43 },
+    ],
+  },
   "modules/file/components/FileCard": {
     surface: "modules/file/components/FileCard",
     requiredStates: ["error","open"],
@@ -1424,18 +1431,32 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "overlay", condition: "<Confirm open>", line: 386 },
     ],
   },
+  "modules/file/components/FileEditBody": {
+    surface: "modules/file/components/FileEditBody",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "cancelled", line: 55 },
+      { kind: "branch", condition: "!dirty", line: 77 },
+      { kind: "branch", condition: "text === null", line: 101 },
+      { kind: "branch", condition: "changedUnderneath", line: 111 },
+      { kind: "branch", condition: "kind === 'code'", line: 135 },
+    ],
+  },
   "modules/file/components/FilePanel": {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 75 },
-      { kind: "branch", condition: "showFullPage", line: 78 },
-      { kind: "branch", condition: "!hideHeader", line: 122 },
-      { kind: "branch", condition: "tooLarge", line: 136 },
-      { kind: "branch", condition: "isViewingOld", line: 152 },
-      { kind: "branch", condition: "oldVersionText === null", line: 154 },
-      { kind: "branch", condition: "tooLarge", line: 169 },
-      { kind: "branch", condition: "Body", line: 193 },
+      { kind: "branch", condition: "HeaderActions", line: 79 },
+      { kind: "branch", condition: "editableKind(file) === 'markdown'", line: 82 },
+      { kind: "branch", condition: "showFullPage", line: 87 },
+      { kind: "branch", condition: "!hideHeader", line: 135 },
+      { kind: "branch", condition: "canEdit && !editing && !isViewingOld", line: 149 },
+      { kind: "branch", condition: "tooLarge", line: 160 },
+      { kind: "branch", condition: "editing", line: 176 },
+      { kind: "branch", condition: "isViewingOld", line: 178 },
+      { kind: "branch", condition: "oldVersionText === null", line: 180 },
+      { kind: "branch", condition: "tooLarge", line: 195 },
+      { kind: "branch", condition: "Body", line: 219 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {
@@ -1450,10 +1471,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/file/components/FileVersionBar": {
     surface: "modules/file/components/FileVersionBar",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "versions.length <= 1", line: 44 },
+      { kind: "branch", condition: "isViewingOld", line: 90 },
+      { kind: "overlay", condition: "<Dialog open>", line: 119 },
+    ],
+  },
+  "modules/file/components/FileVersionDiff": {
+    surface: "modules/file/components/FileVersionDiff",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "versions.length <= 1", line: 42 },
-      { kind: "branch", condition: "isViewingOld", line: 88 },
+      { kind: "branch", condition: "a == null || b == null", line: 31 },
     ],
   },
   "modules/file/components/FileViewPage": {
@@ -3930,7 +3959,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 325 keys.
+ * 326 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4034,6 +4063,7 @@ export type RequiredState =
   | "modules/file/components/FileCard:error"
   | "modules/file/components/FileCard:open"
   | "modules/file/components/FilePreviewDrawer:open"
+  | "modules/file/components/FileVersionBar:open"
   | "modules/file/components/FileViewPage:delayed"
   | "modules/file/project-extension/components/ProjectFilesInlinePreview:empty"
   | "modules/file/project-extension/components/ProjectFilesManagePanel:empty"
@@ -4362,6 +4392,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/components/FileCard:error",
   "modules/file/components/FileCard:open",
   "modules/file/components/FilePreviewDrawer:open",
+  "modules/file/components/FileVersionBar:open",
   "modules/file/components/FileViewPage:delayed",
   "modules/file/project-extension/components/ProjectFilesInlinePreview:empty",
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty",

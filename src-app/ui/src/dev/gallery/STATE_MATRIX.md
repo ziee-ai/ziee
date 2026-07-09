@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **325** surfaces carry at least one renderable-state signal.
-- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **328** surfaces carry at least one renderable-state signal.
+- **1905** signals total: 1509 branch, 112 empty, 96 error, 99 loading, 87 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -19,7 +19,7 @@
 | `delayed` | 86 |
 | `empty` | 90 |
 | `error` | 75 |
-| `open` | 72 |
+| `open` | 73 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -1152,10 +1152,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation` | 35 |
-| branch | `!conversation` | 70 |
-| branch | `!conversation` | 99 |
-| empty | `messages.length === 0` | 159 |
+| branch | `!conversation` | 36 |
+| branch | `!conversation` | 78 |
+| empty | `messages.length === 0` | 165 |
 
 ### `modules/chat/extensions/keyboard/extension`
 
@@ -1564,6 +1563,15 @@ Required states: `empty`, `panel-open`
 | empty | `stubs.length === 0` | 279 |
 | branch | `!fileStore` | 283 |
 
+### `modules/file/components/DeliverablePinButton`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!convId` | 16 |
+| branch | `isDeliverable` | 43 |
+
 ### `modules/file/components/FileCard`
 
 Required states: `error`, `open`
@@ -1592,20 +1600,35 @@ Required states: `error`, `open`
 | branch | `(canDelete \|\| canRemove) && onRemove` | 374 |
 | overlay | `<Confirm open>` | 386 |
 
+### `modules/file/components/FileEditBody`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `cancelled` | 55 |
+| branch | `!dirty` | 77 |
+| branch | `text === null` | 101 |
+| branch | `changedUnderneath` | 111 |
+| branch | `kind === 'code'` | 135 |
+
 ### `modules/file/components/FilePanel`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 75 |
-| branch | `showFullPage` | 78 |
-| branch | `!hideHeader` | 122 |
-| branch | `tooLarge` | 136 |
-| branch | `isViewingOld` | 152 |
-| branch | `oldVersionText === null` | 154 |
-| branch | `tooLarge` | 169 |
-| branch | `Body` | 193 |
+| branch | `HeaderActions` | 79 |
+| branch | `editableKind(file) === 'markdown'` | 82 |
+| branch | `showFullPage` | 87 |
+| branch | `!hideHeader` | 135 |
+| branch | `canEdit && !editing && !isViewingOld` | 149 |
+| branch | `tooLarge` | 160 |
+| branch | `editing` | 176 |
+| branch | `isViewingOld` | 178 |
+| branch | `oldVersionText === null` | 180 |
+| branch | `tooLarge` | 195 |
+| branch | `Body` | 219 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1620,12 +1643,21 @@ Required states: `open`
 
 ### `modules/file/components/FileVersionBar`
 
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `versions.length <= 1` | 44 |
+| branch | `isViewingOld` | 90 |
+| overlay | `<Dialog open>` | 119 |
+
+### `modules/file/components/FileVersionDiff`
+
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `versions.length <= 1` | 42 |
-| branch | `isViewingOld` | 88 |
+| branch | `a == null \|\| b == null` | 31 |
 
 ### `modules/file/components/FileViewPage`
 
