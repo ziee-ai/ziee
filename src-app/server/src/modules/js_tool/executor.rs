@@ -61,7 +61,12 @@ struct Dispatcher {
     budget: CallBudget,
     approval_ctx: ApprovalCtx,
     trace: Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// Bounds concurrent sub-tool dispatches from one script (Promise.all fan-out).
+    dispatch_sem: Arc<tokio::sync::Semaphore>,
 }
+
+/// Max concurrent sub-tool dispatches per run_js invocation.
+const MAX_CONCURRENT_DISPATCH: usize = 6;
 
 impl Dispatcher {
     fn push_trace(&self, b: &ToolBinding, status: &str, dur_ms: u64) {
@@ -130,12 +135,19 @@ impl Dispatcher {
             });
         }
 
+        // Bound concurrent sub-tool dispatches (a script's `Promise.all` of many
+        // gated calls could otherwise fan out 100 simultaneous code_sandbox /
+        // web_search dispatches) — audit: resource-limits.
+        let _permit = self.dispatch_sem.clone().acquire_owned().await.ok();
+
         // Dispatch through the chokepoint (records with source=script).
         let t0 = Instant::now();
         let synthetic_id = Uuid::new_v4().to_string();
-        let session_arc = match self
-            .session_manager
-            .get_or_create_with_context(
+        // Bound session establishment so a hung MCP server (stalled initialize)
+        // can't block rt.idle() past the wall-clock (audit: error-handling).
+        let session_arc = match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.session_manager.get_or_create_with_context(
                 binding.server_id,
                 self.user_id,
                 Some(self.conversation_id),
@@ -143,13 +155,18 @@ impl Dispatcher {
                 self.message_id,
                 Some(synthetic_id),
                 McpToolCallSource::Script,
-            )
-            .await
+            ),
+        )
+        .await
         {
-            Ok(a) => a,
-            Err(e) => {
+            Ok(Ok(a)) => a,
+            Ok(Err(e)) => {
                 self.push_trace(&binding, "error", t0.elapsed().as_millis() as u64);
                 return serde_json::json!({ "__error": format!("dispatch failed: {e}") });
+            }
+            Err(_) => {
+                self.push_trace(&binding, "timeout", t0.elapsed().as_millis() as u64);
+                return serde_json::json!({ "__error": "tool dispatch timed out establishing a session" });
             }
         };
 
@@ -215,6 +232,7 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
             timeout: req.caps.approval_timeout,
         },
         trace: Arc::new(std::sync::Mutex::new(Vec::new())),
+        dispatch_sem: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_DISPATCH)),
     });
 
     // Active-execution wall-clock watchdog: accumulates elapsed time ONLY while
