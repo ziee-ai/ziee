@@ -267,3 +267,36 @@ tools need no broker at all. This is deferred until ITEM-9's pane RPC is actuall
 built (today the WSS `/bridge` is an echo skeleton). Parallel *testing* already avoids
 all of this: bridge integration tests bind an ephemeral port + tempdir cert, and the
 E2E mocks the Office boundary — neither touches 44300 or real Office.
+
+---
+
+## ITEM-9 pane RPC — LIVE Mac verification (TEST-13)
+
+The daemon↔pane JSON-RPC (the 5 pane-mediated Office.js tools) was verified live on
+this Mac, driving real Office.js in the actual Excel WKWebView task pane via the
+`#[ignore]` harness `test13_live_mac_pane_ops` (binds 44300, reuses the trusted cert).
+
+Pane log (real Excel task pane):
+```
+Office.onReady host=Excel platform=Mac
+addHandler status=succeeded
+bridge open (host=Excel, token=present)
+registered (doc_key=<unsaved>)
+```
+Harness log (the daemon side, driving ops through the pane):
+```
+pane 2 registered (host=Excel, doc_key_set=false)
+pane connected (target = "Untitled"); driving ops...
+get_selection returned: {"text":"hello ziee"}
+read_document returned: {"text":"hello ziee","truncated":false}
+TEST-13 LIVE PASS: both ops round-tripped through the real Office pane.
+test result: ok. 1 passed; 0 failed
+```
+
+`get_selection` and `read_document` both executed Office.js in the live pane and
+returned the real `hello ziee` cell content. Combined with the earlier transport spike
+(WKWebView prompt-free load + WSS connect-back) and the mock-pane integration tests
+(the exact wire contract), the macOS pane path is verified end-to-end. Notes: the pane
+connects the instant a real Office document is open (the earlier harness misses were
+simply Excel being closed); the `no-store` token-page fix ensures a restarted bridge is
+never handed a stale cached token.
