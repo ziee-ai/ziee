@@ -22,7 +22,7 @@ BEGIN
       AND is_default = TRUE;
 
     IF target_rows = 0 THEN
-        RAISE WARNING 'migration 135: no group matches (name=Users, is_system=true, is_default=true); scheduler/notification permissions will NOT be granted.';
+        RAISE WARNING 'migration 136: no group matches (name=Users, is_system=true, is_default=true); scheduler/notification permissions will NOT be granted.';
     END IF;
 
     FOREACH perm IN ARRAY ARRAY[

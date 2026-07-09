@@ -22,6 +22,14 @@ CREATE TABLE notifications (
     title TEXT NOT NULL,
     body TEXT NOT NULL DEFAULT '',
 
+    -- Delivery hint (DEC-19): TRUE => the client may raise a live toast on
+    -- arrival; FALSE => durable inbox row only (a 'silent' task's result). The
+    -- durable row + badge update happen regardless; only the interrupt is
+    -- gated. Failures are always inserted with interrupt=TRUE. The realtime sync
+    -- frame is payload-free, so this hint must live on the row the client
+    -- refetches.
+    interrupt BOOLEAN NOT NULL DEFAULT TRUE,
+
     -- Deep-link targets (the notification is a POINTER to the real output the
     -- user verifies; SET NULL so deleting the linked entity doesn't orphan the
     -- notification — it just loses its link).
