@@ -169,6 +169,23 @@ mod tests {
     }
 
     #[test]
+    fn sonnet_5_thinking_adaptive_and_sampling_restricted() {
+        // Claude 5 family rejects temperature/top_p/top_k (mirrors Opus 4.8).
+        let c = lookup("anthropic", "claude-sonnet-5").unwrap();
+        assert_eq!(c.supports_thinking, Some(true));
+        assert_eq!(c.thinking_style.as_deref(), Some("adaptive"));
+        assert_eq!(c.supports_sampling_params, Some(false));
+    }
+
+    #[test]
+    fn dated_sonnet_5_resolves_to_base_and_stays_restricted() {
+        // Prefix-tolerant lookup: a dated SKU resolves to the bare entry so the
+        // sampling gate still fires.
+        let c = lookup("anthropic", "claude-sonnet-5-20260115").expect("dated sonnet-5 resolves");
+        assert_eq!(c.supports_sampling_params, Some(false));
+    }
+
+    #[test]
     fn gemini_25_supports_thinking() {
         let c = lookup("gemini", "gemini-2.5-flash").unwrap();
         assert_eq!(c.supports_thinking, Some(true));

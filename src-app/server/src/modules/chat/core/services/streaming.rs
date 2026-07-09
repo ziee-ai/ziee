@@ -1077,13 +1077,16 @@ fn thinking_config_for(provider_type: &str, model_id: &str) -> Option<ai_provide
     Some(cfg)
 }
 
-/// Map model-level generation parameters onto a `ChatRequest`. Defaults preserve
-/// the historical behavior (`temperature` 0.7 / `max_tokens` 8192) when unset.
+/// Map model-level generation parameters onto a `ChatRequest`. `temperature` is
+/// forwarded only when genuinely configured on the model row — no forced default,
+/// so we never send a sampling value the provider might reject (e.g. Anthropic
+/// thinking-enabled / sampling-restricted models). `max_tokens` still defaults to
+/// 8192 when unset (Anthropic requires it).
 fn apply_model_params(
     req: &mut ai_providers::ChatRequest,
     p: &crate::modules::llm_model::models::ModelParameters,
 ) {
-    req.temperature = p.temperature.or(Some(0.7));
+    req.temperature = p.temperature;
     // Guard against a negative/zero i32 wrapping to a huge u32; fall back to the default.
     req.max_tokens = p
         .max_tokens
@@ -2020,10 +2023,12 @@ mod tests {
         assert_eq!(req.top_k, Some(20));
         assert_eq!(req.stop, Some(vec!["END".to_string()]));
 
-        // Empty params fall back to the historical defaults.
+        // Unset temperature is NOT force-defaulted (no more 0.7): the provider
+        // applies its own default and we never send a value it might reject.
+        // max_tokens still falls back (Anthropic requires it).
         let mut req2 = ai_providers::ChatRequest::default();
         apply_model_params(&mut req2, &ModelParameters::default());
-        assert_eq!(req2.temperature, Some(0.7));
+        assert_eq!(req2.temperature, None);
         assert_eq!(req2.max_tokens, Some(8192));
         assert!(req2.top_k.is_none());
     }
