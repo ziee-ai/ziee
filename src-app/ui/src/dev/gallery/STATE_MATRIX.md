@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1888** signals total: 1493 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -66,7 +66,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:36 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:84 |
+| `sidebarContent` | `modules/chat/module`:89 |
 
 ## Per-surface required states
 
@@ -911,7 +911,7 @@ Required states: `empty`
 | branch | `attachmentBlocks.length > 0` | 136 |
 | branch | `bubbleBlocks.length > 0` | 165 |
 | branch | `offerCollapse` | 191 |
-| branch | `isUser` | 215 |
+| branch | `isUser` | 216 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -919,10 +919,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 40 |
-| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 51 |
-| branch | `overflowing` | 86 |
-| branch | `collapsed` | 91 |
+| branch | `!el` | 79 |
+| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 90 |
+| branch | `overflowing` | 125 |
+| branch | `collapsed` | 130 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -1009,26 +1009,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 115 |
-| branch | `w <= 0` | 117 |
-| branch | `!el` | 128 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 287 |
-| branch | `!el` | 296 |
-| empty | `count === 0` | 303 |
-| branch | `!el` | 321 |
-| branch | `!item` | 324 |
-| branch | `!msg` | 326 |
-| branch | `!c` | 332 |
-| branch | `virtualize` | 337 |
-| branch | `idx < 0` | 339 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 351 |
-| branch | `!c` | 357 |
-| branch | `newTop == null` | 359 |
-| loading | `!loading && count === 0` | 368 |
-| branch | `loadingOlder` | 394 |
-| branch | `virtualize` | 404 |
-| branch | `!msg` | 419 |
-| loading | `(loading \|\| isStreaming)` | 463 |
+| branch | `!vw \|\| vw <= 0` | 116 |
+| branch | `w <= 0` | 118 |
+| branch | `!el` | 129 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
+| branch | `!import.meta.env.DEV` | 295 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
+| branch | `!el` | 378 |
+| empty | `count === 0` | 385 |
+| branch | `!el` | 403 |
+| branch | `!item` | 406 |
+| branch | `!msg` | 408 |
+| branch | `!c` | 414 |
+| branch | `virtualize` | 419 |
+| branch | `idx < 0` | 421 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
+| branch | `!c` | 439 |
+| branch | `newTop == null` | 441 |
+| loading | `!loading && count === 0` | 450 |
+| branch | `loadingOlder` | 476 |
+| branch | `virtualize` | 486 |
+| branch | `!msg` | 501 |
+| loading | `(loading \|\| isStreaming)` | 545 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1522,18 +1524,22 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `inView` | 65 |
-| branch | `typeof IntersectionObserver === 'undefined'` | 66 |
-| branch | `!el` | 71 |
-| branch | `!file` | 105 |
-| branch | `label` | 154 |
-| branch | `displaySize !== undefined` | 155 |
-| branch | `HeaderActions` | 161 |
-| branch | `file` | 166 |
-| branch | `file` | 169 |
-| branch | `canInline && Body` | 185 |
-| branch | `collapsed` | 191 |
-| branch | `showBody && Body` | 209 |
+| branch | `view.seen` | 106 |
+| branch | `typeof IntersectionObserver === 'undefined'` | 107 |
+| branch | `!el` | 112 |
+| branch | `!file` | 155 |
+| branch | `!start` | 192 |
+| branch | `dragStart.current == null` | 196 |
+| branch | `next == null` | 220 |
+| branch | `label` | 256 |
+| branch | `displaySize !== undefined` | 257 |
+| branch | `HeaderActions` | 261 |
+| branch | `file` | 262 |
+| branch | `file` | 263 |
+| branch | `hasBody` | 275 |
+| branch | `collapsed` | 285 |
+| branch | `showBodyRegion` | 297 |
+| branch | `view.seen && Body` | 299 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
