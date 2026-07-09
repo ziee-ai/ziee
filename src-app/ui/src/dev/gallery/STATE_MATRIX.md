@@ -1024,13 +1024,13 @@ Required states: `delayed`, `empty`
 | branch | `virtualize` | 419 |
 | branch | `idx < 0` | 421 |
 | branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
-| branch | `!c` | 439 |
-| branch | `newTop == null` | 441 |
-| loading | `!loading && count === 0` | 450 |
-| branch | `loadingOlder` | 476 |
-| branch | `virtualize` | 486 |
-| branch | `!msg` | 501 |
-| loading | `(loading \|\| isStreaming)` | 549 |
+| branch | `!c` | 448 |
+| branch | `top == null` | 451 |
+| loading | `!loading && count === 0` | 474 |
+| branch | `loadingOlder` | 500 |
+| branch | `virtualize` | 510 |
+| branch | `!msg` | 525 |
+| loading | `(loading \|\| isStreaming)` | 573 |
 
 ### `modules/chat/components/ModelSelector`
 
