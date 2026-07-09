@@ -29,6 +29,7 @@ export function FileEditBody({
   onDone: () => void
 }) {
   const [text, setText] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [dismissedChange, setDismissedChange] = useState(false)
@@ -58,6 +59,7 @@ export function FileEditBody({
         const res = await ApiClient.File.getTextContent({ file_id: file.id })
         const t = typeof res === 'string' ? res : await (res as Blob).text()
         if (cancelled) return
+        setLoadError(false)
         setText(t)
         // Snapshot the head this text came from (read state in handlers via `$`).
         const head =
@@ -68,7 +70,10 @@ export function FileEditBody({
         setDismissedChange(false)
         setDirty(false)
       } catch {
-        if (!cancelled) setText('')
+        // Data-loss guard: do NOT fall back to an empty editor. An empty editor
+        // over a failed load would let Save append a blank version that clobbers
+        // the real head content. Surface an error + Retry; Save stays unreachable.
+        if (!cancelled) setLoadError(true)
       }
     })()
     return () => {
@@ -101,6 +106,36 @@ export function FileEditBody({
     } finally {
       setSaving(false)
     }
+  }
+
+  if (loadError) {
+    return (
+      <div
+        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center"
+        data-testid="canvas-load-error"
+      >
+        <TriangleAlert className="size-8 text-warning" />
+        <div className="text-muted-foreground text-sm">
+          Couldn’t load this document to edit. Its content was not changed.
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoadError(false)
+              setText(null)
+              setReloadKey(k => k + 1)
+            }}
+            data-testid="canvas-load-retry"
+          >
+            Retry
+          </Button>
+          <Button variant="ghost" onClick={onDone} data-testid="canvas-load-cancel">
+            Cancel
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   if (text === null) {

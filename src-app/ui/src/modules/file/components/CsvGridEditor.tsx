@@ -35,10 +35,13 @@ export const CsvGridEditor = forwardRef<CanvasEditorHandle, CsvGridEditorProps>(
     }
     const setCell = (r: number, c: number, v: string) => {
       setGrid(g => {
-        const rows = g.rows.map(row => row.slice())
-        const row = rows[r]
+        // Clone only the array + the edited row (O(cols)), not the whole matrix
+        // (O(rows×cols)) — the latter froze large CSVs on every keystroke.
+        const rows = g.rows.slice()
+        const row = rows[r].slice()
         while (row.length <= c) row.push('')
         row[c] = v
+        rows[r] = row
         return { ...g, rows }
       })
       onDirty?.()

@@ -52,12 +52,11 @@ pub async fn export_file(
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
 
-    let src_ext = file
-        .filename
-        .rsplit('.')
-        .next()
-        .unwrap_or("md")
-        .to_lowercase();
+    // Read the original under the SAME canonical extension the upload/storage
+    // path keyed it by (`extension_of` — NOT an ad-hoc split, which would mis-key
+    // the blob and 404). `render_to_format` separately maps an unrecognized
+    // source ext to markdown so pandoc never gets an invalid `-f`.
+    let src_ext = crate::modules::file::utils::extension_of(&file.filename);
     let storage = get_file_storage();
     let bytes = storage
         .load_original(user_id, file.blob_version_id, &src_ext)

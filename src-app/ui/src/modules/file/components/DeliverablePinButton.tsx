@@ -36,6 +36,7 @@ export function DeliverablePinButton({ file }: { file: FileEntity }) {
   return (
     <Button
       variant="ghost"
+      size="icon"
       onClick={toggle}
       aria-label={isDeliverable ? 'Remove from deliverables' : 'Pin as deliverable'}
       data-testid="deliverable-pin-toggle"

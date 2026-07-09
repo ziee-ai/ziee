@@ -83,7 +83,7 @@ export function FileExportMenu({ file }: { file: FileEntity }) {
 
   return (
     <Popover content={menu} side="bottom" align="end" className="w-auto">
-      <Button variant="ghost" aria-label="Export" data-testid="file-export-menu">
+      <Button variant="ghost" size="icon" aria-label="Export" data-testid="file-export-menu">
         <Download className="size-3.5" />
       </Button>
     </Popover>

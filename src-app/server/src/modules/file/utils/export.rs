@@ -36,7 +36,15 @@ pub async fn render_to_format(
     if format == "md" {
         return Ok(input.to_vec());
     }
-    let ext = if input_ext.is_empty() { "md" } else { input_ext };
+    // pandoc infers the source format from the input file's extension; an
+    // unrecognized ext (e.g. a dotless "README" keyed as "readme", or an empty
+    // ext) makes it fail with an invalid `-f`. Our deliverables are text, so any
+    // non-markup source falls back to markdown — never a 500.
+    let ext = match input_ext {
+        "md" | "markdown" | "html" | "htm" | "csv" | "rst" | "org" | "tex"
+        | "latex" | "docx" | "odt" | "rtf" | "epub" | "ipynb" => input_ext,
+        _ => "md",
+    };
     let dir = std::env::temp_dir().join(format!("ziee-export-{}", Uuid::new_v4()));
     tokio::fs::create_dir_all(&dir)
         .await

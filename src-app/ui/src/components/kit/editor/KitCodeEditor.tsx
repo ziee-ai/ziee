@@ -1,6 +1,12 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import type { CanvasEditorHandle } from './types'
+
+// Give the CodeMirror editable region an accessible name (its `role=textbox`
+// otherwise has none — flagged by the a11y-name runtime gate).
+const A11Y_LABEL = EditorView.contentAttributes.of({
+  'aria-label': 'Code document editor',
+})
 
 interface KitCodeEditorProps {
   /** Initial source text (the file's head content). */
@@ -24,6 +30,7 @@ export const KitCodeEditor = forwardRef<CanvasEditorHandle, KitCodeEditorProps>(
         <CodeMirror
           value={initialText}
           height="100%"
+          extensions={[A11Y_LABEL]}
           onChange={v => {
             textRef.current = v
             onDirty?.()
