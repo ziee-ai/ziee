@@ -57,6 +57,7 @@ pub async fn list_notifications(
 
 pub fn list_notifications_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(NotificationsRead,)>(op)
+        .id("Notification.list")
         .summary("List notifications")
         .description("The caller's own notification inbox, newest-first.")
         .response::<200, Json<NotificationPage>>()
@@ -73,6 +74,7 @@ pub async fn unread_count(
 
 pub fn unread_count_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(NotificationsRead,)>(op)
+        .id("Notification.unreadCount")
         .summary("Unread notification count")
         .response::<200, Json<UnreadCount>>()
 }
@@ -91,6 +93,7 @@ pub async fn get_notification(
 
 pub fn get_notification_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(NotificationsRead,)>(op)
+        .id("Notification.get")
         .summary("Get a notification")
         .response::<200, Json<Notification>>()
 }
@@ -112,6 +115,7 @@ pub async fn mark_read(
 
 pub fn mark_read_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(NotificationsRead,)>(op)
+        .id("Notification.markRead")
         .summary("Mark a notification read")
         .response::<200, Json<UnreadCount>>()
 }
@@ -131,6 +135,7 @@ pub async fn mark_all_read(
 
 pub fn mark_all_read_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(NotificationsRead,)>(op)
+        .id("Notification.markAllRead")
         .summary("Mark all notifications read")
         .response::<200, Json<UnreadCount>>()
 }
@@ -152,6 +157,7 @@ pub async fn delete_notification(
 
 pub fn delete_notification_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(NotificationsRead,)>(op)
+        .id("Notification.delete")
         .summary("Delete a notification")
         .response::<204, ()>()
 }

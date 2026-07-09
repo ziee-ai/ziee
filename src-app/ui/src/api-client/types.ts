@@ -6875,6 +6875,12 @@ export const ApiEndpoints = {
   'Message.searchInConversation': 'GET /api/conversations/{id}/messages/search',
   'Message.send': 'POST /api/conversations/{id}/messages',
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
+  'Notification.delete': 'DELETE /api/notifications/{id}',
+  'Notification.get': 'GET /api/notifications/{id}',
+  'Notification.list': 'GET /api/notifications',
+  'Notification.markAllRead': 'POST /api/notifications/read-all',
+  'Notification.markRead': 'POST /api/notifications/{id}/read',
+  'Notification.unreadCount': 'GET /api/notifications/unread-count',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -6905,6 +6911,16 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'ScheduledTask.create': 'POST /api/scheduled-tasks',
+  'ScheduledTask.delete': 'DELETE /api/scheduled-tasks/{id}',
+  'ScheduledTask.get': 'GET /api/scheduled-tasks/{id}',
+  'ScheduledTask.list': 'GET /api/scheduled-tasks',
+  'ScheduledTask.listRuns': 'GET /api/scheduled-tasks/{id}/runs',
+  'ScheduledTask.runNow': 'POST /api/scheduled-tasks/{id}/run-now',
+  'ScheduledTask.testFire': 'POST /api/scheduled-tasks/test-fire',
+  'ScheduledTask.update': 'PUT /api/scheduled-tasks/{id}',
+  'SchedulerAdminSettings.get': 'GET /api/scheduler/admin-settings',
+  'SchedulerAdminSettings.update': 'PUT /api/scheduler/admin-settings',
   'ServerUpdate.getStatus': 'GET /api/server-update/status',
   'Skill.delete': 'DELETE /api/skills/{id}',
   'Skill.get': 'GET /api/skills/{id}',
@@ -7228,6 +7244,12 @@ export type ApiEndpointParameters = {
   'Message.searchInConversation': { id: string; page?: number; per_page?: number; q?: string }
   'Message.send': { id: string } & SendMessageRequest
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
+  'Notification.delete': { id: string }
+  'Notification.get': { id: string }
+  'Notification.list': { page?: number; per_page?: number; unread_only?: boolean }
+  'Notification.markAllRead': void
+  'Notification.markRead': { id: string }
+  'Notification.unreadCount': void
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -7258,6 +7280,16 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
+  'ScheduledTask.create': CreateScheduledTask
+  'ScheduledTask.delete': { id: string }
+  'ScheduledTask.get': { id: string }
+  'ScheduledTask.list': void
+  'ScheduledTask.listRuns': { id: string }
+  'ScheduledTask.runNow': { id: string }
+  'ScheduledTask.testFire': TestFireRequest
+  'ScheduledTask.update': { id: string } & UpdateScheduledTask
+  'SchedulerAdminSettings.get': void
+  'SchedulerAdminSettings.update': UpdateSchedulerAdminSettings
   'ServerUpdate.getStatus': void
   'Skill.delete': { id: string }
   'Skill.get': { id: string }
@@ -7581,6 +7613,12 @@ export type ApiEndpointResponses = {
   'Message.searchInConversation': MessageSearchResults
   'Message.send': SendMessageResponse
   'Message.stopGeneration': void
+  'Notification.delete': void
+  'Notification.get': Notification
+  'Notification.list': NotificationPage
+  'Notification.markAllRead': UnreadCount
+  'Notification.markRead': UnreadCount
+  'Notification.unreadCount': UnreadCount
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress
@@ -7611,6 +7649,16 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'ScheduledTask.create': ScheduledTask
+  'ScheduledTask.delete': void
+  'ScheduledTask.get': ScheduledTask
+  'ScheduledTask.list': ScheduledTask[]
+  'ScheduledTask.listRuns': ScheduledTaskRun[]
+  'ScheduledTask.runNow': ScheduledTask
+  'ScheduledTask.testFire': TestFireResult
+  'ScheduledTask.update': ScheduledTask
+  'SchedulerAdminSettings.get': SchedulerAdminSettings
+  'SchedulerAdminSettings.update': SchedulerAdminSettings
   'ServerUpdate.getStatus': UpdateStatusResponse
   'Skill.delete': void
   'Skill.get': Skill

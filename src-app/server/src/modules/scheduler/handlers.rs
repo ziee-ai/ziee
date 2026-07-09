@@ -124,6 +124,7 @@ pub async fn create_task(
 
 pub fn create_task_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.create")
         .summary("Create a scheduled task")
         .response::<201, Json<ScheduledTask>>()
 }
@@ -139,6 +140,7 @@ pub async fn list_tasks(
 
 pub fn list_tasks_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.list")
         .summary("List your scheduled tasks")
         .response::<200, Json<Vec<ScheduledTask>>>()
 }
@@ -157,6 +159,7 @@ pub async fn get_task(
 
 pub fn get_task_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.get")
         .summary("Get a scheduled task")
         .response::<200, Json<ScheduledTask>>()
 }
@@ -209,6 +212,7 @@ pub async fn update_task(
 
 pub fn update_task_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.update")
         .summary("Update a scheduled task")
         .response::<200, Json<ScheduledTask>>()
 }
@@ -230,6 +234,7 @@ pub async fn delete_task(
 
 pub fn delete_task_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.delete")
         .summary("Delete a scheduled task")
         .response::<204, ()>()
 }
@@ -257,6 +262,7 @@ pub async fn run_now(
 
 pub fn run_now_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.runNow")
         .summary("Run a scheduled task now")
         .description("Fires the task immediately, off-schedule; the result lands as a notification.")
         .response::<202, Json<ScheduledTask>>()
@@ -274,6 +280,7 @@ pub async fn list_task_runs(
 
 pub fn list_task_runs_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.listRuns")
         .summary("List a scheduled task's run history")
         .response::<200, Json<Vec<ScheduledTaskRun>>>()
 }
@@ -294,6 +301,7 @@ pub async fn test_fire(
 
 pub fn test_fire_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.testFire")
         .summary("Test-fire a task target (dry run)")
         .description("Runs the target once with no side effects; returns the result inline.")
         .response::<200, Json<TestFireResult>>()
@@ -312,6 +320,7 @@ pub async fn get_admin_settings(
 
 pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerAdminRead,)>(op)
+        .id("SchedulerAdminSettings.get")
         .summary("Get scheduler admin settings")
         .response::<200, Json<SchedulerAdminSettings>>()
 }
@@ -342,6 +351,7 @@ pub async fn update_admin_settings(
 
 pub fn update_admin_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerAdminManage,)>(op)
+        .id("SchedulerAdminSettings.update")
         .summary("Update scheduler admin settings")
         .response::<200, Json<SchedulerAdminSettings>>()
 }

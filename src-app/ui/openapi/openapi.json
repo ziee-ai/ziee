@@ -18991,6 +18991,7 @@
       "get": {
         "summary": "List notifications",
         "description": "The caller's own notification inbox, newest-first.",
+        "operationId": "Notification.list",
         "parameters": [
           {
             "in": "query",
@@ -19070,6 +19071,7 @@
       "get": {
         "summary": "Unread notification count",
         "description": "\n\n**Required Permission:** `notifications::read`\n\nRead and manage your own notifications.",
+        "operationId": "Notification.unreadCount",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -19116,6 +19118,7 @@
       "post": {
         "summary": "Mark all notifications read",
         "description": "\n\n**Required Permission:** `notifications::read`\n\nRead and manage your own notifications.",
+        "operationId": "Notification.markAllRead",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -19162,6 +19165,7 @@
       "get": {
         "summary": "Get a notification",
         "description": "\n\n**Required Permission:** `notifications::read`\n\nRead and manage your own notifications.",
+        "operationId": "Notification.get",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -19206,6 +19210,7 @@
       "delete": {
         "summary": "Delete a notification",
         "description": "\n\n**Required Permission:** `notifications::read`\n\nRead and manage your own notifications.",
+        "operationId": "Notification.delete",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -19245,6 +19250,7 @@
       "post": {
         "summary": "Mark a notification read",
         "description": "\n\n**Required Permission:** `notifications::read`\n\nRead and manage your own notifications.",
+        "operationId": "Notification.markRead",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -19275,6 +19281,511 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UnreadCount"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks": {
+      "get": {
+        "summary": "List your scheduled tasks",
+        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
+        "operationId": "ScheduledTask.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduledTask"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create a scheduled task",
+        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
+        "operationId": "ScheduledTask.create",
+        "requestBody": {
+          "description": "Create-task request body.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduledTask"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A row of `scheduled_tasks`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTask"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks/{id}": {
+      "get": {
+        "summary": "Get a scheduled task",
+        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
+        "operationId": "ScheduledTask.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A row of `scheduled_tasks`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTask"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Update a scheduled task",
+        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
+        "operationId": "ScheduledTask.update",
+        "requestBody": {
+          "description": "Update-task request body (all fields optional; only present ones change).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScheduledTask"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A row of `scheduled_tasks`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTask"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Delete a scheduled task",
+        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
+        "operationId": "ScheduledTask.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks/test-fire": {
+      "post": {
+        "summary": "Test-fire a task target (dry run)",
+        "description": "Runs the target once with no side effects; returns the result inline.",
+        "operationId": "ScheduledTask.testFire",
+        "requestBody": {
+          "description": "The target config to test (an unsaved drawer config or a saved task's fields).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestFireRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The inline result of a test-fire.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestFireResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks/{id}/run-now": {
+      "post": {
+        "summary": "Run a scheduled task now",
+        "description": "Fires the task immediately, off-schedule; the result lands as a notification.",
+        "operationId": "ScheduledTask.runNow",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "A row of `scheduled_tasks`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTask"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks/{id}/runs": {
+      "get": {
+        "summary": "List a scheduled task's run history",
+        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
+        "operationId": "ScheduledTask.listRuns",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduledTaskRun"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduler/admin-settings": {
+      "get": {
+        "summary": "Get scheduler admin settings",
+        "description": "\n\n**Required Permission:** `scheduler::admin::read`\n\nView deployment-wide scheduler settings.",
+        "operationId": "SchedulerAdminSettings.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View deployment-wide scheduler settings.",
+                        "name": "SchedulerAdminRead",
+                        "value": "scheduler::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The singleton settings row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulerAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Update scheduler admin settings",
+        "description": "\n\n**Required Permission:** `scheduler::admin::manage`\n\nChange deployment-wide scheduler settings.",
+        "operationId": "SchedulerAdminSettings.update",
+        "requestBody": {
+          "description": "Admin update body (all fields required — the form always sends the full set).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSchedulerAdminSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Change deployment-wide scheduler settings.",
+                        "name": "SchedulerAdminManage",
+                        "value": "scheduler::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The singleton settings row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulerAdminSettings"
                 }
               }
             }
@@ -19343,501 +19854,6 @@
             "description": "no content"
           }
         }
-      }
-    },
-    "/api/scheduled-tasks": {
-      "get": {
-        "summary": "List your scheduled tasks",
-        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ScheduledTask"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "summary": "Create a scheduled task",
-        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
-        "requestBody": {
-          "description": "Create-task request body.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateScheduledTask"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "A row of `scheduled_tasks`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduledTask"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/scheduled-tasks/{id}": {
-      "get": {
-        "summary": "Get a scheduled task",
-        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "A row of `scheduled_tasks`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduledTask"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "summary": "Update a scheduled task",
-        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
-        "requestBody": {
-          "description": "Update-task request body (all fields optional; only present ones change).",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateScheduledTask"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "A row of `scheduled_tasks`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduledTask"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "delete": {
-        "summary": "Delete a scheduled task",
-        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "no content"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/scheduled-tasks/test-fire": {
-      "post": {
-        "summary": "Test-fire a task target (dry run)",
-        "description": "Runs the target once with no side effects; returns the result inline.",
-        "requestBody": {
-          "description": "The target config to test (an unsaved drawer config or a saved task's fields).",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestFireRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "The inline result of a test-fire.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TestFireResult"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/scheduled-tasks/{id}/run-now": {
-      "post": {
-        "summary": "Run a scheduled task now",
-        "description": "Fires the task immediately, off-schedule; the result lands as a notification.",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "A row of `scheduled_tasks`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduledTask"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/scheduled-tasks/{id}/runs": {
-      "get": {
-        "summary": "List a scheduled task's run history",
-        "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
-                        "name": "SchedulerUse",
-                        "value": "scheduler::use"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::use",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ScheduledTaskRun"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/scheduler/admin-settings": {
-      "get": {
-        "summary": "Get scheduler admin settings",
-        "description": "\n\n**Required Permission:** `scheduler::admin::read`\n\nView deployment-wide scheduler settings.",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View deployment-wide scheduler settings.",
-                        "name": "SchedulerAdminRead",
-                        "value": "scheduler::admin::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::admin::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "The singleton settings row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SchedulerAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "summary": "Update scheduler admin settings",
-        "description": "\n\n**Required Permission:** `scheduler::admin::manage`\n\nChange deployment-wide scheduler settings.",
-        "requestBody": {
-          "description": "Admin update body (all fields required — the form always sends the full set).",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSchedulerAdminSettings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Change deployment-wide scheduler settings.",
-                        "name": "SchedulerAdminManage",
-                        "value": "scheduler::admin::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: scheduler::admin::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "The singleton settings row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SchedulerAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
       }
     },
     "/api/server-update/status": {
