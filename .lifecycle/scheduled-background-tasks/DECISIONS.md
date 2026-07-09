@@ -68,10 +68,63 @@ Each resolution has a basis; the handful I most want the user to confirm before
 **Resolution:** The tick's `claim_due_tasks` `SELECT ... FOR UPDATE SKIP LOCKED` and the row's "advance `next_run_at` / set `last_run_at`" UPDATE happen in the **same transaction**, so a task can never be double-fired by a concurrent tick and a crash mid-dispatch leaves `next_run_at` already advanced (the run itself is idempotent-at-least-once, and the notification is the visible record). The actual LLM dispatch is spawned *after* the claim tx commits.
 **Basis:** convention + landscape — this is the documented best practice across pg-boss / Solid Queue / Graphile Worker ("update the job's status within the same transaction where you acquire the lock"); `memory/reaper.rs` already uses `FOR UPDATE SKIP LOCKED` batch claiming in-tree.
 
+### DEC-17: Recurring task → conversation threading (the follow-up question). [CONFIRM] [REVISED]
+**Resolution:** For the `prompt` kind, a recurring task owns ONE **bound conversation**; each firing appends a turn to it (rather than a fresh conversation per run), so following up on a result is native — open the task's conversation and keep chatting, with full history in one place. Deleting that conversation **pauses** the task. Unbounded context growth is bounded by the existing summarization / `clear_old_tool_results` machinery. Each firing is still recorded in `scheduled_task_runs` for a clean audit list.
+**Basis:** landscape — this REVERSES my initial "fresh-conversation-per-run" recommendation. The research shows ChatGPT/Gemini bind a scheduled task to an expandable conversation ("scheduled actions are active conversations you can expand on"; "a task pauses if its chat is deleted"), and Claude Cowork surfaces results "where you review it, the same way an on-demand task." A task-bound thread is the pattern users now expect and directly answers "how do I follow up." (`workflow`-kind results are not conversations → they get the ITEM-32 "Continue in chat" affordance instead.)
+
+### DEC-18: Failure handling policy.
+**Resolution:** Error taxonomy: auth/permission/validation errors are **terminal** (do not retry — disable the task + notify with a clear reason); transient errors (timeout/5xx/provider blip) retry with **exponential backoff + jitter** within the firing. A task that fails N consecutive firings (admin `max_consecutive_failures`, default 5) **auto-pauses** with `paused_reason='max_failures'` and a failure notification, rather than silently spinning forever. Every firing (success or failure) writes a `scheduled_task_runs` row with an `error_class`.
+**Basis:** convention + landscape — the "never retry 401/403/400; backoff-with-jitter for transient; pause + notify after repeated failure" taxonomy is the consensus agent-error-handling pattern (AWS backoff+jitter cuts retry storms 60–80%); the flap-cap "give up after N" is already in-tree in `llm_local_runtime/auto_start.rs`.
+
+### DEC-19: Notification delivery / triage levels.
+**Resolution:** Per-task `notify_mode`: `always` (durable inbox row + live toast/badge interrupt) or `silent` (durable inbox row only — auditable, non-interrupting). Failures always interrupt regardless of mode. **Digest batching** (aggregating low-urgency results into a daily window) is DEFERRED — v1 delivers per-firing, in-app only.
+**Basis:** convention + landscape — the agent-notification best practice is "only actionable events interrupt; log the rest and surface in a digest/dashboard." `notify_mode` is the minimal v1 expression of this; digest windows (start-of-day briefings) are a fast-follow that needs an aggregator.
+
+### DEC-20: "Only notify if changed" / meaningful-change detection. [CONFIRM — pull into v1?]
+**Resolution:** DEFERRED to a fast-follow, with a v1 **schema hook** (`scheduled_tasks.last_result_fingerprint`). v1 always notifies on a successful firing. The follow-on adds a per-task `notify_on: always | on_change` mode that fingerprints/diffs the result against the last run and suppresses the notification (and/or summarizes only the delta) when nothing meaningful changed.
+**Basis:** landscape — this is the single most valuable *monitoring* feature (Firecrawl /monitor: "when nothing changed, nothing is sent," up to 90% fewer tokens; Google Scholar-alert users explicitly want only-new/dedup for "check PubMed weekly"). It's deferred ONLY because doing it well needs result-diffing + delta-summarization prompt work that would delay v1; the fingerprint column keeps the door open with zero rework. **Flagging for the user: this may be worth pulling into v1 given the life-science literature use case.**
+
+### DEC-21: Run history / activity feed per task.
+**Resolution:** A lightweight `scheduled_task_runs` audit table (one row per firing: fired-at, status, error_class, links to the workflow_run / conversation / notification), surfaced as a "Runs" tab in the task drawer.
+**Basis:** convention + landscape — ChatGPT/Gemini/Claude all expose a per-firing run record for audit; in-tree this is the `mcp_tool_calls` + `McpServerDrawer` "Calls" tab pattern exactly.
+
+### DEC-22: Following up on a `workflow`-kind result.
+**Resolution:** A "Continue in chat" / "Discuss this result" affordance on a workflow run + its notification opens a NEW conversation seeded with the run's (size-capped) final output as context. (`prompt`-kind results need none — DEC-17 makes them conversations already.)
+**Basis:** user + convention — directly answers the user's "what if they want to follow up" for the target kind that isn't already a chat; reuses `create_conversation` + a seeded message.
+
+### DEC-23: Delivery channels.
+**Resolution:** In-app only for v1 (durable inbox + toast/badge + realtime sync). Email / push / Slack are DEFERRED.
+**Basis:** codebase + landscape — the notification-precedent research found ziee has **no** email/push infrastructure today; cloud assistants deliver via email+push, but adding an outbound channel is separate infra. In-app inbox is the honest v1 surface; the `notification` module is the seam a channel would later hang off.
+
 ---
 
 ## Landscape research (informing the decisions above)
 
+Two research passes: a **core/plumbing** sweep (scheduler mechanism, cron crates,
+Postgres durable queues) and a **feature-experience** sweep (notification/inbox
+UX, failure surfacing, result follow-up, change-detection) — the second was run
+after the plumbing plan and drove DEC-17..23.
+
+### Feature-experience findings
+- **Claude Cowork Scheduled Tasks (Apr 2026)** — packages a prompt, runs
+  hourly/daily/weekly with full tool/Skill access; per-firing **run record** for
+  audit; results "show up where you review them, like an on-demand task"; daily
+  **briefing/digest** framing. → DEC-17, DEC-19, DEC-21.
+- **ChatGPT Tasks / Gemini Scheduled Actions** — a task is bound to an
+  **expandable conversation**; **pauses if its chat is deleted**; per-plan caps;
+  push+email delivery. → DEC-17 (the threading flip), DEC-18 (pause), DEC-23.
+- **Agent-notification UX (2026)** — actionable-only interrupts; log/digest the
+  rest; time/event batching (AI clustering cuts volume ~70%); an **activity feed**
+  of agent actions. → DEC-19, DEC-21.
+- **Agent failure handling (2026)** — error taxonomy (never retry 401/403/400;
+  backoff+jitter for transient, cutting retry storms 60–80%); detect repeated
+  failure → notify a human + pause. → DEC-18.
+- **Change-monitoring tools (Firecrawl /monitor, changedetection.io) + Google
+  Scholar alerts** — "notify only when something meaningful changed" (nothing sent
+  when nothing changed; ~90% fewer tokens); AI **delta summaries** ("3 new papers"
+  not a raw diff); literature-alert users want only-new/dedup. → DEC-20.
+
+### Core / plumbing findings
 Comparable products & prior art surveyed:
 
 - **ChatGPT Tasks / Gemini Scheduled Actions** — lead with *natural-language*
@@ -89,7 +142,15 @@ Comparable products & prior art surveyed:
   tx; some offer a bounded backfill window (we reject backfill, DEC-6). → DEC-1,
   DEC-6, DEC-16.
 
-Sources: OpenAI Help Center (Scheduled Tasks); ofzenandcomputing / developersdigest
-write-ups on ChatGPT Tasks limits; `github.com/Hexagon/croner-rust` + `docs.rs/croner`;
-Cloudflare "one cron parser everywhere / Saffron"; mfyz "Durable Queue Workers With
-Just Postgres"; Graphile Worker; rails/solid_queue; DBOS "Making Postgres Queues Scale".
+Sources — core: OpenAI Help Center (Scheduled Tasks); ofzenandcomputing /
+developersdigest write-ups on ChatGPT Tasks limits; `github.com/Hexagon/croner-rust`
++ `docs.rs/croner`; Cloudflare "one cron parser everywhere / Saffron"; mfyz "Durable
+Queue Workers With Just Postgres"; Graphile Worker; rails/solid_queue; DBOS "Making
+Postgres Queues Scale".
+Sources — feature: hatchworks "Building Agents with Claude: Scheduled Tasks &
+Routines"; aimaker "Claude Cowork research agent"; Windows Forum / revolgy /
+learnprompting on Gemini Scheduled Actions; Mantlr "Designing for AI Agents: 10 UX
+Patterns (2026)"; Zylos "Agent Notification Intelligence"; Smashing "Designing
+Agentic AI UX"; Latitude / Galileo / Fastio on agent failure & retry patterns;
+firecrawl.dev "/monitor"; changedetection.io; communitytracker "Google Scholar
+Alerts 2026".

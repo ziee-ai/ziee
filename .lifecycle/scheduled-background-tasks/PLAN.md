@@ -59,6 +59,20 @@ Nothing about the LLM-execution or realtime pathways is reinvented.
 - **ITEM-25**: Module registration + `Notifications` store (subscribes `sync:notification` + `sync:reconnect`, self-gates on `Permissions.NotificationsRead`) + a globally-mounted `NotificationToastListener` (EventBus → sonner toast, mirrors `LlmModelDownloadNotifications.tsx`).
 - **ITEM-26**: `NotificationBellWidget` in the `sidebarBottom` slot — unread-count `Badge` + `Popover` list (mirrors `DownloadIndicatorWidget`), and a full `/notifications` inbox page with read/read-all/delete + deep-links to the linked run/conversation.
 
+### Feature-completeness (research-driven — see DECISIONS appendix)
+The first plan covered the *plumbing*; a feature-level landscape sweep (ChatGPT
+Tasks, Gemini Scheduled Actions, Claude Cowork Scheduled Tasks, Firecrawl
+/monitor, Google Scholar alerts) surfaced experience gaps that are table-stakes
+for this category. These items close them.
+
+- **ITEM-27**: Migration `..137_scheduled_task_runs_and_columns.sql` — (a) new per-firing audit table `scheduled_task_runs` (`id`, `scheduled_task_id` FK CASCADE, `fired_at`, `status`, `error_class` TEXT, `notification_id` FK SET NULL, `workflow_run_id` FK SET NULL, `conversation_id` FK SET NULL) — the "run history / activity feed" every comparable product exposes; (b) new `scheduled_tasks` columns: `consecutive_failures` INT DEFAULT 0, `paused_reason` TEXT NULL, `notify_mode` TEXT CHECK IN (`always`,`silent`) DEFAULT `always`, `bound_conversation_id` UUID FK SET NULL, `last_result_fingerprint` TEXT NULL (the change-detection hook, DEC-20).
+- **ITEM-28**: Failure-handling policy (`tick.rs`/`dispatch.rs`) — an error taxonomy that **never retries** auth/permission/validation (4xx-class, terminal: disable + notify) and retries transient (timeout/5xx/provider-blip) with exponential backoff; increments `consecutive_failures` on a failed firing and **auto-pauses** the task after an admin `max_consecutive_failures` (default 5), writing a failure notification. Reuses the flap-cap shape from `llm_local_runtime/auto_start.rs`.
+- **ITEM-29**: Notification delivery/triage level — `notify_mode` per task honored by `notification::create_and_emit`: `always` → durable row **+** live toast/badge; `silent` → durable inbox row only (no interrupt). Non-actionable/low-signal results stay out of the interrupt channel (per the agent-notification-triage best practice) while still being auditable.
+- **ITEM-30**: Task-bound conversation for the `prompt` kind — a recurring prompt task owns ONE `bound_conversation_id`; the first firing creates it, each subsequent firing **appends a turn** to it (not a fresh conversation), so follow-up is native ("open the task's conversation and keep chatting"). Deleting that conversation **pauses** the task (`paused_reason='conversation_deleted'`), mirroring ChatGPT's "task pauses if its chat is deleted."
+- **ITEM-31**: Per-task run history — `repository::list_task_runs(task_id)` + `GET /api/scheduled-tasks/{id}/runs` + a "Runs" section in the task detail drawer (fired-at / status / link to the run or conversation). Owner-scoped.
+- **ITEM-32**: "Continue in chat" for `workflow`-kind results — a workflow run isn't a conversation, so add a backend seam + `POST /api/scheduled-tasks/runs/{run_id}/continue` that opens a NEW conversation seeded with the run's final output as context, and a "Continue in chat" / "Discuss this result" button on the run + its notification. (The `prompt` kind needs none — it's already a conversation, ITEM-30.)
+- **ITEM-33**: Frontend surfacing of the above — paused-state badge + `paused_reason`, a resume action, the `notify_mode` toggle in the form drawer, and the run-history list + continue-in-chat button. Mirrors settings-card + `McpServerDrawer` "Calls" tab.
+
 ## Files to touch
 
 ### Backend (new)
@@ -67,7 +81,8 @@ Nothing about the LLM-execution or realtime pathways is reinvented.
 - `src-app/server/migrations/00000000000134_create_scheduler_admin_settings.sql`
 - `src-app/server/migrations/00000000000135_grant_scheduler_notifications_permissions_to_users.sql`
 - `src-app/server/migrations/00000000000136_add_scheduled_invocation_source.sql`
-- `src-app/server/src/modules/scheduler/{mod,models,repository,permissions,schedule,tick,dispatch,settings,routes,handlers,events}.rs`
+- `src-app/server/migrations/00000000000137_scheduled_task_runs_and_columns.sql`
+- `src-app/server/src/modules/scheduler/{mod,models,repository,permissions,schedule,tick,dispatch,failure,settings,routes,handlers,events}.rs`
 - `src-app/server/src/modules/notification/{mod,models,repository,permissions,routes,handlers,events,prune}.rs`
 
 ### Backend (edit)
@@ -97,3 +112,6 @@ Nothing about the LLM-execution or realtime pathways is reinvented.
 - **Task list page + form drawer** → settings pages (`SettingsPageContainer`, card style) + `ProjectFormDrawer`.
 - **Notification bell (sidebarBottom badge + popover)** → `DownloadIndicatorWidget` + its `module.tsx` slot registration; **live toast** → `LlmModelDownloadNotifications.tsx`.
 - **Cron parsing** → `croner` crate (chrono-compatible; added in ITEM-19).
+- **Failure auto-pause / flap cap (ITEM-28)** → `llm_local_runtime/auto_start.rs` (exponential backoff + give-up-after-N-crashes cap) — the same shape applied to consecutive task-firing failures.
+- **Per-task run history UI (ITEM-31/33)** → `McpServerDrawer` "Calls" tab (owner-scoped per-parent history list + realtime refresh), backed by `scheduled_task_runs` (the `mcp_tool_calls` analog).
+- **Continue-in-chat seeding (ITEM-32)** → the chat `create_conversation` + a seeded first message (same primitives as ITEM-10's prompt dispatch).

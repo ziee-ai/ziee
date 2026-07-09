@@ -44,6 +44,18 @@ tests — [[feedback_no_cosmetic_tests]]). The tick loop uses the debug
 - **TEST-28** (tier: e2e) [covers: ITEM-26] file: `src-app/ui/tests/e2e/15-notifications/inbox.spec.ts` — asserts: `/notifications` page empty/loaded/read-all states render; read-all marks every row read.
 - **TEST-29** (tier: e2e) [covers: ITEM-18] file: `src-app/ui/tests/e2e/13-sync/notification-sync.spec.ts` — asserts: cross-device live delivery — device A's created notification appears on device B without reload (mirrors existing 13-sync specs); cross-user isolation (user B unaffected).
 
+## Feature-completeness tests (research-driven items)
+
+- **TEST-30** (tier: unit) [covers: ITEM-28] file: `src-app/server/src/modules/scheduler/failure.rs` — asserts: the error taxonomy classifies auth(401)/perm(403)/validation(400) as **terminal (no retry)** and timeout/5xx/provider-blip as **transient (retry-with-backoff)**; `consecutive_failures` increments and crosses `max_consecutive_failures` → task auto-pauses with `paused_reason='max_failures'`.
+- **TEST-31** (tier: integration) [covers: ITEM-27, ITEM-28] file: `src-app/server/tests/scheduler/failure_autopause_test.rs` — asserts: a task whose dispatch fails repeatedly (mocked provider error) records `scheduled_task_runs` rows with `error_class`, auto-pauses after N, and writes a failure notification; a transient error retries then succeeds without pausing.
+- **TEST-32** (tier: unit) [covers: ITEM-29] file: `src-app/server/src/modules/notification/events.rs` — asserts: `create_and_emit` with `notify_mode='silent'` writes the durable row but suppresses the toast/interrupt event; `always` emits both (via the publish/emit spy).
+- **TEST-33** (tier: integration) [covers: ITEM-27, ITEM-30] file: `src-app/server/tests/scheduler/bound_conversation_test.rs` — asserts: two firings of a recurring `prompt` task append to the SAME `bound_conversation_id` (not two conversations); deleting that conversation pauses the task on the next tick (`paused_reason='conversation_deleted'`).
+- **TEST-34** (tier: integration) [covers: ITEM-31] file: `src-app/server/tests/scheduler/run_history_test.rs` — asserts: `GET /api/scheduled-tasks/{id}/runs` returns the per-firing history (statuses, links); owner-scope 404 for another user.
+- **TEST-35** (tier: integration) [covers: ITEM-32] file: `src-app/server/tests/scheduler/continue_in_chat_test.rs` — asserts: `POST /api/scheduled-tasks/runs/{run_id}/continue` creates a NEW conversation seeded with the workflow run's (size-capped) output; owner-scoped; the user can then send a normal message in it.
+- **TEST-36** (tier: e2e) [covers: ITEM-33] file: `src-app/ui/tests/e2e/14-scheduler/failure-and-history.spec.ts` — asserts: a paused task shows a paused badge + failure reason, the user resumes it, and the "Runs" tab lists past firings with statuses.
+- **TEST-37** (tier: e2e) [covers: ITEM-32] file: `src-app/ui/tests/e2e/14-scheduler/failure-and-history.spec.ts` — asserts: from a workflow-result notification, "Continue in chat" opens a seeded conversation the user can keep chatting in.
+- **TEST-38** (tier: e2e) [covers: ITEM-30] file: `src-app/ui/tests/e2e/14-scheduler/bound-conversation.spec.ts` — asserts: opening a recurring prompt task's bound conversation shows the accumulated runs, and a follow-up message continues it inline.
+
 ## Coverage note
 
 - Backend-only items are covered without an e2e (ITEM-1..20, plus the module

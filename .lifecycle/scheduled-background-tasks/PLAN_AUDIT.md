@@ -102,3 +102,26 @@ mcp/tool_calls, citations modules) before any code.
 - **ITEM-24** — verdict: PASS — admin settings page mirrors existing `settingsAdminPages` slot pages.
 - **ITEM-25** — verdict: PASS — toast listener mirrors `LlmModelDownloadNotifications.tsx`.
 - **ITEM-26** — verdict: PASS — bell mirrors `DownloadIndicatorWidget`; desktop keeps it (not blocklisted, DEC-8).
+- **ITEM-27** — verdict: PASS — `scheduled_task_runs` is the `mcp_tool_calls` analog (owner-scoped per-parent history); new `scheduled_tasks` columns are additive; migration 137 > 136, no collision. `bound_conversation_id`/`notification_id` FKs `ON DELETE SET NULL` so a deleted conversation/notification doesn't orphan the audit row (the delete is instead detected → task pause, ITEM-30).
+- **ITEM-28** — verdict: CONCERN — the error taxonomy must map ziee's `AppError`/provider errors onto retry-vs-terminal correctly; the auth/perm/validation (non-retry) classes and transient (retry-with-backoff) classes are well-defined by the provider layer, but the mapping needs care. Flap-cap reuse from `auto_start.rs` is clean. Verify the backoff doesn't hold the claim tx (DEC-16: dispatch runs AFTER the claim commits).
+- **ITEM-29** — verdict: PASS — `notify_mode` is a small enum honored at the single `create_and_emit` seam; the durable row is always written (auditability), only the toast/badge interrupt is gated. Conforms to the triage best practice.
+- **ITEM-30** — verdict: CONCERN — task-bound conversation is a design flip from fresh-per-run (DEC-17, research-driven). Appending to a long-lived conversation grows context unbounded over many runs; mitigation is the existing summarization/`clear_old_tool_results` machinery, but the interaction with a scheduled append needs a phase-5 check. The "pause on conversation delete" needs a detection path (FK SET NULL + a tick-time null-check, since there's no delete trigger) — resolved as a null-check, not a DB trigger.
+- **ITEM-31** — verdict: PASS — list + REST + drawer tab mirror `mcp_tool_calls`/`McpServerDrawer` exactly; owner-scoped 404.
+- **ITEM-32** — verdict: CONCERN — the continue-in-chat endpoint reuses `create_conversation` + a seeded system/context message; must cap the seeded output size (the run's final output can be large — reuse the chat result caps) and be owner-scoped on the `run_id`. No new execution path.
+- **ITEM-33** — verdict: PASS — pure frontend surfacing on existing stores/components; e2e budgeted (TEST-36..38).
+
+## Feature-research reconciliation (why the plan grew)
+
+The initial plan implemented the mechanism; the phase-1 feature-level research
+(explicitly requested) showed the *experience* was under-specified. The added
+items are not gold-plating — each closes a gap that every comparable product
+treats as core: **failure surfacing + auto-pause** (Claude/ChatGPT show per-run
+success/failure and pause on repeated failure), **run history/activity feed**
+(all three expose it), **delivery triage** (interrupt only on actionable), and
+**native follow-up on results** (the user's own question; ChatGPT binds a task
+to an expandable conversation). Three dimensions are deliberately **deferred**
+with schema hooks so v1 stays shippable — change-detection/"only-notify-on-change"
+(DEC-20, the top monitoring differentiator, needs result-diff + prompt work),
+digest batching windows (DEC-19), and natural-language scheduling (DEC-3). None
+of the deferrals paint us into a corner (`last_result_fingerprint` +
+`notify_mode` + cron-as-source-of-truth leave the door open).
