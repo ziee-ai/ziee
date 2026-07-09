@@ -250,11 +250,22 @@ export const createVoiceStore = defineExtensionStore({
         if (get().status !== 'recording' || !mediaRecorder) return
         clearTimers()
         const recorder = mediaRecorder
-        // Await the assembled blob via onstop before we tear the stream down.
+        // Supersession token, captured BEFORE the finalization await. cancelRecording
+        // (Cancel button or the unmount cleanup) bumps requestGeneration; the
+        // Recording UI stays live during MediaRecorder's onstop finalization, so a
+        // cancel here (or later during the transcribe POST) is a real race. Every
+        // await below re-checks this token and bails if superseded.
+        const gen = requestGeneration
+        // Await the assembled blob via onstop before we tear the stream down. A
+        // fallback timeout guarantees the promise settles even if a concurrent
+        // cancel nulled `onstop` (otherwise the frame would hang, leaking the
+        // closure); double-resolve is a no-op.
         const recorded = await new Promise<Blob>(resolve => {
-          recorder.onstop = () => {
+          const settle = () =>
             resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }))
-          }
+          recorder.onstop = settle
+          const fallback = setTimeout(settle, 1500)
+          void fallback
           try {
             recorder.stop()
           } catch {
@@ -263,6 +274,10 @@ export const createVoiceStore = defineExtensionStore({
         })
         stopStream()
         chunks = []
+
+        // A cancel/unmount during onstop finalization superseded us — the state
+        // was already reset to idle; don't resurrect it into 'transcribing'.
+        if (requestGeneration !== gen) return
 
         if (recorded.size === 0) {
           fail('No audio was captured — try recording again.')
@@ -274,13 +289,11 @@ export const createVoiceStore = defineExtensionStore({
           stageText: 'Starting voice engine…',
           announcement: 'Transcribing',
         })
-        // Supersession token for the transcribe phase: cancelRecording (incl. the
-        // unmount cleanup) bumps requestGeneration, so a POST that resolves AFTER
-        // the user cancelled / left the conversation is dropped instead of
-        // appending its transcript into a composer that has since changed. The
-        // in-flight fetch itself isn't aborted (the generated client takes no
-        // signal), so this guard is the safety net.
-        const gen = requestGeneration
+        // The same `gen` token guards the transcribe POST below: a POST that
+        // resolves AFTER a cancel/unmount is dropped instead of appending its
+        // transcript into a composer that has since changed. (The fetch itself
+        // isn't aborted — the generated client takes no signal — so this is the
+        // safety net.)
         // Cold-start staging: whisper-server may autostart on the first clip, so
         // start with "Starting…" and flip to "Transcribing…" if it lingers.
         stageTimer = setTimeout(() => {

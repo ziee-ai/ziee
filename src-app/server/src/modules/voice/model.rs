@@ -183,7 +183,12 @@ where
     // Stream to a temp file, hashing as we go, with a hard byte cap. The file
     // writes go through `tokio::fs` so a multi-hundred-MB download never blocks
     // the executor thread (this can run under the auto-start START_LOCK).
-    let tmp = dir.join(format!("{}.tmp", model_filename(name)));
+    // Per-attempt unique temp name: the admin download endpoint and a
+    // transcribe-triggered auto-start can both fetch the same absent model
+    // concurrently (they don't share a lock), and a shared `<name>.tmp` would
+    // interleave their byte streams into a spurious sha256 mismatch. A uuid
+    // suffix isolates each attempt; the loser's temp is cleaned up on drop/error.
+    let tmp = dir.join(format!("{}.{}.tmp", model_filename(name), uuid::Uuid::new_v4()));
     let mut file = tokio::fs::File::create(&tmp)
         .await
         .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
