@@ -1910,3 +1910,42 @@ async fn semantic_search_with_null_embeddings_degrades_gracefully() {
     pool.close().await;
 }
 
+
+// ─────────────────────────── TEST-6: reranker settings (migration 135) ───────────────────────────
+
+#[tokio::test]
+async fn test_6_reranker_settings_roundtrip_and_validation() {
+    let server = TestServer::start().await;
+    let admin = power_user(&server, "frag_rerank_admin").await;
+
+    // candidate_k out of range (1..=200) → clean 400, not a 500 / DB error.
+    let bad = put_settings_raw(&server, &admin, json!({ "rerank_candidate_k": 201 })).await;
+    assert_eq!(bad.status(), 400, "candidate_k=201 rejected: {}", bad.text().await.unwrap_or_default());
+
+    // valid rerank tuning persists + reads back.
+    let ok = put_settings_raw(
+        &server,
+        &admin,
+        json!({ "rerank_enabled": true, "rerank_candidate_k": 50 }),
+    )
+    .await;
+    assert!(ok.status().is_success(), "valid rerank settings: {}", ok.text().await.unwrap_or_default());
+    let got = get_settings(&server, &admin).await;
+    assert_eq!(got["rerank_enabled"], true);
+    assert_eq!(got["rerank_candidate_k"], 50);
+
+    // A reranker_model_id that isn't a working reranker is rejected by the probe.
+    let fake_model = uuid::Uuid::new_v4().to_string();
+    let rejected = put_settings_raw(
+        &server,
+        &admin,
+        json!({ "reranker_model_id": fake_model }),
+    )
+    .await;
+    assert_eq!(
+        rejected.status(),
+        400,
+        "a non-existent/non-rerank model is rejected by the probe: {}",
+        rejected.text().await.unwrap_or_default()
+    );
+}
