@@ -7,19 +7,19 @@
 
 ## Summary
 
-- **325** surfaces carry at least one renderable-state signal.
-- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **332** surfaces carry at least one renderable-state signal.
+- **1930** signals total: 1523 branch, 114 empty, 102 error, 102 loading, 87 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
-- **30** slot registrations (sidebar / settings / chat mount points).
+- **31** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 86 |
-| `empty` | 90 |
-| `error` | 75 |
-| `open` | 72 |
+| `delayed` | 89 |
+| `empty` | 92 |
+| `error` | 80 |
+| `open` | 73 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -53,6 +53,7 @@ conversation page.
 | `settingsAdminPages` | `modules/skill/module`:105 |
 | `settingsAdminPages` | `modules/summarization/module`:41 |
 | `settingsAdminPages` | `modules/user/module`:91 |
+| `settingsAdminPages` | `modules/voice/module`:50 |
 | `settingsAdminPages` | `modules/web-search/module`:57 |
 | `settingsAdminPages` | `modules/workflow/module`:104 |
 | `settingsUserPages` | `modules/assistant/module`:69 |
@@ -1211,6 +1212,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!currentConversation` | 25 |
+
+### `modules/chat/extensions/voice/components/MicButton`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!capabilityLoaded \|\| !capability \|\| !capability.enabled` | 53 |
+| branch | `!isRecordingSupported()` | 54 |
+| branch | `isRequesting` | 174 |
+| overlay | `<Popover open>` | 192 |
 
 ### `modules/chat/pages/ChatHistoryPage`
 
@@ -3937,6 +3949,80 @@ Required states: `empty`, `open`
 | branch | `usersError` | 244 |
 | branch | `index < users.length - 1` | 296 |
 | branch | `users.length > 0` | 302 |
+
+### `modules/voice/components/AvailableVersionsCard`
+
+Required states: `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `platform && arch` | 109 |
+| branch | `checking && !updateCheck` | 120 |
+| error | `error && !updateCheck` | 122 |
+| branch | `!updateCheck` | 130 |
+| empty | `readyUpstream.length === 0` | 132 |
+| branch | `readyUpstream.length > 10` | 147 |
+| branch | `v.size_bytes != null && !v.installed` | 182 |
+| branch | `isLatest` | 187 |
+| branch | `v.installed` | 192 |
+| branch | `v.prerelease` | 197 |
+| branch | `progress` | 216 |
+| error | `failed && progress?.error` | 217 |
+
+### `modules/voice/components/InstalledVersionsCard`
+
+Required states: `delayed`, `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && versions.length === 0` | 52 |
+| error | `error && versions.length === 0` | 54 |
+| empty | `versions.length === 0` | 62 |
+| branch | `i > 0` | 71 |
+| branch | `version.is_system_default` | 112 |
+| branch | `canManage && !version.is_system_default` | 120 |
+| branch | `canManage` | 134 |
+| branch | `version.is_system_default` | 141 |
+
+### `modules/voice/components/ModelCard`
+
+Required states: `delayed`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && !status` | 42 |
+| error | `error && !status` | 44 |
+| branch | `status?.present` | 57 |
+| branch | `status?.present && status.size_bytes != null` | 67 |
+
+### `modules/voice/components/VoiceConfigCard`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `loadingSettings && !settings` | 116 |
+| error | `error && !settings` | 124 |
+| branch | `canManage` | 143 |
+| branch | `!canManage` | 154 |
+
+### `modules/voice/components/VoiceInstanceCard`
+
+Required states: `delayed`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && !info` | 74 |
+| error | `error && !info` | 76 |
+| branch | `!info` | 84 |
+
+### `modules/voice/components/VoiceSettingsPage`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `showBanner` | 34 |
 
 ### `modules/web-search/components/WebSearchGlobalSection`
 

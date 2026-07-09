@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1894 signals total.
+// 332 surfaces carry renderable-state signals; 1930 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1071,6 +1071,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!currentConversation", line: 25 },
+    ],
+  },
+  "modules/chat/extensions/voice/components/MicButton": {
+    surface: "modules/chat/extensions/voice/components/MicButton",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "!capabilityLoaded || !capability || !capability.enabled", line: 53 },
+      { kind: "branch", condition: "!isRecordingSupported()", line: 54 },
+      { kind: "branch", condition: "isRequesting", line: 174 },
+      { kind: "overlay", condition: "<Popover open>", line: 192 },
     ],
   },
   "modules/chat/pages/ChatHistoryPage": {
@@ -3600,6 +3610,74 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "users.length > 0", line: 302 },
     ],
   },
+  "modules/voice/components/AvailableVersionsCard": {
+    surface: "modules/voice/components/AvailableVersionsCard",
+    requiredStates: ["empty","error"],
+    signals: [
+      { kind: "branch", condition: "platform && arch", line: 109 },
+      { kind: "branch", condition: "checking && !updateCheck", line: 120 },
+      { kind: "error", condition: "error && !updateCheck", line: 122 },
+      { kind: "branch", condition: "!updateCheck", line: 130 },
+      { kind: "empty", condition: "readyUpstream.length === 0", line: 132 },
+      { kind: "branch", condition: "readyUpstream.length > 10", line: 147 },
+      { kind: "branch", condition: "v.size_bytes != null && !v.installed", line: 182 },
+      { kind: "branch", condition: "isLatest", line: 187 },
+      { kind: "branch", condition: "v.installed", line: 192 },
+      { kind: "branch", condition: "v.prerelease", line: 197 },
+      { kind: "branch", condition: "progress", line: 216 },
+      { kind: "error", condition: "failed && progress?.error", line: 217 },
+    ],
+  },
+  "modules/voice/components/InstalledVersionsCard": {
+    surface: "modules/voice/components/InstalledVersionsCard",
+    requiredStates: ["delayed","empty","error"],
+    signals: [
+      { kind: "loading", condition: "loading && versions.length === 0", line: 52 },
+      { kind: "error", condition: "error && versions.length === 0", line: 54 },
+      { kind: "empty", condition: "versions.length === 0", line: 62 },
+      { kind: "branch", condition: "i > 0", line: 71 },
+      { kind: "branch", condition: "version.is_system_default", line: 112 },
+      { kind: "branch", condition: "canManage && !version.is_system_default", line: 120 },
+      { kind: "branch", condition: "canManage", line: 134 },
+      { kind: "branch", condition: "version.is_system_default", line: 141 },
+    ],
+  },
+  "modules/voice/components/ModelCard": {
+    surface: "modules/voice/components/ModelCard",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "loading", condition: "loading && !status", line: 42 },
+      { kind: "error", condition: "error && !status", line: 44 },
+      { kind: "branch", condition: "status?.present", line: 57 },
+      { kind: "branch", condition: "status?.present && status.size_bytes != null", line: 67 },
+    ],
+  },
+  "modules/voice/components/VoiceConfigCard": {
+    surface: "modules/voice/components/VoiceConfigCard",
+    requiredStates: ["error"],
+    signals: [
+      { kind: "branch", condition: "loadingSettings && !settings", line: 116 },
+      { kind: "error", condition: "error && !settings", line: 124 },
+      { kind: "branch", condition: "canManage", line: 143 },
+      { kind: "branch", condition: "!canManage", line: 154 },
+    ],
+  },
+  "modules/voice/components/VoiceInstanceCard": {
+    surface: "modules/voice/components/VoiceInstanceCard",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "loading", condition: "loading && !info", line: 74 },
+      { kind: "error", condition: "error && !info", line: 76 },
+      { kind: "branch", condition: "!info", line: 84 },
+    ],
+  },
+  "modules/voice/components/VoiceSettingsPage": {
+    surface: "modules/voice/components/VoiceSettingsPage",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "showBanner", line: 34 },
+    ],
+  },
   "modules/web-search/components/WebSearchGlobalSection": {
     surface: "modules/web-search/components/WebSearchGlobalSection",
     requiredStates: ["delayed","empty"],
@@ -3906,6 +3984,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
   { slot: "settingsAdminPages", surface: "modules/user/module", line: 91 },
+  { slot: "settingsAdminPages", surface: "modules/voice/module", line: 50 },
   { slot: "settingsAdminPages", surface: "modules/web-search/module", line: 57 },
   { slot: "settingsAdminPages", surface: "modules/workflow/module", line: 104 },
   { slot: "settingsUserPages", surface: "modules/assistant/module", line: 69 },
@@ -3930,7 +4009,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 325 keys.
+ * 336 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -3995,6 +4074,7 @@ export type RequiredState =
   | "modules/chat/core/utils/StreamdownErrorBoundary:error"
   | "modules/chat/core/utils/useStreamdownComponents:empty"
   | "modules/chat/extensions/export/extension:empty"
+  | "modules/chat/extensions/voice/components/MicButton:open"
   | "modules/chat/pages/ChatHistoryPage:delayed"
   | "modules/chat/pages/ChatHistoryPage:error"
   | "modules/chat/pages/ConversationPage:delayed"
@@ -4224,6 +4304,16 @@ export type RequiredState =
   | "modules/user/components/user/UserGroupsDrawer:open"
   | "modules/user/components/user/UsersSettings:empty"
   | "modules/user/components/user/UsersSettings:open"
+  | "modules/voice/components/AvailableVersionsCard:empty"
+  | "modules/voice/components/AvailableVersionsCard:error"
+  | "modules/voice/components/InstalledVersionsCard:delayed"
+  | "modules/voice/components/InstalledVersionsCard:empty"
+  | "modules/voice/components/InstalledVersionsCard:error"
+  | "modules/voice/components/ModelCard:delayed"
+  | "modules/voice/components/ModelCard:error"
+  | "modules/voice/components/VoiceConfigCard:error"
+  | "modules/voice/components/VoiceInstanceCard:delayed"
+  | "modules/voice/components/VoiceInstanceCard:error"
   | "modules/web-search/components/WebSearchGlobalSection:delayed"
   | "modules/web-search/components/WebSearchGlobalSection:empty"
   | "modules/web-search/components/WebSearchProvidersSection:delayed"
@@ -4323,6 +4413,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/core/utils/StreamdownErrorBoundary:error",
   "modules/chat/core/utils/useStreamdownComponents:empty",
   "modules/chat/extensions/export/extension:empty",
+  "modules/chat/extensions/voice/components/MicButton:open",
   "modules/chat/pages/ChatHistoryPage:delayed",
   "modules/chat/pages/ChatHistoryPage:error",
   "modules/chat/pages/ConversationPage:delayed",
@@ -4552,6 +4643,16 @@ export const REQUIRED_STATE_KEYS = [
   "modules/user/components/user/UserGroupsDrawer:open",
   "modules/user/components/user/UsersSettings:empty",
   "modules/user/components/user/UsersSettings:open",
+  "modules/voice/components/AvailableVersionsCard:empty",
+  "modules/voice/components/AvailableVersionsCard:error",
+  "modules/voice/components/InstalledVersionsCard:delayed",
+  "modules/voice/components/InstalledVersionsCard:empty",
+  "modules/voice/components/InstalledVersionsCard:error",
+  "modules/voice/components/ModelCard:delayed",
+  "modules/voice/components/ModelCard:error",
+  "modules/voice/components/VoiceConfigCard:error",
+  "modules/voice/components/VoiceInstanceCard:delayed",
+  "modules/voice/components/VoiceInstanceCard:error",
   "modules/web-search/components/WebSearchGlobalSection:delayed",
   "modules/web-search/components/WebSearchGlobalSection:empty",
   "modules/web-search/components/WebSearchProvidersSection:delayed",

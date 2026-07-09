@@ -53,6 +53,20 @@ export const STATE_COVERAGE = {
   // running/failed, attachments, elicitation) that have no single named key.
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
+  // Voice dictation surfaces: gallery cells deferred (DRIFT-1); these states are
+  // exercised by the 14-voice Playwright e2e specs (mic gating/recording + admin
+  // versions/config/model/instance) rather than mock-mode gallery cells.
+  'modules/chat/extensions/voice/components/MicButton:open': { skip: true, reason: 'privacy-hint popover — deferred gallery cell (DRIFT-1); covered by 14-voice e2e' },
+  'modules/voice/components/AvailableVersionsCard:empty': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-runtime-admin e2e' },
+  'modules/voice/components/AvailableVersionsCard:error': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-runtime-admin e2e' },
+  'modules/voice/components/InstalledVersionsCard:delayed': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-runtime-admin e2e' },
+  'modules/voice/components/InstalledVersionsCard:empty': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-runtime-admin e2e' },
+  'modules/voice/components/InstalledVersionsCard:error': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-runtime-admin e2e' },
+  'modules/voice/components/ModelCard:delayed': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-settings-admin e2e' },
+  'modules/voice/components/ModelCard:error': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-settings-admin e2e' },
+  'modules/voice/components/VoiceConfigCard:error': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-settings-admin e2e' },
+  'modules/voice/components/VoiceInstanceCard:delayed': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-settings-admin e2e' },
+  'modules/voice/components/VoiceInstanceCard:error': { skip: true, reason: 'voice gallery cells deferred (DRIFT-1); covered by voice-settings-admin e2e' },
   // The find bar's `loading` state is a transient in-flight search fetch (the
   // results-list spinner while a page of matches loads). It can't be captured
   // as a deterministic gallery snapshot; it's exercised end-to-end by the

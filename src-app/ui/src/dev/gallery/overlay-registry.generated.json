@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 73,
-    "hosts": 54,
-    "triggers": 19,
+    "total": 75,
+    "hosts": 55,
+    "triggers": 20,
     "wiredOpen": 37
   },
   "hosts": [
@@ -76,6 +76,19 @@
         },
         {
           "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/chat/extensions/voice/components/MicButton",
+      "class": "host",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
           "mode": "controlled"
         }
       ]
@@ -1013,6 +1026,19 @@
           "primitive": "Drawer",
           "mode": "trigger"
         },
+        {
+          "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/voice/components/InstalledVersionsCard",
+      "class": "trigger",
+      "primitives": [
+        "Confirm"
+      ],
+      "occurrences": [
         {
           "primitive": "Confirm",
           "mode": "trigger"
