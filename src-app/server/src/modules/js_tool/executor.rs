@@ -252,7 +252,7 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
     // than stalling the assistant turn (run_js executes inline in the tool loop)
     // — audit: without the timeout, 8 runs stuck on ignored approvals would block
     // every run_js server-wide for the whole suspend window.
-    let _global = match tokio::time::timeout(
+    let global_permit = match tokio::time::timeout(
         Duration::from_secs(GLOBAL_ACQUIRE_TIMEOUT_SECS),
         GLOBAL_RUN_SEM.acquire(),
     )
@@ -358,6 +358,12 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
     let cancel_for_eval = cancel.clone();
     let bindings_for_inject = bindings.clone();
     let outcome = tokio::task::spawn_blocking(move || {
+        // Hold the admission permit until the interpreter TRULY finishes: a
+        // spawn_blocking task is not cancellable, so if the chat turn is aborted
+        // and run()'s future drops, the eval keeps running here — keep the
+        // GLOBAL_RUN_SEM slot occupied for its real lifetime so the concurrent-
+        // runtime bound stays accurate under client aborts (audit: concurrency).
+        let _global = global_permit;
         let local = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
             Ok(rt) => rt,
             Err(e) => {
