@@ -96,8 +96,37 @@ resolved by codebase convention. No unresolved markers remain.
 **Resolution:** KBs are a **standalone, reusable library** owned by the user (managed at `/knowledge`); a project or a chat **attaches** the KBs it needs (many-to-many via `project_knowledge_bases` / `conversation_knowledge_bases`). The same KB can be attached to multiple projects and chats; a chat can pull from multiple KBs. This is distinct from — and coexists with — the existing per-project *files* (the raw-prepend `project_files` path), which KB retrieval supersedes for scale. Project-owned (1:1, KB-inside-project) is explicitly NOT the model.
 **Basis:** user + codebase — already the data model in DEC-2 / ITEM-9 (join tables, not a project FK) / ITEM-22 (project-extension attaches, does not own). Confirmed by the user over the project-owned and "both" alternatives.
 
+### DEC-24: Information architecture — where the KB lives.
+**Resolution:** A top-level **"Knowledge"** sidebar nav entry (order 15, between Chats=10 and Projects=20), owned by the new `knowledge-base` UI module, routing `/knowledge` (list) + `/knowledge/:id` (detail). Reranker/embedding config stays on the existing **file-rag admin settings** page (not a KB page). KB attach to a chat lives in the **composer**, KB attach to a project lives in the project's **"Knowledge bases" knowledge-kind** — mirroring how files/references already attach.
+**Basis:** codebase — mirrors `projects/module.tsx` nav registration + the `settings`/`knowledge_kinds` split; keeps the retrieval-engine admin where it already is (file-rag), and the collection UX where users manage content.
+
+### DEC-25: Documents list at scale (2,000 docs).
+**Resolution:** The documents list is **virtualized / paginated** (kit `Table virtualized` or `List` + Load-More), not 2,000 mounted `FileCard`s. First-load shows a `Spin`; background refreshes patch rows in place (no blink).
+**Basis:** codebase + perf — `ProjectFilesManagePanel` renders ≤100 cards un-virtualized; at 2,000 that janks, so the KB panel uses the kit's virtualization (already used by `Table`).
+
+### DEC-26: Per-document indexing feedback.
+**Resolution:** Each doc row shows an **index-status badge** — `indexing` (warning tone + tiny `Spin`), `indexed` (success), `failed` (destructive + Retry) — derived from `file_chunks` counts and **live-updated via `sync:knowledge_base_document`** (poll fallback). A KB-level `Progress` bar appears on the detail Overview card only while any doc is `indexing`. No blocking modal during ingest — upload returns immediately and status streams in.
+**Basis:** codebase + research/competitor UX — per-source ingest status is a top "legibility" pattern (NotebookLM/Open WebUI); ziee already streams status via sync; `file_rag` indexes in the background.
+
+### DEC-27: KB attach affordance = composer chips, not a drawer.
+**Resolution:** Attaching KBs to a conversation is a composer `+`-menu item ("Attach knowledge base") + a **"Knowledge · N" status pill** with per-KB remove; project-inherited KBs render as distinct **read-only** chips so the active retrieval scope is always visible. No dedicated per-conversation settings drawer (ziee has none).
+**Basis:** codebase — mirrors the memory-mode pill + MCP status row exactly; competitor research flags rigid workspace-only scoping as an anti-pattern, so per-chat composability is deliberate.
+
+### DEC-28: Citation chip + transparency presentation.
+**Resolution:** Numbered inline chips `[1] [2]` (kit `Tag`/`Badge`, info tone, focusable) with a hover/focus `Popover` preview (file · page · snippet); click/Enter opens the source. A **retrieval-transparency panel** ("Searched K KBs · M chunks") renders per `search_knowledge` result, **default collapsed**, expandable to the chunk list; empty result shows "No matching passages found". Chips inject via a `[n]` streamdown tokenizer + `useStreamdownComponents` override; the panel is a `tool_result` renderer with a `contentMatch` claiming only `search_knowledge` blocks.
+**Basis:** codebase + competitor research — Perplexity-style numbered chips + NotebookLM-style click-to-source + Onyx-style retrieval transparency; the streamdown footnote/blockquote overrides + `McpToolCallUI` are the working precedents.
+
+### DEC-29: In-chat citation opens the RIGHT PANEL (not the global drawer).
+**Resolution:** In a conversation, a citation opens the **chat right panel** via `displayInRightPanel({type:'file', data:{fileId, version, page, charRange}})`; this requires extending `PanelRendererMap['file']` with optional `{page, charRange}` and threading them to the PDF viewer. Outside chat (KB detail "view document") the same params flow through the global `FilePreviewDrawer.openPreview`.
+**Basis:** codebase — in chat the file viewer IS the right panel (`InlineFilePreview.handleOpenInPanel`); the global drawer is the non-chat surface. Additive optional fields keep existing callers intact.
+
+### DEC-30: Folder-scale ingest affordance.
+**Resolution:** The documents panel uses the kit `Upload` with **`directory` (folder pick) + `multiple`** plus a drag-drop overlay, so a user can drop a folder of 500 PDFs. `accept` limits to text-extractable types; oversize/over-cap rejected pre-flight with a toast (mirrors `ProjectFilesManagePanel`).
+**Basis:** codebase — kit `Upload` supports `directory`; mirrors the existing bulk-upload panel; matches the "point at a folder of 500 PDFs" goal.
+
 Every decision above is resolved. The five headline calls (DEC-5/6/7/8/23) are
-user-confirmed. Two convention-resolved points worth the user's awareness (not
+user-confirmed; DEC-24–30 (added this replan) resolve the UI/UX by codebase
+convention and carry no new open question. Two convention-resolved points worth the user's awareness (not
 blockers): **no reranker GGUF is bundled** — an admin must supply/select one
 before rerank does anything (DEC-9); and the v1 highlight overlay is **PDF-only,
 best-effort**, degrading to page-level for office docs / failed matches until the
