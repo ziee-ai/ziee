@@ -42,13 +42,14 @@ verified core with documented follow-ups.
   needs streaming-awareness (open only for the just-arrived result, not every historical
   `create_file` on conversation load, which would be jarring). The manual "Open in side
   panel" already works. Plan amended to defer until the streaming-position signal is wired.
-- **ITEM-20 CSV grid** — verdict: impl-wins — CSV is editable NOW via the code/text editor
-  (`editableKind` routes `text/*` → code), which is SAFE (no row-cap truncation → no
-  data-loss on save). The editable grid is deferred because a capped grid would lose data
-  on save. Plan amended: CSV-as-text in v1, grid a fast-follow.
-- **ITEM-6 toolbar** — verdict: impl-wins — the editor works via keyboard shortcuts
-  (BasicMarks); a formatting toolbar (Plate's mark-toggle API) is deferred as unverifiable
-  polish. Plan amended.
+- **ITEM-20 CSV grid** — verdict: none — BUILT (`CsvGridEditor`: editable grid, kit Input
+  cells, add/delete rows, NO row cap → no data-loss; `csvRoundtrip` util + 6/6 node tests;
+  `editableKind` routes `csv` → grid). Browser-verified clean in the gallery
+  (`seeded-artifact-canvas-csv`).
+- **ITEM-6 toolbar** — verdict: none — BUILT (`MarkdownToolbar`: bold/italic/strike/code/
+  h1/h2/quote/bulleted+numbered lists via `editor.tf.toggleMark`/`toggleBlock`, inside the
+  Plate context). Browser-verified clean in the gallery (`seeded-artifact-canvas-markdown`
+  + `seeded-artifact-canvas-edit-body`).
 
 ## Not yet run (process)
 

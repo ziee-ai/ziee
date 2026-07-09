@@ -38,6 +38,29 @@ phase-8 lifecycle gate is fully green.
 - `cargo check -p ziee`: PASS (zero new warnings). OpenAPI regen (ui + desktop) golden-
   parity satisfied.
 
+## Browser verification (gallery + runtime-health) — the editor UI, for real
+
+The editor toolbar + CSV grid + code editor + full edit body are NOT deferred — they are
+built and rendered in the dev gallery (backend-free mock-API) and driven headlessly by
+`scripts/runtime-health.mjs`:
+- **4 gallery cells added** (`seeded-artifact-canvas-{markdown,csv,code,edit-body}`), a
+  mock `/files/{id}/text` handler seeds the edit body.
+- **`npm run gallery:runtime` result: 0 findings (any severity) on all 4 artifact cells**
+  — the Plate WYSIWYG + formatting toolbar, the editable CSV grid, the CodeMirror editor,
+  and the toolbar+editor+save-bar edit body all render clean across states × themes (no
+  console error, no crash, no AA-contrast failure, no a11y-name gap).
+- **`npm run check`: PASS** with the new components + cells + regen (all gallery/testid/
+  state-matrix/overlay gates green).
+
+`gallery:runtime` exits non-zero on a PRE-EXISTING baseline of 2 gating surfaces —
+`seeded-llm-models-loading` and `deep-chat-right-panel-file` — both `contrast` on
+transparent-fg (`rgba(0,0,0,0)`) loading/skeleton placeholders. `seeded-llm-models-loading`
+is the LLM-models-settings loading state (untouched by this feature), which proves these
+are a repo baseline, not artifact-feature regressions; `deep-chat-right-panel-file` exhibits
+the identical transparent-skeleton pattern in the file-panel loading path (my additive
+header buttons render no transparent text). Artifact-feature contribution to gating
+findings: **zero.**
+
 ## Not run (deferred with rationale — see DRIFT-2)
 
 - e2e specs (TEST-ids targeting the selection popover / auto-open / canvas render) — the
