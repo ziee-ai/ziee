@@ -611,14 +611,18 @@ const mcpExtension: ChatExtension = createExtension({
       // resolveElicitation can reflect the resolved status there (and roll it
       // back to 'pending' on a failed POST) — the component reads its status
       // from the store, so a failed approve re-enables the buttons and the
-      // resolved state survives a component remount.
-      Stores.McpComposer.addElicitationRequest({
-        elicitation_id: data.elicitation_id,
-        message: `run_js wants to call ${data.tool_name}`,
-        requested_schema: {},
-        server: data.server,
-        message_id: null,
-      } as unknown as SSEChatStreamMcpElicitationRequiredData)
+      // resolved state survives a component remount. Guard on !has() so a
+      // double-delivered SSE frame can't reset an already-resolved entry to
+      // 'pending' (which would re-show the buttons + allow a duplicate POST).
+      if (!Stores.McpComposer.elicitationRequests.has(data.elicitation_id)) {
+        Stores.McpComposer.addElicitationRequest({
+          elicitation_id: data.elicitation_id,
+          message: `run_js wants to call ${data.tool_name}`,
+          requested_schema: {},
+          server: data.server,
+          message_id: null,
+        } as unknown as SSEChatStreamMcpElicitationRequiredData)
+      }
 
       const chatState = get()
       const streamingMessage = chatState.streamingMessage

@@ -78,9 +78,21 @@ const MAX_CONCURRENT_RUNS: usize = 8;
 static GLOBAL_RUN_SEM: tokio::sync::Semaphore =
     tokio::sync::Semaphore::const_new(MAX_CONCURRENT_RUNS);
 
+/// How long a run waits for a global admission slot before failing fast.
+const GLOBAL_ACQUIRE_TIMEOUT_SECS: u64 = 15;
+
+/// Hard cap on trace entries. Denied/failed dispatches push a trace entry
+/// WITHOUT consuming the tool-call budget, so under ApprovalMode::Disabled a
+/// tight deny-loop could otherwise grow the Vec to hundreds of MB before gas
+/// trips (audit: resource-limits).
+const MAX_TRACE_ENTRIES: usize = 256;
+
 impl Dispatcher {
     fn push_trace(&self, b: &ToolBinding, status: &str, dur_ms: u64) {
         if let Ok(mut t) = self.trace.lock() {
+            if t.len() >= MAX_TRACE_ENTRIES {
+                return;
+            }
             t.push(serde_json::json!({
                 "tool": b.js_name,
                 "server": b.server_name,
@@ -100,8 +112,8 @@ impl Dispatcher {
         // Gate exactly like the normal after_llm_call classification.
         let is_builtin =
             crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(binding.server_id);
-        let is_control_mutating = binding.server_id
-            == crate::modules::control_mcp::control_mcp_server_id()
+        let is_control = binding.server_id == crate::modules::control_mcp::control_mcp_server_id();
+        let is_control_mutating = is_control
             && crate::modules::control_mcp::handlers::control_call_needs_approval(
                 &binding.tool_name,
                 &args,
@@ -110,7 +122,7 @@ impl Dispatcher {
             .auto_approved
             .contains(&(binding.server_id, binding.tool_name.clone()));
 
-        match approval::gate(is_builtin, is_control_mutating, self.approval_mode.clone(), is_auto) {
+        match approval::gate(is_builtin, is_control, is_control_mutating, self.approval_mode.clone(), is_auto) {
             GateDecision::Deny => {
                 self.push_trace(&binding, "denied", 0);
                 return serde_json::json!({
@@ -156,7 +168,12 @@ impl Dispatcher {
         // Bound concurrent sub-tool dispatches (a script's `Promise.all` of many
         // gated calls could otherwise fan out 100 simultaneous code_sandbox /
         // web_search dispatches) — audit: resource-limits.
-        let _permit = self.dispatch_sem.clone().acquire_owned().await.ok();
+        let _permit = self
+            .dispatch_sem
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("js_tool dispatch semaphore is never closed");
 
         // Dispatch through the chokepoint (records with source=script).
         let t0 = Instant::now();
@@ -230,8 +247,33 @@ impl Dispatcher {
 /// interpreter/dispatch failure becomes an error result the model can read.
 pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
     // Server-wide admission control: bound concurrent run_js runtimes so a burst
-    // of chat turns can't allocate unbounded 128 MiB interpreters at once.
-    let _global = GLOBAL_RUN_SEM.acquire().await.ok();
+    // of chat turns can't allocate unbounded 128 MiB interpreters at once. BOUND
+    // the acquire so a saturated server FAILS FAST with a "busy" result rather
+    // than stalling the assistant turn (run_js executes inline in the tool loop)
+    // — audit: without the timeout, 8 runs stuck on ignored approvals would block
+    // every run_js server-wide for the whole suspend window.
+    let _global = match tokio::time::timeout(
+        Duration::from_secs(GLOBAL_ACQUIRE_TIMEOUT_SECS),
+        GLOBAL_RUN_SEM.acquire(),
+    )
+    .await
+    {
+        Ok(p) => p.expect("GLOBAL_RUN_SEM is never closed"),
+        Err(_) => {
+            return McpContentData::ToolResult {
+                tool_use_id: req.tool_use_id.clone(),
+                name: Some("run_js".to_string()),
+                server_id: Some(super::run_js_mcp_server_id().to_string()),
+                content: "run_js is busy (too many concurrent scripts on this server); try again shortly".to_string(),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: None,
+            };
+        }
+    };
 
     let bindings = host_bridge::build_bindings(&req.tools);
     let cancel = Arc::new(AtomicBool::new(false));
@@ -284,21 +326,66 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
         })
     };
 
-    // The dispatch closure injected as `__ziee_dispatch`.
+    // The dispatch closure injected as `__ziee_dispatch`. It DELEGATES the actual
+    // MCP dispatch to the MAIN runtime (where the DB pool + IO reactor live) via
+    // `Handle::spawn`, awaiting the JoinHandle on the blocking thread's local
+    // runtime — the interpreter runs on a spawn_blocking thread (below) so
+    // CPU-bound JS can't starve async workers, but the tool dispatch must NOT run
+    // on that thread's minimal runtime.
+    let main_handle = tokio::runtime::Handle::current();
     let dispatch_fn: DispatchFn = {
         let d = dispatcher.clone();
+        let h = main_handle.clone();
         Arc::new(move |name, args| {
             let d = d.clone();
-            Box::pin(async move { d.dispatch_one(name, args).await })
+            let h = h.clone();
+            Box::pin(async move {
+                match h.spawn(async move { d.dispatch_one(name, args).await }).await {
+                    Ok(v) => v,
+                    Err(_) => serde_json::json!({ "__error": "run_js tool dispatch was cancelled" }),
+                }
+            })
         })
     };
 
+    // Run the interpreter on a blocking thread: a synchronous CPU-bound script or
+    // a catastrophic-backtracking regex (which quickjs-ng polls only every ~10k
+    // steps) must NOT monopolize a tokio async worker — that would also starve
+    // the watchdog task that sets the cancel flag. The watchdog stays on the
+    // main runtime (spawned above) so it is always schedulable.
+    let script_owned = script.to_string();
+    let limits = req.caps.runtime.clone();
+    let cancel_for_eval = cancel.clone();
     let bindings_for_inject = bindings.clone();
-    let inject = move |ctx: &rquickjs::Ctx<'_>| {
-        host_bridge::install(ctx, &bindings_for_inject, dispatch_fn.clone())
-    };
-
-    let outcome = runtime::evaluate(script, &req.caps.runtime, cancel.clone(), inject).await;
+    let outcome = tokio::task::spawn_blocking(move || {
+        let local = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            Ok(rt) => rt,
+            Err(e) => {
+                return runtime::JsOutcome {
+                    value: serde_json::Value::Null,
+                    console: Vec::new(),
+                    error: Some(runtime::JsError {
+                        message: format!("run_js runtime init failed: {e}"),
+                        line: None,
+                    }),
+                    truncated_output: false,
+                };
+            }
+        };
+        local.block_on(runtime::evaluate(&script_owned, &limits, cancel_for_eval, move |ctx| {
+            host_bridge::install(ctx, &bindings_for_inject, dispatch_fn)
+        }))
+    })
+    .await
+    .unwrap_or_else(|_| runtime::JsOutcome {
+        value: serde_json::Value::Null,
+        console: Vec::new(),
+        error: Some(runtime::JsError {
+            message: "run_js execution task failed".to_string(),
+            line: None,
+        }),
+        truncated_output: false,
+    });
 
     // Stop the watchdog.
     cancel.store(true, Ordering::Relaxed);

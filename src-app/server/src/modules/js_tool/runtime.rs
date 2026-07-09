@@ -82,10 +82,14 @@ fn wrap_script(script: &str, output_cap: usize) -> String {
     // reports exactly one result. `undefined` collapses to JSON `null`.
     //
     // Two hardening steps:
-    // - Capture `__ziee_set_result` and DELETE the global before running the
-    //   user body, so the script can't pre-empt/hijack its own result (audit).
+    // - Capture `__ziee_set_result` and DELETE the global handle before running
+    //   the user body (defense-in-depth: removes the obvious way to touch it;
+    //   the internal `__set`/`__emit` closure refs remain, but forging one's own
+    //   result is self-harm only and grants nothing beyond `return`).
     // - Cap the serialized result JS-SIDE (before it crosses the FFI boundary)
     //   so a huge return value isn't materialized twice in host memory (audit).
+    //   The `__ziee_truncated` marker key is collision-proof so a user value with
+    //   a plain `_truncated` field can't spoof the truncation flag.
     format!(
         r#"(async () => {{
   const __set = globalThis.__ziee_set_result;
@@ -93,7 +97,7 @@ fn wrap_script(script: &str, output_cap: usize) -> String {
   const __emit = (obj) => {{
     let __p = JSON.stringify(obj);
     if (__p.length > {cap}) {{
-      __p = JSON.stringify({{ ok: {{ _truncated: true, _bytes: __p.length, preview: __p.slice(0, 2000) }} }});
+      __p = JSON.stringify({{ ok: {{ __ziee_truncated: true, _bytes: __p.length, preview: __p.slice(0, 2000) }} }});
     }}
     __set(__p);
   }};
@@ -117,7 +121,10 @@ fn wrap_script(script: &str, output_cap: usize) -> String {
 /// The JS prelude wiring `console.*` to the Rust capture sink `__ziee_log`.
 const CONSOLE_PRELUDE: &str = r#"
 globalThis.console = {
-  log:   (...a) => __ziee_log(a.map(x => { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (_) { return String(x); } }).join(' ')),
+  // `.slice(0, 65536)` bounds the string JS-SIDE before it crosses the FFI
+  // boundary, so a `console.log('x'.repeat(60e6))` can't materialize a ~60 MB
+  // transient host String (the host sink is separately byte-capped for total).
+  log:   (...a) => __ziee_log(a.map(x => { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (_) { return String(x); } }).join(' ').slice(0, 65536)),
 };
 globalThis.console.info = globalThis.console.log;
 globalThis.console.warn = globalThis.console.log;
@@ -347,8 +354,10 @@ where
                     // The wrapper caps oversized results JS-side (emitting a
                     // `{_truncated:true,...}` marker); host cap_output is the
                     // backstop. Either firing means the output was truncated.
-                    let js_truncated =
-                        raw.get("_truncated").and_then(|t| t.as_bool()).unwrap_or(false);
+                    let js_truncated = raw
+                        .get("__ziee_truncated")
+                        .and_then(|t| t.as_bool())
+                        .unwrap_or(false);
                     let (value, host_truncated) = cap_output(raw, limits.output_bytes);
                     JsOutcome {
                         value,

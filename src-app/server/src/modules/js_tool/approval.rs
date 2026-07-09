@@ -46,6 +46,7 @@ pub enum GateDecision {
 /// - otherwise the conversation's `ApprovalMode` + the per-tool allowlist decide.
 pub fn gate(
     is_builtin: bool,
+    is_control: bool,
     is_control_mutating: bool,
     mode: ApprovalMode,
     is_auto_approved: bool,
@@ -59,13 +60,20 @@ pub fn gate(
     //    BEFORE any control/approval classification. Without this, a mutating
     //    `control` tool (deliberately NOT a built-in) would get an approval
     //    prompt inside a script even though MCP is off — a confused-deputy
-    //    bypass of the Disabled contract (security audit, medium).
+    //    bypass of the Disabled contract (security audit).
     if matches!(mode, ApprovalMode::Disabled) {
         return GateDecision::Deny;
     }
-    // 3. A mutating control call always needs approval (overrides AutoApprove).
-    if is_control_mutating {
-        return GateDecision::NeedApproval;
+    // 3. Control is classified SOLELY by control_call_needs_approval, bypassing
+    //    the mode/allowlist — exactly like the normal loop's `is_control` branch:
+    //    a mutating call needs approval (overrides AutoApprove), a read-only one
+    //    auto-runs (no prompt even under ManualApprove).
+    if is_control {
+        return if is_control_mutating {
+            GateDecision::NeedApproval
+        } else {
+            GateDecision::Allow
+        };
     }
     match mode {
         ApprovalMode::AutoApprove => GateDecision::Allow,
@@ -182,26 +190,32 @@ pub async fn request_approval(
 mod tests {
     use super::*;
 
-    // TEST-14: the gate decision matches the normal loop.
+    // TEST-14: the gate decision matches the normal loop. Args:
+    // gate(is_builtin, is_control, is_control_mutating, mode, is_auto_approved).
     #[test]
     fn test_gate_decision_matches_normal_loop() {
         // Built-in server → bypass (no prompt), regardless of mode.
-        assert_eq!(gate(true, false, ApprovalMode::ManualApprove, false), GateDecision::Allow);
-        assert_eq!(gate(true, false, ApprovalMode::Disabled, false), GateDecision::Allow);
+        assert_eq!(gate(true, false, false, ApprovalMode::ManualApprove, false), GateDecision::Allow);
+        assert_eq!(gate(true, false, false, ApprovalMode::Disabled, false), GateDecision::Allow);
 
         // Control-mutating → always prompt, even under AutoApprove.
-        assert_eq!(gate(false, true, ApprovalMode::AutoApprove, true), GateDecision::NeedApproval);
+        assert_eq!(gate(false, true, true, ApprovalMode::AutoApprove, true), GateDecision::NeedApproval);
+        // Control READ-ONLY → auto-run (no prompt) even under ManualApprove, like
+        // the normal loop's is_control branch.
+        assert_eq!(gate(false, true, false, ApprovalMode::ManualApprove, false), GateDecision::Allow);
+        // Control-mutating under Disabled → DENY (Disabled beats control).
+        assert_eq!(gate(false, true, true, ApprovalMode::Disabled, false), GateDecision::Deny);
 
-        // ManualApprove, not allowlisted → prompt.
-        assert_eq!(gate(false, false, ApprovalMode::ManualApprove, false), GateDecision::NeedApproval);
+        // ManualApprove non-control, not allowlisted → prompt.
+        assert_eq!(gate(false, false, false, ApprovalMode::ManualApprove, false), GateDecision::NeedApproval);
         // ManualApprove, allowlisted → allow.
-        assert_eq!(gate(false, false, ApprovalMode::ManualApprove, true), GateDecision::Allow);
+        assert_eq!(gate(false, false, false, ApprovalMode::ManualApprove, true), GateDecision::Allow);
 
         // AutoApprove non-builtin → allow.
-        assert_eq!(gate(false, false, ApprovalMode::AutoApprove, false), GateDecision::Allow);
+        assert_eq!(gate(false, false, false, ApprovalMode::AutoApprove, false), GateDecision::Allow);
 
         // Disabled non-builtin → deny.
-        assert_eq!(gate(false, false, ApprovalMode::Disabled, false), GateDecision::Deny);
+        assert_eq!(gate(false, false, false, ApprovalMode::Disabled, false), GateDecision::Deny);
     }
 
     #[tokio::test]
