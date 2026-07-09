@@ -1601,11 +1601,11 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `HeaderActions` | 75 |
 | branch | `showFullPage` | 78 |
 | branch | `!hideHeader` | 122 |
-| branch | `tooLarge` | 136 |
-| branch | `isViewingOld` | 152 |
-| branch | `oldVersionText === null` | 154 |
-| branch | `tooLarge` | 169 |
-| branch | `Body` | 193 |
+| branch | `tooLarge` | 135 |
+| branch | `isViewingOld` | 151 |
+| branch | `oldVersionText === null` | 153 |
+| branch | `tooLarge` | 168 |
+| branch | `Body` | 192 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
