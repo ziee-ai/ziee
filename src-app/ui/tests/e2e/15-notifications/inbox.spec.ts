@@ -26,7 +26,8 @@ function notif(readAt: string | null) {
   }
 }
 
-test('inbox shows a notification and mark-read clears unread', async ({ page, baseURL }) => {
+test('inbox shows a notification and mark-read clears unread', async ({ page, testInfra }) => {
+  const { baseURL } = testInfra
   let read = false
 
   await page.route(/\/api\/notifications(\?.*)?$/, async route => {
@@ -44,7 +45,7 @@ test('inbox shows a notification and mark-read clears unread', async ({ page, ba
     route.fulfill({ status: 200, json: { unread: read ? 0 : 1 } }),
   )
 
-  await loginAsAdmin(page, baseURL as string)
+  await loginAsAdmin(page, baseURL)
   await page.goto(`${baseURL}/notifications`)
 
   // The notification renders.

@@ -42,7 +42,8 @@ function taskRow(name: string) {
   }
 }
 
-test('create a scheduled task from the drawer and see it listed', async ({ page, baseURL }) => {
+test('create a scheduled task from the drawer and see it listed', async ({ page, testInfra }) => {
+  const { baseURL } = testInfra
   let created: ReturnType<typeof taskRow> | null = null
 
   await page.route(/\/api\/scheduled-tasks$/, async (route, req) => {
@@ -56,7 +57,7 @@ test('create a scheduled task from the drawer and see it listed', async ({ page,
     await route.fulfill({ status: 200, json: created ? [created] : [] })
   })
 
-  await loginAsAdmin(page, baseURL as string)
+  await loginAsAdmin(page, baseURL)
   await page.goto(`${baseURL}/scheduled-tasks`)
 
   // Empty state first.
