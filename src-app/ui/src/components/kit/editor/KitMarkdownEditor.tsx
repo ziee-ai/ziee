@@ -5,15 +5,7 @@ import { BasicBlocksPlugin, BasicMarksPlugin } from '@platejs/basic-nodes/react'
 import { ListPlugin } from '@platejs/list/react'
 import { Plate, PlateContent, usePlateEditor } from 'platejs/react'
 import { markdownToEditor } from '@/modules/file/utils/markdownRoundtrip'
-
-/**
- * Imperative handle so the host (the canvas edit-mode) reads the current
- * markdown only on explicit Save — not on every keystroke (which would re-run
- * the full markdown serializer per character).
- */
-export interface KitMarkdownEditorHandle {
-  getMarkdown: () => string
-}
+import type { CanvasEditorHandle } from './types'
 
 interface KitMarkdownEditorProps {
   /** Initial markdown source (the file's head content). */
@@ -30,7 +22,7 @@ interface KitMarkdownEditorProps {
  * `LazyMarkdownEditor` so view-only users never pay the bundle cost.
  */
 export const KitMarkdownEditor = forwardRef<
-  KitMarkdownEditorHandle,
+  CanvasEditorHandle,
   KitMarkdownEditorProps
 >(function KitMarkdownEditor({ initialMarkdown, onDirty }, ref) {
   const editor = usePlateEditor({
@@ -38,7 +30,7 @@ export const KitMarkdownEditor = forwardRef<
     value: markdownToEditor(initialMarkdown),
   })
 
-  useImperativeHandle(ref, () => ({ getMarkdown: () => serializeMd(editor) }), [
+  useImperativeHandle(ref, () => ({ getContent: () => serializeMd(editor) }), [
     editor,
   ])
 

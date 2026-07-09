@@ -4,7 +4,9 @@ import { ApiClient } from '@/api-client'
 import type { File as FileEntity } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { LazyMarkdownEditor } from '@/components/kit/editor/LazyMarkdownEditor'
-import type { KitMarkdownEditorHandle } from '@/components/kit/editor/KitMarkdownEditor'
+import { LazyCodeEditor } from '@/components/kit/editor/LazyCodeEditor'
+import type { CanvasEditorHandle } from '@/components/kit/editor/types'
+import { editableKind } from '@/modules/file/utils/editableTypes'
 
 /**
  * The canvas edit-mode body: loads the file's head markdown, mounts the Plate
@@ -21,7 +23,8 @@ export function FileEditBody({
   const [text, setText] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const editorRef = useRef<KitMarkdownEditorHandle>(null)
+  const editorRef = useRef<CanvasEditorHandle>(null)
+  const kind = editableKind(file)
 
   useEffect(() => {
     let cancelled = false
@@ -40,10 +43,10 @@ export function FileEditBody({
   }, [file.id])
 
   const handleSave = async () => {
-    const md = editorRef.current?.getMarkdown() ?? ''
+    const content = editorRef.current?.getContent() ?? ''
     setSaving(true)
     try {
-      await Stores.FileVersions.appendVersion(file.id, md)
+      await Stores.FileVersions.appendVersion(file.id, content)
       message.success('Saved')
       onDone()
     } catch (e) {
@@ -65,11 +68,19 @@ export function FileEditBody({
   return (
     <div className="flex h-full flex-col" data-testid="canvas-edit-body">
       <div className="flex-1 overflow-hidden">
-        <LazyMarkdownEditor
-          ref={editorRef}
-          initialMarkdown={text}
-          onDirty={() => setDirty(true)}
-        />
+        {kind === 'code' ? (
+          <LazyCodeEditor
+            ref={editorRef}
+            initialText={text}
+            onDirty={() => setDirty(true)}
+          />
+        ) : (
+          <LazyMarkdownEditor
+            ref={editorRef}
+            initialMarkdown={text}
+            onDirty={() => setDirty(true)}
+          />
+        )}
       </div>
       <div className="flex items-center justify-end gap-2 border-border border-t px-3 py-2">
         <Button

@@ -1,6 +1,6 @@
 import { forwardRef, lazy, Suspense } from 'react'
 import { Spin } from '@/components/ui'
-import type { KitMarkdownEditorHandle } from './KitMarkdownEditor'
+import type { CanvasEditorHandle } from './types'
 
 /**
  * Lazy boundary for the Plate editor bundle (Plate + slate + remark). Mirrors
@@ -18,7 +18,7 @@ interface LazyMarkdownEditorProps {
 }
 
 export const LazyMarkdownEditor = forwardRef<
-  KitMarkdownEditorHandle,
+  CanvasEditorHandle,
   LazyMarkdownEditorProps
 >(function LazyMarkdownEditor(props, ref) {
   return (

@@ -10,13 +10,8 @@ import {
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { FileEditBody } from '@/modules/file/components/FileEditBody'
 import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
+import { editableKind } from '@/modules/file/utils/editableTypes'
 import { Stores } from '@/core/stores'
-
-/** Text types the canvas can edit in the WYSIWYG editor (v1: markdown only). */
-function isEditableMarkdown(file: FileEntity): boolean {
-  const ext = file.filename.split('.').pop()?.toLowerCase()
-  return ext === 'md' || ext === 'markdown' || file.mime_type === 'text/markdown'
-}
 
 /** Hard cap on previewable file size — the SINGLE outer OOM backstop that
  *  prevents even fetching a pathological file. Files above this never trigger a
@@ -83,7 +78,7 @@ export function FilePanelHeaderActions({
       {HeaderActions ? <HeaderActions file={file} /> : null}
       {/* Export-as (format conversion) for text deliverables — distinct from the
           plain Download of original bytes below. */}
-      {isEditableMarkdown(file) ? <FileExportMenu file={file} /> : null}
+      {editableKind(file) === 'markdown' ? <FileExportMenu file={file} /> : null}
       {/* Download is a shell-level affordance guaranteed for EVERY file type. */}
       <DownloadButton file={file} />
       {showFullPage ? <FullPageButton file={file} /> : null}
@@ -117,7 +112,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
   // Canvas edit mode — only offered for editable text types (markdown in v1) at
   // the head version. Entering edit replaces the read-only viewer body.
   const [editing, setEditing] = useState(false)
-  const canEdit = isEditableMarkdown(file) && !tooLarge
+  const canEdit = editableKind(file) !== null && !tooLarge
   const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
   // Read versionTextCache REACTIVELY so the body re-renders when the async text
   // load lands. getVersionText() reads via getState() + kicks off the load but
