@@ -614,7 +614,7 @@ const mcpExtension: ChatExtension = createExtension({
       // resolved state survives a component remount. Guard on !has() so a
       // double-delivered SSE frame can't reset an already-resolved entry to
       // 'pending' (which would re-show the buttons + allow a duplicate POST).
-      if (!Stores.McpComposer.elicitationRequests.has(data.elicitation_id)) {
+      if (!Stores.McpComposer.$.elicitationRequests.has(data.elicitation_id)) {
         Stores.McpComposer.addElicitationRequest({
           elicitation_id: data.elicitation_id,
           message: `run_js wants to call ${data.tool_name}`,
