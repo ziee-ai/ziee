@@ -27,6 +27,7 @@ mod mcp;
 mod memory;
 mod memory_mcp;
 mod onboarding;
+mod notification;
 mod project;
 mod scheduler;
 mod server_update;
