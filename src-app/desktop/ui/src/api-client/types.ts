@@ -77,6 +77,15 @@ export interface AttachDocumentsRequest {
   file_ids: string[]
 }
 
+/**
+ * Result of an attach operation — how many were newly linked vs skipped as
+ *  duplicates already in the KB (checksum dedup, DEC-36).
+ */
+export interface AttachDocumentsResult {
+  attached: number
+  skipped_duplicates: number
+}
+
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
@@ -1760,6 +1769,13 @@ export interface HideSkillInConversationRequest {
   conversation_id: string
 }
 
+export interface HighlightRect {
+  h: number
+  w: number
+  x: number
+  y: number
+}
+
 /** Deployment policy (singleton) — GET response. */
 export interface HostMountPolicyResponse {
   allow_readwrite: boolean
@@ -2275,6 +2291,19 @@ export interface IndexItem {
   version?: string
 }
 
+/**
+ * Per-KB rollup of document index states, so the UI can show
+ *  "all indexed / M indexing / K failed / P no-text" and gate grounding.
+ */
+export interface IndexingSummary {
+  failed: number
+  indexed: number
+  indexing: number
+  no_text: number
+  pending: number
+  total: number
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -2345,6 +2374,34 @@ export interface KeyFieldInfo {
   help?: string
   label: string
   required: boolean
+}
+
+/**
+ * A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),
+ *  never denormalized (an external file delete would drift a stored counter).
+ */
+export interface KnowledgeBase {
+  description?: string
+  created_at: string
+  document_count: number
+  id: string
+  /** Rollup of per-document index status (from `file_index_state`). */
+  indexing_summary: IndexingSummary
+  name: string
+  updated_at: string
+}
+
+/** One document in a KB, with its derived index status. */
+export interface KnowledgeBaseDocument {
+  added_at: string
+  chunk_count: number
+  file_id: string
+  filename: string
+  /**
+   * One of pending|indexing|indexed|failed|no_text (from `file_index_state`;
+   *  `pending` when no state row exists yet).
+   */
+  index_status: string
 }
 
 export interface LinkAccountRequest {
@@ -5393,6 +5450,16 @@ export interface TextRectsQuery {
   start: number
 }
 
+export interface TextRectsResponse {
+  page_h: number
+  /**
+   * Rects are fraction-normalized to the page (0..1), origin top-left, so the
+   *  UI overlays them on the page image without knowing the render scale.
+   */
+  page_w: number
+  rects: HighlightRect[]
+}
+
 /** Metadata for thinking content */
 export interface ThinkingMetadata {
   /** Opaque data for a redacted-thinking block (Anthropic). */
@@ -6831,6 +6898,7 @@ export const ApiEndpoints = {
   'File.getPreview': 'GET /api/files/{file_id}/preview',
   'File.getRaw': 'GET /api/files/{file_id}/raw',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
+  'File.getTextRects': 'GET /api/files/{file_id}/text-rects',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
@@ -6884,6 +6952,21 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'KnowledgeBase.attachConversation': 'PUT /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.attachDocuments': 'POST /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.attachProject': 'PUT /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.create': 'POST /api/knowledge-bases',
+  'KnowledgeBase.delete': 'DELETE /api/knowledge-bases/{id}',
+  'KnowledgeBase.detachConversation': 'DELETE /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.detachProject': 'DELETE /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.get': 'GET /api/knowledge-bases/{id}',
+  'KnowledgeBase.list': 'GET /api/knowledge-bases',
+  'KnowledgeBase.listConversation': 'GET /api/conversations/{cid}/knowledge-bases',
+  'KnowledgeBase.listDocuments': 'GET /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.listProject': 'GET /api/projects/{pid}/knowledge-bases',
+  'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
+  'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
+  'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -7211,6 +7294,7 @@ export type ApiEndpointParameters = {
   'File.getPreview': { file_id: string; page?: number }
   'File.getRaw': { file_id: string }
   'File.getTextContent': { file_id: string; page?: number }
+  'File.getTextRects': { file_id: string; end: number; page: number; start: number }
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
@@ -7264,6 +7348,21 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'KnowledgeBase.attachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.attachDocuments': { id: string } & AttachDocumentsRequest
+  'KnowledgeBase.attachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.create': CreateKnowledgeBaseRequest
+  'KnowledgeBase.delete': { id: string }
+  'KnowledgeBase.detachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.detachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.get': { id: string }
+  'KnowledgeBase.list': void
+  'KnowledgeBase.listConversation': { cid: string }
+  'KnowledgeBase.listDocuments': { id: string; limit?: number; offset?: number }
+  'KnowledgeBase.listProject': { pid: string }
+  'KnowledgeBase.reindexDocument': { id: string; file_id: string }
+  'KnowledgeBase.removeDocument': { id: string; file_id: string }
+  'KnowledgeBase.update': { id: string } & UpdateKnowledgeBaseRequest
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7591,6 +7690,7 @@ export type ApiEndpointResponses = {
   'File.getPreview': Blob
   'File.getRaw': Blob
   'File.getTextContent': Blob
+  'File.getTextRects': TextRectsResponse
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse
@@ -7644,6 +7744,21 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'KnowledgeBase.attachConversation': any
+  'KnowledgeBase.attachDocuments': AttachDocumentsResult
+  'KnowledgeBase.attachProject': any
+  'KnowledgeBase.create': KnowledgeBase
+  'KnowledgeBase.delete': any
+  'KnowledgeBase.detachConversation': any
+  'KnowledgeBase.detachProject': any
+  'KnowledgeBase.get': KnowledgeBase
+  'KnowledgeBase.list': KnowledgeBase[]
+  'KnowledgeBase.listConversation': KnowledgeBase[]
+  'KnowledgeBase.listDocuments': KnowledgeBaseDocument[]
+  'KnowledgeBase.listProject': KnowledgeBase[]
+  'KnowledgeBase.reindexDocument': any
+  'KnowledgeBase.removeDocument': any
+  'KnowledgeBase.update': KnowledgeBase
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings

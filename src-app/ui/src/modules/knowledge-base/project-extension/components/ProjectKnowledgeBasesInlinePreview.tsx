@@ -42,9 +42,9 @@ export function ProjectKnowledgeBasesInlinePreview() {
   return (
     <div>
       <div className="flex items-center mb-2">
-        <BookOpen className="mr-2" />
+        <BookOpen className="me-2" />
         <Text strong>Knowledge bases</Text>
-        <Text type="secondary" className="ml-2 !text-xs">
+        <Text type="secondary" className="ms-2 !text-xs">
           ({count ?? '—'})
         </Text>
       </div>
