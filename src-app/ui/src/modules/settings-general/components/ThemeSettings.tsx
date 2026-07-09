@@ -58,7 +58,7 @@ export function ThemeSettings() {
             </FieldDescription>
           </FieldContent>
           <div
-            className="flex flex-wrap gap-2 items-center"
+            className="flex flex-wrap gap-2 items-center justify-end"
             data-testid="settingsgen-accent-picker"
           >
             {ACCENT_ORDER.map(id => {
