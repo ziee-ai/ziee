@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 75,
+    "total": 76,
     "hosts": 56,
-    "triggers": 19,
+    "triggers": 20,
     "wiredOpen": 37
   },
   "hosts": [
@@ -941,6 +941,19 @@
         },
         {
           "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/knowledge-base/chat-extension/components/KbMenuItem",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
           "mode": "trigger"
         }
       ]

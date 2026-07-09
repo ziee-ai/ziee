@@ -7,9 +7,9 @@
 
 ## Summary
 
-- **331** surfaces carry at least one renderable-state signal.
-- **1917** signals total: 1510 branch, 116 empty, 98 error, 101 loading, 90 overlay, 2 panel.
-- **2** right-panel renderers registered (each a right-panel-open state).
+- **336** surfaces carry at least one renderable-state signal.
+- **1927** signals total: 1516 branch, 119 empty, 98 error, 101 loading, 90 overlay, 3 panel.
+- **3** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
@@ -17,10 +17,10 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 88 |
-| `empty` | 92 |
+| `empty` | 95 |
 | `error` | 77 |
 | `open` | 76 |
-| `panel-open` | 2 |
+| `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
 
@@ -31,6 +31,7 @@ conversation page.
 | panel type | registered in |
 |---|---|
 | `file` | `modules/file/chat-extension/extension`:151 |
+| `kb_source` | `modules/knowledge-base/chat-extension/extension`:45 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
 
 ## Slot registrations
@@ -2281,6 +2282,51 @@ Required states: `delayed`, `empty`
 | loading | `loading && items.length === 0` | 49 |
 | empty | `filtered.length === 0` | 90 |
 | branch | `searchTerm \|\| selectedTags.length > 0` | 91 |
+
+### `modules/knowledge-base/chat-extension/components/KbMenuItem`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `kbs.length === 0` | 19 |
+
+### `modules/knowledge-base/chat-extension/components/KbSourcePanel`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!file` | 32 |
+
+### `modules/knowledge-base/chat-extension/components/KbStatusRow`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `visibleIds.length === 0` | 15 |
+
+### `modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `content.content_type !== 'tool_result'` | 39 |
+| branch | `block.name !== 'search_knowledge'` | 41 |
+| branch | `!sc \|\| !Array.isArray(sc.hits)` | 43 |
+| branch | `incomplete` | 76 |
+| empty | `sc.hits.length === 0` | 84 |
+| branch | `c.content_type !== 'tool_result'` | 137 |
+
+### `modules/knowledge-base/chat-extension/extension`
+
+Required states: `panel-open`
+
+| kind | condition | line |
+|---|---|---|
+| panel | `registerPanelRenderer('kb_source')` | 45 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseCard`
 

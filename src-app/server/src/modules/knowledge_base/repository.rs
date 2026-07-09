@@ -570,6 +570,92 @@ impl KnowledgeBaseRepository {
         Ok(rows)
     }
 
+    /// Full KB rows DIRECTLY attached to a conversation (the
+    /// `conversation_knowledge_bases` join only — project-inherited KBs are
+    /// surfaced on the project, not here, since detach operates on direct rows).
+    /// Owner-scoped. Enriched with document_count + indexing_summary like `list`.
+    pub async fn attached_kbs_for_conversation(
+        &self,
+        user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Vec<KnowledgeBase>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT kb.id, kb.name, kb.description,
+                   kb.created_at AS "created_at: chrono::DateTime<chrono::Utc>",
+                   kb.updated_at AS "updated_at: chrono::DateTime<chrono::Utc>",
+                   (SELECT COUNT(*) FROM knowledge_base_documents d
+                    WHERE d.knowledge_base_id = kb.id) AS "document_count!"
+            FROM knowledge_bases kb
+            JOIN conversation_knowledge_bases c ON c.knowledge_base_id = kb.id
+            WHERE kb.user_id = $1 AND c.conversation_id = $2
+            ORDER BY kb.updated_at DESC
+            "#,
+            user_id,
+            conversation_id,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let indexing_summary = self.indexing_summary(r.id).await?;
+            out.push(KnowledgeBase {
+                id: r.id,
+                name: r.name,
+                description: r.description,
+                document_count: r.document_count,
+                indexing_summary,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Full KB rows attached to a project (owner-scoped). Same enrichment as
+    /// `list`; drives the project "Knowledge bases" extension panel.
+    pub async fn attached_kbs_for_project(
+        &self,
+        user_id: Uuid,
+        project_id: Uuid,
+    ) -> Result<Vec<KnowledgeBase>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT kb.id, kb.name, kb.description,
+                   kb.created_at AS "created_at: chrono::DateTime<chrono::Utc>",
+                   kb.updated_at AS "updated_at: chrono::DateTime<chrono::Utc>",
+                   (SELECT COUNT(*) FROM knowledge_base_documents d
+                    WHERE d.knowledge_base_id = kb.id) AS "document_count!"
+            FROM knowledge_bases kb
+            JOIN project_knowledge_bases p ON p.knowledge_base_id = kb.id
+            WHERE kb.user_id = $1 AND p.project_id = $2
+            ORDER BY kb.updated_at DESC
+            "#,
+            user_id,
+            project_id,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let indexing_summary = self.indexing_summary(r.id).await?;
+            out.push(KnowledgeBase {
+                id: r.id,
+                name: r.name,
+                description: r.description,
+                document_count: r.document_count,
+                indexing_summary,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+            });
+        }
+        Ok(out)
+    }
+
     /// Filenames for a set of (owner's) file_ids, for rendering search hits.
     pub async fn filenames_for(
         &self,

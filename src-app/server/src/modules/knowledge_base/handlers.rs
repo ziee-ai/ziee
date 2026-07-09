@@ -480,3 +480,29 @@ pub async fn detach_project(
 pub fn detach_project_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.detachProject").summary("Detach a KB from a project.")
 }
+
+/// KBs directly attached to a conversation — drives the composer's attach chip
+/// (current state on load/reload). Owner-scoped.
+pub async fn list_conversation_kbs(
+    auth: RequirePermissions<(KnowledgeBaseUse,)>,
+    Path(cid): Path<Uuid>,
+) -> ApiResult<Json<Vec<KnowledgeBase>>> {
+    let kbs = Repos.knowledge_base.attached_kbs_for_conversation(auth.user.id, cid).await?;
+    Ok((StatusCode::OK, Json(kbs)))
+}
+pub fn list_conversation_kbs_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.listConversation").summary("List KBs attached to a conversation.").response::<200, Json<Vec<KnowledgeBase>>>()
+}
+
+/// KBs attached to a project — drives the project "Knowledge bases" extension.
+/// Owner-scoped.
+pub async fn list_project_kbs(
+    auth: RequirePermissions<(KnowledgeBaseUse,)>,
+    Path(pid): Path<Uuid>,
+) -> ApiResult<Json<Vec<KnowledgeBase>>> {
+    let kbs = Repos.knowledge_base.attached_kbs_for_project(auth.user.id, pid).await?;
+    Ok((StatusCode::OK, Json(kbs)))
+}
+pub fn list_project_kbs_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.listProject").summary("List KBs attached to a project.").response::<200, Json<Vec<KnowledgeBase>>>()
+}

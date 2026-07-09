@@ -38,11 +38,19 @@ pub fn knowledge_base_router() -> ApiRouter {
             "/knowledge-bases/{id}/documents/{file_id}/reindex",
             post_with(handlers::reindex_document, handlers::reindex_document_docs),
         )
-        // Attach to conversation / project.
+        // Attach to conversation / project (+ list attached).
+        .api_route(
+            "/conversations/{cid}/knowledge-bases",
+            get_with(handlers::list_conversation_kbs, handlers::list_conversation_kbs_docs),
+        )
         .api_route(
             "/conversations/{cid}/knowledge-bases/{kb_id}",
             put_with(handlers::attach_conversation, handlers::attach_conversation_docs)
                 .delete_with(handlers::detach_conversation, handlers::detach_conversation_docs),
+        )
+        .api_route(
+            "/projects/{pid}/knowledge-bases",
+            get_with(handlers::list_project_kbs, handlers::list_project_kbs_docs),
         )
         .api_route(
             "/projects/{pid}/knowledge-bases/{kb_id}",

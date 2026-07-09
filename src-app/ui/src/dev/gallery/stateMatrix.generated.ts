@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 331 surfaces carry renderable-state signals; 1917 signals total.
+// 336 surfaces carry renderable-state signals; 1927 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2068,6 +2068,46 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "searchTerm || selectedTags.length > 0", line: 91 },
     ],
   },
+  "modules/knowledge-base/chat-extension/components/KbMenuItem": {
+    surface: "modules/knowledge-base/chat-extension/components/KbMenuItem",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "empty", condition: "kbs.length === 0", line: 19 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/KbSourcePanel": {
+    surface: "modules/knowledge-base/chat-extension/components/KbSourcePanel",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!file", line: 32 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/KbStatusRow": {
+    surface: "modules/knowledge-base/chat-extension/components/KbStatusRow",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "empty", condition: "visibleIds.length === 0", line: 15 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard": {
+    surface: "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "content.content_type !== 'tool_result'", line: 39 },
+      { kind: "branch", condition: "block.name !== 'search_knowledge'", line: 41 },
+      { kind: "branch", condition: "!sc || !Array.isArray(sc.hits)", line: 43 },
+      { kind: "branch", condition: "incomplete", line: 76 },
+      { kind: "empty", condition: "sc.hits.length === 0", line: 84 },
+      { kind: "branch", condition: "c.content_type !== 'tool_result'", line: 137 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/extension": {
+    surface: "modules/knowledge-base/chat-extension/extension",
+    requiredStates: ["panel-open"],
+    signals: [
+      { kind: "panel", condition: "registerPanelRenderer('kb_source')", line: 45 },
+    ],
+  },
   "modules/knowledge-base/components/KnowledgeBaseCard": {
     surface: "modules/knowledge-base/components/KnowledgeBaseCard",
     requiredStates: ["open"],
@@ -3944,6 +3984,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
 /** Right-panel renderers — each is a distinct right-panel-open state to render. */
 export const PANEL_RENDERERS: PanelRegistration[] = [
   { type: "file", surface: "modules/file/chat-extension/extension", line: 151 },
+  { type: "kb_source", surface: "modules/knowledge-base/chat-extension/extension", line: 45 },
   { type: "literature", surface: "modules/literature/chat-extension/extension", line: 27 },
 ]
 
@@ -3989,7 +4030,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 335 keys.
+ * 339 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4135,6 +4176,10 @@ export type RequiredState =
   | "modules/hub/modules/workflow/components/WorkflowHubCard:open"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:empty"
+  | "modules/knowledge-base/chat-extension/components/KbMenuItem:empty"
+  | "modules/knowledge-base/chat-extension/components/KbStatusRow:empty"
+  | "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard:empty"
+  | "modules/knowledge-base/chat-extension/extension:panel-open"
   | "modules/knowledge-base/components/KnowledgeBaseCard:open"
   | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty"
   | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error"
@@ -4473,6 +4518,10 @@ export const REQUIRED_STATE_KEYS = [
   "modules/hub/modules/workflow/components/WorkflowHubCard:open",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:empty",
+  "modules/knowledge-base/chat-extension/components/KbMenuItem:empty",
+  "modules/knowledge-base/chat-extension/components/KbStatusRow:empty",
+  "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard:empty",
+  "modules/knowledge-base/chat-extension/extension:panel-open",
   "modules/knowledge-base/components/KnowledgeBaseCard:open",
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty",
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error",

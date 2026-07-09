@@ -6704,7 +6704,9 @@ export const ApiEndpoints = {
   'KnowledgeBase.detachProject': 'DELETE /api/projects/{pid}/knowledge-bases/{kb_id}',
   'KnowledgeBase.get': 'GET /api/knowledge-bases/{id}',
   'KnowledgeBase.list': 'GET /api/knowledge-bases',
+  'KnowledgeBase.listConversation': 'GET /api/conversations/{cid}/knowledge-bases',
   'KnowledgeBase.listDocuments': 'GET /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.listProject': 'GET /api/projects/{pid}/knowledge-bases',
   'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
   'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
   'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
@@ -7072,7 +7074,9 @@ export type ApiEndpointParameters = {
   'KnowledgeBase.detachProject': { pid: string; kb_id: string }
   'KnowledgeBase.get': { id: string }
   'KnowledgeBase.list': void
+  'KnowledgeBase.listConversation': { cid: string }
   'KnowledgeBase.listDocuments': { id: string; limit?: number; offset?: number }
+  'KnowledgeBase.listProject': { pid: string }
   'KnowledgeBase.reindexDocument': { id: string; file_id: string }
   'KnowledgeBase.removeDocument': { id: string; file_id: string }
   'KnowledgeBase.update': { id: string } & UpdateKnowledgeBaseRequest
@@ -7440,7 +7444,9 @@ export type ApiEndpointResponses = {
   'KnowledgeBase.detachProject': any
   'KnowledgeBase.get': KnowledgeBase
   'KnowledgeBase.list': KnowledgeBase[]
+  'KnowledgeBase.listConversation': KnowledgeBase[]
   'KnowledgeBase.listDocuments': KnowledgeBaseDocument[]
+  'KnowledgeBase.listProject': KnowledgeBase[]
   'KnowledgeBase.reindexDocument': any
   'KnowledgeBase.removeDocument': any
   'KnowledgeBase.update': KnowledgeBase
