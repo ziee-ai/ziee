@@ -1,134 +1,124 @@
-# PLAN — artifacts-deliverables (v5: WYSIWYG + code/CSV editing + diff + pin + image + multi-format)
+# PLAN — artifacts-deliverables
 
-**Goal:** let users get FINISHED WORK OUT of the app — a persistent, versioned,
-co-editable **deliverable** beside the chat, edited in a **rich WYSIWYG editor**, and
-exportable to md/docx/pdf.
+**Goal.** Let users get FINISHED WORK OUT of the app. Today a deliverable (a report,
+a table, a script) is trapped in the chat transcript. This feature makes it a
+persistent, versioned, **co-editable deliverable** that lives beside the chat in a
+canvas, and lets the user **export** any deliverable — or a whole conversation — to
+real handoff formats (md / docx / pdf / odt / rtf / html).
 
-**Substrate already present (reused, not rebuilt):** `files_mcp`
-(`create_file`/`edit_file`/`rewrite_file` — the agent authoring surface, unique
-`old_str`→`new_str`, appends restorable versions); `file_versions` +
-`commit_new_version` (append-only, content-addressed, restorable); the `file`
-right-panel + `FileVersionBar` (view + restore); `SyncEntity::File`; embedded
-pandoc+typst; `create_file` stamps `source_message_id` (conversation↔file derivable).
-→ No new artifacts table, no new MCP, no new permission, **zero migrations**.
+**Reuse-first thesis (from a code-level substrate study).** Most of the machinery
+already exists and is reused, not rebuilt:
+- `files_mcp` already gives the **agent** authoring surface — `create_file` /
+  `edit_file` (unique `old_str`→`new_str`, appends a restorable version) /
+  `edit_file_lines` / `rewrite_file` — and stamps `source_message_id`.
+- `file_versions` + `commit_new_version` already give append-only, content-addressed,
+  restorable versioning; `SyncEntity::File` already syncs it.
+- The `file` right-panel + `FileVersionBar` already render + restore any file; the
+  viewer registry renders markdown / tabular / pdf / image / code.
+- Embedded pandoc + typst already export; `create_file` provenance already links a file
+  to its conversation.
 
-**The missing top layer this plan builds:**
-1. **User editing** — the panel is read-only today and no user REST appends content.
-   Now: a **rich WYSIWYG markdown editor** in the canvas + a user append-version endpoint.
-2. **Deliverable framing** — auto-open the canvas on model authoring; a derived
-   "deliverables in this conversation" list.
-3. **Export** — user-facing md/docx/pdf for a file, and whole-conversation export.
+**So the feature builds the missing top layer:** user editing (rich per type), a
+deliverable-framed canvas, and export — plus the requested robustness (multi-file
+safety, selection→LLM) and curation (pin), reusing the substrate throughout.
 
-**Editor choice (see DEC-6):** **Plate (`platejs`) + `@platejs/markdown`**, lazy-loaded,
-adopted into the kit. Rationale: it is the strongest React + shadcn/ui fit (ships
-shadcn/Radix components under a component-ownership model that matches this repo's kit),
-and round-trips the GFM subset our Streamdown pipeline already renders. The file's
-markdown stays the source of truth; the editor deserializes it on open and serializes
-back to GFM markdown on save.
+**Editors chosen (DEC-6/20/21):** `markdown` → **Plate** (`platejs` + `@platejs/markdown`);
+`code` → **CodeMirror**; `csv` → an **editable grid** extending the tabular viewer. The
+file's native content (markdown / source / CSV) stays canonical; editors round-trip to it.
 
 ## Items
 
-- **ITEM-1**: User append-version REST — `POST /api/files/{id}/versions` (JSON `{content}`) → `file::versioning::commit_new_version(created_by='user', source_message_id=None)`; ownership-scoped (cross-user → 404); gated like `restore_version`; emits `SyncEntity::File`. The one genuinely-absent backend write primitive.
-- **ITEM-2**: `file::utils::pandoc::convert_to_docx(input, output)` — sibling of `convert_to_pdf` (`pandoc <in> -o <out.docx>`, native docx writer, `spawn_blocking` + `tokio::time::timeout(PANDOC_TIMEOUT)`).
-- **ITEM-3**: User-facing file export `GET /api/files/{id}/export?format=md|docx|pdf` — head text; `md` raw, `docx`/`pdf` via pandoc; streamed attachment via `content_disposition`; ownership-scoped. Distinct from the model-only `convert_document` (that saves; this downloads).
-- **ITEM-4**: Conversation→markdown serializer + `GET /api/conversations/{id}/export?format=md|docx|pdf` (`modules/chat/core/export.rs`) — `## User`/`## Assistant` headers; text as prose; `tool_use`/`tool_result`/`thinking`/code fenced; `file_attachment`/`image` as links; extends `summarizer::message_to_summarizable`; streamed attachment; gated `conversations::read` + ownership.
-- **ITEM-5**: Derived deliverables list — `GET /api/conversations/{id}/deliverables` returns files the model authored in the conversation (`file_versions.source_message_id` ∈ conversation, `created_by IN ('mcp','llm')`), reusing `available_files` ownership scoping. No new table.
-- **ITEM-6**: Adopt the WYSIWYG editor into the kit — add `platejs` + `@platejs/markdown` (+ peer plugins) to BOTH ui workspaces; stand up a **lazy-loaded** `KitMarkdownEditor` (mirrors `LazyStreamdown`) composed from Plate's shadcn components adopted into `components/kit/` with design tokens, required unique `data-testid`s, and biome-guardrail allowances; feature set constrained to the GFM constructs Streamdown renders (headings, bold/italic/strike, lists, task lists, tables, fenced code, links, blockquotes, images) + a formatting toolbar.
-- **ITEM-7**: Markdown round-trip layer — `markdownToEditor(md)` on open and `editorToMarkdown(value)` on save via `@platejs/markdown`, constrained to the Streamdown-compatible GFM subset, with a normalize-on-save pass so saves produce minimal, stable diffs and the file's markdown stays canonical. Unknown/unsupported constructs are preserved verbatim (never silently dropped).
-- **ITEM-8**: Wire the editor into the canvas — add a **view/edit toggle** to the `file` panel (`FilePanel.tsx`); for `markdown` files, Edit mounts `KitMarkdownEditor` seeded via ITEM-7; **Save** serializes → `Stores.File`/`Stores.FileVersions` `appendVersion` action calling ITEM-1; `FileVersionBar` reflects the new head. `code`/`csv`/binary types stay **view + export** (direct user editing deferred; the model still edits them via `files_mcp`). View mode keeps the existing Streamdown/viewer renderer.
-- **ITEM-9**: Auto-open the canvas on model authoring — in the file chat-extension's `tool_result` renderer, first appearance of a `create_file`/`rewrite_file` result calls `displayInRightPanel({ type:'file', data:{ fileId } })`; the inline preview + manual "Open in side panel" remain.
-- **ITEM-10**: Export affordances — an "Export as… (md/docx/pdf)" menu in the file-panel header (hits ITEM-3) and an "Export conversation" menu in the chat header (hits ITEM-4).
-- **ITEM-11**: Design-system + coverage — run `shadcn-component-discovery`/`shadcn-component-review` on the adopted editor + toolbar; register gallery/`STATE_MATRIX` cells for the canvas states (view / edit-empty / edit-with-content / saving / error) and the toolbar; satisfy `check:kit-manifest`, `check:testid-registry`, `check:design-spec`, `check:state-matrix`, `check:gallery-coverage`, and `gate:ui` (runtime-health, AA contrast, a11y-name on every toolbar control, Layer A/axe) in BOTH `ui` and `desktop/ui`.
-- **ITEM-12**: OpenAPI + TS regen + desktop parity — `just openapi-regen` for the four new endpoints in both workspaces; mirror the editor + panel edits into `src-app/desktop/ui/`; verify `npm run check` in both `ui` and `desktop/ui`.
-- **ITEM-13**: Multi-file / dirty-state safety — the right panel is already tabbed (`rightPanel.tabs[]`), so multiple open deliverables = multiple tabs for free. Add a **per-tab dirty flag** while a canvas is in Edit mode and an **unsaved-changes guard** (Save / Discard / Cancel) when the user switches the active tab, closes a tab, or navigates away. Track edit-mode state per `fileId` so switching tabs never silently drops edits.
-- **ITEM-14**: Concurrent-edit reconciliation (UI) — while a canvas is in Edit mode, subscribe to `sync:file` for the open `fileId`; if the head version advances underneath the editor (a model `edit_file`/`rewrite_file`, or another device), show a non-destructive banner — **"This document changed · Reload latest / Keep my changes (save as new version)"** — comparing the editor's base version to the new head. Never silently overwrite; a "keep mine" simply appends a new head via ITEM-1 (last-writer-new-version, nothing lost). Data-layer safety already holds (DEC-4 row-lock); this is the missing UI half.
-- **ITEM-15**: Selection → ask (Q&A, non-mutating) — a **selection popover** in the canvas (view and edit) with **"Ask about this"**: the selected text is threaded into the chat composer as a quoted context block referencing the file; the model answers in chat. No document mutation, no new backend (reuses the existing message-send + the file already being in `available_files`).
-- **ITEM-16**: Selection → edit (scoped, mutating) — a **"Edit this section"** action in the same popover: sends the selected text + the user's instruction so the model performs a **targeted `edit_file(old_str=<selection>)`** (the selection is the unique match), landing as a new version in the canvas. Frontend composes the structured request; reuses `files_mcp::edit_file` + the canvas auto-refresh on `sync:file`. No new backend endpoint (a small structured-context field on the send is the only wire change, picked up by regen).
-- **ITEM-17**: Pin-as-deliverable (backend) — migration `132_create_conversation_deliverables.sql`: link table `conversation_deliverables(conversation_id, file_id, pinned BOOL NOT NULL DEFAULT true, title TEXT NULL, created_at)` (composite PK, both FKs `ON DELETE CASCADE`; `pinned=false` = user-hidden). `POST/DELETE /api/conversations/{id}/deliverables/{file_id}` to pin/unpin; the ITEM-5 list becomes **derived (model-authored) ∪ curated (pinned), minus hidden**. New owner-scoped `SyncEntity::Deliverable` emitted on pin/unpin. Mirrors `project_files`.
-- **ITEM-18**: Pin-as-deliverable (frontend) — a pin/unpin toggle in the deliverables list + the canvas header; the list refetches on `sync:deliverable` (self-gated). Lets users curate what counts as a deliverable (promote an upload, hide noise).
-- **ITEM-19**: Code editing — a **CodeMirror** edit-mode for `code` files (plain-text, no markdown round-trip risk), lazy-loaded + kit-adopted, with syntax highlighting; Save → append version via ITEM-1. Editable-types set expands to `markdown` (Plate), `code` (CodeMirror).
-- **ITEM-20**: CSV editing — an **editable data grid** edit-mode for `csv` files, extending the existing kit Table / tabular viewer (PR #119) into an editable grid; parse CSV → grid, edit cells/rows, serialize grid → CSV on Save → append version. Editable-types set adds `csv`.
-- **ITEM-21**: Image upload/paste embed — in the markdown WYSIWYG, drag-drop or paste an image → upload via the existing `POST /api/files/upload` → insert a markdown image reference at the cursor; reuses the upload path + the round-trip layer (image stays a markdown link so it survives serialize).
-- **ITEM-22**: Version-diff view — a **Compare** affordance in `FileVersionBar` that renders an added/removed line (or word) diff between two selected versions for text/markdown/code, reusing the existing `GET /api/files/{id}/versions/{v}/text`; frontend-only (a diff lib), no backend.
-- **ITEM-23**: Extra export formats — generalize `convert_to_docx` into `convert_to(format)` covering `docx|odt|rtf|html` (native pandoc writers) alongside `pdf` (typst) and raw `md`; extend the `format` query param on the ITEM-3 (file) + ITEM-4 (conversation) export endpoints and the export menus.
+### Backend — user editing + versioning
+- **ITEM-1**: User append-version REST — `POST /api/files/{id}/versions` (`{content}`) → `file::versioning::commit_new_version(created_by='user')`; ownership-scoped (cross-user → 404); gated like `restore_version`; emits `SyncEntity::File`. The one genuinely-absent write primitive (the user half of co-edit).
+
+### Backend — export
+- **ITEM-2**: `file::utils::pandoc::convert_to(format, input, output)` — generalizes the reuse of `convert_to_pdf` to also emit `docx | odt | rtf | html` (native pandoc writers, no engine) and `pdf` (typst engine); same `spawn_blocking` + `tokio::time::timeout(PANDOC_TIMEOUT)` hardening.
+- **ITEM-3**: File export endpoint `GET /api/files/{id}/export?format=md|docx|pdf|odt|rtf|html` — head content; `md` raw, else via ITEM-2; streamed attachment via `content_disposition`; ownership-scoped. A user download (distinct from the model-only save-back `convert_document`).
+- **ITEM-4**: Conversation→markdown serializer + endpoint — `modules/chat/core/export.rs` renders messages to one markdown string (`## User`/`## Assistant` headers; text prose; `tool_use`/`tool_result`/`thinking`/code fenced; `file_attachment`/`image` links; extends `summarizer::message_to_summarizable`). `GET /api/conversations/{id}/export?format=…` streams it; gated `conversations::read` + ownership.
+- **ITEM-23**: Expose the widened `format` enum (`md|docx|pdf|odt|rtf|html`) on the ITEM-3 + ITEM-4 endpoints and the frontend export menus, backed by ITEM-2.
+
+### Backend — deliverables list + curation
+- **ITEM-5**: Derived deliverables base — a query returning files the model authored in a conversation (`file_versions.source_message_id` ∈ conversation, `created_by IN ('mcp','llm')`), reusing `available_files` ownership scoping.
+- **ITEM-17**: Pin-as-deliverable — migration `132_create_conversation_deliverables.sql` (`conversation_deliverables(conversation_id, file_id, pinned BOOL NOT NULL DEFAULT true, title TEXT NULL, created_at)`, composite PK, FKs `ON DELETE CASCADE`, `pinned=false`=hidden; mirrors `project_files`). `GET /api/conversations/{id}/deliverables` returns derived ∪ pinned − hidden; `POST/DELETE /api/conversations/{id}/deliverables/{file_id}` pin/unpin; owner-scoped `SyncEntity::Deliverable` on change.
+
+### Frontend — editors
+- **ITEM-6**: Adopt the WYSIWYG editor — add `platejs` + `@platejs/markdown` to BOTH ui workspaces; a lazy-loaded `KitMarkdownEditor` (mirrors `LazyStreamdown`) from Plate's shadcn components adopted into `components/kit/` with design tokens, unique `data-testid`s, and biome allowances; feature set constrained to the GFM subset Streamdown renders + a formatting toolbar.
+- **ITEM-7**: Markdown round-trip — `markdownToEditor(md)` on open, `editorToMarkdown(value)` on save via `@platejs/markdown`, constrained to the Streamdown-compatible subset, normalize-on-save for minimal diffs; unsupported constructs preserved verbatim (never dropped).
+- **ITEM-19**: Code editing — a lazy-loaded, kit-adopted **CodeMirror** edit-mode for `code` files (plain text, syntax highlighting, no round-trip risk); Save → append version (ITEM-1).
+- **ITEM-20**: CSV editing — an **editable data grid** edit-mode for `csv` files extending the tabular viewer (PR #119): parse CSV → grid, edit, serialize grid → CSV on Save → append version; reuse the viewer's CSV parser.
+- **ITEM-21**: Image upload/paste embed — in the markdown WYSIWYG, drag-drop/paste uploads via `POST /api/files/upload` (existing size/type limits) and inserts a markdown image reference (survives serialize as a link).
+
+### Frontend — canvas UX
+- **ITEM-8**: Canvas view/edit toggle — add a view/edit switch to the `file` panel (`FilePanel.tsx`); Edit mounts the type-appropriate editor (markdown/code/csv), seeded from the file; View reuses the existing Streamdown/viewer renderer + `FileVersionBar`.
+- **ITEM-9**: Auto-open — the file chat-extension's `tool_result` renderer opens the canvas on the FIRST `create_file`/`rewrite_file` result (`displayInRightPanel({type:'file', data:{fileId}})`); inline preview + manual "Open in side panel" remain.
+- **ITEM-10**: Export affordances — an "Export as… (md/docx/pdf/odt/rtf/html)" menu in the file-panel header (ITEM-3) and an "Export conversation" menu in the chat header (ITEM-4).
+- **ITEM-13**: Multi-file dirty-state safety — the right panel is already tabbed, so multiple deliverables = multiple tabs; add a per-tab dirty flag and an unsaved-changes guard (Save / Discard / Cancel) on tab switch, close, or navigate-away, keyed per `fileId`.
+- **ITEM-14**: Concurrent-edit reconciliation — while editing, watch `sync:file` for the open `fileId`; if the head advances (model `edit_file`/`rewrite_file` or another device), show a non-destructive banner (**Reload latest** / **Keep my changes** → append via ITEM-1). Never silently overwrite.
+- **ITEM-15**: Selection → query (non-mutating) — a selection popover in the canvas with "Ask about this": the selection is quoted into the chat composer as context referencing the file; the model answers in chat; no mutation, no new backend.
+- **ITEM-16**: Selection → edit (mutating) — "Edit this section" in the popover sends the selection + instruction so the model runs a targeted `edit_file(old_str=<selection>)` landing as a new version; degrades to instruction-only if the selection is not a unique substring; reuses `files_mcp::edit_file`.
+- **ITEM-18**: Pin/unpin UI — a pin toggle in the deliverables list + canvas header; the list refetches on `sync:deliverable` (self-gated). Users curate what counts as a deliverable (promote an upload, hide noise).
+- **ITEM-22**: Version-diff view — a "Compare" affordance in `FileVersionBar` rendering an added/removed diff between two versions for text/markdown/code, reusing `GET /api/files/{id}/versions/{v}/text`; frontend-only.
+
+### Cross-cutting
+- **ITEM-11**: Design-system + coverage — run `shadcn-component-discovery`/`shadcn-component-review` on the adopted editors + toolbars + popovers; register gallery/`STATE_MATRIX` cells for every new state (view / edit-empty / edit-with-content / saving / error / diff / pin) across the three editors; satisfy `check:kit-manifest`, `check:testid-registry`, `check:design-spec`, `check:state-matrix`, `check:gallery-coverage`, and `gate:ui` (runtime-health, AA contrast, a11y-name on every control, Layer A/axe) in BOTH workspaces.
+- **ITEM-12**: OpenAPI + TS regen + desktop parity — `just openapi-regen` for the new endpoints + `SyncEntity::Deliverable` in both workspaces; mirror the editors + panel edits into `src-app/desktop/ui/`; verify `npm run check` (incl. syncpack for the new deps) in both `ui` and `desktop/ui`.
 
 ## Files to touch
 
-New (backend):
-- `src-app/server/src/modules/chat/core/export.rs`
+Backend — new:
 - `src-app/server/migrations/00000000000132_create_conversation_deliverables.sql`
-- `src-app/server/src/modules/file/deliverables.rs` (pin/unpin repo + list merge) or extend `available_files.rs`
+- `src-app/server/src/modules/chat/core/export.rs`
+- `src-app/server/src/modules/file/deliverables.rs`
 
-Edited (backend):
-- `src-app/server/src/modules/file/handlers/versions.rs` (`append_version`)
-- `src-app/server/src/modules/file/handlers/export.rs` (new file, or extend `download.rs`)
-- `src-app/server/src/modules/file/routes.rs` (`POST /files/{id}/versions`, `GET /files/{id}/export`)
-- `src-app/server/src/modules/file/utils/pandoc.rs` (`convert_to_docx`)
-- `src-app/server/src/modules/file/repository.rs` + `available_files.rs` (deliverables query)
-- `src-app/server/src/modules/chat/core/routes.rs` + handlers (conversation export + deliverables)
+Backend — edited:
+- `src-app/server/src/modules/file/handlers/{versions.rs,export.rs}`, `routes.rs`
+- `src-app/server/src/modules/file/utils/pandoc.rs` (`convert_to`)
+- `src-app/server/src/modules/file/{repository.rs,available_files.rs}`
+- `src-app/server/src/modules/sync/event.rs` (`SyncEntity::Deliverable`)
+- `src-app/server/src/modules/chat/core/routes.rs` + handlers
 
-New (frontend, mirrored in `src-app/desktop/ui/`):
-- `src-app/ui/src/components/kit/editor/KitMarkdownEditor.tsx` (+ lazy wrapper `LazyMarkdownEditor.tsx`)
-- `src-app/ui/src/components/kit/editor/*` (adopted Plate shadcn components: toolbar, nodes)
-- `src-app/ui/src/modules/file/utils/markdownRoundtrip.ts` (ITEM-7)
-- `src-app/ui/src/modules/file/components/FileEditBody.tsx` (edit-mode host + dirty-state + change-underneath banner)
-- `src-app/ui/src/modules/file/components/CanvasSelectionPopover.tsx` (selection → ask / edit)
-- `src-app/ui/src/components/kit/editor/KitCodeEditor.tsx` (+ lazy wrapper) — CodeMirror for `code` types
-- `src-app/ui/src/modules/file/components/CsvGridEditor.tsx` — editable grid for `csv` types
-- `src-app/ui/src/modules/file/components/FileVersionDiff.tsx` — version-diff view
-- `src-app/ui/src/modules/file/components/DeliverablesList.tsx` — pin/unpin + derived∪curated list
+Frontend — new (mirrored into `src-app/desktop/ui/`):
+- `src-app/ui/src/components/kit/editor/{KitMarkdownEditor,LazyMarkdownEditor,KitCodeEditor}.tsx` + adopted Plate/CodeMirror nodes
+- `src-app/ui/src/modules/file/utils/markdownRoundtrip.ts`
+- `src-app/ui/src/modules/file/components/{FileEditBody,CsvGridEditor,CanvasSelectionPopover,FileVersionDiff,DeliverablesList}.tsx`
 
-Edited (frontend, mirrored in `src-app/desktop/ui/`):
-- `src-app/ui/package.json` + `src-app/desktop/ui/package.json` (Plate deps; syncpack-aligned)
-- `src-app/ui/src/modules/file/components/FilePanel.tsx` (view/edit toggle + export menu)
-- `src-app/ui/src/modules/file/components/FileVersionBar.tsx` (reflect user-saved head)
-- `src-app/ui/src/modules/file/stores/{File,FileVersions}.store.ts` (`appendVersion` action)
-- `src-app/ui/src/modules/file/chat-extension/extension.tsx` (auto-open)
-- `src-app/ui/src/modules/chat/core/components/*` (chat-header "Export conversation")
+Frontend — edited (mirrored):
+- `src-app/ui/package.json` + `src-app/desktop/ui/package.json` (Plate + CodeMirror + diff libs, syncpack-aligned)
+- `src-app/ui/src/modules/file/components/{FilePanel,FileVersionBar}.tsx`
+- `src-app/ui/src/modules/file/stores/{File,FileVersions}.store.ts`
+- `src-app/ui/src/modules/file/chat-extension/extension.tsx`
+- `src-app/ui/src/modules/chat/core/components/*` (chat-header export)
 - `src-app/ui/src/dev/gallery/*` + `STATE_MATRIX`, kit manifest + testid registry
 - `src-app/ui/src/api-client/types.ts` + `openapi/openapi.json` (regen) + `desktop/ui/**` mirrors
 
-Tests: `src-app/server/tests/file/*.rs`, `src-app/server/tests/chat/*export*.rs`,
-in-source `#[cfg(test)]`, `src-app/ui/**/*.test.ts(x)` (round-trip),
-`src-app/ui/tests/e2e/14-artifacts/*.spec.ts`.
+Tests: `src-app/server/tests/{file,chat}/*.rs`, in-source `#[cfg(test)]`,
+`src-app/ui/**/*.test.ts(x)`, `src-app/ui/tests/e2e/14-artifacts/*.spec.ts`.
 
 ## Patterns to follow
 
-- **User append-version** (ITEM-1): mirror `versions::restore_version` (ownership +
+- **Append-version** (ITEM-1): mirror `versions::restore_version` (ownership +
   `commit_new_version` + `publish_file_changed`), bytes from the request.
-- **Pandoc / export / download** (ITEM-2/3/4): reuse `find_pandoc`/`convert_to_pdf`,
-  copy its `spawn_blocking`+timeout shape for `convert_to_docx`; stream via
-  `content_disposition` + `workspace_export`'s `Response::builder()`.
+- **Pandoc / export / download** (ITEM-2/3/4/23): reuse `find_pandoc`/`convert_to_pdf`;
+  copy its `spawn_blocking`+timeout shape; stream via `content_disposition` +
+  `workspace_export`.
 - **Conversation serialization** (ITEM-4): extend `summarizer::message_to_summarizable`.
-- **Deliverables query** (ITEM-5): mirror `available_files::resolve_available_files`
-  ownership join.
-- **Editor adoption** (ITEM-6/7/8): the `LazyStreamdown` lazy-load idiom for the editor
-  bundle; the shadcn component-ownership model already used by the kit for adopting
-  Plate's components; `CoreMemoryBlocksEditor` for the edit→save→REST flow; the
-  existing `file` panel pointer pattern (`{fileId,version?}`) for the panel.
-- **Auto-open** (ITEM-9): the literature `tool_result` → `displayInRightPanel` pattern.
+- **Deliverables + pin** (ITEM-5/17): `available_files` ownership join; the
+  `conversation_deliverables` link table mirrors `project_files`; sync mirrors
+  `SyncEntity::File`/`BibliographyEntry`.
+- **Editors** (ITEM-6/7/8/19/20/21): `LazyStreamdown` lazy-load idiom; the shadcn
+  component-ownership model already used by the kit; `CoreMemoryBlocksEditor` for
+  edit→save→REST; the `file` panel pointer pattern (`{fileId,version?}`); the tabular
+  viewer's CSV parser for the grid.
+- **Canvas UX** (ITEM-9/13/14/15/16/18/22): literature `tool_result`→`displayInRightPanel`;
+  the store `on('sync:<entity>')` self-gated refetch; standard dirty-guard/`beforeunload`.
 - **Design system** (ITEM-11): `shadcn-component-discovery` (reuse-first) +
   `shadcn-component-review`; DESIGN_SYSTEM.md tokens; kit manifest + testid registry.
 - **OpenAPI + desktop** (ITEM-12): `just openapi-regen` both workspaces; `npm run check` both.
 
-## Superseded
+## Scope boundaries (explicitly OUT of v1)
 
-v1 (a new `artifacts` table + MCP + permission + migrations 132/133) was dropped as
-redundant with `files_mcp`/`file_versions`/the file panel. v2 used a plain `Textarea`
-edit-mode; **v3 replaces that with a real WYSIWYG editor (Plate)** per the requirement
-that direct editing be rich, matching ChatGPT Canvas / Gemini Canvas / Claude Artifacts
-(all of which allow direct WYSIWYG editing, versioned on save). See DEC-6.
-
-**v4** added **multi-file editing safety** (ITEM-13/14) and **selection → LLM**
-(ITEM-15/16).
-
-**v5** folds in five more per user selection: **pin-as-deliverable** (ITEM-17/18,
-reintroduces one migration — `132`), **code editing** (ITEM-19, CodeMirror),
-**CSV editing** (ITEM-20, editable grid), **image upload/paste embed** (ITEM-21),
-**version-diff view** (ITEM-22), and **extra export formats odt/rtf/html** (ITEM-23).
-Editable types now = markdown (Plate) + code (CodeMirror) + csv (grid); binary/pdf/image
-stay view+export.
-
-**Still explicitly OUT of v1** (available on request): comment/suggestion (track-changes)
-mode, project-level deliverables, workflow-run artifact bundling, multi-user
-sharing/ACL, real-time co-editing, live HTML/React execution.
+Deferred by decision (each additive later without reworking the v1 data model):
+comment/suggestion (track-changes) mode, project-level deliverables, workflow-run
+artifact bundling, multi-user sharing / ACL, real-time co-editing, live HTML/React
+execution. Reconciliation is turn-based single-writer (no OT/CRDT); scoping is
+single-owner (handoff via export, no ACL).
