@@ -256,7 +256,7 @@ pub async fn list_kbs(
     Ok((StatusCode::OK, Json(Repos.knowledge_base.list(auth.user.id).await?)))
 }
 pub fn list_kbs_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.list").summary("List the caller's knowledge bases.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.list").summary("List the caller's knowledge bases.").response::<200, Json<Vec<KnowledgeBase>>>()
 }
 
 pub async fn create_kb(
@@ -276,7 +276,7 @@ pub async fn create_kb(
     Ok((StatusCode::CREATED, Json(kb)))
 }
 pub fn create_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.create").summary("Create a knowledge base.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.create").summary("Create a knowledge base.").response::<201, Json<KnowledgeBase>>()
 }
 
 pub async fn get_kb(
@@ -291,7 +291,7 @@ pub async fn get_kb(
     Ok((StatusCode::OK, Json(kb)))
 }
 pub fn get_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.get").summary("Get one knowledge base.")
+    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.get").summary("Get one knowledge base.").response::<200, Json<KnowledgeBase>>()
 }
 
 pub async fn update_kb(
@@ -311,7 +311,7 @@ pub async fn update_kb(
     Ok((StatusCode::OK, Json(kb)))
 }
 pub fn update_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.update").summary("Rename / describe a knowledge base.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.update").summary("Rename / describe a knowledge base.").response::<200, Json<KnowledgeBase>>()
 }
 
 pub async fn delete_kb(
@@ -357,7 +357,7 @@ pub async fn list_documents(
 pub fn list_documents_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(KnowledgeBaseUse,)>(op)
         .id("KnowledgeBase.listDocuments")
-        .summary("List a KB's documents with index status.")
+        .summary("List a KB's documents with index status.").response::<200, Json<Vec<KnowledgeBaseDocument>>>()
 }
 
 pub async fn attach_documents(
@@ -386,7 +386,7 @@ pub async fn attach_documents(
     Ok((StatusCode::OK, Json(result)))
 }
 pub fn attach_documents_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.attachDocuments").summary("Attach existing files to a KB.")
+    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.attachDocuments").summary("Attach existing files to a KB.").response::<200, Json<AttachDocumentsResult>>()
 }
 
 pub async fn remove_document(

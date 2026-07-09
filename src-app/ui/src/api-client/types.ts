@@ -73,6 +73,15 @@ export interface AttachDocumentsRequest {
   file_ids: string[]
 }
 
+/**
+ * Result of an attach operation — how many were newly linked vs skipped as
+ *  duplicates already in the KB (checksum dedup, DEC-36).
+ */
+export interface AttachDocumentsResult {
+  attached: number
+  skipped_duplicates: number
+}
+
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
@@ -2221,6 +2230,19 @@ export interface IndexItem {
   version?: string
 }
 
+/**
+ * Per-KB rollup of document index states, so the UI can show
+ *  "all indexed / M indexing / K failed / P no-text" and gate grounding.
+ */
+export interface IndexingSummary {
+  failed: number
+  indexed: number
+  indexing: number
+  no_text: number
+  pending: number
+  total: number
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -2291,6 +2313,34 @@ export interface KeyFieldInfo {
   help?: string
   label: string
   required: boolean
+}
+
+/**
+ * A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),
+ *  never denormalized (an external file delete would drift a stored counter).
+ */
+export interface KnowledgeBase {
+  description?: string
+  created_at: string
+  document_count: number
+  id: string
+  /** Rollup of per-document index status (from `file_index_state`). */
+  indexing_summary: IndexingSummary
+  name: string
+  updated_at: string
+}
+
+/** One document in a KB, with its derived index status. */
+export interface KnowledgeBaseDocument {
+  added_at: string
+  chunk_count: number
+  file_id: string
+  filename: string
+  /**
+   * One of pending|indexing|indexed|failed|no_text (from `file_index_state`;
+   *  `pending` when no state row exists yet).
+   */
+  index_status: string
 }
 
 export interface LinkAccountRequest {
@@ -7382,18 +7432,18 @@ export type ApiEndpointResponses = {
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
   'KnowledgeBase.attachConversation': any
-  'KnowledgeBase.attachDocuments': any
+  'KnowledgeBase.attachDocuments': AttachDocumentsResult
   'KnowledgeBase.attachProject': any
-  'KnowledgeBase.create': any
+  'KnowledgeBase.create': KnowledgeBase
   'KnowledgeBase.delete': any
   'KnowledgeBase.detachConversation': any
   'KnowledgeBase.detachProject': any
-  'KnowledgeBase.get': any
-  'KnowledgeBase.list': any
-  'KnowledgeBase.listDocuments': any
+  'KnowledgeBase.get': KnowledgeBase
+  'KnowledgeBase.list': KnowledgeBase[]
+  'KnowledgeBase.listDocuments': KnowledgeBaseDocument[]
   'KnowledgeBase.reindexDocument': any
   'KnowledgeBase.removeDocument': any
-  'KnowledgeBase.update': any
+  'KnowledgeBase.update': KnowledgeBase
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
