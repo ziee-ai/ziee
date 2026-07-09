@@ -174,12 +174,12 @@ export function ConversationCard({
               <Button
                 data-testid={`chat-conversation-delete-btn-${conversation.id}`}
                 aria-label="Delete conversation"
-                className={`transition-opacity bg-card ${
+                className={`transition-opacity ${
                   popconfirmOpen
                     ? 'opacity-100'
                     : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
                 }`}
-                variant="outline"
+                variant="ghost"
                 size="default"
                 icon={<Trash2 />}
                 onClick={(e: React.MouseEvent) => {
@@ -208,7 +208,11 @@ export function ConversationCard({
         {/* Selection checkbox — visible on hover OR when selected. */}
         {onSelect && (
           <div
-            className={`transition-opacity ${
+            // flex items-center: the checkbox is a 16px box in an inline-flex
+            // span; without a flex container it aligns to the line-box baseline
+            // and sits ~3px above the (taller) tag + delete button in this
+            // items-center row. Flex-centering it lines all three up.
+            className={`flex items-center transition-opacity ${
               isSelected
                 ? 'opacity-100'
                 : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'

@@ -367,7 +367,7 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     await expect(preview.locator('[data-testid="inline-file-preview-body"]')).toHaveCount(0)
     await expect(preview.locator('iframe')).toHaveCount(0)
     await expect(preview.locator('embed')).toHaveCount(0)
-    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toBeVisible()
+    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toHaveCount(0)
   })
 
   test('html (web viewer): falls back to header-only file card', async ({
@@ -397,6 +397,6 @@ test.describe('Inline file previews — per-viewer rendering', () => {
     const preview = page.locator('[data-testid="inline-file-preview"]').first()
     await expect(preview).toBeVisible({ timeout: 10000 })
     await expect(preview.locator('[data-testid="inline-file-preview-body"]')).toHaveCount(0)
-    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toBeVisible()
+    await expect(preview.locator('[data-testid="inline-file-preview-open"]')).toHaveCount(0)
   })
 })

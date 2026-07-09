@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **323** surfaces carry at least one renderable-state signal.
-- **1813** signals total: 1425 branch, 111 empty, 95 error, 96 loading, 84 overlay, 2 panel.
+- **325** surfaces carry at least one renderable-state signal.
+- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,10 +16,10 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 84 |
-| `empty` | 88 |
-| `error` | 74 |
-| `open` | 71 |
+| `delayed` | 86 |
+| `empty` | 90 |
+| `error` | 75 |
+| `open` | 72 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -66,7 +66,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:36 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:84 |
+| `sidebarContent` | `modules/chat/module`:89 |
 
 ## Per-surface required states
 
@@ -127,10 +127,10 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `(title != null \|\| extra != null)` | 39 |
-| branch | `title != null` | 41 |
-| loading | `skeleton` | 56 |
-| branch | `footer != null` | 66 |
+| branch | `(title != null \|\| extra != null)` | 41 |
+| branch | `title != null` | 43 |
+| loading | `skeleton` | 52 |
+| branch | `footer != null` | 62 |
 
 ### `components/ui/kit/checkbox`
 
@@ -467,23 +467,23 @@ Required states: `empty`
 | branch | `!active` | 152 |
 | branch | `view.sort!.dir === 'asc'` | 153 |
 | branch | `meta.sortable` | 156 |
-| branch | `props.filterable` | 224 |
-| branch | `props.columnChooser && hideable.length > 0` | 236 |
-| branch | `props.toolbarExtra` | 264 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 317 |
-| branch | `!tsv` | 319 |
-| branch | `showVirtual` | 330 |
-| branch | `hasToolbar` | 341 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 372 |
-| branch | `caption != null` | 382 |
-| branch | `resizableTable` | 383 |
-| branch | `meta.resizable` | 403 |
-| branch | `busy` | 410 |
-| empty | `rows.length === 0` | 418 |
-| branch | `meta.resizable` | 529 |
-| branch | `mode === 'none'` | 579 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 584 |
-| branch | `!selectionActive(props, col)` | 591 |
+| branch | `props.filterable` | 230 |
+| branch | `props.columnChooser && hideable.length > 0` | 245 |
+| branch | `props.toolbarExtra` | 273 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 326 |
+| branch | `!tsv` | 328 |
+| branch | `showVirtual` | 339 |
+| branch | `hasToolbar` | 350 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 381 |
+| branch | `caption != null` | 391 |
+| branch | `resizableTable` | 392 |
+| branch | `meta.resizable` | 412 |
+| branch | `busy` | 419 |
+| empty | `rows.length === 0` | 427 |
+| branch | `meta.resizable` | 538 |
+| branch | `mode === 'none'` | 588 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 593 |
+| branch | `!selectionActive(props, col)` | 600 |
 
 ### `components/ui/kit/tabs`
 
@@ -533,12 +533,12 @@ Required states: `delayed`
 | branch | `node.disabled` | 181 |
 | branch | `active == null` | 187 |
 | branch | `!row` | 190 |
-| branch | `n.disabled` | 242 |
-| loading | `loading` | 244 |
-| branch | `hasKids` | 246 |
-| branch | `checkable` | 249 |
-| branch | `virtualStyle` | 281 |
-| branch | `!virtual` | 286 |
+| branch | `n.disabled` | 240 |
+| loading | `loading` | 242 |
+| branch | `hasKids` | 244 |
+| branch | `checkable` | 247 |
+| branch | `virtualStyle` | 277 |
+| branch | `!virtual` | 282 |
 
 ### `components/ui/kit/typography`
 
@@ -546,10 +546,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `done` | 49 |
-| branch | `copyable != null` | 77 |
-| branch | `copyable != null` | 132 |
-| branch | `safe == null` | 147 |
+| branch | `done` | 47 |
+| branch | `copyable != null` | 75 |
+| branch | `copyable != null` | 130 |
+| branch | `safe == null` | 145 |
 
 ### `components/ui/kit/upload`
 
@@ -646,7 +646,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `showCloseButton` | 67 |
+| branch | `showCloseButton` | 73 |
 
 ### `components/ui/shadcn/sidebar`
 
@@ -882,6 +882,15 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `index < 0 \|\| index >= total` | 33 |
 | branch | `!branchId \|\| branchId === activeBranchId` | 35 |
 
+### `modules/chat/components/ChatHistorySortControl`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `iconOnly` | 23 |
+| branch | `sort === o.value` | 27 |
+
 ### `modules/chat/components/ChatInput`
 
 Required states: `open`
@@ -902,7 +911,7 @@ Required states: `empty`
 | branch | `attachmentBlocks.length > 0` | 136 |
 | branch | `bubbleBlocks.length > 0` | 165 |
 | branch | `offerCollapse` | 191 |
-| branch | `isUser` | 215 |
+| branch | `isUser` | 216 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -910,10 +919,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 40 |
-| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 51 |
-| branch | `overflowing` | 86 |
-| branch | `collapsed` | 91 |
+| branch | `!el` | 79 |
+| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 90 |
+| branch | `overflowing` | 125 |
+| branch | `collapsed` | 130 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -936,13 +945,20 @@ Required states: `open`
 
 ### `modules/chat/components/ConversationFindBar`
 
-Required states: `empty`
+Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 55 |
-| branch | `!open` | 72 |
-| empty | `total === 0` | 76 |
+| branch | `!match` | 67 |
+| branch | `!ok` | 72 |
+| branch | `!open` | 85 |
+| branch | `!conversationId \|\| term === ''` | 90 |
+| branch | `cancelled \|\| gen !== searchGenRef.current` | 108 |
+| branch | `!open` | 143 |
+| branch | `!open` | 178 |
+| empty | `total === 0` | 181 |
+| branch | `matches.length > 0` | 285 |
+| loading | `loading` | 325 |
 
 ### `modules/chat/components/ConversationList`
 
@@ -950,15 +966,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 135 |
-| loading | `(visibleConversations.length > 0 \|\| loading)` | 142 |
-| branch | `selectedIds.size > 0` | 158 |
-| branch | `canDelete` | 183 |
-| loading | `visibleConversations.length === 0 && !loading` | 207 |
-| error | `error` | 208 |
-| loading | `loading && !isInitialized` | 232 |
-| branch | `visibleConversations.length > 0` | 257 |
-| branch | `hasMore` | 265 |
+| branch | `!getSearchBoxContainer` | 127 |
+| branch | `selectedIds.size > 0` | 134 |
+| branch | `canDelete` | 159 |
+| loading | `visibleConversations.length === 0 && !loading` | 183 |
+| error | `error` | 184 |
+| loading | `loading && !isInitialized` | 208 |
+| branch | `visibleConversations.length > 0` | 233 |
+| branch | `hasMore` | 241 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -985,17 +1000,37 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!msg` | 21 |
 | branch | `!text` | 41 |
 | branch | `isRegenerating \|\| isBusy` | 68 |
-| branch | `isUser` | 95 |
-| branch | `isAssistant` | 108 |
+| branch | `isUser` | 97 |
+| branch | `isAssistant` | 110 |
 
 ### `modules/chat/components/MessageList`
 
-Required states: `delayed`
+Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `!loading && messagesArray.length === 0` | 19 |
-| loading | `(loading \|\| isStreaming)` | 52 |
+| branch | `!vw \|\| vw <= 0` | 116 |
+| branch | `w <= 0` | 118 |
+| branch | `!el` | 129 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
+| branch | `!import.meta.env.DEV` | 295 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
+| branch | `!el` | 378 |
+| empty | `count === 0` | 385 |
+| branch | `!el` | 403 |
+| branch | `!item` | 406 |
+| branch | `!msg` | 408 |
+| branch | `!c` | 414 |
+| branch | `virtualize` | 419 |
+| branch | `idx < 0` | 421 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
+| branch | `!c` | 439 |
+| branch | `newTop == null` | 441 |
+| loading | `!loading && count === 0` | 450 |
+| branch | `loadingOlder` | 476 |
+| branch | `virtualize` | 486 |
+| branch | `!msg` | 501 |
+| loading | `(loading \|\| isStreaming)` | 545 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1033,18 +1068,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/core/components/ChatRightPanel`
 
-Required states: `empty`
+Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
 | branch | `!activeTab` | 14 |
 | branch | `!resolved` | 17 |
 | empty | `tabs.length === 0` | 50 |
-| branch | `e.key === 'Escape'` | 114 |
-| empty | `focusable.length === 0` | 123 |
-| branch | `isMobile` | 168 |
-| branch | `!showDrawer` | 169 |
-| branch | `isOpen` | 209 |
+| branch | `isMobile` | 135 |
+| overlay | `<Drawer open>` | 137 |
+| branch | `isOpen` | 177 |
 
 ### `modules/chat/core/extensions/registry`
 
@@ -1106,13 +1139,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 50 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 67 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 83 |
-| branch | `scopedHref?.startsWith('#')` | 104 |
-| empty | `typeof src !== 'string' \|\| src.length === 0` | 149 |
-| branch | `src.startsWith('/')` | 150 |
-| branch | `u.origin === window.location.origin` | 154 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 52 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 69 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 85 |
+| branch | `scopedHref?.startsWith('#')` | 106 |
+| empty | `verdict === 'empty'` | 161 |
+| branch | `verdict === 'allowed'` | 162 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1182,15 +1214,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/pages/ChatHistoryPage`
 
-Required states: `error`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isNarrow` | 95 |
-| branch | `isNarrow` | 105 |
-| branch | `isNarrow && searchOpenInNarrow` | 139 |
-| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 148 |
-| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 160 |
+| branch | `!isNarrow` | 96 |
+| branch | `isNarrow` | 106 |
+| loading | `(conversations.length > 0 \|\| loading)` | 126 |
+| branch | `isNarrow && searchOpenInNarrow` | 147 |
+| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 156 |
+| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 168 |
 
 ### `modules/chat/pages/ConversationPage`
 
@@ -1198,13 +1231,30 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 73 |
-| branch | `!Stores.Chat.$.conversation` | 94 |
-| branch | `!conversationId` | 123 |
-| loading | `loading && !conversation` | 149 |
-| loading | `!loading && !conversation` | 158 |
-| error | `error` | 161 |
-| error | `error` | 218 |
+| branch | `!sentinel` | 143 |
+| branch | `!el` | 163 |
+| branch | `!nativeScroll` | 178 |
+| branch | `y < 0 \|\| y > maxY` | 187 |
+| branch | `maxY - y <= 8` | 191 |
+| branch | `Math.abs(dy) < 6` | 197 |
+| branch | `!Stores.Chat.$.conversation` | 217 |
+| branch | `!conversationId` | 259 |
+| branch | `!sentinel` | 307 |
+| branch | `!entries[0]?.isIntersecting` | 311 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
+| branch | `!sentinel` | 349 |
+| branch | `!entries[0]?.isIntersecting` | 353 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
+| loading | `!pending` | 369 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
+| branch | `!conversation?.id` | 381 |
+| branch | `!m` | 385 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
+| loading | `loading && !conversation` | 408 |
+| loading | `!loading && !conversation` | 417 |
+| error | `error` | 420 |
+| error | `error` | 477 |
+| branch | `nativeScroll && !composerHidden` | 576 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -1279,8 +1329,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `groups.length === 0` | 21 |
-| branch | `i > 0` | 30 |
+| empty | `groups.length === 0` | 25 |
+| branch | `i > 0` | 34 |
 
 ### `modules/code-sandbox/components/DownloadedRootfsCard`
 
@@ -1297,16 +1347,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.isDefault` | 77 |
-| branch | `anyDraining` | 82 |
-| branch | `variant === 'available'` | 90 |
-| branch | `variant === 'downloaded' && !group.isDefault` | 100 |
-| branch | `showProgress` | 121 |
-| branch | `progressMessage` | 124 |
-| branch | `canManage` | 179 |
-| branch | `f.artifact` | 198 |
-| branch | `f.live > 0` | 215 |
-| branch | `f.artifact` | 225 |
+| branch | `group.isDefault` | 81 |
+| branch | `anyDraining` | 86 |
+| branch | `variant === 'available'` | 94 |
+| branch | `variant === 'downloaded' && !group.isDefault` | 109 |
+| branch | `showProgress` | 130 |
+| branch | `progressMessage` | 133 |
+| branch | `canManage` | 188 |
+| branch | `f.artifact` | 207 |
+| branch | `f.live > 0` | 224 |
+| branch | `f.artifact` | 234 |
 
 ### `modules/code-sandbox/components/SandboxResourceLimitsSection`
 
@@ -1325,14 +1375,15 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canRead` | 97 |
-| branch | `pinnedVersion` | 213 |
-| branch | `downloadedFlavors.length > 0` | 224 |
-| branch | `lastSwap && lastSwap.draining_mounts > 0` | 242 |
-| branch | `sseError` | 265 |
-| loading | `loading && groups.length === 0` | 274 |
-| error | `error && groups.length === 0` | 276 |
-| error | `error` | 286 |
+| branch | `!canRead` | 123 |
+| branch | `pinnedVersion` | 239 |
+| branch | `downloadedFlavors.length > 0` | 250 |
+| branch | `lastSwap && lastSwap.draining_mounts > 0` | 268 |
+| branch | `isDegraded` | 292 |
+| branch | `sseError` | 307 |
+| loading | `loading && groups.length === 0` | 316 |
+| error | `error && groups.length === 0` | 318 |
+| error | `error` | 328 |
 
 ### `modules/code-sandbox/components/_rootfsShared`
 
@@ -1342,7 +1393,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!oldV` | 79 |
 | branch | `!name.startsWith(ASSET_PREFIX)` | 119 |
-| branch | `canManage` | 417 |
+| branch | `disabledReason` | 422 |
+| branch | `canManage` | 425 |
 
 ### `modules/file-rag/components/sections/ChunkingSection`
 
@@ -1472,19 +1524,22 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `inView` | 64 |
-| branch | `typeof IntersectionObserver === 'undefined'` | 65 |
-| branch | `!el` | 70 |
-| branch | `!file` | 104 |
-| branch | `!file` | 118 |
-| branch | `label` | 153 |
-| branch | `displaySize !== undefined` | 154 |
-| branch | `HeaderActions` | 157 |
-| branch | `file` | 160 |
-| branch | `file` | 173 |
-| branch | `canInline && Body` | 202 |
-| branch | `collapsed` | 208 |
-| branch | `showBody && Body` | 225 |
+| branch | `view.seen` | 106 |
+| branch | `typeof IntersectionObserver === 'undefined'` | 107 |
+| branch | `!el` | 112 |
+| branch | `!file` | 155 |
+| branch | `!start` | 192 |
+| branch | `dragStart.current == null` | 196 |
+| branch | `next == null` | 220 |
+| branch | `label` | 256 |
+| branch | `displaySize !== undefined` | 257 |
+| branch | `HeaderActions` | 261 |
+| branch | `file` | 262 |
+| branch | `file` | 263 |
+| branch | `hasBody` | 275 |
+| branch | `collapsed` | 285 |
+| branch | `showBodyRegion` | 297 |
+| branch | `view.seen && Body` | 299 |
 
 ### `modules/file/chat-extension/components/MessageFilesView`
 
@@ -1543,14 +1598,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 67 |
-| branch | `showFullPage` | 70 |
-| branch | `!hideHeader` | 114 |
-| branch | `tooLarge` | 124 |
-| branch | `isViewingOld` | 140 |
-| branch | `oldVersionText === null` | 142 |
-| branch | `tooLarge` | 157 |
-| branch | `Body` | 181 |
+| branch | `HeaderActions` | 75 |
+| branch | `showFullPage` | 78 |
+| branch | `!hideHeader` | 122 |
+| branch | `tooLarge` | 136 |
+| branch | `isViewingOld` | 152 |
+| branch | `oldVersionText === null` | 154 |
+| branch | `tooLarge` | 169 |
+| branch | `Body` | 193 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1631,14 +1686,16 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `view.mode === 'fit'` | 98 |
 | branch | `view.mode === 'fit'` | 111 |
 | branch | `!c \|\| typeof ResizeObserver === 'undefined'` | 113 |
-| branch | `!thumbnailUrl` | 126 |
-| branch | `view.mode === 'fit'` | 135 |
-| branch | `o.x <= 0 && o.y <= 0` | 157 |
-| branch | `!d` | 172 |
-| branch | `rafRef.current` | 179 |
-| branch | `!d` | 187 |
+| branch | `!el` | 135 |
+| branch | `!(e.ctrlKey \|\| e.metaKey)` | 137 |
+| branch | `!thumbnailUrl` | 145 |
+| branch | `view.mode === 'fit'` | 154 |
+| branch | `o.x <= 0 && o.y <= 0` | 177 |
+| branch | `!d` | 192 |
+| branch | `rafRef.current` | 199 |
 | branch | `!d` | 207 |
-| branch | `o.x <= 0 && o.y <= 0` | 211 |
+| branch | `!d` | 227 |
+| branch | `o.x <= 0 && o.y <= 0` | 231 |
 
 ### `modules/file/viewers/image/header`
 
@@ -1646,7 +1703,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 13 |
+| branch | `!('file' in props)` | 12 |
 
 ### `modules/file/viewers/markdown/body`
 
@@ -1660,10 +1717,10 @@ Required states: `error`
 | branch | `href?.startsWith('#')` | 73 |
 | error | `!(err instanceof Error)` | 99 |
 | error | `this.state.error` | 144 |
-| branch | `content === '__error__'` | 202 |
-| branch | `content === null` | 209 |
-| branch | `file` | 216 |
-| branch | `file && mode === 'raw'` | 218 |
+| branch | `content === '__error__'` | 210 |
+| branch | `content === null` | 217 |
+| branch | `file` | 224 |
+| branch | `file && mode === 'raw'` | 226 |
 
 ### `modules/file/viewers/markdown/header`
 
@@ -1671,8 +1728,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 16 |
-| branch | `isRaw` | 24 |
+| branch | `!('file' in props)` | 15 |
+| branch | `isRaw` | 23 |
 
 ### `modules/file/viewers/pdf/body`
 
@@ -1686,14 +1743,6 @@ Required states: `empty`
 | branch | `truncated` | 91 |
 | branch | `url` | 124 |
 | branch | `pageErrors?.has(i + 1)` | 131 |
-
-### `modules/file/viewers/pdf/header`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!('file' in props)` | 5 |
 
 ### `modules/file/viewers/pdf/pdfjs-body`
 
@@ -1713,14 +1762,20 @@ Required states: `delayed`, `error`
 
 ### `modules/file/viewers/shared/RawCodeView`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!filename` | 47 |
-| branch | `cancelled` | 153 |
-| branch | `cancelled` | 159 |
-| branch | `truncated` | 184 |
+| branch | `!filename` | 52 |
+| branch | `!ready` | 208 |
+| branch | `index < 0 \|\| index >= chunks.length` | 209 |
+| branch | `requestedRef.current.has(index)` | 210 |
+| branch | `genRef.current !== gen` | 222 |
+| branch | `cancelled` | 254 |
+| empty | `!readyRef.current \|\| chunks.length === 0` | 296 |
+| branch | `cancelled` | 301 |
+| branch | `!root` | 303 |
+| branch | `truncated` | 342 |
 
 ### `modules/file/viewers/shared/chrome`
 
@@ -1728,11 +1783,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `file.text_page_count === 0` | 41 |
-| branch | `text === undefined \|\| text === ''` | 109 |
-| branch | `!isHighlightSupported()` | 179 |
-| branch | `text.trim() === '' \|\| !inViewer` | 235 |
-| branch | `inRouter` | 291 |
+| empty | `file.text_page_count === 0` | 40 |
+| branch | `text === undefined \|\| text === ''` | 108 |
+| branch | `!isHighlightSupported()` | 178 |
+| branch | `text.trim() === '' \|\| !inViewer` | 234 |
+| branch | `inRouter` | 268 |
 
 ### `modules/file/viewers/shared/find/FindableRegion`
 
@@ -1755,8 +1810,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 155 |
-| branch | `truncated` | 198 |
+| branch | `idx < 0` | 117 |
+| branch | `!fileId` | 131 |
+| branch | `!fileId` | 160 |
+| branch | `truncated` | 180 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1772,14 +1829,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 128 |
-| branch | `sheet.truncated` | 168 |
-| branch | `!fileBinaryContent` | 229 |
-| branch | `!file` | 279 |
-| error | `loadError` | 281 |
-| loading | `!fileBinaryContent \|\| loading` | 290 |
-| empty | `sheets.length === 0` | 294 |
-| branch | `sheets.length === 1` | 298 |
+| branch | `idx < 0` | 124 |
+| branch | `sheet.truncated` | 164 |
+| branch | `!fileBinaryContent` | 225 |
+| branch | `!file` | 276 |
+| error | `loadError` | 278 |
+| loading | `!fileBinaryContent \|\| loading` | 287 |
+| empty | `sheets.length === 0` | 291 |
+| branch | `sheets.length === 1` | 295 |
 
 ### `modules/file/viewers/tabular/body`
 
@@ -1797,8 +1854,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 7 |
-| branch | `!('file' in props)` | 20 |
+| branch | `!v` | 26 |
+| branch | `!v.selectionTsv` | 29 |
+| branch | `!v` | 38 |
+| branch | `!('file' in props)` | 75 |
 
 ### `modules/file/viewers/text/body`
 
@@ -1816,7 +1875,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 12 |
+| branch | `!('file' in props)` | 11 |
 
 ### `modules/file/viewers/web/body`
 
@@ -1834,10 +1893,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 14 |
+| branch | `!('file' in props)` | 13 |
+| branch | `isRaw` | 21 |
 | branch | `isRaw` | 22 |
 | branch | `isRaw` | 23 |
-| branch | `isRaw` | 24 |
 
 ### `modules/hardware/HardwareMonitor`
 
@@ -2218,26 +2277,26 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `prevXsRef.current === windowMinSize.xs` | 205 |
+| branch | `prevXsRef.current === windowMinSize.sm` | 205 |
 | branch | `e.touches.length !== 1` | 245 |
 | branch | `!panel` | 249 |
 | branch | `!s` | 255 |
 | branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 260 |
 | branch | `Math.abs(dy) > Math.abs(dx)` | 261 |
 | branch | `!s \|\| !s.active` | 275 |
-| branch | `!windowMinSize.xs \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 289 |
-| branch | `document.querySelector( `[${testidAttr}="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]`, )` | 295 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 313 |
-| branch | `!s` | 320 |
-| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 325 |
-| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 327 |
-| branch | `!mainContentElement` | 345 |
-| branch | `!window.visualViewport` | 384 |
-| branch | `!window.visualViewport` | 388 |
-| branch | `windowMinSize.xs` | 433 |
-| overlay | `<Sheet open>` | 434 |
-| branch | `!windowMinSize.xs` | 456 |
-| branch | `!isSidebarCollapsed` | 536 |
+| branch | `!windowMinSize.sm \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 289 |
+| branch | `document.querySelector( '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]', )` | 293 |
+| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 311 |
+| branch | `!s` | 318 |
+| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 323 |
+| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 325 |
+| branch | `!mainContentElement` | 343 |
+| branch | `!window.visualViewport` | 382 |
+| branch | `!window.visualViewport` | 386 |
+| branch | `windowMinSize.sm` | 431 |
+| overlay | `<Sheet open>` | 432 |
+| branch | `!windowMinSize.sm` | 454 |
+| branch | `!isSidebarCollapsed` | 534 |
 
 ### `modules/layouts/app-layout/components/Drawer`
 
@@ -2254,13 +2313,13 @@ Required states: `empty`
 | branch | `!s \|\| !s.active \|\| !el` | 152 |
 | branch | `Array.isArray(footer)` | 187 |
 | branch | `showOverlay` | 218 |
-| branch | `title != null` | 264 |
-| branch | `typeof title === 'string'` | 269 |
-| branch | `extra != null` | 288 |
-| branch | `closable` | 289 |
-| empty | `noBodyScrollWrap` | 299 |
-| branch | `footerNode != null` | 302 |
-| branch | `title == null` | 319 |
+| branch | `title != null` | 268 |
+| branch | `closable` | 278 |
+| branch | `typeof title === 'string'` | 283 |
+| branch | `extra != null` | 298 |
+| empty | `noBodyScrollWrap` | 303 |
+| branch | `footerNode != null` | 306 |
+| branch | `title == null` | 323 |
 
 ### `modules/layouts/app-layout/components/HeaderBarContainer`
 
@@ -2268,8 +2327,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!nativeScroll` | 32 |
-| branch | `nativeScroll && pinned` | 65 |
+| branch | `!nativeScroll` | 38 |
+| branch | `now - lastToggle < TOGGLE_COOLDOWN_MS` | 51 |
+| branch | `y < 0 \|\| y > maxY` | 62 |
+| branch | `y <= HIDE_THRESHOLD` | 66 |
+| branch | `Math.abs(dy) < DIRECTION_DELTA` | 73 |
+| branch | `nativeScroll && pinned` | 89 |
 
 ### `modules/layouts/app-layout/components/LeftSidebar`
 
@@ -2304,7 +2367,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSidebarCollapsed` | 73 |
+| branch | `isSidebarCollapsed` | 76 |
 
 ### `modules/literature/chat-extension/extension`
 
@@ -2675,8 +2738,8 @@ Required states: `open`
 | branch | `!name` | 109 |
 | overlay | `<Drawer open>` | 155 |
 | branch | `canCreate` | 163 |
-| branch | `!useCustomId` | 180 |
-| branch | `notes && notes.length > 0` | 211 |
+| branch | `!useCustomId` | 184 |
+| branch | `notes && notes.length > 0` | 215 |
 
 ### `modules/llm-provider/components/llm-models/EditLlmModelDrawer`
 
@@ -2771,23 +2834,47 @@ Required states: `empty`, `error`
 | branch | `index < repositories.length - 1` | 329 |
 | branch | `totalRepositories > 0` | 338 |
 
+### `modules/mcp/chat-extension/components/AskUserWizardContent`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `option.recommended` | 88 |
+| branch | `option.description` | 94 |
+| branch | `option.preview` | 99 |
+| branch | `multi` | 152 |
+| branch | `showOther` | 203 |
+| branch | `multi` | 213 |
+| branch | `multi` | 234 |
+| branch | `otherOn` | 250 |
+| error | `fieldState.error?.message` | 260 |
+| branch | `!mounted.current` | 331 |
+| branch | `otherErr` | 342 |
+| branch | `isSubmitting` | 355 |
+| branch | `isSubmitting` | 369 |
+| branch | `!zodOk \|\| firstBad >= 0` | 386 |
+| branch | `step > 0` | 417 |
+| branch | `isLast` | 429 |
+| branch | `total > 1` | 460 |
+| branch | `current && isChoice && currentSchema.title` | 484 |
+| branch | `current && isChoice && currentSchema.description` | 489 |
+| branch | `current` | 494 |
+| branch | `isChoice` | 495 |
+
 ### `modules/mcp/chat-extension/components/ElicitationFormContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSelectField` | 215 |
-| branch | `isMultiSelect` | 217 |
-| branch | `fieldSchema.type === 'boolean'` | 255 |
-| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 269 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 294 |
-| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 314 |
-| branch | `fieldSchema.format === 'password'` | 336 |
-| branch | `status === 'accepted'` | 464 |
-| branch | `items.length > 0` | 493 |
-| branch | `status === 'declined'` | 507 |
-| branch | `status === 'cancelled'` | 527 |
+| branch | `isSelectField` | 69 |
+| branch | `isMultiSelect` | 71 |
+| branch | `status === 'accepted'` | 208 |
+| branch | `items.length > 0` | 237 |
+| branch | `status === 'declined'` | 251 |
+| branch | `status === 'cancelled'` | 271 |
+| branch | `isRichAskUser` | 302 |
 
 ### `modules/mcp/chat-extension/components/McpMenuItem`
 
@@ -2822,6 +2909,18 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `mcpServerParenLabel(toolCall.server)` | 170 |
 | branch | `toolCall.input !== undefined` | 183 |
 | branch | `!isControlWrite` | 205 |
+
+### `modules/mcp/chat-extension/components/elicitationFields`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `fieldSchema.type === 'boolean'` | 27 |
+| branch | `fieldSchema.type === 'number' \|\| fieldSchema.type === 'integer'` | 41 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date'` | 66 |
+| branch | `fieldSchema.type === 'string' && fieldSchema.format === 'date-time'` | 86 |
+| branch | `fieldSchema.format === 'password'` | 108 |
 
 ### `modules/mcp/chat-extension/extension`
 
@@ -2859,18 +2958,20 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!configModalVisible \|\| !isProjectScope` | 131 |
-| branch | `selectedServers.size > 0` | 134 |
-| branch | `!selection` | 182 |
-| branch | `!selection` | 204 |
-| branch | `!isProjectScope && !currentConversationId` | 235 |
-| empty | `tools.length === 0` | 327 |
-| branch | `approvalMode === 'manual_approve'` | 342 |
-| branch | `tool.description` | 356 |
-| branch | `!isPrimaryModal` | 369 |
-| overlay | `<Dialog open>` | 372 |
-| branch | `!isProjectScope` | 382 |
-| empty | `enabledServers.length === 0` | 424 |
+| branch | `!configModalVisible \|\| !isProjectScope` | 137 |
+| branch | `selectedServers.size > 0` | 140 |
+| branch | `!selection` | 188 |
+| branch | `!selection` | 210 |
+| branch | `!isProjectScope && !currentConversationId` | 241 |
+| empty | `tools.length === 0` | 333 |
+| branch | `approvalMode === 'manual_approve'` | 348 |
+| branch | `tool.description` | 362 |
+| branch | `!isPrimaryModal` | 375 |
+| branch | `!isProjectScope` | 384 |
+| empty | `enabledServers.length === 0` | 426 |
+| branch | `isMobile` | 552 |
+| overlay | `<Drawer open>` | 553 |
+| overlay | `<Dialog open>` | 565 |
 
 ### `modules/mcp/components/common/KeyValueSecretEditor`
 
@@ -3299,30 +3400,24 @@ Required states: `delayed`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation?.id` | 128 |
-| branch | `!conversation?.id` | 136 |
-| branch | `!conversation?.id` | 140 |
-| branch | `cached !== undefined` | 142 |
-| branch | `cancelled` | 144 |
-| branch | `!conversation?.id \|\| !project` | 152 |
-| branch | `!projectId` | 190 |
-| overlay | `<Confirm open>` | 315 |
-| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 366 |
-| branch | `cancelled` | 368 |
-| branch | `event.data.conversationId !== conversationId` | 386 |
-| branch | `event.data.conversationId !== conversationId` | 400 |
-| loading | `state.kind === 'loading'` | 413 |
-| branch | `state.kind === 'in_project'` | 417 |
-| overlay | `<AddToProjectModal open>` | 454 |
-| branch | `loaded` | 496 |
-| branch | `cancelled` | 498 |
-| branch | `event.data.conversationId !== conversation.id` | 515 |
-| branch | `event.data.conversationId !== conversation.id` | 525 |
-| branch | `!project` | 546 |
-| branch | `!ok` | 553 |
-| branch | `project` | 565 |
-| branch | `loaded` | 582 |
-| overlay | `<AddToProjectModal open>` | 595 |
+| branch | `!projectId` | 137 |
+| overlay | `<Confirm open>` | 248 |
+| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 299 |
+| branch | `cancelled` | 301 |
+| branch | `event.data.conversationId !== conversationId` | 319 |
+| branch | `event.data.conversationId !== conversationId` | 333 |
+| loading | `state.kind === 'loading'` | 346 |
+| branch | `state.kind === 'in_project'` | 350 |
+| overlay | `<AddToProjectModal open>` | 387 |
+| branch | `loaded` | 429 |
+| branch | `cancelled` | 431 |
+| branch | `event.data.conversationId !== conversation.id` | 448 |
+| branch | `event.data.conversationId !== conversation.id` | 458 |
+| branch | `!project` | 479 |
+| branch | `!ok` | 486 |
+| branch | `project` | 498 |
+| branch | `loaded` | 515 |
+| overlay | `<AddToProjectModal open>` | 528 |
 
 ### `modules/projects/components/AddToProjectModal`
 
@@ -3408,11 +3503,11 @@ Required states: `delayed`, `empty`
 | loading | `loading` | 217 |
 | branch | `!project` | 227 |
 | branch | `!copy` | 258 |
-| branch | `selectedIds.size > 0` | 350 |
-| branch | `canDeleteConversations` | 385 |
-| branch | `toolbarInCardBody && bulkToolbar` | 415 |
-| branch | `project.description` | 464 |
-| branch | `project.instructions` | 485 |
+| branch | `selectedIds.size > 0` | 354 |
+| branch | `canDeleteConversations` | 389 |
+| branch | `toolbarInCardBody && bulkToolbar` | 419 |
+| branch | `project.description` | 468 |
+| branch | `project.instructions` | 489 |
 
 ### `modules/projects/pages/ProjectsListPage`
 

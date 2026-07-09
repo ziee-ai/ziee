@@ -91,15 +91,6 @@ test.describe('Inline file previews — accessibility', () => {
     await expect(chevron).toHaveAttribute('aria-label', /expand/i)
   })
 
-  test('open-in-new-tab link has accessible name', async ({ page, testInfra }) => {
-    await seedAssistantWithToolResult(page, testInfra.baseURL, {
-      resourceLinks: [{ uri: '/api/files/a11y-open/download', name: 'p.png', mime_type: 'image/png' }],
-    })
-    const link = page.locator('[data-testid="inline-file-preview-open"]').first()
-    await expect(link).toBeVisible({ timeout: 10000 })
-    await expect(link).toHaveAttribute('aria-label', /open file in new tab/i)
-  })
-
   test('chevron is keyboard-reachable via Tab', async ({ page, testInfra }) => {
     await seedAssistantWithToolResult(page, testInfra.baseURL, {
       resourceLinks: [{ uri: '/api/files/a11y-tab/download', name: 'p.png', mime_type: 'image/png' }],

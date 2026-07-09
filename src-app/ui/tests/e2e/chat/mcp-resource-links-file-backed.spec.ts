@@ -80,13 +80,18 @@ test.describe('Inline file previews — backend-owned artifacts (file_id)', () =
     // Single view: no duplicate file-card.
     await expect(msg.locator('[data-testid="file-card"]')).toHaveCount(0)
 
-    // Both header buttons are present for a backend-owned file.
+    // Both header buttons are present for a backend-owned file: open-in-side-panel
+    // and Download (a backend-owned file downloads, never opens in a new tab).
     await expect(
       preview.locator('[data-testid="inline-file-preview-open-panel"]'),
     ).toBeVisible()
     await expect(
-      preview.locator('[data-testid="inline-file-preview-open"]'),
+      preview.locator('[data-testid="file-viewer-download-btn"]'),
     ).toBeVisible()
+    // The open-in-new-tab affordance is file-backed → replaced by Download.
+    await expect(
+      preview.locator('[data-testid="inline-file-preview-open"]'),
+    ).toHaveCount(0)
   })
 
   test('CSV artifact renders as a table inline via file_id', async ({
@@ -158,13 +163,17 @@ test.describe('Inline file previews — backend-owned artifacts (file_id)', () =
     await expect(preview).toContainText('report.pdf')
     // No inline body for a non-inline-capable viewer.
     await expect(preview.locator('[data-testid="inline-file-preview-body"]')).toHaveCount(0)
-    // Both header buttons present.
+    // Both header buttons present: open-in-side-panel and Download (file-backed →
+    // Download, not open-in-new-tab).
     await expect(
       preview.locator('[data-testid="inline-file-preview-open-panel"]'),
     ).toBeVisible()
     await expect(
-      preview.locator('[data-testid="inline-file-preview-open"]'),
+      preview.locator('[data-testid="file-viewer-download-btn"]'),
     ).toBeVisible()
+    await expect(
+      preview.locator('[data-testid="inline-file-preview-open"]'),
+    ).toHaveCount(0)
   })
 
   test('"Open in side panel" opens the file in the right panel', async ({

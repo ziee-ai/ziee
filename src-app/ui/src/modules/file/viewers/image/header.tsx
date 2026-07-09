@@ -1,6 +1,5 @@
 import { ZoomIn, ZoomOut } from 'lucide-react'
 import { Button, Segmented, Space } from '@/components/ui'
-import { DownloadButton } from '../shared/chrome'
 import { Stores } from '@/core/stores'
 import { DEFAULT_IMAGE_VIEW } from './zoom'
 import type { FileViewerSlotProps } from '../../types/viewer'
@@ -16,7 +15,7 @@ export function ImageHeader(props: FileViewerSlotProps) {
   // scale-driven mode flips (a zoom switches mode → 'actual').
   const view = Stores.File.imageViewStates.get(file.id) ?? DEFAULT_IMAGE_VIEW
   return (
-    <Space size="small">
+    <Space size="small" wrap={false}>
       <Button
         variant="ghost"
         size="icon"
@@ -46,7 +45,6 @@ export function ImageHeader(props: FileViewerSlotProps) {
         onClick={() => Stores.File.zoomImage(file.id, 1.25)}
         data-testid="file-viewer-zoom-in-btn"
       />
-      <DownloadButton file={file} />
     </Space>
   )
 }

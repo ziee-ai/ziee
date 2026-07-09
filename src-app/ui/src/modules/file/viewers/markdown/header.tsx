@@ -3,7 +3,6 @@ import { Stores } from '@/core/stores'
 import {
   CopyButton,
   CopySelectionButton,
-  DownloadButton,
   FindButton,
   RawToggle,
   WrapToggle,
@@ -25,7 +24,6 @@ export function MarkdownHeader(props: FileViewerSlotProps) {
       <RawToggle file={file} />
       <CopySelectionButton />
       <CopyButton file={file} />
-      <DownloadButton file={file} />
     </Space>
   )
 }

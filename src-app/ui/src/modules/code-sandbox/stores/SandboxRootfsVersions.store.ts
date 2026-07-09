@@ -5,6 +5,7 @@ import {
   Permissions,
   type RootfsArtifact,
   type RootfsRelease,
+  type SandboxAvailability,
   type SSEInstallCompleteData,
   type SSEInstallConnectedData,
   type SSEInstallFailedData,
@@ -14,6 +15,7 @@ import {
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
+import { reconcileInitialTask } from './installTaskReconcile'
 
 /** Per-(version, arch, flavor, package) action state — drives the install /
  *  set-pin / delete buttons' loading flags. */
@@ -75,6 +77,12 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
     /** Server-authoritative host CPU arch + rootfs package format. */
     hostArch: null as string | null,
     hostPackage: null as string | null,
+    /** Whether code_sandbox is initialized, else the machine-readable reason.
+     * When not `'ready'` the LIST endpoint still returns 200 with the GitHub
+     * catalog (installed/pinned empty) — the section renders a graceful notice
+     * instead of a destructive error. Defaults to `'ready'` so the working UI is
+     * unchanged until a degraded response arrives. */
+    availability: 'ready' as SandboxAvailability,
     /** Outcome of the last set-pin call. */
     lastSwap: null as SwapOutcome | null,
     loading: false,
@@ -108,6 +116,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
           s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
           s.hostArch = res.host_arch ?? null
           s.hostPackage = res.host_package ?? null
+          s.availability = res.availability
           // Prune any install task whose artifact has landed — keeps installTasks
           // bounded while letting the SSE `complete` handler hold a completed
           // task until this reload arrives (aggregate bar stays monotonic).
@@ -273,7 +282,11 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
             package: pkg,
           })
           set(s => {
-            s.installTasks[key] = initial
+            // Race guard: the SSE `taskStarted`/`progress` events (same task_id)
+            // may already have created + advanced this task while this POST was
+            // in flight. Keep the SSE-tracked task if present so a late reply
+            // (phase: null) can't clobber an in-flight download back to "queued".
+            s.installTasks[key] = reconcileInitialTask(s.installTasks[key], initial)
           })
         } catch (e: any) {
           set(s => {
@@ -301,6 +314,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
             s.mcpServerWorkspaceCount = res.status.mcp_server_workspace_count
             s.hostArch = res.status.host_arch ?? null
             s.hostPackage = res.status.host_package ?? null
+            s.availability = res.status.availability
             s.lastSwap = res.swap
           })
           return true
@@ -332,6 +346,7 @@ export const SandboxRootfsVersions = defineStore('SandboxRootfsVersions', {
             s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
             s.hostArch = res.host_arch ?? null
             s.hostPackage = res.host_package ?? null
+            s.availability = res.availability
           })
           return true
         } catch (e: any) {

@@ -53,6 +53,15 @@ export const STATE_COVERAGE = {
   // running/failed, attachments, elicitation) that have no single named key.
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
+  // The find bar's `loading` state is a transient in-flight search fetch (the
+  // results-list spinner while a page of matches loads). It can't be captured
+  // as a deterministic gallery snapshot; it's exercised end-to-end by the
+  // server-side find e2e spec (conversation-find.spec.ts / TEST-16).
+  'modules/chat/components/ConversationFindBar:delayed': {
+    skip: true,
+    reason:
+      "transient in-flight search fetch (results-list spinner); not deterministically snapshottable — verified by the server-side find e2e spec (conversation-find.spec.ts)",
+  },
   'modules/file/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-file',
   },
@@ -88,6 +97,7 @@ export const STATE_COVERAGE = {
   "modules/assistant/chat-extension/components/AssistantMenuItem:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/assistant/chat-extension/components/AssistantSelector:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/assistant/components/AssistantFormDrawer:open": { via: 'overlay' },
+  "modules/chat/core/components/ChatRightPanel:open": { via: 'overlay' },
   "modules/assistant/pages/AssistantsSettings:delayed": { via: 'page-state-mode' },
   "modules/assistant/pages/AssistantsSettings:empty": { via: 'page-state-mode' },
   "modules/assistant/pages/UserAssistantsSettings:delayed": { via: 'page-state-mode' },
@@ -115,12 +125,14 @@ export const STATE_COVERAGE = {
   "modules/chat/components/ConversationList:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/ConversationList:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/MessageList:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
+  "modules/chat/components/MessageList:empty": { skip: true, reason: "the dedicated 'seeded-message-list-empty' gallery surface renders this empty (!loading && count===0) branch directly" },
   "modules/chat/core/components/ChatRightPanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/extensions/registry:empty": { skip: true, reason: "nonvisual surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/extensions/slots:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/utils/StreamdownErrorBoundary:error": { skip: true, reason: "nonvisual surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/core/utils/useStreamdownComponents:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/extensions/export/extension:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
+  "modules/chat/pages/ChatHistoryPage:delayed": { skip: true, reason: "via surface — rendered within its page; loading branch proven by Part 2 runtime coverage" },
   "modules/chat/pages/ChatHistoryPage:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/chat/widgets/RecentConversationsWidget:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/chat/widgets/RecentConversationsWidget:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
@@ -236,6 +248,7 @@ export const STATE_COVERAGE = {
   "modules/llm-repository/components/LlmRepositoryDrawer:open": { via: 'overlay' },
   "modules/llm-repository/components/LlmRepositorySettings:empty": { via: 'page-state-mode' },
   "modules/llm-repository/components/LlmRepositorySettings:error": { via: 'page-state-mode' },
+  "modules/mcp/chat-extension/components/AskUserWizardContent:error": { skip: true, reason: "the 'error' signal is a per-field zod/Other validation message (not a load-error surface); exercised by ask-user-decision-ux.spec.ts 'Other selected but blank blocks submit with a validation error' (asserts the role=alert error + blocked POST)" },
   "modules/mcp/chat-extension/components/McpMenuItem:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/mcp/chat-extension/components/McpStatusRow:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/mcp/chat-extension/extension:error": { via: 'interaction:deep-chat-mcp-toolcall-error' },
@@ -378,6 +391,7 @@ export const STATE_COVERAGE = {
   "modules/user/components/group/UserGroupsSettings:error": { via: 'page-state-mode' },
   "modules/chat/components/ConversationFindBar:empty": { skip: true, reason: "via surface — the find bar renders null when closed; its open/match states are proven by the conversation-find e2e + Part 2 runtime coverage" },
   "modules/file/chat-extension/components/FilePasteHandler:empty": { skip: true, reason: "via surface — an invisible composer-attached paste-image sentinel (renders only a hidden span); behavior proven by the composer-paste-image e2e" },
+  "modules/file/viewers/shared/RawCodeView:empty": { skip: true, reason: "unreachable — the flagged chunks.length===0 is an IntersectionObserver effect guard, not a render branch, and chunkLineArray always yields ≥1 chunk (even empty text → one empty-line chunk); the viewer's real render (windowed chunks + highlight) is covered by the seeded-rawcode-large gallery surface + the large-text-viewer e2e" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

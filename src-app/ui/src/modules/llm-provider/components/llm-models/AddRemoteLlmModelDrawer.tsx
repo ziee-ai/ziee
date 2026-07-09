@@ -173,6 +173,10 @@ export function AddRemoteLlmModelDrawer() {
       ]}
       size={600}
       mask={{ closable: false }}
+      // The shared Drawer body is px-3 pb-4 with NO top padding, so the first
+      // Card's top border sits flush against the scroll viewport edge and gets
+      // clipped once the content overflows. pt-3 gives it clearance.
+      classNames={{ body: 'pt-3' }}
     >
       <Form form={form} onSubmit={onValid} layout="vertical" data-testid="llm-add-remote-model-form">
         <Card title="Model" data-testid="llm-remote-model-card">
@@ -221,7 +225,7 @@ export function AddRemoteLlmModelDrawer() {
         <LlmModelParametersSection parameters={META_FIELDS} />
 
         <Card title="Capabilities" data-testid="llm-remote-capabilities-card">
-          <Flex vertical className="gap-2 w-full">
+          <Flex vertical className="gap-1 w-full">
             <CapabilitySwitch label="Chat" name="chat" />
             <CapabilitySwitch label="Vision" name="vision" />
             <CapabilitySwitch label="Tools" name="tools" />
@@ -229,9 +233,12 @@ export function AddRemoteLlmModelDrawer() {
             <CapabilitySwitch label="Code Interpreter" name="codeInterpreter" />
             <CapabilitySwitch label="Text Embedding" name="text_embedding" />
             <CapabilitySwitch label="Image Generator" name="image_generator" />
-            <Flex align="center" justify="between">
+            <Flex align="center" justify="between" className="gap-3 min-h-9">
               <span className="text-sm">Context window (tokens)</span>
-              <FormField name="context_length" aria-label="Context window" className="mb-0">
+              {/* w-40 (not the Field default w-full) so the field doesn't
+                  stretch across the row and shove the label; justify-between
+                  then right-aligns it. */}
+              <FormField name="context_length" aria-label="Context window" className="mb-0 w-40 shrink-0">
                 <InputNumber min={0} placeholder="e.g., 128000" data-testid="llm-remote-context-length" />
               </FormField>
             </Flex>
@@ -244,9 +251,17 @@ export function AddRemoteLlmModelDrawer() {
 
 function CapabilitySwitch({ label, name }: { label: string; name: string }) {
   return (
-    <Flex align="center" justify="between">
+    <Flex align="center" justify="between" className="gap-3 min-h-9">
       <span className="text-sm">{label}</span>
-      <FormField name={name} aria-label={label} valuePropName="checked" className="mb-0">
+      {/* w-auto shrink-0: the Field defaults to w-full (field.tsx), which would
+          stretch across the row and pull the Switch up against the label —
+          override it so justify-between can right-align the toggle. */}
+      <FormField
+        name={name}
+        aria-label={label}
+        valuePropName="checked"
+        className="mb-0 w-auto shrink-0"
+      >
         <Switch data-testid={`llm-remote-capability-${name}`} />
       </FormField>
     </Flex>

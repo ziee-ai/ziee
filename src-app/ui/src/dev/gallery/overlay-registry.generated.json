@@ -1,8 +1,8 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 72,
-    "hosts": 53,
+    "total": 73,
+    "hosts": 54,
     "triggers": 19,
     "wiredOpen": 37
   },
@@ -59,6 +59,23 @@
       "occurrences": [
         {
           "primitive": "Confirm",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/chat/core/components/ChatRightPanel",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        },
+        {
+          "primitive": "Drawer",
           "mode": "controlled"
         }
       ]
@@ -331,11 +348,16 @@
       "surface": "modules/mcp/components/McpConfigModal",
       "class": "host",
       "primitives": [
-        "Dialog"
+        "Dialog",
+        "Drawer"
       ],
       "occurrences": [
         {
           "primitive": "Dialog",
+          "mode": "controlled"
+        },
+        {
+          "primitive": "Drawer",
           "mode": "controlled"
         }
       ]

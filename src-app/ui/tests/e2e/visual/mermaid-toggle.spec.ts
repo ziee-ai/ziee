@@ -5,13 +5,13 @@
  *  - the isolated `deep-chat-rendering-showcase` deep-state (a REAL
  *    ConversationPage that renders a mermaid fence through the production chat
  *    path: TextContent → Streamdown → our `plugins.renderers` MermaidBlock). This
- *    surface has no gallery overlay backdrops, so the controls are clickable —
- *    the interactive tests (render / toggle / copy / download) run here and thus
- *    prove the real chat integration.
+ *    focused single-surface render is the stable click target, so the interactive
+ *    tests (render / toggle / copy / download) run here and thus prove the real
+ *    chat integration.
  *  - the `mermaid-block` component story (render / source / error / streaming
  *    cases), used for the visibility-only state assertions (both-modes +
- *    edge-state exercise); the browse-all-stories view carries open-overlay
- *    backdrops so it is only asserted against, never clicked.
+ *    edge-state exercise); the browse-all-stories view mounts every story at once
+ *    so it is only asserted against, never clicked.
  *
  * Closes AFFORDANCE_MATRIX G1 (source⇄render toggle) + G2 (copy source) + the
  * download-SVG rider. Lifecycle: .lifecycle/mermaid-toggle (TEST-1..6).
@@ -106,7 +106,7 @@ test.describe('Mermaid code⇄render toggle', () => {
     page,
   }) => {
     // Disabled state — read on the story's streaming case (an attribute check,
-    // no click, so the browse-view overlay backdrops don't matter).
+    // no click, so the browse view's story density doesn't matter).
     await openGallery(page, 'light', 'blue')
     await expect(
       page.getByTestId(caseId('streaming')).getByTestId('mermaid-download-svg-btn'),

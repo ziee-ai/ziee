@@ -1,10 +1,37 @@
-import { ChevronRight, ChevronDown, FileOutput, File, PanelRight } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { Button, Tooltip, message } from '@/components/ui'
+import { ChevronRight, ChevronDown, File, PanelRight } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
+import { Button, Tooltip } from '@/components/ui'
+import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
 import { isInlineCapable } from '@/modules/file/viewers/shared/source'
+import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
+// NOTE: this file (a chat-EXTENSION of the file module) intentionally reaches
+// into chat-module UI state — the lifted per-conversation view store + the
+// in-place-anchor hook. This is chat coupling by design (an inline file preview
+// lives inside the virtualized chat message list); it differs from the earlier
+// in-file note declining to read chat-STREAMING state, which remains avoided.
+import {
+  useMessageViewStateStore,
+  type MessageViewFullState,
+} from '@/modules/chat/core/stores/MessageViewState.store'
+import { DEFAULT_INLINE_FILE_STATE } from '@/modules/chat/core/stores/messageViewState.helpers'
+import {
+  INLINE_FILE_MIN_PX,
+  clampReservedPx,
+  maxReservedPx,
+  resolveBodyHeightPx,
+} from '@/modules/file/chat-extension/components/inlineFileHeight'
+import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
 
 interface InlineFilePreviewProps {
   /** Viewer matched by `getViewer(name, mimeType)`. `undefined` when no
@@ -28,50 +55,65 @@ function formatFileSize(bytes: number | undefined): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
+const KEY_STEP_PX = 24
+const viewportH = () =>
+  typeof window === 'undefined' ? 800 : window.innerHeight
+
 /**
  * Collapsible wrapper around a single tool-result file.
  *
  * - **Header** (always visible): viewer icon + filename + label + size +
- *   the viewer's `headerActions` + "Open in new tab" link + chevron.
- * - **Body** (when expanded AND viewer is inline-capable for this MIME):
- *   the viewer's `body` rendered with the `{source}` variant of
- *   `FileViewerSlotProps`. Otherwise no body — the header link is the
- *   entire UI.
+ *   the viewer's `headerActions` + side-panel button + collapse chevron.
+ * - **Body** (when expanded AND viewer is inline-capable for this MIME): the
+ *   viewer's `body` in a FIXED-HEIGHT, internally-scrolling box. The height is
+ *   definite (not content-driven) so the virtualized message row's height stops
+ *   changing after mount — image decode / table parse / Shiki highlight all
+ *   settle inside the box (message-scroll-stability ITEM-2). Until the preview
+ *   has been SEEN once, a same-height SKELETON stands in (its own testid, so the
+ *   heavy viewer body is still lazily mounted only in view — preserving the
+ *   existing lazy-mount perf contract), making the seen→body swap zero-delta.
  *
- * The chevron is the ONLY collapse toggle — clicking the body itself
- * does nothing. This matches the right-panel UX where the body is the
- * content, not a button.
+ * All ephemeral per-preview state (collapsed, seen, resized height) is LIFTED
+ * into the per-conversation `MessageViewState` store keyed by the resource_link
+ * URI (ITEM-5), so it survives the virtualizer unmounting/remounting this row.
+ * A bottom drag/keyboard-resize handle (ITEM-3) lets the user grow/shrink one
+ * preview; the chosen height persists there.
  */
 export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const key = source.url
+  const rootRef = useRef<HTMLDivElement>(null)
+  const bodyId = useId()
+  const anchorBeforeChange = useInPlaceAnchor(rootRef)
 
-  // Viewport-gate the body: a conversation can hold many inline files, and the
-  // body is where the cost lives (image thumbnail fetch+decode, text fetch).
-  // Mount the body only once this preview scrolls within ~800px of the
-  // viewport, then keep it mounted (mount-once: scrolling away does not unmount
-  // / refetch). The header is always cheap and always rendered. Combined with
-  // the conversation page's instant initial scroll, off-screen files on reload
-  // never enter the viewport, so they never fetch.
-  //
-  // Intentional: a file produced mid-stream while the user has scrolled up
-  // shows its header immediately but defers its body until they scroll back
-  // within range — same lazy contract as any other off-screen preview. We do
-  // NOT special-case the streaming turn here, since that would require the
-  // file module to read chat-streaming state (cross-module coupling).
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [inView, setInView] = useState(false)
+  // Scoped subscription: read only THIS preview's entry, not the whole `files`
+  // map. `markFileSeen` fires on scroll as previews enter view; a whole-map read
+  // would re-render every mounted preview on each scroll-in (a scroll-driven
+  // re-render storm that undercuts smoothness). immer's structural sharing keeps
+  // `files[key]` identity stable when a DIFFERENT key mutates, so this selector
+  // re-renders only when this preview's own state changes.
+  const view =
+    useMessageViewStateStore(
+      (s: MessageViewFullState) => s.files[key],
+    ) ?? DEFAULT_INLINE_FILE_STATE
+  const collapsed = view.collapsed
+
+  // Viewport-gate the body ONCE per conversation session: mark `seen` when it
+  // scrolls within ~800px of the viewport, then remember it in the store so any
+  // later remount mounts the body immediately at the SAME fixed height — no
+  // re-fetch, no re-lazy-mount height churn (ITEM-5, DEC-10). First load starts
+  // `seen:false`, so off-screen bodies still defer their fetch.
   useEffect(() => {
-    if (inView) return
+    if (view.seen) return
     if (typeof IntersectionObserver === 'undefined') {
-      setInView(true)
+      Stores.MessageViewState.markFileSeen(key)
       return
     }
-    const el = containerRef.current
+    const el = rootRef.current
     if (!el) return
     const observer = new IntersectionObserver(
       entries => {
         if (entries.some(e => e.isIntersecting)) {
-          setInView(true)
+          Stores.MessageViewState.markFileSeen(key)
           observer.disconnect()
         }
       },
@@ -79,7 +121,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [inView])
+  }, [view.seen, key])
 
   // Prefer the resolved File's metadata (authoritative) over the link's.
   const displayName = file?.filename ?? source.name
@@ -88,24 +130,29 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
 
   const canInline = isInlineCapable(viewer, displayName, displayMime ?? undefined)
   const Body = canInline ? viewer?.body : undefined
-  // Only show the viewer's headerActions when the body itself renders
-  // inline. Non-inline viewers (pdf / web / unknown) don't get header
-  // chrome here — their existing headers would just return null otherwise.
   const HeaderActions = canInline ? viewer?.headerActions : undefined
   const Icon = viewer?.icon ?? <File />
   const label = viewer?.label
+  const inlineFill = viewer?.inlineFill ?? false
 
-  const showBody = canInline && !collapsed && Body !== undefined && inView
-  // Render the body via the authenticated `{file}` path when this is a
-  // backend-owned artifact; otherwise the URL-based `{source}` path.
+  // Fixed body height: the persisted resized px (during a drag, the live local
+  // value) or the per-viewer default. Skeleton + body use the SAME value so the
+  // seen→body swap is zero-delta.
+  const [dragHeight, setDragHeight] = useState<number | null>(null)
+  const bodyHeightPx =
+    dragHeight ?? resolveBodyHeightPx(inlineFill, view.heightPx, viewportH())
+
+  const hasBody = canInline && Body !== undefined
+  const showBodyRegion = hasBody && !collapsed
   const slotProps: FileViewerSlotProps = file ? { file } : { source }
+
+  const setCollapsed = (next: boolean) => {
+    anchorBeforeChange()
+    Stores.MessageViewState.setFileCollapsed(key, next)
+  }
 
   const handleOpenInPanel = () => {
     if (!file) return
-    // displayInRightPanel is an action — callable directly from an event
-    // handler (actions are hook-free, no Rules-of-Hooks concern).
-    // Pin the panel to the version this resource_link referenced (head if the
-    // link carried no version) so a historical tool result opens its own bytes.
     Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
@@ -114,132 +161,195 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     })
   }
 
-  const handleOpenInNewTab = () => {
-    if (!file) return
-    Stores.File.openFileInNewTab(file.id).catch(() =>
-      message.error('Failed to open file'),
-    )
+  // ── Drag/keyboard resize (ITEM-3). Bottom-edge drag grows the box downward so
+  // the row top never moves (in-place). The live drag height is held in local
+  // state + a ref (so the commit reads it WITHOUT a side-effecting setState
+  // updater); committed to the store on release/cancel so it persists across
+  // remount. `onLostPointerCapture`/`onPointerCancel` guarantee the drag always
+  // ends (no stuck drag if the browser cancels the gesture). Keyboard-resizable
+  // for a11y (DEC-6).
+  const dragStart = useRef<{ y: number; h: number } | null>(null)
+  const dragHeightRef = useRef<number | null>(null)
+  const setDrag = (px: number | null) => {
+    dragHeightRef.current = px
+    setDragHeight(px)
+  }
+  const onHandlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    // setPointerCapture can throw (NotFoundError) if the pointer isn't active
+    // (e.g. a synthetic/dispatched event) — the drag still works via the
+    // element's own move handler, so never let a capture failure abort it.
+    try {
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {
+      /* capture unavailable — proceed without it */
+    }
+    dragStart.current = { y: e.clientY, h: bodyHeightPx }
+    setDrag(bodyHeightPx)
+  }
+  const onHandlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = dragStart.current
+    if (!start) return
+    setDrag(clampReservedPx(start.h + (e.clientY - start.y), viewportH()))
+  }
+  const endDrag = useCallback(() => {
+    if (dragStart.current == null) return
+    dragStart.current = null
+    const px = dragHeightRef.current
+    if (px != null) Stores.MessageViewState.setFileHeight(key, px)
+    setDrag(null)
+  }, [key])
+  const onHandlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // Guard symmetrically with setPointerCapture: releasePointerCapture throws
+    // NotFoundError on spec-conformant engines (WebKit/Firefox) when no capture
+    // is active (e.g. a synthetic/dispatched pointer). A throw here must NOT
+    // abort endDrag() → the height commit.
+    try {
+      ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    } catch {
+      /* no active capture — ignore */
+    }
+    endDrag()
+  }
+  const onHandleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    let next: number | null = null
+    if (e.key === 'ArrowUp') next = bodyHeightPx - KEY_STEP_PX
+    else if (e.key === 'ArrowDown') next = bodyHeightPx + KEY_STEP_PX
+    else if (e.key === 'Home') next = 0 // clamp → min
+    else if (e.key === 'End') next = Number.MAX_SAFE_INTEGER // clamp → max
+    if (next == null) return
+    e.preventDefault()
+    anchorBeforeChange()
+    Stores.MessageViewState.setFileHeight(key, clampReservedPx(next, viewportH()))
   }
 
   return (
     <div
-      ref={containerRef}
+      ref={rootRef}
       data-testid="inline-file-preview"
       data-file-uri={source.url}
       data-file-id={file?.id}
       className="flex flex-col rounded-md overflow-hidden border border-border bg-card"
     >
-      {/* Header row */}
+      {/* Header row (flex-wrap for narrow inline widths). */}
       <div
-        className="flex items-center gap-2 px-3 py-2 bg-muted/60"
+        className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 bg-muted/60"
         style={{
-          borderBottom: showBody ? '1px solid var(--border)' : 'none',
+          borderBottom: showBodyRegion ? '1px solid var(--border)' : 'none',
         }}
       >
-        <span
-          className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
-          style={{ width: 20, height: 20 }}
-          data-testid="inline-file-preview-icon"
-        >
-          {Icon}
-        </span>
-        <span
-          className="font-medium truncate text-foreground"
-          title={displayName}
-        >
-          {displayName}
-        </span>
-        <span className="text-xs flex-shrink-0 text-muted-foreground">
-          {label ? <>· {label}</> : null}
-          {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
-        </span>
-        <div className="flex-grow" />
-        {HeaderActions ? <HeaderActions {...slotProps} /> : null}
-        {/* Open in side panel — only for backend-owned files (need a File id
-            to drive the panel renderer). */}
-        {file ? (
-          <Tooltip content="Open in side panel">
-            <Button
-              variant="ghost"
-              size="default"
-              icon={<PanelRight />}
-              onClick={handleOpenInPanel}
-              aria-label="Open file in side panel"
-              data-testid="inline-file-preview-open-panel"
-            />
-          </Tooltip>
-        ) : null}
-        <Tooltip content="Open in new tab">
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+          <span
+            className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground"
+            style={{ width: 20, height: 20 }}
+            data-testid="inline-file-preview-icon"
+          >
+            {Icon}
+          </span>
+          <span
+            className="font-medium truncate text-foreground"
+            title={displayName}
+          >
+            {displayName}
+          </span>
+          <span className="text-xs flex-shrink-0 whitespace-nowrap text-muted-foreground">
+            {label ? <>· {label}</> : null}
+            {displaySize !== undefined ? <> · {formatFileSize(displaySize)}</> : null}
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5 flex-shrink-0 ms-auto">
+          {HeaderActions ? <HeaderActions {...slotProps} /> : null}
+          {file ? <DownloadButton file={file} /> : null}
           {file ? (
-            // File-backed: mint a fresh token via the store action (a plain
-            // <a target=_blank> can't carry the bearer header).
+            <Tooltip content="Open in side panel">
+              <Button
+                variant="ghost"
+                size="default"
+                icon={<PanelRight />}
+                onClick={handleOpenInPanel}
+                aria-label="Open file in side panel"
+                data-testid="inline-file-preview-open-panel"
+              />
+            </Tooltip>
+          ) : null}
+          {hasBody && (
             <Button
               variant="ghost"
               size="default"
-              icon={<FileOutput />}
-              onClick={handleOpenInNewTab}
-              aria-label="Open file in new tab"
-              data-testid="inline-file-preview-open"
-            />
-          ) : (
-            // External MCP link: open the URL directly.
-            <Button
-              variant="ghost"
-              size="default"
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              icon={<FileOutput />}
-              aria-label="Open file in new tab"
-              data-testid="inline-file-preview-open"
+              aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
+              aria-expanded={!collapsed}
+              // Only reference the region while it is actually mounted (expanded);
+              // when collapsed the body/skeleton is unmounted, so a dangling
+              // aria-controls IDREF would be invalid (re-audit low finding).
+              aria-controls={collapsed ? undefined : bodyId}
+              icon={collapsed ? <ChevronRight /> : <ChevronDown />}
+              onClick={() => setCollapsed(!collapsed)}
+              data-testid="inline-file-preview-chevron"
             />
           )}
-        </Tooltip>
-        {/* Expand/collapse toggle — trailing (right) edge, matching the app
-            convention used by the execute_command / MCP tool-call cards (chevron
-            on the right). Only render when the viewer actually has an inline body
-            to toggle; otherwise the header is the whole UI and it would be a noop. */}
-        {canInline && Body && (
-          <Button
-            variant="ghost"
-            size="default"
-            aria-label={collapsed ? 'Expand file preview' : 'Collapse file preview'}
-            aria-expanded={!collapsed}
-            icon={collapsed ? <ChevronRight /> : <ChevronDown />}
-            onClick={() => setCollapsed(c => !c)}
-            data-testid="inline-file-preview-chevron"
-          />
-        )}
+        </div>
       </div>
 
-      {/* Body — viewer's existing component, called with the source variant.
-          Body click does NOTHING; only the chevron in the header toggles.
-
-          Both branches are content-sized boxes with a max cap, so a SHORT table
-          (or any short body) shrinks to fit instead of leaving empty space. The
-          `inlineFill` viewers (the tabular data grid) own their own
-          OverlayScrollbars scroll region (`max-h-full` inside), which caps +
-          scrolls a tall grid within this box — no fixed height needed (the kit
-          Table isn't virtualized, so the old "needs a definite height for
-          measurement" constraint no longer applies). */}
-      {showBody && Body ? (
-        <div
-          className={
-            viewer?.inlineFill
-              ? // inlineFill viewers (the tabular data grid) cap + scroll here,
-                // but only via MAX height — a short table (2-3 rows) hugs its
-                // content instead of sitting in a tall empty box. The grid body
-                // itself supplies a DEFINITE height when it virtualizes a large
-                // dataset (see DelimitedTable / XlsxBody), so virtualization
-                // still measures a real viewport.
-                'overflow-auto max-h-[min(360px,55vh)]'
-              : 'overflow-auto max-h-[600px]'
-          }
-          data-testid="inline-file-preview-body"
-        >
-          <Body {...slotProps} />
-        </div>
-      ) : null}
+      {/* Body region — FIXED height + internal scroll (ITEM-2). The heavy viewer
+          body mounts ONLY once seen; before that a same-height skeleton stands
+          in (distinct testid) so off-screen bodies stay lazily mounted AND the
+          seen→body swap is zero-delta to the virtualizer. */}
+      {showBodyRegion && (
+        <>
+          {view.seen && Body ? (
+            <div
+              id={bodyId}
+              className="overflow-auto"
+              style={{ height: bodyHeightPx }}
+              data-testid="inline-file-preview-body"
+              data-body-height={bodyHeightPx}
+            >
+              <Body {...slotProps} />
+            </div>
+          ) : (
+            <div
+              id={bodyId}
+              className="overflow-hidden"
+              style={{ height: bodyHeightPx }}
+              data-testid="inline-file-preview-skeleton"
+              data-body-height={bodyHeightPx}
+            >
+              {/* Decorative loading placeholder — hidden from AT; the region
+                  itself stays referenceable by the resize separator. */}
+              <div
+                className="h-full w-full animate-pulse bg-muted/40"
+                aria-hidden="true"
+              />
+            </div>
+          )}
+          {/* Bottom drag/keyboard resize handle (ITEM-3). */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize file preview"
+            aria-controls={bodyId}
+            aria-valuenow={Math.round(bodyHeightPx)}
+            aria-valuemin={INLINE_FILE_MIN_PX}
+            aria-valuemax={maxReservedPx(viewportH())}
+            tabIndex={0}
+            data-testid="inline-file-preview-resize"
+            onPointerDown={onHandlePointerDown}
+            onPointerMove={onHandlePointerMove}
+            onPointerUp={onHandlePointerUp}
+            onPointerCancel={endDrag}
+            onLostPointerCapture={endDrag}
+            onKeyDown={onHandleKeyDown}
+            className={cn(
+              'h-2 w-full shrink-0 cursor-row-resize touch-none select-none',
+              'bg-muted hover:bg-accent focus-visible:outline-none',
+              'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+            )}
+          >
+            {/* Grip cue — muted-foreground for a perceivable 3:1 boundary. */}
+            <div className="mx-auto mt-[3px] h-0.5 w-8 rounded-full bg-muted-foreground/50" />
+          </div>
+        </>
+      )}
     </div>
   )
 }

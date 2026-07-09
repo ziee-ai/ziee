@@ -20,6 +20,8 @@
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::modules::code_sandbox::config::SandboxAvailability;
 use sqlx::PgPool;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -103,6 +105,12 @@ pub struct VersionStatus {
     /// (`"squashfs"` on Linux/macOS, `"tar.zst"` on Windows/WSL2). Authoritative
     /// — prevents a fresh Windows host from pre-fetching an unmountable squashfs.
     pub host_package: String,
+    /// Whether `code_sandbox` is initialized, and if not, the machine-readable
+    /// reason. `ready` when the sandbox is registered (full status); otherwise a
+    /// degraded snapshot — the GitHub `available` catalog with empty
+    /// `installed`/`pinned` — so the admin UI can explain WHY installing/mounting
+    /// is unavailable instead of showing a blanket error.
+    pub availability: SandboxAvailability,
 }
 
 /// Per-mount snapshot exposed via `status()` and the admin UI.
@@ -1159,7 +1167,57 @@ pub async fn status(pool: &PgPool) -> Result<VersionStatus, VersionError> {
             "squashfs"
         }
         .to_string(),
+        // `status()` is only reached when the sandbox is fully initialized.
+        availability: SandboxAvailability::Ready,
     })
+}
+
+/// The host arch string the admin UI keys the "install this" affordance off of.
+/// Kept identical to `status()`'s computation so degraded + initialized agree.
+fn host_arch() -> String {
+    std::env::consts::ARCH.to_string()
+}
+
+/// The rootfs package format the local backend can mount. Kept identical to
+/// `status()`'s computation.
+fn host_package() -> String {
+    if cfg!(target_os = "windows") {
+        "tar.zst"
+    } else {
+        "squashfs"
+    }
+    .to_string()
+}
+
+/// Build a degraded `VersionStatus` (pure — no DB, no network). Used when
+/// `code_sandbox` is not initialized: the GitHub `available` catalog is still
+/// shown, but `installed`/`pinned`/`draining` are empty and `availability`
+/// names the reason. Split from `available_only` so it is unit-testable without
+/// touching the network.
+fn build_degraded(availability: SandboxAvailability, available: Vec<RootfsRelease>) -> VersionStatus {
+    VersionStatus {
+        pinned_version: None,
+        installed: Vec::new(),
+        available,
+        draining: Vec::new(),
+        conversation_count: 0,
+        mcp_server_workspace_count: 0,
+        host_arch: host_arch(),
+        host_package: host_package(),
+        availability,
+    }
+}
+
+/// Degraded status for the admin "Rootfs versions" page when the sandbox isn't
+/// initialized. Fetches the GitHub catalog best-effort (empty on network
+/// failure, exactly as `status()` does) and tags it with the reason so the UI
+/// degrades gracefully instead of erroring.
+pub async fn available_only(availability: SandboxAvailability) -> VersionStatus {
+    let available = list_releases().await.unwrap_or_else(|e| {
+        tracing::debug!("code_sandbox: available_only() — GitHub list_releases failed: {e}");
+        Vec::new()
+    });
+    build_degraded(availability, available)
 }
 
 /// Tally (per-conversation, per-MCP-server) workspace dirs that a
@@ -1834,6 +1892,38 @@ pub fn consume_workspace_sentinel(workspace_dir: &std::path::Path) -> Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_degraded_shape() {
+        // The GitHub catalog is passed through; everything DB/state-derived is
+        // empty, and the reason is carried verbatim.
+        let releases = vec![RootfsRelease {
+            version: "0.0.6-alpha".to_string(),
+            published_at: None,
+            draft: false,
+            prerelease: true,
+            asset_names: vec!["ziee-sandbox-rootfs-x86_64-full.squashfs".to_string()],
+        }];
+        let s = build_degraded(SandboxAvailability::DisabledInConfig, releases.clone());
+        assert_eq!(s.availability, SandboxAvailability::DisabledInConfig);
+        assert_eq!(s.available.len(), 1);
+        assert_eq!(s.available[0].version, "0.0.6-alpha");
+        assert!(s.installed.is_empty());
+        assert!(s.draining.is_empty());
+        assert_eq!(s.pinned_version, None);
+        assert_eq!(s.conversation_count, 0);
+        assert_eq!(s.mcp_server_workspace_count, 0);
+        // Authoritative host fields are still populated so the UI can offer the
+        // artifact this machine would run once enabled.
+        assert!(!s.host_arch.is_empty());
+        assert!(!s.host_package.is_empty());
+
+        // An empty catalog (GitHub unreachable) still yields a valid degraded
+        // snapshot carrying the reason.
+        let empty = build_degraded(SandboxAvailability::HostUnsupported, Vec::new());
+        assert_eq!(empty.availability, SandboxAvailability::HostUnsupported);
+        assert!(empty.available.is_empty());
+    }
 
     #[test]
     fn semver_tag_regex_accepts_valid() {

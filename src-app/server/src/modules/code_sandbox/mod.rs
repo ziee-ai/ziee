@@ -188,6 +188,7 @@ impl AppModule for CodeSandboxModule {
 
         let cfg = ctx.config.code_sandbox.clone().unwrap_or_default();
         if !cfg.enabled {
+            config::set_init_status(config::SandboxAvailability::DisabledInConfig);
             tracing::info!(
                 "code_sandbox: disabled in config; skipping init (no rootfs probe, no MCP row)"
             );
@@ -210,7 +211,12 @@ impl AppModule for CodeSandboxModule {
         // logs its own "skipping registration" reason on `None`.
         let host_caps = match backend::active().probe_host(&cfg) {
             Some(h) => h,
-            None => return Ok(()),
+            None => {
+                // The backend logs its own "skipping registration" reason
+                // (Linux: bwrap missing). Record it so the admin list can say so.
+                config::set_init_status(config::SandboxAvailability::HostUnsupported);
+                return Ok(());
+            }
         };
 
         // Audit H-4: if the cloud instance metadata service is reachable
@@ -220,6 +226,7 @@ impl AppModule for CodeSandboxModule {
         // via `allow_cloud_imds_reachable: true`. Cheap host-only probe:
         // 200ms connect-timeout against 169.254.169.254:80.
         if !cfg.allow_cloud_imds_reachable && cloud_imds_reachable() {
+            config::set_init_status(config::SandboxAvailability::CloudImdsRefused);
             tracing::error!(
                 "code_sandbox: cloud IMDS endpoint (169.254.169.254:80) is \
                  reachable from this host. With `--share-net` (the current \
@@ -237,6 +244,7 @@ impl AppModule for CodeSandboxModule {
         let app_data_dir = crate::core::get_app_data_dir();
         let workspace_root = app_data_dir.join("sandboxes");
         if let Err(e) = std::fs::create_dir_all(&workspace_root) {
+            config::set_init_status(config::SandboxAvailability::WorkspaceInitFailed);
             tracing::error!(
                 "code_sandbox: cannot create workspace root {}: {e}",
                 workspace_root.display()
@@ -329,6 +337,7 @@ impl AppModule for CodeSandboxModule {
             }
         });
 
+        config::set_init_status(config::SandboxAvailability::Ready);
         tracing::info!(
             "code_sandbox: registered (rootfs will mount on first execute_command)"
         );

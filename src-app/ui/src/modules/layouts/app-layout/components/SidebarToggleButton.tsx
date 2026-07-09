@@ -44,7 +44,10 @@ export function SidebarToggleButton() {
               transform: headerHidden ? 'translateY(-150%)' : 'translateY(0)',
               opacity: headerHidden ? 0 : 1,
               pointerEvents: headerHidden ? 'none' : 'auto',
-              transition: 'transform 0.3s ease, opacity 0.3s ease',
+              // Match the header bar's show animation (duration-300 ease-out) so
+              // the toggle and the header arrive/leave in sync rather than on two
+              // different easings.
+              transition: 'transform 0.3s ease-out, opacity 0.3s ease-out',
             }
           : null),
       }}

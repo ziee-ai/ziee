@@ -33,19 +33,15 @@ export function Card({ title, extra, footer, loading, size = 'default', hoverabl
       className={cn(size === 'sm' && 'gap-3 py-4', hoverable && 'transition-shadow hover:shadow-md', rest.onClick && 'cursor-pointer', className)}
       {...rest}
     >
-      {/* Header stacks title + extra on mobile so a wide `extra` (e.g. a
-          "Check for updates" button) can't starve the title into a mid-word
-          wrap; restores the single row from sm up. */}
+      {/* Single row at every width: title (claims the free width, ellipsizes
+          when long) + right-aligned extra. Stacking title-over-extra on mobile
+          read as premature wrapping for the common short-title + short-extra
+          case; a genuinely long title now truncates rather than forcing a
+          mid-word wrap or a stack. */}
       {(title != null || extra != null) && (
-        <CardHeader className={cn('flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between', pad)}>
+        <CardHeader className={cn('flex flex-row items-center justify-between gap-2', pad)}>
           {title != null ? (
-            // `sm:flex-1` (row layout only): let the title claim the header's
-            // free width instead of shrinking to its min-content next to a
-            // right-aligned `extra` — a shrink-to-fit title wraps "with room"
-            // (e.g. a short project name breaking mid-phrase on tablet). Scoped
-            // to `sm:` so the mobile `flex-col` header doesn't stretch the title
-            // vertically.
-            <CardTitle className="min-w-0 sm:flex-1 [overflow-wrap:anywhere]">{title}</CardTitle>
+            <CardTitle className="min-w-0 flex-1 truncate">{title}</CardTitle>
           ) : (
             <span />
           )}

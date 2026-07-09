@@ -33,7 +33,7 @@ export function ExpandableCell({ value, testid }: { value: string; testid: strin
         variant="ghost"
         title={value}
         data-testid={testid}
-        className="block w-full max-w-full truncate text-start px-0 h-auto py-0 font-normal hover:underline underline-offset-2"
+        className="block w-full max-w-full truncate text-start px-0 h-auto min-h-6 py-0 font-normal hover:underline underline-offset-2"
       >
         {value}
       </Button>

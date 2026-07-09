@@ -157,7 +157,9 @@ function HeaderInner<T>({ col, meta, view, testid }: { col: TableColumn<T>; meta
         <button
           type="button"
           onClick={() => view.toggleSort(col.key)}
-          className="inline-flex items-center gap-1 -mx-1 px-1 rounded-sm hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          // min-h-6 keeps the sort control on the 24px WCAG touch-target floor
+          // (the bare text+glyph line is only ~20px tall).
+          className="inline-flex min-h-6 items-center gap-1 -mx-1 px-1 rounded-sm hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           data-testid={`${testid}-sort-${col.key}`}
         >
           <span className="truncate">{col.title}</span>
@@ -198,7 +200,11 @@ function ResizeHandle<T>({ col, view, testid, width }: { col: TableColumn<T>; vi
       role="separator"
       aria-orientation="vertical"
       aria-label={`Resize column ${colLabel(col)}`}
-      aria-valuenow={typeof width === 'number' ? Math.round(width) : undefined}
+      // A focusable separator MUST carry aria-valuenow (WAI-ARIA / axe
+      // aria-required-attr). `width` is undefined until the column is measured,
+      // so fall back to the min so the attr is always present (the drag/keyboard
+      // handlers read the live width off the DOM, not this value).
+      aria-valuenow={Math.round(width ?? col.minWidth ?? 64)}
       aria-valuemin={col.minWidth ?? 64}
       tabIndex={0}
       onPointerDown={onPointerDown}
@@ -225,7 +231,10 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
         <Input
           size="sm"
           allowClear
-          className="max-w-64"
+          // flex-1 min-w-0 (basis-0) so the filter SHRINKS to keep the Columns
+          // button on the same row on a narrow toolbar instead of the button
+          // wrapping below it; max-w-64 still caps its width on a wide toolbar.
+          className="flex-1 min-w-0 max-w-64"
           aria-label="Filter rows"
           placeholder={props.filterPlaceholder ?? 'Filter…'}
           value={view.query}

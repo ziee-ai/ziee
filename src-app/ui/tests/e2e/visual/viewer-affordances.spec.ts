@@ -16,13 +16,13 @@ for (const theme of ['light', 'dark'] as const) {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(FILE_PREVIEW.replace('theme=light', `theme=${theme}`))
 
-    // The new shell affordances (open-in-new-tab + full-page) render for any file
-    // in the preview drawer's action row — backend-free, in both themes. The
-    // surface's layout/contrast is separately covered by the runtime-health gate.
-    await expect(page.getByTestId('file-viewer-open-tab-btn')).toBeVisible()
+    // The shell affordances (download + full-page) render for any file in the
+    // preview drawer's action row — backend-free, in both themes. The surface's
+    // layout/contrast is separately covered by the runtime-health gate.
+    await expect(page.getByTestId('file-viewer-download-btn')).toBeVisible()
     await expect(page.getByTestId('file-viewer-fullpage-btn')).toBeVisible()
     // Both shell buttons carry an accessible name (no unnamed icon buttons).
-    await expect(page.getByRole('button', { name: 'Open file in new tab' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Download' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Open file full page' })).toBeVisible()
   })
 }

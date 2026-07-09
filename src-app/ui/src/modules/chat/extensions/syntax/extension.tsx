@@ -36,7 +36,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
           variant="ghost"
           icon={copied ? <Check /> : <CopyIcon />}
           onClick={handleCopy}
-          className=" opacity-0 group-hover:opacity-100 transition-opacity"
+          className="opacity-0 group-hover:opacity-100 hover-none:opacity-100 transition-opacity"
         >
           {copied ? 'Copied' : 'Copy'}
         </Button>

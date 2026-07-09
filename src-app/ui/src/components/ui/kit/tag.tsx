@@ -90,9 +90,7 @@ const TagInner = React.forwardRef<HTMLSpanElement, TagProps>(function Tag(
           onClick={onClose}
           aria-label={closeLabel}
           data-testid={props['data-testid'] != null ? `${props['data-testid'] as string}-close` : undefined}
-          // relative + mobile ::after overlay → the 12px close glyph keeps its inline
-          // footprint inside the tag but gains a WCAG 2.5.5 44px tap area on phones.
-          className="relative -me-0.5 ms-0.5 inline-flex items-center justify-center rounded-sm opacity-60 hover:opacity-100 max-[480px]:after:absolute max-[480px]:after:-inset-4 max-[480px]:after:content-[''] focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="relative -me-0.5 ms-0.5 inline-flex items-center justify-center rounded-sm opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <X className="size-3" aria-hidden />
         </button>

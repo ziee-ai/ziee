@@ -8,10 +8,11 @@ import { Button, InputNumber, Text } from '@/components/ui'
  * so this returns the controls as a fragment (no row wrapper / margins of its own).
  *
  * Copy / Export are intentionally NOT rendered here — the file-viewer header
- * (chrome.tsx) already owns the copy + download/export affordances, and a second
- * pair in this toolbar was a confusing duplicate. The `onCopy`/`onExport`/
- * `exportLabel` props are retained (unused) so the callers' handlers stay wired
- * for a future header-driven hookup without a churny signature change.
+ * (viewers/tabular/header.tsx → DelimitedHeader) owns the view-aware Export +
+ * Copy-selection affordances, driven off the snapshot the body publishes into
+ * `FileStore.fileTabularView`. The `onCopy`/`onExport`/`exportLabel` props are
+ * retained (optional, unused here) so callers with a body-local toolbar can
+ * still wire them without a churny signature change.
  */
 export function TabularToolbar({
   testidPrefix,
@@ -26,9 +27,9 @@ export function TabularToolbar({
   viewCount: number
   /** Called with a 1-based ORIGINAL row number to scroll into view. */
   onJump: (rowNumber: number) => void
-  onCopy: () => void
-  onExport: () => void
-  exportLabel: string
+  onCopy?: () => void
+  onExport?: () => void
+  exportLabel?: string
 }) {
   const [jump, setJump] = useState<number | null>(null)
   const filtered = viewCount !== total

@@ -111,59 +111,6 @@ function projectIdFromUrl(): string | null {
   return m ? m[1] : null
 }
 
-/**
- * Persistent "In project: NAME" chip at the top of the message list.
- * Reads the active conversation from Stores.Chat; if it's project-
- * bound, renders a clickable Tag that routes to /projects/{id}.
- * Returns null for unfiled conversations (no chip rendered).
- *
- * Loads the project on mount when the cache is cold (e.g. user
- * deep-linked into /chat/{cid} without going through any list that
- * would have populated the cache via hover).
- */
-function ProjectChipForConversationHeader() {
-  const conversation = Stores.Chat.conversation
-  const navigate = useNavigate()
-  const [project, setProject] = useState<Project | null>(() => {
-    if (!conversation?.id) return null
-    const cached = getCached(conversation.id)
-    return cached ?? null
-  })
-
-  useEffect(() => {
-    let cancelled = false
-    setProject(() => {
-      if (!conversation?.id) return null
-      const cached = getCached(conversation.id)
-      return cached ?? null
-    })
-    if (!conversation?.id) return
-    const cached = getCached(conversation.id)
-    if (cached !== undefined) return
-    loadProjectForConversation(conversation.id).then(p => {
-      if (cancelled) return
-      setProject(p)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [conversation?.id])
-
-  if (!conversation?.id || !project) return null
-
-  return (
-    <div className="px-4 pt-2">
-      <Tag variant="outline"
-        data-testid="project-header-chip-tag"
-        tone="info"
-        className="cursor-pointer"
-        onClick={() => navigate(`/projects/${project.id}`)}
-      >
-        In project: {project.name}
-      </Tag>
-    </div>
-  )
-}
 
 const projectExtension: ChatExtension = createExtension({
   name: 'project',
@@ -227,19 +174,6 @@ const projectExtension: ChatExtension = createExtension({
     <ProjectMembershipTrailing conversationId={conversation.id} />
   ),
 
-  // Always-visible chip at the top of the message list naming the
-  // project that owns the current conversation. Renders nothing when
-  // the conversation is unfiled. Separate from
-  // renderConversationCardTrailing (which is hover-only on cards in
-  // lists) — this one is the persistent "you are in a project" marker
-  // on the conversation page itself.
-  slots: {
-    message_list_header: {
-      component: ProjectChipForConversationHeader,
-      order: 10,
-    },
-  },
-
   // Dropdown contributions for the sidebar's RecentConversationsWidget
   // (and any future conversation menu). Provides:
   //   - In-project conv: "Open project: NAME" + "Remove from project"
@@ -285,8 +219,10 @@ function ProjectTagWithRemove({
     }
   }
 
-  // Mirrors the "Add to project" button: same reveal wrapper + outline button
-  // (with a minus icon), opening a controlled Confirm instead of the modal.
+  // The membership tag IS the remove affordance: it names the project the
+  // conversation is filed under, and its × detaches it (via the confirm below) —
+  // replacing the former standalone "Remove from project" button. Same hover-
+  // reveal wrapper as the other card actions.
   return (
     <>
       <div
@@ -296,21 +232,18 @@ function ProjectTagWithRemove({
             : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover-none:opacity-100'
         }`}
       >
-        <Tooltip title={project.name ? `Remove from ${project.name}` : 'Remove from project'}>
-          <Button
-            data-testid="project-trailing-remove-button"
-            variant="outline"
-            size="default"
-            icon={<CircleMinus />}
-            aria-label="Remove from project"
-            onClick={(e: React.MouseEvent) => {
-              e.stopPropagation()
-              setRemoveOpen(true)
-            }}
-          >
-            Remove from project
-          </Button>
-        </Tooltip>
+        <Tag
+          variant="outline"
+          tone="info"
+          icon={<FolderOpen />}
+          className="max-w-[11rem]"
+          title={project.name}
+          data-testid="project-trailing-remove-tag"
+          onClose={() => setRemoveOpen(true)}
+          closeLabel={project.name ? `Remove from ${project.name}` : 'Remove from project'}
+        >
+          <span className="truncate">{project.name}</span>
+        </Tag>
       </div>
       <Confirm
         data-testid="project-trailing-remove-confirm"

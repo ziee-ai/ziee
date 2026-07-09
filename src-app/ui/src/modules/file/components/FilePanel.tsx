@@ -6,19 +6,25 @@ import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import {
   DownloadButton,
   FullPageButton,
-  OpenInNewTabButton,
 } from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
 import { Stores } from '@/core/stores'
 
-/** Hard cap on previewable file size. Files above this never trigger a
- *  content download — the panel renders a "too large to preview" empty
- *  state instead. The cutoff intentionally covers the common
- *  log/dataset/spreadsheet "kinda big" range (most files <1 MB; large
- *  CSVs / parquets / logs commonly exceed 50 MB). Above 10 MB the cost
- *  of fetching + parsing + rendering (especially shiki highlighting
- *  for code, or xlsx parsing for spreadsheets) starts hurting more
- *  than the preview is worth — Download is still one click away. */
+/** Hard cap on previewable file size — the SINGLE outer OOM backstop that
+ *  prevents even fetching a pathological file. Files above this never trigger a
+ *  content download — the panel renders a "too large to preview" empty state
+ *  instead. The cutoff intentionally covers the common log/dataset/spreadsheet
+ *  "kinda big" range (most files <1 MB; large CSVs / parquets / logs commonly
+ *  exceed 50 MB). Above 10 MB the cost of fetching + parsing + rendering starts
+ *  hurting more than the preview is worth — Download is still one click away.
+ *
+ *  After file-viewer-virtualization the viewers virtualize/window their render
+ *  (text chunk-on-demand highlight; tabular row-virtualization), so their
+ *  per-viewer caps (RAWCODE_MAX_LINES / DELIMITED_MAX_ROWS / XLSX_MAX_ROWS) are
+ *  now high OOM GUARDS for the "many tiny lines/rows" case that a byte bound
+ *  can't catch — NOT preview-truncation UX. This 10 MB byte cap remains the one
+ *  upstream bound and is deliberately left unchanged (raising it would enlarge
+ *  the memory-heavy paths: whole-file DOM, in-memory dataSource, xlsx decompress). */
 const PREVIEW_SIZE_LIMIT_BYTES = 10 * 1024 * 1024
 
 function formatBytes(bytes: number): string {
@@ -64,9 +70,11 @@ export function FilePanelHeaderActions({
   const HeaderActions = handler?.headerActions
   return (
     <>
-      {HeaderActions ? <HeaderActions file={file} /> : <DownloadButton file={file} />}
-      {/* Shell-level affordances shared by every file type. */}
-      <OpenInNewTabButton file={file} />
+      {/* Viewer-specific chrome (toggles / copy / zoom …), when the matched
+          viewer declares any. */}
+      {HeaderActions ? <HeaderActions file={file} /> : null}
+      {/* Download is a shell-level affordance guaranteed for EVERY file type. */}
+      <DownloadButton file={file} />
       {showFullPage ? <FullPageButton file={file} /> : null}
     </>
   )
@@ -113,7 +121,11 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           hideHeader to skip this and avoid duplication. */}
       {!hideHeader && (
         <div
-          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b"
+          // bg-muted/50: a subtle muted header band (matches the drawer footer /
+          // find-bar convention). Without it the header fell through to the
+          // panel's bg-background — the DARKEST token — reading as a heavy black
+          // bar above the lighter bg-card body.
+          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b bg-muted/50"
         >
           <Title level={5} className="!m-0 flex-1 truncate" title={file.filename}>
             {file.filename}

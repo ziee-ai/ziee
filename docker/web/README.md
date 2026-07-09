@@ -64,6 +64,7 @@ renders it at start (via `envsubst`) from these env vars:
 | `ZIEE_JWT_SECRET` | dev default | JWT signing secret (**set >=32 chars in prod**) |
 | `ZIEE_STORAGE_KEY` | dev default | at-rest secret encryption key (**set >=32 chars in prod**) |
 | `ZIEE_UPDATE_CHECK` | `false` | outbound update-check toggle |
+| `ZIEE_CODE_SANDBOX_ENABLED` | `false` | enable the bwrap code sandbox (see "Code sandbox (opt-in)" below) |
 | `ZIEE_LOG_LEVEL` / `ZIEE_LOG_FORMAT` | `info` / `json` | logging |
 
 The target Postgres **must** have the `vector` (pgvector) and `pgcrypto`
@@ -168,9 +169,55 @@ uploads) lives under `/var/lib/ziee`, owned by the non-root `ziee` user.
   user can't write it — `chown` it to the container's `ziee` uid/gid first, or
   use a named volume.
 
+## Code sandbox (opt-in)
+
+`code_sandbox` (bwrap-isolated code execution) is **off by default**. The runtime
+image now ships the host deps (`bubblewrap`, `squashfuse`, `fuse3`, `fuse`), so
+enabling it is opt-in via an env flag + a compose overlay — the general image and
+the default stack are unchanged.
+
+Enable with the overlay (keeps the base `name: ziee-web`, so the container stays
+`ziee-web-ziee-web-1`):
+
+```bash
+sudo docker compose -f docker-compose.yml -f docker-compose.sandbox.yaml up -d --build
+```
+
+The overlay sets `ZIEE_CODE_SANDBOX_ENABLED=true` and grants the **minimal**
+runtime privilege bwrap + squashfuse need: `/dev/fuse` + `cap_add: SYS_ADMIN` +
+`security_opt: apparmor:unconfined, seccomp:unconfined`.
+
+Two levels of "working":
+
+- **Registration + the admin list** need only the env flag (the boot probe just
+  looks for `bwrap` on `PATH`). Once enabled, the startup log shows
+  `code_sandbox: registered (rootfs will mount on first execute_command)` and
+  **Settings → Sandbox** lists the available rootfs versions from GitHub.
+- **Real sandboxed execution** (the first `execute_command` fetches a rootfs from
+  GitHub, mounts it via squashfuse, and runs bwrap with a PID namespace)
+  additionally needs `/dev/fuse` and **unprivileged user namespaces**. On a host
+  that restricts unprivileged userns (`kernel.unprivileged_userns_clone=0`, or an
+  AppArmor userns restriction as on Ubuntu 23.10+), the bwrap PID-ns probe fails.
+  In that case replace the `devices`/`cap_add`/`security_opt` block in
+  `docker-compose.sandbox.yaml` with:
+
+  ```yaml
+  services:
+    ziee-web:
+      privileged: true
+  ```
+
+When the sandbox is **off** (the default), the admin rootfs-versions page still
+renders the GitHub catalog with a clear notice explaining it's disabled — it no
+longer shows a blanket error.
+
+> **Egress:** enabling needs outbound access to `api.github.com` (rootfs catalog
+> + fetch). **Security:** the sandbox gives LLM-generated code an
+> isolated-but-privileged execution surface — keep it opt-in; never fold it into
+> the base compose / general image.
+
 ## Notes / limits
 
-- `code_sandbox` is disabled (bwrap needs user namespaces / host deps).
 - The `bio_mcp` / `web_search` / `lit_search` built-in tools are on by default;
   they only make outbound calls when a user actually invokes them. Disable via a
   bind-mounted config if egress must be locked down.

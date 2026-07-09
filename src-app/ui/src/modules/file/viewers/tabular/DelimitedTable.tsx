@@ -1,25 +1,14 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, message } from '@/components/ui'
 import { Table } from '@/components/ui/kit/table'
 import type { TableColumn } from '@/components/ui/kit/table'
 import { detectNumericColumns } from '@/components/ui/kit/table-view-core'
+import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'
 import { ExpandableCell } from './ExpandableCell'
 import { TabularToolbar } from './TabularToolbar'
-import {
-  type ExportColumn,
-  type TabularRecord,
-  downloadDelimited,
-  exportFilename,
-  rowsToDelimited,
-} from './tableView'
-
-/** Cap on rendered rows. Above this, the table is truncated to the
- *  first N and a banner offers Download for full content. The wider 8
- *  MB byte-cap at FilePanel still applies upstream — by the time we
- *  get here the file is already under that bound. `virtual` on the
- *  antd Table keeps row rendering cheap at this size. */
-const MAX_ROWS = 10_000
+import type { ExportColumn, TabularRecord } from './tableView'
+import { DELIMITED_MAX_ROWS, parseDelimitedText } from './parse'
 
 /** Above this row count, switch the grid to row virtualization (needs a
  *  definite scroll-viewport height); at or below it, render a plain table so
@@ -27,38 +16,7 @@ const MAX_ROWS = 10_000
  *  included). Covers every inline preview and the vast majority of files. */
 const VIRTUALIZE_ROW_THRESHOLD = 200
 
-function parseDelimitedLine(line: string, delimiter: string): string[] {
-  const fields: string[] = []
-  let field = ''
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { field += '"'; i++ }
-      else inQuotes = !inQuotes
-    } else if (ch === delimiter && !inQuotes) {
-      fields.push(field.trim())
-      field = ''
-    } else {
-      field += ch
-    }
-  }
-  fields.push(field.trim())
-  return fields
-}
-
-function parseDelimitedText(text: string, delimiter: string): { headers: string[]; rows: string[][]; truncated: boolean } {
-  const lines = text.split('\n').filter(l => l.trim() !== '')
-  if (lines.length === 0) return { headers: [], rows: [], truncated: false }
-  const headers = parseDelimitedLine(lines[0], delimiter)
-  const dataLines = lines.slice(1)
-  const truncated = dataLines.length > MAX_ROWS
-  const rows = dataLines.slice(0, MAX_ROWS).map(l => parseDelimitedLine(l, delimiter))
-  return { headers, rows, truncated }
-}
-
-export function DelimitedTable({ text, delimiter, fileName }: { text: string; delimiter: string; fileName?: string }) {
+export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: string; delimiter: string; fileName?: string; fileId?: string }) {
   // Parse + column/dataSource construction is the entire cost of this
   // component. Memoize on (text, delimiter) so panel re-renders for
   // unrelated reasons (resize, drawer, sibling state) don't re-parse the
@@ -67,7 +25,7 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
     const { headers, rows, truncated } = parseDelimitedText(text, delimiter)
     const ROW_NUM_WIDTH = 56
     const COL_WIDTH = 240
-    // Row-number gutter column. Width fits a 5-digit count (10,000 cap).
+    // Row-number gutter column. Width fits a 6-digit count (300k cap).
     // It is a `rowHeader` (clicking selects the whole row) and is excluded
     // from the column-chooser + copy/export.
     //
@@ -147,8 +105,12 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
     [exportColumns],
   )
   const visibleKeysRef = useRef<string[]>(exportColumns.map(c => c.key))
-  const activeColumns = (): ExportColumn[] =>
-    visibleKeysRef.current.map(k => ({ key: k, title: titleByKey.get(k) ?? k }))
+  // Visible (non-gutter) columns in display order, honouring the chooser.
+  const activeColumns = useCallback(
+    (): ExportColumn[] =>
+      visibleKeysRef.current.map(k => ({ key: k, title: titleByKey.get(k) ?? k })),
+    [titleByKey],
+  )
 
   const onJump = (rowNumber: number) => {
     const idx = viewRef.current.findIndex(r => r.__rn === String(rowNumber))
@@ -161,23 +123,43 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
     requestAnimationFrame(() => setScrollTo(idx))
   }
 
-  const onCopy = async () => {
-    // selectionRef is already formula-neutralized by the kit (sanitizeClipboard);
-    // the whole-view fallback goes through rowsToDelimited (also neutralized).
-    const tsv = selectionRef.current || rowsToDelimited(viewRef.current, activeColumns(), '\t')
-    try {
-      await navigator.clipboard.writeText(tsv)
-      message.success('Copied to clipboard')
-    } catch {
-      message.error('Failed to copy')
-    }
-  }
+  // Publish the current view snapshot for the file-viewer header's view-aware
+  // Export / Copy-selection actions (see DelimitedHeader). No-op in the
+  // inline/chat context (no file id) — there the header isn't rendered.
+  // selectionRef is already formula-neutralized by the kit (sanitizeClipboard).
+  const publishView = useCallback(() => {
+    if (!fileId) return
+    Stores.File.setFileTabularView(fileId, {
+      rows: viewRef.current,
+      columns: activeColumns(),
+      delimiter,
+      fileName,
+      selectionTsv: selectionRef.current,
+    })
+  }, [fileId, activeColumns, delimiter, fileName])
 
-  const onExport = () => {
-    const ext = delimiter === '\t' ? 'tsv' : 'csv'
-    const csv = rowsToDelimited(viewRef.current, activeColumns(), delimiter)
-    downloadDelimited(csv, exportFilename(fileName, ext), delimiter)
-  }
+  // On mount + whenever the PARSED DATA changes (new file/text → new dataSource),
+  // reset the view refs to the fresh full parse and publish. Keyed ONLY on
+  // `dataSource` (which, with `exportColumns`, is memoized on [text, delimiter]):
+  // a live filter/sort/selection does NOT change dataSource, so it won't re-fire
+  // and clobber the kit's active view — and, critically, neither does a rename
+  // (fileName change), which must not reset the user's filter/selection.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally NOT
+  // keyed on publishView/exportColumns — see above; both track [text, delimiter].
+  useEffect(() => {
+    viewRef.current = dataSource
+    visibleKeysRef.current = exportColumns.map(c => c.key)
+    selectionRef.current = ''
+    publishView()
+  }, [dataSource])
+
+  // Drop the published snapshot when the table unmounts (panel close / switch to
+  // raw view) so the header's Export / Copy-selection disable rather than act on
+  // a view that is no longer rendered.
+  useEffect(() => {
+    if (!fileId) return
+    return () => Stores.File.clearFileTabularView(fileId)
+  }, [fileId])
 
   return (
     // A PLAIN (small) grid hugs its content so a 2-3 row table doesn't sit in a
@@ -198,7 +180,7 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
       {truncated && (
         <Alert
           tone="warning"
-          title={`Showing first ${MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
+          title={`Showing first ${DELIMITED_MAX_ROWS.toLocaleString()} rows. Download the file to view all data.`}
           className="mb-2 flex-shrink-0"
           data-testid="file-delimited-truncated-alert"
         />
@@ -224,9 +206,6 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
             total={dataSource.length}
             viewCount={viewCount}
             onJump={onJump}
-            onCopy={onCopy}
-            onExport={onExport}
-            exportLabel={delimiter === '\t' ? 'Export TSV' : 'Export CSV'}
           />
         }
         selectionMode="cell"
@@ -237,8 +216,8 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
         // container still scrolls if the data is genuinely wider than it.
         className="w-auto table-auto"
         filterPlaceholder="Filter rows…"
-        onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns }}
-        onSelectionChange={tsv => { selectionRef.current = tsv }}
+        onViewChange={(rows, meta) => { viewRef.current = rows; setViewCount(rows.length); visibleKeysRef.current = meta.visibleColumns; publishView() }}
+        onSelectionChange={tsv => { selectionRef.current = tsv; publishView() }}
         scrollToIndex={scrollTo}
         data-testid="file-delimited-table"
       />

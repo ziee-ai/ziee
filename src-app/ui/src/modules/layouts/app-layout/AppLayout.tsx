@@ -176,10 +176,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   )
 
   useEffect(() => {
-    if (windowMinSize.xs) {
+    if (windowMinSize.sm) {
       Stores.AppLayout.setSidebarCollapsed(true)
     }
-  }, [windowMinSize.xs])
+  }, [windowMinSize.sm])
 
   // On mobile the sidebar is a full-screen Sheet (overlay = fixed inset-0).
   // Navigation is triggered from inside that Sheet, but a route change alone
@@ -188,7 +188,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // when the user picks a destination. No-op on desktop (persistent sidebar).
   const location = useLocation()
   useEffect(() => {
-    if (windowMinSize.xs) {
+    if (windowMinSize.sm) {
       Stores.AppLayout.setSidebarCollapsed(true)
     }
   }, [location.pathname])
@@ -200,10 +200,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // happening simultaneously). Suppress the transition for that
   // single commit so the mode-flip snaps; transitions resume the
   // next frame for normal collapse/expand animations.
-  const prevXsRef = useRef(windowMinSize.xs)
+  const prevXsRef = useRef(windowMinSize.sm)
   useLayoutEffect(() => {
-    if (prevXsRef.current === windowMinSize.xs) return
-    prevXsRef.current = windowMinSize.xs
+    if (prevXsRef.current === windowMinSize.sm) return
+    prevXsRef.current = windowMinSize.sm
     const sidebarEl = sidebarRef.current
     const spacerEl = spacerRef.current
     if (sidebarEl) sidebarEl.style.transition = 'none'
@@ -219,7 +219,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         spacerRef.current.style.transition = SPACER_TRANSITION
       }
     })
-  }, [windowMinSize.xs])
+  }, [windowMinSize.sm])
 
   // While the viewport is CROSSING from desktop into xs, `isSidebarCollapsed`
   // still holds the desktop "expanded" (false) value for one render — feeding
@@ -229,7 +229,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // force the Sheet closed on that frame; the collapse effect above settles the
   // flag immediately after.
   const mobileSidebarOpen =
-    !isSidebarCollapsed && !(windowMinSize.xs && !prevXsRef.current)
+    !isSidebarCollapsed && !(windowMinSize.sm && !prevXsRef.current)
 
   // Touch swipe-left to collapse the mobile sidebar Sheet: the panel follows the
   // finger and, released past ~35%/120px, closes; otherwise it snaps back.
@@ -286,15 +286,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // touch) and on desktop, where the sidebar is persistent.
   const pageSwipe = useRef<{ x: number; y: number; active: boolean } | null>(null)
   const onPageTouchStart = (e: React.TouchEvent) => {
-    if (!windowMinSize.xs || !isSidebarCollapsed || e.touches.length !== 1) return
-    // Build the testid attr-name from a var so the verbatim `data-testid="…"`
-    // literal doesn't appear here — the testid-unique build plugin would else
-    // flag this querySelector string as a cross-file dup of Drawer.tsx's own
-    // `layout-drawer-content` selector (both are selectors, not real attrs).
-    const testidAttr = 'data-testid'
+    if (!windowMinSize.sm || !isSidebarCollapsed || e.touches.length !== 1) return
+    // Any open app Drawer / Dialog / Sheet / AlertDialog owns the touch — its
+    // own swipe-to-close handles it, so don't also trigger sidebar-open. Match
+    // the Drawer on its stable data-slot (NOT its testid, which callers override).
     if (
       document.querySelector(
-        `[${testidAttr}="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]`,
+        '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]',
       )
     )
       return
@@ -430,7 +428,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           overlay did). The Sheet provides the backdrop, focus trap, scroll
           lock, Escape-to-close and slide-in — replacing the custom mask +
           focus-trap effect that used to live here. */}
-      {windowMinSize.xs && (
+      {windowMinSize.sm && (
         <Sheet
           open={mobileSidebarOpen}
           onOpenChange={(o) => Stores.AppLayout.setSidebarCollapsed(!o)}
@@ -453,7 +451,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Desktop sidebar — persistent, resizable panel (absolute, in-flow via
           the spacer below). Collapse slides it off-screen via translateX. */}
-      {!windowMinSize.xs && (
+      {!windowMinSize.sm && (
         <div
           ref={sidebarRef}
           id="app-sidebar"
@@ -485,7 +483,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         ref={spacerRef}
         className="flex-shrink-0 z-2 pointer-events-none"
         style={
-          windowMinSize.xs
+          windowMinSize.sm
             ? {
                 width: 0,
               }

@@ -1,7 +1,12 @@
 import { memo, useEffect, useId, useRef, useState } from 'react'
-import { Copy, Download } from 'lucide-react'
+import { Copy, Download, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button, Segmented, message } from '@/components/ui'
 import { useThemeOptional } from '@/components/ui/kit/theme'
+
+const MIN_ZOOM = 0.4
+const MAX_ZOOM = 4
+const ZOOM_STEP = 1.25
+const clampZoom = (v: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v))
 
 /**
  * Replacement renderer for Streamdown's built-in mermaid rendering
@@ -41,6 +46,10 @@ export const MermaidBlock = memo(function MermaidBlock({
   const [mode, setMode] = useState<Mode>(defaultMode)
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Diagram zoom (CSS `zoom` so the scrollable box grows with it). Driven by the
+  // ctrl/⌘+wheel gesture (a trackpad pinch also emits ctrlKey) — see below.
+  const [scale, setScale] = useState(1)
+  const viewportRef = useRef<HTMLDivElement>(null)
   // Follow the ACTUAL rendered theme. The ThemeProvider context is the source of
   // truth when present, but a Streamdown/MermaidBlock can render in a subtree that
   // lacks the provider; falling back to the `html.dark` class the provider sets
@@ -108,6 +117,23 @@ export const MermaidBlock = memo(function MermaidBlock({
     }
   }, [source, isDark, isIncomplete, isEmpty, baseId])
 
+  // Pinch / ctrl+wheel zoom. Native NON-passive listener so we can preventDefault.
+  // Only the ZOOM gesture (ctrl/⌘ + wheel — what a trackpad pinch emits) is
+  // intercepted; a plain wheel keeps scrolling the page, since the diagram sits
+  // inline in a message and must not trap the scroll. `exp` keeps a pinch's small
+  // deltas smooth and a mouse notch (~100) reasonable.
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      setScale(s => clampZoom(s * Math.exp(-e.deltaY * 0.0015)))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   const copySource = async () => {
     try {
       await navigator.clipboard.writeText(source)
@@ -139,7 +165,10 @@ export const MermaidBlock = memo(function MermaidBlock({
       data-streamdown="mermaid-block"
       className="my-4 flex w-full flex-col gap-2 rounded-xl border border-border bg-sidebar p-2"
     >
-      <div className="flex h-8 items-center justify-between gap-2 text-muted-foreground text-xs">
+      {/* min-h-8 (not h-8): on ≤480px the toolbar's WCAG tap-target children grow
+          to 44px; grow the row to contain them instead of clipping. On-grid + no
+          desktop change. */}
+      <div className="flex min-h-8 items-center justify-between gap-2 text-muted-foreground text-xs">
         <Segmented
           size="sm"
           data-testid="mermaid-source-toggle"
@@ -152,6 +181,36 @@ export const MermaidBlock = memo(function MermaidBlock({
           ]}
         />
         <div className="flex items-center gap-0.5">
+          {/* Zoom controls (also driven by ctrl/⌘+wheel / trackpad pinch). */}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            tooltip="Zoom out"
+            icon={<ZoomOut className="size-3.5" />}
+            onClick={() => setScale(s => clampZoom(s / ZOOM_STEP))}
+            disabled={scale <= MIN_ZOOM}
+            data-testid="mermaid-zoom-out-btn"
+          />
+          <Button
+            variant="ghost"
+            className="h-7 min-w-[3rem] px-1 text-xs tabular-nums"
+            tooltip="Reset zoom"
+            onClick={() => setScale(1)}
+            data-testid="mermaid-zoom-reset-btn"
+          >
+            {Math.round(scale * 100)}%
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            tooltip="Zoom in"
+            icon={<ZoomIn className="size-3.5" />}
+            onClick={() => setScale(s => clampZoom(s * ZOOM_STEP))}
+            disabled={scale >= MAX_ZOOM}
+            data-testid="mermaid-zoom-in-btn"
+          />
           <Button
             size="icon"
             variant="ghost"
@@ -174,7 +233,12 @@ export const MermaidBlock = memo(function MermaidBlock({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border bg-background p-3">
+      <div
+        ref={viewportRef}
+        className="overflow-auto rounded-md border border-border bg-background p-3"
+        onDoubleClick={() => scale !== 1 && setScale(1)}
+        title="Ctrl/⌘ + scroll to zoom · double-click to reset"
+      >
         {mode === 'source' ? (
           <pre className="overflow-x-auto text-sm" data-testid="mermaid-source-view">
             <code className="font-mono">{source}</code>
@@ -203,6 +267,9 @@ export const MermaidBlock = memo(function MermaidBlock({
         ) : svg ? (
           <div
             className="flex justify-center [&_svg]:h-auto [&_svg]:max-w-full"
+            // CSS zoom (not transform) so the scroll box grows with the diagram,
+            // letting the user pan a zoomed-in diagram via the container's scrollbars.
+            style={{ zoom: scale }}
             role="img"
             aria-label="Mermaid diagram"
             data-testid="mermaid-diagram"

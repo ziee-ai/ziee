@@ -570,3 +570,67 @@ async fn test_create_branch_rejects_invalid_fork_level() {
     );
     assert_ne!(response.status(), StatusCode::CREATED);
 }
+
+/// TEST-7 (feature: lazy-load-conversation-messages): message pagination follows
+/// the ACTIVE branch — after activating a sibling branch, the tail load returns
+/// THAT branch's path, and a cursor from the old branch (a message not cloned
+/// into the new one) → 404.
+#[tokio::test]
+async fn test_pagination_follows_active_branch() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["conversations::create", "messages::read", "messages::create"],
+    )
+    .await;
+    let conv = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conv_id = super::helpers::parse_uuid(&conv["id"]);
+    let branch_a = super::helpers::parse_uuid(&conv["active_branch_id"]);
+
+    // Seed 10 ordered messages into branch A.
+    let all = super::messages_test::seed_ordered_messages(&server.database_url, branch_a, 10).await;
+
+    // Create branch B from all[5] → clones all[0..5] (created_at < all[5]); all[5..]
+    // stay only in A. Activate B.
+    let branch_b_json =
+        super::helpers::create_branch(&server, &user.token, conv_id, Some(all[5])).await;
+    let branch_b = super::helpers::parse_uuid(&branch_b_json["id"]);
+    let activate = reqwest::Client::new()
+        .post(server.api_url(&format!(
+            "/conversations/{}/branches/{}/activate",
+            conv_id, branch_b
+        )))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(activate.status(), StatusCode::NO_CONTENT);
+
+    // Tail on the now-active branch B → only the 5 cloned messages (all[0..5]).
+    let (st, body) = super::messages_test::get_history(&server, &user.token, conv_id, "?limit=30").await;
+    assert_eq!(st, StatusCode::OK);
+    let ids = super::messages_test::msg_ids(&body);
+    assert_eq!(ids, all[0..5].to_vec(), "tail returns branch B's path, not A's");
+    assert_eq!(body["has_more_before"], serde_json::json!(false));
+
+    // A cursor that lives only in branch A (all[7]) → 404 against active branch B.
+    let (st, _) = super::messages_test::get_history(
+        &server,
+        &user.token,
+        conv_id,
+        &format!("?around={}", all[7]),
+    )
+    .await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "old-branch cursor → 404 on the new branch");
+
+    // A cursor that IS in branch B (all[2]) → 200.
+    let (st, _) = super::messages_test::get_history(
+        &server,
+        &user.token,
+        conv_id,
+        &format!("?around={}", all[2]),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "in-branch cursor → 200");
+}

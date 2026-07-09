@@ -28,17 +28,6 @@ export interface ConversationTitleUpdatedEvent extends BaseEvent {
 }
 
 /**
- * Emitted when a conversation's message count changes
- */
-export interface ConversationMessageCountChangedEvent extends BaseEvent {
-  type: 'conversation.messageCountChanged'
-  data: {
-    conversationId: string
-    messageCount: number
-  }
-}
-
-/**
  * Emitted when a conversation is deleted. Subscribers drop the row
  * from their local state. Closes audit F5: previously delete didn't
  * propagate, so widgets that maintained their own fetch could stay
@@ -58,7 +47,6 @@ declare module '@/core/events' {
   interface AppEvents {
     'conversation.created': ConversationCreatedEvent
     'conversation.titleUpdated': ConversationTitleUpdatedEvent
-    'conversation.messageCountChanged': ConversationMessageCountChangedEvent
     'conversation.deleted': ConversationDeletedEvent
   }
 }

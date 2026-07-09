@@ -9404,9 +9404,63 @@
         "tags": [
           "Chat"
         ],
-        "summary": "Get conversation history",
-        "description": "Get all messages with content for the active branch of a conversation",
+        "summary": "Get conversation history (paginated)",
+        "description": "Get one page of messages with content for the active branch. Keyset pagination: pass `before=<message_id>` for older messages, `after=<message_id>` for newer, or `around=<message_id>` for a window centered on a message. No cursor returns the newest page. `limit` defaults to 30 (max 100). At most one of before/after/around may be set.",
         "operationId": "Message.getHistory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "around",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -9432,20 +9486,20 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "A page of messages from the active branch, chronological ascending. Cursors\n are the window endpoints — the client sends `messages[0].id` as the next\n `before` (scroll-up) and `messages[last].id` as the next `after` (scroll-down).",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/MessageWithContent"
-                  }
+                  "$ref": "#/components/schemas/PaginatedMessages"
                 }
               }
             }
           },
+          "400": {
+            "description": "More than one of before/after/around set"
+          },
           "404": {
-            "description": "Conversation not found"
+            "description": "Conversation or cursor message not found"
           },
           "401": {
             "description": "Unauthorized"
@@ -9514,6 +9568,101 @@
           },
           "401": {
             "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/messages/search": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Search messages within a conversation",
+        "description": "Case-insensitive substring search over the text of the conversation's active-branch messages, paginated. Returns matches with a snippet + a stable 1-based global `ordinal` and the full `total`, so a find UI can display results and jump (via `around=`) to a message that lazy-load has not yet loaded.",
+        "operationId": "Message.searchInConversation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "description": "Case-insensitive substring term. Blank/whitespace → empty result.",
+            "schema": {
+              "description": "Case-insensitive substring term. Blank/whitespace → empty result.",
+              "type": "string",
+              "default": ""
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read messages in conversations",
+                        "name": "MessagesRead",
+                        "value": "messages::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A page of in-conversation search results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageSearchResults"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -30391,6 +30540,44 @@
           }
         ]
       },
+      "MessageHistoryQuery": {
+        "description": "Query params for `GET /conversations/{id}/messages`.\n\n The cursor is a **message_id** (resolved server-side to its\n `branch_messages.created_at` on the conversation's ACTIVE branch). At most\n ONE of `before` / `after` / `around` may be set:\n - none    → the newest `limit` messages (tail),\n - `before`→ the `limit` messages immediately OLDER than the cursor,\n - `after` → the `limit` messages immediately NEWER than the cursor,\n - `around`→ a window CENTERED on the cursor (≈limit/2 older + it + ≈limit/2 newer).",
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "around": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          }
+        }
+      },
       "MessageMcpServersResponse": {
         "type": "object",
         "properties": {
@@ -30404,6 +30591,97 @@
         },
         "required": [
           "server_ids"
+        ]
+      },
+      "MessageSearchMatch": {
+        "description": "A single in-conversation search hit.",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ordinal": {
+            "description": "1-based GLOBAL position within the full match set (stable across pages).",
+            "type": "integer",
+            "format": "int64"
+          },
+          "role": {
+            "type": "string"
+          },
+          "snippet": {
+            "description": "A bounded, ellipsized excerpt of the matching text around the hit.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "role",
+          "created_at",
+          "snippet",
+          "ordinal"
+        ]
+      },
+      "MessageSearchQuery": {
+        "description": "Query params for `GET /conversations/{id}/messages/search`.",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "per_page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "q": {
+            "description": "Case-insensitive substring term. Blank/whitespace → empty result.",
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
+      "MessageSearchResults": {
+        "description": "A page of in-conversation search results.",
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageSearchMatch"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "description": "Full match count across all pages (drives the \"X of Y\" readout).",
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "matches",
+          "total",
+          "page",
+          "per_page"
         ]
       },
       "MessageWithContent": {
@@ -31321,6 +31599,31 @@
           "name",
           "version",
           "architecture"
+        ]
+      },
+      "PaginatedMessages": {
+        "description": "A page of messages from the active branch, chronological ascending. Cursors\n are the window endpoints — the client sends `messages[0].id` as the next\n `before` (scroll-up) and `messages[last].id` as the next `after` (scroll-down).",
+        "type": "object",
+        "properties": {
+          "has_more_after": {
+            "description": "Newer messages exist beyond `messages[last]`.",
+            "type": "boolean"
+          },
+          "has_more_before": {
+            "description": "Older messages exist beyond `messages[0]`.",
+            "type": "boolean"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageWithContent"
+            }
+          }
+        },
+        "required": [
+          "messages",
+          "has_more_before",
+          "has_more_after"
         ]
       },
       "PaginationQuery": {
@@ -34511,6 +34814,46 @@
             "required": [
               "runFailed"
             ]
+          }
+        ]
+      },
+      "SandboxAvailability": {
+        "description": "Why `code_sandbox` is (or isn't) initialized, in machine-readable form.\n\n `Ready` means `init()` reached the end and `get_state()` is `Some`. Every\n other variant is a specific early-return reason recorded by `init()`; the\n rootfs-versions admin endpoint surfaces it so the UI can degrade gracefully\n (show the GitHub catalog + a precise notice) instead of a blanket error.",
+        "oneOf": [
+          {
+            "description": "Fully initialized — the sandbox is registered and usable.",
+            "type": "string",
+            "const": "ready"
+          },
+          {
+            "description": "`code_sandbox.enabled: false` in config (the default).",
+            "type": "string",
+            "const": "disabled_in_config"
+          },
+          {
+            "description": "The host boot probe failed — on Linux this means `bwrap` is not on PATH.",
+            "type": "string",
+            "const": "host_unsupported"
+          },
+          {
+            "description": "The cloud instance-metadata endpoint is reachable and\n `allow_cloud_imds_reachable` is not set, so registration was refused.",
+            "type": "string",
+            "const": "cloud_imds_refused"
+          },
+          {
+            "description": "The per-conversation workspace root could not be created.",
+            "type": "string",
+            "const": "workspace_init_failed"
+          },
+          {
+            "description": "State exists but carries no DB pool (an in-process test edge case).",
+            "type": "string",
+            "const": "pool_missing"
+          },
+          {
+            "description": "`init()` has not run yet, or bailed before recording a reason.",
+            "type": "string",
+            "const": "not_initialized"
           }
         ]
       },
@@ -38444,6 +38787,14 @@
         "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
         "type": "object",
         "properties": {
+          "availability": {
+            "description": "Whether `code_sandbox` is initialized, and if not, the machine-readable\n reason. `ready` when the sandbox is registered (full status); otherwise a\n degraded snapshot — the GitHub `available` catalog with empty\n `installed`/`pinned` — so the admin UI can explain WHY installing/mounting\n is unavailable instead of showing a blanket error.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SandboxAvailability"
+              }
+            ]
+          },
           "available": {
             "description": "Only populated when GitHub is reachable (best-effort).",
             "type": "array",
@@ -38498,7 +38849,8 @@
           "conversation_count",
           "mcp_server_workspace_count",
           "host_arch",
-          "host_package"
+          "host_package",
+          "availability"
         ]
       },
       "VersionUsageEntry": {

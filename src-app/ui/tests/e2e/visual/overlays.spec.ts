@@ -39,6 +39,9 @@ interface OverlayCase {
 const OVERLAYS: OverlayCase[] = [
   { name: 'dialog', trigger: 'g-dialog-open', content: 'g-dialog' },
   { name: 'sheet', trigger: 'g-sheet-open', content: 'g-sheet' },
+  // Loading arm: opens a Sheet whose body is the spinner (`loading ? <Spinner>`),
+  // the state the browse-all story only renders as a closed trigger.
+  { name: 'sheet-loading', trigger: 'g-sheet-loading-open', content: 'g-sheet-loading' },
   { name: 'confirm', trigger: 'g-confirm-open', content: 'g-confirm' },
   { name: 'dropdown', trigger: 'g-dropdown-open', content: 'g-dropdown' },
   // Select opens a Radix listbox (no content testid) — wait on role, shoot full page.
