@@ -155,17 +155,19 @@ pub fn get_capability_docs(op: TransformOperation) -> TransformOperation {
 
 // ─────────────────────── sync-cache (admin convenience) ──────────────────────
 
-#[derive(serde::Serialize, schemars::JsonSchema)]
-pub struct SyncCacheResult {
-    /// Number of on-disk whisper binaries back-filled into the registry.
-    pub synced: i64,
-}
+use super::runtime_version::models::SyncCacheResponse;
 
 pub async fn sync_cache(
     _auth: RequirePermissions<(VoiceAdminManage,)>,
-) -> ApiResult<Json<SyncCacheResult>> {
-    let synced = super::binary_manager::sync_cache().await? as i64;
-    Ok((StatusCode::OK, Json(SyncCacheResult { synced })))
+) -> ApiResult<Json<SyncCacheResponse>> {
+    let synced_count = super::binary_manager::sync_cache().await?;
+    Ok((
+        StatusCode::OK,
+        Json(SyncCacheResponse {
+            synced_count,
+            message: format!("Synced {synced_count} cached whisper binary(ies)"),
+        }),
+    ))
 }
 
 pub fn sync_cache_docs(op: TransformOperation) -> TransformOperation {
@@ -173,5 +175,5 @@ pub fn sync_cache_docs(op: TransformOperation) -> TransformOperation {
         .id("Voice.syncVersionCache")
         .tag("Voice")
         .summary("Back-fill the runtime-version registry from cached whisper binaries on disk")
-        .response::<200, Json<SyncCacheResult>>()
+        .response::<200, Json<SyncCacheResponse>>()
 }

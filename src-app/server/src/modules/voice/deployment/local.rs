@@ -47,11 +47,17 @@ pub struct StartOutcome {
 }
 
 /// Coarse liveness snapshot of the instance.
+///
+/// `pid`/`uptime_seconds` are populated but not yet surfaced — the admin
+/// `GET /voice/instance` reads persisted state from the DB row; process-level
+/// liveness introspection is a deferred follow-up (see DRIFT-1).
 #[derive(Debug, Clone)]
 pub struct InstanceStatus {
     pub running: bool,
+    #[allow(dead_code)]
     pub pid: Option<i32>,
     pub port: Option<u16>,
+    #[allow(dead_code)]
     pub uptime_seconds: Option<i64>,
 }
 
@@ -65,7 +71,9 @@ struct ProcessInfo {
     logs: std::collections::VecDeque<String>,
     /// Broadcast channel for live log streaming (SSE tail). `send` is
     /// non-blocking and drops the oldest on overflow, so a slow subscriber
-    /// never backpressures capture.
+    /// never backpressures capture. Reserved for the deferred live-log SSE
+    /// endpoint (see DRIFT-1); capture is wired, the tail endpoint is not.
+    #[allow(dead_code)]
     log_broadcast: tokio::sync::broadcast::Sender<String>,
 }
 
@@ -326,6 +334,8 @@ impl LocalDeployment {
     }
 
     /// Return up to `lines` most-recent captured log lines.
+    /// Reserved for the deferred admin instance-logs endpoint (see DRIFT-1).
+    #[allow(dead_code)]
     pub async fn logs(&self, lines: usize) -> Vec<String> {
         let slot = self.process.read().await;
         match slot.as_ref() {
@@ -340,7 +350,9 @@ impl LocalDeployment {
 
     /// Subscribe to live logs: a broadcast receiver for new lines + a snapshot
     /// of the already-captured buffer for initial replay. Returns `None` when
-    /// nothing is running.
+    /// nothing is running. Reserved for the deferred live-log SSE endpoint
+    /// (see DRIFT-1).
+    #[allow(dead_code)]
     pub async fn subscribe_logs(
         &self,
     ) -> Option<(tokio::sync::broadcast::Receiver<String>, Vec<String>)> {

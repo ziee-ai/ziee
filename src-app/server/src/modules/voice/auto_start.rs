@@ -165,9 +165,15 @@ impl Drop for InflightGuard {
 
 // ───────────────────────────── persistence ──────────────────────────────────
 
+// Mirrors the persisted instance row. `ensure_restored` only consumes the
+// health-state columns; the rest are kept for symmetry with the row + future
+// restore logic.
 struct InstanceRow {
+    #[allow(dead_code)]
     active_model: Option<String>,
+    #[allow(dead_code)]
     base_url: Option<String>,
+    #[allow(dead_code)]
     status: String,
     state: String,
     restart_attempts: i32,
