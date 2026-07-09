@@ -21,9 +21,13 @@ use linkme::distributed_slice;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
+pub mod change;
+pub mod events;
+pub mod handlers;
 pub mod models;
 pub mod permissions;
 pub mod repository;
+pub mod routes;
 pub mod schedule;
 pub mod settings;
 
@@ -55,7 +59,6 @@ impl AppModule for SchedulerModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        // REST routes are merged here once routes.rs lands.
-        router
+        router.merge(routes::scheduler_router())
     }
 }
