@@ -73,6 +73,10 @@ pub use models::*;
 // Re-export individual providers for testing
 pub use providers::{AnthropicProvider, GeminiProvider, OpenAIProvider};
 
+// The Anthropic REST API version, shared with the model-discovery probe in the
+// server crate so it does not keep a divergent copy of the header value.
+pub use providers::anthropic::ANTHROPIC_VERSION;
+
 // Re-export the curated catalog (P1.j).
 pub use model_registry::{lookup as registry_lookup, known_ids_for as registry_known_ids};
 

@@ -17,6 +17,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::pin::Pin;
 
+/// Anthropic REST API version, sent as the required `anthropic-version` header
+/// on every request (chat, file upload/delete, and model discovery). Anthropic
+/// returns 400 when it is missing. Single source of truth so no call site keeps
+/// a divergent copy of the value.
+pub const ANTHROPIC_VERSION: &str = "2023-06-01";
+
 /// Anthropic provider (zero-sized, stateless)
 pub struct AnthropicProvider;
 
@@ -677,7 +683,7 @@ impl AIProvider for AnthropicProvider {
         let response = client
             .post(format!("{}/messages", base_url))
             .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-version", ANTHROPIC_VERSION)
             .header("anthropic-beta", "files-api-2025-04-14")  // Enable Files API beta
             .header("content-type", "application/json")
             .json(&body)
@@ -956,7 +962,7 @@ impl AIProvider for AnthropicProvider {
         let response = client
             .post(format!("{}/files", base_url))
             .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-version", ANTHROPIC_VERSION)
             .header("anthropic-beta", "files-api-2025-04-14")
             .multipart(form)
             .send()
@@ -1017,7 +1023,7 @@ impl AIProvider for AnthropicProvider {
         let response = client
             .delete(format!("{}/files/{}", base_url, provider_file_id))
             .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-version", ANTHROPIC_VERSION)
             .header("anthropic-beta", "files-api-2025-04-14")
             .send()
             .await
