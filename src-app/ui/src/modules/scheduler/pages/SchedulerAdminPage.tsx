@@ -102,6 +102,7 @@ export function SchedulerAdminPage() {
                 </FieldContent>
                 <InputNumber
                   data-testid="scheduler-max-active"
+                  aria-label="Max active tasks per user"
                   min={1}
                   max={1000}
                   value={f.max_active_tasks_per_user}
@@ -117,6 +118,7 @@ export function SchedulerAdminPage() {
                 </FieldContent>
                 <InputNumber
                   data-testid="scheduler-min-interval"
+                  aria-label="Minimum interval (seconds)"
                   min={60}
                   max={86400}
                   value={f.min_interval_seconds}
@@ -134,6 +136,7 @@ export function SchedulerAdminPage() {
                 </FieldContent>
                 <InputNumber
                   data-testid="scheduler-max-failures"
+                  aria-label="Auto-pause after N consecutive failures"
                   min={1}
                   max={100}
                   value={f.max_consecutive_failures}
@@ -151,6 +154,7 @@ export function SchedulerAdminPage() {
                 </FieldContent>
                 <InputNumber
                   data-testid="scheduler-retention"
+                  aria-label="Notification retention (days)"
                   min={0}
                   max={3650}
                   value={f.notification_retention_days}

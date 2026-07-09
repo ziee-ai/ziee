@@ -180,6 +180,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
             <Select
               data-standalone-control
               data-testid="schedule-dow"
+              aria-label="Day of week"
               value={dow}
               onChange={v => emitCron('weekly', hour, min, v as string, dom)}
               options={DOW}
@@ -202,6 +203,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
           {preset === 'custom' && (
             <Input
               data-testid="schedule-cron"
+              aria-label="Cron expression"
               placeholder="min hour dom mon dow (e.g. 0 9 * * 1)"
               value={value.cron_expr ?? ''}
               onChange={e => onChange({ ...value, cron_expr: e.target.value })}
@@ -212,6 +214,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
 
       <Input
         data-testid="schedule-timezone"
+        aria-label="Timezone (IANA)"
         placeholder="Timezone (IANA, e.g. America/New_York)"
         value={value.timezone}
         onChange={e => onChange({ ...value, timezone: e.target.value })}

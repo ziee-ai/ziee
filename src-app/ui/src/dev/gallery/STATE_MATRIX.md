@@ -3579,8 +3579,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!raw` | 136 |
 | branch | `preset !== 'custom'` | 163 |
 | branch | `preset === 'weekly'` | 179 |
-| branch | `preset === 'monthly'` | 189 |
-| branch | `preset === 'custom'` | 202 |
+| branch | `preset === 'monthly'` | 190 |
+| branch | `preset === 'custom'` | 203 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3594,8 +3594,8 @@ Required states: `open`
 | overlay | `<Drawer open>` | 198 |
 | branch | `canUse` | 223 |
 | branch | `f.target_kind === 'prompt'` | 259 |
-| branch | `testing` | 337 |
-| branch | `testResult` | 342 |
+| branch | `testing` | 339 |
+| branch | `testResult` | 344 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
@@ -3603,13 +3603,13 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `task.paused_reason` | 51 |
-| branch | `expanded` | 74 |
-| branch | `!runs` | 76 |
-| empty | `runs.length === 0` | 78 |
-| loading | `loading && tasks.length === 0` | 162 |
-| error | `error && tasks.length === 0` | 166 |
-| empty | `tasks.length === 0` | 174 |
+| branch | `task.paused_reason` | 66 |
+| branch | `expanded` | 89 |
+| branch | `!runs` | 91 |
+| empty | `runs.length === 0` | 93 |
+| loading | `loading && tasks.length === 0` | 177 |
+| error | `error && tasks.length === 0` | 181 |
+| empty | `tasks.length === 0` | 189 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 
@@ -3622,7 +3622,7 @@ Required states: `delayed`, `error`
 | branch | `!canManage` | 78 |
 | error | `error` | 87 |
 | branch | `f` | 96 |
-| branch | `canManage` | 164 |
+| branch | `canManage` | 168 |
 
 ### `modules/server-update/AboutSettings`
 

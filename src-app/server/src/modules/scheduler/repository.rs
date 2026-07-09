@@ -299,7 +299,16 @@ pub async fn mark_fired(
         UPDATE scheduled_tasks SET
             next_run_at   = $2,
             last_run_at   = $3,
-            enabled       = CASE WHEN $4::text IS NOT NULL THEN FALSE ELSE enabled END,
+            -- Disable the task when it is paused (reason set) OR spent — a `once`
+            -- task (or a recurring task with no further occurrence) has no future
+            -- run, so it flips to disabled per the documented "once disables after
+            -- firing" contract (tick.rs). A recurring task keeps its next_run_at
+            -- (non-NULL) and stays enabled.
+            enabled       = CASE
+                                WHEN $4::text IS NOT NULL THEN FALSE
+                                WHEN $2::timestamptz IS NULL THEN FALSE
+                                ELSE enabled
+                            END,
             paused_reason = COALESCE($4, paused_reason),
             updated_at    = NOW()
         WHERE id = $1

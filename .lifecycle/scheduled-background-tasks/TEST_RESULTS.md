@@ -1,40 +1,69 @@
-# TEST_RESULTS — scheduled-background-tasks (phase 8)
+# TEST_RESULTS — scheduled-background-tasks
 
-Scoped to the touched areas: backend (`src-app/server`) + frontend (`src-app/ui`).
+Real execution results. Backend ran with the per-worktree isolated build DB
+(`DATABASE_URL=…/ziee_sched_build ZIEE_BUILD_DB_PERWORKTREE=0`) on the shared
+`:54321` cluster; e2e ran `--workers=1` with the server-ready budget raised for
+the loaded host (`E2E_BACKEND_READY_BUDGET_SECS=360`). Logs under
+`/data/pbya/ziee/tmp/lifecycle-logs/sched-*.log`.
 
-## Backend — unit (`cargo test --lib -p ziee scheduler::`)
+## Summary
 
-- **TEST-1**: PASS  (schedule::next_occurrence — once/weekly/timezone/DST)
-- **TEST-2**: PASS  (schedule::validate_schedule — bad cron/tz/past/too-frequent)
-- **TEST-30**: PASS (failure::classify + should_autopause + backoff)
-- **TEST-42**: PASS (change::fingerprint stability + item-set diff)
+- Backend: **11 unit + 13 scheduler integration + 4 notification integration =
+  28 passed, 0 failed** (`cargo test --lib -p ziee scheduler::` → 11 ok;
+  `cargo test --test integration_tests scheduler::` → 13 ok;
+  `… notification::` → 4 ok).
+- OpenAPI golden: `types_ts_parity` + `types_ts_parity_desktop` ok.
+- E2E: **5 passed, 0 failed** (`14-scheduler/*` + `15-notifications/inbox`).
+- `npm run check` green in both touched UI workspaces.
 
-(5 schedule + 3 change + 3 failure = 11 in-source unit tests green.)
+## Unit
 
-## Backend — integration (`cargo test --test integration_tests scheduler:: notification::`)
+- **TEST-1**: PASS
+- **TEST-2**: PASS
+- **TEST-3**: PASS
+- **TEST-4**: PASS
 
-- **TEST-11**: PASS (scheduler CRUD round-trip + next_run_at populated)
-- **TEST-12**: PASS (403 without scheduler::use / 401 unauth)
-- **TEST-13**: PASS (quota 422 at the admin cap)
-- **TEST-19**: PASS (notification inbox CRUD: list/unread-count/mark-read/delete)
-- **TEST-14/15 (partial, via run-now)**: PASS — `run_now_prompt_produces_a_notification`
-  drives the FULL path (tick::fire_task → dispatch_prompt → real chat pipeline vs
-  stub model → is_generating completion → change-detection → notification) and
-  asserts a `scheduled_task_result` notification lands in the inbox linking the
-  conversation. Owner-scope 404 + gating covered.
+## Integration — scheduler
 
-## Frontend
+- **TEST-5**: PASS
+- **TEST-6**: PASS
+- **TEST-7**: PASS
+- **TEST-8**: PASS
+- **TEST-9**: PASS  (caught + drove the fix of the spent-`once`-task disable bug — DRIFT-2.3)
+- **TEST-10**: PASS
+- **TEST-11**: PASS
+- **TEST-12**: PASS
+- **TEST-13**: PASS
+- **TEST-14**: PASS
+- **TEST-15**: PASS
+- **TEST-16**: PASS
+- **TEST-17**: PASS
 
-- `npm run check (ui): PASS` — tsc + guardrails + colors + settings-field +
-  logical-direction + tooltip + kit-manifest + testid-registry + design-spec +
-  gallery-coverage + gallery-crawl + state-matrix + overlay-registry (full gate).
+## Integration — notification
 
-- E2E specs authored (`tests/e2e/14-scheduler/scheduled-tasks.spec.ts`,
-  `tests/e2e/15-notifications/inbox.spec.ts`) — create-task flow + inbox mark-read.
+- **TEST-18**: PASS
+- **TEST-19**: PASS
+- **TEST-20**: PASS
+- **TEST-21**: PASS
 
-## Notes
+## Build / schema / codegen gate
 
-- The full firing-path tests use the in-repo `stub_chat`/`stub_engine` mock LLM
-  (the same programmable-provider harness the chat tests use) — a real boundary,
-  not a cosmetic mock ([[feedback_no_cosmetic_tests]]).
-- Sandbox/real-LLM tiers not applicable to this feature.
+- **TEST-22**: PASS  (workspace compiles with `croner`; migration 137 applies —
+  the scheduler tests run against the widened `workflow_runs.invocation_source`
+  CHECK; `openapi::emit_ts::tests::types_ts_parity{,_desktop}` ok)
+- **TEST-23**: PASS  (admin `notification_retention_days` round-trips via
+  GET/PUT in the scheduler sync-emit test; the prune loop mirrors the
+  retention-tested `mcp/tool_calls/prune.rs`)
+
+## E2E
+
+- **TEST-24**: PASS
+- **TEST-25**: PASS
+- **TEST-26**: PASS
+- **TEST-27**: PASS
+- **TEST-28**: PASS
+
+## Frontend gate
+
+npm run check (ui): PASS
+npm run check (desktop/ui): PASS

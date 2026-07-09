@@ -77,7 +77,7 @@ export function NotificationsPage() {
         />
       ) : items.length === 0 ? (
         <Empty
-          description="No notifications"
+          description="No notifications yet"
           data-testid="notifications-empty"
         />
       ) : (
@@ -86,7 +86,7 @@ export function NotificationsPage() {
             <Card key={n.id} data-testid={`notification-card-${n.id}`}>
               <Flex className="items-start gap-3">
                 {!n.read_at && (
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" role="img" />
                 )}
                 <Button
                   variant="ghost"

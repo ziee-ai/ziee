@@ -321,6 +321,7 @@ export function ScheduledTaskFormDrawer() {
           <Text className="text-sm">Show a toast when it runs</Text>
           <Switch
             data-testid="task-form-notify-mode"
+            aria-label="Show a toast when the task runs"
             checked={f.notify_mode}
             onCheckedChange={v => setF({ ...f, notify_mode: v })}
           />
@@ -329,6 +330,7 @@ export function ScheduledTaskFormDrawer() {
           <Text className="text-sm">Only notify when results change</Text>
           <Switch
             data-testid="task-form-notify-on-change"
+            aria-label="Only notify when results change"
             checked={f.notify_on_change}
             onCheckedChange={v => setF({ ...f, notify_on_change: v })}
           />

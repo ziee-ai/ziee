@@ -6,3 +6,4 @@
 // (list / unread-count / mark-read / read-all / delete / owner-scope / gating).
 
 mod inbox_test;
+mod sync_emit_test;

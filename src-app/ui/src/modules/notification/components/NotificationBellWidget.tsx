@@ -56,7 +56,7 @@ export function NotificationBellWidget() {
             >
               <Flex className="w-full items-center gap-2">
                 {!n.read_at && (
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" role="img" />
                 )}
                 <Text className="flex-1 truncate font-medium">{n.title}</Text>
               </Flex>
@@ -101,7 +101,7 @@ export function NotificationBellWidget() {
           count={unread}
           tone="error"
           offset={[10, 0]}
-          aria-label={`${unread} unread notifications`}
+          aria-label={unread > 0 ? `${unread} unread notifications` : 'Notifications'}
           data-testid="notification-bell-badge"
         >
           <Bell size={20} aria-label="Notifications" />

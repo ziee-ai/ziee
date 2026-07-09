@@ -437,7 +437,7 @@ ${
     // window get reset → flaky `waitFor` timeouts. Require a stable, fast window.
     const backendReady = await waitForServerStable(
       `http://127.0.0.1:${backendPort}/api/health`,
-      120,
+      Number(process.env.E2E_BACKEND_READY_BUDGET_SECS) || 120,
     )
     if (!backendReady) {
       serverProcess.kill('SIGKILL')

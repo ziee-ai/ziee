@@ -22,11 +22,26 @@ function targetSummary(t: ScheduledTask): string {
   return t.target_kind === 'workflow' ? 'Workflow' : 'Prompt'
 }
 
+const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+function humanizeCron(cron: string): string {
+  const p = cron.trim().split(/\s+/)
+  if (p.length !== 5) return `Cron: ${cron}`
+  const [min, hour, dom, mon, dow] = p
+  const t = /^\d+$/.test(min) && /^\d+$/.test(hour)
+    ? `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+    : null
+  if (!t) return `Cron: ${cron}`
+  if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${t}`
+  if (dom === '*' && mon === '*' && /^\d$/.test(dow)) return `Weekly on ${DOW_NAMES[Number(dow)]} at ${t}`
+  if (/^\d+$/.test(dom) && mon === '*' && dow === '*') return `Monthly on day ${dom} at ${t}`
+  return `Cron: ${cron}`
+}
+
 function scheduleSummary(t: ScheduledTask): string {
   if (t.schedule_kind === 'once') {
     return t.run_at ? `Once at ${new Date(t.run_at).toLocaleString()}` : 'Once'
   }
-  return `Cron: ${t.cron_expr ?? ''} (${t.timezone})`
+  return `${humanizeCron(t.cron_expr ?? '')} (${t.timezone})`
 }
 
 function TaskRow({ task }: { task: ScheduledTask }) {
