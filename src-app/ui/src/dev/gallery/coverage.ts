@@ -255,6 +255,7 @@ export const GALLERY_COVERAGE = {
   "modules/code-sandbox/components/SandboxSettingsPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/code-sandbox/components/_rootfsShared": { kind: 'via', reason: 'rendered within the code-sandbox module page' },
   "modules/file-rag/components/sections/ChunkingSection": { kind: 'via', reason: 'rendered within the file-rag module page' },
+  "modules/file-rag/components/sections/RerankSection": { kind: 'via', reason: 'rendered within the file-rag module page' },
   "modules/file-rag/components/sections/EmbeddingSection": { kind: 'via', reason: 'rendered within the file-rag module page' },
   "modules/file-rag/components/sections/EnableSection": { kind: 'via', reason: 'rendered within the file-rag module page' },
   "modules/file-rag/components/sections/FullTextSection": { kind: 'via', reason: 'rendered within the file-rag module page' },

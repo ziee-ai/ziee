@@ -152,6 +152,7 @@ export const STATE_COVERAGE = {
   "modules/code-sandbox/components/SandboxRootfsVersionsSection:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxRootfsVersionsSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/ChunkingSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
+  "modules/file-rag/components/sections/RerankSection:empty": { skip: true, reason: "via surface — rendered within its page; loading/empty branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/EmbeddingSection:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/EmbeddingSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/EmbeddingSection:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },

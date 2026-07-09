@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 330 surfaces carry renderable-state signals; 1913 signals total.
+// 331 surfaces carry renderable-state signals; 1917 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1299,12 +1299,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error", line: 55 },
     ],
   },
+  "modules/file-rag/components/sections/RerankSection": {
+    surface: "modules/file-rag/components/sections/RerankSection",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!canRead", line: 66 },
+      { kind: "branch", condition: "!settings", line: 77 },
+      { kind: "empty", condition: "noModels", line: 116 },
+      { kind: "branch", condition: "canManage", line: 170 },
+    ],
+  },
   "modules/file-rag/pages/FileRagAdminPage": {
     surface: "modules/file-rag/pages/FileRagAdminPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "error", condition: "error && !settings", line: 34 },
-      { kind: "loading", condition: "loading && !settings", line: 44 },
+      { kind: "error", condition: "error && !settings", line: 35 },
+      { kind: "loading", condition: "loading && !settings", line: 45 },
     ],
   },
   "modules/file/chat-extension/components/FilePasteHandler": {
@@ -3979,7 +3989,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 334 keys.
+ * 335 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4073,6 +4083,7 @@ export type RequiredState =
   | "modules/file-rag/components/sections/EnableSection:error"
   | "modules/file-rag/components/sections/FullTextSection:error"
   | "modules/file-rag/components/sections/MaintenanceSection:error"
+  | "modules/file-rag/components/sections/RerankSection:empty"
   | "modules/file-rag/pages/FileRagAdminPage:delayed"
   | "modules/file-rag/pages/FileRagAdminPage:error"
   | "modules/file/chat-extension/components/FilePasteHandler:empty"
@@ -4410,6 +4421,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file-rag/components/sections/EnableSection:error",
   "modules/file-rag/components/sections/FullTextSection:error",
   "modules/file-rag/components/sections/MaintenanceSection:error",
+  "modules/file-rag/components/sections/RerankSection:empty",
   "modules/file-rag/pages/FileRagAdminPage:delayed",
   "modules/file-rag/pages/FileRagAdminPage:error",
   "modules/file/chat-extension/components/FilePasteHandler:empty",

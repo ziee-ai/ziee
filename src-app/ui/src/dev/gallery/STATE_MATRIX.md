@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **330** surfaces carry at least one renderable-state signal.
-- **1913** signals total: 1507 branch, 115 empty, 98 error, 101 loading, 90 overlay, 2 panel.
+- **331** surfaces carry at least one renderable-state signal.
+- **1917** signals total: 1510 branch, 116 empty, 98 error, 101 loading, 90 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 88 |
-| `empty` | 91 |
+| `empty` | 92 |
 | `error` | 77 |
 | `open` | 76 |
 | `panel-open` | 2 |
@@ -1457,14 +1457,25 @@ Required states: `error`
 | branch | `!settings` | 33 |
 | error | `error` | 55 |
 
+### `modules/file-rag/components/sections/RerankSection`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!canRead` | 66 |
+| branch | `!settings` | 77 |
+| empty | `noModels` | 116 |
+| branch | `canManage` | 170 |
+
 ### `modules/file-rag/pages/FileRagAdminPage`
 
 Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error && !settings` | 34 |
-| loading | `loading && !settings` | 44 |
+| error | `error && !settings` | 35 |
+| loading | `loading && !settings` | 45 |
 
 ### `modules/file/chat-extension/components/FilePasteHandler`
 
