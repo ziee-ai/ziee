@@ -1,6 +1,6 @@
-import { FileQuestion, TriangleAlert } from 'lucide-react'
+import { FileQuestion, Pencil, TriangleAlert } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { Empty, Spin, Text, Title } from '@/components/ui'
+import { Button, Empty, Spin, Text, Title } from '@/components/ui'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import {
@@ -8,7 +8,14 @@ import {
   FullPageButton,
 } from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
+import { FileEditBody } from '@/modules/file/components/FileEditBody'
 import { Stores } from '@/core/stores'
+
+/** Text types the canvas can edit in the WYSIWYG editor (v1: markdown only). */
+function isEditableMarkdown(file: FileEntity): boolean {
+  const ext = file.filename.split('.').pop()?.toLowerCase()
+  return ext === 'md' || ext === 'markdown' || file.mime_type === 'text/markdown'
+}
 
 /** Hard cap on previewable file size — the SINGLE outer OOM backstop that
  *  prevents even fetching a pathological file. Files above this never trigger a
@@ -103,6 +110,10 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
       initialVersion && initialVersion !== file.version ? initialVersion : null,
     )
   }, [initialVersion, file.version, file.id])
+  // Canvas edit mode — only offered for editable text types (markdown in v1) at
+  // the head version. Entering edit replaces the read-only viewer body.
+  const [editing, setEditing] = useState(false)
+  const canEdit = isEditableMarkdown(file) && !tooLarge
   const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
   // Read versionTextCache REACTIVELY so the body re-renders when the async text
   // load lands. getVersionText() reads via getState() + kicks off the load but
@@ -133,6 +144,17 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           {/* Too-large files always get plain Download — viewer-specific
               actions (PDF page nav, CSV controls, etc.) need the body
               loaded to be meaningful. */}
+          {canEdit && !editing && !isViewingOld && (
+            <Button
+              variant="ghost"
+              onClick={() => setEditing(true)}
+              data-testid="canvas-edit-toggle"
+              aria-label="Edit"
+            >
+              <Pencil className="size-3.5" />
+              Edit
+            </Button>
+          )}
           {tooLarge ? <DownloadButton file={file} /> : <FilePanelHeaderActions file={file} showFullPage={showFullPage} />}
         </div>
       )}
@@ -149,7 +171,9 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           matches. When viewing a non-head version, render that version's
           text read-only instead (the viewers are head-bound). */}
       <div className="flex-1 overflow-hidden bg-card">
-        {isViewingOld
+        {editing
+          ? <FileEditBody file={file} onDone={() => setEditing(false)} />
+          : isViewingOld
           ? (
             oldVersionText === null
               ? (
