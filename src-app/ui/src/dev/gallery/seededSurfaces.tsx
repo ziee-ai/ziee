@@ -103,6 +103,54 @@ const RENAME_PROVIDER = llmProvidersList.providers[0]
 
 /** Integrator-owned entries (batches 1-3). Shard entries are concatenated below. */
 const integratorSeeded: SeededSurfaceEntry[] = [
+  // ── Artifact canvas EDITORS — the deliverable-editing surfaces. Rendered with
+  //    fixed sample content (prop-taking components) so runtime-health drives the
+  //    real Plate WYSIWYG + toolbar, the CodeMirror editor, and the editable CSV
+  //    grid in a real browser (console errors / AA-contrast / a11y-name). ─────────
+  {
+    slug: 'seeded-artifact-canvas-markdown',
+    title: 'Artifact canvas — markdown editor (Plate + toolbar)',
+    note: 'the WYSIWYG deliverable editor: formatting toolbar + rendered GFM content',
+    path: '/gallery/artifact-md',
+    initialPath: '/gallery/artifact-md',
+    component: lazyProps(
+      () => import('@/components/kit/editor/KitMarkdownEditor'),
+      'KitMarkdownEditor',
+      {
+        initialMarkdown:
+          '# Assay Methods\n\nSamples were prepared with **care** and *precision* using `buffer A`.\n\n- RNA extraction\n- Reverse transcription\n\n> Keep samples on ice.\n',
+      },
+    ),
+  },
+  {
+    slug: 'seeded-artifact-canvas-csv',
+    title: 'Artifact canvas — CSV grid editor',
+    note: 'editable spreadsheet grid for a csv deliverable (edit cells / add / delete rows)',
+    path: '/gallery/artifact-csv',
+    initialPath: '/gallery/artifact-csv',
+    component: lazyProps(
+      () => import('@/modules/file/components/CsvGridEditor'),
+      'CsvGridEditor',
+      {
+        initialText:
+          'Sample,Concentration,Volume\nA1,10.5,100\nA2,20.0,50\nB1,5.2,200\n',
+      },
+    ),
+  },
+  {
+    slug: 'seeded-artifact-canvas-code',
+    title: 'Artifact canvas — code editor (CodeMirror)',
+    note: 'plain-text code editor for a code deliverable',
+    path: '/gallery/artifact-code',
+    initialPath: '/gallery/artifact-code',
+    component: lazyProps(
+      () => import('@/components/kit/editor/KitCodeEditor'),
+      'KitCodeEditor',
+      {
+        initialText: 'def hello(name):\n    print(f"hi {name}")\n\nhello("world")\n',
+      },
+    ),
+  },
   // ── ProviderHeader inline RENAME form — an INTERACTION-gated surface. The header
   //    renders the name as a Title with an edit (pencil) button; clicking it swaps
   //    in the inline `layout="inline"` rename Form. The `rename` recipe drives that

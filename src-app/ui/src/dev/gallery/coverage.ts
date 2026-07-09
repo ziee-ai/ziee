@@ -275,6 +275,7 @@ export const GALLERY_COVERAGE = {
   "modules/file/components/FileEditBody": { kind: 'via', reason: 'rendered in the FilePanel canvas edit mode' },
   "modules/file/components/FileExportMenu": { kind: 'via', reason: 'rendered in the FilePanel header (canvas)' },
   "modules/file/components/FileVersionDiff": { kind: 'via', reason: 'rendered in the FileVersionBar compare dialog' },
+  "modules/file/components/CsvGridEditor": { kind: 'via', reason: 'CSV canvas edit-mode grid; rendered directly by the seeded-artifact-canvas-csv gallery cell + via FileEditBody' },
   "modules/file/components/FilePreviewDrawer": { kind: 'static', reason: 'file-preview drawer — needs a selected file with preview pages; verified via the e2e interaction suite' },
   "modules/file/components/FileVersionBar": { kind: 'via', reason: 'rendered within the file module page' },
   "modules/file/components/FileViewPage": { kind: 'static', reason: 'full-page file view (/files/:id) — needs a fetched file with preview content; verified via the e2e interaction suite' },

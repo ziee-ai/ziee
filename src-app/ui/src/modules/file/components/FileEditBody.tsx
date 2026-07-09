@@ -6,6 +6,7 @@ import type { File as FileEntity } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { LazyMarkdownEditor } from '@/components/kit/editor/LazyMarkdownEditor'
 import { LazyCodeEditor } from '@/components/kit/editor/LazyCodeEditor'
+import { CsvGridEditor } from '@/modules/file/components/CsvGridEditor'
 import type { CanvasEditorHandle } from '@/components/kit/editor/types'
 import { editableKind } from '@/modules/file/utils/editableTypes'
 
@@ -145,7 +146,14 @@ export function FileEditBody({
         </div>
       )}
       <div className="flex-1 overflow-hidden">
-        {kind === 'code' ? (
+        {kind === 'csv' ? (
+          <CsvGridEditor
+            key={reloadKey}
+            ref={editorRef}
+            initialText={text}
+            onDirty={() => setDirty(true)}
+          />
+        ) : kind === 'code' ? (
           <LazyCodeEditor
             key={reloadKey}
             ref={editorRef}

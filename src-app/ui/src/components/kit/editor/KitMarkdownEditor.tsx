@@ -6,6 +6,7 @@ import { ListPlugin } from '@platejs/list/react'
 import { Plate, PlateContent, usePlateEditor } from 'platejs/react'
 import { markdownToEditor } from '@/modules/file/utils/markdownRoundtrip'
 import type { CanvasEditorHandle } from './types'
+import { MarkdownToolbar } from './MarkdownToolbar'
 
 interface KitMarkdownEditorProps {
   /** Initial markdown source (the file's head content). */
@@ -36,11 +37,14 @@ export const KitMarkdownEditor = forwardRef<
 
   return (
     <Plate editor={editor} onChange={() => onDirty?.()}>
-      <PlateContent
-        data-testid="canvas-markdown-editor"
-        className="h-full w-full overflow-auto px-4 py-3 text-sm leading-relaxed outline-none focus-visible:outline-none [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs"
-        placeholder="Start writing…"
-      />
+      <div className="flex h-full flex-col">
+        <MarkdownToolbar />
+        <PlateContent
+          data-testid="canvas-markdown-editor"
+          className="min-h-0 w-full flex-1 overflow-auto px-4 py-3 text-sm leading-relaxed outline-none focus-visible:outline-none [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-6 [&_blockquote]:border-border [&_blockquote]:border-s-2 [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs"
+          placeholder="Start writing…"
+        />
+      </div>
     </Plate>
   )
 })

@@ -8,7 +8,7 @@
 ## Summary
 
 - **328** surfaces carry at least one renderable-state signal.
-- **1905** signals total: 1509 branch, 112 empty, 96 error, 99 loading, 87 overlay, 2 panel.
+- **1906** signals total: 1510 branch, 112 empty, 96 error, 99 loading, 87 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -1606,11 +1606,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `cancelled` | 55 |
-| branch | `!dirty` | 77 |
-| branch | `text === null` | 101 |
-| branch | `changedUnderneath` | 111 |
-| branch | `kind === 'code'` | 135 |
+| branch | `cancelled` | 60 |
+| branch | `!dirty` | 82 |
+| branch | `text === null` | 106 |
+| branch | `changedUnderneath` | 116 |
+| branch | `kind === 'csv'` | 149 |
+| branch | `kind === 'code'` | 156 |
 
 ### `modules/file/components/FilePanel`
 
@@ -1621,14 +1622,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `HeaderActions` | 79 |
 | branch | `editableKind(file) === 'markdown'` | 82 |
 | branch | `showFullPage` | 87 |
-| branch | `!hideHeader` | 135 |
-| branch | `canEdit && !editing && !isViewingOld` | 149 |
-| branch | `tooLarge` | 160 |
-| branch | `editing` | 176 |
-| branch | `isViewingOld` | 178 |
-| branch | `oldVersionText === null` | 180 |
-| branch | `tooLarge` | 195 |
-| branch | `Body` | 219 |
+| branch | `!hideHeader` | 142 |
+| branch | `canEdit && !editing && !isViewingOld` | 156 |
+| branch | `tooLarge` | 167 |
+| branch | `editing` | 183 |
+| branch | `isViewingOld` | 185 |
+| branch | `oldVersionText === null` | 187 |
+| branch | `tooLarge` | 202 |
+| branch | `Body` | 226 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
