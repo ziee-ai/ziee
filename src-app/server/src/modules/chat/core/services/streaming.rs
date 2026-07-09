@@ -365,9 +365,11 @@ impl StreamingService {
                     messages,
                     ..Default::default()
                 };
-                // Apply model-level generation parameters (sampling), with defaults
-                // preserved when unset. The provider gates params it rejects
-                // (e.g. Anthropic Opus 4.7/4.8 drop temperature/top_p/top_k).
+                // Apply model-level generation parameters (sampling). `temperature`
+                // is forwarded only when configured (no forced 0.7); `max_tokens`
+                // still defaults. The provider gates params it rejects (e.g.
+                // Anthropic drops temperature/top_p/top_k for restricted or
+                // thinking-active models).
                 apply_model_params(&mut chat_request, &model_params);
                 // Registry-gated thinking (None for models that don't support it).
                 chat_request.thinking =

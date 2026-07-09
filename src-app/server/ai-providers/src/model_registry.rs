@@ -33,8 +33,8 @@ pub struct ModelCapabilities {
     /// OpenAI reasoning models) or `"budget"` (legacy fixed token budget).
     pub thinking_style: Option<String>,
     /// Whether the model accepts sampling params (`temperature`/`top_p`/`top_k`).
-    /// `Some(false)` for Anthropic Opus 4.7/4.8 (they 400 on these). `None` =
-    /// unknown → treated as allowed.
+    /// `Some(false)` for the Anthropic Opus 4.7/4.8 + Claude 5 families (e.g.
+    /// Sonnet 5) — they 400 on these. `None` = unknown → treated as allowed.
     pub supports_sampling_params: Option<bool>,
     #[serde(default)]
     pub deprecated: bool,

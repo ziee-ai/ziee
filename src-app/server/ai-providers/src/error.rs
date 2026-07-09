@@ -51,7 +51,7 @@ pub enum ProviderError {
 /// endpoint could otherwise return a multi-megabyte or newline-laden body to
 /// bloat logs or forge entries; and a reflective endpoint could echo request
 /// material. Truncates to a char boundary and collapses CR/LF to spaces.
-fn sanitize_error_body(body: &str) -> String {
+pub(crate) fn sanitize_error_body(body: &str) -> String {
     const MAX: usize = 1024;
     let cleaned: String = body
         .chars()
