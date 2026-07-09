@@ -161,6 +161,40 @@ impl FileRagRepository {
         Ok(row)
     }
 
+    // ── file_index_state (Part I: per-file indexing lifecycle) ──────────
+
+    /// Upsert a file's RAG index lifecycle state. The knowledge-base UI reads
+    /// this for per-document status; the caller emits `sync:file_index_state`.
+    pub async fn set_index_state(
+        &self,
+        file_id: Uuid,
+        user_id: Uuid,
+        status: &str,
+        error: Option<&str>,
+        chunk_count: i32,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO file_index_state (file_id, user_id, status, error, chunk_count, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (file_id) DO UPDATE
+            SET status      = EXCLUDED.status,
+                error       = EXCLUDED.error,
+                chunk_count = EXCLUDED.chunk_count,
+                updated_at  = NOW()
+            "#,
+            file_id,
+            user_id,
+            status,
+            error,
+            chunk_count,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
     // ── file_chunks ─────────────────────────────────────────────────────
 
     /// Atomically replace a file's chunks. Serializes per-file on an advisory
