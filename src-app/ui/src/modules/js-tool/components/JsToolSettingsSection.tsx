@@ -206,14 +206,14 @@ export function JsToolSettingsSection() {
             </Separator>
             <FormField
               name="memory_mib"
-              label="Memory limit"
+              label="Memory limit (MiB)"
               description="Per-run heap cap for the embedded QuickJS interpreter (set_memory_limit). Allocating past it aborts the script with a memory error."
             >
               <InputNumber min={16} max={4096} suffix="MiB" className="w-full" data-testid="js-tool-memory" />
             </FormField>
             <FormField
               name="max_stack_kib"
-              label="Stack size"
+              label="Stack size (KiB)"
               description="Per-run JS stack cap (set_max_stack_size). Deep recursion past it aborts the script."
             >
               <InputNumber min={64} max={65_536} suffix="KiB" className="w-full" data-testid="js-tool-stack" />
@@ -226,14 +226,14 @@ export function JsToolSettingsSection() {
             </Separator>
             <FormField
               name="wall_secs"
-              label="Wall-clock timeout"
+              label="Wall-clock timeout (seconds)"
               description="Active-execution budget for one run_js (excludes time spent awaiting a user approval). Trips a cancel that the interpreter observes."
             >
               <InputNumber min={1} max={3600} suffix="s" className="w-full" data-testid="js-tool-wall" />
             </FormField>
             <FormField
               name="approval_timeout_secs"
-              label="Approval timeout"
+              label="Approval timeout (seconds)"
               description="How long a gated sub-tool call waits for the user to approve/deny before resolving as cancel."
             >
               <InputNumber min={5} max={3600} suffix="s" className="w-full" data-testid="js-tool-approval-timeout" />

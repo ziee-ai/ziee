@@ -42,7 +42,10 @@ export default createModule({
         icon: <Braces />,
         label: 'Programmatic Tools',
         path: 'js-tool',
-        order: 27,
+        // 23: a genuinely-free settingsAdminPages slot (27=Web Search + System
+        // Skills, 28=System Workflows, 26=Code Sandbox are all taken); keeps a
+        // deterministic sidebar sort with no order collision.
+        order: 23,
         permission: Permissions.JsToolSettingsRead,
       },
     ],

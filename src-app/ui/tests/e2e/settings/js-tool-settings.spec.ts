@@ -31,7 +31,14 @@ test.describe('Programmatic Tools — run_js limits admin page', () => {
     await wall.blur()
     const save = byTestId(page, 'js-tool-settings-save-btn')
     await expect(save).toBeEnabled()
+    // Wait for the save PUT to COMPLETE before reloading — otherwise the reload
+    // can cancel the in-flight request and the persistence assertion races.
+    const savePut = page.waitForResponse(
+      r => r.url().includes('/api/js-tool/settings') && r.request().method() === 'PUT',
+    )
     await save.click()
+    const putResp = await savePut
+    expect(putResp.ok()).toBeTruthy()
 
     // Persisted server-side: a hard reload re-fetches the row.
     await page.reload({ waitUntil: 'domcontentloaded' })
