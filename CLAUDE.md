@@ -1365,6 +1365,80 @@ cargo test --test integration_tests mcp::resource_link -- --test-threads=1
 
 ---
 
+## Knowledge Base Retrieval (RAG at scale)
+
+The `knowledge_base` module is a built-in MCP server
+(`knowledge_base.ziee.internal`, loopback JSON-RPC at `/api/knowledge-base/mcp`)
+giving users a **first-class, user-owned KNOWLEDGE BASE the agent retrieves from
+at scale** — point it at a folder of 500 PDFs and the agent retrieves relevant
+cited chunks (RAG) instead of stuffing everything into context.
+
+### It's a thin layer over `file_rag` — NOT a new RAG engine
+
+A KB is a named, standalone-reusable **set of `file_id`s**; chunks/embeddings
+live in the shared `file_chunks` table (migration 99). Retrieval resolves a KB to
+its file_ids and calls the (now reranked) `file_rag::retrieval::semantic_search`.
+So the whole hybrid engine (chunk → `halfvec` HNSW + FTS → RRF), embed worker, and
+airgapped FTS-only fallback are inherited. Deleting a KB / removing a document
+deletes ONLY the join row, never the shared `file_chunks` (no `kb_id` on chunks).
+
+- Tables (migration 133): `knowledge_bases` (owner-scoped; **no denormalized
+  `document_count`** — derived at read, since an external file delete cascades the
+  join row), `knowledge_base_documents`, `conversation_knowledge_bases`,
+  `project_knowledge_bases`. `knowledge_base::{use,manage}` granted to Users
+  (migration 134). `KB_MAX_DOCUMENTS = 2000`; checksum dedup on add.
+- MCP tools: `search_knowledge(query, knowledge_base_ids?, top_k?)` (scope =
+  explicit KB ids OR the conversation's attached KBs, **owner-filtered** — the
+  cross-user leak guard) + `list_knowledge_bases()`. Read-only → `knowledge_base::use`,
+  approval-bypassed. The result carries an `indexing_incomplete{searchable,total}`
+  signal so a half-indexed KB doesn't answer as if complete. Tool description +
+  chat-extension note (order **23**) carry the grounded-answer instruction (answer
+  only from results; say "not found"; cite the hit) and attach only when ≥1 KB is
+  bound. The two `mcp/chat_extension/mcp.rs` edits (`auto_attach_builtin_ids` +
+  `is_builtin_server_id`) are required.
+- REST (owner-scoped, foreign → 404 via `get_by_id_and_user`): CRUD
+  `/api/knowledge-bases`, documents (attach existing / bulk upload / detach /
+  paginated list-with-status / reindex), attach `/conversations/{id}/knowledge-bases/{kb}`
+  + `/projects/{id}/knowledge-bases/{kb}`. Sync entities `KnowledgeBase` /
+  `KnowledgeBaseDocument` (owner-scoped).
+
+### Per-document index status (`file_index_state`) — shared `file_rag` addition
+
+Chunk counts alone can't distinguish pending/indexing/failed/**no_text** (scanned
+PDFs). Migration 136's `file_index_state` is written by `file_rag/ingest.rs` at
+each transition and emits owner-scoped `sync:file_index_state`, driving the live
+KB per-doc status stream. The old no-text early-return + warn-only failure now
+persist a real terminal state.
+
+### Reranker capability (hub-delivered)
+
+A new **`rerank` model capability** (a cross-encoder) mirrors the embedding
+capability end-to-end: `ai-providers` `rerank()` (OpenAI `/rerank`) →
+`ModelCapabilities.rerank` → `memory::engine::dispatch::rerank` → llama.cpp
+`--reranking --pooling rank` + the same-port proxy `/rerank` → `file_rag`
+retrieval. `semantic_search` gains a gated stage: retrieve a wider
+`rerank_candidate_k` pool → `dispatch::rerank` → reorder → top-k (so a doc ranked
+outside the initial top-k can be promoted). OFF by default (`file_rag_admin_settings`
+`reranker_model_id`/`rerank_enabled`/`rerank_candidate_k`, migration 135) — the
+existing `files_mcp` `semantic_search` is byte-identical until an admin opts in.
+The reranker model is **delivered through `ziee-ai/hub`**: the hub model schema
+gained a `rerank` capability and a `bge-reranker-v2-m3-gguf` manifest (mirrored
+into the vendored seed); the admin browses+downloads it like the embedding model.
+
+### Citation highlight (ingest-time geometry)
+
+The exact-passage highlight uses **ingest-time geometry**, not on-demand search
+(cleaned-text offsets have no positional map to the raw PDF). `pdf.rs`
+`extract_geometry_pages` captures per-char boxes (fraction-normalized) at
+extraction; they're stored as a per-page storage derivative (like text pages) and
+served by `GET /api/files/{id}/text-rects?page=&start=&end=` (`FilesRead`,
+owner-scoped), which relocates the chunk's cleaned span in the raw page text
+(whitespace-insensitive) and returns merged line rects. Non-PDF / no-geometry →
+`200 {rects:[]}` (page-level fallback). Backfill of pre-existing files' geometry
+is deferred (new uploads get it).
+
+---
+
 ## Citation Management + Verification
 
 The `citations` module is a built-in MCP server (`citations.ziee.internal`,
