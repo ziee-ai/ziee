@@ -406,3 +406,83 @@ where
     );
     Ok(row)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_key_matches_the_documented_format() {
+        assert_eq!(task_key("v1.6.2", "cpu"), "whisper@v1.6.2@cpu");
+        assert_eq!(task_key("v1.6.2", "cuda"), "whisper@v1.6.2@cuda");
+        // Version + backend both flow verbatim into the key → distinct keys.
+        assert_ne!(task_key("v1", "cpu"), task_key("v1", "cuda"));
+    }
+
+    /// Build a registry entry in a chosen state WITHOUT spawning a real runner,
+    /// so the dedupe / terminal-replacement branch logic in `start_or_join` is
+    /// exercised deterministically (no network, no runner-timing race).
+    fn fake_task(key: &str, status: EngineDownloadStatus) -> Arc<DownloadTask> {
+        let (tx, _rx) = broadcast::channel(4);
+        Arc::new(DownloadTask {
+            task_id: Uuid::new_v4(),
+            key: key.to_string(),
+            version: "vtest".to_string(),
+            backend: "cpu".to_string(),
+            started_at: SystemTime::now(),
+            state: Mutex::new(TaskRuntimeState {
+                status,
+                bytes_received: 0,
+                total_bytes: None,
+                progress: Vec::new(),
+                result: None,
+                error: None,
+            }),
+            events: tx,
+        })
+    }
+
+    #[tokio::test]
+    async fn start_or_join_dedupes_a_non_terminal_task_and_replaces_a_terminal_one() {
+        // Unique per-run version so this test can't collide with any other test
+        // sharing the global DOWNLOAD_TASKS registry.
+        let version = format!("vdedupe-{}", Uuid::new_v4());
+        let key = task_key(&version, "cpu");
+
+        // 1) A live (non-terminal) task is JOINED: start_or_join returns the SAME
+        //    Arc and never spawns a second runner.
+        let live = fake_task(&key, EngineDownloadStatus::Pending);
+        DOWNLOAD_TASKS.insert(key.clone(), live.clone());
+        let joined = start_or_join(
+            version.clone(),
+            "linux".to_string(),
+            "x86_64".to_string(),
+            "cpu".to_string(),
+        )
+        .await
+        .expect("join should succeed");
+        assert!(
+            Arc::ptr_eq(&joined, &live),
+            "a non-terminal task must be joined onto the same Arc, not replaced"
+        );
+
+        // 2) Once the entry is terminal, a re-POST REPLACES it with a fresh task
+        //    (retry after a failed download without restarting the server).
+        DOWNLOAD_TASKS.insert(key.clone(), fake_task(&key, EngineDownloadStatus::Failed));
+        let replaced = start_or_join(
+            version.clone(),
+            "linux".to_string(),
+            "x86_64".to_string(),
+            "cpu".to_string(),
+        )
+        .await
+        .expect("retry should succeed");
+        assert!(
+            !Arc::ptr_eq(&replaced, &live),
+            "a terminal task must be replaced by a new task on re-POST"
+        );
+        assert_eq!(replaced.key, key);
+
+        DOWNLOAD_TASKS.remove(&key);
+    }
+}

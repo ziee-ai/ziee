@@ -7,6 +7,7 @@ import {
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 import { Stores } from '@/core/stores'
+import { claimSubscription, percentOf } from './downloadProgress.helpers'
 
 /**
  * Per-(version, backend) whisper download progress, page-reload-safe. Mirrors
@@ -20,11 +21,6 @@ import { Stores } from '@/core/stores'
 
 // Per-key abort controllers so we can tear down stale SSE subscriptions.
 const sseAborts = new Map<string, AbortController>()
-
-function percentOf(received: number, total: number | undefined): number | undefined {
-  if (!total || total === 0) return undefined
-  return Math.min(100, Math.max(0, (received / total) * 100))
-}
 
 export const VoiceDownloadProgress = defineStore('VoiceDownloadProgress', {
   state: {
@@ -88,12 +84,12 @@ export const useVoiceDownloadProgressStore = VoiceDownloadProgress.store
 
 /** Open an SSE subscription for a download key. Idempotent per key. */
 function subscribeToKey(key: string): void {
-  if (sseAborts.has(key)) return
   // Claim the key SYNCHRONOUSLY so a rapid second call is deduped — the real
   // AbortController arrives later in the async `__init` callback, and without a
-  // synchronous placeholder the `has(key)` guard above is racy (two calls both
-  // pass it before either sets the entry).
-  sseAborts.set(key, new AbortController())
+  // synchronous placeholder a `has(key)` guard is racy (two calls both pass it
+  // before either sets the entry). `claimSubscription` returns false when
+  // already claimed → no double-subscribe.
+  if (!claimSubscription(sseAborts, key)) return
   ApiClient.Voice.subscribeVersionDownloadEvents(
     { key },
     {

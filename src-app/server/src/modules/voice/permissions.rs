@@ -37,3 +37,28 @@ impl PermissionCheck for VoiceAdminManage {
         "Update voice settings, manage whisper runtime versions and models, and control the instance.";
     const MODULE: &'static str = "voice";
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The exact permission strings are load-bearing: they must match the
+    // Users-group grant (migration 134), the `*`-wildcard admin match, the sync
+    // audiences, and the generated frontend `Permissions` enum. A silent typo
+    // here would 403 every transcribe user (or silently un-gate an admin route),
+    // so pin the three constants byte-for-byte.
+    #[test]
+    fn permission_constants_are_exact() {
+        assert_eq!(VoiceTranscribe::PERMISSION, "voice::transcribe");
+        assert_eq!(VoiceTranscribe::NAME, "VoiceTranscribe");
+        assert_eq!(VoiceTranscribe::MODULE, "voice");
+
+        assert_eq!(VoiceAdminRead::PERMISSION, "voice::admin::read");
+        assert_eq!(VoiceAdminRead::NAME, "VoiceAdminRead");
+        assert_eq!(VoiceAdminRead::MODULE, "voice");
+
+        assert_eq!(VoiceAdminManage::PERMISSION, "voice::admin::manage");
+        assert_eq!(VoiceAdminManage::NAME, "VoiceAdminManage");
+        assert_eq!(VoiceAdminManage::MODULE, "voice");
+    }
+}

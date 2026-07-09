@@ -197,3 +197,39 @@ pub async fn sync_cache() -> Result<usize, AppError> {
     }
     Ok(synced)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Everything else in this file (select_version / check_for_updates /
+    // set_system_default / sync_cache) requires the DB pool + a live GitHub host,
+    // so its precedence + update-diffing behavior is covered by the integration
+    // tier (version_update_test.rs, TEST-16). The ONE piece of pure logic this
+    // file owns is host detection, and its output is a naming *contract*: the
+    // tokens must exactly match what the downloader's `available_backends`
+    // matches on AND what the fork's release workflow publishes. A regression
+    // returning "Linux" / "amd64" / "arm64" would silently make every asset
+    // lookup miss, so pin the vocabulary + the memoized-stability property here.
+    #[test]
+    fn host_platform_is_a_contract_token() {
+        let p = host_platform();
+        assert!(
+            ["linux", "macos", "windows"].contains(&p.as_str()),
+            "host_platform() outside the asset-naming vocabulary: {p:?}"
+        );
+        // Lowercased + memoized → identical on a second call.
+        assert_eq!(p, p.to_lowercase());
+        assert_eq!(p, host_platform());
+    }
+
+    #[test]
+    fn host_arch_is_a_contract_token() {
+        let a = host_arch();
+        assert!(
+            ["x86_64", "aarch64"].contains(&a.as_str()),
+            "host_arch() outside the asset-naming vocabulary: {a:?}"
+        );
+        assert_eq!(a, host_arch());
+    }
+}

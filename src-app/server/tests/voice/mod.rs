@@ -27,11 +27,13 @@ pub mod mock_release;
 
 mod capability_test;
 mod config_gate_test;
+mod lifecycle_test;
 mod model_test;
 mod permissions_test;
 mod settings_test;
 mod transcribe_test;
 mod version_download_test;
+mod version_update_test;
 
 /// The two admin permissions the voice admin surface gates on. Admins hold these
 /// via the `*` wildcard in production; a test grants them explicitly.

@@ -5,6 +5,7 @@ import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { defineExtensionStore } from '@/modules/chat/core/extensions'
 import { recordedBlobToWav16k } from './audio/wav'
+import { appendTranscript, isSuperseded, micErrorMessage } from './voiceLogic'
 
 /**
  * VoiceStore — the chat-composer voice-dictation state machine.
@@ -207,15 +208,8 @@ export const createVoiceStore = defineExtensionStore({
           }
           // A cancel/timeout/unmount already superseded this request and reset
           // state — swallow the (now irrelevant) rejection.
-          if (requestGeneration !== gen) return
-          const denied =
-            err instanceof DOMException &&
-            (err.name === 'NotAllowedError' || err.name === 'SecurityError')
-          fail(
-            denied
-              ? 'Microphone access was denied. Allow it in your browser to dictate.'
-              : 'Could not start recording — no microphone available.',
-          )
+          if (isSuperseded(gen, requestGeneration)) return
+          fail(micErrorMessage(err))
           return
         }
         if (requestTimeout !== null) {
@@ -224,7 +218,7 @@ export const createVoiceStore = defineExtensionStore({
         }
         // Cancelled/superseded while the prompt was open: discard the live stream
         // instead of leaving the mic on.
-        if (requestGeneration !== gen || get().status !== 'requesting') {
+        if (isSuperseded(gen, requestGeneration) || get().status !== 'requesting') {
           for (const track of stream.getTracks()) track.stop()
           return
         }
@@ -290,7 +284,7 @@ export const createVoiceStore = defineExtensionStore({
 
         // A cancel/unmount during onstop finalization superseded us — the state
         // was already reset to idle; don't resurrect it into 'transcribing'.
-        if (requestGeneration !== gen) return
+        if (isSuperseded(gen, requestGeneration)) return
 
         if (recorded.size === 0) {
           fail('No audio was captured — try recording again.')
@@ -320,13 +314,12 @@ export const createVoiceStore = defineExtensionStore({
           const result = await ApiClient.Voice.transcribe(formData)
           // A cancel/unmount superseded this transcription while it was in flight
           // — drop the result (state was already reset by cancelRecording).
-          if (requestGeneration !== gen) return
+          if (isSuperseded(gen, requestGeneration)) return
           clearTimers()
           const text = result.text?.trim() ?? ''
           if (text) {
             const textStore = Stores.Chat.$.TextStore
-            const current = textStore.getText()
-            textStore.setText(current ? `${current} ${text}` : text)
+            textStore.setText(appendTranscript(textStore.getText(), text))
           }
           set({
             status: 'idle',
@@ -338,7 +331,7 @@ export const createVoiceStore = defineExtensionStore({
           focusComposer()
         } catch (err) {
           // Superseded by a cancel/unmount — swallow the (now irrelevant) error.
-          if (requestGeneration !== gen) return
+          if (isSuperseded(gen, requestGeneration)) return
           // Keep the raw backend detail (loopback URLs, engine jargon) in the
           // console for debugging; never leak it into the user-facing toast.
           console.error('[voice] transcription failed', err)

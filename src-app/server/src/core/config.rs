@@ -797,6 +797,42 @@ mod rate_limit_config_tests {
 }
 
 #[cfg(test)]
+mod voice_config_tests {
+    use super::VoiceConfig;
+
+    // serde_json keeps the test dependency-free; VoiceConfig derives Deserialize
+    // so the wire format is irrelevant to what we assert. Mirrors how the module
+    // resolves the deploy-level kill switch:
+    //   config.voice.as_ref().map(|c| c.enabled).unwrap_or(true)   (voice/mod.rs)
+
+    /// The exact gate the module applies: an absent `voice:` section (None) means
+    /// ENABLED; only an explicit `enabled: false` disables it.
+    fn resolve(cfg: Option<VoiceConfig>) -> bool {
+        cfg.as_ref().map(|c| c.enabled).unwrap_or(true)
+    }
+
+    #[test]
+    fn absent_voice_section_defaults_to_enabled() {
+        assert!(resolve(None), "an absent voice: config must default to enabled");
+        // And an empty block `voice: {}` (present but no fields) is also enabled.
+        let empty: VoiceConfig = serde_json::from_str("{}").unwrap();
+        assert!(empty.enabled);
+        assert!(resolve(Some(empty)));
+    }
+
+    #[test]
+    fn explicit_enabled_false_disables() {
+        let cfg: VoiceConfig = serde_json::from_str(r#"{"enabled":false}"#).unwrap();
+        assert!(!cfg.enabled);
+        assert!(!resolve(Some(cfg)), "voice enabled:false must disable");
+
+        let on: VoiceConfig = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(on.enabled);
+        assert!(resolve(Some(on)));
+    }
+}
+
+#[cfg(test)]
 mod public_file_origin_tests {
     use super::CodeSandboxConfig;
 
