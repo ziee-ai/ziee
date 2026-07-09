@@ -91,10 +91,16 @@ impl ProcessingManager {
                 // effort — a failure just means the citation UI opens the page
                 // without an exact-passage highlight.
                 if mime_type == "application/pdf" {
-                    result.geometry_pages = pdf::PdfProcessor
+                    result.geometry_pages = match pdf::PdfProcessor
                         .extract_geometry_pages(data)
                         .await
-                        .unwrap_or_default();
+                    {
+                        Ok(g) => g,
+                        Err(e) => {
+                            tracing::warn!("geometry: extract_geometry_pages failed: {e}");
+                            Vec::new()
+                        }
+                    };
                 }
                 break;
             }
