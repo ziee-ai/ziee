@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **325** surfaces carry at least one renderable-state signal.
-- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **330** surfaces carry at least one renderable-state signal.
+- **1913** signals total: 1507 branch, 115 empty, 98 error, 101 loading, 90 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,10 +16,10 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 86 |
-| `empty` | 90 |
-| `error` | 75 |
-| `open` | 72 |
+| `delayed` | 88 |
+| `empty` | 91 |
+| `error` | 77 |
+| `open` | 76 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -2270,6 +2270,60 @@ Required states: `delayed`, `empty`
 | loading | `loading && items.length === 0` | 49 |
 | empty | `filtered.length === 0` | 90 |
 | branch | `searchTerm \|\| selectedTags.length > 0` | 91 |
+
+### `modules/knowledge-base/components/KnowledgeBaseCard`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `canManage` | 62 |
+| overlay | `<Confirm open>` | 100 |
+| branch | `chip` | 125 |
+
+### `modules/knowledge-base/components/KnowledgeBaseDocumentsPanel`
+
+Required states: `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `files.length === 0` | 37 |
+| empty | `documentsLoading && documents.length === 0` | 88 |
+| empty | `documents.length === 0` | 92 |
+| error | `(doc.index_status === 'failed' \|\| doc.index_status === 'no_text')` | 119 |
+
+### `modules/knowledge-base/components/KnowledgeBaseFormDrawer`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `saving` | 55 |
+| overlay | `<Drawer open>` | 84 |
+| branch | `canSave` | 101 |
+
+### `modules/knowledge-base/pages/KnowledgeBaseDetailPage`
+
+Required states: `delayed`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && !kb` | 35 |
+| branch | `!kb` | 43 |
+| branch | `inProgress > 0` | 111 |
+| branch | `kbId` | 125 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 130 |
+
+### `modules/knowledge-base/pages/KnowledgeBasesListPage`
+
+Required states: `delayed`, `error`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `kbs.length > 0` | 63 |
+| loading | `loading` | 78 |
+| error | `error` | 82 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 113 |
 
 ### `modules/layouts/app-layout/AppLayout`
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1894 signals total.
+// 330 surfaces carry renderable-state signals; 1913 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2058,6 +2058,55 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "searchTerm || selectedTags.length > 0", line: 91 },
     ],
   },
+  "modules/knowledge-base/components/KnowledgeBaseCard": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseCard",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "canManage", line: 62 },
+      { kind: "overlay", condition: "<Confirm open>", line: 100 },
+      { kind: "branch", condition: "chip", line: 125 },
+    ],
+  },
+  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel",
+    requiredStates: ["empty","error"],
+    signals: [
+      { kind: "empty", condition: "files.length === 0", line: 37 },
+      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 88 },
+      { kind: "empty", condition: "documents.length === 0", line: 92 },
+      { kind: "error", condition: "(doc.index_status === 'failed' || doc.index_status === 'no_text')", line: 119 },
+    ],
+  },
+  "modules/knowledge-base/components/KnowledgeBaseFormDrawer": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseFormDrawer",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "saving", line: 55 },
+      { kind: "overlay", condition: "<Drawer open>", line: 84 },
+      { kind: "branch", condition: "canSave", line: 101 },
+    ],
+  },
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage": {
+    surface: "modules/knowledge-base/pages/KnowledgeBaseDetailPage",
+    requiredStates: ["delayed","open"],
+    signals: [
+      { kind: "loading", condition: "loading && !kb", line: 35 },
+      { kind: "branch", condition: "!kb", line: 43 },
+      { kind: "branch", condition: "inProgress > 0", line: 111 },
+      { kind: "branch", condition: "kbId", line: 125 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 130 },
+    ],
+  },
+  "modules/knowledge-base/pages/KnowledgeBasesListPage": {
+    surface: "modules/knowledge-base/pages/KnowledgeBasesListPage",
+    requiredStates: ["delayed","error","open"],
+    signals: [
+      { kind: "branch", condition: "kbs.length > 0", line: 63 },
+      { kind: "loading", condition: "loading", line: 78 },
+      { kind: "error", condition: "error", line: 82 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 113 },
+    ],
+  },
   "modules/layouts/app-layout/AppLayout": {
     surface: "modules/layouts/app-layout/AppLayout",
     requiredStates: ["open"],
@@ -3930,7 +3979,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 325 keys.
+ * 334 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4075,6 +4124,15 @@ export type RequiredState =
   | "modules/hub/modules/workflow/components/WorkflowHubCard:open"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:empty"
+  | "modules/knowledge-base/components/KnowledgeBaseCard:open"
+  | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty"
+  | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error"
+  | "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open"
+  | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed"
+  | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open"
+  | "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed"
+  | "modules/knowledge-base/pages/KnowledgeBasesListPage:error"
+  | "modules/knowledge-base/pages/KnowledgeBasesListPage:open"
   | "modules/layouts/app-layout/AppLayout:open"
   | "modules/layouts/app-layout/components/Drawer:empty"
   | "modules/layouts/app-layout/components/ResizeHandle:empty"
@@ -4403,6 +4461,15 @@ export const REQUIRED_STATE_KEYS = [
   "modules/hub/modules/workflow/components/WorkflowHubCard:open",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:empty",
+  "modules/knowledge-base/components/KnowledgeBaseCard:open",
+  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty",
+  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error",
+  "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open",
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed",
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open",
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed",
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:error",
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:open",
   "modules/layouts/app-layout/AppLayout:open",
   "modules/layouts/app-layout/components/Drawer:empty",
   "modules/layouts/app-layout/components/ResizeHandle:empty",

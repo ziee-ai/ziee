@@ -1,8 +1,8 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 73,
-    "hosts": 54,
+    "total": 75,
+    "hosts": 56,
     "triggers": 19,
     "wiredOpen": 37
   },
@@ -190,6 +190,32 @@
     },
     {
       "surface": "modules/hub/modules/workflow/components/WorkflowDetailsDrawer",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/knowledge-base/components/KnowledgeBaseCard",
+      "class": "host",
+      "primitives": [
+        "Confirm"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Confirm",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/knowledge-base/components/KnowledgeBaseFormDrawer",
       "class": "host",
       "primitives": [
         "Drawer"
