@@ -118,6 +118,10 @@ src-app/server/tests/chat/stub_chat_tier2_test.rs	204	204	correctness,security,e
 src-app/server/tests/chat/stub_chat_tier2_test.rs	208	286	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
 src-app/server/tests/llm_model/capabilities_infer_test.rs	1	105	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
 src-app/server/tests/llm_model/mod.rs	3	3	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	11	11	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	2762	2765	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	7	7	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	2513	2516	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
 src-app/ui/src/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection.tsx	1	2	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
 src-app/ui/src/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection.tsx	39	56	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
 src-app/ui/src/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection.tsx	64	164	correctness,security,error-handling,concurrency,api-contract,patterns-conformance,tests-quality,perf,regressions,a11y-naming
