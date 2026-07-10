@@ -119,6 +119,10 @@ const RE_TEST_TIER = /tier\s*:\s*(unit|integration|e2e)\b/i;
 const RE_TEST_COVERS = /covers\s*:\s*([^\]]+)\]/i;
 const RE_TEST_FILE = /file\s*:\s*[`"]?([^`"\n]+?)[`"]?\s*(?:—|--|-|asserts)/i;
 const RE_TEST_ASSERTS = /asserts\s*:\s*(.+?)\s*$/i;
+// A10 restricted-user tag: a `[negative-perm]` marker on a `tier: e2e` test line
+// flags it as the RESTRICTED-USER spec (logs in as a user LACKING the perm and
+// asserts the feature UI is ABSENT — not merely 403-on-use).
+const RE_TEST_NEGPERM = /\[\s*negative-perm\s*\]/i;
 // DECISION:    ### DEC-1: question   then **Resolution:** ...  **Basis:** ...
 const RE_DEC = /^#{2,6}\s*(DEC-[A-Za-z0-9._-]+)\s*:/;
 // DRIFT entry: - **DRIFT-1.2** — verdict: plan-wins — text
@@ -150,7 +154,8 @@ function parseTests() {
     const covers = coversRaw.split(/[,\s]+/).map((s) => s.trim()).filter((s) => /^ITEM-/.test(s));
     const file = (RE_TEST_FILE.exec(ln) || [])[1];
     const asserts = (RE_TEST_ASSERTS.exec(ln) || [])[1];
-    tests.push({ id: idm[1], tier, covers, file: file && file.trim(), asserts: asserts && asserts.trim(), line: ln });
+    const negPerm = RE_TEST_NEGPERM.test(ln);
+    tests.push({ id: idm[1], tier, covers, file: file && file.trim(), asserts: asserts && asserts.trim(), negPerm, line: ln });
   }
   return tests;
 }
@@ -440,8 +445,81 @@ function checkA9() {
   const tt = read('TESTS.md') || '';
   const hasDeny = /\b403\b|forbidden|denied|\bdeny\b|without[_ ].*perm|requires?_the_.*permission|lacks?[_ ].*perm/i.test(all + '\n' + tt);
   if (!hasDeny)
-    return ['A9: the diff adds a permission but no test asserts the DENY path (403/forbidden). A new permission must prove the negative — a user lacking it is refused — not only the allow path.'];
+    return ['A9: the diff adds a permission but no test asserts the DENY path (403/forbidden). A new permission must prove the negative — a user lacking it is refused — not only the allow path. (A9 covers the BACKEND deny; A10 additionally requires the FRONTEND to be proven hidden.)'];
   return [];
+}
+
+// A10: FRONTEND authz gate — EXTENDS A9 from the API to the UI. A diff that
+// INTRODUCES a user-facing permission (a `X::use` / `X::read` / `X::manage`
+// string DEFINED in a modules/*/permissions.rs OR GRANTED in a migration) must
+// be matched by a RESTRICTED-USER e2e spec: one that logs in as a user LACKING
+// the permission and asserts the feature's UI surfaces are ABSENT — not merely
+// that the API returns 403. e2e/8-of-8 test the HAPPY path WITH the permission;
+// nothing otherwise forces the "unpermitted user sees no UI" case, which is how
+// ungated composers/menu-items/nav-entries shipped past a green lifecycle.
+//
+// Convention: the spec is tagged `[negative-perm]` on a `(tier: e2e)` TESTS.md
+// line. For a new permission BOTH A9 (backend deny) AND A10 (frontend hidden)
+// are required.
+//
+// HONEST LIMIT: this gate only enforces that ONE such e2e exists + passes; it
+// CANNOT verify the spec covers EVERY gated surface (a test could assert one
+// surface hidden and miss another). The SKILL rule tells authors to walk ALL
+// four gating layers (slot → route → <Can> → usePermission) inside that spec.
+const RE_GATING_PERM = /["'`][a-z][a-z0-9_]*(?:::[a-z0-9_]+)*::(?:use|read|manage)["'`]/;
+// A permission is INTRODUCED where it is DEFINED (a permissions.rs const) or
+// GRANTED (a migration) — NOT at a check-site that merely references an existing
+// one. Scoping to those two file kinds is what keeps the trigger precise.
+const RE_PERM_SRC = /(?:^|\/)modules\/[^/]+\/permissions\.rs$/;
+const RE_MIGRATION = /(?:^|\/)migrations\/[^/]+\.sql$/;
+function diffIntroducesGatingPerm() {
+  for (const a of diffAddedLines()) {
+    if (!RE_PERM_SRC.test(a.file) && !RE_MIGRATION.test(a.file)) continue;
+    if (RE_GATING_PERM.test(a.text)) return true;
+  }
+  return false;
+}
+// Phase-3 runs BEFORE implementation, so the diff may not yet carry the
+// permission. Infer the introduction up-front from PLAN.md: its "Files to touch"
+// must name a permissions.rs / migration AND the plan must name a gating-perm
+// token. The AND keeps this from firing on a backend plan that merely mentions
+// an EXISTING perm in prose. (The diff-based check above is authoritative once
+// code exists — at --all / phase 8.)
+const RE_GATING_PERM_TOKEN = /\b[a-z][a-z0-9_]*(?:::[a-z0-9_]+)*::(?:use|read|manage)\b/;
+function planIntroducesGatingPerm() {
+  const t = read('PLAN.md');
+  if (t == null) return false;
+  const touchesPermFile = /modules\/[A-Za-z0-9_]+\/permissions\.rs|migrations\/[^\s`"']+\.sql/.test(t);
+  return touchesPermFile && RE_GATING_PERM_TOKEN.test(t);
+}
+function introducesGatingPerm() {
+  return diffIntroducesGatingPerm() || planIntroducesGatingPerm();
+}
+// The enumerated RESTRICTED-USER e2e specs (tier e2e + [negative-perm] tag).
+function negPermE2eTests(tests) {
+  return (tests || []).filter((t) => t.tier === 'e2e' && t.negPerm);
+}
+// A10-enumeration: a gating perm is introduced but no restricted-user e2e is
+// enumerated in TESTS.md. Runs at phase 3 AND phase 8.
+function checkA10Enumeration() {
+  if (!introducesGatingPerm()) return [];
+  const tests = parseTests() || [];
+  if (negPermE2eTests(tests).length > 0) return [];
+  const misTagged = tests.filter((t) => t.negPerm && t.tier !== 'e2e');
+  const hint = misTagged.length
+    ? ` (found a [negative-perm] tag on ${misTagged.map((t) => t.id).join(', ')} but not at tier: e2e — a 403/deny test is A9, not A10; the restricted-user proof MUST be an e2e that renders the UI).`
+    : '';
+  return [`A10: the diff introduces a user-facing permission (a X::use/::read/::manage defined in a modules/*/permissions.rs or granted in a migration) but TESTS.md enumerates no RESTRICTED-USER e2e spec — add a "(tier: e2e) [negative-perm]" test that logs in as a user LACKING the permission and asserts the feature's UI is ABSENT (walk slot → route → <Can> → usePermission), not just 403-on-use. Backend-deny (A9) + frontend-hidden (A10) are BOTH required for a new permission.${hint}`];
+}
+// A10-passing: at phase 8 the enumerated restricted-user e2e must PASS.
+function checkA10Passing(results) {
+  if (!introducesGatingPerm()) return [];
+  const tests = parseTests() || [];
+  const neg = negPermE2eTests(tests);
+  if (neg.length === 0) return []; // enumeration gap already reported by checkA10Enumeration
+  if (neg.some((t) => results.get(t.id) === 'PASS')) return [];
+  const detail = neg.map((t) => `${t.id}=${results.get(t.id) || 'missing'}`).join(', ');
+  return [`A10: a user-facing permission is introduced but no RESTRICTED-USER e2e spec is PASS (${detail}) — run the [negative-perm] spec ("npx playwright test <spec> --workers=1") and record PASS in TEST_RESULTS.md. A green happy-path e2e does not prove an unpermitted user sees no UI.`];
 }
 
 // R2-5: e2e route-mock staleness. A `page.route('**/api/…')` mock that points at
@@ -573,6 +651,7 @@ function phase3() {
     g.push(`TESTS.md: frontend workspace(s) {${[...fe].join(', ')}} are touched but no "(tier: e2e)" test is enumerated — UI work requires ≥1 e2e-tier test; an all-unit plan is refused.`);
   }
   for (const x of checkA5()) g.push(x); // A5 shrink-guard
+  for (const x of checkA10Enumeration()) g.push(x); // A10 restricted-user e2e must be enumerated
   return { present: true, gaps: g };
 }
 
@@ -672,11 +751,12 @@ function phase8() {
   const dirty = dirtyWorkingTree();
   if (dirty.length)
     g.push(`A2: working tree not clean at phase 8 — uncommitted/untracked: ${dirty.slice(0, 10).map((l) => l.slice(3)).join(', ')}${dirty.length > 10 ? ', …' : ''}. Commit or remove before declaring done (load-bearing files must be on the branch).`);
-  // A3/A4/A8/A9 + R2-5: diff-content gates.
+  // A3/A4/A8/A9/A10 + R2-5: diff-content gates.
   for (const x of checkA3()) g.push(x);
   for (const x of checkA4()) g.push(x);
   for (const x of checkA8()) g.push(x);
   for (const x of checkA9()) g.push(x);
+  for (const x of checkA10Enumeration()) g.push(x); // A10: restricted-user e2e must be enumerated
   for (const x of checkR2_5()) g.push(x);
   const tests = parseTests();
   if (!tests) return { present: true, gaps: ['TESTS.md missing — cannot verify results'] };
@@ -685,6 +765,7 @@ function phase8() {
     const m = RE_RESULT.exec(ln);
     if (m) results.set(m[1], m[2].toUpperCase());
   }
+  for (const x of checkA10Passing(results)) g.push(x); // A10: restricted-user e2e must PASS
   for (const test of tests) {
     const r = results.get(test.id);
     if (!r) g.push(`TEST_RESULTS.md: ${test.id} (from TESTS.md) has no result line`);
@@ -728,10 +809,49 @@ function phase8() {
   return { present: true, gaps: g };
 }
 
-const PHASES = [null, phase1, phase2, phase3, phase4, phase5, phase6, phase7, phase8];
+// Phase 9 — HUMAN_FEEDBACK.md (merge-readiness gate; PENDING until human review).
+// The session records every human critique verbatim + its resolution here. The
+// gate is PENDING (not fail) while the file is absent — a feature can be 8/8 and
+// still awaiting human review. It FAILS once the file exists with an unresolved
+// [status: open] item, and requires either ≥1 FB entry or an explicit "no human
+// feedback received" statement (so absence is a deliberate claim, not an
+// oversight). At merge, the orchestrator reads this file and folds every
+// [generalizable: yes] item into the lifecycle skill.
+function phase9() {
+  const t = read('HUMAN_FEEDBACK.md');
+  if (t == null)
+    return {
+      present: false,
+      gaps: [
+        'HUMAN_FEEDBACK.md missing — record each human critique + resolution before merge, or state "no human feedback received"',
+      ],
+    };
+  const g = [];
+  const RE_FB = /^\s*-\s*\*\*FB-\d+\*\*\s*\[status:\s*(open|resolved|wontfix)\]/i;
+  const open = [];
+  let count = 0;
+  for (const ln of t.split(/\r?\n/)) {
+    const m = RE_FB.exec(ln);
+    if (m) {
+      count++;
+      if (m[1].toLowerCase() === 'open') open.push(ln.trim().slice(0, 90));
+    }
+  }
+  if (open.length)
+    g.push(
+      `HUMAN_FEEDBACK: ${open.length} item(s) still [status: open] — resolve (or mark wontfix with rationale) before merge: ${open[0]}`,
+    );
+  if (count === 0 && !/no\s+human\s+feedback\s+received/i.test(t))
+    g.push(
+      'HUMAN_FEEDBACK.md has no FB-N entries and no explicit "no human feedback received" statement — state one or the other',
+    );
+  return { present: true, gaps: g };
+}
+
+const PHASES = [null, phase1, phase2, phase3, phase4, phase5, phase6, phase7, phase8, phase9];
 const PHASE_NAMES = [
   '', 'PLAN', 'PLAN_AUDIT', 'TESTS', 'DECISIONS',
-  'IMPLEMENT+DRIFT', 'BLIND_AUDIT', 'FIX_LOOP', 'TEST_RESULTS',
+  'IMPLEMENT+DRIFT', 'BLIND_AUDIT', 'FIX_LOOP', 'TEST_RESULTS', 'HUMAN_FEEDBACK',
 ];
 
 // ---------------------------------------------------------------------------
@@ -762,7 +882,7 @@ if (wantAll) {
   const results = [];
   const glob = checkA1(); // A1 runs globally, regardless of --dir
   if (glob.length) results.push({ n: 0, name: 'GLOBAL', present: true, gaps: glob });
-  for (let n = 1; n <= 8; n++) results.push(runOne(n));
+  for (let n = 1; n <= 9; n++) results.push(runOne(n));
   const anyFail = report(results);
   // contiguity: no completed (present & OK) phase may sit above a PENDING one
   let sawPending = false;
@@ -776,13 +896,13 @@ if (wantAll) {
     process.exit(1);
   }
   const highest = results.filter((r) => r.present).map((r) => r.n).pop() || 0;
-  process.stdout.write(`lifecycle-check: OK — phases 1..${highest} complete (${highest}/8).\n`);
+  process.stdout.write(`lifecycle-check: OK — phases 1..${highest} complete (${highest}/9).\n`);
   process.exit(0);
 }
 
 if (phaseArg) {
   const n = parseInt(phaseArg, 10);
-  if (!(n >= 1 && n <= 8)) fail(`--phase must be 1..8 (got ${phaseArg})`);
+  if (!(n >= 1 && n <= 9)) fail(`--phase must be 1..9 (got ${phaseArg})`);
   const glob = checkA1(); // A1 runs globally, regardless of --dir
   const r = runOne(n);
   const anyFail = report(glob.length ? [{ n: 0, name: 'GLOBAL', present: true, gaps: glob }, r] : [r]);

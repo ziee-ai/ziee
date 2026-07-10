@@ -77,6 +77,20 @@ export interface AttachCitationsRequest {
   entry_ids: string[]
 }
 
+/** Attach already-uploaded files to a KB by id. */
+export interface AttachDocumentsRequest {
+  file_ids: string[]
+}
+
+/**
+ * Result of an attach operation — how many were newly linked vs skipped as
+ *  duplicates already in the KB (checksum dedup, DEC-36).
+ */
+export interface AttachDocumentsResult {
+  attached: number
+  skipped_duplicates: number
+}
+
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
@@ -158,6 +172,18 @@ export interface AvailableUpdatesResponse {
 }
 
 /**
+ * Response for the update check: upstream releases diffed against what is
+ *  installed, scoped to the host platform/arch. Drafts are omitted.
+ */
+export interface AvailableUpdatesResponse2 {
+  /** Host architecture (`x86_64`/`aarch64`). */
+  arch: string
+  /** Host platform the asset-readiness was computed for (`linux`/`macos`/`windows`). */
+  platform: string
+  versions: AvailableVersion2[]
+}
+
+/**
  * One upstream release in the update-check diff, enriched with what we
  *  have installed and whether its binary is published for *this host*.
  */
@@ -192,6 +218,34 @@ export interface AvailableVersion {
    *  or GitHub omitted the size — UI hides the size label in
    *  that case.
    */
+  size_bytes?: number
+  /** Release tag (e.g. `v0.0.1-alpha`). */
+  version: string
+}
+
+/**
+ * One upstream release in the update-check diff, enriched with what we have
+ *  installed and whether its binary is published for *this host*.
+ */
+export interface AvailableVersion2 {
+  /** Backends published upstream for the host platform/arch. */
+  available_backends: string[]
+  /**
+   * True if the binary for the host platform/arch is published upstream.
+   *  False ⇒ the release exists but its build for this host is pending.
+   */
+  binary_ready: boolean
+  /** True if at least one backend of this version is installed for the host. */
+  installed: boolean
+  /** Backends already installed for the host platform/arch (e.g. `["cpu"]`). */
+  installed_backends: string[]
+  /** GitHub prerelease flag. */
+  prerelease: boolean
+  /** ISO-8601 publish timestamp, if present. */
+  published_at?: string
+  /** The backend artifact recommended for this host given detected GPU/driver. */
+  recommended_backend?: string
+  /** Byte size of the archive the inline Install button would fetch. */
   size_bytes?: number
   /** Release tag (e.g. `v0.0.1-alpha`). */
   version: string
@@ -762,6 +816,11 @@ export interface CreateGroupRequest {
   permissions: string[]
 }
 
+export interface CreateKnowledgeBaseRequest {
+  description?: string
+  name: string
+}
+
 /** Request to create a new LLM model */
 export interface CreateLlmModelRequest {
   description?: string
@@ -1052,6 +1111,11 @@ export interface DeleteVersionQuery {
   remove_binary?: boolean
 }
 
+export interface DeleteVersionQuery2 {
+  /** Whether to remove the binary file from disk (defaults to false). */
+  remove_binary?: boolean
+}
+
 /**
  * `kind` discriminant on `HubDependency`. On the wire the values are
  *  `model` / `mcp-server` (kebab-case).
@@ -1139,6 +1203,19 @@ export interface DownloadListResponse {
   downloads: DownloadSnapshot[]
 }
 
+/** `GET /voice/versions/downloads` response. */
+export interface DownloadListResponse2 {
+  downloads: DownloadSnapshot2[]
+}
+
+/**
+ * Optional body for the model download endpoint. Absent `model` → the
+ *  currently-configured settings model.
+ */
+export interface DownloadModelRequest {
+  model?: string
+}
+
 export interface DownloadPaginationQuery {
   page?: number
   per_page?: number
@@ -1213,6 +1290,27 @@ export interface DownloadSnapshot {
   version: string
 }
 
+/**
+ * One entry returned by `GET /voice/versions/downloads`. Lists every download
+ *  task currently held by the in-process registry (running OR
+ *  terminal-but-not-replaced).
+ */
+export interface DownloadSnapshot2 {
+  backend: string
+  bytes_received: number
+  error?: string
+  key: string
+  /** 0..=100 when `total_bytes` is set. */
+  percent?: number
+  /** Result version id when terminal=Completed; null otherwise. */
+  result_version_id?: string
+  status: string
+  task_id: string
+  /** `None` when the upstream omitted Content-Length. */
+  total_bytes?: number
+  version: string
+}
+
 /** Download status enum */
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
@@ -1252,6 +1350,23 @@ export interface DownloadVersionRequest {
 }
 
 /**
+ * Request to download and register a whisper runtime version. `platform` /
+ *  `arch` default to the detected host and `backend` defaults to `cpu` (the
+ *  v1 whisper backend) when omitted — an admin installs the host's build with
+ *  just a version tag.
+ */
+export interface DownloadVersionRequest2 {
+  /** Architecture (x86_64, aarch64). Defaults to the host arch. */
+  arch?: string
+  /** Backend (cpu, cuda, metal). Defaults to `cpu`. */
+  backend?: string
+  /** Platform (linux, macos, windows). Defaults to the host platform. */
+  platform?: string
+  /** Version tag (e.g., "v1.0.0", or "latest"). */
+  version: string
+}
+
+/**
  * Response when a download task is started (or joined for an
  *  already-running download of the same engine/version/backend).
  *  Detached: the download keeps running on the server even after the
@@ -1276,6 +1391,29 @@ export interface DownloadVersionStartedResponse {
    *  joined. The SSE stream sends Connected immediately with the
    *  same value so a late subscriber doesn't have to round-trip.
    */
+  status: string
+  task_id: string
+  version: string
+}
+
+/**
+ * Response when a download task is started (or joined for an already-running
+ *  download of the same version/backend). Detached: the download keeps running
+ *  on the server even after the HTTP request returns.
+ */
+export interface DownloadVersionStartedResponse2 {
+  backend: string
+  /**
+   * Ready-to-use SSE URL for the frontend's EventSource (relative to the API
+   *  root). Includes the encoded key.
+   */
+  events_url: string
+  /**
+   * Composite key `whisper@{version}@{backend}` — also the path segment for
+   *  the events / snapshot endpoints.
+   */
+  key: string
+  /** Current status snapshot at the moment the task was started or joined. */
   status: string
   task_id: string
   version: string
@@ -1350,6 +1488,8 @@ export interface ElicitationResponseRequest {
 }
 
 export type EngineDownloadStatus = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
+
+export type EngineDownloadStatus2 = 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'completed' | 'failed'
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
@@ -1510,7 +1650,14 @@ export interface FileRagAdminSettings {
   fts_min_rank: number
   fts_rrf_k: number
   id: number
+  kb_max_documents: number
   max_chunks_per_file: number
+  rerank_candidate_k: number
+  rerank_enabled: boolean
+  reranker_model_id?: string
+  search_max_hit_chars: number
+  search_max_top_k: number
+  search_snippet_chars: number
   semantic_enabled: boolean
   updated_at: string
 }
@@ -1749,6 +1896,13 @@ export interface HealthResponse {
 /** `POST /api/skills/{id}/hide-in-conversation` body. */
 export interface HideSkillInConversationRequest {
   conversation_id: string
+}
+
+export interface HighlightRect {
+  h: number
+  w: number
+  x: number
+  y: number
 }
 
 /**
@@ -2254,6 +2408,19 @@ export interface IndexItem {
   version?: string
 }
 
+/**
+ * Per-KB rollup of document index states, so the UI can show
+ *  "all indexed / M indexing / K failed / P no-text" and gate grounding.
+ */
+export interface IndexingSummary {
+  failed: number
+  indexed: number
+  indexing: number
+  no_text: number
+  pending: number
+  total: number
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -2350,6 +2517,34 @@ export interface KeyFieldInfo {
   required: boolean
 }
 
+/**
+ * A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),
+ *  never denormalized (an external file delete would drift a stored counter).
+ */
+export interface KnowledgeBase {
+  description?: string
+  created_at: string
+  document_count: number
+  id: string
+  /** Rollup of per-document index status (from `file_index_state`). */
+  indexing_summary: IndexingSummary
+  name: string
+  updated_at: string
+}
+
+/** One document in a KB, with its derived index status. */
+export interface KnowledgeBaseDocument {
+  added_at: string
+  chunk_count: number
+  file_id: string
+  filename: string
+  /**
+   * One of pending|indexing|indexed|failed|no_text (from `file_index_state`;
+   *  `pending` when no state row exists yet).
+   */
+  index_status: string
+}
+
 export interface LinkAccountRequest {
   /** Single-use token from /auth/link-account?token=... */
   link_token: string
@@ -2391,6 +2586,11 @@ export interface ListCitationsQuery {
 
 export interface ListCitationsResponse {
   entries: BibliographyEntry[]
+}
+
+export interface ListDocsQuery {
+  limit?: number
+  offset?: number
 }
 
 /**
@@ -2504,6 +2704,13 @@ export interface ListVersionsQuery2 {
   /** Page number (1-indexed, default 1) */
   page?: number
   /** Items per page (default 50, max 500) */
+  per_page?: number
+}
+
+export interface ListVersionsQuery3 {
+  /** Page number (1-indexed, default 1). */
+  page?: number
+  /** Items per page (default 500, max 500). */
   per_page?: number
 }
 
@@ -3532,6 +3739,12 @@ export interface ModelCapabilities {
   context_length?: number
   /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
+  /**
+   * Reranker (cross-encoder) capability - scores query/document relevance for
+   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
+   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
+   */
+  rerank?: boolean
   /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
   /** Tools capability - can use function calling/tools */
@@ -3545,6 +3758,11 @@ export interface ModelCapabilities2 {
   chat?: boolean
   code_interpreter?: boolean
   image_generator?: boolean
+  /**
+   * Reranker (cross-encoder) capability. `default` so pre-existing manifests
+   *  (which omit it) still parse.
+   */
+  rerank?: boolean
   text_embedding?: boolean
   tools?: boolean
   vision?: boolean
@@ -4392,6 +4610,11 @@ export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
 
+/** Response containing a list of whisper runtime versions. */
+export interface RuntimeVersionListResponse2 {
+  versions: RuntimeVersionResponse2[]
+}
+
 /** Response containing a single runtime version */
 export interface RuntimeVersionResponse {
   arch: string
@@ -4399,6 +4622,18 @@ export interface RuntimeVersionResponse {
   binary_path: string
   created_at: string
   engine: string
+  id: string
+  is_system_default: boolean
+  platform: string
+  version: string
+}
+
+/** Response containing a single whisper runtime version. */
+export interface RuntimeVersionResponse2 {
+  arch: string
+  backend: string
+  binary_path: string
+  created_at: string
   id: string
   is_system_default: boolean
   platform: string
@@ -4634,11 +4869,25 @@ export interface SSEEngineDownloadCompleteData {
   version_id: string
 }
 
+export interface SSEEngineDownloadCompleteData2 {
+  bytes_downloaded: number
+  duration_ms: number
+  version_id: string
+}
+
 export interface SSEEngineDownloadConnectedData {
   backend: string
   engine: string
   key: string
   status: EngineDownloadStatus
+  task_id: string
+  version: string
+}
+
+export interface SSEEngineDownloadConnectedData2 {
+  backend: string
+  key: string
+  status: EngineDownloadStatus2
   task_id: string
   version: string
 }
@@ -4650,7 +4899,18 @@ export type SSEEngineDownloadEvent = {
   failed: SSEEngineDownloadFailedData
 }
 
+export type SSEEngineDownloadEvent2 = {
+  connected: SSEEngineDownloadConnectedData2
+  progress: SSEEngineDownloadProgressData2
+  complete: SSEEngineDownloadCompleteData2
+  failed: SSEEngineDownloadFailedData2
+}
+
 export interface SSEEngineDownloadFailedData {
+  error: string
+}
+
+export interface SSEEngineDownloadFailedData2 {
   error: string
 }
 
@@ -4663,6 +4923,15 @@ export interface SSEEngineDownloadProgressData {
    * May be `None` when the upstream omits Content-Length (rare
    *  for GitHub Releases). The UI shows an indeterminate bar.
    */
+  total_bytes?: number
+}
+
+export interface SSEEngineDownloadProgressData2 {
+  bytes_received: number
+  /** `None` when `total_bytes` is None; otherwise 0.0..=100.0. */
+  percent?: number
+  status: EngineDownloadStatus2
+  /** `None` when the upstream omits Content-Length. */
   total_bytes?: number
 }
 
@@ -5249,6 +5518,12 @@ export interface SyncCacheResponse {
   synced_count: number
 }
 
+/** Response after syncing cache with database. */
+export interface SyncCacheResponse2 {
+  message: string
+  synced_count: number
+}
+
 /**
  * Handshake payload: the server-assigned connection id. The client
  *  echoes it back via the `X-Sync-Connection-Id` header on mutations so
@@ -5272,7 +5547,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5402,6 +5677,26 @@ export interface TextPageQuery {
   page?: number
 }
 
+/**
+ * Query for the citation text-rects endpoint: a byte range into the page's
+ *  cleaned text (a chunk's char_start/char_end).
+ */
+export interface TextRectsQuery {
+  end: number
+  page: number
+  start: number
+}
+
+export interface TextRectsResponse {
+  page_h: number
+  /**
+   * Rects are fraction-normalized to the page (0..1), origin top-left, so the
+   *  UI overlays them on the page image without knowing the render scale.
+   */
+  page_w: number
+  rects: HighlightRect[]
+}
+
 /** Metadata for thinking content */
 export interface ThinkingMetadata {
   /** Opaque data for a redacted-thinking block (Anthropic). */
@@ -5469,6 +5764,16 @@ export interface ToolUseApproval {
   tool_use_id: string
   updated_at: string
   user_id: string
+}
+
+/** Result of a transcription request. */
+export interface TranscriptionResponse {
+  /** Wall-clock transcription time in milliseconds. */
+  duration_ms: number
+  /** The language whisper used / detected. */
+  language: string
+  /** The recognized text. */
+  text: string
 }
 
 export type TransportType = 'stdio' | 'http' | 'sse'
@@ -5584,7 +5889,14 @@ export interface UpdateFileRagAdminSettingsRequest {
   fts_enabled?: boolean
   fts_min_rank?: number
   fts_rrf_k?: number
+  kb_max_documents?: number
   max_chunks_per_file?: number
+  rerank_candidate_k?: number
+  rerank_enabled?: boolean
+  reranker_model_id?: string
+  search_max_hit_chars?: number
+  search_max_top_k?: number
+  search_snippet_chars?: number
   semantic_enabled?: boolean
 }
 
@@ -5634,6 +5946,11 @@ export interface UpdateJsToolSettings {
   max_trace_entries?: number
   memory_bytes?: number
   wall_secs?: number
+}
+
+export interface UpdateKnowledgeBaseRequest {
+  description?: string
+  name?: string
 }
 
 /**
@@ -5900,6 +6217,18 @@ export interface UpdateUserRequest {
   display_name?: string
   is_active?: boolean
   username?: string
+}
+
+/** PUT body for the global settings. Every field optional → absent = leave. */
+export interface UpdateVoiceSettingsRequest {
+  auto_start_timeout_secs?: number
+  drain_timeout_secs?: number
+  enabled?: boolean
+  idle_unload_secs?: number
+  language?: string
+  max_clip_seconds?: number
+  max_upload_bytes?: number
+  model?: string
 }
 
 /** PUT body for the global settings. Every field optional → absent = leave. */
@@ -6256,6 +6585,67 @@ export interface VersionUsageResponse {
   versions: VersionUsageEntry[]
 }
 
+/**
+ * Readiness snapshot for the composer mic button. Reachable by any user holding
+ *  `voice::transcribe` (NOT admin-gated) so a normal user can decide whether to
+ *  enable/disable/hide the mic without touching an admin endpoint.
+ */
+export interface VoiceCapability {
+  /** True when enabled && runtime_ready && model_ready — the mic is usable. */
+  can_transcribe: boolean
+  /** Feature enabled (config deploy switch AND runtime settings toggle). */
+  enabled: boolean
+  /** Max clip length the user may record. */
+  max_clip_seconds: number
+  /** The configured model name (for display). */
+  model: string
+  /** The configured whisper model is present on disk. */
+  model_ready: boolean
+  /** A whisper-server runtime binary is installed for this host. */
+  runtime_ready: boolean
+}
+
+/** Snapshot of the single managed whisper-server instance (singleton row). */
+export interface VoiceInstanceInfo {
+  /** Configured/active whisper model file (e.g. `ggml-base.bin`), if any. */
+  active_model?: string
+  /** Loopback base URL (admin-only surface, so returned unredacted). */
+  base_url?: string
+  last_failure_reason?: string
+  last_used_at?: string
+  /** Loopback port the whisper-server is bound to, if running. */
+  local_port?: number
+  restart_attempts: number
+  /** Fine health-state-machine name (starting/healthy/unhealthy/…/failed). */
+  state: string
+  state_changed_at: string
+  /** Coarse lifecycle: `stopped` | `running`. */
+  status: string
+}
+
+/** Readiness of the configured (or a requested) ggml model on disk. */
+export interface VoiceModelStatus {
+  model: string
+  present: boolean
+  size_bytes?: number
+}
+
+/** Deployment-wide voice settings (singleton row). Returned by GET. */
+export interface VoiceSettings {
+  auto_start_timeout_secs: number
+  drain_timeout_secs: number
+  /** Runtime admin toggle (distinct from the deploy-level config kill switch). */
+  enabled: boolean
+  idle_unload_secs: number
+  /** Default transcription language ('auto' = whisper auto-detect). */
+  language: string
+  max_clip_seconds: number
+  max_upload_bytes: number
+  /** Selected whisper ggml model name (tiny | base | base.en | small). */
+  model: string
+  updated_at: string
+}
+
 /** Deployment-wide web search settings (singleton row). Returned by GET. */
 export interface WebSearchSettings {
   enabled: boolean
@@ -6508,6 +6898,8 @@ export enum Permissions {
   HubModelsVersionRead = 'hub::models::read_version',
   JsToolSettingsManage = 'js_tool::settings::manage',
   JsToolSettingsRead = 'js_tool::settings::read',
+  KnowledgeBaseManage = 'knowledge_base::manage',
+  KnowledgeBaseUse = 'knowledge_base::use',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
   LitSearchUse = 'lit_search::use',
@@ -6578,6 +6970,9 @@ export enum Permissions {
   UsersRead = 'users::read',
   UsersResetPassword = 'users::reset_password',
   UsersToggleStatus = 'users::toggle_status',
+  VoiceAdminManage = 'voice::admin::manage',
+  VoiceAdminRead = 'voice::admin::read',
+  VoiceTranscribe = 'voice::transcribe',
   WebSearchAdminManage = 'web_search::admin::manage',
   WebSearchAdminRead = 'web_search::admin::read',
   WebSearchUse = 'web_search::use',
@@ -6645,6 +7040,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsVersionRead: 'View hub models version information',
   JsToolSettingsManage: 'Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.',
   JsToolSettingsRead: 'Read the run_js (js_tool) resource-limits configuration.',
+  KnowledgeBaseManage: 'Create, rename, delete knowledge bases and manage their documents.',
+  KnowledgeBaseUse: 'Search your knowledge bases and attach them to conversations/projects.',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LitSearchUse: 'Use the literature search + screening tools.',
@@ -6715,6 +7112,9 @@ export const PermissionDescriptions: Record<string, string> = {
   UsersRead: 'View user information and list users',
   UsersResetPassword: 'Reset user passwords',
   UsersToggleStatus: 'Enable or disable user accounts',
+  VoiceAdminManage: 'Update voice settings, manage whisper runtime versions and models, and control the instance.',
+  VoiceAdminRead: 'Read voice dictation settings, runtime versions, model and instance state.',
+  VoiceTranscribe: 'Record audio and transcribe it into the chat composer.',
   WebSearchAdminManage: 'Update web search settings, provider chain, and provider API keys.',
   WebSearchAdminRead: 'Read web search settings (enable, provider chain, caps).',
   WebSearchUse: 'Use the web search + page-fetch tools.',
@@ -6814,6 +7214,7 @@ export const ApiEndpoints = {
   'File.getPreview': 'GET /api/files/{file_id}/preview',
   'File.getRaw': 'GET /api/files/{file_id}/raw',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
+  'File.getTextRects': 'GET /api/files/{file_id}/text-rects',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
@@ -6866,6 +7267,21 @@ export const ApiEndpoints = {
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
   'JsTool.getSettings': 'GET /api/js-tool/settings',
   'JsTool.updateSettings': 'PUT /api/js-tool/settings',
+  'KnowledgeBase.attachConversation': 'PUT /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.attachDocuments': 'POST /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.attachProject': 'PUT /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.create': 'POST /api/knowledge-bases',
+  'KnowledgeBase.delete': 'DELETE /api/knowledge-bases/{id}',
+  'KnowledgeBase.detachConversation': 'DELETE /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.detachProject': 'DELETE /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.get': 'GET /api/knowledge-bases/{id}',
+  'KnowledgeBase.list': 'GET /api/knowledge-bases',
+  'KnowledgeBase.listConversation': 'GET /api/conversations/{cid}/knowledge-bases',
+  'KnowledgeBase.listDocuments': 'GET /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.listProject': 'GET /api/projects/{pid}/knowledge-bases',
+  'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
+  'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
+  'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -6914,6 +7330,7 @@ export const ApiEndpoints = {
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
   'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalLlmProxy.rerank': 'POST /api/local-llm/v1/rerank',
   'LocalRuntime.clearFailed': 'POST /api/local-runtime/models/{model_id}/clear-failed',
   'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
@@ -7071,6 +7488,23 @@ export const ApiEndpoints = {
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Voice.capability': 'GET /api/voice/capability',
+  'Voice.checkVersionUpdates': 'GET /api/voice/versions/check-updates',
+  'Voice.deleteVersion': 'DELETE /api/voice/versions/{id}',
+  'Voice.downloadModel': 'POST /api/voice/model/download',
+  'Voice.downloadVersion': 'POST /api/voice/versions/download',
+  'Voice.getInstance': 'GET /api/voice/instance',
+  'Voice.getModelStatus': 'GET /api/voice/model/status',
+  'Voice.getSettings': 'GET /api/voice/settings',
+  'Voice.listVersionDownloads': 'GET /api/voice/versions/downloads',
+  'Voice.listVersions': 'GET /api/voice/versions',
+  'Voice.restartInstance': 'POST /api/voice/instance/restart',
+  'Voice.setDefaultVersion': 'POST /api/voice/versions/{id}/set-default',
+  'Voice.stopInstance': 'POST /api/voice/instance/stop',
+  'Voice.subscribeVersionDownloadEvents': 'GET /api/voice/versions/downloads/{key}/events',
+  'Voice.syncVersionCache': 'POST /api/voice/versions/sync-cache',
+  'Voice.transcribe': 'POST /api/voice/transcribe',
+  'Voice.updateSettings': 'PUT /api/voice/settings',
   'WebSearch.deleteUserKey': 'DELETE /api/web-search/user-keys/{provider}',
   'WebSearch.getProviders': 'GET /api/web-search/providers',
   'WebSearch.getSettings': 'GET /api/web-search/settings',
@@ -7192,6 +7626,7 @@ export type ApiEndpointParameters = {
   'File.getPreview': { file_id: string; page?: number }
   'File.getRaw': { file_id: string }
   'File.getTextContent': { file_id: string; page?: number }
+  'File.getTextRects': { file_id: string; end: number; page: number; start: number }
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
@@ -7244,6 +7679,21 @@ export type ApiEndpointParameters = {
   'Hub.refreshModels': void
   'JsTool.getSettings': void
   'JsTool.updateSettings': UpdateJsToolSettings
+  'KnowledgeBase.attachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.attachDocuments': { id: string } & AttachDocumentsRequest
+  'KnowledgeBase.attachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.create': CreateKnowledgeBaseRequest
+  'KnowledgeBase.delete': { id: string }
+  'KnowledgeBase.detachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.detachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.get': { id: string }
+  'KnowledgeBase.list': void
+  'KnowledgeBase.listConversation': { cid: string }
+  'KnowledgeBase.listDocuments': { id: string; limit?: number; offset?: number }
+  'KnowledgeBase.listProject': { pid: string }
+  'KnowledgeBase.reindexDocument': { id: string; file_id: string }
+  'KnowledgeBase.removeDocument': { id: string; file_id: string }
+  'KnowledgeBase.update': { id: string } & UpdateKnowledgeBaseRequest
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7292,6 +7742,7 @@ export type ApiEndpointParameters = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalLlmProxy.rerank': void
   'LocalRuntime.clearFailed': { model_id: string }
   'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
@@ -7449,6 +7900,23 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Voice.capability': void
+  'Voice.checkVersionUpdates': void
+  'Voice.deleteVersion': { id: string; remove_binary?: boolean }
+  'Voice.downloadModel': DownloadModelRequest
+  'Voice.downloadVersion': DownloadVersionRequest2
+  'Voice.getInstance': void
+  'Voice.getModelStatus': void
+  'Voice.getSettings': void
+  'Voice.listVersionDownloads': void
+  'Voice.listVersions': PaginationQuery
+  'Voice.restartInstance': void
+  'Voice.setDefaultVersion': { id: string }
+  'Voice.stopInstance': void
+  'Voice.subscribeVersionDownloadEvents': { key: string }
+  'Voice.syncVersionCache': void
+  'Voice.transcribe': FormData
+  'Voice.updateSettings': UpdateVoiceSettingsRequest
   'WebSearch.deleteUserKey': { provider: string }
   'WebSearch.getProviders': void
   'WebSearch.getSettings': void
@@ -7570,6 +8038,7 @@ export type ApiEndpointResponses = {
   'File.getPreview': Blob
   'File.getRaw': Blob
   'File.getTextContent': Blob
+  'File.getTextRects': TextRectsResponse
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse
@@ -7622,6 +8091,21 @@ export type ApiEndpointResponses = {
   'Hub.refreshModels': HubRefreshResponse
   'JsTool.getSettings': JsToolSettings
   'JsTool.updateSettings': JsToolSettings
+  'KnowledgeBase.attachConversation': any
+  'KnowledgeBase.attachDocuments': AttachDocumentsResult
+  'KnowledgeBase.attachProject': any
+  'KnowledgeBase.create': KnowledgeBase
+  'KnowledgeBase.delete': any
+  'KnowledgeBase.detachConversation': any
+  'KnowledgeBase.detachProject': any
+  'KnowledgeBase.get': KnowledgeBase
+  'KnowledgeBase.list': KnowledgeBase[]
+  'KnowledgeBase.listConversation': KnowledgeBase[]
+  'KnowledgeBase.listDocuments': KnowledgeBaseDocument[]
+  'KnowledgeBase.listProject': KnowledgeBase[]
+  'KnowledgeBase.reindexDocument': any
+  'KnowledgeBase.removeDocument': any
+  'KnowledgeBase.update': KnowledgeBase
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
@@ -7670,6 +8154,7 @@ export type ApiEndpointResponses = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalLlmProxy.rerank': void
   'LocalRuntime.clearFailed': ClearFailedResponse
   'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse
@@ -7827,6 +8312,23 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Voice.capability': VoiceCapability
+  'Voice.checkVersionUpdates': AvailableUpdatesResponse2
+  'Voice.deleteVersion': void
+  'Voice.downloadModel': VoiceModelStatus
+  'Voice.downloadVersion': DownloadVersionStartedResponse2
+  'Voice.getInstance': VoiceInstanceInfo
+  'Voice.getModelStatus': VoiceModelStatus
+  'Voice.getSettings': VoiceSettings
+  'Voice.listVersionDownloads': DownloadListResponse2
+  'Voice.listVersions': RuntimeVersionListResponse2
+  'Voice.restartInstance': VoiceInstanceInfo
+  'Voice.setDefaultVersion': RuntimeVersionResponse2
+  'Voice.stopInstance': VoiceInstanceInfo
+  'Voice.subscribeVersionDownloadEvents': SSEEngineDownloadEvent2
+  'Voice.syncVersionCache': SyncCacheResponse2
+  'Voice.transcribe': TranscriptionResponse
+  'Voice.updateSettings': VoiceSettings
   'WebSearch.deleteUserKey': void
   'WebSearch.getProviders': ProviderCatalogResponse
   'WebSearch.getSettings': WebSearchSettings

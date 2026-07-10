@@ -45,22 +45,18 @@ const TESTID_LITERAL = /data-testid\s*[=:]\s*["']([^"']+)["']/g
 // has (kept in parity — the two plugins scan the same web source).
 const TESTID_EXEMPT = /[/\\]dev[/\\]gallery[/\\]DefectRepro\.tsx$/
 
-// Intentional cross-file shares (kept in parity with the web plugin). The
-// ask-user wizard and the plain elicitation form are two MUTUALLY-EXCLUSIVE
-// renderings of the same elicitation prompt (only one ever mounts), so they
-// deliberately carry identical testids — the e2e specs select them with
-// `.first()` precisely because of this. Allow these specific ids ONLY when EVERY
-// file claiming them is one of the two elicitation components; a stray claim of
-// the same id anywhere else still fails the gate.
-const ELICITATION_SHARED_FILES = new Set([
-  'modules/mcp/chat-extension/components/AskUserWizardContent.tsx',
-  'modules/mcp/chat-extension/components/ElicitationFormContent.tsx',
-])
-const SHARED_TESTID_ALLOWLIST = new Map([
-  ['mcp-elicitation-pending-card', ELICITATION_SHARED_FILES],
-  ['elicitation-decline', ELICITATION_SHARED_FILES],
-  ['elicitation-submit', ELICITATION_SHARED_FILES],
-  ['mcp-elicitation-form', ELICITATION_SHARED_FILES],
+// Intentionally-shared testids: the SAME logical control rendered in two
+// MUTUALLY-EXCLUSIVE modes (never both mounted at once), which e2e selects
+// mode-agnostically. The elicitation submit/decline/form/pending controls appear
+// in BOTH the multi-step wizard (`AskUserWizardContent`) and the single-form
+// (`ElicitationFormContent`) renderer of one elicitation; the chat e2e specs
+// (07/09-chat/*elicitation*) select these regardless of which mode renders, so
+// they must stay identical across the two files.
+const ALLOWED_SHARED_TESTIDS = new Set([
+  'elicitation-decline',
+  'elicitation-submit',
+  'mcp-elicitation-form',
+  'mcp-elicitation-pending-card',
 ])
 
 function findSourceFiles(dir, fileList = []) {
@@ -120,15 +116,10 @@ function checkUnique(srcDirs, logger) {
   const duplicates = []
   for (const [id, fileSet] of idMap.entries()) {
     // Allowed within a single file (conditional branches share one testid by
-    // design); a collision is the SAME id claimed by two DIFFERENT files.
-    if (fileSet.size > 1) {
-      // …unless it's an allowlisted intentional share AND every claiming file
-      // is one of the sanctioned files (a stray claim elsewhere still fails).
-      const allowed = SHARED_TESTID_ALLOWLIST.get(id)
-      const isSanctionedShare =
-        allowed && [...fileSet].every(f => allowed.has(f.replace(/\\/g, '/')))
-      if (!isSanctionedShare) duplicates.push({ id, files: [...fileSet] })
-    }
+    // design); a collision is the SAME id claimed by two DIFFERENT files —
+    // EXCEPT the explicitly allow-listed intentionally-shared ids.
+    if (fileSet.size > 1 && !ALLOWED_SHARED_TESTIDS.has(id))
+      duplicates.push({ id, files: [...fileSet] })
   }
   if (duplicates.length > 0) {
     let msg = `\n[testid-unique] ✗ Found ${duplicates.length} duplicate data-testid literal(s):\n`

@@ -1,513 +1,534 @@
 {
-  "schema_version": 2,
-  "hub_version": "2.0.0",
-  "generated_at": "2026-06-15T04:23:16Z",
-  "items": [
-    {
-      "name": "io.github.ziee-ai/code-reviewer",
-      "category": "assistant",
-      "title": "Code Reviewer",
-      "summary": "Expert code reviewer with a security-and-best-practices focus.",
-      "tags": [
-        "code",
-        "security",
-        "review",
-        "best-practices"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "assistants/io.github.ziee-ai/code-reviewer/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/creative-writer",
-      "category": "assistant",
-      "title": "Creative Writer",
-      "summary": "Professional creative writer for stories, articles, and content.",
-      "tags": [
-        "writing",
-        "creative",
-        "storytelling",
-        "content"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "assistants/io.github.ziee-ai/creative-writer/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/deep-researcher",
-      "category": "assistant",
-      "title": "Deep Researcher",
-      "summary": "Multi-step research assistant. Pinned to a future ziee that ships the parallel sub-agent runtime.",
-      "tags": [
-        "research",
-        "analysis",
-        "synthesis"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": "99.0.0",
-      "version": "1.0.0",
-      "manifest_path": "assistants/io.github.ziee-ai/deep-researcher/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/sql-helper",
-      "category": "assistant",
-      "title": "SQL Helper",
-      "summary": "Writes, explains, and optimizes SQL across Postgres, MySQL, and SQLite dialects.",
-      "tags": [
-        "sql",
-        "database",
-        "queries"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "assistants/io.github.ziee-ai/sql-helper/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/vision-analyst",
-      "category": "assistant",
-      "title": "Vision Analyst",
-      "summary": "Specialized assistant for image and visual content analysis.",
-      "tags": [
-        "vision",
-        "image-analysis",
-        "visual",
-        "description"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "assistants/io.github.ziee-ai/vision-analyst/1.0.0.json"
-    },
-    {
-      "name": "app.linear/mcp",
-      "category": "mcp-server",
-      "title": "Linear MCP Server",
-      "summary": "Manage Linear issues, projects, and cycles over Streamable HTTP.",
-      "tags": [
-        "linear",
-        "issues",
-        "project-management",
-        "api",
-        "streamable-http"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": "99.0.0",
-      "version": "1.0.0",
-      "manifest_path": "mcp-servers/app.linear/mcp/1.0.0.json"
-    },
-    {
-      "name": "com.brave/search-mcp",
-      "category": "mcp-server",
-      "title": "Brave Search MCP Server",
-      "summary": "Web search via the Brave Search API for up-to-date information.",
-      "tags": [
-        "search",
-        "web",
-        "api",
-        "research",
-        "streamable-http"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.2.0",
-      "manifest_path": "mcp-servers/com.brave/search-mcp/1.2.0.json"
-    },
-    {
-      "name": "io.github.github/mcp",
-      "category": "mcp-server",
-      "title": "GitHub MCP Server",
-      "summary": "Access GitHub repositories, issues, and pull requests over the official GitHub MCP endpoint.",
-      "tags": [
-        "github",
-        "git",
-        "version-control",
-        "api",
-        "streamable-http"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "mcp-servers/io.github.github/mcp/1.0.0.json"
-    },
-    {
-      "name": "io.github.modelcontextprotocol/filesystem",
-      "category": "mcp-server",
-      "title": "Filesystem MCP Server",
-      "summary": "Local filesystem access (read/write/search) over MCP (stdio).",
-      "tags": [
-        "filesystem",
-        "files",
-        "io",
-        "stdio"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "mcp-servers/io.github.modelcontextprotocol/filesystem/1.0.0.json"
-    },
-    {
-      "name": "io.github.modelcontextprotocol/memory",
-      "category": "mcp-server",
-      "title": "Memory & Context MCP Server",
-      "summary": "Store and retrieve conversation context, notes, and knowledge across sessions.",
-      "tags": [
-        "memory",
-        "context",
-        "notes",
-        "knowledge",
-        "stdio"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "mcp-servers/io.github.modelcontextprotocol/memory/1.0.0.json"
-    },
-    {
-      "name": "io.github.modelcontextprotocol/postgres",
-      "category": "mcp-server",
-      "title": "PostgreSQL MCP Server",
-      "summary": "Connect to PostgreSQL databases, execute queries, manage schemas, and analyze data.",
-      "tags": [
-        "database",
-        "sql",
-        "postgresql",
-        "data",
-        "stdio"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "mcp-servers/io.github.modelcontextprotocol/postgres/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/deepseek-r1-70b",
-      "category": "model",
-      "title": "DeepSeek-R1 70B",
-      "summary": "Large reasoning model. Flagged as requiring a future ziee for its tensor-parallel runtime support.",
-      "tags": [
-        "reasoning",
-        "large",
-        "instruct"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": "99.0.0",
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/deepseek-r1-70b/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/llama-3-1-8b-instruct",
-      "category": "model",
-      "title": "Llama 3.1 8B",
-      "summary": "Meta's Llama 3.1 8B instruction-tuned model with improved capabilities.",
-      "tags": [
-        "instruct",
-        "chat",
-        "code",
-        "reasoning"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/llama-3-1-8b-instruct/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/llama-3-2-3b-instruct-gguf",
-      "category": "model",
-      "title": "Llama 3.2 3B",
-      "summary": "Meta's Llama 3.2 3B instruction-tuned model in GGUF format. Multiple quantizations available.",
-      "tags": [
-        "instruct",
-        "chat",
-        "code",
-        "gguf",
-        "efficient",
-        "small"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/llama-3-2-3b-instruct-gguf/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/nomic-embed-text-v1-5-gguf",
-      "category": "model",
-      "title": "Nomic Embed Text v1.5",
-      "summary": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp.",
-      "tags": [
-        "embedding",
-        "english",
-        "retrieval",
-        "rag",
-        "text-similarity",
-        "gguf",
-        "memory-recommended"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/nomic-embed-text-v1-5-gguf/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/phi-3-mini-4k-instruct",
-      "category": "model",
-      "title": "Phi-3 Mini",
-      "summary": "Microsoft's small but capable instruction-tuned model. Great for low-resource setups.",
-      "tags": [
-        "instruct",
-        "chat",
-        "small",
-        "efficient"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/phi-3-mini-4k-instruct/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/qwen2.5-coder-7b-instruct",
-      "category": "model",
-      "title": "Qwen2.5-Coder 7B",
-      "summary": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
-      "tags": [
-        "code",
-        "instruct",
-        "chat",
-        "reasoning"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/qwen2.5-coder-7b-instruct/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee-ai/qwen2.5-vl-3b-instruct",
-      "category": "model",
-      "title": "Qwen2.5-VL 3B",
-      "summary": "Qwen2.5-VL 3B instruction-tuned vision-language model. Supports image understanding plus tool use.",
-      "tags": [
-        "vision",
-        "multimodal",
-        "instruct",
-        "chat",
-        "image-understanding"
-      ],
-      "verified": true,
-      "added_at": "2026-05-29",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "models/io.github.ziee-ai/qwen2.5-vl-3b-instruct/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/answer-with-citations",
-      "category": "workflow",
-      "title": "Answer With Citations",
-      "summary": "Confirm scope, fan-out search queries, synthesize a cited answer.",
-      "tags": [
-        "question-answering",
-        "citations",
-        "elicit",
-        "llm-map"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/answer-with-citations/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/code-review",
-      "category": "workflow",
-      "title": "Code Review",
-      "summary": "Walks git diff, reviews each file via LLM, synthesizes findings.",
-      "tags": [
-        "code-review",
-        "git",
-        "sandbox",
-        "llm-map"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/code-review/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/data-transform-pipeline",
-      "category": "workflow",
-      "title": "Data Transform Pipeline",
-      "summary": "LLM detects shape, writes a Python transform script, sandbox runs + validates.",
-      "tags": [
-        "data",
-        "transformation",
-        "pandas",
-        "sandbox",
-        "json",
-        "csv"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/data-transform-pipeline/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/deep-research",
-      "category": "workflow",
-      "title": "Deep Research",
-      "summary": "Multi-stage research pipeline -- query gen, fan-out search, cross-verify, outline, memo.",
-      "tags": [
-        "research",
-        "fan-out",
-        "llm-map",
-        "headliner",
-        "memo"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/deep-research/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/document-from-outline",
-      "category": "workflow",
-      "title": "Document From Outline",
-      "summary": "Parse outline, fan-out write each section in parallel, assemble final doc.",
-      "tags": [
-        "writing",
-        "llm-map",
-        "document"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/document-from-outline/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/extract-and-classify",
-      "category": "workflow",
-      "title": "Extract and Classify",
-      "summary": "Chunk text, extract per chunk in parallel, classify aggregated extractions.",
-      "tags": [
-        "extraction",
-        "classification",
-        "llm-map",
-        "text-processing"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/extract-and-classify/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/git-commit-summarize",
-      "category": "workflow",
-      "title": "Git Commit Summarize",
-      "summary": "Capture git diff + status, draft a conventional-commits message.",
-      "tags": [
-        "git",
-        "commit",
-        "sandbox",
-        "conventional-commits"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/git-commit-summarize/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/research-summarize-write",
-      "category": "workflow",
-      "title": "Research, Summarize, Write",
-      "summary": "Three-step llm chain: research a topic, summarize sources, write a memo.",
-      "tags": [
-        "research",
-        "writing",
-        "demo",
-        "entry-level"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/research-summarize-write/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/web-page-to-markdown",
-      "category": "workflow",
-      "title": "Web Page to Markdown",
-      "summary": "Fetch a URL, extract readable content, polish to clean markdown.",
-      "tags": [
-        "web",
-        "scraping",
-        "markdown",
-        "sandbox",
-        "readability"
-      ],
-      "verified": true,
-      "added_at": "2026-06-14",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/web-page-to-markdown/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/effective-prompting",
-      "category": "skill",
-      "title": "Effective Prompting",
-      "summary": "Model-agnostic techniques for clearer, more reliable LLM prompts \u2014 structure, output shaping, few-shot, and hallucination control.",
-      "tags": [
-        "prompting",
-        "prompt-engineering",
-        "llm",
-        "output-format",
-        "hallucination"
-      ],
-      "verified": true,
-      "added_at": "2026-06-15",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "skills/io.github.ziee/effective-prompting/1.0.0.json"
-    },
-    {
-      "name": "io.github.ziee/sr-review",
-      "category": "workflow",
-      "title": "SR: Systematic Review (durable)",
-      "summary": "End-to-end systematic review in one durable run: search + LLM auto-expansion + AI screen, a human screening gate, open-access full-text extraction, a human review gate, and a cited evidence synthesis.",
-      "tags": [
-        "systematic-review",
-        "literature",
-        "screening",
-        "synthesis",
-        "lit-search"
-      ],
-      "verified": true,
-      "added_at": "2026-06-22",
-      "min_ziee_version": null,
-      "version": "1.0.0",
-      "manifest_path": "workflows/io.github.ziee/sr-review/1.0.0.json"
-    }
-  ]
+ "schema_version": 2,
+ "hub_version": "2.0.0",
+ "generated_at": "2026-06-15T04:23:16Z",
+ "items": [
+  {
+   "name": "io.github.ziee-ai/code-reviewer",
+   "category": "assistant",
+   "title": "Code Reviewer",
+   "summary": "Expert code reviewer with a security-and-best-practices focus.",
+   "tags": [
+    "code",
+    "security",
+    "review",
+    "best-practices"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "assistants/io.github.ziee-ai/code-reviewer/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/creative-writer",
+   "category": "assistant",
+   "title": "Creative Writer",
+   "summary": "Professional creative writer for stories, articles, and content.",
+   "tags": [
+    "writing",
+    "creative",
+    "storytelling",
+    "content"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "assistants/io.github.ziee-ai/creative-writer/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/deep-researcher",
+   "category": "assistant",
+   "title": "Deep Researcher",
+   "summary": "Multi-step research assistant. Pinned to a future ziee that ships the parallel sub-agent runtime.",
+   "tags": [
+    "research",
+    "analysis",
+    "synthesis"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": "99.0.0",
+   "version": "1.0.0",
+   "manifest_path": "assistants/io.github.ziee-ai/deep-researcher/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/sql-helper",
+   "category": "assistant",
+   "title": "SQL Helper",
+   "summary": "Writes, explains, and optimizes SQL across Postgres, MySQL, and SQLite dialects.",
+   "tags": [
+    "sql",
+    "database",
+    "queries"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "assistants/io.github.ziee-ai/sql-helper/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/vision-analyst",
+   "category": "assistant",
+   "title": "Vision Analyst",
+   "summary": "Specialized assistant for image and visual content analysis.",
+   "tags": [
+    "vision",
+    "image-analysis",
+    "visual",
+    "description"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "assistants/io.github.ziee-ai/vision-analyst/1.0.0.json"
+  },
+  {
+   "name": "app.linear/mcp",
+   "category": "mcp-server",
+   "title": "Linear MCP Server",
+   "summary": "Manage Linear issues, projects, and cycles over Streamable HTTP.",
+   "tags": [
+    "linear",
+    "issues",
+    "project-management",
+    "api",
+    "streamable-http"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": "99.0.0",
+   "version": "1.0.0",
+   "manifest_path": "mcp-servers/app.linear/mcp/1.0.0.json"
+  },
+  {
+   "name": "com.brave/search-mcp",
+   "category": "mcp-server",
+   "title": "Brave Search MCP Server",
+   "summary": "Web search via the Brave Search API for up-to-date information.",
+   "tags": [
+    "search",
+    "web",
+    "api",
+    "research",
+    "streamable-http"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.2.0",
+   "manifest_path": "mcp-servers/com.brave/search-mcp/1.2.0.json"
+  },
+  {
+   "name": "io.github.github/mcp",
+   "category": "mcp-server",
+   "title": "GitHub MCP Server",
+   "summary": "Access GitHub repositories, issues, and pull requests over the official GitHub MCP endpoint.",
+   "tags": [
+    "github",
+    "git",
+    "version-control",
+    "api",
+    "streamable-http"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "mcp-servers/io.github.github/mcp/1.0.0.json"
+  },
+  {
+   "name": "io.github.modelcontextprotocol/filesystem",
+   "category": "mcp-server",
+   "title": "Filesystem MCP Server",
+   "summary": "Local filesystem access (read/write/search) over MCP (stdio).",
+   "tags": [
+    "filesystem",
+    "files",
+    "io",
+    "stdio"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "mcp-servers/io.github.modelcontextprotocol/filesystem/1.0.0.json"
+  },
+  {
+   "name": "io.github.modelcontextprotocol/memory",
+   "category": "mcp-server",
+   "title": "Memory & Context MCP Server",
+   "summary": "Store and retrieve conversation context, notes, and knowledge across sessions.",
+   "tags": [
+    "memory",
+    "context",
+    "notes",
+    "knowledge",
+    "stdio"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "mcp-servers/io.github.modelcontextprotocol/memory/1.0.0.json"
+  },
+  {
+   "name": "io.github.modelcontextprotocol/postgres",
+   "category": "mcp-server",
+   "title": "PostgreSQL MCP Server",
+   "summary": "Connect to PostgreSQL databases, execute queries, manage schemas, and analyze data.",
+   "tags": [
+    "database",
+    "sql",
+    "postgresql",
+    "data",
+    "stdio"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "mcp-servers/io.github.modelcontextprotocol/postgres/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/deepseek-r1-70b",
+   "category": "model",
+   "title": "DeepSeek-R1 70B",
+   "summary": "Large reasoning model. Flagged as requiring a future ziee for its tensor-parallel runtime support.",
+   "tags": [
+    "reasoning",
+    "large",
+    "instruct"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": "99.0.0",
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/deepseek-r1-70b/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/llama-3-1-8b-instruct",
+   "category": "model",
+   "title": "Llama 3.1 8B",
+   "summary": "Meta's Llama 3.1 8B instruction-tuned model with improved capabilities.",
+   "tags": [
+    "instruct",
+    "chat",
+    "code",
+    "reasoning"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/llama-3-1-8b-instruct/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/llama-3-2-3b-instruct-gguf",
+   "category": "model",
+   "title": "Llama 3.2 3B",
+   "summary": "Meta's Llama 3.2 3B instruction-tuned model in GGUF format. Multiple quantizations available.",
+   "tags": [
+    "instruct",
+    "chat",
+    "code",
+    "gguf",
+    "efficient",
+    "small"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/llama-3-2-3b-instruct-gguf/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/nomic-embed-text-v1-5-gguf",
+   "category": "model",
+   "title": "Nomic Embed Text v1.5",
+   "summary": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp.",
+   "tags": [
+    "embedding",
+    "english",
+    "retrieval",
+    "rag",
+    "text-similarity",
+    "gguf",
+    "memory-recommended"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/nomic-embed-text-v1-5-gguf/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/phi-3-mini-4k-instruct",
+   "category": "model",
+   "title": "Phi-3 Mini",
+   "summary": "Microsoft's small but capable instruction-tuned model. Great for low-resource setups.",
+   "tags": [
+    "instruct",
+    "chat",
+    "small",
+    "efficient"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/phi-3-mini-4k-instruct/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/qwen2.5-coder-7b-instruct",
+   "category": "model",
+   "title": "Qwen2.5-Coder 7B",
+   "summary": "Alibaba's Qwen2.5-Coder 7B \u2014 code generation, completion, and reasoning across 40+ languages.",
+   "tags": [
+    "code",
+    "instruct",
+    "chat",
+    "reasoning"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/qwen2.5-coder-7b-instruct/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/qwen2.5-vl-3b-instruct",
+   "category": "model",
+   "title": "Qwen2.5-VL 3B",
+   "summary": "Qwen2.5-VL 3B instruction-tuned vision-language model. Supports image understanding plus tool use.",
+   "tags": [
+    "vision",
+    "multimodal",
+    "instruct",
+    "chat",
+    "image-understanding"
+   ],
+   "verified": true,
+   "added_at": "2026-05-29",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/qwen2.5-vl-3b-instruct/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/answer-with-citations",
+   "category": "workflow",
+   "title": "Answer With Citations",
+   "summary": "Confirm scope, fan-out search queries, synthesize a cited answer.",
+   "tags": [
+    "question-answering",
+    "citations",
+    "elicit",
+    "llm-map"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/answer-with-citations/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/code-review",
+   "category": "workflow",
+   "title": "Code Review",
+   "summary": "Walks git diff, reviews each file via LLM, synthesizes findings.",
+   "tags": [
+    "code-review",
+    "git",
+    "sandbox",
+    "llm-map"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/code-review/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/data-transform-pipeline",
+   "category": "workflow",
+   "title": "Data Transform Pipeline",
+   "summary": "LLM detects shape, writes a Python transform script, sandbox runs + validates.",
+   "tags": [
+    "data",
+    "transformation",
+    "pandas",
+    "sandbox",
+    "json",
+    "csv"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/data-transform-pipeline/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/deep-research",
+   "category": "workflow",
+   "title": "Deep Research",
+   "summary": "Multi-stage research pipeline -- query gen, fan-out search, cross-verify, outline, memo.",
+   "tags": [
+    "research",
+    "fan-out",
+    "llm-map",
+    "headliner",
+    "memo"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/deep-research/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/document-from-outline",
+   "category": "workflow",
+   "title": "Document From Outline",
+   "summary": "Parse outline, fan-out write each section in parallel, assemble final doc.",
+   "tags": [
+    "writing",
+    "llm-map",
+    "document"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/document-from-outline/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/extract-and-classify",
+   "category": "workflow",
+   "title": "Extract and Classify",
+   "summary": "Chunk text, extract per chunk in parallel, classify aggregated extractions.",
+   "tags": [
+    "extraction",
+    "classification",
+    "llm-map",
+    "text-processing"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/extract-and-classify/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/git-commit-summarize",
+   "category": "workflow",
+   "title": "Git Commit Summarize",
+   "summary": "Capture git diff + status, draft a conventional-commits message.",
+   "tags": [
+    "git",
+    "commit",
+    "sandbox",
+    "conventional-commits"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/git-commit-summarize/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/research-summarize-write",
+   "category": "workflow",
+   "title": "Research, Summarize, Write",
+   "summary": "Three-step llm chain: research a topic, summarize sources, write a memo.",
+   "tags": [
+    "research",
+    "writing",
+    "demo",
+    "entry-level"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/research-summarize-write/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/web-page-to-markdown",
+   "category": "workflow",
+   "title": "Web Page to Markdown",
+   "summary": "Fetch a URL, extract readable content, polish to clean markdown.",
+   "tags": [
+    "web",
+    "scraping",
+    "markdown",
+    "sandbox",
+    "readability"
+   ],
+   "verified": true,
+   "added_at": "2026-06-14",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/web-page-to-markdown/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/effective-prompting",
+   "category": "skill",
+   "title": "Effective Prompting",
+   "summary": "Model-agnostic techniques for clearer, more reliable LLM prompts \u2014 structure, output shaping, few-shot, and hallucination control.",
+   "tags": [
+    "prompting",
+    "prompt-engineering",
+    "llm",
+    "output-format",
+    "hallucination"
+   ],
+   "verified": true,
+   "added_at": "2026-06-15",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "skills/io.github.ziee/effective-prompting/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee/sr-review",
+   "category": "workflow",
+   "title": "SR: Systematic Review (durable)",
+   "summary": "End-to-end systematic review in one durable run: search + LLM auto-expansion + AI screen, a human screening gate, open-access full-text extraction, a human review gate, and a cited evidence synthesis.",
+   "tags": [
+    "systematic-review",
+    "literature",
+    "screening",
+    "synthesis",
+    "lit-search"
+   ],
+   "verified": true,
+   "added_at": "2026-06-22",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "workflows/io.github.ziee/sr-review/1.0.0.json"
+  },
+  {
+   "name": "io.github.ziee-ai/bge-reranker-v2-m3-gguf",
+   "category": "model",
+   "title": "BGE Reranker v2 m3",
+   "summary": "Cross-encoder reranker (BAAI/bge-reranker-v2-m3) packaged as GGUF for llama.cpp `--reranking`. Re-scores the top candidate passages from hybrid retrieval so the most relevant chunks land in the model'",
+   "tags": [
+    "reranker",
+    "rerank",
+    "retrieval",
+    "rag",
+    "cross-encoder",
+    "multilingual",
+    "gguf",
+    "rag-recommended"
+   ],
+   "verified": true,
+   "added_at": "2026-07-09",
+   "min_ziee_version": null,
+   "version": "1.0.0",
+   "manifest_path": "models/io.github.ziee-ai/bge-reranker-v2-m3-gguf/1.0.0.json"
+  }
+ ]
 }

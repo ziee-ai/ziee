@@ -1,5 +1,6 @@
-import type { LlmProvider } from '@/api-client/types'
+import { Permissions, type LlmProvider } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineLocalStore } from '@/core/store-kit'
 
 /**
@@ -69,7 +70,12 @@ export const LlmProviderGroupWidgetStore = defineLocalStore({
 
   // Runs on MOUNT; every `on(...)` auto-unsubscribes on UNMOUNT.
   init: ({ on, get, set, actions }) => {
-    void actions.load()
+    // `GET /api/groups/{id}/providers` requires llm_providers::read (not
+    // user-held); guard the eager mount fetch so a groups-admin without it
+    // (viewing the user-groups page) doesn't 403.
+    if (hasPermissionNow(Permissions.LlmProvidersRead)) {
+      void actions.load()
+    }
 
     // Real-time updates, scoped to THIS instance's group.
     on('llm_provider.group_providers_changed', async event => {

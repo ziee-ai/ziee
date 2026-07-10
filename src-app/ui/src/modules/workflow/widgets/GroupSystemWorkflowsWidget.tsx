@@ -17,9 +17,12 @@ export function GroupSystemWorkflowsWidget({ group }: GroupWidgetProps) {
   const data = Stores.GroupSystemWorkflowsWidget.groupWorkflows.get(group.id)
   const canManage = usePermission(Permissions.WorkflowsAssignToGroups)
 
+  // The group-system-workflows read endpoint requires workflows::assign_to_groups
+  // (same as canManage). Gate the eager load so a groups::read-only admin
+  // without it doesn't 403 on mount.
   useEffect(() => {
-    Stores.GroupSystemWorkflowsWidget.loadWorkflowsForGroup(group.id)
-  }, [group.id])
+    if (canManage) Stores.GroupSystemWorkflowsWidget.loadWorkflowsForGroup(group.id)
+  }, [group.id, canManage])
 
   return (
     <GroupEntityAssignmentWidget<Workflow>

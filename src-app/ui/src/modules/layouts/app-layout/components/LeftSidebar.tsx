@@ -65,9 +65,15 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
     []) as SidebarActionItem[]
   const navigation = (slots.get('sidebarNavigation') || []) as SidebarNavItem[]
   const tools = (slots.get('sidebarTools') || []) as SidebarToolItem[]
-  const contentWidgets = slots.get('sidebarContent') || []
-  const bottomWidgets = slots.get('sidebarBottom') || []
-  const footerWidgets = slots.get('sidebarFooter') || []
+  // Widget slots carry an optional `permission` (like nav/tool items).
+  // Filter here so a widget backed by permission-restricted data (recent
+  // conversations, download indicator) never mounts — and never fires its
+  // on-mount fetch — for a user who lacks the grant. Widgets with no
+  // `permission` render unconditionally (they self-gate internally if
+  // needed). Reactive via the `user`/`permissions` read above.
+  const contentWidgets = (slots.get('sidebarContent') || []).filter(isAllowed)
+  const bottomWidgets = (slots.get('sidebarBottom') || []).filter(isAllowed)
+  const footerWidgets = (slots.get('sidebarFooter') || []).filter(isAllowed)
 
   const sortedPrimaryActions = useMemo(
     () => [...primaryActions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),

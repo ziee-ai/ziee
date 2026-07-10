@@ -3,6 +3,7 @@
   "hosts": {
     "modules/layouts/app-layout/AppLayout": "Mobile-nav Sheet, opens ONLY below the responsive breakpoint (a hamburger button that is display:none at the gallery's desktop viewport). Not openable via a store/prop in the standard canvas; would need a viewport override. Tracked for a future narrow-viewport overlay pass.",
     "modules/chat/components/ChatInput": "Composer attach/tools Popover — local open-state, opens on a click inside the live chat composer. The composer is exercised in the chat deep-states; a standalone open needs the full composer context. Tracked for an interaction recipe on the chat surface.",
+    "modules/chat/extensions/voice/components/MicButton": "Composer voice privacy-hint Popover — local open-state, shown once on first use inside the live chat composer (same pattern as ChatInput). Covered by the 14-voice mic e2e specs; tracked for a gallery interaction recipe.",
     "modules/chat/core/components/ChatRightPanel": "File-preview Drawer that only appears below the md page-width breakpoint when a file/tab is opened into the right panel (store-driven mobileDrawerOpen). Responsive- + interaction-gated; the wide-viewport side-panel form is exercised on the chat surface. Tracked for a narrow-viewport open recipe.",
     "modules/llm-provider/components/widgets/DownloadIndicatorWidget": "Download-progress Popover — local open-state, only meaningful with an in-flight download in the widget. Reached via the header download indicator; tracked for an interaction recipe.",
     "modules/file-rag/components/sections/EmbeddingSection": "Config Dialog nested in the embedding section; opens on an in-section 'configure' action once the section has loaded. Section renders on its file-RAG settings page (in the gallery). Tracked for an interaction recipe.",
@@ -20,7 +21,9 @@
     "modules/user/components/user/UsersSettings": "Inline controlled activate/deactivate Confirm shared by a user row's Switch + button (local open-state). Reached via the users table (rendered in the gallery). Inline confirm — future row interaction recipe.",
     "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked.",
     "modules/notification/components/NotificationBellWidget": "Notification bell Popover — local open-state, opens on a click on the sidebar bell; the recent-list + empty states are exercised via the notifications e2e spec. Tracked for an interaction recipe.",
-    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec."
+    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec.",
+    "modules/knowledge-base/components/KnowledgeBaseCard": "Inline controlled delete-Confirm on a knowledge-base card (local open-state). Reached via the knowledge list (rendered in the gallery). Inline confirm — future interaction recipe.",
+    "modules/knowledge-base/components/KnowledgeBaseFormDrawer": "Create/edit knowledge-base Drawer — opens from a list/detail action (prop open-state). List/detail are rendered in the gallery; a standalone open needs a trigger context. Tracked for an interaction recipe."
   },
   "triggers": {
     "modules/assistant/chat-extension/components/AssistantMenuItem": "Composer assistant-picker Popover — opens on a click in the chat composer '+' menu. Reached via the chat surface; tracked for an interaction recipe.",
@@ -36,11 +39,14 @@
     "modules/file/viewers/tabular/ExpandableCell": "Cell-overflow expand Popover — opens only on a click on a clipped (long) tabular cell inside the CSV/TSV/XLSX viewer. Interaction-gated; covered by the tabular-viewer e2e (cell-overflow expand). Tracked for a gallery interaction recipe.",
     "modules/hub/modules/installed/components/InstalledHubTab": "Inline uninstall-Confirm on an installed-hub-item row. Tab rendered on the hub page; reached via a row action. Tracked.",
     "modules/llm-local-runtime/components/RuntimeVersionCard": "Inline delete-Confirm on a downloaded runtime version. Card rendered on the local-runtime settings page; reached via a card action. Tracked.",
+    "modules/voice/components/InstalledVersionsCard": "Inline delete-Confirm on a downloaded whisper runtime version (same pattern as RuntimeVersionCard). Card rendered on the voice settings page; reached via a card action. Covered by the voice-runtime-admin e2e; tracked.",
     "modules/llm-provider/components/ProviderHeader": "Inline delete-provider Confirm in the provider-detail header. Header rendered on the provider detail page; reached via the delete button. Tracked.",
     "modules/llm-repository/components/LlmRepositorySettings": "Inline delete-repository Confirm on a repository row. Page rendered in the gallery; reached via a row action. Tracked.",
     "modules/mcp/components/common/McpServerCard": "Inline delete-Confirm on an MCP server card. Card rendered on the MCP settings page; reached via a card action. Tracked.",
     "modules/projects/pages/ProjectDetailPage": "Inline delete-project Confirm in the project-detail header. Page rendered in the gallery (seeded deep-state); reached via the delete button. Tracked.",
     "modules/user/components/group/GroupListItem": "Inline delete-Confirm on a user-group row. List rendered on the groups page; reached via a row action. Tracked.",
-    "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked."
+    "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked.",
+    "modules/knowledge-base/chat-extension/components/KbMenuItem": "Composer knowledge-base picker Popover — opens on a click in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
+    "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": "Attach-KB picker Popover on the project knowledge drawer — opens on the 'Attach' button click. Panel rendered inside the project knowledge drawer; reached via a button interaction. Tracked."
   }
 }

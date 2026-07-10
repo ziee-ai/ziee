@@ -105,6 +105,10 @@ pub struct ModelCapabilities {
     pub code_interpreter: bool,
     pub chat: bool,
     pub text_embedding: bool,
+    /// Reranker (cross-encoder) capability. `default` so pre-existing manifests
+    /// (which omit it) still parse.
+    #[serde(default)]
+    pub rerank: bool,
     pub image_generator: bool,
 }
 

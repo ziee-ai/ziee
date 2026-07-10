@@ -5,7 +5,9 @@ import type { DropdownItem } from '@/components/ui'
 import type { Conversation } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
 import type { Project } from '@/api-client/types'
+import { hasPermissionNow, usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import {
   createExtension,
@@ -67,6 +69,17 @@ function loadProjectForConversation(
   conversationId: string,
   forceRefresh = false,
 ): Promise<Project | null> {
+  // `GET /api/projects/by-conversation/{id}` requires projects::read, which
+  // is granted to Administrators only (Chat Projects is opt-in per deployment,
+  // migration 54) — NOT the default Users group. This lookup runs on EVERY
+  // conversation load, so without this gate every non-projects chat user fired
+  // a 403 on each open (swallowed by the catch below, but still a failed
+  // request the runtime-health gate flags). A user without projects::read has
+  // no projects, so the answer is always "unfiled" → cache null, skip the call.
+  if (!hasPermissionNow(Permissions.ProjectsRead)) {
+    setCached(conversationId, null)
+    return Promise.resolve(null)
+  }
   if (!forceRefresh) {
     const cached = getCached(conversationId)
     if (cached !== undefined) return Promise.resolve(cached)
@@ -279,6 +292,11 @@ function ProjectMembershipTrailing({
 }: {
   conversationId: string
 }) {
+  // Projects is admin-only-by-default (projects::read, migration 54). A user
+  // without it has no projects, so render no membership badge / "Add to
+  // project" affordance at all. Hook order preserved — the gate is applied
+  // after all hooks via an early null return below.
+  const canUseProjects = usePermission(Permissions.ProjectsRead)
   const [state, setState] = useState<
     { kind: 'loading' } | { kind: 'in_project'; project: Project } | { kind: 'unfiled' }
   >(() => {
@@ -342,6 +360,9 @@ function ProjectMembershipTrailing({
       offDetached()
     }
   }, [conversationId])
+
+  // No projects access → no trailing badge at all (the lookup is skipped too).
+  if (!canUseProjects) return null
 
   if (state.kind === 'loading') {
     return <Spin size="sm" label="Loading" />
@@ -412,6 +433,10 @@ function useProjectMenuContribution(conversation: Conversation): {
   keepMenuOpen: boolean
 } {
   const navigate = useNavigate()
+  // Gate: no projects::read → contribute no "Add to project" / "Remove"
+  // menu items (projects is admin-only-by-default). Applied at the return
+  // to keep hook order stable.
+  const canUseProjects = usePermission(Permissions.ProjectsRead)
   const [project, setProject] = useState<Project | null>(() => {
     const cached = getCached(conversation.id)
     return cached && cached.name ? cached : null
@@ -536,6 +561,8 @@ function useProjectMenuContribution(conversation: Conversation): {
   // Both the add-modal and the remove-confirm are screen-covering
   // (Modal / Modal.confirm) — the dropdown can close normally when
   // the user clicks an item; the overlay survives on its own.
+  // Suppress all project menu items + overlays for users without projects access.
+  if (!canUseProjects) return { items: [], overlays: null, keepMenuOpen: false }
   return { items, overlays, keepMenuOpen: false }
 }
 

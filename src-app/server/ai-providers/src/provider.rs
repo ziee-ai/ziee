@@ -37,7 +37,7 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, RerankRequest, RerankResponse, FileUpload, FileUploadResponse, StreamChatChunk},
     providers::{AnthropicProvider, GeminiProvider, OpenAIProvider},
     traits::AIProvider,
 };
@@ -247,6 +247,19 @@ impl Provider {
     ) -> Result<EmbeddingsResponse, ProviderError> {
         self.inner
             .embeddings(&self.api_key, &self.base_url, request)
+            .await
+    }
+
+    /// Reranks documents by relevance to a query using a cross-encoder model.
+    ///
+    /// Only OpenAI-compatible providers (incl. the local llama.cpp reranking
+    /// server via the same-port proxy) support this; others return an error.
+    pub async fn rerank(
+        &self,
+        request: RerankRequest,
+    ) -> Result<RerankResponse, ProviderError> {
+        self.inner
+            .rerank(&self.api_key, &self.base_url, request)
             .await
     }
 

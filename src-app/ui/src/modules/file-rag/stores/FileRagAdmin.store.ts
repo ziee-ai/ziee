@@ -18,9 +18,10 @@ export type CandidateModelRow = Pick<
 // `null` arm; widen at the store boundary so callers can clear.
 export type FileRagAdminUpdatePatch = Omit<
   UpdateFileRagAdminSettingsRequest,
-  'embedding_model_id'
+  'embedding_model_id' | 'reranker_model_id'
 > & {
   embedding_model_id?: string | null
+  reranker_model_id?: string | null
 }
 
 const toRow = (m: LlmModel): CandidateModelRow => ({
@@ -36,6 +37,7 @@ export const FileRagAdmin = defineStore('FileRagAdmin', {
   state: {
     settings: null as FileRagAdminSettings | null,
     embeddingModels: [] as CandidateModelRow[],
+    rerankerModels: [] as CandidateModelRow[],
     loading: false,
     saving: false,
     loadingModels: false,
@@ -85,9 +87,24 @@ export const FileRagAdmin = defineStore('FileRagAdmin', {
         })
       }
     }
+    const loadRerankerModels = async () => {
+      try {
+        const body = await ApiClient.LlmModel.list({
+          capability: 'rerank',
+          page: 1,
+          perPage: 200,
+        })
+        set(s => {
+          s.rerankerModels = body.models.map(toRow)
+        })
+      } catch {
+        /* non-fatal — the reranker section shows the hub nudge when empty */
+      }
+    }
     return {
       load,
       loadEmbeddingModels,
+      loadRerankerModels,
       triggerReembed: async (): Promise<void> => {
         set(s => {
           s.triggeringReembed = true
@@ -160,6 +177,7 @@ export const FileRagAdmin = defineStore('FileRagAdmin', {
     if (hasPermissionNow(Permissions.FileRagAdminRead)) {
       void actions.load()
       void actions.loadEmbeddingModels()
+      void actions.loadRerankerModels()
     }
   },
 })

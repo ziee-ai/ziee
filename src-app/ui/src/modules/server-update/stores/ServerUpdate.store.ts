@@ -3,6 +3,8 @@
  * ApiClient.ServerUpdate.getStatus() — notification only, no download/install.
  */
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { type StoreProxy } from '@/core/stores'
 import { defineStore } from '@/core/store-kit'
 
@@ -80,7 +82,11 @@ export const ServerUpdate = defineStore('ServerUpdate', {
     },
   }),
   // Was `__init__.updateAvailable` — hydrate on first access.
+  // Gate the eager fetch: `getStatus` requires `server_update::read`
+  // (admin-only), so a non-admin's shell boot would otherwise fire a 403
+  // on first store access. Mirrors the WebSearchAdmin/etc. init idiom.
   init: ({ actions }) => {
+    if (!hasPermissionNow(Permissions.ServerUpdateRead)) return
     void actions.loadStatus()
   },
 })
