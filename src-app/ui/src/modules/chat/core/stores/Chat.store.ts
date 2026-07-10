@@ -300,6 +300,11 @@ interface ChatState {
   sending: boolean
   isStreaming: boolean
   error: string | null
+  /** The last turn ended via cancel / stream-error / abort (a partial, not a
+   *  genuine empty completion). Reset when a new send starts. Consumed by the
+   *  message renderer to suppress the empty-completion notice on interrupted
+   *  turns. Transient live state (not snapshotted / not persisted). */
+  lastTurnInterrupted: boolean
 
   // ── Lazy-load window state ──────────────────────────────────────────────
   // The `messages` Map holds a contiguous slice of the active branch path.
@@ -487,6 +492,7 @@ export const Chat = defineStore('Chat', {
     sending: false,
     isStreaming: false,
     error: null as string | null,
+    lastTurnInterrupted: false,
     hasMoreBefore: false,
     hasMoreAfter: false,
     loadingOlder: false,
@@ -557,6 +563,9 @@ export const Chat = defineStore('Chat', {
         streamingMessage: snapshot.streamingMessage,
         tempUserMessageId: snapshot.tempUserMessageId,
         isStreaming: snapshot.isStreaming,
+        // Not snapshotted (transient live signal): a restored conversation is
+        // not a fresh interruption, so clear it to avoid a stale suppression.
+        lastTurnInterrupted: false,
         hasMoreBefore: snapshot.hasMoreBefore ?? false,
         hasMoreAfter: snapshot.hasMoreAfter ?? false,
         loadingOlder: false,
@@ -716,6 +725,7 @@ export const Chat = defineStore('Chat', {
           tempUserMessageId: null,
           streamingAbortController: null,
           streamingMessageId: null,
+          lastTurnInterrupted: false,
           messages: new Map(),
           hasMoreBefore: false,
           hasMoreAfter: false,
@@ -1508,6 +1518,12 @@ export const Chat = defineStore('Chat', {
         const isOnOriginalConversation =
           get().conversation?.id === conversationId
 
+        // A user-cancelled turn arrives as a `complete` frame with
+        // finish_reason "cancelled" (start_generation) — that's an interrupted
+        // partial, not a genuine empty completion, so flag it to suppress the
+        // empty-completion notice on the (possibly reasoning-only) partial.
+        const cancelled = event.finish_reason === 'cancelled'
+
         set(state => {
           const newMessages = new Map(state.messages)
           if (state.streamingMessage) {
@@ -1520,6 +1536,12 @@ export const Chat = defineStore('Chat', {
             streamingAbortController: null,
             streamingMessageId: null,
             messages: newMessages,
+            // Only track for the displayed conversation — a BACKGROUND
+            // conversation completing must not overwrite the on-screen flag
+            // (lastTurnInterrupted is a single global signal).
+            lastTurnInterrupted: isOnOriginalConversation
+              ? cancelled
+              : state.lastTurnInterrupted,
           }
         })
 
@@ -1586,6 +1608,7 @@ export const Chat = defineStore('Chat', {
               streamingMessage: null,
               streamingAbortController: null,
               streamingMessageId: null,
+              lastTurnInterrupted: true,
             }
           })
         } else {
@@ -1596,6 +1619,7 @@ export const Chat = defineStore('Chat', {
             streamingMessage: null,
             streamingAbortController: null,
             streamingMessageId: null,
+            lastTurnInterrupted: true,
           })
         }
         return
@@ -1659,7 +1683,7 @@ export const Chat = defineStore('Chat', {
         await chatExtensionRegistry.onConversationLoad(conversation)
       }
 
-      set({ sending: true, isStreaming: true, error: null })
+      set({ sending: true, isStreaming: true, error: null, lastTurnInterrupted: false })
 
       // If the window is anchored MID-conversation (after an around=/find/
       // deep-link jump, so `hasMoreAfter` is true), the loaded slice does not
@@ -1757,6 +1781,9 @@ export const Chat = defineStore('Chat', {
           streamingMessage: null,
           streamingAbortController: null,
           streamingMessageId: null,
+          // Aborted (user cancel) or a transport error — either way the turn's
+          // partial is not a genuine empty completion.
+          lastTurnInterrupted: true,
         }
 
         if (state.tempUserMessageId) {

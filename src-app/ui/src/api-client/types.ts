@@ -3755,6 +3755,18 @@ export interface ModelCapabilities {
   /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
   /**
+   * Whether the model accepts sampling params (temperature/top_p/top_k).
+   *  `Some(false)` ⇒ they are omitted from the request. `None` ⇒ inferred from
+   *  the catalog + family policy (the common case).
+   */
+  supports_sampling_params?: boolean
+  /**
+   * Whether the model supports thinking/reasoning. Editable per-model override
+   *  for the parameter contract; `None` ⇒ fall back to the curated catalog +
+   *  provider model-family policy. Drives whether thinking is enabled.
+   */
+  supports_thinking?: boolean
+  /**
    * Reranker (cross-encoder) capability - scores query/document relevance for
    *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
    *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
@@ -3762,6 +3774,8 @@ export interface ModelCapabilities {
   rerank?: boolean
   /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
+  /** How thinking is requested: `"adaptive"` or `"budget"`. `None` ⇒ inferred. */
+  thinking_style?: string
   /** Tools capability - can use function calling/tools */
   tools?: boolean
   /** Vision capability - can process images */

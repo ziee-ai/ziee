@@ -1,9 +1,13 @@
 import { Fragment, memo, useMemo, useRef, type ReactNode } from 'react'
-import { ScrollArea } from '@/components/ui'
+import { Alert, ScrollArea } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { MessageWithContent, MessageContentDataImage } from '@/api-client/types'
+import type {
+  MessageWithContent,
+  MessageContentDataImage,
+} from '@/api-client/types'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
+import { shouldShowEmptyCompletionNotice } from '@/modules/chat/components/emptyCompletion'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
 import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
 import { MessageActions } from '@/modules/chat/components/MessageActions'
@@ -15,10 +19,14 @@ import { useConversationFind } from '@/modules/chat/components/ConversationFindC
 export const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming = false,
+  interrupted = false,
 }: {
   message: MessageWithContent
   /** True only for the message currently streaming — it is never collapsed. */
   isStreaming?: boolean
+  /** True when this turn was cancelled / errored / aborted (a partial, not a
+   *  genuine empty completion) — suppresses the empty-completion notice. */
+  interrupted?: boolean
 }) {
   const isUser = message.role === 'user'
   const { activeMatchId } = useConversationFind()
@@ -50,8 +58,22 @@ export const ChatMessage = memo(function ChatMessage({
     })
   }, [message, isStreaming, isActiveMatch])
 
-  // Check if message has any content to render
-  if (!message.contents || message.contents.length === 0) {
+  // Does this assistant turn contain a user-visible answer (text / tool call /
+  // attachment), or only reasoning / nothing? A FINALISED, non-interrupted
+  // assistant turn with no visible answer is the "empty completion" case —
+  // surface an inline notice instead of rendering nothing (the silent-stop bug).
+  // Memoized like `offerCollapse`: this component re-renders on every find-
+  // highlight change, and the gate need only recompute when its inputs do.
+  const contents = message.contents ?? []
+  const showEmptyCompletionNotice = useMemo(
+    () =>
+      shouldShowEmptyCompletionNotice({ isUser, isStreaming, interrupted, message }),
+    [isUser, isStreaming, interrupted, message],
+  )
+
+  // Check if message has any content to render. A finalised, empty assistant
+  // turn has no blocks but still renders the notice below, so don't bail then.
+  if (contents.length === 0 && !showEmptyCompletionNotice) {
     return null
   }
 
@@ -61,7 +83,7 @@ export const ChatMessage = memo(function ChatMessage({
   // share a timestamp, and streaming-injected blocks carry monotonic
   // sequence_order. This keeps tool_use → tool_result(files) → text in
   // the right places.
-  const sortedContents = [...message.contents].sort(
+  const sortedContents = [...contents].sort(
     (a, b) => a.sequence_order - b.sequence_order,
   )
 
@@ -201,6 +223,20 @@ export const ChatMessage = memo(function ChatMessage({
             )}
           </div>
         </div>
+      )}
+
+      {/* Empty-completion notice: the turn finished with only reasoning (or
+          nothing) and made no tool call, so there is no answer to show. Without
+          this the assistant message renders just a collapsed thinking card — or
+          nothing at all — and the chat appears to hang. Detected at render time
+          so it also shows on reload. */}
+      {showEmptyCompletionNotice && (
+        <Alert
+          tone="warning"
+          data-testid="chat-empty-completion-notice"
+          className="w-full"
+          description="The model returned an empty response and made no tool call."
+        />
       )}
 
       {/* Core components + extension slots rendered outside the bubble */}

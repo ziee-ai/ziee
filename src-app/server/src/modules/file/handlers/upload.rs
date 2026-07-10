@@ -15,8 +15,6 @@ use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
 use uuid::Uuid;
 
-const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB per-file cap (approved policy)
-
 /// Per-user storage quota for uploads. Closes 05-file F-16 (Medium). 10 GiB
 /// matches typical SaaS chat-attachment quotas. Exposed as a constant so
 /// other upload entry points (e.g. project file upload) enforce the same
@@ -70,11 +68,21 @@ pub async fn upload_file_inner(
         AppError::bad_request("MISSING_FILE_DATA", "No file data provided")
     })?;
 
-    // Validate file size
-    if file_data.len() > MAX_FILE_SIZE {
+    // Validate file size against the configurable per-file cap
+    // (`config.server.max_file_upload_mb`, captured at boot). Both this handler
+    // and the per-route body-limit layer read the same source of truth.
+    let max_file_size = crate::core::get_max_file_upload_bytes();
+    if file_data.len() > max_file_size {
+        // Report the file size with one decimal (raw bytes → MB) so a file just
+        // over the cap doesn't render as "1 MB exceeds 1 MB"; use MB in both the
+        // backend and the UI for a consistent user-facing unit.
         return Err(AppError::bad_request(
             "FILE_TOO_LARGE",
-            format!("File size exceeds maximum of {} bytes", MAX_FILE_SIZE),
+            format!(
+                "File size {:.1} MB exceeds the maximum upload size of {} MB",
+                file_data.len() as f64 / (1024.0 * 1024.0),
+                max_file_size / (1024 * 1024),
+            ),
         ));
     }
 

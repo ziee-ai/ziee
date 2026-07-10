@@ -80,6 +80,14 @@ pub struct ChatRequest {
     /// same cache. Passed through to OpenAI only; ignored elsewhere.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
+
+    /// Per-model capability override, resolved from the editable DB model row by
+    /// the server and threaded down as the top-priority source of the parameter
+    /// contract (see `param_policy`). `None` ⇒ the provider adapter falls back to
+    /// the curated catalog + model-family policy, so non-chat callers need not
+    /// set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_caps: Option<crate::param_policy::ModelParamContract>,
 }
 
 /// A message in a chat conversation
@@ -442,6 +450,73 @@ pub struct Usage {
     pub cache_creation_input_tokens: Option<u32>,
 }
 
+/// Unified, provider-agnostic finish reason. Each provider adapter maps its own
+/// wire vocabulary into this via `FinishReason::from_provider`; the canonical
+/// string (`as_canonical_str`) is what flows out on `StreamChatChunk.finish_reason`
+/// so downstream (chat loop, MCP) sees one vocabulary regardless of provider.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FinishReason {
+    /// Natural end of turn.
+    Stop,
+    /// Hit the max-output-token cap.
+    Length,
+    /// Stopped to call tools.
+    ToolCalls,
+    /// Blocked by a safety/content filter.
+    ContentFilter,
+    /// The model refused to respond.
+    Refusal,
+    /// An unrecognized provider value, preserved verbatim.
+    Other(String),
+}
+
+impl FinishReason {
+    /// Map a provider's raw finish-reason token into the canonical enum.
+    /// `family` selects the provider vocabulary; unknown tokens become `Other`.
+    pub fn from_provider(family: crate::param_policy::ProviderFamily, raw: &str) -> Self {
+        use crate::param_policy::ProviderFamily;
+        match family {
+            ProviderFamily::Anthropic => match raw {
+                "end_turn" | "stop_sequence" => Self::Stop,
+                "tool_use" => Self::ToolCalls,
+                "max_tokens" => Self::Length,
+                "refusal" => Self::Refusal,
+                other => Self::Other(other.to_string()),
+            },
+            ProviderFamily::OpenAiCompat => match raw {
+                "stop" => Self::Stop,
+                "length" => Self::Length,
+                "tool_calls" | "function_call" => Self::ToolCalls,
+                "content_filter" => Self::ContentFilter,
+                other => Self::Other(other.to_string()),
+            },
+            ProviderFamily::Gemini => match raw {
+                "STOP" => Self::Stop,
+                "MAX_TOKENS" => Self::Length,
+                "SAFETY" | "RECITATION" | "PROHIBITED_CONTENT" | "BLOCKLIST" => Self::ContentFilter,
+                other => Self::Other(other.to_string()),
+            },
+        }
+    }
+
+    /// The canonical wire string emitted on `StreamChatChunk.finish_reason`.
+    pub fn as_canonical_str(&self) -> &str {
+        match self {
+            Self::Stop => "stop",
+            Self::Length => "length",
+            Self::ToolCalls => "tool_calls",
+            Self::ContentFilter => "content_filter",
+            Self::Refusal => "refusal",
+            Self::Other(s) => s.as_str(),
+        }
+    }
+
+    /// Convenience: map a raw provider token straight to its canonical string.
+    pub fn canonicalize(family: crate::param_policy::ProviderFamily, raw: &str) -> String {
+        Self::from_provider(family, raw).as_canonical_str().to_string()
+    }
+}
+
 /// A chunk of streamed chat content
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamChatChunk {
@@ -699,4 +774,37 @@ pub enum ThinkingEffort {
     Max,
     /// Dynamic effort (Gemini only - model decides based on complexity)
     Dynamic,
+}
+
+#[cfg(test)]
+mod finish_reason_tests {
+    use super::FinishReason;
+    use crate::param_policy::ProviderFamily;
+
+    // TEST-10: per-provider finish-reason tables + canonical strings.
+    #[test]
+    fn canonicalizes_per_provider() {
+        // Anthropic.
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Anthropic, "end_turn"), "stop");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Anthropic, "stop_sequence"), "stop");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Anthropic, "tool_use"), "tool_calls");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Anthropic, "max_tokens"), "length");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Anthropic, "refusal"), "refusal");
+        // OpenAI (mostly passthrough of the canonical vocabulary).
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::OpenAiCompat, "stop"), "stop");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::OpenAiCompat, "length"), "length");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::OpenAiCompat, "tool_calls"), "tool_calls");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::OpenAiCompat, "content_filter"), "content_filter");
+        // Gemini.
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Gemini, "STOP"), "stop");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Gemini, "MAX_TOKENS"), "length");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Gemini, "SAFETY"), "content_filter");
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::Gemini, "RECITATION"), "content_filter");
+        // Unknown token is preserved verbatim.
+        assert_eq!(FinishReason::canonicalize(ProviderFamily::OpenAiCompat, "weird"), "weird");
+        assert_eq!(
+            FinishReason::from_provider(ProviderFamily::Anthropic, "mystery"),
+            FinishReason::Other("mystery".to_string())
+        );
+    }
 }

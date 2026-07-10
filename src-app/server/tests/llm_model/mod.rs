@@ -1,5 +1,6 @@
 // Integration tests for LLM Model module
 
+mod capabilities_infer_test;
 mod create_deprecated_test;
 mod deprecation_sweep_test;
 mod download_management_test;

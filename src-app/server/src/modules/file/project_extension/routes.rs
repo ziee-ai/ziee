@@ -14,11 +14,7 @@ use aide::axum::{
 use axum::extract::DefaultBodyLimit;
 
 use super::handlers::*;
-
-/// Per-route body limit for project-file uploads. Matches the file
-/// module's standalone /files/upload cap (200 MB, approved policy) — both
-/// routes share the same `upload_file_inner` validator chain (50 MB per-file).
-const PROJECT_FILE_UPLOAD_BODY_LIMIT: usize = 200 * 1024 * 1024;
+use crate::core::app_state::file_upload_body_limit_bytes;
 
 pub fn project_files_router() -> ApiRouter {
     ApiRouter::new()
@@ -30,10 +26,12 @@ pub fn project_files_router() -> ApiRouter {
             "/projects/{id}/files",
             post_with(attach_file, attach_file_docs),
         )
+        // Body limit derived from the same configurable per-file cap as
+        // /files/upload (both share the `upload_file_inner` validator).
         .api_route(
             "/projects/{id}/files/upload",
             post_with(upload_and_attach_file, upload_and_attach_file_docs)
-                .layer(DefaultBodyLimit::max(PROJECT_FILE_UPLOAD_BODY_LIMIT)),
+                .layer(DefaultBodyLimit::max(file_upload_body_limit_bytes())),
         )
         .api_route(
             "/projects/{id}/files/{file_id}",
