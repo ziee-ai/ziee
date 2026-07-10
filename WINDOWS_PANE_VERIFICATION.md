@@ -40,28 +40,23 @@ a real Windows + Microsoft Office box.
 - [ ] **Task pane loads**: in Word, Home ribbon → "Ziee" group → "Show Ziee Bridge"
       opens the pane and it loads **without a cert warning** (unknown 1). Pane log shows
       `Office.onReady host=Word` + `bridge open (…, token=present)` + `registered (…)`.
-- [ ] **get_selection**: select text in Word → have the agent call `get_selection` →
-      returns the selected text.
-- [ ] **read_document**: `read_document` on the open Word doc → returns the body text.
-      In Excel → returns the used range as TSV.
-- [ ] **run_office_js** (the open-ended Office.js surface — replaced the removed
-      `edit_document`): in Excel, have the agent call `run_office_js` with a script such
-      as `const s = context.workbook.worksheets.getActiveWorksheet(); const r =
-      s.getRange('A1'); r.values = [['ziee-run']]; r.load('address'); await
-      context.sync(); return r.address;` → cell A1 shows `ziee-run` and the tool result's
-      `structuredContent.result` is A1's address. In Word, a script that appends a
-      paragraph (`context.document.body.insertParagraph('hi', 'End'); await
-      context.sync();`) lands the paragraph. A deliberately-broken script (e.g. a bad
-      range) returns a STRUCTURED `OFFICE_PANE_ERROR` (name/message/Office.js code), not a
-      crash. `run_office_js` requires per-call approval (like the other office tools).
-- [ ] **set_track_changes**: `set_track_changes {enabled:true}` → Word's Track Changes
-      turns on (Review ribbon reflects it); `{enabled:false}` turns it off.
-- [ ] **add_comment**: `add_comment {anchor_text, text}` → a review comment appears on
-      the first match of `anchor_text`.
-- [ ] **get_tracked_changes**: make a tracked edit → `get_tracked_changes` lists it.
-- [ ] **PowerPoint capability gate**: `add_comment`/`set_track_changes` on a `.pptx`
-      returns `OFFICE_UNSUPPORTED_ON_HOST` (native pre-gate, no round-trip).
-- [ ] **No-pane error**: with the pane closed, a pane tool returns
+The office surface is now TWO tools: `list_open_documents` (native discovery) and
+`run_office_js` (everything else — reads, comments, track-changes are all Office.js
+scripts now; the former typed tools are removed). `run_office_js` declares
+`mode:"read"|"write"`; a `read` auto-runs, a `write` prompts for approval.
+
+- [ ] **list_open_documents**: returns the open docs (name/path/host/saved).
+- [ ] **run_office_js — read (auto-run)**: agent calls `run_office_js` with
+      `mode:"read"` and `const r = context.workbook.worksheets.getActiveWorksheet().getRange('A1'); r.load('values'); await context.sync(); return r.values;` → runs **without an approval prompt** and returns A1's value.
+- [ ] **run_office_js — write (approval)**: agent calls `run_office_js` with
+      `mode:"write"` and `const r = context.workbook.worksheets.getActiveWorksheet().getRange('A1'); r.values = [['ziee-run']]; r.load('address'); await context.sync(); return r.address;` → the chat surfaces an **approval prompt (allow once / always allow / deny)**; on approve, A1 shows `ziee-run` and `structuredContent.result` is A1's address.
+- [ ] **run_office_js — Word comment / track changes (write)**: a script that
+      `insertComment`s on a `body.search(...)` hit, or sets `context.document.changeTrackingMode`, lands the change (both `mode:"write"`).
+- [ ] **run_office_js — structured error**: a deliberately-broken script (bad range)
+      returns a STRUCTURED `OFFICE_PANE_ERROR` (name/message/Office.js code), not a crash.
+- [ ] **Always-allow persists**: after choosing "always allow" for a write, subsequent
+      `mode:"write"` calls in the same conversation run without a prompt.
+- [ ] **No-pane error**: with the pane closed, `run_office_js` returns
       `OFFICE_PANE_NOT_CONNECTED` (open the pane and retry).
 
 ## If everything passes

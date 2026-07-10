@@ -8,11 +8,11 @@
 //      per-session token injected into taskpane.html (ITEM-5),
 //   3. send a `register` hello carrying {host, doc_key} so the daemon broker can
 //      route this pane's document (bridge/broker.rs, DEC-1),
-//   4. SERVICE daemon->pane JSON-RPC requests via Office.js — read_document,
-//      get_selection, add_comment, set_track_changes, get_tracked_changes, and the
-//      open-ended run_office_js (the model writes an Office.js body we run inside the
-//      host's {Word,Excel,PowerPoint}.run) — and reply with the correlated
-//      {id, result} | {id, error}, and
+//   4. SERVICE daemon->pane run_office_js JSON-RPC requests — the model writes an
+//      Office.js body we run inside the host's {Word,Excel,PowerPoint}.run — and
+//      reply with the correlated {id, result} | {id, error} (the former typed ops
+//      read_document/get_selection/add_comment/set_track_changes/get_tracked_changes
+//      are removed; run_office_js subsumes them), and
 //   5. forward DocumentSelectionChanged + a ping so the link is observably live.
 
 var BRIDGE_URL = 'wss://localhost:44300/bridge';
@@ -21,7 +21,6 @@ var BRIDGE_URL = 'wss://localhost:44300/bridge';
 // OFFICE_PANE_ERROR). -32601 unknown method; -32002 host-unsupported op.
 var ERR_OP_FAILED = -32001;
 var ERR_UNSUPPORTED_HOST = -32002;
-var ERR_ANCHOR_NOT_FOUND = -32003;
 var ERR_TARGET_MISMATCH = -32004;
 var ERR_UNKNOWN_METHOD = -32601;
 
@@ -218,11 +217,6 @@ function dispatchOp(id, method, params) {
   }
   try {
     switch (method) {
-      case 'get_selection': opGetSelection(id); break;
-      case 'read_document': opReadDocument(id); break;
-      case 'add_comment': opAddComment(id, params); break;
-      case 'set_track_changes': opSetTrackChanges(id, params); break;
-      case 'get_tracked_changes': opGetTrackedChanges(id); break;
       case 'run_office_js': opRunOfficeJs(id, params); break;
       default: replyErr(id, ERR_UNKNOWN_METHOD, 'unknown pane method: ' + method);
     }
@@ -232,95 +226,6 @@ function dispatchOp(id, method, params) {
 }
 
 // ─────────────────────────── Office.js op handlers ───────────────────────────
-
-// get_selection — host-agnostic (Word/Excel/PowerPoint) via the common API.
-function opGetSelection(id) {
-  Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
-    if (r && r.status === 'succeeded') {
-      reply(id, { text: r.value || '' });
-    } else {
-      replyErr(id, ERR_OP_FAILED, 'get_selection failed: ' + ((r && r.error && r.error.message) || 'unknown'));
-    }
-  });
-}
-
-// read_document — Word: full body text; Excel: used range as TSV (DEC-4).
-function opReadDocument(id) {
-  if (HOST === 'Word' && typeof Word !== 'undefined') {
-    Word.run(function (ctx) {
-      var body = ctx.document.body;
-      body.load('text');
-      return ctx.sync().then(function () {
-        var c = capText(body.text);
-        reply(id, { text: c.text, truncated: c.truncated });
-      });
-    }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'read_document failed: ' + e.message); });
-  } else if (HOST === 'Excel' && typeof Excel !== 'undefined') {
-    Excel.run(function (ctx) {
-      var used = ctx.workbook.worksheets.getActiveWorksheet().getUsedRangeOrNullObject();
-      used.load('values,isNullObject');
-      return ctx.sync().then(function () {
-        var text = used.isNullObject ? '' : (used.values || []).map(function (row) {
-          return row.join('\t');
-        }).join('\n');
-        var c = capText(text);
-        reply(id, { text: c.text, truncated: c.truncated });
-      });
-    }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'read_document failed: ' + e.message); });
-  } else {
-    replyErr(id, ERR_UNSUPPORTED_HOST, 'read_document is not supported on host ' + HOST);
-  }
-}
-
-// add_comment — Word only (comments API); anchors on the first match of anchor_text.
-function opAddComment(id, params) {
-  if (HOST !== 'Word' || typeof Word === 'undefined') {
-    return replyErr(id, ERR_UNSUPPORTED_HOST, 'add_comment is only supported in Word');
-  }
-  var anchor = (params && params.anchor_text) || '';
-  var commentText = (params && params.text) || '';
-  Word.run(function (ctx) {
-    var results = ctx.document.body.search(anchor, { matchCase: false });
-    results.load('items');
-    return ctx.sync().then(function () {
-      if (!results.items || results.items.length === 0) {
-        replyErr(id, ERR_ANCHOR_NOT_FOUND, 'anchor_text not found: ' + anchor);
-        return null;
-      }
-      results.items[0].insertComment(commentText);
-      return ctx.sync().then(function () { reply(id, { ok: true }); });
-    });
-  }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'add_comment failed: ' + e.message); });
-}
-
-// set_track_changes — Word only (changeTrackingMode).
-function opSetTrackChanges(id, params) {
-  if (HOST !== 'Word' || typeof Word === 'undefined') {
-    return replyErr(id, ERR_UNSUPPORTED_HOST, 'set_track_changes is only supported in Word');
-  }
-  var on = !!(params && params.enabled);
-  Word.run(function (ctx) {
-    ctx.document.changeTrackingMode = on ? Word.ChangeTrackingMode.trackAll : Word.ChangeTrackingMode.off;
-    return ctx.sync().then(function () { reply(id, { ok: true, enabled: on }); });
-  }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'set_track_changes failed: ' + e.message); });
-}
-
-// get_tracked_changes — Word only (body.getTrackedChanges, Word API 1.6+).
-function opGetTrackedChanges(id) {
-  if (HOST !== 'Word' || typeof Word === 'undefined') {
-    return replyErr(id, ERR_UNSUPPORTED_HOST, 'get_tracked_changes is only supported in Word');
-  }
-  Word.run(function (ctx) {
-    var changes = ctx.document.body.getTrackedChanges();
-    changes.load('items/type,items/text,items/author');
-    return ctx.sync().then(function () {
-      var out = (changes.items || []).map(function (c) {
-        return { type: c.type, text: c.text, author: c.author };
-      });
-      reply(id, { changes: out });
-    });
-  }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'get_tracked_changes failed: ' + e.message); });
-}
 
 // run_office_js — host-agnostic, open-ended. The model writes an Office.js body; we
 // run it inside the host's {Word,Excel,PowerPoint}.run(context => …), let it

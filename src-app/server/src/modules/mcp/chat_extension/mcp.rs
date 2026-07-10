@@ -2117,41 +2117,33 @@ impl ChatExtension for McpChatExtension {
                 .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
                 .unwrap_or(false);
 
-            let needs_approval = if is_control {
-                crate::modules::control_mcp::handlers::control_call_needs_approval(
-                    &tool_name, &input,
-                )
-            } else if is_builtin {
-                false
+            // "Always allow" (per-conversation + per-user) memory: is this tool already
+            // auto-approved for this server? Precomputed here (DB-derived) and handed to
+            // the pure decision.
+            let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
+                auto_approved_servers
+                    .iter()
+                    .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
+                    || user_auto_approved
+                        .iter()
+                        .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
             } else {
-                match approval_mode {
-                    crate::modules::mcp::chat_extension::ApprovalMode::AutoApprove => false,
-                    crate::modules::mcp::chat_extension::ApprovalMode::ManualApprove => {
-                        // Check if this tool is auto-approved using server_id directly
-                        let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
-                            auto_approved_servers
-                                .iter()
-                                .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
-                                || user_auto_approved
-                                    .iter()
-                                    .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
-                        } else {
-                            false
-                        };
-                        tracing::info!(
-                            "Tool '{}' (server={}) auto-approved check: is_auto_approved={}",
-                            tool_name,
-                            server_id,
-                            is_auto_approved
-                        );
-                        !is_auto_approved
-                    }
-                    // Handled by the Disabled-deny branch above.
-                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled => {
-                        unreachable!("Disabled non-builtin tools are denied above")
-                    }
-                }
+                false
             };
+
+            // Per-call decision. Control read-only + builtins auto-run; office_bridge
+            // `run_office_js` `mode:"read"` auto-runs; office `write` / missing-mode and
+            // normal servers follow ManualApprove (prompt unless always-allowed).
+            let needs_approval =
+                crate::modules::mcp::chat_extension::office_approval::compute_needs_approval(
+                    uuid::Uuid::parse_str(&server_id).ok(),
+                    &tool_name,
+                    &input,
+                    approval_mode,
+                    is_builtin,
+                    is_control,
+                    is_auto_approved,
+                );
 
             tracing::info!(
                 "Tool '{}' (server={}, id={}): needs_approval={}",

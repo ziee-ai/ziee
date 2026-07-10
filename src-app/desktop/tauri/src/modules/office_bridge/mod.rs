@@ -243,3 +243,21 @@ pub fn register_office_bridge(config: &ziee::Config) {
             .await;
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// TEST-11 — the desktop `office_bridge` built-in row id and the server-lib's
+    /// independently-recomputed `office_bridge_mcp_server_id()` MUST be identical, so
+    /// the server approval loop's read-bypass keys on exactly this office server (the
+    /// two deterministic v5 derivations can never drift).
+    #[test]
+    fn office_bridge_id_matches_server_recomputation() {
+        assert_eq!(
+            office_bridge_server_id(),
+            ziee::chat_extension::office_bridge_mcp_server_id(),
+            "desktop office_bridge row id must equal the server's office_bridge_mcp_server_id()"
+        );
+    }
+}

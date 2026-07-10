@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::modules::mcp::chat_extension::defaults::models::LoopSettings;
 
 /// Approval mode for conversation MCP settings
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum ApprovalMode {

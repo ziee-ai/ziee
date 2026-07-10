@@ -78,6 +78,10 @@ pub mod chat_extension {
         BeforeLlmAction, CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
         SendMessageRequest, StreamContext, runtime_chat_extensions,
     };
+    /// The deterministic id of the built-in `office_bridge` MCP server, recomputed by
+    /// the server approval loop for the `run_office_js` read-bypass. Re-exported so the
+    /// desktop `office_bridge` module can assert its row id matches (drift guard).
+    pub use crate::modules::mcp::chat_extension::office_approval::office_bridge_mcp_server_id;
 }
 pub use modules::mcp::chat_extension::mcp::{AutoAttachEntry, register_auto_attach_builtin};
 // Re-export the at-rest secret helpers so out-of-crate consumers

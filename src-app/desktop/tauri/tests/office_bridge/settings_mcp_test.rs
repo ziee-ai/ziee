@@ -24,17 +24,10 @@ fn admin_perms() -> &'static [&'static str] {
     &["office_bridge::admin::read", "office_bridge::admin::manage"]
 }
 
-/// The seven `office` tool descriptors `tools/list` must advertise. `run_office_js`
-/// replaced the removed `edit_document`.
-const EXPECTED_TOOLS: &[&str] = &[
-    "list_open_documents",
-    "read_document",
-    "run_office_js",
-    "add_comment",
-    "set_track_changes",
-    "get_tracked_changes",
-    "get_selection",
-];
+/// The two `office` tool descriptors `tools/list` must advertise — the surface was
+/// collapsed to `list_open_documents` (native discovery) + `run_office_js` (which
+/// subsumes the former typed read/comment/track-changes tools).
+const EXPECTED_TOOLS: &[&str] = &["list_open_documents", "run_office_js"];
 
 // ─────────────────────────────── TEST-2 (MCP) ───────────────────────────────
 
@@ -61,9 +54,9 @@ async fn test2_initialize_returns_server_info_and_protocol_version() {
     assert_eq!(body["result"]["protocolVersion"], "2025-11-25");
 }
 
-/// TEST-2 — `tools/list` advertises all seven office tool descriptors.
+/// TEST-7 — `tools/list` advertises exactly the two office tool descriptors.
 #[tokio::test]
-async fn test2_tools_list_returns_the_seven_office_tools() {
+async fn test7_tools_list_returns_the_two_office_tools() {
     let server = TestServer::start_desktop().await;
     let user = create_user_with_permissions(&server, "ob_list", &["office_bridge::use"]).await;
     let res = jsonrpc(&server, &user.token, "tools/list", json!({}))
@@ -81,7 +74,7 @@ async fn test2_tools_list_returns_the_seven_office_tools() {
     for expected in EXPECTED_TOOLS {
         assert!(names.contains(expected), "tools/list missing `{expected}`: {names:?}");
     }
-    assert_eq!(names.len(), 7, "exactly 7 office tools expected: {names:?}");
+    assert_eq!(names.len(), 2, "exactly 2 office tools expected: {names:?}");
     // Each descriptor carries an inputSchema (the MCP tool contract).
     for t in body["result"]["tools"].as_array().unwrap() {
         assert!(

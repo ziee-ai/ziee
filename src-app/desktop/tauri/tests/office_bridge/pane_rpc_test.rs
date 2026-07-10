@@ -237,10 +237,10 @@ async fn test6_pane_register_and_round_trip() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "word", doc.clone(), Mode::Ok, false));
 
-    let out = retry_call_pane(&doc, "read_document", json!({ "doc_full_name": doc }))
+    let out = retry_call_pane(&doc, "run_office_js", json!({ "doc_full_name": doc }))
         .await
         .expect("round-trip result");
-    assert_eq!(out.get("got_method").and_then(|m| m.as_str()), Some("read_document"));
+    assert_eq!(out.get("got_method").and_then(|m| m.as_str()), Some("run_office_js"));
     assert_eq!(
         out.get("got_params").and_then(|p| p.get("doc_full_name")).and_then(|d| d.as_str()),
         Some(doc.as_str()),
@@ -261,7 +261,7 @@ async fn test7_close_unregisters_pane() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "word", doc.clone(), Mode::Ok, false));
     // Confirm it is connected first.
-    retry_call_pane(&doc, "get_selection", json!({ "doc_full_name": doc }))
+    retry_call_pane(&doc, "run_office_js", json!({ "doc_full_name": doc }))
         .await
         .expect("connected before close");
 
@@ -285,7 +285,7 @@ async fn test7_close_unregisters_pane() {
     for _ in 0..80 {
         match broker::call_pane_with_timeout(
             &doc,
-            "get_selection",
+            "run_office_js",
             json!({}),
             Duration::from_millis(100),
         )
@@ -317,7 +317,7 @@ async fn test8_junk_frames_are_ignored() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "word", doc.clone(), Mode::Ok, true));
 
-    let out = retry_call_pane(&doc, "get_selection", json!({ "doc_full_name": doc }))
+    let out = retry_call_pane(&doc, "run_office_js", json!({ "doc_full_name": doc }))
         .await
         .expect("round-trip still works after junk frames");
     assert_eq!(out.get("text").and_then(|t| t.as_str()), Some("MOCK BODY"));
@@ -334,7 +334,7 @@ async fn test9_dispatch_tool_read_document_round_trip() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "word", doc.clone(), Mode::Ok, false));
 
-    let out = retry_dispatch("read_document", json!({ "doc_full_name": doc }))
+    let out = retry_dispatch("run_office_js", json!({ "doc_full_name": doc, "script": "return 1;", "mode": "read" }))
         .await
         .expect("dispatch_tool round-trip");
     assert_eq!(
@@ -360,118 +360,13 @@ async fn test12_pane_error_propagates() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "word", doc.clone(), Mode::Err, false));
 
-    let code = retry_dispatch("read_document", json!({ "doc_full_name": doc }))
+    let code = retry_dispatch("run_office_js", json!({ "doc_full_name": doc, "script": "return 1;", "mode": "read" }))
         .await
         .expect_err("pane error surfaces as an error");
     assert_eq!(code, broker::OFFICE_PANE_ERROR);
 
     handle.shutdown();
     pane.abort();
-}
-
-/// TEST-13 (live, `#[ignore]`) — the daemon↔pane round-trip through a REAL Office
-/// task pane on macOS. This drives the actual `taskpane.js` Office.js op handlers,
-/// which no headless test can. Run manually:
-///
-///   1. Quit the ziee desktop app so nothing else holds port 44300.
-///   2. `cargo test -p ziee-desktop --test integration_tests -- --ignored --nocapture \
-///        office_bridge::pane_rpc_test::test13_live`
-///   3. The test OPENS Excel for you (workbook + `A1 = "hello ziee"`, selected). When
-///      prompted, click the ribbon "Show Ziee Bridge" to open the task pane — that
-///      single click is the only step that can't be automated for an Office add-in.
-///
-/// It binds the fixed 44300 and reuses the app's already-trusted bridge cert from the
-/// data dir, so the WKWebView pane loads prompt-free. Asserts that `get_selection` and
-/// `read_document` round-trip through the live pane and return real content.
-#[cfg(target_os = "macos")]
-#[tokio::test]
-#[ignore = "live: drives real Office.js in an Excel task pane on this macOS session"]
-async fn test13_live_mac_pane_ops() {
-    // Show the bridge's register/reject debug logs so a failed pane connect is
-    // diagnosable (stale token → "/bridge rejected — missing/invalid session token";
-    // success → "pane N registered").
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("info,ziee_desktop::modules::office_bridge=debug")
-        .with_test_writer()
-        .try_init();
-
-    // The app's data dir holds the trusted bridge cert (office-bridge-ca.pem).
-    let home = std::env::var("HOME").expect("HOME");
-    let data_dir = std::path::PathBuf::from(home).join("Library/Application Support/com.ziee.chat");
-
-    let handle = server::start(44300, data_dir)
-        .await
-        .expect("bridge binds 44300 (quit the desktop app first if this fails)");
-
-    // Ensure Excel is OPEN with a selected cell, so the only manual step left is
-    // clicking the ribbon button (an Office add-in task pane can't be opened via
-    // automation). Every earlier harness miss was simply Excel being closed — there
-    // was no document, hence no pane to connect.
-    let _ = std::process::Command::new("open")
-        .args(["-a", "Microsoft Excel"])
-        .status();
-    tokio::time::sleep(Duration::from_secs(5)).await;
-    let _ = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(
-            r#"tell application "Microsoft Excel"
-                activate
-                if (count of workbooks) = 0 then make new workbook
-                set value of range "A1" of active sheet of active workbook to "hello ziee"
-                select range "A1" of active sheet of active workbook
-            end tell"#,
-        )
-        .status();
-
-    eprintln!("\n>>> TEST-13 LIVE: Excel is now open with A1 = \"hello ziee\" selected.");
-    eprintln!(">>> NOW click the ribbon: Home -> Ziee -> 'Show Ziee Bridge' to open the task pane.");
-    eprintln!(">>> Waiting up to 600s (10 min) for the pane to connect — no rush...\n");
-
-    // Wait for a real pane to register, then target IT (whatever its doc_key is — an
-    // exact key routes by exact match; an empty/unsaved key routes via the sole-pane
-    // fallback with a bare-name target).
-    let mut target = String::new();
-    for i in 0..600 {
-        let keys = broker::connected_pane_keys();
-        if let Some(key) = keys.into_iter().next() {
-            target = if key.is_empty() { "Untitled".to_string() } else { key };
-            eprintln!(">>> pane connected (target = {target:?}); driving ops...");
-            break;
-        }
-        if i % 10 == 0 && i > 0 {
-            eprintln!(">>> still waiting for a pane... ({}s)", i);
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    assert!(!target.is_empty() || broker::connected_pane_keys().len() == 1, "a live task pane must connect");
-    if target.is_empty() {
-        target = "Untitled".to_string();
-    }
-
-    let selection = broker::call_pane_with_timeout(
-        &target,
-        "get_selection",
-        json!({ "doc_full_name": target }),
-        Duration::from_secs(10),
-    )
-    .await
-    .expect("get_selection round-trips through the live pane");
-    eprintln!(">>> get_selection returned: {selection}");
-    assert!(selection.get("text").is_some(), "get_selection returns a text field");
-
-    let doc = broker::call_pane_with_timeout(
-        &target,
-        "read_document",
-        json!({ "doc_full_name": target }),
-        Duration::from_secs(20),
-    )
-    .await
-    .expect("read_document round-trips through the live pane");
-    eprintln!(">>> read_document returned: {doc}");
-    assert!(doc.get("text").is_some(), "read_document returns a text field");
-
-    eprintln!("\n>>> TEST-13 LIVE PASS: both ops round-tripped through the real Office pane.\n");
-    handle.shutdown();
 }
 
 /// TEST-16 — a pane reply with the "unsupported on this host" code (-32002) maps to
@@ -483,7 +378,7 @@ async fn test16_pane_unsupported_maps_to_unsupported_on_host() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "excel", doc.clone(), Mode::Unsupported, false));
 
-    let code = retry_dispatch("get_tracked_changes", json!({ "doc_full_name": doc }))
+    let code = retry_dispatch("run_office_js", json!({ "doc_full_name": doc, "script": "return 1;", "mode": "read" }))
         .await
         .expect_err("unsupported-on-host surfaces as an error");
     assert_eq!(code, "OFFICE_UNSUPPORTED_ON_HOST");
@@ -507,10 +402,10 @@ async fn test15_two_panes_route_to_correct_document() {
 
     // Both panes register against the SAME process-global broker (two separate
     // bridge listeners, one shared broker), so exact-key resolution must pick right.
-    let out_a = retry_call_pane(&doc_a, "read_document", json!({ "doc_full_name": doc_a }))
+    let out_a = retry_call_pane(&doc_a, "run_office_js", json!({ "doc_full_name": doc_a }))
         .await
         .expect("doc A round-trip");
-    let out_b = retry_call_pane(&doc_b, "read_document", json!({ "doc_full_name": doc_b }))
+    let out_b = retry_call_pane(&doc_b, "run_office_js", json!({ "doc_full_name": doc_b }))
         .await
         .expect("doc B round-trip");
 
@@ -542,28 +437,35 @@ async fn run_office_js_dispatch_round_trip() {
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "excel", doc.clone(), Mode::Ok, false));
 
+    // TEST-8 — `mode` is delivered in `params` but does NOT change execution: read
+    // and write round-trip identically through the daemon → broker → pane.
+    for mode in ["read", "write"] {
+        let out = retry_dispatch(
+            "run_office_js",
+            json!({ "doc_full_name": doc, "script": "return 42;", "mode": mode }),
+        )
+        .await
+        .expect("run_office_js dispatch round-trip");
+        let sc = out.get("structuredContent").cloned().unwrap_or(Value::Null);
+        assert_eq!(sc.get("got_method").and_then(|m| m.as_str()), Some("run_office_js"));
+        assert_eq!(
+            sc.get("got_params").and_then(|p| p.get("script")).and_then(|s| s.as_str()),
+            Some("return 42;"),
+            "pane received the script param (mode {mode})"
+        );
+        assert_eq!(
+            sc.get("got_params").and_then(|p| p.get("mode")).and_then(|m| m.as_str()),
+            Some(mode),
+            "pane received the mode param unchanged (mode {mode})"
+        );
+    }
+
     let out = retry_dispatch(
         "run_office_js",
-        json!({ "doc_full_name": doc, "script": "return 42;" }),
+        json!({ "doc_full_name": doc, "script": "return 42;", "mode": "read" }),
     )
     .await
     .expect("run_office_js dispatch round-trip");
-
-    // The pane received method=run_office_js with the script param intact.
-    assert_eq!(
-        out.get("structuredContent")
-            .and_then(|s| s.get("got_method"))
-            .and_then(|m| m.as_str()),
-        Some("run_office_js"),
-    );
-    assert_eq!(
-        out.get("structuredContent")
-            .and_then(|s| s.get("got_params"))
-            .and_then(|p| p.get("script"))
-            .and_then(|s| s.as_str()),
-        Some("return 42;"),
-        "the pane received the run_office_js script param"
-    );
     // The pane reply's `text` is surfaced into the readable content channel via the
     // shared `pane_tool_result` mapping (the same path that carries the real
     // `{result,truncated,text}` reply — here the mock's `text` is "MOCK BODY").
@@ -586,7 +488,7 @@ async fn run_office_js_dispatch_round_trip() {
 /// clicking the ribbon button — an Office add-in pane can't be opened by automation).
 /// Returns the bridge handle + the connected pane's target key.
 ///
-/// Run these live tests ONE AT A TIME (they + `test13_live_mac_pane_ops` all bind the
+/// Run these live tests ONE AT A TIME (they all bind the
 /// fixed port 44300 and each needs a manual ribbon click, so they cannot run
 /// concurrently): name a single test on the `--ignored` cargo invocation, and quit the
 /// desktop app first so nothing else holds 44300.
@@ -642,7 +544,7 @@ async fn open_excel_and_wait_for_pane() -> (server::BridgeHandle, String) {
 
 /// TEST-8 (office-run-office-js, live `#[ignore]`) — a hardcoded real Office.js script
 /// passed to `run_office_js` executes in a live Excel task pane and its `return` value
-/// round-trips. Same one manual ribbon-click setup as `test13_live_mac_pane_ops`.
+/// round-trips. Same one manual ribbon-click setup as the other live run_office_js tests.
 #[cfg(target_os = "macos")]
 #[tokio::test]
 #[ignore = "live: runs real Office.js in an Excel task pane on this macOS session"]
@@ -784,4 +686,68 @@ async fn run_office_js_real_llm_live() {
         "the model's script set A1 to the requested 'hello' (got {a1}): {verify}"
     );
     handle.shutdown();
+}
+
+/// TEST-14 (office-mode-gated-approval, real-LLM) — validates the trust-based model's
+/// load-bearing assumption: given the SHIPPED `run_office_js` schema, a real model
+/// reliably self-classifies `mode` — `"read"` for a pure-read task and `"write"` for a
+/// mutating task. That self-classification is exactly what the server approval loop
+/// gates on (read → auto-run, write → prompt). Soft-skips when `ZIEE_OFFICE_REAL_LLM_URL`
+/// is unset. No Excel pane needed — this exercises only the model + the tool schema.
+#[tokio::test]
+async fn run_office_js_real_llm_declares_mode() {
+    let url = match std::env::var("ZIEE_OFFICE_REAL_LLM_URL") {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            eprintln!("SKIP run_office_js_real_llm_declares_mode: ZIEE_OFFICE_REAL_LLM_URL unset");
+            return;
+        }
+    };
+    let model =
+        std::env::var("ZIEE_OFFICE_REAL_LLM_MODEL").unwrap_or_else(|_| "qwen3.6-35b-a3b".to_string());
+    let key = std::env::var("ZIEE_OFFICE_REAL_LLM_KEY").ok();
+
+    let list = ziee_desktop::modules::office_bridge::tools::tool_list();
+    let tool = list["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .find(|t| t["name"] == "run_office_js")
+        .expect("run_office_js in tool_list")
+        .clone();
+
+    // (task prompt, expected mode)
+    let cases = [
+        ("Read cell A1 of the active worksheet and tell me its value. Use the run_office_js tool.", "read"),
+        ("Set cell A1 of the active worksheet to the text 'hello'. Use the run_office_js tool.", "write"),
+    ];
+    for (task, expected) in cases {
+        let body = json!({
+            "model": model,
+            "messages": [{ "role": "user", "content": task }],
+            "tools": [{ "type": "function", "function": {
+                "name": tool["name"], "description": tool["description"], "parameters": tool["inputSchema"] }}],
+            "tool_choice": "auto",
+            "max_tokens": 500
+        });
+        let mut req = reqwest::Client::new()
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(body.to_string());
+        if let Some(k) = &key {
+            req = req.header("authorization", format!("Bearer {k}"));
+        }
+        let resp = req.send().await.expect("LLM request").text().await.expect("LLM body");
+        let v: Value = serde_json::from_str(&resp).unwrap_or_else(|e| panic!("LLM json ({e}): {resp}"));
+        let func = v["choices"][0]["message"]["tool_calls"][0]["function"].clone();
+        assert_eq!(func["name"], "run_office_js", "model must call run_office_js for: {task}\n{resp}");
+        let args: Value = serde_json::from_str(func["arguments"].as_str().expect("arguments string"))
+            .expect("tool-call arguments parse");
+        let mode = args["mode"].as_str().unwrap_or("<missing>");
+        eprintln!(">>> task={task:?} → mode={mode:?}");
+        assert_eq!(
+            mode, expected,
+            "model must declare mode={expected:?} for task {task:?} (got {mode:?})"
+        );
+    }
 }

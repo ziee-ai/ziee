@@ -7,6 +7,7 @@ pub mod extension;
 pub mod helpers;
 pub mod mcp;
 pub mod message_servers_routes;
+pub mod office_approval;
 pub mod repository;
 
 // Re-export key types

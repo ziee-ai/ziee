@@ -20,7 +20,7 @@ use ziee::permissions::{RequirePermissions, with_permission};
 use super::bridge::broker;
 use super::models::{ConnectReadiness, OfficeBridgeSettings, UpdateOfficeBridgeSettingsRequest};
 use super::permissions::{OfficeBridgeAdminRead, OfficeBridgeManage, OfficeBridgeUse};
-use super::platform::{self, OfficeApp, OfficePlatform, OpenDoc};
+use super::platform::{self, OfficePlatform, OpenDoc};
 
 // ─────────────────────────── JSON-RPC MCP endpoint ───────────────────────────
 
@@ -163,11 +163,6 @@ fn office_bridge_disabled_err() -> AppError {
     )
 }
 
-/// The distinct error code for an operation that the target host application
-/// does not support (the proven capability matrix: PowerPoint has no comments /
-/// tracked changes).
-const OFFICE_UNSUPPORTED_ON_HOST: &str = "OFFICE_UNSUPPORTED_ON_HOST";
-
 /// Extract the required `doc_full_name` argument (shared by every pane tool).
 fn require_doc_full_name(args: &Value) -> Result<String, AppError> {
     args.get("doc_full_name")
@@ -179,9 +174,9 @@ fn require_doc_full_name(args: &Value) -> Result<String, AppError> {
 }
 
 /// Wrap a pane's JSON-RPC result into the MCP `tools/call` result shape. The pane
-/// returns a per-op object (e.g. `{text}` for read/selection, `{ok}` for a mutation,
-/// `{changes}` for tracked changes); we surface its `text` field (when present) as the
-/// readable channel and pass the whole object through as `structuredContent`.
+/// returns `run_office_js`'s `{result, truncated, text}`; we surface its `text` field
+/// (when present) as the readable channel and pass the whole object through as
+/// `structuredContent`.
 fn pane_tool_result(tool: &str, doc: &str, result: Value) -> Value {
     let text = result
         .get("text")
@@ -191,32 +186,22 @@ fn pane_tool_result(tool: &str, doc: &str, result: Value) -> Value {
     tool_result(text, result)
 }
 
-fn unsupported_on_ppt_err(op: &str) -> AppError {
-    AppError::new(
-        StatusCode::UNPROCESSABLE_ENTITY,
-        OFFICE_UNSUPPORTED_ON_HOST,
-        format!("`{op}` is not supported on PowerPoint documents."),
-    )
-}
-
 /// Pure, injectable `office` tool dispatcher. Takes the platform as a trait
 /// object so tests can pass a `MockOfficePlatform`; production passes
 /// `platform::active()`. Returns the MCP `tools/call` result body (`content` +
 /// `structuredContent`, mirroring web_search) on success.
 ///
-/// Capability model:
+/// Capability model (two tools):
 /// - `list_open_documents` routes to the native daemon (`platform::active()` —
 ///   osascript/COM); it needs no task pane.
-/// - `read_document` / `get_selection` / `run_office_js` / `add_comment` /
-///   `set_track_changes` / `get_tracked_changes` are pane-mediated (Office.js) and
-///   route to the connected task pane via `broker::call_pane`, which maps no-pane /
-///   timeout / pane-error to typed errors (`OFFICE_PANE_NOT_CONNECTED` /
-///   `OFFICE_PANE_TIMEOUT` / `OFFICE_PANE_ERROR` / `OFFICE_UNSUPPORTED_ON_HOST`).
-/// - `read_document` / `get_selection` / `run_office_js` are host-agnostic (Word +
-///   Excel + PowerPoint) — no capability pre-gate; the pane picks the host runtime.
-/// - `add_comment` / `set_track_changes` / `get_tracked_changes` (Word-only) first
-///   fast-gate a PowerPoint target natively (`OFFICE_UNSUPPORTED_ON_HOST`) before any
-///   round-trip; a non-Word non-PPT host is caught by the pane's `-32002` → same code.
+/// - `run_office_js` is pane-mediated (Office.js) and host-agnostic (Word + Excel +
+///   PowerPoint) — no capability pre-gate; it routes to the connected task pane via
+///   `broker::call_pane`, which maps no-pane / timeout / pane-error to typed errors
+///   (`OFFICE_PANE_NOT_CONNECTED` / `OFFICE_PANE_TIMEOUT` / `OFFICE_PANE_ERROR` /
+///   `OFFICE_UNSUPPORTED_ON_HOST`). The former typed tools (read_document /
+///   get_selection / add_comment / set_track_changes / get_tracked_changes) are
+///   removed — `run_office_js` subsumes them. `mode` is NOT read here (it is an
+///   approval hint consumed by the server MCP loop; execution ignores it).
 pub async fn dispatch_tool(
     platform: &dyn OfficePlatform,
     name: &str,
@@ -237,16 +222,6 @@ pub async fn dispatch_tool(
             }
             let structured = json!({ "documents": docs });
             Ok(tool_result(text, structured))
-        }
-
-        // Pane-mediated (Office.js over the WSS bridge): route to the connected task
-        // pane via the broker and await the correlated reply. `read_document` +
-        // `get_selection` are host-agnostic (Word + Excel + PowerPoint), so no
-        // capability pre-gate (`run_office_js`, also host-agnostic, is the next arm).
-        "read_document" | "get_selection" => {
-            let doc_full_name = require_doc_full_name(args)?;
-            let result = broker::call_pane(&doc_full_name, name, args.clone()).await?;
-            Ok(pane_tool_result(name, &doc_full_name, result))
         }
 
         // Open-ended Office.js execution: the model supplies a `script` body the pane
@@ -280,20 +255,6 @@ pub async fn dispatch_tool(
             Ok(pane_tool_result(name, &doc_full_name, result))
         }
 
-        // Pane-mediated AND Word-only: surface the PowerPoint-unsupported error
-        // distinctly (via the fast native `doc_host` lookup) BEFORE any round-trip,
-        // then route to the pane. (`get_tracked_changes` is grouped here — Word-only —
-        // so PPT gets the same fast `OFFICE_UNSUPPORTED_ON_HOST` as the mutations; a
-        // non-Word non-PPT host is caught by the pane's `-32002` → same code.)
-        "add_comment" | "set_track_changes" | "get_tracked_changes" => {
-            let doc_full_name = require_doc_full_name(args)?;
-            if doc_host(platform, &doc_full_name).await == Some(OfficeApp::PowerPoint) {
-                return Err(unsupported_on_ppt_err(name));
-            }
-            let result = broker::call_pane(&doc_full_name, name, args.clone()).await?;
-            Ok(pane_tool_result(name, &doc_full_name, result))
-        }
-
         other => Err(AppError::bad_request(
             "UNKNOWN_TOOL",
             format!("unknown office tool: `{other}`"),
@@ -309,19 +270,6 @@ fn tool_result(text: impl Into<String>, structured: Value) -> Value {
         "content": [{ "type": "text", "text": text.into() }],
         "structuredContent": structured,
     })
-}
-
-/// Resolve the host application of an open document by its full name, or `None`
-/// if it is not currently enumerated (so callers fall back to the generic
-/// pane-required error rather than a spurious capability claim).
-async fn doc_host(platform: &dyn OfficePlatform, doc_full_name: &str) -> Option<OfficeApp> {
-    platform
-        .list_open_documents()
-        .await
-        .ok()?
-        .into_iter()
-        .find(|d| d.full_name == doc_full_name)
-        .map(|d| d.app)
 }
 
 // ─────────────────────────── Admin REST: settings ───────────────────────────
@@ -565,7 +513,7 @@ pub fn list_documents_docs(op: TransformOperation) -> TransformOperation {
 mod tests {
     use super::*;
     use crate::modules::office_bridge::bridge::broker;
-    use crate::modules::office_bridge::platform::{MockOfficePlatform, OpenDoc};
+    use crate::modules::office_bridge::platform::{MockOfficePlatform, OfficeApp, OpenDoc};
 
     /// A mock seeded with a couple of open docs INCLUDING a PowerPoint one, so
     /// the capability-matrix branch (`add_comment`/`set_track_changes` on PPT)
@@ -684,39 +632,64 @@ mod tests {
         unregister_decoy_panes(decoys);
     }
 
-    /// TEST-12 (c) — `add_comment` on a PowerPoint doc returns the distinct
-    /// "unsupported on PowerPoint" capability error (not a crash), where the host
-    /// is known from enumeration.
+    /// TEST-3 — every pruned tool name is no longer dispatchable: it returns the
+    /// generic `UNKNOWN_TOOL` client error, proving the two pruned dispatch arms +
+    /// the PowerPoint pre-gate + the pane op handlers behind them are gone (and the
+    /// crate compiles without `doc_host`/`unsupported_on_ppt_err`/the local const).
     #[tokio::test]
-    async fn test12_add_comment_on_powerpoint_returns_capability_error() {
+    async fn test3_pruned_tools_are_unknown() {
         let mock = seeded_mock();
-        let err = dispatch_tool(
-            &mock,
+        for pruned in [
+            "read_document",
+            "get_selection",
             "add_comment",
-            &json!({
-                "doc_full_name": r"C:\Users\test\Deck.pptx",
-                "anchor_text": "Agenda",
-                "text": "revise this slide",
-            }),
-        )
-        .await
-        .expect_err("add_comment on PPT is a capability error");
-        assert_eq!(err.error_code(), OFFICE_UNSUPPORTED_ON_HOST);
-        assert_eq!(err.status_code(), 422);
+            "set_track_changes",
+            "get_tracked_changes",
+        ] {
+            let err = dispatch_tool(
+                &mock,
+                pruned,
+                &json!({ "doc_full_name": r"C:\Users\test\Report.docx" }),
+            )
+            .await
+            .expect_err(&format!("pruned tool `{pruned}` must be UNKNOWN_TOOL"));
+            assert_eq!(err.error_code(), "UNKNOWN_TOOL", "for pruned tool {pruned}");
+        }
     }
 
-    /// TEST-12 (c cont.) — `set_track_changes` on PowerPoint likewise.
+    /// TEST-4 — the daemon does NOT gate `run_office_js` on `mode`: `read` and
+    /// `write` behave identically — both route to the pane (no matching pane →
+    /// `OFFICE_PANE_NOT_CONNECTED` for either) and both validate args the same
+    /// (missing `script` → `INVALID_ARGS` for either). `mode` is an approval hint
+    /// consumed server-side, never by the daemon.
     #[tokio::test]
-    async fn test12_set_track_changes_on_powerpoint_returns_capability_error() {
+    async fn test4_run_office_js_mode_does_not_gate_execution() {
+        let decoys = register_decoy_panes();
         let mock = seeded_mock();
-        let err = dispatch_tool(
-            &mock,
-            "set_track_changes",
-            &json!({ "doc_full_name": r"C:\Users\test\Deck.pptx", "enabled": true }),
-        )
-        .await
-        .expect_err("set_track_changes on PPT is a capability error");
-        assert_eq!(err.error_code(), OFFICE_UNSUPPORTED_ON_HOST);
+        let target = format!(r"C:\Users\test\ModeNoPane-{}-{}.xlsx", decoys.0, decoys.1);
+        for mode in ["read", "write"] {
+            let err = dispatch_tool(
+                &mock,
+                "run_office_js",
+                &json!({ "doc_full_name": target, "script": "return 1;", "mode": mode }),
+            )
+            .await
+            .expect_err("no pane → not connected regardless of mode");
+            assert_eq!(
+                err.error_code(),
+                broker::OFFICE_PANE_NOT_CONNECTED,
+                "for mode {mode}"
+            );
+            let err = dispatch_tool(
+                &mock,
+                "run_office_js",
+                &json!({ "doc_full_name": target, "mode": mode }),
+            )
+            .await
+            .expect_err("missing script is invalid regardless of mode");
+            assert_eq!(err.error_code(), "INVALID_ARGS", "for mode {mode}");
+        }
+        unregister_decoy_panes(decoys);
     }
 
     /// Register two decoy panes with unique, non-matching doc keys so broker
@@ -741,52 +714,6 @@ mod tests {
         broker::unregister_pane(ids.1);
     }
 
-    /// TEST-10 (d) — a pane-mediated method with NO matching pane connected returns
-    /// the typed `OFFICE_PANE_NOT_CONNECTED` (the broker's not-connected mapping,
-    /// surfaced through `dispatch_tool`), rather than panicking or 500-ing. Uses a
-    /// UUID-unique target basename + decoy panes so it can't match a real/other pane.
-    #[tokio::test]
-    async fn test10_pane_mediated_method_no_pane_is_not_connected() {
-        let decoys = register_decoy_panes();
-        let mock = seeded_mock();
-        let target = format!(r"C:\Users\test\NoPane-{}-{}.docx", decoys.0, decoys.1);
-        for tool in ["get_selection", "read_document", "get_tracked_changes"] {
-            let err = dispatch_tool(&mock, tool, &json!({ "doc_full_name": target }))
-                .await
-                .err()
-                .unwrap_or_else(|| panic!("`{tool}` should error"));
-            assert_eq!(
-                err.error_code(),
-                broker::OFFICE_PANE_NOT_CONNECTED,
-                "for tool {tool}"
-            );
-            assert_eq!(err.status_code(), 422, "for tool {tool}");
-        }
-        unregister_decoy_panes(decoys);
-    }
-
-    /// TEST-10 (e) — `add_comment` on a Word doc (host known, not PowerPoint) passes
-    /// the native PPT pre-gate and routes to the broker; with no matching pane it
-    /// surfaces `OFFICE_PANE_NOT_CONNECTED`, NOT the PowerPoint capability error.
-    #[tokio::test]
-    async fn test10_add_comment_on_word_with_no_pane_is_not_connected() {
-        let decoys = register_decoy_panes();
-        let mock = seeded_mock();
-        let target = format!(r"C:\Users\test\WordNoPane-{}-{}.docx", decoys.0, decoys.1);
-        let err = dispatch_tool(
-            &mock,
-            "add_comment",
-            &json!({
-                "doc_full_name": target,
-                "anchor_text": "Intro",
-                "text": "expand this",
-            }),
-        )
-        .await
-        .expect_err("add_comment on a Word doc with no pane connected");
-        assert_eq!(err.error_code(), broker::OFFICE_PANE_NOT_CONNECTED);
-        unregister_decoy_panes(decoys);
-    }
 
     /// An unknown tool name is a client-class error, never a panic.
     #[tokio::test]

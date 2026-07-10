@@ -1,16 +1,18 @@
 //! Static tool descriptors emitted by `tools/list`.
 //!
-//! The `office` tool surface: one native tool (`list_open_documents`, served by
-//! the COM/osascript daemon via `platform::active()`) plus six **pane-mediated**
-//! tools that route to a connected Office.js task pane over the bridge
-//! (`bridge/broker.rs`). Five are typed/structured reads + gated edits
-//! (`read_document`, `get_selection`, `add_comment`, `set_track_changes`,
-//! `get_tracked_changes`); the sixth, `run_office_js`, is the open-ended breadth
-//! surface — the model writes an Office.js body the pane executes inside the
-//! host's `{Word,Excel,PowerPoint}.run`, so "everything Office.js supports" is
-//! reachable at ~one tool schema of context cost instead of one tool per API.
-//! (The former native-only `edit_document`/`append_paragraph` op is removed —
-//! `run_office_js` subsumes it via `body.insertParagraph`.)
+//! The `office` tool surface is TWO tools: `list_open_documents` (native discovery,
+//! served by the COM/osascript daemon via `platform::active()`, needs no task pane)
+//! and `run_office_js` (the open-ended pane surface — the model writes an Office.js
+//! body the connected task pane executes inside the host's `{Word,Excel,PowerPoint}.run`,
+//! so "everything Office.js supports" is reachable at ~one tool schema). The former
+//! typed tools (`read_document` / `get_selection` / `add_comment` / `set_track_changes`
+//! / `get_tracked_changes`) are removed — `run_office_js` subsumes all of them.
+//!
+//! `run_office_js` declares `mode: "read" | "write"`. `mode` is an APPROVAL hint
+//! consumed only by the server's MCP approval loop (a `read` auto-runs; a `write`
+//! prompts the user); the daemon and the pane ignore it — execution is identical
+//! either way. There is no pane-side read-only enforcement; the model is trusted to
+//! declare `mode` honestly (see the office-mode-gated-approval lifecycle decisions).
 
 use serde_json::{Value, json};
 
@@ -27,22 +29,8 @@ pub fn tool_list() -> Value {
                 }
             },
             {
-                "name": "read_document",
-                "description": "Read the text content of one open Office document, identified by its `doc_full_name` (as returned by list_open_documents). Requires the document's task pane to be open. Returns the document body as plain text.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "doc_full_name": {
-                            "type": "string",
-                            "description": "The app-qualified full name of the target document (from list_open_documents)."
-                        }
-                    },
-                    "required": ["doc_full_name"]
-                }
-            },
-            {
                 "name": "run_office_js",
-                "description": "Run an Office.js script against one open Office document, identified by its `doc_full_name`. This is the general-purpose way to read or change the document: you write the body of an async function that receives the Office.js request `context` for the document's host app (Word, Excel, or PowerPoint — selected automatically from the target document), and it runs inside the host's `Word.run` / `Excel.run` / `PowerPoint.run`. You may `await context.sync()` and `return` a JSON-serializable value, which is returned to you. Example (Excel): `const s = context.workbook.worksheets.getActiveWorksheet(); const r = s.getRange('A1'); r.values = [['hello']]; await context.sync(); r.load('address'); await context.sync(); return r.address;`. Requires the document's task pane to be open. On a script error, a structured error (name, message, Office.js error code) is returned so you can correct and retry.",
+                "description": "Run an Office.js script against one open Office document, identified by its `doc_full_name` (from list_open_documents). This is the general-purpose way to read or change the document — it replaces separate read/comment/track-changes tools. You write the body of an async function that receives the Office.js request `context` for the document's host app (Word, Excel, or PowerPoint — selected automatically from the target document); it runs inside the host's `Word.run` / `Excel.run` / `PowerPoint.run`. You may `await context.sync()` and `return` a JSON-serializable value, which is returned to you. On a script error, a structured error (name, message, Office.js error code) is returned so you can correct and retry. Requires the document's task pane to be open.\n\nDeclare `mode`: use \"read\" ONLY when the script exclusively reads (no property assignments, no `insert*`/`delete`/`add`/`merge`, no `changeTrackingMode`, no `insertComment`); use \"write\" for ANY change to the document. A \"write\" asks the user for approval before running; a \"read\" runs immediately. When unsure, use \"write\".\n\nExamples — Read a cell (mode \"read\"): `const r = context.workbook.worksheets.getActiveWorksheet().getRange('A1'); r.load('values'); await context.sync(); return r.values;`. Write a cell (mode \"write\"): `const r = context.workbook.worksheets.getActiveWorksheet().getRange('A1'); r.values = [['hello']]; r.load('address'); await context.sync(); return r.address;`. Add a Word comment (mode \"write\"): `const res = context.document.body.search('Q3 revenue', {matchCase:false}); res.load('items'); await context.sync(); res.items[0].insertComment('cite the source'); await context.sync();`. Toggle Word tracked changes (mode \"write\"): `context.document.changeTrackingMode = Word.ChangeTrackingMode.trackAll; await context.sync();`.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -53,77 +41,14 @@ pub fn tool_list() -> Value {
                         "script": {
                             "type": "string",
                             "description": "The Office.js script body to run. It receives `context` (the host's request context) in scope, may `await context.sync()`, and may `return` a JSON-serializable value."
-                        }
-                    },
-                    "required": ["doc_full_name", "script"]
-                }
-            },
-            {
-                "name": "add_comment",
-                "description": "Attach a review comment to a span of text in one open Office document. Anchors on the first occurrence of `anchor_text`. Requires the document's task pane to be open. Not supported on PowerPoint.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "doc_full_name": {
-                            "type": "string",
-                            "description": "The app-qualified full name of the target document (from list_open_documents)."
                         },
-                        "anchor_text": {
+                        "mode": {
                             "type": "string",
-                            "description": "The existing text to anchor the comment on (first match)."
-                        },
-                        "text": {
-                            "type": "string",
-                            "description": "The comment body."
+                            "enum": ["read", "write"],
+                            "description": "\"read\" if the script only reads the document (no changes); \"write\" if it changes anything. A \"write\" requires user approval before it runs; a \"read\" runs without prompting. When unsure, use \"write\"."
                         }
                     },
-                    "required": ["doc_full_name", "anchor_text", "text"]
-                }
-            },
-            {
-                "name": "set_track_changes",
-                "description": "Turn tracked changes (revision marking) on or off for one open Office document. Requires the document's task pane to be open. Not supported on PowerPoint.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "doc_full_name": {
-                            "type": "string",
-                            "description": "The app-qualified full name of the target document (from list_open_documents)."
-                        },
-                        "enabled": {
-                            "type": "boolean",
-                            "description": "True to enable tracked changes, false to disable."
-                        }
-                    },
-                    "required": ["doc_full_name", "enabled"]
-                }
-            },
-            {
-                "name": "get_tracked_changes",
-                "description": "List the tracked changes (insertions, deletions, revisions) currently recorded in one open Office document. Requires the document's task pane to be open.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "doc_full_name": {
-                            "type": "string",
-                            "description": "The app-qualified full name of the target document (from list_open_documents)."
-                        }
-                    },
-                    "required": ["doc_full_name"]
-                }
-            },
-            {
-                "name": "get_selection",
-                "description": "Return the text the user currently has selected in one open Office document. Requires the document's task pane to be open.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "doc_full_name": {
-                            "type": "string",
-                            "description": "The app-qualified full name of the target document (from list_open_documents)."
-                        }
-                    },
-                    "required": ["doc_full_name"]
+                    "required": ["doc_full_name", "script", "mode"]
                 }
             }
         ]
@@ -134,10 +59,10 @@ pub fn tool_list() -> Value {
 mod tests {
     use super::*;
 
-    /// TEST-2 — `tool_list()` advertises EXACTLY the seven `office` tools:
-    /// `run_office_js` is present, the removed `edit_document` is absent.
+    /// TEST-1 — `tool_list()` advertises EXACTLY the two surviving `office` tools;
+    /// all five pruned typed tools are absent.
     #[test]
-    fn tool_list_contains_exactly_the_seven_tools() {
+    fn tool_list_contains_exactly_the_two_tools() {
         let list = tool_list();
         let names: Vec<&str> = list["tools"]
             .as_array()
@@ -145,31 +70,32 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().expect("tool name is a string"))
             .collect();
-        for expected in [
-            "list_open_documents",
-            "read_document",
-            "run_office_js",
-            "add_comment",
-            "set_track_changes",
-            "get_tracked_changes",
-            "get_selection",
-        ] {
+        for expected in ["list_open_documents", "run_office_js"] {
             assert!(
                 names.contains(&expected),
                 "tool_list missing `{expected}` (had {names:?})"
             );
         }
-        assert!(
-            !names.contains(&"edit_document"),
-            "removed `edit_document` must be absent (had {names:?})"
-        );
-        assert_eq!(names.len(), 7, "expected exactly 7 tools, got {names:?}");
+        for pruned in [
+            "read_document",
+            "get_selection",
+            "add_comment",
+            "set_track_changes",
+            "get_tracked_changes",
+        ] {
+            assert!(
+                !names.contains(&pruned),
+                "pruned tool `{pruned}` must be absent (had {names:?})"
+            );
+        }
+        assert_eq!(names.len(), 2, "expected exactly 2 tools, got {names:?}");
     }
 
-    /// TEST-1 — `run_office_js` advertises the expected schema: `doc_full_name`
-    /// and `script` are both required string properties.
+    /// TEST-2 — `run_office_js` requires `doc_full_name` + `script` + `mode` (an enum
+    /// `["read","write"]`), and its description carries the read/write approval
+    /// guidance so the model is actually told how to set `mode` and that writes prompt.
     #[test]
-    fn run_office_js_schema_requires_doc_and_script() {
+    fn run_office_js_schema_has_mode_and_description_guidance() {
         let list = tool_list();
         let tool = list["tools"]
             .as_array()
@@ -180,6 +106,14 @@ mod tests {
         let schema = &tool["inputSchema"];
         assert_eq!(schema["properties"]["doc_full_name"]["type"], "string");
         assert_eq!(schema["properties"]["script"]["type"], "string");
+        assert_eq!(schema["properties"]["mode"]["type"], "string");
+        let mode_enum: Vec<&str> = schema["properties"]["mode"]["enum"]
+            .as_array()
+            .expect("mode enum is an array")
+            .iter()
+            .map(|v| v.as_str().expect("enum entry is a string"))
+            .collect();
+        assert_eq!(mode_enum, vec!["read", "write"], "mode enum is read|write");
         let required: Vec<&str> = schema["required"]
             .as_array()
             .expect("required is an array")
@@ -188,5 +122,12 @@ mod tests {
             .collect();
         assert!(required.contains(&"doc_full_name"), "doc_full_name required");
         assert!(required.contains(&"script"), "script required");
+        assert!(required.contains(&"mode"), "mode required");
+
+        // The description must actually teach the model the mode contract.
+        let desc = tool["description"].as_str().expect("description is a string");
+        assert!(desc.contains("mode"), "description mentions mode");
+        assert!(desc.contains("read") && desc.contains("write"), "read/write guidance");
+        assert!(desc.contains("approval"), "tells the model a write needs approval");
     }
 }
