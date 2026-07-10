@@ -22,29 +22,26 @@ office_bridge::settings_mcp_test::test2_tools_list office_bridge::pane_rpc_test`
 → 9 passed, 0 failed, 3 ignored (the live tests below). No regression in the prior
 pane-rpc suite.
 
-## Live (macOS, `#[ignore]` — require a manual Excel ribbon click; NOT auto-runnable)
+## Live (macOS, `#[ignore]` — one manual Excel ribbon click each; run one-at-a-time)
 
-- **TEST-8**: PENDING — `run_office_js_live_mac_executes_script`. Infrastructure verified
-  ready (bridge listened on 44300, Excel opened, `ziee-office-bridge.manifest.xml`
-  sideloaded); blocked only on the human clicking `Home → Ziee → Show Ziee Bridge` to
-  open the add-in task pane (an Office add-in pane cannot be opened by automation).
-- **TEST-11**: PENDING — `run_office_js_real_llm_live`. Real-LLM half INDEPENDENTLY
-  verified: the coder.ziee `:4000` LiteLLM `qwen3.6-35b-a3b` model, given the shipped
-  `run_office_js` schema, returns a well-formed tool call with valid Office.js (checked
-  live via curl). SSH tunnel (`4000:127.0.0.1:4000`) up + reachable. Blocked only on the
-  same one manual ribbon click for the live-execution half.
+- **TEST-8**: PASS — `run_office_js_live_mac_executes_script`. Ran live against a real
+  Excel task pane: the hardcoded Office.js script set A1 and returned its address —
+  `structuredContent.result == "Sheet1!A1"`. `1 passed; 0 failed` in 12.3s.
+- **TEST-11**: PASS — `run_office_js_real_llm_live`. Real end-to-end: the coder.ziee
+  `:4000` LiteLLM `qwen3.6-35b-a3b` model, given the shipped `run_office_js` schema,
+  emitted a tool call whose Office.js `script` executed in the live pane (returned
+  `"Sheet1!A1"`); the deterministic A1 read-back returned `"hello"`, proving the model's
+  script actually set the cell. `1 passed; 0 failed`.
 
-**To finish TEST-8 / TEST-11** (one at a time; quit the desktop app first so nothing
-holds 44300; the SSH tunnel must be up for TEST-11):
+Run command (one at a time; quit the desktop app first so nothing holds 44300; SSH
+tunnel up for TEST-11; between the two, close+reopen the task pane so it reloads the new
+session token):
 
 ```bash
 cd src-app
-# TEST-8 (no LLM):
 cargo test -p ziee-desktop --test integration_tests -- --ignored --nocapture \
-  office_bridge::pane_rpc_test::run_office_js_live_mac_executes_script
-# TEST-11 (real LLM):
+  office_bridge::pane_rpc_test::run_office_js_live_mac_executes_script            # TEST-8
 ZIEE_OFFICE_REAL_LLM_URL=http://127.0.0.1:4000/v1/chat/completions \
-  cargo test -p ziee-desktop --test integration_tests -- --ignored --nocapture \
-  office_bridge::pane_rpc_test::run_office_js_real_llm_live
+cargo test -p ziee-desktop --test integration_tests -- --ignored --nocapture \
+  office_bridge::pane_rpc_test::run_office_js_real_llm_live                        # TEST-11
 ```
-Each opens Excel and waits up to 600s; click the ribbon button when it prompts.
