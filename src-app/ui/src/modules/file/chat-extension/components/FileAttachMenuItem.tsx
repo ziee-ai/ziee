@@ -1,6 +1,8 @@
 import { Paperclip } from 'lucide-react'
 import { Upload, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { composerPaneKey } from '@/modules/file/stores/File.store'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
@@ -13,6 +15,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024
  */
 export function FileAttachMenuItem() {
   const { uploadFiles } = Stores.File
+  const paneKey = composerPaneKey(useChatPaneOrNull()?.paneId)
   const { close } = usePlusDropdown()
   // Gate on files::upload (mirrors FilePasteHandler / FileUploadArea). Without
   // it, a user lacking the grant saw the "Attach files or photos" + menu item
@@ -29,7 +32,7 @@ export function FileAttachMenuItem() {
       )
     const files = incoming.filter(f => f.size <= MAX_FILE_SIZE)
     if (files.length > 0) {
-      uploadFiles(files).catch((error: any) => {
+      uploadFiles(paneKey, files).catch((error: any) => {
         console.error('Upload failed:', error)
         message.error('Failed to upload files')
       })

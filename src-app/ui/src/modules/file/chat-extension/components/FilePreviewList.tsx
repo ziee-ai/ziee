@@ -2,6 +2,7 @@ import { Alert, ScrollArea } from '@/components/ui'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { composerPaneKey } from '@/modules/file/stores/File.store'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import type { File as FileEntity } from '@/api-client/types'
 
@@ -12,18 +13,34 @@ import type { File as FileEntity } from '@/api-client/types'
  * Matches reference implementation styling
  */
 export function FilePreviewList() {
+  const pane = useChatPaneOrNull()
   // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
-  // Access file extension store directly via Stores.Chat (reactive via store proxy)
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  // THIS pane's composer buffer key (ITEM-32): show only this pane's files.
+  const paneKey = composerPaneKey(pane?.paneId)
   const {
     selectedFiles,
     uploadingFiles,
+    fileOwner,
+    uploadOwner,
     removeFile,
     removeUploadingFile,
     retryUpload,
   } = Stores.File
 
-  const hasFiles = selectedFiles.size > 0 || uploadingFiles.size > 0
+  // Filter the shared buffers to this pane's owned entries.
+  const paneSelected = Array.from(
+    selectedFiles.entries() as IterableIterator<[string, FileEntity]>,
+  )
+    .filter(([id]) => composerPaneKey(fileOwner.get(id)) === paneKey)
+    .map(([, f]) => f)
+  const paneUploading = Array.from(
+    uploadingFiles.entries() as IterableIterator<[string, FileUploadProgress]>,
+  )
+    .filter(([id]) => composerPaneKey(uploadOwner.get(id)) === paneKey)
+    .map(([, p]) => p)
+
+  const hasFiles = paneSelected.length > 0 || paneUploading.length > 0
 
   if (!hasFiles) {
     return null
@@ -32,9 +49,7 @@ export function FilePreviewList() {
   // Upload-time suitability advisory (Track A §2b): non-blocking nudge when a
   // file type reads poorly (e.g. PowerPoint, scanned PDF, archive). The backend
   // annotates `processing_metadata.suitability/suggestion` at upload time.
-  const advisories = Array.from(
-    selectedFiles.values() as IterableIterator<FileEntity>,
-  )
+  const advisories = paneSelected
     .map(f => ({
       f,
       meta: (f.processing_metadata ?? {}) as {
@@ -57,19 +72,19 @@ export function FilePreviewList() {
           aria-label="Attached files"
         >
           {/* Uploading files */}
-          {Array.from(uploadingFiles.values() as IterableIterator<FileUploadProgress>).map((progress) => (
+          {paneUploading.map((progress) => (
             <div key={progress.id} className="flex-1 min-w-20 max-w-24">
               <FileCard
                 uploadProgress={progress}
                 onRemove={() => removeUploadingFile(progress.id)}
-                onRetry={() => retryUpload(progress.id)}
+                onRetry={() => retryUpload(paneKey, progress.id)}
                 variant="square"
               />
             </div>
           ))}
 
           {/* Selected files (upload completed) */}
-          {Array.from(selectedFiles.values() as IterableIterator<FileEntity>).map((file) => (
+          {paneSelected.map((file) => (
             <div key={file.id} className="flex-1 min-w-20 max-w-24">
               <FileCard
                 file={file}

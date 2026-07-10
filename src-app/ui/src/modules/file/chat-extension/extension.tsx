@@ -14,7 +14,8 @@ import { ImageContent } from '@/modules/file/chat-extension/components/ImageCont
 // going through Stores.File would fire the Stores-proxy's internal
 // useEffect+useStore on property access, corrupting the outer hook
 // count (see ProjectFiles.store.ts's earlier bug).
-import { useFileStore } from '@/modules/file/stores/File.store'
+import { composerPaneKey, useFileStore } from '@/modules/file/stores/File.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment, MessageContentDataImage } from '@/api-client/types'
 
 // Per-pane subscription teardown (ITEM-34/5): keyed by the pane's chat store api
@@ -178,7 +179,7 @@ const fileExtension: ChatExtension = createExtension({
       chatStore.subscribe(
         (state: any) => state.conversation?.id,
         () => {
-          Stores.File.clearFiles()
+          Stores.File.clearFiles(composerPaneKey(chatStore.getState().paneId))
         },
       ),
     )
@@ -199,7 +200,10 @@ const fileExtension: ChatExtension = createExtension({
           if (stubs.length > 0) {
             // Phase 1 — Synchronous: stubs from block data, so selectedFiles is
             // populated before the user can click Send.
-            fileStore.restoreFilesFromEdit(stubs)
+            fileStore.restoreFilesFromEdit(
+              composerPaneKey(chatStore.getState().paneId),
+              stubs,
+            )
 
             // Phase 2 — Async: upgrade stubs with full server entities (enables thumbnails).
             try {
@@ -208,7 +212,7 @@ const fileExtension: ChatExtension = createExtension({
               )
               const validFiles = fullFiles.filter(Boolean) as FileEntity[]
               if (validFiles.length > 0) {
-                fileStore.restoreFilesFromEdit(validFiles)
+                fileStore.restoreFilesFromEdit(composerPaneKey(chatStore.getState().paneId), validFiles)
               }
             } catch (error) {
               console.error('[FileExtension] Failed to upgrade files from edit:', error)
@@ -217,7 +221,7 @@ const fileExtension: ChatExtension = createExtension({
           }
         } else {
           // Edit ended (cancel or send) — clear the file selection
-          fileStore.clearFiles()
+          fileStore.clearFiles(composerPaneKey(chatStore.getState().paneId))
         }
       },
       ),
@@ -241,12 +245,17 @@ const fileExtension: ChatExtension = createExtension({
    * during sendMessage(). Without this, the message bubble shows no file
    * previews until loadMessages() replaces the temp message with the real one.
    */
-  provideUserContent: async (_text: string, _composedRequest: any): Promise<MessageContent[]> => {
+  provideUserContent: async (
+    _text: string,
+    _composedRequest: any,
+    composerPaneId?: string | null,
+  ): Promise<MessageContent[]> => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
     if (!fileStore) return []
 
-    const files = fileStore.getFiles()
+    // Attach only the SENDING pane's files (ITEM-32).
+    const files = fileStore.getFiles(composerPaneKey(composerPaneId))
     if (files.length === 0) return []
 
     const now = new Date().toISOString()
@@ -294,16 +303,26 @@ const fileExtension: ChatExtension = createExtension({
     const fileStore = Stores.File
     if (!fileStore) return
 
-    fileStore.restoreFilesFromEdit(stubs)
+    fileStore.restoreFilesFromEdit(
+      composerPaneKey(Stores.SplitView.$.focusedPaneId),
+      stubs,
+    )
   },
 
   // Reactive companion to `beforeSendMessage` — drives ChatInput's
   // Send-button disable state. Subscribes to `uploadingFiles` via the
   // raw zustand hook so re-renders fire when upload status flips.
   useSendBlocker: () => {
+    // Only THIS pane's uploads block THIS pane's send (ITEM-32/34) — a file
+    // uploading in pane A must not disable pane B's Send button.
+    const pane = useChatPaneOrNull()
+    const paneKey = composerPaneKey(pane?.paneId)
     const uploadingFiles = useFileStore(s => s.uploadingFiles)
-    const inFlight = Array.from(uploadingFiles.values()).some(
-      f => f.status === 'pending' || f.status === 'uploading',
+    const uploadOwner = useFileStore(s => s.uploadOwner)
+    const inFlight = Array.from(uploadingFiles.entries()).some(
+      ([id, f]) =>
+        composerPaneKey(uploadOwner.get(id)) === paneKey &&
+        (f.status === 'pending' || f.status === 'uploading'),
     )
     return inFlight ? { reason: 'uploading' } : null
   },
@@ -316,7 +335,7 @@ const fileExtension: ChatExtension = createExtension({
     const fileStore = Stores.File
 
     // Check if there are any files still uploading (use action method to avoid React hooks)
-    if (fileStore.isUploading()) {
+    if (fileStore.isUploading(composerPaneKey(Stores.SplitView.$.focusedPaneId))) {
       console.log('[FileExtension] Blocking message send - files still uploading')
 
       return {
@@ -329,12 +348,12 @@ const fileExtension: ChatExtension = createExtension({
   },
 
   // Compose request fields to add file_ids to send message request
-  composeRequestFields: async () => {
+  composeRequestFields: async (ctx) => {
     const { Stores } = await import('@/core/stores')
 
-    // Call action method to get file IDs (actions don't trigger React hooks)
+    // The SENDING pane's file ids (ITEM-32).
     const fileStore = Stores.File
-    const fileIds = fileStore.getFileIds()
+    const fileIds = fileStore.getFileIds(composerPaneKey(ctx.paneId))
 
     console.log('[FileExtension] composeRequestFields - fileIds:', fileIds)
 
@@ -354,7 +373,7 @@ const fileExtension: ChatExtension = createExtension({
 
     // Backup files before clearing
     fileStore.setBackupFiles()
-    fileStore.clearFiles()
+    fileStore.clearFiles(composerPaneKey(Stores.SplitView.$.focusedPaneId))
     console.log('[FileExtension] Backed up and cleared files after message sent')
     return {}
   },
