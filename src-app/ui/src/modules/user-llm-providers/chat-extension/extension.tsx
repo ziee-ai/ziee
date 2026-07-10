@@ -29,7 +29,7 @@ const modelExtension: ChatExtension = createExtension({
 
   initialize: async (ctx) => {
     const { Stores } = await import('@/core/stores')
-    const { NEW_CHAT_MODEL_KEY } = await import(
+    const { newChatModelKey } = await import(
       '@/modules/user-llm-providers/ModelPicker.store'
     )
 
@@ -46,7 +46,8 @@ const modelExtension: ChatExtension = createExtension({
         (state: any) => state.editingMessage,
         (editingMessage: any) => {
           const conversation = chatStore.getState().conversation
-          const key = conversation?.id ?? NEW_CHAT_MODEL_KEY
+          const key =
+            conversation?.id ?? newChatModelKey(chatStore.getState().paneId)
           if (editingMessage?.model_id) {
             Stores.ModelPicker.setModelId(key, editingMessage.model_id)
           } else if (!editingMessage) {
@@ -74,10 +75,10 @@ const modelExtension: ChatExtension = createExtension({
    */
   composeRequestFields: async ctx => {
     const { Stores } = await import('@/core/stores')
-    const { NEW_CHAT_MODEL_KEY } = await import(
+    const { newChatModelKey } = await import(
       '@/modules/user-llm-providers/ModelPicker.store'
     )
-    const key = ctx.conversationId ?? NEW_CHAT_MODEL_KEY
+    const key = ctx.conversationId ?? newChatModelKey(ctx.paneId)
     const modelId =
       Stores.ModelPicker.getModelId(key) ?? Stores.ModelPicker.defaultModelId()
     if (!modelId) {

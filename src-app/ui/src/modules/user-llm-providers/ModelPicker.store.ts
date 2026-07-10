@@ -14,6 +14,16 @@ import { sortProviders } from '@/modules/llm-provider/sortProviders'
 export const NEW_CHAT_MODEL_KEY = '__new_chat__'
 
 /**
+ * The new-chat model-selection key for a pane (ITEM-37). Two new-chat panes must
+ * NOT share one model selection, so a split pane gets its own suffixed key; a
+ * null paneId (single-pane) keeps the bare `NEW_CHAT_MODEL_KEY` (byte-identical).
+ * A pane with no explicit pick still falls back to the shared default via
+ * `defaultModelId()`.
+ */
+export const newChatModelKey = (paneId: string | null | undefined): string =>
+  paneId ? `${NEW_CHAT_MODEL_KEY}:${paneId}` : NEW_CHAT_MODEL_KEY
+
+/**
  * ModelPicker store — the chat composer's model selection plus the cached list
  * of user-accessible providers/models. Lives at `Stores.ModelPicker`. `providers`
  * is a GLOBAL catalog (lazy-loads once; listeners keep it in sync with admin

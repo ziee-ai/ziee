@@ -33,7 +33,7 @@ const assistantExtension: ChatExtension = createExtension({
 
   initialize: async (ctx) => {
     const { Stores } = await import('@/core/stores')
-    const { NEW_CHAT_ASSISTANT_KEY } = await import(
+    const { newChatAssistantKey } = await import(
       '@/modules/assistant/stores/AssistantPicker.store'
     )
 
@@ -45,7 +45,8 @@ const assistantExtension: ChatExtension = createExtension({
     let preEditAssistantId: string | null = null
     const chatStore = ctx.chatStore
     const paneKey = () =>
-      chatStore.getState().conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
+      chatStore.getState().conversation?.id ??
+      newChatAssistantKey(chatStore.getState().paneId)
     const subs: Array<() => void> = []
     paneAssistantSubs.set(chatStore, subs)
 
@@ -103,10 +104,10 @@ const assistantExtension: ChatExtension = createExtension({
 
   composeRequestFields: async (ctx): Promise<ExtensionRequestFields> => {
     // The SENDING pane's assistant (ctx.conversationId; null = new chat). (ITEM-5)
-    const { NEW_CHAT_ASSISTANT_KEY } = await import(
+    const { newChatAssistantKey } = await import(
       '@/modules/assistant/stores/AssistantPicker.store'
     )
-    const key = ctx.conversationId ?? NEW_CHAT_ASSISTANT_KEY
+    const key = ctx.conversationId ?? newChatAssistantKey(ctx.paneId)
     const selectedAssistantId = Stores.AssistantPicker.getAssistantId(key)
 
     if (selectedAssistantId) {

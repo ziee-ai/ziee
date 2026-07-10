@@ -10,6 +10,16 @@ import { defineStore } from '@/core/store-kit'
 export const NEW_CHAT_ASSISTANT_KEY = '__new_chat__'
 
 /**
+ * The new-chat assistant key for a pane (ITEM-37) — a split pane gets its own
+ * suffixed key so two new-chat panes don't share one assistant; a null paneId
+ * (single-pane) keeps the bare `NEW_CHAT_ASSISTANT_KEY` (byte-identical).
+ */
+export const newChatAssistantKey = (
+  paneId: string | null | undefined,
+): string =>
+  paneId ? `${NEW_CHAT_ASSISTANT_KEY}:${paneId}` : NEW_CHAT_ASSISTANT_KEY
+
+/**
  * Assistant picker store — the user's per-chat-composer assistant selection plus
  * the cached list of available assistants. Lives at `Stores.AssistantPicker`.
  * `availableAssistants` is a GLOBAL catalog (lazy-loads once on first access).

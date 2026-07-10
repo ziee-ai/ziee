@@ -1,7 +1,8 @@
 import { Tag } from '@/components/ui'
 import { Bot } from 'lucide-react'
 import { Stores } from '@/core/stores'
-import { NEW_CHAT_ASSISTANT_KEY } from '@/modules/assistant/stores/AssistantPicker.store'
+import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**
  * AssistantStatusChip Component
@@ -11,7 +12,9 @@ export function AssistantStatusChip() {
   const { selectedByConversation, availableAssistants, clearAssistant } =
     Stores.AssistantPicker
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
-  const key = Stores.Chat.conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
+  const pane = useChatPaneOrNull()
+  const key =
+    Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
   const selectedAssistantId = selectedByConversation[key]
 
   if (!selectedAssistantId) return null
