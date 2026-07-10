@@ -3,6 +3,8 @@ import { Loader2, Mic, Square, X } from 'lucide-react'
 import { Button, Popover, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { isRecordingSupported } from '../Voice.store'
 
 const PRIVACY_HINT_KEY = 'ziee.voice.privacyHintDismissed'
@@ -36,6 +38,15 @@ function formatElapsed(ms: number): string {
 export function MicButton() {
   const { status, elapsedMs, capability, capabilityLoaded, stageText, announcement } =
     Stores.Chat.VoiceStore
+  // PERMISSION gate (layer 4 — explicit, at the render site). Independent of the
+  // feature/binary-availability gate below: a user whose group lacks
+  // `voice::transcribe` sees NO mic affordance AT ALL — not even the muted
+  // "not set up yet" state. Kept separate from the capability check so the two
+  // hide the button for their own distinct reason (perm vs. not-provisioned),
+  // and so a future default `capability` can never silently leak the button to
+  // an unpermitted user. (The store ALSO skips the capability fetch when this
+  // perm is absent, and the endpoint 403s — this is the explicit third layer.)
+  const canDictate = usePermission(Permissions.VoiceTranscribe)
   const [hintOpen, setHintOpen] = useState(
     () => typeof localStorage !== 'undefined' && localStorage.getItem(PRIVACY_HINT_KEY) == null,
   )
@@ -48,6 +59,9 @@ export function MicButton() {
       Stores.Chat.VoiceStore.cancelRecording()
     }
   }, [])
+
+  // PERMISSION gate first: no `voice::transcribe` → no affordance whatsoever.
+  if (!canDictate) return null
 
   // Hidden: feature off, capability not yet known, or recording unsupported.
   if (!capabilityLoaded || !capability || !capability.enabled) return null

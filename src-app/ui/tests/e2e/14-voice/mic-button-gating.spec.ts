@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { loginWithPerms } from '../permissions/fixtures'
 import { byTestId } from '../testid'
 import {
   installVoiceBrowserMocks,
@@ -87,6 +88,33 @@ test.describe('Voice — mic-button gating (TEST-27)', () => {
     // Composer is up, but the mic never renders.
     await expect(byTestId(page, 'chat-message-textarea')).toBeVisible()
     await expect(byTestId(page, 'voice-mic-button')).toHaveCount(0)
+  })
+
+  test('no voice::transcribe permission → NO mic affordance (independent of a ready capability)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await installVoiceBrowserMocks(page)
+    // Mock a FULLY-READY capability + supported browser, so the ONLY thing that
+    // can hide the mic is the PERMISSION gate — proving it is independent of the
+    // feature/binary-availability gate (a ready capability would otherwise SHOW
+    // the enabled mic, as the first test in this file asserts).
+    await routeVoice(page, defaultVoiceState())
+
+    // A real user isolated to profile-only perms: loginWithPerms removes them
+    // from the default Users group, so they do NOT hold `voice::transcribe`
+    // (migration 134 grants that via the group, not directly).
+    await loginWithPerms(page, baseURL, apiURL, [], 'voice-noperm')
+    await gotoComposer(page, baseURL)
+
+    // The composer renders (the /chat route is ungated), but the mic affordance
+    // is ENTIRELY absent — not the active mic, and not the muted "not set up"
+    // state either. An unpermitted user sees no voice affordance at all.
+    await expect(byTestId(page, 'chat-message-textarea')).toBeVisible()
+    await expect(byTestId(page, 'voice-mic-button')).toHaveCount(0)
+    await expect(byTestId(page, 'voice-elapsed')).toHaveCount(0)
+    await expect(byTestId(page, 'voice-live-region')).toHaveCount(0)
   })
 
   test('getUserMedia denied → error toast', async ({ page, testInfra }) => {

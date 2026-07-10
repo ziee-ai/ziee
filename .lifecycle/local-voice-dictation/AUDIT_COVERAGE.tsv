@@ -88,7 +88,7 @@ src-app/ui/src/dev/gallery/stateMatrix.generated.ts	4646	4655	patterns-conforman
 src-app/ui/src/modules/chat/extensions/voice/Voice.store.ts	1	385	state-management,a11y,patterns-conformance,correctness,perf,i18n-copy,perms-authz
 src-app/ui/src/modules/chat/extensions/voice/audio/wav.test.ts	1	131	tests-quality,correctness,patterns-conformance
 src-app/ui/src/modules/chat/extensions/voice/audio/wav.ts	1	126	state-management,a11y,patterns-conformance,correctness,perf,i18n-copy,perms-authz
-src-app/ui/src/modules/chat/extensions/voice/components/MicButton.tsx	1	240	state-management,a11y,patterns-conformance,correctness,perf,i18n-copy,perms-authz
+src-app/ui/src/modules/chat/extensions/voice/components/MicButton.tsx	1	254	state-management,a11y,patterns-conformance,correctness,perf,i18n-copy,perms-authz
 src-app/ui/src/modules/chat/extensions/voice/extension.tsx	1	31	state-management,a11y,patterns-conformance,correctness,perf,i18n-copy,perms-authz
 src-app/ui/src/modules/chat/extensions/voice/voiceLogic.test.ts	1	56	tests-quality,correctness,patterns-conformance
 src-app/ui/src/modules/chat/extensions/voice/voiceLogic.ts	1	48	tests-quality,correctness,patterns-conformance
@@ -111,7 +111,7 @@ src-app/ui/src/modules/voice/stores/index.ts	1	6	state-management,a11y,patterns-
 src-app/ui/src/modules/voice/types.ts	1	24	state-management,a11y,patterns-conformance,correctness,perf,i18n-copy,perms-authz
 src-app/ui/tests/e2e/14-voice/admin-empty-state.spec.ts	1	103	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-voice/dictation-inserts-not-sends.spec.ts	1	104	tests-quality,correctness,patterns-conformance
-src-app/ui/tests/e2e/14-voice/mic-button-gating.spec.ts	1	111	tests-quality,correctness,patterns-conformance
+src-app/ui/tests/e2e/14-voice/mic-button-gating.spec.ts	1	139	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-voice/mic-not-ready.spec.ts	1	95	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-voice/mic-recording-ux.spec.ts	1	88	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-voice/visual-states.spec.ts	1	169	tests-quality,correctness,patterns-conformance

@@ -94,7 +94,8 @@ checks, all green.
 Real per-spec output (passed-count in parens):
 
 - **TEST-26**: PASS  (dictation-inserts-not-sends, 2)
-- **TEST-27**: PASS  (mic-button-gating, 4)
+- **TEST-27**: PASS  (mic-button-gating, 4 — ready-mic / not-ready-disabled / feature-off-hidden / getUserMedia-denied. The ready-mic case flaked once on a cold-start slow run (9.1m) and passed on isolated re-run, 41s.)
+- **TEST-38**: PASS  (mic-button-gating — PERMISSION gate. Ran the full e2e harness: a real profile-only user, isolated from the Users group so lacking `voice::transcribe`, sees NO mic affordance (`voice-mic-button`/`voice-elapsed`/`voice-live-region` all count 0) **even with a ready capability mocked**. Confirms the explicit `usePermission(VoiceTranscribe)` render gate hides the composer mic independently of the binary/feature gate. `2 passed` incl. the admin ready-mic on the same run.)
 - **TEST-28**: PASS  (voice-runtime-admin, 1)
 - **TEST-29**: PASS  (voice-settings-admin, 1)
 - **TEST-30**: PASS  (voice-desktop-surface, 1 — desktop bundle discovery parity)
