@@ -18,8 +18,15 @@ pub struct Config {
     pub lit_search: Option<LitSearchConfig>,
     #[serde(default)]
     pub web_search: Option<WebSearchConfig>,
+
+    /// Voice dictation (managed whisper.cpp speech-to-text runtime). Absent =
+    /// enabled. Deploy-level kill switch: `voice: { enabled: false }`.
+    #[serde(default)]
+    pub voice: Option<VoiceConfig>,
     #[serde(default)]
     pub control_mcp: Option<ControlMcpConfig>,
+    #[serde(default)]
+    pub js_tool: Option<JsToolConfig>,
     #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
@@ -239,6 +246,32 @@ impl Default for LitSearchConfig {
     }
 }
 
+/// Configuration for the `js_tool` built-in (`run_js` programmatic tool calling).
+/// The embedded QuickJS interpreter runs IN-PROCESS with zero ambient capability
+/// and only exposes tools the conversation already has (mutating sub-tools still
+/// require per-call approval), so it is on by default. A deploy-level operator
+/// turns it off with `js_tool: { enabled: false }` — a kill switch an admin
+/// cannot re-enable. When false, the chat extension never sets the attach flag,
+/// so `run_js` is never offered to any model.
+#[derive(Debug, Deserialize, Clone)]
+pub struct JsToolConfig {
+    /// Master switch. When false, `run_js` is never attached. Defaults to true.
+    #[serde(default = "default_js_tool_enabled")]
+    pub enabled: bool,
+}
+
+fn default_js_tool_enabled() -> bool {
+    true
+}
+
+impl Default for JsToolConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_js_tool_enabled(),
+        }
+    }
+}
+
 /// Configuration for the `web_search` built-in MCP server (web search + page
 /// fetch). Connected-only: query terms egress to the configured search
 /// provider, so IP-sensitive operators turn it off with
@@ -262,6 +295,31 @@ impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
             enabled: default_web_search_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `voice` dictation runtime (managed whisper.cpp
+/// speech-to-text). Fully local — no cloud STT. `voice: { enabled: false }` is a
+/// **deploy-level** kill switch an admin cannot re-enable (distinct from the
+/// runtime `voice_runtime_settings.enabled` toggle). When false, `init()`
+/// returns before spawning the reaper / registering surfaces.
+#[derive(Debug, Deserialize, Clone)]
+pub struct VoiceConfig {
+    /// Master switch. When false, the module's `init()` returns early. Defaults
+    /// to true.
+    #[serde(default = "default_voice_enabled")]
+    pub enabled: bool,
+}
+
+fn default_voice_enabled() -> bool {
+    true
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_voice_enabled(),
         }
     }
 }
@@ -763,6 +821,42 @@ mod rate_limit_config_tests {
         assert!(cfg.enabled);
         assert_eq!(cfg.per_second, 100);
         assert_eq!(cfg.burst_size, 200);
+    }
+}
+
+#[cfg(test)]
+mod voice_config_tests {
+    use super::VoiceConfig;
+
+    // serde_json keeps the test dependency-free; VoiceConfig derives Deserialize
+    // so the wire format is irrelevant to what we assert. Mirrors how the module
+    // resolves the deploy-level kill switch:
+    //   config.voice.as_ref().map(|c| c.enabled).unwrap_or(true)   (voice/mod.rs)
+
+    /// The exact gate the module applies: an absent `voice:` section (None) means
+    /// ENABLED; only an explicit `enabled: false` disables it.
+    fn resolve(cfg: Option<VoiceConfig>) -> bool {
+        cfg.as_ref().map(|c| c.enabled).unwrap_or(true)
+    }
+
+    #[test]
+    fn absent_voice_section_defaults_to_enabled() {
+        assert!(resolve(None), "an absent voice: config must default to enabled");
+        // And an empty block `voice: {}` (present but no fields) is also enabled.
+        let empty: VoiceConfig = serde_json::from_str("{}").unwrap();
+        assert!(empty.enabled);
+        assert!(resolve(Some(empty)));
+    }
+
+    #[test]
+    fn explicit_enabled_false_disables() {
+        let cfg: VoiceConfig = serde_json::from_str(r#"{"enabled":false}"#).unwrap();
+        assert!(!cfg.enabled);
+        assert!(!resolve(Some(cfg)), "voice enabled:false must disable");
+
+        let on: VoiceConfig = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(on.enabled);
+        assert!(resolve(Some(on)));
     }
 }
 

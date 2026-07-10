@@ -76,17 +76,48 @@ static BACKFILL_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 /// the file has no extracted text. Called right after `publish_file_changed`
 /// at the upload + files_mcp create_file sites.
 pub fn spawn_index(user_id: Uuid, file: &File) {
-    if file.text_page_count <= 0 {
-        return;
-    }
     let (file_id, blob_version_id, version, pages) =
         (file.id, file.blob_version_id, file.version, file.text_page_count);
     tokio::spawn(async move {
+        if pages <= 0 {
+            // No extractable text (scanned/image PDF) — a distinct terminal
+            // state so the KB UI can surface it rather than showing "indexed".
+            set_index_state(user_id, file_id, "no_text", None, 0).await;
+            return;
+        }
         if let Err(e) = index_file_version(user_id, file_id, blob_version_id, version, pages).await
         {
             tracing::warn!("file_rag: index of {file_id} failed: {e}");
+            set_index_state(user_id, file_id, "failed", Some(&e.to_string()), 0).await;
         }
     });
+}
+
+/// Upsert + broadcast a file's index lifecycle state (Part I). Best-effort — a
+/// DB hiccup here never fails ingestion.
+pub(crate) async fn set_index_state(
+    user_id: Uuid,
+    file_id: Uuid,
+    status: &str,
+    error: Option<&str>,
+    chunk_count: i32,
+) {
+    use crate::modules::sync::event::{publish, Audience, SyncAction, SyncEntity};
+    if let Err(e) = Repos
+        .file_rag
+        .set_index_state(file_id, user_id, status, error, chunk_count)
+        .await
+    {
+        tracing::warn!("file_rag: set_index_state({status}) for {file_id} failed: {e}");
+        return;
+    }
+    publish(
+        SyncEntity::FileIndexState,
+        SyncAction::Update,
+        file_id,
+        Audience::owner(user_id),
+        None,
+    );
 }
 
 /// Spawn a detached re-index for a file whose head version changed (edit /
@@ -96,6 +127,7 @@ pub fn spawn_reindex(user_id: Uuid, file_id: Uuid) {
     tokio::spawn(async move {
         if let Err(e) = reindex_file(user_id, file_id).await {
             tracing::warn!("file_rag: reindex of {file_id} failed: {e}");
+            set_index_state(user_id, file_id, "failed", Some(&e.to_string()), 0).await;
         }
     });
 }
@@ -137,6 +169,9 @@ pub async fn index_file_version(
         return Ok(());
     }
 
+    // Mark actively-indexing so the KB UI can distinguish it from pending/failed.
+    set_index_state(user_id, file_id, "indexing", None, 0).await;
+
     let storage = get_file_storage();
     let params = ChunkParams::from_settings(&admin);
     let max_chunks = admin.max_chunks_per_file.max(1) as usize;
@@ -177,14 +212,21 @@ pub async fn index_file_version(
 
     // Atomic, per-file-serialized swap (DELETE + INSERT in one tx). An empty
     // `drafts` (no extractable text) clears the file's index.
+    let chunk_count = drafts.len() as i32;
     Repos
         .file_rag
         .reindex_chunks(file_id, user_id, blob_version_id, version, &drafts)
         .await?;
 
     if drafts.is_empty() {
+        // Reached the extractor but produced zero chunks — treat as no_text so
+        // it's distinct from a still-indexing/failed doc.
+        set_index_state(user_id, file_id, "no_text", None, 0).await;
         return Ok(());
     }
+
+    // Chunks are inserted → FTS-searchable now (embedding is a background arm).
+    set_index_state(user_id, file_id, "indexed", None, chunk_count).await;
 
     // Vector arm: embed in the background only when a model is configured.
     // Best-effort — failure leaves chunks unembedded (FTS still works).

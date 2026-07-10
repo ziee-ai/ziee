@@ -79,6 +79,21 @@ fn main() {
         }
     }
 
+    // Per-FILE rerun triggers (emitted before `extension_files` is consumed below).
+    // A `cargo:rerun-if-changed=<DIR>` does NOT re-fire on an IN-PLACE edit to an
+    // existing file — only the dir's own mtime is watched, not its contents' (the
+    // same cargo limitation documented for the hub-seed in CLAUDE.md). Adding a new
+    // `SSEChatStreamEventVariants` / `MessageContentDataVariants` variant to an
+    // existing extension.rs is exactly such an in-place edit, so without these
+    // per-file watches the codegen (chat_extensions.rs) goes stale and the composed
+    // `SSEChatStreamEvent` silently lacks the new variant — building on a warm tree
+    // (stale generated file already present) but FAILING a clean/CI build with
+    // `E0599: no variant …`. The `compose_guard` test in
+    // chat/core/types/streaming.rs fails loudly if this ever regresses.
+    for (path, _) in &extension_files {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+
     for (path, qualified_prefix) in extension_files {
         // module_path is only used downstream for the legacy
         // chat-internal qualified-path builder — see SSEChatStreamEventVariants
@@ -238,12 +253,13 @@ fn main() {
     // The auto_register_extensions function in extension_registration.rs
     // iterates the CHAT_EXTENSIONS slice instead of using generated code
 
-    // Tell cargo to rerun if any .rs file under modules/chat (in-chat
-    // extensions) OR modules/* (sibling-module bridges) changes.
-    // Watching the broader modules dir is fine — cargo's change
-    // detection is content-hashed, not just timestamp-based.
+    // Rerun triggers.
+    // The directory watches catch add/remove/rename of whole extension.rs files
+    // (+ new sibling modules) + build.rs itself.
     println!("cargo:rerun-if-changed={}", chat_dir.display());
     println!("cargo:rerun-if-changed={}", modules_dir.display());
+    println!("cargo:rerun-if-changed=build.rs");
+    // (the per-file watches were emitted above, before extension_files is consumed).
 }
 
 fn extract_module_path(base: &PathBuf, path: &std::path::Path) -> String {

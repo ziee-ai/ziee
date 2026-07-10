@@ -78,6 +78,20 @@ export const FileVersions = defineStore('FileVersions', {
           /* best-effort */
         }
       },
+      /**
+       * Save `content` as a new head version — the user side of co-editing a
+       * deliverable. Byte-identical content is a server-side no-op. Refreshes the
+       * version list + head entity so the panel/version-bar reflect the save.
+       */
+      appendVersion: async (fileId: string, content: string): Promise<void> => {
+        await ApiClient.File.appendVersion({ file_id: fileId, content })
+        await loadVersions(fileId)
+        try {
+          await Stores.File.loadMessageFile(fileId)
+        } catch {
+          /* best-effort */
+        }
+      },
       /** Render-safe: returns cached text for a non-head version, triggering a load. */
       getVersionText: (fileId: string, version: number): string | null => {
         const key = `${fileId}:${version}`

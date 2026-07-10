@@ -3,7 +3,9 @@ import { Download, Save } from 'lucide-react'
 import { Button, message } from '@/components/ui'
 import { ApiClient, getAuthToken } from '@/api-client'
 import { getBaseUrl } from '@/api-client/getBaseURL'
+import { Permissions } from '@/api-client/types'
 import type { MessageContentDataToolResult, MessageContent } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
@@ -33,8 +35,16 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Each affordance is gated on the perm its endpoint requires:
+  //   Save   → workspace-save  → workflows::install
+  //   Download → workspace-export → workflows::execute
+  // (see server workflow/handlers/dev.rs). A viewer who can see the run
+  // result but lacks these must not see a button that 403s.
+  const canSave = usePermission(Permissions.WorkflowsInstall)
+  const canDownload = usePermission(Permissions.WorkflowsExecute)
 
-  const canGraduate = !block?.is_error && !!dir && !!conversationId
+  const canGraduate =
+    !block?.is_error && !!dir && !!conversationId && (canSave || canDownload)
 
   const onSave = async () => {
     if (!dir || !conversationId) return
@@ -84,27 +94,31 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
       <MessageFilesView {...props} />
       {canGraduate && (
         <div className="my-2 flex gap-2" data-testid="workflow-workspace-run-actions">
-          <Button
-            size="default"
-            variant="outline"
-            icon={<Save />}
-            loading={saving}
-            disabled={saved}
-            onClick={onSave}
-            data-testid="workflow-save-to-mine"
-          >
-            {saved ? 'Saved' : 'Save to my workflows'}
-          </Button>
-          <Button
-            size="default"
-            variant="outline"
-            icon={<Download />}
-            loading={downloading}
-            onClick={onDownload}
-            data-testid="workflow-download-targz"
-          >
-            Download .tar.gz
-          </Button>
+          {canSave && (
+            <Button
+              size="default"
+              variant="outline"
+              icon={<Save />}
+              loading={saving}
+              disabled={saved}
+              onClick={onSave}
+              data-testid="workflow-save-to-mine"
+            >
+              {saved ? 'Saved' : 'Save to my workflows'}
+            </Button>
+          )}
+          {canDownload && (
+            <Button
+              size="default"
+              variant="outline"
+              icon={<Download />}
+              loading={downloading}
+              onClick={onDownload}
+              data-testid="workflow-download-targz"
+            >
+              Download .tar.gz
+            </Button>
+          )}
         </div>
       )}
     </>

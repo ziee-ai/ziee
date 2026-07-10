@@ -27,7 +27,7 @@ function delimitedBody(delimiter: string) {
     if (file && mode === 'raw') return <RawCodeView text={content} />
     // `fill` in the full panel (file present) so the grid uses the panel height;
     // inline chat previews (url) stay content-hugging + capped.
-    return <DelimitedTable text={content} delimiter={delimiter} fileName={file?.filename} fill={!!file} />
+    return <DelimitedTable text={content} delimiter={delimiter} fileName={file?.filename} fileId={file?.id} fill={!!file} />
   }
 }
 

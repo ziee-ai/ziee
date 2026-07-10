@@ -1497,10 +1497,18 @@ async fn admin_read_permission_grant_takes_effect_mid_session() {
 /// DELETE+INSERT swap (no doubled rows, no lost index). Drives the real
 /// `reindex_file` entrypoint twice concurrently.
 #[tokio::test]
+#[serial_test::serial(repos, file_storage)]
 async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
     let server = TestServer::start().await;
     let user = power_user(&server, "rag_concurrent_ingest").await;
     let pool = db_pool(&server).await;
+    // This test calls the in-process `reindex_file` entrypoint directly, so the
+    // process-global RepositoryFactory + file storage must be initialized (the
+    // spawned server only inits its own process). Mirrors file/mod.rs:1859; the
+    // `#[serial(repos, file_storage)]` guard keeps parallel tests from
+    // clobbering these process-global singletons.
+    ziee::init_repositories(pool.clone());
+    ziee::init_file_storage(server.data_dir().join("files"));
 
     set_rag_settings(&server, &user, json!({ "enabled": true })).await;
     let file_id = upload_text(
@@ -1540,10 +1548,17 @@ async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
 /// With NO embedding model configured, freshly-indexed chunks have NULL
 /// embeddings — exactly the mid-rebuild state — so this reproduces it directly.
 #[tokio::test]
+#[serial_test::serial(repos, file_storage)]
 async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_still_serves() {
     let server = TestServer::start().await;
     let user = power_user(&server, "rag_embed_race").await;
     let pool = db_pool(&server).await;
+    // Calls the in-process `*_hit_count_for_test` search entrypoints directly,
+    // so the process-global RepositoryFactory + file storage must be
+    // initialized. Mirrors file/mod.rs:1859; `#[serial(repos, file_storage)]`
+    // keeps parallel tests from clobbering these process-global singletons.
+    ziee::init_repositories(pool.clone());
+    ziee::init_file_storage(server.data_dir().join("files"));
 
     // FTS-only deployment (no embedding model) → chunks land with NULL embeddings.
     set_rag_settings(&server, &user, json!({ "enabled": true })).await;
@@ -1847,7 +1862,7 @@ async fn concurrent_reindex_same_file_yields_one_consistent_chunk_set() {
     tokio::time::sleep(Duration::from_millis(800)).await;
     wait_for_chunks(&pool, &file_id, 1).await;
     let chunk_contents: Vec<String> = sqlx::query_scalar(
-        "SELECT content FROM file_chunks WHERE file_id = $1 ORDER BY chunk_index",
+        "SELECT content FROM file_chunks WHERE file_id = $1::uuid ORDER BY chunk_index",
     )
     .bind(&file_id)
     .fetch_all(&pool)
@@ -1894,7 +1909,7 @@ async fn semantic_search_with_null_embeddings_degrades_gracefully() {
     wait_for_chunks(&pool, &file_ids[0], 1).await;
 
     // Simulate the mid-rebuild window: every chunk embedding is NULL.
-    sqlx::query("UPDATE file_chunks SET embedding = NULL WHERE file_id = $1")
+    sqlx::query("UPDATE file_chunks SET embedding = NULL WHERE file_id = $1::uuid")
         .bind(&file_ids[0])
         .execute(&pool)
         .await
@@ -1910,3 +1925,161 @@ async fn semantic_search_with_null_embeddings_degrades_gracefully() {
     pool.close().await;
 }
 
+
+// ─────────────────────────── TEST-6: reranker settings (migration 135) ───────────────────────────
+
+#[tokio::test]
+async fn test_6_reranker_settings_roundtrip_and_validation() {
+    let server = TestServer::start().await;
+    let admin = power_user(&server, "frag_rerank_admin").await;
+
+    // candidate_k out of range (1..=200) → clean 400, not a 500 / DB error.
+    let bad = put_settings_raw(&server, &admin, json!({ "rerank_candidate_k": 201 })).await;
+    assert_eq!(bad.status(), 400, "candidate_k=201 rejected: {}", bad.text().await.unwrap_or_default());
+
+    // valid rerank tuning persists + reads back.
+    let ok = put_settings_raw(
+        &server,
+        &admin,
+        json!({ "rerank_enabled": true, "rerank_candidate_k": 50 }),
+    )
+    .await;
+    assert!(ok.status().is_success(), "valid rerank settings: {}", ok.text().await.unwrap_or_default());
+    let got = get_settings(&server, &admin).await;
+    assert_eq!(got["rerank_enabled"], true);
+    assert_eq!(got["rerank_candidate_k"], 50);
+
+    // A reranker_model_id that isn't a working reranker is rejected by the probe.
+    let fake_model = uuid::Uuid::new_v4().to_string();
+    let rejected = put_settings_raw(
+        &server,
+        &admin,
+        json!({ "reranker_model_id": fake_model }),
+    )
+    .await;
+    assert_eq!(
+        rejected.status(),
+        400,
+        "a non-existent/non-rerank model is rejected by the probe: {}",
+        rejected.text().await.unwrap_or_default()
+    );
+}
+
+// ─────────────────────────── TEST-11: file_index_state emit (Part I) ───────────────────────────
+
+/// Poll `file_index_state.status` until it is a terminal value or timeout.
+async fn wait_index_status(pool: &sqlx::PgPool, file_id: &str) -> String {
+    let fid = Uuid::parse_str(file_id).unwrap();
+    for _ in 0..40 {
+        let s: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM file_index_state WHERE file_id = $1",
+        )
+        .bind(fid)
+        .fetch_optional(pool)
+        .await
+        .expect("query index state");
+        if let Some(st) = s {
+            if st == "indexed" || st == "no_text" || st == "failed" {
+                return st;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!("timed out waiting for a terminal file_index_state for {file_id}");
+}
+
+#[tokio::test]
+async fn test_11_index_state_reaches_indexed_and_emits_owner_scoped() {
+    use crate::common::sync_probe::SyncProbe;
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let owner = power_user(&server, "fis_owner").await;
+    let other = power_user(&server, "fis_other").await;
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    // A text file is FTS-indexable with no embedder → reaches `indexed`.
+    let fid = upload_text(&server, &owner, "idx.txt", "indexed content here").await;
+
+    let frame = owner_probe
+        .expect_event("file_index_state", "update", Duration::from_secs(10))
+        .await;
+    assert_eq!(frame.id, fid, "the index-state sync frame carries the file id");
+    // The other user never sees it (owner-scoped audience).
+    other_probe.expect_silence(Duration::from_secs(1)).await;
+
+    let status = wait_index_status(&pool, &fid).await;
+    assert_eq!(status, "indexed", "a text file with extractable text reaches indexed");
+}
+
+#[tokio::test]
+async fn test_11b_no_text_file_lands_no_text() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "fis_notext").await;
+
+    // A 1x1 PNG has no extractable text → the distinct `no_text` terminal state.
+    const PNG_1X1: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(PNG_1X1.to_vec())
+            .file_name("pixel.png")
+            .mime_str("image/png")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 201, "png upload: {}", resp.text().await.unwrap_or_default());
+    let fid = resp.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string();
+
+    let status = wait_index_status(&pool, &fid).await;
+    assert_eq!(status, "no_text", "an image (no extractable text) lands no_text, not indexed/failed");
+}
+
+// Retrieval / KB limits promoted from compiled-in constants to admin settings
+// (migration 137): round-trip + range validation (DB CHECK + handler).
+#[tokio::test]
+async fn test_retrieval_limit_settings_roundtrip_and_validation() {
+    let server = TestServer::start().await;
+    let admin = power_user(&server, "frag_limits_admin").await;
+
+    // defaults preserve prior compiled-in behaviour.
+    let d = get_settings(&server, &admin).await;
+    assert_eq!(d["kb_max_documents"], 2000);
+    assert_eq!(d["search_max_hit_chars"], 2000);
+    assert_eq!(d["search_snippet_chars"], 160);
+    assert_eq!(d["search_max_top_k"], 50);
+
+    // valid updates persist + read back.
+    let ok = put_settings_raw(&server, &admin, json!({
+        "kb_max_documents": 500, "search_max_hit_chars": 1200,
+        "search_snippet_chars": 200, "search_max_top_k": 25,
+    })).await;
+    assert!(ok.status().is_success(), "valid limits: {}", ok.text().await.unwrap_or_default());
+    let g = get_settings(&server, &admin).await;
+    assert_eq!(g["kb_max_documents"], 500);
+    assert_eq!(g["search_max_hit_chars"], 1200);
+    assert_eq!(g["search_snippet_chars"], 200);
+    assert_eq!(g["search_max_top_k"], 25);
+
+    // out-of-range each → clean 400 (mirrors the DB CHECK), never a 500.
+    for (field, val) in [
+        ("kb_max_documents", 0), ("kb_max_documents", 100001),
+        ("search_max_hit_chars", 50), ("search_snippet_chars", 5000),
+        ("search_max_top_k", 501),
+    ] {
+        let bad = put_settings_raw(&server, &admin, json!({ field: val })).await;
+        assert_eq!(bad.status(), 400, "{field}={val} must be rejected: {}", bad.text().await.unwrap_or_default());
+    }
+}

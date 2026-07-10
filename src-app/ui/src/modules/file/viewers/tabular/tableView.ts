@@ -97,3 +97,43 @@ export function exportFilename(original: string | undefined, ext: string): strin
   const stem = (original ?? 'export').replace(/\.[^./\\]+$/, '')
   return `${stem || 'export'}-view.${ext}`
 }
+
+/** The tabular viewer's current view snapshot. The body publishes it into
+ *  `FileStore.fileTabularView` (keyed by file id) so the file-viewer header's
+ *  Export / Copy-selection actions can act on the CURRENT view — matching the
+ *  filtered/sorted rows, visible-column subset, and cell selection the user
+ *  sees. Absent entry ⇒ the body hasn't published yet (header actions disabled). */
+export interface TabularViewState {
+  /** Rows in the current (filtered/sorted) view order. */
+  rows: TabularRecord[]
+  /** Visible columns (key + title) in display order (honours the chooser). */
+  columns: ExportColumn[]
+  /** Active delimiter (',' for CSV, '\t' for TSV). */
+  delimiter: string
+  /** Original file name, for the `-view` export filename. */
+  fileName?: string
+  /** The current cell/row selection serialised as TSV ('' when none). */
+  selectionTsv: string
+}
+
+/** Export the current view as a delimited file — only the filtered/sorted rows,
+ *  honouring the visible-column subset. Formerly triggered by the body toolbar;
+ *  now driven from the file-viewer header (chrome). */
+export function exportTabularView(view: TabularViewState): void {
+  const ext = view.delimiter === '\t' ? 'tsv' : 'csv'
+  const text = rowsToDelimited(view.rows, view.columns, view.delimiter)
+  downloadDelimited(text, exportFilename(view.fileName, ext), view.delimiter)
+}
+
+/** Copy the current SELECTION to the clipboard as TSV. The selection string is
+ *  already formula-neutralized by the kit (sanitizeClipboard). The caller
+ *  guarantees a non-empty selection (the header warns on an empty one, mirroring
+ *  chrome.tsx's CopySelectionButton). Returns whether the write succeeded. */
+export async function copyTabularSelection(view: TabularViewState): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(view.selectionTsv)
+    return true
+  } catch {
+    return false
+  }
+}

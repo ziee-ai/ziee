@@ -1,4 +1,6 @@
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import type {
   HardwareInfo,
   HardwareInfoResponse,
@@ -146,7 +148,13 @@ export const Hardware = defineStore('Hardware', {
     },
   }),
   init: ({ actions, onCleanup }) => {
-    void actions.loadHardwareInfo()
+    // `/api/hardware/info` requires hardware::read (not user-held). A user
+    // reaching /hardware-monitor via hardware::monitor alone would otherwise
+    // 403 on this eager fetch at store-mount. SSE connect is gated by the
+    // route perm separately.
+    if (hasPermissionNow(Permissions.HardwareRead)) {
+      void actions.loadHardwareInfo()
+    }
     // Abort the module-scope SSE controller on store destroy so it doesn't
     // outlive the store (the proxy may destroy it after a 5s grace period; an
     // in-flight SSE keeps running otherwise and blocks reconnect). (audit 09 B-8)

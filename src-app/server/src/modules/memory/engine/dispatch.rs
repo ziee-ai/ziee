@@ -12,7 +12,7 @@
 //! The dispatcher loads the model row by id, looks up its provider,
 //! and routes. No engine flag — provider type IS the engine.
 
-use ai_providers::{EmbeddingsRequest, Provider};
+use ai_providers::{EmbeddingsRequest, Provider, RerankRequest};
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -112,6 +112,74 @@ pub async fn embed_batch(
     }
 
     Ok(vectors)
+}
+
+/// One rerank call. Scores each `document`'s relevance to `query` with the
+/// configured cross-encoder model and returns `(original_index, score)` pairs
+/// **sorted by score descending**. Mirrors `embed` — resolve model (require the
+/// `rerank` capability) → resolve provider → call `AIProvider::rerank`. Reaches
+/// a local llama.cpp reranker via the same OpenAI-compatible proxy as embeddings
+/// (which auto-starts the model on first request).
+pub async fn rerank(
+    model_id: Uuid,
+    query: &str,
+    documents: &[String],
+) -> Result<Vec<(usize, f32)>, AppError> {
+    if documents.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let model = Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::not_found("LlmModel"))?;
+
+    if !model.capabilities.rerank.unwrap_or(false) {
+        return Err(AppError::bad_request(
+            "INVALID_RERANK_MODEL",
+            "configured model is not flagged with the rerank capability",
+        )
+        .into());
+    }
+
+    let provider = Repos
+        .llm_provider
+        .get_by_id(model.provider_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::internal_error("Provider for reranker model not found"))?;
+
+    let api_key = provider.api_key.as_deref().unwrap_or("");
+    let base_url = provider.base_url.as_deref().ok_or_else(|| {
+        AppError::internal_error(format!("Provider '{}' has no base_url configured", provider.name))
+    })?;
+
+    let ai_provider = Provider::new(&provider.provider_type, api_key, base_url).map_err(|e| {
+        AppError::internal_error(format!("create reranker provider '{}': {e}", provider.provider_type))
+    })?;
+
+    let request = RerankRequest {
+        model: model.name.clone(),
+        query: query.to_string(),
+        documents: documents.to_vec(),
+        top_n: None,
+    };
+
+    let resp = ai_provider
+        .rerank(request)
+        .await
+        .map_err(|e| AppError::internal_error(format!("provider rerank error: {e}")))?;
+
+    let mut scored: Vec<(usize, f32)> = resp
+        .results
+        .into_iter()
+        .filter(|r| r.index < documents.len() && r.score.is_finite())
+        .map(|r| (r.index, r.score))
+        .collect();
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(scored)
 }
 
 // P1.g: `embed_local` was the dedicated local-engine path that

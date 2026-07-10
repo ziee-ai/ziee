@@ -524,6 +524,22 @@ pub fn proxy_embeddings_docs(op: TransformOperation) -> TransformOperation {
         .summary("OpenAI-compatible /v1/embeddings proxy.")
 }
 
+/// Reranker proxy — forwards to the local llama.cpp `--reranking` server's
+/// `/v1/rerank`. Same forward path + bearer rewrite + auto-start as embeddings.
+pub async fn proxy_rerank(
+    Extension(pool): Extension<sqlx::PgPool>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    forward_post_with_body(&pool, &headers, body, "/v1/rerank").await
+}
+
+pub fn proxy_rerank_docs(op: TransformOperation) -> TransformOperation {
+    op.id("LocalLlmProxy.rerank")
+        .tag("Local LLM Proxy")
+        .summary("OpenAI-compatible /v1/rerank proxy (cross-encoder reranker).")
+}
+
 pub async fn proxy_models(
     Extension(pool): Extension<sqlx::PgPool>,
     headers: HeaderMap,

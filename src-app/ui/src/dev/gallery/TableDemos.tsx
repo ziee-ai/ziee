@@ -8,7 +8,9 @@
 import { useState } from 'react'
 import { Button, Table } from '@/components/ui'
 import type { TableColumn } from '@/components/ui'
+import type { File as FileEntity } from '@/api-client/types'
 import { DelimitedTable } from '@/modules/file/viewers/tabular/DelimitedTable'
+import { DelimitedHeader } from '@/modules/file/viewers/tabular/header'
 import { XlsxSheet } from '@/modules/file/viewers/tabular/XlsxBody'
 import { RawCodeView } from '@/modules/file/viewers/shared/RawCodeView'
 
@@ -96,6 +98,45 @@ export function DelimitedViewerDemo() {
   return (
     <div className="w-[36rem] max-w-full p-2">
       <DelimitedTable text={CSV_TEXT} delimiter="," fileName="data.csv" />
+    </div>
+  )
+}
+
+// A CSV File entity for the header-inclusive demo. Minimal but well-shaped so
+// `DelimitedHeader` (which needs `{ file }`) type-checks; text_page_count:0 hides
+// the raw toggle (this isolated demo renders the table directly, not via the
+// body's mode path), leaving the whole-file Copy + the view-aware Export /
+// Copy-selection actions this surface exists to exercise.
+const csvFile = {
+  id: 'gallery0-csv0-4000-8000-000000000001',
+  user_id: 'gallery-user',
+  created_by: 'gallery-user',
+  filename: 'data.csv',
+  file_size: CSV_TEXT.length,
+  mime_type: 'text/csv',
+  checksum: 'sha256:gallery-csv',
+  blob_version_id: 'gallery-csv-v1',
+  current_version_id: 'gallery-csv-v1',
+  version: 1,
+  has_thumbnail: false,
+  preview_page_count: 0,
+  text_page_count: 0,
+  processing_metadata: {},
+  created_at: '2026-05-03T08:00:00.000000Z',
+  updated_at: '2026-05-03T08:00:00.000000Z',
+} satisfies FileEntity
+
+/** The real DelimitedTable UNDER the real file-viewer header actions, mirroring
+ *  the shell's header-above-body layout. Drives the view-aware Export /
+ *  Copy-selection hookup (`DelimitedHeader` ↔ body via FileStore.fileTabularView)
+ *  without the async `/text` load path — the table renders straight from `text`. */
+export function DelimitedViewerWithHeaderDemo() {
+  return (
+    <div className="w-[36rem] max-w-full flex flex-col gap-2 p-2">
+      <div className="flex items-center justify-end">
+        <DelimitedHeader file={csvFile} />
+      </div>
+      <DelimitedTable text={CSV_TEXT} delimiter="," fileName="data.csv" fileId={csvFile.id} />
     </div>
   )
 }

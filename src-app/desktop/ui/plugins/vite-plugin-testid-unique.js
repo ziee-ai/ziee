@@ -45,6 +45,20 @@ const TESTID_LITERAL = /data-testid\s*[=:]\s*["']([^"']+)["']/g
 // has (kept in parity — the two plugins scan the same web source).
 const TESTID_EXEMPT = /[/\\]dev[/\\]gallery[/\\]DefectRepro\.tsx$/
 
+// Intentionally-shared testids: the SAME logical control rendered in two
+// MUTUALLY-EXCLUSIVE modes (never both mounted at once), which e2e selects
+// mode-agnostically. The elicitation submit/decline/form/pending controls appear
+// in BOTH the multi-step wizard (`AskUserWizardContent`) and the single-form
+// (`ElicitationFormContent`) renderer of one elicitation; the chat e2e specs
+// (07/09-chat/*elicitation*) select these regardless of which mode renders, so
+// they must stay identical across the two files.
+const ALLOWED_SHARED_TESTIDS = new Set([
+  'elicitation-decline',
+  'elicitation-submit',
+  'mcp-elicitation-form',
+  'mcp-elicitation-pending-card',
+])
+
 function findSourceFiles(dir, fileList = []) {
   if (!fs.existsSync(dir)) return fileList
   for (const entry of fs.readdirSync(dir)) {
@@ -102,8 +116,10 @@ function checkUnique(srcDirs, logger) {
   const duplicates = []
   for (const [id, fileSet] of idMap.entries()) {
     // Allowed within a single file (conditional branches share one testid by
-    // design); a collision is the SAME id claimed by two DIFFERENT files.
-    if (fileSet.size > 1) duplicates.push({ id, files: [...fileSet] })
+    // design); a collision is the SAME id claimed by two DIFFERENT files —
+    // EXCEPT the explicitly allow-listed intentionally-shared ids.
+    if (fileSet.size > 1 && !ALLOWED_SHARED_TESTIDS.has(id))
+      duplicates.push({ id, files: [...fileSet] })
   }
   if (duplicates.length > 0) {
     let msg = `\n[testid-unique] ✗ Found ${duplicates.length} duplicate data-testid literal(s):\n`

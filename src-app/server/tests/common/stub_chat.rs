@@ -478,6 +478,48 @@ fn script(
             let echoed = last_tool_result_text(messages);
             (Some(format!("Recalled prior result: {echoed}")), None)
         }
+        // run_js (programmatic tool calling): emit a `run_js` tool call whose
+        // `script` is chosen by the sub-plan, then echo the run_js result on the
+        // continuation. Scripts are hardcoded (not parsed from the message) so
+        // arbitrary JS never has to survive STUB_PLAN tokenization.
+        "run_js_value" | "run_js_echo" | "run_js_loop" | "run_js_error" | "run_js_gated"
+        | "run_js_bigalloc" => {
+            if let (false, Some(wire)) = (had_tool_result, resolve_wire_name(tool_names, "run_js")) {
+                let src = match plan {
+                    // Basic run, no sub-tool.
+                    "run_js_value" => "return 6 * 7;",
+                    // Allocate ~40 MiB of live strings. Fits under the 128 MiB
+                    // default cap but OOMs under a low (e.g. 16 MiB) memory_bytes
+                    // setting — used to prove the DB-configured cap is honored at
+                    // execution (TEST-47).
+                    "run_js_bigalloc" => {
+                        "const a = []; for (let i = 0; i < 40; i++) { a.push('x'.repeat(1024 * 1024)); } return a.length;"
+                    }
+                    // Call the always-available `get_tool_result` built-in once
+                    // (a real sub-tool dispatch, recorded source='script'); it
+                    // errors on a fake id, which the script swallows.
+                    "run_js_echo" => {
+                        "try { await ziee.tools.get_tool_result({ tool_use_id: '00000000-0000-0000-0000-000000000000' }); } catch (e) {} return 'dispatched';"
+                    }
+                    // Loop the sub-tool over items; only the summary returns (the N
+                    // intermediate results stay in the script, never in context).
+                    "run_js_loop" => {
+                        "let n = 0; for (let i = 0; i < 3; i++) { try { await ziee.tools.get_tool_result({ tool_use_id: '00000000-0000-0000-0000-000000000000' }); } catch (e) {} n++; } return { calls: n };"
+                    }
+                    // A throwing script → error result with a line number.
+                    "run_js_error" => "const a = 1;\nthrow new Error('boom from script');",
+                    // Call a gated sub-tool; catch a denial so the script still
+                    // returns (drives the approval-deny path).
+                    "run_js_gated" => {
+                        "try { const r = await ziee.tools.echo({ msg: 'x' }); return { ok: r.content }; } catch (e) { return { denied: String(e.message || e) }; }"
+                    }
+                    _ => "return null;",
+                };
+                return (None, Some((wire.to_string(), json!({ "script": src }))));
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("run_js said: {echoed}")), None)
+        }
         // "text" and any unknown plan → a plain answer.
         _ => (Some("Hello from the stub model.".into()), None),
     }

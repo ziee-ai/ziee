@@ -1,4 +1,5 @@
 import type { Group } from '@/api-client/types'
+import type { PermissionExpr } from '@/core/permissions'
 
 /**
  * Props for group widget components.
@@ -48,6 +49,16 @@ export interface GroupWidget {
   component:
     | React.ComponentType<GroupWidgetProps>
     | (() => Promise<{ default: React.ComponentType<GroupWidgetProps> }>)
+
+  /**
+   * Optional permission gate. When set, the consumer (`GroupListItem`) drops
+   * the widget for users who don't satisfy it — so a groups::read-only admin
+   * without the resource's own read/assign perm never sees an (empty) widget
+   * shell whose data endpoint would 403. Set it to the SAME perm the widget's
+   * load endpoint requires (e.g. mcp → mcp_servers_admin::read, skills/
+   * workflows → *::assign_to_groups, llm-providers → llm_providers::read).
+   */
+  permission?: PermissionExpr
 }
 
 /**

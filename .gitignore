@@ -57,6 +57,7 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/feature-lifecycle/
+!.claude/skills/feature-orchestration/
 !.claude/skills/design-variant-tournament/
 !.claude/skills/shadcn-component-discovery/
 !.claude/skills/shadcn-component-review/
