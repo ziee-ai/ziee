@@ -59,6 +59,9 @@ function PaneTab({
 
   return (
     <div
+      // Deliberately-joined group: the tab label button + its close ✕ touch to
+      // read as one tab (like a segmented control), so the zero-gap is intended.
+      data-allow-adjacent
       className={cn(
         'flex shrink-0 items-center rounded-md',
         active ? 'bg-background ring-1 ring-border' : 'hover:bg-accent',

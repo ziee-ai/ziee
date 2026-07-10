@@ -3207,9 +3207,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isControlWrite` | 189 |
-| branch | `mcpServerParenLabel(toolCall.server)` | 208 |
-| branch | `toolCall.input !== undefined` | 223 |
+| branch | `!isControlWrite` | 197 |
+| branch | `mcpServerParenLabel(toolCall.server)` | 216 |
+| branch | `toolCall.input !== undefined` | 231 |
 
 ### `modules/mcp/chat-extension/components/elicitationFields`
 
@@ -3250,8 +3250,8 @@ Required states: `error`
 | branch | `isExpanded` | 301 |
 | branch | `!run \|\| countToolUses(run) < 2` | 326 |
 | branch | `!mcpStore` | 365 |
-| branch | `!streamingMessage` | 793 |
-| branch | `!toolUseId` | 808 |
+| branch | `!streamingMessage` | 795 |
+| branch | `!toolUseId` | 810 |
 
 ### `modules/mcp/components/McpConfigModal`
 

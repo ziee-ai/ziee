@@ -2916,9 +2916,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/components/ToolCallPendingApprovalContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!isControlWrite", line: 189 },
-      { kind: "branch", condition: "mcpServerParenLabel(toolCall.server)", line: 208 },
-      { kind: "branch", condition: "toolCall.input !== undefined", line: 223 },
+      { kind: "branch", condition: "!isControlWrite", line: 197 },
+      { kind: "branch", condition: "mcpServerParenLabel(toolCall.server)", line: 216 },
+      { kind: "branch", condition: "toolCall.input !== undefined", line: 231 },
     ],
   },
   "modules/mcp/chat-extension/components/elicitationFields": {
@@ -2957,8 +2957,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "isExpanded", line: 301 },
       { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 326 },
       { kind: "branch", condition: "!mcpStore", line: 365 },
-      { kind: "branch", condition: "!streamingMessage", line: 793 },
-      { kind: "branch", condition: "!toolUseId", line: 808 },
+      { kind: "branch", condition: "!streamingMessage", line: 795 },
+      { kind: "branch", condition: "!toolUseId", line: 810 },
     ],
   },
   "modules/mcp/components/McpConfigModal": {
