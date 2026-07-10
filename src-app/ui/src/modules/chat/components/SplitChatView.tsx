@@ -2,8 +2,10 @@ import { Fragment, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatPaneProvider } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ConversationPane } from '@/modules/chat/pages/ConversationPage'
+import { PaneTabStrip } from '@/modules/chat/components/PaneTabStrip'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 
 /**
@@ -21,11 +23,43 @@ export function SplitChatView() {
   // Split is a desktop layout — force the inner-scroll shell for the whole view.
   useNativeScroll(false)
   const { panes, focusedPaneId, dividerWidths } = Stores.SplitView
+  // Below `md` there isn't room to tile columns → tab mode (ITEM-30): one visible
+  // pane + a tab strip. All panes stay MOUNTED (only the focused one is shown) so
+  // a background pane keeps streaming.
+  const { md } = useWindowMinSize()
+
+  if (!md) {
+    return (
+      <div
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden"
+        data-testid="split-chat-view"
+        data-split-mode="tabs"
+      >
+        <PaneTabStrip />
+        {panes.map((p, i) => (
+          <div
+            key={p.paneId}
+            role="tabpanel"
+            data-testid={`chat-pane-${i}`}
+            className={cn(
+              'relative min-h-0 flex-1 flex-col overflow-hidden',
+              p.paneId === focusedPaneId ? 'flex' : 'hidden',
+            )}
+          >
+            <ChatPaneProvider paneId={p.paneId} conversationId={p.conversationId}>
+              <ConversationPane />
+            </ChatPaneProvider>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div
       className="flex h-full min-h-0 w-full overflow-hidden"
       data-testid="split-chat-view"
+      data-split-mode="columns"
     >
       {panes.map((p, i) => (
         <Fragment key={p.paneId}>
