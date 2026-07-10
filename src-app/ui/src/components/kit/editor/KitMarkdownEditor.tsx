@@ -1,9 +1,10 @@
-import { forwardRef, useImperativeHandle } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { serializeMd } from '@platejs/markdown'
 import { MarkdownPlugin } from '@platejs/markdown'
 import { BasicBlocksPlugin, BasicMarksPlugin } from '@platejs/basic-nodes/react'
 import { ListPlugin } from '@platejs/list/react'
 import { ImagePlugin } from '@platejs/media/react'
+import { insertImage } from '@platejs/media'
 import { Plate, PlateContent, usePlateEditor } from 'platejs/react'
 import { ApiClient } from '@/api-client'
 import { markdownToEditor } from '@/modules/file/utils/markdownRoundtrip'
@@ -71,6 +72,46 @@ export const KitMarkdownEditor = forwardRef<
     editor,
   ])
 
+  // Explicit NATIVE paste/drop image handler. Plate's plugin paste hook rides
+  // React's synthetic-event system, which a programmatically-dispatched native
+  // ClipboardEvent (and some browsers' contenteditable image paste) doesn't
+  // reliably reach — so we attach a native listener on the wrapper: extract the
+  // image File(s), upload, and insert an `img` node (ITEM-21). onDirty flags the
+  // canvas so Save is enabled.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const imageFilesFrom = (dt: DataTransfer | null): File[] =>
+      dt
+        ? Array.from(dt.items || [])
+            .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+            .map((i) => i.getAsFile())
+            .filter((f): f is File => !!f)
+        : []
+    const handle = async (files: File[], e: Event) => {
+      if (files.length === 0) return
+      e.preventDefault()
+      for (const file of files) {
+        try {
+          const url = await uploadCanvasImage(await file.arrayBuffer())
+          insertImage(editor, url)
+          onDirty?.()
+        } catch {
+          /* upload failed — leave the doc untouched */
+        }
+      }
+    }
+    const onPaste = (e: ClipboardEvent) => void handle(imageFilesFrom(e.clipboardData), e)
+    const onDrop = (e: DragEvent) => void handle(imageFilesFrom(e.dataTransfer), e)
+    el.addEventListener('paste', onPaste)
+    el.addEventListener('drop', onDrop)
+    return () => {
+      el.removeEventListener('paste', onPaste)
+      el.removeEventListener('drop', onDrop)
+    }
+  }, [editor, onDirty])
+
   return (
     <Plate
       editor={editor}
@@ -81,7 +122,7 @@ export const KitMarkdownEditor = forwardRef<
         if (editor.operations.some((op) => op.type !== 'set_selection')) onDirty?.()
       }}
     >
-      <div className="flex h-full flex-col">
+      <div ref={wrapRef} className="flex h-full flex-col">
         <MarkdownToolbar />
         <PlateContent
           aria-label="Markdown document editor"
