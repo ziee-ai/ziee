@@ -1,0 +1,30 @@
+# TESTS — scheduled-tasks
+
+Every ITEM is covered by ≥1 TEST. UI items (ITEM-1..4, ITEM-10 UI half) carry a `tier: e2e`.
+No new permission is introduced (scheduler perms already exist) → no `[negative-perm]` spec
+is required (A10 N/A). Backend items get unit + integration, extending the existing
+`tests/scheduler/*` suite.
+
+## Frontend
+- **TEST-1** (tier: e2e) [covers: ITEM-1, ITEM-3] file: `src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts` — asserts: user opens the New Task drawer (FormField layout, labelled required fields), selects an Assistant and a Model from pickers (never typing an ID), fills prompt + schedule, clicks Create, and the task appears in the list.
+- **TEST-2** (tier: e2e) [covers: ITEM-1, ITEM-4] file: `src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts` — asserts: switching the target to Workflow shows a Workflow picker; picking a workflow renders its typed inputs (or a JSON fallback when it declares none); Create succeeds with the chosen workflow_id.
+- **TEST-3** (tier: e2e) [covers: ITEM-2] file: `src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts` — asserts: the schedule timezone is chosen via a searchable timezone picker (search "New_York", select) — no raw IANA typing — and the created task's summary shows that timezone.
+- **TEST-4** (tier: e2e) [covers: ITEM-10] file: `src-app/ui/tests/e2e/14-scheduler/paused-and-runs.spec.ts` — asserts: a spent `once` task (paused_reason='completed', seeded via the mock API) renders a distinct "Completed" badge, not a generic paused/disabled state.
+- **TEST-5** (tier: unit) [covers: ITEM-1] file: `src-app/ui/src/modules/scheduler/components/TaskTargetPickers.tsx` — asserts: the model-options builder maps `Stores.ModelPicker.providers` into grouped `{label, options:[{label,value}]}` using model DISPLAY names for labels and the model id for value (empty-provider groups dropped).
+- **TEST-6** (tier: unit) [covers: ITEM-2] file: `src-app/ui/src/modules/scheduler/components/ScheduleBuilder.tsx` — asserts: the timezone-options helper returns a deduped, sorted IANA zone list that includes the browser default timezone.
+- **TEST-7** (tier: unit) [covers: ITEM-4] file: `src-app/ui/src/modules/scheduler/components/ScheduledTaskFormDrawer.tsx` — asserts: given a workflow whose `parseWorkflowIr` exposes inputs, the drawer chooses typed-field mode; given one with no inputs, it falls back to the JSON editor.
+
+## Backend
+- **TEST-8** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/scheduler/validation_test.rs` — asserts: `POST /scheduled-tasks` with a non-existent `model_id` → 404 (not 500); with an existing-but-inaccessible `model_id` → 403; with a valid accessible model → 201.
+- **TEST-9** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/scheduler/handlers.rs` — asserts: the model-access validation helper classifies missing→NotFound, existing-inaccessible→Forbidden, accessible→Ok.
+- **TEST-10** (tier: integration) [covers: ITEM-6] file: `src-app/server/tests/scheduler/validation_test.rs` — asserts: `PUT` update to a foreign `assistant_id` → 403; to an inaccessible `model_id` → 403; re-enabling (`enabled:true`) a task that would push the user over `max_active_tasks_per_user` → 4xx; re-enabling under the cap → 200.
+- **TEST-11** (tier: unit) [covers: ITEM-6] file: `src-app/server/src/modules/scheduler/repository.rs` — asserts: the active-task count used for the re-enable quota excludes the row being updated (no off-by-one when re-enabling an already-counted task).
+- **TEST-12** (tier: integration) [covers: ITEM-7] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: a prompt task with `bound_conversation_id` NULL AND `last_status` set (conversation deleted) pauses `conversation_deleted` and creates NO new conversation; a genuine first-run prompt task (NULL + `last_status` NULL) is NOT paused and DOES create its bound conversation.
+- **TEST-13** (tier: integration) [covers: ITEM-7] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: a workflow task whose `workflow_id` went NULL is pre-emptively paused `target_missing` at claim time and emits NO failure notification (no wasted firing).
+- **TEST-14** (tier: integration) [covers: ITEM-8] file: `src-app/server/tests/scheduler/prune_test.rs` — asserts: `scheduled_task_runs` rows older than `notification_retention_days` are deleted by the prune pass; newer rows are retained.
+- **TEST-15** (tier: unit) [covers: ITEM-8] file: `src-app/server/src/modules/scheduler/repository.rs` — asserts: the run-prune cutoff is `now - retention_days` and the DELETE targets only rows with `fired_at <` cutoff.
+- **TEST-16** (tier: integration) [covers: ITEM-9] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: a transient failure that succeeds on retry records success and does NOT increment `consecutive_failures` / auto-pause; a persistently-transient target exhausts the bounded retries then counts as a single failure.
+- **TEST-17** (tier: unit) [covers: ITEM-9] file: `src-app/server/src/modules/scheduler/failure.rs` — asserts: `is_retryable` is true only for `transient`; `retry_backoff_ms` grows monotonically per attempt and the retry loop stops at MAX_ATTEMPTS.
+- **TEST-18** (tier: integration) [covers: ITEM-10] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: after a `once` task fires, its row is `enabled=false`, `paused_reason='completed'`, `next_run_at=NULL` (distinct from a user pause).
+- **TEST-19** (tier: unit) [covers: ITEM-10] file: `src-app/server/src/modules/scheduler/repository.rs` — asserts: `mark_fired` for a `once`-kind task sets `paused_reason='completed'` (and leaves a recurring task's reason NULL).
+- **TEST-20** (tier: integration) [covers: ITEM-11] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: when notification creation fails, the run is still recorded (run row inserted, `last_status` set) and dispatch does not panic — the error is surfaced to the log path, not silently dropped.
