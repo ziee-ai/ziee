@@ -88,7 +88,7 @@ local bridge). Two real shipping bugs were caught by these tests and fixed.
 - **TEST-41**: PASS  (project Knowledge-bases knowledge-kind bind)
 - **TEST-42**: PASS  (reranker admin section + hub nudge + candidate-k persist)
 - **TEST-43**: PASS  (KB + file-rag gallery surfaces: registered + state-covered + 0 gating HIGH runtime-health)
-- **TEST-49**: PASS  (permission gating — a user isolated from the default group, lacking knowledge_base::use, sees NO KB knowledge-kind in a project: inline preview + manage-drawer panel both absent, no KB 4xx fired. Ran green via isolated CARGO_TARGET_DIR, 23.2s. Positive control = TEST-41.)
+- **TEST-49**: PASS  ([negative-perm] / A10 restricted-user — a user isolated from the default group, lacking knowledge_base::use, sees NO KB UI across all four layers: no "Knowledge" nav entry (slot), /knowledge does not render kb-list-title/create buttons (route), create-KB/add-doc affordances absent (<Can>), project KB knowledge-kind inline+manage-panel absent (usePermission); 0 KB 4xx fired. Ran green against the POST-MERGE backend via isolated CARGO_TARGET_DIR. Positive control = TEST-41.)
 
 ## Real bugs the tests caught + fixed
 

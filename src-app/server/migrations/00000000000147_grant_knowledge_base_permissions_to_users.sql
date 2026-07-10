@@ -18,7 +18,7 @@ BEGIN
       AND is_default = TRUE;
 
     IF target_rows = 0 THEN
-        RAISE WARNING 'migration 134: no group matches (name=Users, is_system=true, is_default=true); knowledge_base permissions will NOT be granted. Check that the initial Users group was created by migration 1.';
+        RAISE WARNING 'migration 147: no group matches (name=Users, is_system=true, is_default=true); knowledge_base permissions will NOT be granted. Check that the initial Users group was created by migration 1.';
     END IF;
 
     FOREACH perm IN ARRAY ARRAY[

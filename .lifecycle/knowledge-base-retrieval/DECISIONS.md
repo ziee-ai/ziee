@@ -69,7 +69,7 @@ resolved by codebase convention. No unresolved markers remain.
 **Basis:** codebase — blocklist holds only `user-profile`/`server-update`.
 
 ### DEC-17: Permissions.
-**Resolution:** `knowledge_base::use` (list/search/attach — granted to Users by migration 134) + `knowledge_base::manage` (create/edit/delete/upload); admins via `*`. Both tools read-only → `use`, approval-bypassed. Reranker admin config reuses the existing `file_rag::admin::manage`.
+**Resolution:** `knowledge_base::use` (list/search/attach — granted to Users by migration 147) + `knowledge_base::manage` (create/edit/delete/upload); admins via `*`. Both tools read-only → `use`, approval-bypassed. Reranker admin config reuses the existing `file_rag::admin::manage`.
 **Basis:** codebase — mirrors web_search/citations `use`+`manage` + grant-to-Users idiom.
 
 ### DEC-18: Naming.
@@ -180,4 +180,4 @@ ingest) is explicitly deferred.
 
 ### DEC-43: Where do the promoted retrieval-limit constants live, and which are exposed?
 **Resolution:** all four (`kb_max_documents`, `search_max_hit_chars`, `search_snippet_chars`, `search_max_top_k`) become columns on the existing `file_rag_admin_settings` singleton (the shared Document-RAG admin surface the KB module already reuses), exposed via a `RetrievalLimitsSection` card. The PDF-geometry line-merge tolerance (`0.012`) stays a named const — it is an internal rendering heuristic, not a deployment policy.
-**Basis:** convention — mirrors the reranker columns added to the same row (migration 135); KB reuses file_rag retrieval + its admin settings rather than a separate settings surface.
+**Basis:** convention — mirrors the reranker columns added to the same row (migration 148); KB reuses file_rag retrieval + its admin settings rather than a separate settings surface.

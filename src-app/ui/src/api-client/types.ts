@@ -77,6 +77,20 @@ export interface AttachCitationsRequest {
   entry_ids: string[]
 }
 
+/** Attach already-uploaded files to a KB by id. */
+export interface AttachDocumentsRequest {
+  file_ids: string[]
+}
+
+/**
+ * Result of an attach operation — how many were newly linked vs skipped as
+ *  duplicates already in the KB (checksum dedup, DEC-36).
+ */
+export interface AttachDocumentsResult {
+  attached: number
+  skipped_duplicates: number
+}
+
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
@@ -760,6 +774,11 @@ export interface CreateGroupRequest {
   description?: string
   name: string
   permissions: string[]
+}
+
+export interface CreateKnowledgeBaseRequest {
+  description?: string
+  name: string
 }
 
 /** Request to create a new LLM model */
@@ -1510,7 +1529,14 @@ export interface FileRagAdminSettings {
   fts_min_rank: number
   fts_rrf_k: number
   id: number
+  kb_max_documents: number
   max_chunks_per_file: number
+  rerank_candidate_k: number
+  rerank_enabled: boolean
+  reranker_model_id?: string
+  search_max_hit_chars: number
+  search_max_top_k: number
+  search_snippet_chars: number
   semantic_enabled: boolean
   updated_at: string
 }
@@ -1749,6 +1775,13 @@ export interface HealthResponse {
 /** `POST /api/skills/{id}/hide-in-conversation` body. */
 export interface HideSkillInConversationRequest {
   conversation_id: string
+}
+
+export interface HighlightRect {
+  h: number
+  w: number
+  x: number
+  y: number
 }
 
 /**
@@ -2254,6 +2287,19 @@ export interface IndexItem {
   version?: string
 }
 
+/**
+ * Per-KB rollup of document index states, so the UI can show
+ *  "all indexed / M indexing / K failed / P no-text" and gate grounding.
+ */
+export interface IndexingSummary {
+  failed: number
+  indexed: number
+  indexing: number
+  no_text: number
+  pending: number
+  total: number
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -2350,6 +2396,34 @@ export interface KeyFieldInfo {
   required: boolean
 }
 
+/**
+ * A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),
+ *  never denormalized (an external file delete would drift a stored counter).
+ */
+export interface KnowledgeBase {
+  description?: string
+  created_at: string
+  document_count: number
+  id: string
+  /** Rollup of per-document index status (from `file_index_state`). */
+  indexing_summary: IndexingSummary
+  name: string
+  updated_at: string
+}
+
+/** One document in a KB, with its derived index status. */
+export interface KnowledgeBaseDocument {
+  added_at: string
+  chunk_count: number
+  file_id: string
+  filename: string
+  /**
+   * One of pending|indexing|indexed|failed|no_text (from `file_index_state`;
+   *  `pending` when no state row exists yet).
+   */
+  index_status: string
+}
+
 export interface LinkAccountRequest {
   /** Single-use token from /auth/link-account?token=... */
   link_token: string
@@ -2391,6 +2465,11 @@ export interface ListCitationsQuery {
 
 export interface ListCitationsResponse {
   entries: BibliographyEntry[]
+}
+
+export interface ListDocsQuery {
+  limit?: number
+  offset?: number
 }
 
 /**
@@ -3532,6 +3611,12 @@ export interface ModelCapabilities {
   context_length?: number
   /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
+  /**
+   * Reranker (cross-encoder) capability - scores query/document relevance for
+   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
+   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
+   */
+  rerank?: boolean
   /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
   /** Tools capability - can use function calling/tools */
@@ -3545,6 +3630,11 @@ export interface ModelCapabilities2 {
   chat?: boolean
   code_interpreter?: boolean
   image_generator?: boolean
+  /**
+   * Reranker (cross-encoder) capability. `default` so pre-existing manifests
+   *  (which omit it) still parse.
+   */
+  rerank?: boolean
   text_embedding?: boolean
   tools?: boolean
   vision?: boolean
@@ -5272,7 +5362,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5400,6 +5490,26 @@ export interface TestWorkflowRequest {
 /** Text page query params */
 export interface TextPageQuery {
   page?: number
+}
+
+/**
+ * Query for the citation text-rects endpoint: a byte range into the page's
+ *  cleaned text (a chunk's char_start/char_end).
+ */
+export interface TextRectsQuery {
+  end: number
+  page: number
+  start: number
+}
+
+export interface TextRectsResponse {
+  page_h: number
+  /**
+   * Rects are fraction-normalized to the page (0..1), origin top-left, so the
+   *  UI overlays them on the page image without knowing the render scale.
+   */
+  page_w: number
+  rects: HighlightRect[]
 }
 
 /** Metadata for thinking content */
@@ -5584,7 +5694,14 @@ export interface UpdateFileRagAdminSettingsRequest {
   fts_enabled?: boolean
   fts_min_rank?: number
   fts_rrf_k?: number
+  kb_max_documents?: number
   max_chunks_per_file?: number
+  rerank_candidate_k?: number
+  rerank_enabled?: boolean
+  reranker_model_id?: string
+  search_max_hit_chars?: number
+  search_max_top_k?: number
+  search_snippet_chars?: number
   semantic_enabled?: boolean
 }
 
@@ -5634,6 +5751,11 @@ export interface UpdateJsToolSettings {
   max_trace_entries?: number
   memory_bytes?: number
   wall_secs?: number
+}
+
+export interface UpdateKnowledgeBaseRequest {
+  description?: string
+  name?: string
 }
 
 /**
@@ -6508,6 +6630,8 @@ export enum Permissions {
   HubModelsVersionRead = 'hub::models::read_version',
   JsToolSettingsManage = 'js_tool::settings::manage',
   JsToolSettingsRead = 'js_tool::settings::read',
+  KnowledgeBaseManage = 'knowledge_base::manage',
+  KnowledgeBaseUse = 'knowledge_base::use',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
   LitSearchUse = 'lit_search::use',
@@ -6645,6 +6769,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsVersionRead: 'View hub models version information',
   JsToolSettingsManage: 'Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.',
   JsToolSettingsRead: 'Read the run_js (js_tool) resource-limits configuration.',
+  KnowledgeBaseManage: 'Create, rename, delete knowledge bases and manage their documents.',
+  KnowledgeBaseUse: 'Search your knowledge bases and attach them to conversations/projects.',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LitSearchUse: 'Use the literature search + screening tools.',
@@ -6814,6 +6940,7 @@ export const ApiEndpoints = {
   'File.getPreview': 'GET /api/files/{file_id}/preview',
   'File.getRaw': 'GET /api/files/{file_id}/raw',
   'File.getTextContent': 'GET /api/files/{file_id}/text',
+  'File.getTextRects': 'GET /api/files/{file_id}/text-rects',
   'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
   'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
   'File.list': 'GET /api/files',
@@ -6866,6 +6993,21 @@ export const ApiEndpoints = {
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
   'JsTool.getSettings': 'GET /api/js-tool/settings',
   'JsTool.updateSettings': 'PUT /api/js-tool/settings',
+  'KnowledgeBase.attachConversation': 'PUT /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.attachDocuments': 'POST /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.attachProject': 'PUT /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.create': 'POST /api/knowledge-bases',
+  'KnowledgeBase.delete': 'DELETE /api/knowledge-bases/{id}',
+  'KnowledgeBase.detachConversation': 'DELETE /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.detachProject': 'DELETE /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.get': 'GET /api/knowledge-bases/{id}',
+  'KnowledgeBase.list': 'GET /api/knowledge-bases',
+  'KnowledgeBase.listConversation': 'GET /api/conversations/{cid}/knowledge-bases',
+  'KnowledgeBase.listDocuments': 'GET /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.listProject': 'GET /api/projects/{pid}/knowledge-bases',
+  'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
+  'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
+  'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -6914,6 +7056,7 @@ export const ApiEndpoints = {
   'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
   'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
   'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalLlmProxy.rerank': 'POST /api/local-llm/v1/rerank',
   'LocalRuntime.clearFailed': 'POST /api/local-runtime/models/{model_id}/clear-failed',
   'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
   'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
@@ -7192,6 +7335,7 @@ export type ApiEndpointParameters = {
   'File.getPreview': { file_id: string; page?: number }
   'File.getRaw': { file_id: string }
   'File.getTextContent': { file_id: string; page?: number }
+  'File.getTextRects': { file_id: string; end: number; page: number; start: number }
   'File.getThumbnail': { file_id: string }
   'File.getVersion': { file_id: string; version: string }
   'File.list': PaginationQuery
@@ -7244,6 +7388,21 @@ export type ApiEndpointParameters = {
   'Hub.refreshModels': void
   'JsTool.getSettings': void
   'JsTool.updateSettings': UpdateJsToolSettings
+  'KnowledgeBase.attachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.attachDocuments': { id: string } & AttachDocumentsRequest
+  'KnowledgeBase.attachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.create': CreateKnowledgeBaseRequest
+  'KnowledgeBase.delete': { id: string }
+  'KnowledgeBase.detachConversation': { cid: string; kb_id: string }
+  'KnowledgeBase.detachProject': { pid: string; kb_id: string }
+  'KnowledgeBase.get': { id: string }
+  'KnowledgeBase.list': void
+  'KnowledgeBase.listConversation': { cid: string }
+  'KnowledgeBase.listDocuments': { id: string; limit?: number; offset?: number }
+  'KnowledgeBase.listProject': { pid: string }
+  'KnowledgeBase.reindexDocument': { id: string; file_id: string }
+  'KnowledgeBase.removeDocument': { id: string; file_id: string }
+  'KnowledgeBase.update': { id: string } & UpdateKnowledgeBaseRequest
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7292,6 +7451,7 @@ export type ApiEndpointParameters = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalLlmProxy.rerank': void
   'LocalRuntime.clearFailed': { model_id: string }
   'LocalRuntime.detectGpu': void
   'LocalRuntime.getInstance': { model_id: string }
@@ -7570,6 +7730,7 @@ export type ApiEndpointResponses = {
   'File.getPreview': Blob
   'File.getRaw': Blob
   'File.getTextContent': Blob
+  'File.getTextRects': TextRectsResponse
   'File.getThumbnail': Blob
   'File.getVersion': FileVersion
   'File.list': FileListResponse
@@ -7622,6 +7783,21 @@ export type ApiEndpointResponses = {
   'Hub.refreshModels': HubRefreshResponse
   'JsTool.getSettings': JsToolSettings
   'JsTool.updateSettings': JsToolSettings
+  'KnowledgeBase.attachConversation': any
+  'KnowledgeBase.attachDocuments': AttachDocumentsResult
+  'KnowledgeBase.attachProject': any
+  'KnowledgeBase.create': KnowledgeBase
+  'KnowledgeBase.delete': any
+  'KnowledgeBase.detachConversation': any
+  'KnowledgeBase.detachProject': any
+  'KnowledgeBase.get': KnowledgeBase
+  'KnowledgeBase.list': KnowledgeBase[]
+  'KnowledgeBase.listConversation': KnowledgeBase[]
+  'KnowledgeBase.listDocuments': KnowledgeBaseDocument[]
+  'KnowledgeBase.listProject': KnowledgeBase[]
+  'KnowledgeBase.reindexDocument': any
+  'KnowledgeBase.removeDocument': any
+  'KnowledgeBase.update': KnowledgeBase
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
@@ -7670,6 +7846,7 @@ export type ApiEndpointResponses = {
   'LocalLlmProxy.chatCompletions': void
   'LocalLlmProxy.embeddings': void
   'LocalLlmProxy.listModels': void
+  'LocalLlmProxy.rerank': void
   'LocalRuntime.clearFailed': ClearFailedResponse
   'LocalRuntime.detectGpu': GpuDetectionResponse
   'LocalRuntime.getInstance': InstanceResponse

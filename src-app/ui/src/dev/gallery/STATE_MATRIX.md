@@ -7,20 +7,20 @@
 
 ## Summary
 
-- **340** surfaces carry at least one renderable-state signal.
-- **1973** signals total: 1561 branch, 117 empty, 101 error, 103 loading, 89 overlay, 2 panel.
-- **2** right-panel renderers registered (each a right-panel-open state).
+- **354** surfaces carry at least one renderable-state signal.
+- **2024** signals total: 1592 branch, 127 empty, 103 error, 106 loading, 93 overlay, 3 panel.
+- **3** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 90 |
-| `empty` | 94 |
-| `error` | 80 |
-| `open` | 75 |
-| `panel-open` | 2 |
+| `delayed` | 93 |
+| `empty` | 101 |
+| `error` | 82 |
+| `open` | 79 |
+| `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
 
@@ -31,6 +31,7 @@ conversation page.
 | panel type | registered in |
 |---|---|
 | `file` | `modules/file/chat-extension/extension`:151 |
+| `kb_source` | `modules/knowledge-base/chat-extension/extension`:48 |
 | `literature` | `modules/literature/chat-extension/extension`:27 |
 
 ## Slot registrations
@@ -1458,14 +1459,36 @@ Required states: `error`
 | branch | `!settings` | 33 |
 | error | `error` | 55 |
 
+### `modules/file-rag/components/sections/RerankSection`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!canRead` | 66 |
+| branch | `!settings` | 77 |
+| empty | `noModels` | 116 |
+| branch | `canManage` | 170 |
+
+### `modules/file-rag/components/sections/RetrievalLimitsSection`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!canRead` | 62 |
+| branch | `!settings` | 73 |
+| branch | `canManage` | 100 |
+| error | `error` | 110 |
+
 ### `modules/file-rag/pages/FileRagAdminPage`
 
 Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error && !settings` | 34 |
-| loading | `loading && !settings` | 44 |
+| error | `error && !settings` | 36 |
+| loading | `loading && !settings` | 46 |
 
 ### `modules/file/chat-extension/components/FileAttachMenuItem`
 
@@ -1816,15 +1839,17 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!('file' in props)` | 30 |
-| branch | `status !== 'ready' \|\| !doc \|\| !api` | 49 |
-| branch | `!container \|\| !viewer` | 52 |
-| branch | `!c` | 93 |
-| branch | `!c` | 101 |
-| branch | `findOpen` | 227 |
-| loading | `status === 'loading'` | 276 |
-| error | `status === 'error'` | 281 |
-| error | `error` | 290 |
+| branch | `!('file' in props)` | 31 |
+| branch | `status !== 'ready' \|\| !doc \|\| !api` | 55 |
+| branch | `!container \|\| !viewer` | 58 |
+| branch | `status !== 'ready'` | 93 |
+| branch | `!c` | 95 |
+| branch | `!c` | 110 |
+| branch | `!c` | 118 |
+| branch | `findOpen` | 244 |
+| loading | `status === 'loading'` | 293 |
+| error | `status === 'error'` | 298 |
+| error | `error` | 307 |
 
 ### `modules/file/viewers/shared/RawCodeView`
 
@@ -2347,6 +2372,131 @@ Required states: `delayed`, `error`
 | error | `error` | 158 |
 | loading | `loading && !settings` | 167 |
 | branch | `!canManage` | 193 |
+
+### `modules/knowledge-base/chat-extension/components/KbMenuItem`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `!canUse \|\| kbs.length === 0` | 25 |
+
+### `modules/knowledge-base/chat-extension/components/KbSourcePanel`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `cancelled` | 47 |
+| branch | `!file` | 60 |
+
+### `modules/knowledge-base/chat-extension/components/KbStatusRow`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `!canUse \|\| visibleIds.length === 0` | 19 |
+
+### `modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!isSearchKnowledgeResult(content)` | 28 |
+| branch | `!sc` | 31 |
+| branch | `incomplete` | 57 |
+| empty | `sc.hits.length === 0` | 65 |
+
+### `modules/knowledge-base/chat-extension/extension`
+
+Required states: `panel-open`
+
+| kind | condition | line |
+|---|---|---|
+| panel | `registerPanelRenderer('kb_source')` | 48 |
+
+### `modules/knowledge-base/components/KnowledgeBaseCard`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `canManage` | 62 |
+| overlay | `<Confirm open>` | 100 |
+| branch | `chip` | 125 |
+
+### `modules/knowledge-base/components/KnowledgeBaseDocumentsPanel`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `files.length === 0` | 27 |
+| empty | `documentsLoading && documents.length === 0` | 78 |
+| empty | `documents.length === 0` | 82 |
+| branch | `isRetryable(doc.index_status)` | 109 |
+
+### `modules/knowledge-base/components/KnowledgeBaseFormDrawer`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `saving` | 55 |
+| overlay | `<Drawer open>` | 84 |
+| branch | `canSave` | 101 |
+
+### `modules/knowledge-base/pages/KnowledgeBaseDetailPage`
+
+Required states: `delayed`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && !kb` | 35 |
+| branch | `!kb` | 43 |
+| branch | `inProgress > 0` | 111 |
+| branch | `kbId` | 125 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 130 |
+
+### `modules/knowledge-base/pages/KnowledgeBasesListPage`
+
+Required states: `delayed`, `error`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `kbs.length > 0` | 63 |
+| loading | `loading` | 78 |
+| error | `error` | 82 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 113 |
+
+### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!projectId \|\| !canUse` | 26 |
+| branch | `!canUse` | 50 |
+| empty | `count === 0` | 62 |
+
+### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel`
+
+Required states: `delayed`, `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!projectId \|\| !canUse` | 26 |
+| branch | `!projectId` | 51 |
+| branch | `!projectId` | 63 |
+| branch | `!canUse` | 79 |
+| branch | `!projectId` | 81 |
+| empty | `attachable.length === 0` | 91 |
+| branch | `canUse` | 131 |
+| loading | `loading && attached.length === 0` | 140 |
+| empty | `attached.length === 0` | 144 |
+| branch | `canUse` | 167 |
 
 ### `modules/layouts/app-layout/AppLayout`
 

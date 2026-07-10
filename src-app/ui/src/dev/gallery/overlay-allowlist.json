@@ -20,7 +20,9 @@
     "modules/user/components/user/UsersSettings": "Inline controlled activate/deactivate Confirm shared by a user row's Switch + button (local open-state). Reached via the users table (rendered in the gallery). Inline confirm — future row interaction recipe.",
     "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked.",
     "modules/notification/components/NotificationBellWidget": "Notification bell Popover — local open-state, opens on a click on the sidebar bell; the recent-list + empty states are exercised via the notifications e2e spec. Tracked for an interaction recipe.",
-    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec."
+    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec.",
+    "modules/knowledge-base/components/KnowledgeBaseCard": "Inline controlled delete-Confirm on a knowledge-base card (local open-state). Reached via the knowledge list (rendered in the gallery). Inline confirm — future interaction recipe.",
+    "modules/knowledge-base/components/KnowledgeBaseFormDrawer": "Create/edit knowledge-base Drawer — opens from a list/detail action (prop open-state). List/detail are rendered in the gallery; a standalone open needs a trigger context. Tracked for an interaction recipe."
   },
   "triggers": {
     "modules/assistant/chat-extension/components/AssistantMenuItem": "Composer assistant-picker Popover — opens on a click in the chat composer '+' menu. Reached via the chat surface; tracked for an interaction recipe.",
@@ -41,6 +43,8 @@
     "modules/mcp/components/common/McpServerCard": "Inline delete-Confirm on an MCP server card. Card rendered on the MCP settings page; reached via a card action. Tracked.",
     "modules/projects/pages/ProjectDetailPage": "Inline delete-project Confirm in the project-detail header. Page rendered in the gallery (seeded deep-state); reached via the delete button. Tracked.",
     "modules/user/components/group/GroupListItem": "Inline delete-Confirm on a user-group row. List rendered on the groups page; reached via a row action. Tracked.",
-    "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked."
+    "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked.",
+    "modules/knowledge-base/chat-extension/components/KbMenuItem": "Composer knowledge-base picker Popover — opens on a click in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
+    "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": "Attach-KB picker Popover on the project knowledge drawer — opens on the 'Attach' button click. Panel rendered inside the project knowledge drawer; reached via a button interaction. Tracked."
   }
 }

@@ -32,9 +32,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn permission_strings_match_migration_134() {
+    fn permission_strings_match_migration_147() {
         // These MUST equal the strings granted in
-        // migrations/00000000000134_grant_knowledge_base_permissions_to_users.sql
+        // migrations/00000000000147_grant_knowledge_base_permissions_to_users.sql
         assert_eq!(KnowledgeBaseUse::PERMISSION, "knowledge_base::use");
         assert_eq!(KnowledgeBaseManage::PERMISSION, "knowledge_base::manage");
     }
