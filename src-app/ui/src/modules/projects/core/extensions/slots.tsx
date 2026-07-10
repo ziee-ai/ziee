@@ -1,4 +1,6 @@
 import { Fragment, createContext, useContext } from 'react'
+import { Stores } from '@/core/stores'
+import { evaluatePermission } from '@/core/permissions'
 import type {
   KnowledgeView,
   ProjectSlotName,
@@ -32,15 +34,30 @@ export function ProjectExtensionSlot({
   className,
   fallback,
 }: ProjectExtensionSlotProps) {
-  const renderers = projectExtensionRegistry.renderSlot(name, view)
+  // Reactive auth read — re-filters when the user's permissions change
+  // (e.g. a group edit fans a Session refetch). A contribution with a
+  // `permission` the user lacks is dropped entirely (header + body), so a
+  // user without the backing grant never sees the section whose endpoints
+  // would 403. Contributions with no `permission` are always shown (they
+  // are covered by the project page's own `projects::read` gate).
+  const { user, permissions } = Stores.Auth
+  const renderers = projectExtensionRegistry
+    .renderSlot(name, view)
+    .filter(
+      entry =>
+        !entry.permission ||
+        evaluatePermission(user, permissions, entry.permission),
+    )
   if (renderers.length === 0) {
     return fallback ? <>{fallback}</> : null
   }
   const dataAttr = view ? `${name}:${view}` : name
   return (
     <div className={className} data-project-extension-slot={dataAttr}>
-      {renderers.map((node, idx) => (
-        <Fragment key={`${name}-${view ?? 'default'}-${idx}`}>{node}</Fragment>
+      {renderers.map((entry, idx) => (
+        <Fragment key={`${name}-${view ?? 'default'}-${idx}`}>
+          {entry.node}
+        </Fragment>
       ))}
     </div>
   )

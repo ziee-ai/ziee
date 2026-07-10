@@ -42,7 +42,15 @@ export default createModule({
   ],
   slots: {
     sidebarBottom: [
-      { id: 'notification-bell', component: NotificationBellWidget, order: 5 },
+      {
+        id: 'notification-bell',
+        component: NotificationBellWidget,
+        order: 5,
+        // Gate: the bell + list render the user's notifications (backed by
+        // `notifications::read`). Match the data's read perm so a role
+        // without the grant sees neither the bell nor a 403 fetch.
+        permission: Permissions.NotificationsRead,
+      },
     ],
   },
 })

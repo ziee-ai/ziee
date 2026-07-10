@@ -1,5 +1,6 @@
-import type { Group } from '@/api-client/types'
+import { Permissions, type Group } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 
 interface ServerGroups {
@@ -139,7 +140,11 @@ export const SystemMcpServerGroupCard = defineStore('SystemMcpServerGroupCard', 
         })
       })
     })
-    void actions.loadAllGroups()
+    // `GET /api/groups` requires groups::read (not user-held). Guard the eager
+    // load so a scoped admin without it doesn't 403 at store-mount.
+    if (hasPermissionNow(Permissions.GroupsRead)) {
+      void actions.loadAllGroups()
+    }
   },
 })
 

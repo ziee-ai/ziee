@@ -63,6 +63,12 @@ export default createModule({
       path: '/chats',
       element: ChatHistoryPage,
       requiresAuth: true,
+      // Route gate MUST match the `chats` nav slot's ConversationsRead —
+      // without it, a user lacking conversations::read had the menu item
+      // hidden but could still deep-link /chats and render the full
+      // conversation history (no 403). The base chat routes (/, /chat,
+      // /chat/:id) stay ungated by design (new-chat is always available).
+      permission: Permissions.ConversationsRead,
       layout: AppLayoutDef,
     },
   ],
@@ -91,6 +97,12 @@ export default createModule({
         id: 'recent-conversations',
         component: RecentConversationsWidget,
         order: 10,
+        // Gate: this widget lists the user's conversations and fetches
+        // them on mount (`Stores.ChatHistory.loadConversations()`). The
+        // sibling `chats` nav entry is gated on ConversationsRead — match
+        // it here so a user without the grant never sees the list nor
+        // fires the 403 fetch.
+        permission: Permissions.ConversationsRead,
       },
     ],
   },

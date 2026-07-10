@@ -132,6 +132,12 @@ export default createModule({
         id: 'download-indicator',
         component: DownloadIndicatorWidget,
         order: 10,
+        // Gate: exposes in-flight model-download details (model names,
+        // repo paths) + Retry/Clear controls. Downloads are admin-managed
+        // (`llm_models::downloads_*`). Without this the widget only
+        // self-hid on an empty store; gate it on downloads_read so a
+        // non-admin never sees download activity nor a 403 fetch.
+        permission: Permissions.LlmModelsDownloadsRead,
       },
     ],
     settingsAdminPages: [
@@ -148,6 +154,8 @@ export default createModule({
       {
         order: 10,
         component: LLMProviderGroupWidget,
+        // Widget loads GET /api/groups/{id}/providers (llm_providers::read).
+        permission: Permissions.LlmProvidersRead,
       },
     ],
   },

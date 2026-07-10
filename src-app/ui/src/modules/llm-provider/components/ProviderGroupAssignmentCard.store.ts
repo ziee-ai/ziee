@@ -1,5 +1,6 @@
-import type { Group } from '@/api-client/types'
+import { Permissions, type Group } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 
 interface ProviderGroups {
@@ -139,7 +140,12 @@ export const ProviderGroupCard = defineStore('ProviderGroupCard', {
         })
       })
     })
-    void actions.loadAllGroups()
+    // `GET /api/groups` requires groups::read (not user-held). Guard the eager
+    // load so a viewer without it (reaching the provider page via
+    // llm_providers::read) doesn't 403 at store-mount.
+    if (hasPermissionNow(Permissions.GroupsRead)) {
+      void actions.loadAllGroups()
+    }
   },
 })
 
