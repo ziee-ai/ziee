@@ -9,13 +9,13 @@
 //!       a partial (mid-recording) buffer, and
 //!   (b) the final `/voice/transcribe` decode CONTAINS the expected keyword.
 //!
-//! SOFT-SKIP (a runtime early-return, not a compile-time `#[ignore]`): it lives in
-//! the default `voice::` suite and probes the external gate — the published
-//! whisper release — BEFORE any work. A missing release / unreachable / rate-
-//! limited GitHub is an EXTERNAL gate → `SOFT-SKIP [external gate: whisper-release]`
-//! + return (never a false failure offline). The instant the release + model are
-//! reachable it runs for REAL with every downstream step a hard assertion. Mirrors
-//! `real_repo_test.rs`'s discipline ([[feedback_no_ignore_unless_platform]]).
+//! Soft-skip (a runtime early-return, not a compile-time ignore-attribute): it
+//! lives in the default `voice::` suite and probes the external gate — the
+//! published whisper release — BEFORE any work. A missing release / unreachable /
+//! rate-limited GitHub is an EXTERNAL gate → an `[external gate: whisper-release]`
+//! marker + return (never a false failure offline). The instant the release +
+//! model are reachable it runs for REAL with every downstream step a hard
+//! assertion. Mirrors `real_repo_test.rs`'s discipline.
 //!
 //!   source tests/.env.test
 //!   cargo test --test integration_tests \
