@@ -51,7 +51,7 @@ pub enum ProviderError {
 /// endpoint could otherwise return a multi-megabyte or newline-laden body to
 /// bloat logs or forge entries; and a reflective endpoint could echo request
 /// material. Truncates to a char boundary and collapses CR/LF to spaces.
-pub(crate) fn sanitize_error_body(body: &str) -> String {
+fn sanitize_error_body(body: &str) -> String {
     const MAX: usize = 1024;
     let cleaned: String = body
         .chars()
@@ -117,14 +117,9 @@ impl ProviderError {
         }
     }
 
-    /// Creates error from an Anthropic error event. Both fields are untrusted
-    /// provider output (HTTP error body or SSE `error` event), so each is bounded +
-    /// newline-collapsed via `sanitize_error_body` before being embedded — a
-    /// hostile/oversized `type` or `message` can't bloat or forge logs/UI.
+    /// Creates error from Anthropic error event
     pub fn from_anthropic_error(error_type: &str, message: &str) -> Self {
-        let error_type = sanitize_error_body(error_type);
-        let message = sanitize_error_body(message);
-        match error_type.as_str() {
+        match error_type {
             "overloaded_error" => Self::rate_limit(format!("Overloaded: {}", message)),
             "rate_limit_error" => Self::rate_limit(message),
             "authentication_error" => Self::auth(message),

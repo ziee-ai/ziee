@@ -45,8 +45,7 @@ pub struct ChatRequest {
 
     /// Top-k sampling. Supported by Anthropic + Gemini; ignored by OpenAI
     /// (Chat Completions has no top_k). Anthropic drops it for models that
-    /// reject sampling params (Opus 4.7/4.8 + Claude 5 families) and whenever
-    /// thinking is active.
+    /// reject sampling params (Opus 4.7/4.8 family).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_k: Option<i32>,
 

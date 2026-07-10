@@ -125,20 +125,6 @@
       "deprecated": false
     },
     {
-      "id": "claude-sonnet-5",
-      "display_name": "Claude Sonnet 5",
-      "context_length": 1000000,
-      "max_output_tokens": 64000,
-      "supports_chat": true,
-      "supports_embeddings": false,
-      "supports_vision": true,
-      "supports_tool_use": true,
-      "supports_thinking": true,
-      "thinking_style": "adaptive",
-      "supports_sampling_params": false,
-      "deprecated": false
-    },
-    {
       "id": "claude-haiku-4-5",
       "display_name": "Claude Haiku 4.5",
       "context_length": 200000,
