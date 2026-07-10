@@ -132,6 +132,11 @@ function isHarnessNoise(f) {
   const d = f.detail || ''
   if (f.category === 'console-error' && matchesAny(d, HARNESS_CONSOLE)) return true
   if (f.category === 'request-failed') {
+    // A browser-ABORTED request (net::ERR_ABORTED) is a full-page-reload race in
+    // the per-cell harness (a dev fixture/module import still in flight when the
+    // next cell reloads) — never a product fetch defect, which surfaces as a
+    // 4xx/5xx status or ERR_CONNECTION*/ERR_NAME_NOT_RESOLVED. Mute it.
+    if (/net::ERR_ABORTED/.test(d)) return true
     const m = /(?:GET|POST|PUT|DELETE|PATCH|HEAD)\s+(\S+)/.exec(d)
     return isViteDevAsset(m ? m[1] : d)
   }

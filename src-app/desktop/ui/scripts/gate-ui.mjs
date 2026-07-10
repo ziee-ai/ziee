@@ -177,9 +177,22 @@ function readRuntimeSurfaceVerdicts() {
     } catch {
       continue
     }
-    const s = (surfaces[f.surface] ??= { high: 0, medium: 0, low: 0, baselined: 0 })
-    // A documented-baselined HIGH (runtime-baseline.js) does not fail a surface.
+    const s = (surfaces[f.surface] ??= {
+      high: 0,
+      medium: 0,
+      low: 0,
+      baselined: 0,
+      harness: 0,
+    })
+    // A documented-baselined HIGH (runtime-baseline.js) OR a documented
+    // harness-noise HIGH (isHarnessNoise in runtime-health.mjs — gallery/dev-server
+    // mock-cassette artifacts like the mock-API 403s) does not fail a surface.
+    // Mirror runtime-health.mjs's own authoritative gating count:
+    //   gatingHigh = HIGH - baselinedCount - harnessCount
+    // (previously this rollup subtracted only `baselined`, so every harness-noise
+    // HIGH counted as a surface failure — the gate could not pass on ANY branch).
     if (f.baselined) s.baselined++
+    else if (f.harness) s.harness++
     else s[f.severity.toLowerCase()]++
   }
   return Object.entries(surfaces)
