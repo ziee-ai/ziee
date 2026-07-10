@@ -544,7 +544,21 @@ async function main() {
             ? 1100
             : 800
       await p.waitForTimeout(settle)
-      const audit = await p.evaluate(inPageAudit)
+      // The in-page audit evaluate can lose its execution context to a
+      // navigation/reload race (inherent to the reload-per-cell model, and
+      // aggravated by slow /@fs serving under a symlinked node_modules) — a
+      // harness timing artifact, NOT a product defect, and non-deterministic
+      // (it lands on whichever cell was mid-settle). Retry once on a
+      // context-destroyed race; only a PERSISTENT failure records a nav-error (a
+      // real unexpected redirect would still fail deterministically on retry).
+      let audit
+      try {
+        audit = await p.evaluate(inPageAudit)
+      } catch (e) {
+        if (!/context was destroyed/i.test(e.message || '')) throw e
+        await p.waitForTimeout(500)
+        audit = await p.evaluate(inPageAudit)
+      }
       for (const f of audit) record(cell, theme, f)
     } catch (e) {
       record(cell, theme, {

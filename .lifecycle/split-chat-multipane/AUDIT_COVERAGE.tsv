@@ -58,3 +58,10 @@ src-app/ui/tests/e2e/14-split-chat/focused-affordances.spec.ts	1	999999	tests-qu
 src-app/ui/tests/e2e/14-split-chat/mobile-columns.spec.ts	1	999999	tests-quality,correctness,a11y
 src-app/ui/tests/e2e/14-split-chat/new-chat-adopt.spec.ts	1	999999	tests-quality,correctness,state-management
 src-app/ui/tests/e2e/14-split-chat/right-panel-per-pane.spec.ts	1	999999	tests-quality,correctness,state-management
+src-app/desktop/ui/plugins/vite-plugin-testid-unique.js	1	999999	correctness,patterns-conformance,error-handling
+src-app/desktop/ui/scripts/gate-ui.mjs	1	999999	correctness,patterns-conformance,error-handling
+src-app/desktop/ui/src/dev/gallery/runtime-baseline.js	1	999999	correctness,security,patterns-conformance
+src-app/ui/scripts/gate-ui.mjs	1	999999	correctness,patterns-conformance,error-handling
+src-app/ui/scripts/runtime-health.mjs	1	999999	correctness,patterns-conformance,error-handling
+src-app/ui/src/dev/gallery/RUNTIME_FINDINGS.md	1	999999	correctness,patterns-conformance,tests-quality
+src-app/ui/tests/e2e/visual/layout-baseline.ts	1	999999	tests-quality,correctness,patterns-conformance
