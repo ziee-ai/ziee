@@ -65,6 +65,14 @@ struct RawResult {
     skipped_tools: Vec<super::models::SkippedTool>,
 }
 
+/// ITEM-9/DEC-8: a TRANSIENT failure (timeout / provider blip / 5xx / 409) is
+/// retried a bounded number of times WITHIN the firing (with backoff) before it
+/// counts toward the consecutive-failure cap — a flaky blip shouldn't auto-pause
+/// a task. Terminal classes (auth/permission/validation/target-missing) never
+/// retry. Fixed constant (not admin-tunable): the real operational knob is
+/// `max_consecutive_failures`, which IS admin-configurable.
+const MAX_IN_RUN_ATTEMPTS: u32 = 2;
+
 /// Run a task's target, apply change-detection, and notify. Total function.
 pub async fn dispatch(
     pool: &PgPool,
@@ -72,12 +80,34 @@ pub async fn dispatch(
     task: &ScheduledTask,
     _trigger: &str,
 ) -> DispatchOutcome {
-    let raw = match task.target_kind.as_str() {
-        "workflow" => dispatch_workflow(pool, task).await,
-        "prompt" => dispatch_prompt(pool, config, task).await,
-        other => Err(AppError::internal_error(format!(
-            "scheduler: unknown target_kind {other}"
-        ))),
+    let mut attempt: u32 = 0;
+    let raw = loop {
+        let result = match task.target_kind.as_str() {
+            "workflow" => dispatch_workflow(pool, task).await,
+            "prompt" => dispatch_prompt(pool, config, task).await,
+            other => Err(AppError::internal_error(format!(
+                "scheduler: unknown target_kind {other}"
+            ))),
+        };
+        match result {
+            Ok(raw) => break Ok(raw),
+            Err(e) => {
+                let status = axum::http::StatusCode::from_u16(e.status_code())
+                    .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                let retryable = classify(status, false).is_retryable();
+                if retryable && attempt < MAX_IN_RUN_ATTEMPTS {
+                    let backoff = super::failure::retry_backoff_ms(attempt);
+                    tracing::info!(
+                        "scheduler: transient failure on task '{}' (attempt {}), retrying in {}ms: {e}",
+                        task.name, attempt + 1, backoff
+                    );
+                    tokio::time::sleep(Duration::from_millis(backoff)).await;
+                    attempt += 1;
+                    continue;
+                }
+                break Err(e);
+            }
+        }
     };
 
     match raw {

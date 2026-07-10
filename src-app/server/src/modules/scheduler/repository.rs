@@ -415,6 +415,24 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
     Ok(row.id)
 }
 
+/// ITEM-8/DEC-7: delete `scheduled_task_runs` older than `cutoff` (retention
+/// prune). Returns rows deleted. Reuses the admin `notification_retention_days`
+/// window (migration 144's documented-but-unimplemented "pruned alongside
+/// notifications" intent).
+pub async fn prune_runs_older_than(
+    pool: &PgPool,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, AppError> {
+    let res = sqlx::query!(
+        r#"DELETE FROM scheduled_task_runs WHERE fired_at < $1"#,
+        to_offset(cutoff),
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(res.rows_affected())
+}
+
 /// A task's firing history, newest-first (owner-scoped via the task).
 pub async fn list_runs_for_task(
     pool: &PgPool,

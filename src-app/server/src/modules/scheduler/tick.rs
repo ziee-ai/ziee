@@ -51,6 +51,25 @@ pub async fn run_tick_loop(pool: PgPool, config: Arc<Config>) {
     }
 }
 
+/// ITEM-7/DEC-6: a due task whose referenced entity was deleted should pause
+/// pre-emptively rather than fire. A workflow task with no `workflow_id` (FK went
+/// NULL) → `target_missing`. A prompt task whose bound conversation was deleted
+/// AFTER a prior run (`bound_conversation_id` NULL but `last_status` set) →
+/// `conversation_deleted`. A genuine first-run prompt task (both NULL) is NOT
+/// paused — it legitimately creates its bound conversation. A NULL `assistant_id`
+/// is never a pause reason (NULL = use the user's default assistant).
+fn preemptive_pause_reason(task: &super::models::ScheduledTask) -> Option<&'static str> {
+    match task.target_kind.as_str() {
+        "workflow" if task.workflow_id.is_none() => Some("target_missing"),
+        "prompt"
+            if task.bound_conversation_id.is_none() && task.last_status.is_some() =>
+        {
+            Some("conversation_deleted")
+        }
+        _ => None,
+    }
+}
+
 /// One sweep: claim due tasks, advance each, dispatch, record the outcome.
 pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::Error> {
     let now = Utc::now();
@@ -63,6 +82,39 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
     };
 
     for task in due {
+        // ITEM-7: pre-emptively pause a task whose referenced entity was deleted,
+        // instead of firing → creating a throwaway conversation / emitting a
+        // spurious failure notification. The run is recorded (history) + sync'd,
+        // but no target is dispatched and no notification is sent.
+        if let Some(reason) = preemptive_pause_reason(&task) {
+            if let Err(e) = repository::mark_fired(pool, task.id, None, now, Some(reason)).await {
+                tracing::warn!("scheduler.tick: preemptive mark_fired {} failed: {e:?}", task.id);
+            }
+            let run = super::models::NewTaskRun {
+                scheduled_task_id: task.id,
+                user_id: task.user_id,
+                trigger: "schedule".to_string(),
+                status: "failed".to_string(),
+                error_class: Some(reason.to_string()),
+                error_message: Some(format!("task paused: {reason} (referenced entity deleted)")),
+                notification_id: None,
+                workflow_run_id: None,
+                conversation_id: None,
+                skipped_tools: Vec::new(),
+                fired_at: now,
+            };
+            if let Err(e) = repository::insert_run(pool, run).await {
+                tracing::warn!("scheduler.tick: preemptive insert_run {} failed: {e:?}", task.id);
+            }
+            super::events::emit_task(
+                crate::modules::sync::SyncAction::Update,
+                task.id,
+                task.user_id,
+                None,
+            );
+            continue;
+        }
+
         // Advance `next_run_at` SYNCHRONOUSLY before dispatch (coalesced catch-up:
         // skip missed intervals). This both prevents the next tick from re-claiming
         // the row and — crucially — means a slow/hung dispatch can't starve the

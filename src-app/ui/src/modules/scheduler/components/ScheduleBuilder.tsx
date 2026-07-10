@@ -212,13 +212,12 @@ export function ScheduleBuilder({ value, onChange }: Props) {
         </Flex>
       )}
 
-      <Input
-        data-testid="schedule-timezone"
-        aria-label="Timezone (IANA)"
-        placeholder="Timezone (IANA, e.g. America/New_York)"
-        value={value.timezone}
-        onChange={e => onChange({ ...value, timezone: e.target.value })}
-      />
+      {/* ITEM-2 (FB-3): the timezone is auto-detected from the client — never an
+          input the user must fill. Shown read-only so the schedule is transparent
+          about which zone its times are in. */}
+      <Text className="text-muted-foreground text-xs" data-testid="schedule-timezone-note">
+        Times are in your timezone: {value.timezone}
+      </Text>
     </Flex>
   )
 }
