@@ -358,16 +358,12 @@ pub fn resolve(
 ) -> ResolvedParams {
     let mut rp = base_spec(family);
 
-    // The family's native sampling params (temperature/top_p/top_k it can ever
-    // accept) — used to honor an explicit row override at the end.
-    let base_sampling: Vec<UnifiedParam> = [
-        UnifiedParam::Temperature,
-        UnifiedParam::TopP,
-        UnifiedParam::TopK,
-    ]
-    .into_iter()
-    .filter(|p| rp.eligible.contains(p))
-    .collect();
+    // An EXPLICIT row override that the model accepts sampling. This beats a
+    // CAPABILITY guess (family pattern / catalog) — the escape hatch for a model
+    // whose name matches a reasoning family but that actually accepts sampling —
+    // but it does NOT beat a per-call RECONCILIATION (thinking active): thinking
+    // structurally forbids a non-default temperature, so that strip stands.
+    let row_allows_sampling = contract.supports_sampling_params == Some(true);
 
     // Capability: sampling support (row → catalog → family → default).
     if sampling_restricted(family, model_id, contract) {
@@ -390,12 +386,18 @@ pub fn resolve(
             if reasoning {
                 rp.max_tokens_field = MaxTokensField::MaxCompletionTokens;
                 rp.use_reasoning_effort = thinking_active;
-                rp.eligible.remove(&UnifiedParam::Temperature);
-                rp.eligible.remove(&UnifiedParam::TopP);
-                rp.eligible.remove(&UnifiedParam::FrequencyPenalty);
-                rp.eligible.remove(&UnifiedParam::PresencePenalty);
+                // Drop sampling unless an explicit row override re-enables it AND
+                // this reasoning classification is only the family pattern (not a
+                // thinking-active call, which always forbids sampling).
+                if thinking_active || !row_allows_sampling {
+                    rp.eligible.remove(&UnifiedParam::Temperature);
+                    rp.eligible.remove(&UnifiedParam::TopP);
+                    rp.eligible.remove(&UnifiedParam::FrequencyPenalty);
+                    rp.eligible.remove(&UnifiedParam::PresencePenalty);
+                }
             }
-            // gpt-5 org-verification: non-streaming + no sampling/seed/stop.
+            // gpt-5 org-verification: non-streaming + no sampling/seed/stop. A
+            // hard provider constraint, so a row override does NOT re-enable it.
             if openai_requires_non_streaming(model_id) {
                 rp.disable_stream = true;
                 rp.max_tokens_field = MaxTokensField::MaxCompletionTokens;
@@ -408,24 +410,16 @@ pub fn resolve(
         }
         ProviderFamily::Anthropic => {
             // Adaptive/extended thinking requires temperature==1 (or omitted);
-            // omit sampling entirely so Anthropic applies its default.
+            // omit sampling entirely so Anthropic applies its default. This is a
+            // per-call reconciliation and is intentionally NOT overridable by the
+            // row. (The opus/Claude-5 capability restriction is handled above by
+            // `sampling_restricted`, which DOES honor the row override.)
             if thinking_active {
                 drop_sampling(&mut rp);
             }
         }
         // Gemini accepts sampling alongside thinkingConfig; nothing to drop.
         ProviderFamily::Gemini => {}
-    }
-
-    // Row override wins: an EXPLICIT `supports_sampling_params: true` guarantees
-    // the family's sampling params stay eligible, overriding a family-pattern /
-    // reasoning / thinking strip (the escape hatch for a model whose name matches
-    // a reasoning family but that actually accepts sampling). If the user is
-    // wrong, the provider returns a clean error — there is no silent self-heal.
-    if contract.supports_sampling_params == Some(true) {
-        for p in base_sampling {
-            rp.eligible.insert(p);
-        }
     }
 
     rp
@@ -552,6 +546,23 @@ mod tests {
         let rp = resolve(ProviderFamily::OpenAiCompat, "o3-mini", &req_with_thinking("o3-mini", None), &allow);
         assert!(rp.allows(UnifiedParam::Temperature), "row override beats reasoning-family strip");
         assert_eq!(rp.max_tokens_field, MaxTokensField::MaxCompletionTokens);
+        // But the row does NOT beat a per-call thinking-active reconciliation:
+        // thinking forbids a non-default temperature, so sampling stays dropped
+        // even with an explicit row-allow (Anthropic + OpenAI alike).
+        let rp = resolve(
+            ProviderFamily::Anthropic,
+            "claude-sonnet-4-6",
+            &req_with_thinking("claude-sonnet-4-6", Some(ThinkingMode::Adaptive)),
+            &allow,
+        );
+        assert!(!rp.allows(UnifiedParam::Temperature), "thinking-active drop is not row-overridable");
+        let rp = resolve(
+            ProviderFamily::OpenAiCompat,
+            "o3-mini",
+            &req_with_thinking("o3-mini", Some(ThinkingMode::Adaptive)),
+            &allow,
+        );
+        assert!(!rp.allows(UnifiedParam::Temperature), "thinking-active drop is not row-overridable (openai)");
         // Row override beats catalog: force sampling OFF for a normally-allowed model.
         let deny = ModelParamContract {
             supports_sampling_params: Some(false),

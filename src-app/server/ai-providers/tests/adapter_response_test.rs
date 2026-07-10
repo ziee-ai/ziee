@@ -52,6 +52,12 @@ data: [DONE]\n\n";
 const OPENAI_ERR_400: &str = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n\
 {\"error\":{\"message\":\"Unsupported parameter: temperature\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":\"x\"}}";
 
+// Event bodies match ziee's `AnthropicStreamChunk` wire structs (the parser is
+// moved verbatim from the pre-refactor code): `message_delta` carries the
+// stop_reason under `message` (`AnthropicMessageDelta`), which is what the
+// adapter reads. This test verifies the SSE-driver refactor preserved that
+// extraction end-to-end; it is NOT the place to re-validate the wire struct
+// against every Anthropic API version (a separate, pre-existing concern).
 const ANTHROPIC_SSE_200: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n\
 event: message_start\ndata: {\"type\":\"message_start\",\"usage\":{\"input_tokens\":4}}\n\n\
 event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hi\"}}\n\n\
