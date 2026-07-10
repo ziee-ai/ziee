@@ -12,6 +12,7 @@ import {
 } from '@/modules/chat/core/stores/Chat.store'
 import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBridge'
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
 /** The store instance a pane subtree resolves via `useChatPane()`. */
 type PaneStore = ReturnType<typeof ChatPaneStore.use>
@@ -52,6 +53,18 @@ export function ChatPaneProvider({
   children: ReactNode
 }) {
   const store = ChatPaneStore.use()
+
+  // Seed this pane's extension stores (e.g. the composer `TextStore`) BEFORE the
+  // subtree renders. The store's own `init` also injects them, but `init` runs
+  // post-mount — too late for a child (TextInput) that reads `pane.store.TextStore`
+  // on its FIRST render. Idempotent (skips already-present stores); runs in a
+  // render-phase useMemo so it completes before children render.
+  useMemo(() => {
+    chatExtensionRegistry.injectExtensionStores(
+      store.__api__.getState() as unknown as Record<string, unknown>,
+    )
+    return null
+  }, [store])
 
   useEffect(() => {
     registerPane({
