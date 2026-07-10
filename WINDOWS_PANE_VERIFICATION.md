@@ -18,7 +18,7 @@ a real Windows + Microsoft Office box.
   ```powershell
   cargo test -p ziee-desktop --test <office_bridge test target> -- --ignored office_bridge::pane_rpc_windows
   ```
-  (`pane_rpc_windows_test.rs` is `#[cfg(windows)]` + `#[ignore]`.)
+  (`pane_rpc_windows_test.rs` is `#[cfg(windows)]`, env-gated on `ZIEE_OFFICE_LIVE`.)
 
 ## The Windows-specific unknowns (analogous to the Mac spike's WKWebView unknown)
 1. **WebView2 cert trust** — does the WebView2 task pane load

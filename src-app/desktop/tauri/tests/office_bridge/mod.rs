@@ -6,9 +6,9 @@
 //!   the no-secret-in-body guarantee), against the `TestServer` harness.
 //! - `bridge_test` (TEST-7) exercises the standalone HTTPS + WSS bridge listener
 //!   (ITEM-5) end-to-end over real TLS, trusting the minted bridge cert.
-//! - `windows_com_test` (TEST-9, `#[cfg(windows)]` + `#[ignore]`) is the live
-//!   Windows COM enumeration + act-on-document test (ITEM-7); it is opt-in and
-//!   requires a real, non-elevated Office document open on this session.
+//! - `windows_com_test` (TEST-9, `#[cfg(windows)]`, env-gated) is the live
+//!   Windows COM enumeration + act-on-document test (ITEM-7); it soft-skips
+//!   unless `ZIEE_OFFICE_LIVE=1` with a real, non-elevated Office document open.
 
 use serde_json::{Value, json};
 

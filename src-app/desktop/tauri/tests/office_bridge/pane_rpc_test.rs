@@ -482,8 +482,8 @@ async fn run_office_js_dispatch_round_trip() {
     pane.abort();
 }
 
-/// Shared live-Excel bring-up for the `#[ignore]` run_office_js live tests (macOS
-/// only): bind the fixed 44300 against the app's trusted cert, open Excel with a
+/// Shared live-Excel bring-up for the opt-in (env-gated) run_office_js live tests
+/// (macOS only): bind the fixed 44300 against the app's trusted cert, open Excel with a
 /// selected cell, and wait for a real task pane to register (the one manual step —
 /// clicking the ribbon button — an Office add-in pane can't be opened by automation).
 /// Returns the bridge handle + the connected pane's target key.
@@ -542,13 +542,20 @@ async fn open_excel_and_wait_for_pane() -> (server::BridgeHandle, String) {
     (handle, target)
 }
 
-/// TEST-8 (office-run-office-js, live `#[ignore]`) — a hardcoded real Office.js script
+/// TEST-8 (office-run-office-js, live, env-gated) — a hardcoded real Office.js script
 /// passed to `run_office_js` executes in a live Excel task pane and its `return` value
 /// round-trips. Same one manual ribbon-click setup as the other live run_office_js tests.
+///
+/// Runtime SOFT-SKIP (not an ignore attribute — A3): returns immediately unless
+/// `ZIEE_OFFICE_LIVE=1` (with an Excel task pane open), so a default `cargo test` never
+/// binds 44300 or opens Excel.
 #[cfg(target_os = "macos")]
 #[tokio::test]
-#[ignore = "live: runs real Office.js in an Excel task pane on this macOS session"]
 async fn run_office_js_live_mac_executes_script() {
+    if std::env::var("ZIEE_OFFICE_LIVE").is_err() {
+        eprintln!("SKIP run_office_js_live_mac_executes_script: set ZIEE_OFFICE_LIVE=1 with an Excel task pane open");
+        return;
+    }
     let (handle, target) = open_excel_and_wait_for_pane().await;
     let script = "const s = context.workbook.worksheets.getActiveWorksheet();\n\
                   const r = s.getRange('A1');\n\
@@ -573,15 +580,15 @@ async fn run_office_js_live_mac_executes_script() {
     handle.shutdown();
 }
 
-/// TEST-11 (office-run-office-js, real-LLM + live `#[ignore]`) — a REAL
+/// TEST-11 (office-run-office-js, real-LLM + live, env-gated) — a REAL
 /// OpenAI-compatible model, given the SHIPPED `run_office_js` tool schema, emits a
 /// tool call whose Office.js `script` then executes in the live Excel pane and returns
 /// a value. Proves the end-to-end: real model writes valid Office.js against the real
-/// schema → the real pane runs it. Soft-skips when `ZIEE_OFFICE_REAL_LLM_URL` is unset
+/// schema → the real pane runs it. Runtime SOFT-SKIP (not an ignore attribute — A3):
+/// returns immediately when `ZIEE_OFFICE_REAL_LLM_URL` is unset
 /// (DEC-6: point it at the coder.ziee LiteLLM `:4000` via an SSH tunnel).
 #[cfg(target_os = "macos")]
 #[tokio::test]
-#[ignore = "live+real-LLM: needs ZIEE_OFFICE_REAL_LLM_URL + an Excel task pane"]
 async fn run_office_js_real_llm_live() {
     let url = match std::env::var("ZIEE_OFFICE_REAL_LLM_URL") {
         Ok(u) if !u.is_empty() => u,
@@ -695,10 +702,10 @@ async fn run_office_js_real_llm_live() {
 /// gates on (read → auto-run, write → prompt). Soft-skips when `ZIEE_OFFICE_REAL_LLM_URL`
 /// is unset. No Excel pane needed — this exercises only the model + the tool schema.
 ///
-/// Gated by a runtime SOFT-SKIP (not `#[ignore]`): when `ZIEE_OFFICE_REAL_LLM_URL` is
-/// unset it returns immediately, so a default `cargo test` never fires a live call. This
-/// is the lifecycle-preferred gate (A3 forbids `#[ignore]`); it's why this test — unlike
-/// the live-*Excel-pane* tests, which physically need a `#[ignore]` opt-in — stays live.
+/// Gated by a runtime SOFT-SKIP (no ignore attribute): when `ZIEE_OFFICE_REAL_LLM_URL`
+/// is unset it returns immediately, so a default `cargo test` never fires a live call.
+/// This is the lifecycle-preferred gate (A3 forbids ignore-attributes); every live test
+/// in this module uses the same env-gated soft-skip instead.
 #[tokio::test]
 async fn run_office_js_real_llm_declares_mode() {
     let url = match std::env::var("ZIEE_OFFICE_REAL_LLM_URL") {

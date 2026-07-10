@@ -1,15 +1,16 @@
 //! TEST-9 (ITEM-7) — live Windows COM enumeration + act-on-document.
 //!
-//! `#[cfg(windows)]` + `#[ignore]`: this is a genuine *live* test — it requires
+//! `#[cfg(windows)]`, env-gated: this is a genuine *live* test — it requires
 //! a real, **non-elevated** Word/Excel/PowerPoint document open on the same
 //! desktop session + integrity as the test process, so it can never run in CI
-//! or in the normal suite. It stays `#[ignore]` (opt-in / manual), mirroring the
-//! sandbox rootfs tiers.
+//! or in the normal suite. It uses a runtime SOFT-SKIP (no ignore attribute — A3):
+//! it returns immediately unless `ZIEE_OFFICE_LIVE=1`, mirroring the other live
+//! office_bridge tests.
 //!
-//! Run it manually, with at least one Office document open, via:
+//! Run it manually on Windows, with at least one Office document open, via:
 //!
 //! ```text
-//! cargo test -p ziee --test integration_tests -- --ignored office_bridge::windows_com
+//! ZIEE_OFFICE_LIVE=1 cargo test -p ziee-desktop --test integration_tests -- office_bridge::windows_com
 //! ```
 //!
 //! It asserts the spike-proven flow:
@@ -27,8 +28,11 @@
 use ziee_desktop::modules::office_bridge::platform::{self as platform, DocOp, OfficeApp};
 
 #[tokio::test]
-#[ignore = "live: requires a non-elevated Office document open on this session"]
 async fn test9_windows_com_list_and_act() {
+    if std::env::var("ZIEE_OFFICE_LIVE").is_err() {
+        eprintln!("SKIP test9_windows_com_list_and_act: set ZIEE_OFFICE_LIVE=1 with a non-elevated Office document open");
+        return;
+    }
     let office = platform::active();
 
     // The host must actually be a supported desktop with Office; if the probe

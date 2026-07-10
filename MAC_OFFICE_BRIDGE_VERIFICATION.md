@@ -274,7 +274,7 @@ E2E mocks the Office boundary — neither touches 44300 or real Office.
 
 The daemon↔pane JSON-RPC (the 5 pane-mediated Office.js tools) was verified live on
 this Mac, driving real Office.js in the actual Excel WKWebView task pane via the
-`#[ignore]` harness `test13_live_mac_pane_ops` (binds 44300, reuses the trusted cert).
+the env-gated (`ZIEE_OFFICE_LIVE`) live harness `test13_live_mac_pane_ops` (binds 44300, reuses the trusted cert).
 
 Pane log (real Excel task pane):
 ```
