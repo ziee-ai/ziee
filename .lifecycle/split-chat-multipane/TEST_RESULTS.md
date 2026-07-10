@@ -27,6 +27,11 @@ OpenAI-compatible bridge):
 - **TEST-15** (`independent-streaming.spec.ts`): **real-LLM** — sending in pane A
   streams the reply into pane A ONLY; pane B stays idle. Proves the per-pane
   stream client + the `applyStreamFrame` conversation guard (the phase-7 fix).
+- **TEST-16 / TEST-39** (`independent-scroll.spec.ts`): a 30-message history
+  virtualizes in pane A (subset mounted, oldest virtualized out) and scrolls via
+  pane A's OWN top-sentinel while pane B (new-chat) is untouched — each pane owns
+  its own DivScrollY viewport + virtualizer. Completes the per-pane
+  input/streaming/scroll independence set.
 
 ### Three real bugs the e2e suite caught + I fixed (audit could not — needs a browser)
 1. New-chat panes rendered "not found" instead of a composer → render a new-chat
