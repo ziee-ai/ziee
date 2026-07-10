@@ -1137,53 +1137,37 @@ impl StepDispatcher for ToolDispatcher {
                 }
             }
         } else {
-            // ITEM-18b/DEC-18: a SCHEDULED workflow run has no conversation, so the
-            // conversation-scoped toggle above never applies — honor the user's
-            // DEFAULT MCP disabled-servers instead (a standalone interactive run
-            // keeps the prior no-filter behavior). Fail CLOSED on any DB error.
-            let is_scheduled = match crate::modules::workflow::repository::find_run(
+            // ITEM-18b/DEC-18: a standalone run (no conversation — the SCHEDULED
+            // case, plus workflow-tool standalone) has no conversation-scoped
+            // toggle to apply, so honor the user's DEFAULT MCP disabled-servers
+            // instead. This closes the gap where a scheduled workflow run ignored
+            // the user's disabled set. Fail CLOSED on any DB error (security gate).
+            let defaults = match crate::modules::mcp::chat_extension::defaults::repository::get_user_defaults(
                 crate::core::Repos.pool(),
-                ctx.run_id,
+                ctx.user_id,
             )
             .await
             {
-                Ok(Some(run)) => run.invocation_source == "scheduled",
-                Ok(None) => false,
+                Ok(d) => d,
                 Err(e) => {
                     return StepResult::Failed {
-                        error: format!("tool: could not resolve run policy: {e}"),
+                        error: format!("tool: could not resolve user MCP defaults: {e}"),
                         tokens_used: 0,
                     };
                 }
             };
-            if is_scheduled {
-                let defaults = match crate::modules::mcp::chat_extension::defaults::repository::get_user_defaults(
-                    crate::core::Repos.pool(),
-                    ctx.user_id,
-                )
-                .await
-                {
-                    Ok(d) => d,
-                    Err(e) => {
-                        return StepResult::Failed {
-                            error: format!("tool: could not resolve user MCP defaults: {e}"),
-                            tokens_used: 0,
-                        };
-                    }
-                };
-                if let Some(defaults) = defaults {
-                    let disabled = defaults.get_disabled_servers();
-                    if disabled.iter().any(|d| {
-                        d.server_id == server_id
-                            && (d.is_server_disabled() || d.is_tool_disabled(&tool_name))
-                    }) {
-                        return StepResult::Failed {
-                            error: format!(
-                                "tool '{tool_name}' on server '{server_name}' is disabled in your default MCP settings"
-                            ),
-                            tokens_used: 0,
-                        };
-                    }
+            if let Some(defaults) = defaults {
+                let disabled = defaults.get_disabled_servers();
+                if disabled.iter().any(|d| {
+                    d.server_id == server_id
+                        && (d.is_server_disabled() || d.is_tool_disabled(&tool_name))
+                }) {
+                    return StepResult::Failed {
+                        error: format!(
+                            "tool '{tool_name}' on server '{server_name}' is disabled in your default MCP settings"
+                        ),
+                        tokens_used: 0,
+                    };
                 }
             }
         }
