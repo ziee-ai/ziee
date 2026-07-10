@@ -1,5 +1,10 @@
 import { type ComponentType, memo, type ReactNode } from 'react'
-import { defineStore } from '@/core/store-kit'
+import {
+  defineLocalStore,
+  defineStore,
+  type StoreInitCtx,
+  type StoreSet,
+} from '@/core/store-kit'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
 import type {
@@ -478,8 +483,14 @@ interface ChatState {
   __destroy__?: () => void
 }
 
-export const Chat = defineStore('Chat', {
-  state: {
+// Shared authoring config for the chat store. The SAME config builds BOTH the
+// eager "primary" pane (a `defineStore` singleton — pane 0, keeps single-pane
+// behaviour byte-identical + gives boot-time consumers/registry a store to bind
+// to) AND per-pane `defineLocalStore` instances for additional split panes.
+// The initial per-conversation state (named so `typeof chatInitialState` can
+// type the actions/init callbacks — extracting the config to a const otherwise
+// drops the contextual param typing `defineStore` gave them inline).
+const chatInitialState = {
     conversation: null as Conversation | null,
     messages: new Map<string, MessageWithContent>(),
     loading: false,
@@ -513,8 +524,14 @@ export const Chat = defineStore('Chat', {
       activeId: null as string | null,
       mobileDrawerOpen: false,
     },
-  },
-  actions: (set, getRaw) => {
+}
+
+const chatStoreConfig = {
+  state: chatInitialState,
+  actions: (
+    set: StoreSet<typeof chatInitialState>,
+    getRaw: () => typeof chatInitialState,
+  ) => {
     const get = getRaw as () => ChatState
     return {
 
@@ -1996,7 +2013,11 @@ export const Chat = defineStore('Chat', {
 
     }
   },
-  init: ({ set, get: getRaw, onCleanup }) => {
+  init: ({
+    set,
+    get: getRaw,
+    onCleanup,
+  }: StoreInitCtx<typeof chatInitialState>) => {
     const get = getRaw as () => ChatState
     void (async () => {
         const { Stores } = await import('@/core/stores')
@@ -2156,6 +2177,16 @@ export const Chat = defineStore('Chat', {
       console.log('[Chat.store] Destroyed successfully')
     })
   },
-})
+}
+
+/** Pane 0 — the eager primary chat store (a global singleton). Single-pane chat
+ *  runs entirely on this instance, so behaviour is unchanged. The `Stores.Chat`
+ *  bridge (chatBridge.ts) forwards to whichever pane is focused, defaulting here. */
+export const Chat = defineStore('Chat', chatStoreConfig)
+
+/** Per-pane chat store for additional split panes (ITEM-2). Same config as the
+ *  primary; each `.use()` / `.create()` is an independent instance with its own
+ *  EventBus group. */
+export const ChatPaneStore = defineLocalStore(chatStoreConfig)
 
 export const useChatStore = Chat.store

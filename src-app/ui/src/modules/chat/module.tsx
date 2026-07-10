@@ -3,7 +3,7 @@ import { Permissions } from '@/api-client/types'
 import { History, Plus } from 'lucide-react'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import { chatBridge } from '@/modules/chat/core/stores/chatBridge'
 import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
@@ -30,8 +30,11 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     {
+      // `Stores.Chat` is the focused-pane BRIDGE (forwards to the focused pane,
+      // default = the primary pane); single-pane forwards to the primary so
+      // behaviour is unchanged.
       name: 'Chat',
-      store: useChatStore,
+      store: chatBridge,
     },
     {
       name: 'ChatHistory',

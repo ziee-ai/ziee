@@ -3919,7 +3919,7 @@ export const PANEL_RENDERERS: PanelRegistration[] = [
 
 /** Slot registrations (discoverability map for sidebar/settings/panel mount points). */
 export const SLOT_REGISTRATIONS: SlotRegistration[] = [
-  { slot: "chatConversationHeaderTrailing", surface: "modules/chat/module", line: 104 },
+  { slot: "chatConversationHeaderTrailing", surface: "modules/chat/module", line: 107 },
   { slot: "settingsAdminPages", surface: "modules/assistant/module", line: 79 },
   { slot: "settingsAdminPages", surface: "modules/auth-providers/module", line: 43 },
   { slot: "settingsAdminPages", surface: "modules/auth/module", line: 80 },
@@ -3950,7 +3950,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsUserPages", surface: "modules/user-llm-providers/module", line: 36 },
   { slot: "settingsUserPages", surface: "modules/web-search/module", line: 67 },
   { slot: "settingsUserPages", surface: "modules/workflow/module", line: 94 },
-  { slot: "sidebarContent", surface: "modules/chat/module", line: 95 },
+  { slot: "sidebarContent", surface: "modules/chat/module", line: 98 },
 ]
 
 export type StateMatrixSurface = keyof typeof STATE_MATRIX
