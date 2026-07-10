@@ -653,8 +653,34 @@ async fn test_upload_size_boundary_respects_configured_cap() {
     let body: serde_json::Value = resp.json().await.expect("json error body");
     assert_eq!(body["error_code"], "FILE_TOO_LARGE", "body: {body}");
     assert!(
-        body["error"].as_str().unwrap_or_default().contains("MiB"),
-        "error message must state the real limit in MiB; body: {body}"
+        body["error"].as_str().unwrap_or_default().contains(" MB"),
+        "error message must state the real limit; body: {body}"
+    );
+
+    // ~18 MiB — above the DERIVED route body limit (cap 1 MiB + 16 MiB slack =
+    // 17 MiB), so the DefaultBodyLimit layer rejects it with 413 BEFORE the
+    // handler. This distinguishes the derived-from-cap body limit from the old
+    // hardcoded 200 MB const (under which 18 MiB would have reached the handler
+    // and returned 400), proving the route layer reads the configured cap.
+    let over_body_limit = vec![0u8; 18 * 1024 * 1024];
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(over_body_limit)
+            .file_name("huge.bin")
+            .mime_str("application/octet-stream")
+            .unwrap(),
+    );
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        resp.status(),
+        413,
+        "a body over the derived route body limit must be rejected by the body-limit layer (413)"
     );
 }
 

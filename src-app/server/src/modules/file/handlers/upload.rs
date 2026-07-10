@@ -73,11 +73,14 @@ pub async fn upload_file_inner(
     // and the per-route body-limit layer read the same source of truth.
     let max_file_size = crate::core::get_max_file_upload_bytes();
     if file_data.len() > max_file_size {
+        // Report the file size with one decimal (raw bytes → MB) so a file just
+        // over the cap doesn't render as "1 MB exceeds 1 MB"; use MB in both the
+        // backend and the UI for a consistent user-facing unit.
         return Err(AppError::bad_request(
             "FILE_TOO_LARGE",
             format!(
-                "File size ({} MiB) exceeds the maximum of {} MiB",
-                file_data.len() / (1024 * 1024),
+                "File size {:.1} MB exceeds the maximum upload size of {} MB",
+                file_data.len() as f64 / (1024.0 * 1024.0),
                 max_file_size / (1024 * 1024),
             ),
         ));

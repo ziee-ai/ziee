@@ -11,5 +11,10 @@
  */
 export const MAX_FILE_UPLOAD_BYTES = 128 * 1024 * 1024
 
-/** Human-readable label for the cap, used in "file too large" messages. */
-export const MAX_FILE_UPLOAD_LABEL = '128MB'
+/**
+ * Human-readable label for the cap, used in "file too large" messages. Derived
+ * from `MAX_FILE_UPLOAD_BYTES` so the two can never drift; uses "MB" to match the
+ * backend `FILE_TOO_LARGE` message's unit (both surfaces present the binary cap
+ * as MB, the conventional user-facing unit).
+ */
+export const MAX_FILE_UPLOAD_LABEL = `${Math.round(MAX_FILE_UPLOAD_BYTES / (1024 * 1024))}MB`
