@@ -2081,7 +2081,22 @@ const chatStoreConfig = {
     // owns its own stream client — so panes never couple (ITEM-6).
     let frameApplyTail: Promise<void> = Promise.resolve()
     let lastChatResyncAt = 0
-    const streamClient = createChatStreamClient()
+    // Reconnect handler is forward-declared (resyncOpen is defined in the async
+    // IIFE below); the client only fires it after a genuine (re)connect, long
+    // after that assignment lands.
+    let onStreamReconnect: () => void = () => {}
+    // Deliver THIS client's frames DIRECTLY to THIS pane's store (ITEM-35) rather
+    // than the global `chat:token` bus, so two panes on the same conversation
+    // never double-process. SERIALIZED via the per-instance tail promise
+    // (applyStreamFrame is async → concurrent calls would corrupt streamingMessage).
+    const streamClient = createChatStreamClient({
+      onFrame: (conversationId, event) => {
+        frameApplyTail = frameApplyTail
+          .then(() => get().applyStreamFrame(conversationId, event))
+          .catch((err) => console.error('[chat:token] apply failed', err))
+      },
+      onReconnect: () => onStreamReconnect(),
+    })
     set({ chatStreamClient: streamClient })
 
     // Give THIS instance its own extension-store instances (e.g. the composer
@@ -2139,6 +2154,9 @@ const chatStoreConfig = {
           lastChatResyncAt = now
           void reloadOpen(id)
         }
+        // Wire this pane's stream client reconnect → its own debounced resync
+        // (ITEM-35): only THIS pane refetches on its own reconnect, not all panes.
+        onStreamReconnect = resyncOpen
 
         on(
           'sync:conversation',
@@ -2177,27 +2195,10 @@ const chatStoreConfig = {
         })
         onCleanup(unsubscribeAuth)
 
-        // Inbound: route each live generation frame to the open conversation.
-        // Fires on EVERY device (sender or receiver) — whichever has the
-        // conversation open renders live tokens. SERIALIZED via a per-instance
-        // tail promise: applyStreamFrame is async (awaits extension hooks /
-        // loadMessages), so concurrent invocations would interleave and corrupt
-        // streamingMessage. `applyStreamFrame` filters by conversation id, so a
-        // frame for another pane's conversation is a cheap no-op here.
-        on('chat:token', event => {
-          frameApplyTail = frameApplyTail
-            .then(() =>
-              get().applyStreamFrame(
-                event.data.conversation_id,
-                event.data.event,
-              ),
-            )
-            .catch(err => console.error('[chat:token] apply failed', err))
-        })
-
-        // On stream (re)connect the server replays the reply-so-far (catch-up);
-        // also reconcile the open conversation from the DB (debounced).
-        on('chat:stream-reconnect', () => resyncOpen())
+        // Inbound frames + stream-reconnect are now delivered DIRECTLY to this
+        // pane's client via the onFrame/onReconnect callbacks wired at client
+        // creation (ITEM-35) — no global `chat:token` / `chat:stream-reconnect`
+        // EventBus subscription, so a same-conversation split never double-applies.
     })()
     onCleanup(() => {
       console.log('[Chat.store] Destroying - cleaning up resources')

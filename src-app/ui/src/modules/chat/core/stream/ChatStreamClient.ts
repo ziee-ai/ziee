@@ -35,8 +35,23 @@ export interface ChatStreamClient {
   setActiveConversation(conversationId: string | null): Promise<void>
 }
 
+/**
+ * Handlers a pane's store wires to ITS client (ITEM-35). Frames are delivered
+ * DIRECTLY to the owning pane instead of the global `chat:token` EventBus, so two
+ * panes on the SAME conversation (compare-two-branches) each process only their
+ * own connection's frames — the global bus made both stores apply BOTH clients'
+ * frames, doubling/garbling live text. Omit them (single-pane legacy) → the
+ * client falls back to the global EventBus emit, unchanged.
+ */
+export interface ChatStreamHandlers {
+  onFrame?: (conversationId: string, event: unknown) => void
+  onReconnect?: () => void
+}
+
 /** Create an independent chat-token SSE client (see the per-instance note). */
-export function createChatStreamClient(): ChatStreamClient {
+export function createChatStreamClient(
+  handlers?: ChatStreamHandlers,
+): ChatStreamClient {
   let started = false
   let epoch = 0
   let activeAbort: AbortController | null = null
@@ -196,9 +211,12 @@ export function createChatStreamClient(): ChatStreamClient {
         // the open conversation reconcile (it may have advanced while we were
         // disconnected). Both fire only on a genuine (re)connect handshake.
         void putSubscription()
-        void useEventBusStore
-          .getState()
-          .emit({ type: 'chat:stream-reconnect', data: {} })
+        // Direct per-pane reconnect (ITEM-35), else the global bus (legacy).
+        if (handlers?.onReconnect) handlers.onReconnect()
+        else
+          void useEventBusStore
+            .getState()
+            .emit({ type: 'chat:stream-reconnect', data: {} })
       }
       return
     }
@@ -213,10 +231,13 @@ export function createChatStreamClient(): ChatStreamClient {
     //     subscribed to (the server only delivered them because we're subscribed).
     const frame = data as Partial<ChatStreamFrame> & { type?: string }
     if (frame.conversationId && frame.event) {
-      void useEventBusStore.getState().emit({
-        type: 'chat:token',
-        data: { conversation_id: frame.conversationId, event: frame.event },
-      })
+      // Direct per-pane delivery (ITEM-35), else the global bus (legacy).
+      if (handlers?.onFrame) handlers.onFrame(frame.conversationId, frame.event)
+      else
+        void useEventBusStore.getState().emit({
+          type: 'chat:token',
+          data: { conversation_id: frame.conversationId, event: frame.event },
+        })
     } else if (
       desiredConversationId &&
       (typeof frame.type === 'string' || event)
@@ -231,10 +252,12 @@ export function createChatStreamClient(): ChatStreamClient {
               ...(data as object),
               type: event,
             } as unknown as SSEChatStreamEvent)
-      void useEventBusStore.getState().emit({
-        type: 'chat:token',
-        data: { conversation_id: desiredConversationId, event: payload },
-      })
+      if (handlers?.onFrame) handlers.onFrame(desiredConversationId, payload)
+      else
+        void useEventBusStore.getState().emit({
+          type: 'chat:token',
+          data: { conversation_id: desiredConversationId, event: payload },
+        })
     }
   }
 
