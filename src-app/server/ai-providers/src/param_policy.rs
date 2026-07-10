@@ -196,15 +196,16 @@ fn family_thinking_style(family: ProviderFamily, model_id: &str) -> Option<&'sta
     let m = bare_id(model_id);
     match family {
         ProviderFamily::Anthropic => {
-            // Opus/Sonnet 4.6+ and Claude 5+ support adaptive thinking.
+            // Opus (all), Sonnet 4.x+, and any Claude 5+ tier support adaptive
+            // thinking. Haiku does NOT — so it is deliberately excluded (a bare
+            // `major >= 4` would wrongly enable it for haiku-4-5).
             if m.contains("opus") {
                 return Some("adaptive");
             }
             if claude_major_version(&m).is_some_and(|v| v >= 5) {
                 return Some("adaptive");
             }
-            // sonnet-4-6 / haiku-4-5 style (major 4, minor >= …) — treat 4-x as adaptive.
-            if claude_major_version(&m).is_some_and(|v| v >= 4) {
+            if m.contains("sonnet") && claude_major_version(&m).is_some_and(|v| v >= 4) {
                 return Some("adaptive");
             }
             None

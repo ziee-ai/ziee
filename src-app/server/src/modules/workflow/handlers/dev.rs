@@ -735,7 +735,7 @@ async fn resolve_test_model(
         .flatten()?;
     let model_id = conv.model_id?;
     let model = crate::core::Repos.llm_model.get_by_id(model_id).await.ok().flatten()?;
-    let (provider, _name, _mid, _pid, _params) =
+    let (provider, _name, _mid, _pid, _params, _caps) =
         crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
             .await
             .ok()?;

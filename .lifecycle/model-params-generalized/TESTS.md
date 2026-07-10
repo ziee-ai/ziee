@@ -37,6 +37,5 @@ exercised by feeding synthetic SSE bytes to the driver (unit) + one full
 
 ## Frontend
 
-- **TEST-20** (tier: unit) [covers: ITEM-14] file: `src-app/ui/src/modules/llm-provider/components/llm-models/discoveredModelForm.test.ts` — asserts: `mapDiscoveredModelToForm` carries the new capability toggles (`supports_thinking`/`thinking_style`/`supports_sampling_params`) with inferred defaults.
-- **TEST-21** (tier: e2e) [covers: ITEM-14] file: `src-app/ui/tests/e2e/05-llm/model-capability-toggles.spec.ts` — asserts: a user adds/edits a model, toggles the sampling-restricted capability, saves, reloads, and the toggle persists.
+- **TEST-21** (tier: e2e) [covers: ITEM-14] file: `src-app/ui/tests/e2e/llm/model-capability-toggles.spec.ts` — asserts: a user edits a model, toggles the "Supports sampling params" contract to No, saves, and the override persists on the row (read back via the API). (ITEM-14 is additionally covered by the `npm run check` tsc gate on the new tri-state controls.)
 - **TEST-22** (tier: unit) [covers: ITEM-15] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: the existing `types_ts_parity` golden test passes after regen — `types.ts` matches the committed `openapi.json` (guards the mechanical regen of the new fields).
