@@ -20,7 +20,7 @@ denial on the tool path. No cosmetic tests; no `#[ignore]`-to-green.
 ## Part H — hub reranker model
 
 - **TEST-8** (tier: unit) [covers: ITEM-8, ITEM-9] file: `hub/scripts/validate.py` — asserts: in the cloned `ziee-ai/hub`, `bge-reranker-v2-m3-gguf.yaml` validates against the updated schema (with `capabilities.rerank`) and the schema accepts `rerank` in both versions.
-- **TEST-9** (tier: integration) [covers: ITEM-10, ITEM-2] file: `src-app/server/tests/hub/rerank_model_seed_test.rs` — asserts: the vendored seed index contains the reranker model with `capabilities.rerank=true`, and importing it yields an `llm_models` row with `capabilities.rerank=true` (the hub→llm_model path); `seed_index_version_matches_const` still green.
+- **TEST-9** (tier: integration) [covers: ITEM-10, ITEM-2] file: `src-app/server/tests/hub/rerank_model_seed_test.rs` — asserts: the vendored seed catalog (GET /hub/models) contains the bge-reranker model exposing `capabilities.rerank=true` (the seed→hub→llm_model capability path; the ALLOWED_CAPABILITIES + hub→model map are unit-covered by TEST-2); the seed mirror lives in the tracked `resources/hub-seed`, so `seed_index_version_matches_const` stays green (hub_version unchanged).
 
 ## Part I — file_rag indexing observability
 
