@@ -1,6 +1,7 @@
 import { Alert, ScrollArea } from '@/components/ui'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import type { File as FileEntity } from '@/api-client/types'
 
@@ -11,6 +12,8 @@ import type { File as FileEntity } from '@/api-client/types'
  * Matches reference implementation styling
  */
 export function FilePreviewList() {
+  // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
   // Access file extension store directly via Stores.Chat (reactive via store proxy)
   const {
     selectedFiles,
@@ -80,7 +83,7 @@ export function FilePreviewList() {
                 onClick={() =>
                   // displayInRightPanel is an action — callable directly from
                   // an event handler (actions are hook-free).
-                  Stores.Chat.displayInRightPanel({
+                  chat.displayInRightPanel({
                     id: file.id,
                     title: file.filename,
                     type: 'file',

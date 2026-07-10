@@ -2,6 +2,7 @@ import { FileSearch } from 'lucide-react'
 import { Button, Card, Text } from '@/components/ui'
 import type { MessageContentDataToolResult } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 import type { LiteratureResult, LiteratureScreeningData } from '../types'
@@ -18,6 +19,8 @@ import type { LiteratureResult, LiteratureScreeningData } from '../types'
  * `structured_content`; "Open in screening" hands the records to the right-panel.
  */
 export function LiteratureToolResultCard(props: ContentRendererProps) {
+  // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
   const { content } = props
   if (content.content_type !== 'tool_result') return null
   const block = content.content as MessageContentDataToolResult
@@ -40,7 +43,7 @@ export function LiteratureToolResultCard(props: ContentRendererProps) {
       decisions: {},
       reasons: {},
     }
-    Stores.Chat.displayInRightPanel({
+    chat.displayInRightPanel({
       id: sessionId,
       title: `Screening: ${sc.query}`.slice(0, 60),
       type: 'literature',

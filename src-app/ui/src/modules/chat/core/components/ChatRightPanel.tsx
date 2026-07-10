@@ -3,11 +3,13 @@ import { Button, Empty, Tabs, Text } from '@/components/ui'
 import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 function ActivePanelContent() {
-  const { tabs, activeId } = Stores.Chat.rightPanel
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { tabs, activeId } = chat.rightPanel
   const activeTab = tabs.find(t => t.id === activeId)
   // Empty body when there's literally no tab to display — this is the
   // initial state and not an error, so returning null is correct here.
@@ -45,7 +47,8 @@ function ActivePanelContent() {
 }
 
 function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; asTitle?: boolean }) {
-  const { tabs, activeId } = Stores.Chat.rightPanel
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { tabs, activeId } = chat.rightPanel
 
   if (tabs.length === 0) return null
 
@@ -83,9 +86,9 @@ function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; a
             closable: true,
           }
         })}
-        onValueChange={key => Stores.Chat.setActiveRightPanelTab(key)}
+        onValueChange={key => chat.setActiveRightPanelTab(key)}
         onEdit={(action, key) => {
-          if (action === 'remove') Stores.Chat.closeRightPanelTab(key)
+          if (action === 'remove') chat.closeRightPanelTab(key)
         }}
       />
   )
@@ -122,7 +125,8 @@ export function ChatRightPanel({
   inPane?: boolean
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const { rightPanel } = Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { rightPanel } = chat
   // `narrow` = the conversation PAGE is small (element-width, sidebar-aware),
   // not the window — so an open sidebar on a wide window still gets the drawer.
   const isMobile = narrow
@@ -140,7 +144,7 @@ export function ChatRightPanel({
   useEffect(() => {
     if (!inPane || !showDrawer) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') Stores.Chat.closeMobileDrawer()
+      if (e.key === 'Escape') chat.closeMobileDrawer()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -163,7 +167,7 @@ export function ChatRightPanel({
       >
         {/* PanelTabs carries the accessible close-all (X) button; the slide-over
             separates from the pane content via border + shadow (no backdrop). */}
-        <PanelTabs onCloseAll={Stores.Chat.closeAllRightPanelTabs} />
+        <PanelTabs onCloseAll={chat.closeAllRightPanelTabs} />
         <div className="flex-1 overflow-hidden min-h-0">
           <ActivePanelContent />
         </div>
@@ -179,7 +183,7 @@ export function ChatRightPanel({
     return (
       <Drawer
         open={showDrawer}
-        onClose={Stores.Chat.closeMobileDrawer}
+        onClose={chat.closeMobileDrawer}
         placement="right"
         noBodyScrollWrap
         data-testid="chat-right-panel"
@@ -212,7 +216,7 @@ export function ChatRightPanel({
     >
       {/* Inner div keeps fixed width so content doesn't collapse during close animation */}
       <div className="h-full flex flex-col" style={{ width: panelWidth, minWidth: panelWidth }}>
-        <PanelTabs onCloseAll={Stores.Chat.closeAllRightPanelTabs} />
+        <PanelTabs onCloseAll={chat.closeAllRightPanelTabs} />
         <div className="flex-1 overflow-hidden">
           <ActivePanelContent />
         </div>
@@ -225,7 +229,7 @@ export function ChatRightPanel({
           maxWidth={800}
           onEnd={() => {
             if (panelRef.current) {
-              Stores.Chat.setRightPanelWidth(panelRef.current.offsetWidth)
+              chat.setRightPanelWidth(panelRef.current.offsetWidth)
             }
           }}
         />
