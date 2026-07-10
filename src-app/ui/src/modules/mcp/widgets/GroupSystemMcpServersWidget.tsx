@@ -23,12 +23,17 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   const loading = serverData?.loading || false
   const error = serverData?.error || null
   const canManage = usePermission(Permissions.McpServersAdminEdit)
+  // The list/getServerGroups endpoints require mcp_servers_admin::read (Edit is
+  // only for assign/remove). Gate the eager load on read so a groups-admin
+  // without mcp_servers_admin::read (reaching the user-groups page via
+  // groups::read) doesn't 403 on mount.
+  const canRead = usePermission(Permissions.McpServersAdminRead)
 
   // CRITICAL: Load data on mount
   // The store has 30-second caching, so this won't cause excessive API calls
   useEffect(() => {
-    Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id)
-  }, [group.id])
+    if (canRead) Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id)
+  }, [group.id, canRead])
 
   const handleEdit = () => {
     Stores.GroupSystemMcpServersAssignment.openDrawer(group)

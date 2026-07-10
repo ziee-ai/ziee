@@ -1,3 +1,4 @@
+import type { PermissionExpr } from '@/core/permissions'
 import type {
   AdvancedSettingsContribution,
   KnowledgeKindContribution,
@@ -5,6 +6,17 @@ import type {
   ProjectExtensionRegistration,
   ProjectSlotName,
 } from '@/modules/projects/core/extensions/types'
+
+/**
+ * A rendered project-extension slot entry: the node plus the optional
+ * permission that gates it. `<ProjectExtensionSlot>` filters on
+ * `permission` reactively before rendering, so a user who lacks the grant
+ * never sees the contribution (header + body).
+ */
+export interface RenderedSlotEntry {
+  node: React.ReactNode
+  permission?: PermissionExpr
+}
 
 /**
  * Lightweight registry for project-extension contributions.
@@ -79,20 +91,31 @@ export class ProjectExtensionRegistry {
    *
    * For `knowledge_kinds`, `view` selects `inlinePreview` or `managePanel`.
    * For `advanced_settings`, `view` is ignored (panels are self-contained).
+   *
+   * Each entry carries its contribution's optional `permission` so the
+   * caller (`<ProjectExtensionSlot>`) can filter reactively — gating is a
+   * render-time concern (needs the reactive auth store), so it is NOT done
+   * here.
    */
-  renderSlot(name: ProjectSlotName, view?: KnowledgeView): React.ReactNode[] {
+  renderSlot(name: ProjectSlotName, view?: KnowledgeView): RenderedSlotEntry[] {
     if (name === 'knowledge_kinds') {
       if (!view) return []
       return this.knowledgeKinds().map((c, idx) => {
         const Component =
           view === 'inlinePreview' ? c.inlinePreview : c.managePanel
-        return <Component key={`${c.extensionName}-${view}-${idx}`} />
+        return {
+          node: <Component key={`${c.extensionName}-${view}-${idx}`} />,
+          permission: c.permission,
+        }
       })
     }
     if (name === 'advanced_settings') {
       return this.advancedSettings().map((c, idx) => {
         const Component = c.panel
-        return <Component key={`${c.extensionName}-panel-${idx}`} />
+        return {
+          node: <Component key={`${c.extensionName}-panel-${idx}`} />,
+          permission: c.permission,
+        }
       })
     }
     return []

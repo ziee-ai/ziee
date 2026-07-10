@@ -73,6 +73,10 @@ pub enum SyncEntity {
     /// `GET /api/mcp/defaults` (gated `conversations::read`). `id` is
     /// `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).
     McpDefaults,
+    /// A conversation's deliverables curation changed (a file pinned/hidden as a
+    /// deliverable). Owner-scoped; notify-only — the client refetches
+    /// `GET /api/conversations/{id}/deliverables`. `id` is the conversation id.
+    Deliverable,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).
@@ -132,6 +136,11 @@ pub enum SyncEntity {
     /// (the read-perm gating `GET /api/mcp/user-policy`); notify-only — each
     /// recipient refetches the sanitized policy. `id` is `Uuid::nil()`.
     McpUserPolicy,
+    /// Deployment-wide scheduler admin settings (singleton): per-user task
+    /// quota, cadence floor, failure cap, notification retention. Delivered to
+    /// holders of `scheduler::admin::read`; notify-only — the admin UI refetches
+    /// `GET /api/scheduler/admin-settings`. `id` is `Uuid::nil()`.
+    SchedulerAdminSettings,
 
     /// A user's bibliography library entry changed (add/import/verify/delete).
     /// Owner-scoped; notify-only — the client refetches `/api/citations`.
@@ -145,6 +154,16 @@ pub enum SyncEntity {
     /// `Uuid::new_v5` derived from the document's `full_name`, so
     /// open/close of the same document address the same entity id.
     OfficeDocument,
+
+    /// A user's scheduled task changed (create/update/enable/pause/delete) or a
+    /// firing advanced its run history. Owner-scoped; notify-only — the client
+    /// refetches `/api/scheduled-tasks` (and, if open, the task's runs).
+    ScheduledTask,
+    /// A new (or updated/read) notification for the user. Owner-scoped;
+    /// emitted with origin=None from the background firing so every device
+    /// refetches `/api/notifications` (+ the unread count). `id` is the
+    /// notification id (or `Uuid::nil()` for a bulk read-all/prune).
+    Notification,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
@@ -363,6 +382,9 @@ mod tests {
             (SyncEntity::UserLlmProvider, "user_llm_provider"),
             (SyncEntity::MemorySettings, "memory_settings"),
             (SyncEntity::Session, "session"),
+            (SyncEntity::ScheduledTask, "scheduled_task"),
+            (SyncEntity::Notification, "notification"),
+            (SyncEntity::SchedulerAdminSettings, "scheduler_admin_settings"),
         ];
         for (e, name) in cases {
             assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{name}\""));

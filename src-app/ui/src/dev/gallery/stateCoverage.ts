@@ -70,6 +70,16 @@ export const STATE_COVERAGE = {
     reason:
       "full-page file view (/files/:id) — static/e2e-verified surface; ':delayed' is the route lazy-load fallback, exercised by the full-page-view e2e spec",
   },
+  'modules/file/components/FileEditBody:error': {
+    skip: true,
+    reason:
+      "canvas load-failure guard: when the head-text fetch fails, an error panel with Retry renders and Save is unreachable (data-loss guard — no blank clobber). Transient fetch-failure state, not deterministically snapshottable in the seeded gallery (the edit-body cell mocks a successful /text); the guard is verified by the FileEditBody logic + the happy edit path by seeded-artifact-canvas-edit-body and the 14-artifacts e2e suite",
+  },
+  'modules/file/components/CanvasSelectionPopover:empty': {
+    skip: true,
+    reason:
+      "the selection popover renders null until the user selects text in the canvas (its `:empty`/default state); the visible/open state is interaction-driven (a real text selection), verified by the selection-ask e2e spec — not a deterministic mount snapshot",
+  },
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
   },
@@ -293,6 +303,11 @@ export const STATE_COVERAGE = {
   "modules/memory/components/sections/SemanticSearchSection:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/memory/pages/MemoryAdminPage:delayed": { via: 'page-state-mode' },
   "modules/memory/pages/MemoryAdminPage:error": { via: 'page-state-mode' },
+  "modules/notification/components/NotificationBellWidget:empty": { skip: true, reason: "via surface — slot-widget rendered within its page; 'empty' popover branch proven by Part 2 runtime coverage" },
+  "modules/notification/components/NotificationBellWidget:open": { skip: true, reason: "via surface — popover open-state (click) proven by Part 2 runtime coverage" },
+  "modules/notification/pages/NotificationsPage:delayed": { via: 'page-state-mode' },
+  "modules/notification/pages/NotificationsPage:empty": { via: 'page-state-mode' },
+  "modules/notification/pages/NotificationsPage:error": { via: 'page-state-mode' },
   "modules/onboarding/OnboardingRedirect:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
@@ -315,6 +330,12 @@ export const STATE_COVERAGE = {
   "modules/projects/pages/ProjectDetailPage:delayed": { via: 'page-state-mode' },
   "modules/projects/pages/ProjectDetailPage:empty": { via: 'page-state-mode' },
   "modules/projects/pages/ProjectsListPage:delayed": { via: 'page-state-mode' },
+  "modules/scheduler/components/ScheduledTaskFormDrawer:open": { skip: true, reason: "scheduled-task create/edit drawer — open-state needs the SchedulerDrawer store + a live open-trigger; verified via the scheduler e2e interaction spec" },
+  "modules/scheduler/pages/ScheduledTasksPage:delayed": { via: 'page-state-mode' },
+  "modules/scheduler/pages/ScheduledTasksPage:empty": { via: 'page-state-mode' },
+  "modules/scheduler/pages/ScheduledTasksPage:error": { via: 'page-state-mode' },
+  "modules/scheduler/pages/SchedulerAdminPage:delayed": { via: 'page-state-mode' },
+  "modules/scheduler/pages/SchedulerAdminPage:error": { via: 'page-state-mode' },
   "modules/server-update/AboutSettings:error": { via: 'page-state-mode' },
   "modules/skill/components/ConversationSkillsPanel:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/skill/components/ConversationSkillsPanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
@@ -394,6 +415,7 @@ export const STATE_COVERAGE = {
   "modules/chat/components/ConversationFindBar:empty": { skip: true, reason: "via surface — the find bar renders null when closed; its open/match states are proven by the conversation-find e2e + Part 2 runtime coverage" },
   "modules/file/chat-extension/components/FilePasteHandler:empty": { skip: true, reason: "via surface — an invisible composer-attached paste-image sentinel (renders only a hidden span); behavior proven by the composer-paste-image e2e" },
   "modules/file/viewers/shared/RawCodeView:empty": { skip: true, reason: "unreachable — the flagged chunks.length===0 is an IntersectionObserver effect guard, not a render branch, and chunkLineArray always yields ≥1 chunk (even empty text → one empty-line chunk); the viewer's real render (windowed chunks + highlight) is covered by the seeded-rawcode-large gallery surface + the large-text-viewer e2e" },
+  "modules/file/components/FileVersionBar:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

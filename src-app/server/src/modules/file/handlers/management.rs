@@ -8,7 +8,7 @@ use axum::Json;
 
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
-use crate::modules::file::handlers::download::FILE_CONTENT_CACHE_CONTROL;
+use crate::modules::file::handlers::download::FILE_HEAD_CACHE_CONTROL;
 use crate::modules::file::models::File;
 use crate::modules::file::permissions::{FilesDelete, FilesDownload, FilesPreview, FilesRead};
 use crate::modules::file::storage::manager::get_file_storage;
@@ -82,7 +82,7 @@ pub async fn get_preview(
     let headers = [
         (header::CONTENT_TYPE, "image/jpeg".to_string()),
         (header::CONTENT_LENGTH, image_data.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, image_data).into_response()))
@@ -138,7 +138,7 @@ pub async fn get_raw(
         ),
         (header::CONTENT_DISPOSITION, "inline".to_string()),
         (header::CONTENT_LENGTH, file_data.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, file_data).into_response()))
@@ -169,7 +169,7 @@ pub async fn get_thumbnail(
     let headers = [
         (header::CONTENT_TYPE, "image/jpeg".to_string()),
         (header::CONTENT_LENGTH, thumbnail_data.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, thumbnail_data).into_response()))
@@ -228,7 +228,7 @@ pub async fn get_text_content(
     let headers = [
         (header::CONTENT_TYPE, "text/plain; charset=utf-8".to_string()),
         (header::CONTENT_LENGTH, text_content.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, text_content).into_response()))

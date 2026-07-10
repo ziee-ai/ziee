@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
-import type { DownloadSnapshot } from '@/api-client/types'
+import { Permissions, type DownloadSnapshot } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 import { Stores } from '@/core/stores'
 import type { RuntimeDownloadRequest, RuntimeEngine } from '../types'
@@ -84,7 +85,11 @@ export const RuntimeDownloadProgress = defineStore('RuntimeDownloadProgress', {
     clearError: () => set({ error: null }),
   }),
   // `loadActive` runs on mount — the page-reload-survival hook.
+  // Gated: `versions/downloads` requires llm_local_runtime::versions_read.
+  // The /settings/llm-runtime route uses a broad anyOf, so a holder of only
+  // LocalRuntimeRead / RuntimeSettingsRead reaches the page and would 403 here.
   init: ({ actions }) => {
+    if (!hasPermissionNow(Permissions.RuntimeVersionRead)) return
     void actions.loadActive()
   },
 })

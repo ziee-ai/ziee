@@ -137,6 +137,8 @@ portpicker = "0.1"
 
 # Common utilities
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+croner = "3"
 uuid = { version = "1.18", features = ["serde", "v4", "v5"] }
 dirs = "6.0.0"
 rand = "0.9.2"
