@@ -47,12 +47,5 @@ in-source `#[cfg(test)]` unit, `tests/…` integration, node `--test` for pane h
 > proven behaviour-preserving by the EXISTING approval suite, and a real-LLM test
 > validates the trust-model's core assumption (the model self-classifies `mode`).
 
-> Extraction behaviour-preservation (ITEM-5): proven DETERMINISTICALLY by TEST-12 (all 9
-> branches of `compute_needs_approval` reproduce the original inline logic) + the phase-6
-> blind equivalence audit (two independent reviewers, hunk-by-hunk, both clean). The
-> EXISTING LLM-driven `mcp_approval_workflow_test.rs` suite is an env-gated end-to-end that
-> exercises the same loop for control/normal servers (office_bridge is desktop-only, so it
-> never flows an office id through the server loop anyway) — it requires an LLM API key this
-> environment lacks, so it is not the primary proof; see TEST_RESULTS.md.
-
+- **TEST-13** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/mcp/mcp_approval_workflow_test.rs` — asserts: the EXISTING approval-workflow suite (auto-approve executes immediately / manual-approve creates a pending approval / approve-and-resume executes) STILL passes end-to-end after the `compute_needs_approval` extraction — the SAME loop that gates office_bridge routes through the extracted fn, so this proves it is behaviour-preserving for control/normal servers live. Runs against the coder.ziee OpenAI-compatible endpoint (`OPENAI_BASE_URL=http://127.0.0.1:4000`, gpt-4o via LiteLLM wildcard — DEC-7).
 - **TEST-14** (tier: integration) [covers: ITEM-6] file: `src-app/desktop/tauri/tests/office_bridge/pane_rpc_test.rs` — asserts: REAL-LLM (soft-skips when `ZIEE_OFFICE_REAL_LLM_URL` unset) — given the SHIPPED `run_office_js` schema, a real model (coder.ziee `qwen3.6-35b-a3b`) declares `mode:"read"` for a pure-read task ("read cell A1") and `mode:"write"` for a mutating task ("set A1 to 'hello'"). This validates the trust-based model's load-bearing assumption — that the model reliably self-classifies read vs write — which is exactly what the auto-approve-reads / prompt-writes gating depends on.
