@@ -123,6 +123,13 @@ const RE_TEST_ASSERTS = /asserts\s*:\s*(.+?)\s*$/i;
 // flags it as the RESTRICTED-USER spec (logs in as a user LACKING the perm and
 // asserts the feature UI is ABSENT — not merely 403-on-use).
 const RE_TEST_NEGPERM = /\[\s*negative-perm\s*\]/i;
+// Platform-skip tag: a `[platform-skip]` marker on a test line flags it as a
+// GENUINE platform-incompatibility skip (the skill's endorsed legit skip — a
+// `#[cfg(target_os=…)]`-gated test that cannot compile/run on the CI/dev host,
+// e.g. a `cfg(not(any(windows, macos)))` unit test on a macOS host). Phase 8
+// then accepts a SKIP result for it instead of requiring PASS. Deliberate author
+// marking (like [negative-perm]) so it is never a silent way to dodge a real run.
+const RE_TEST_PLATFORM_SKIP = /\[\s*platform-skip\s*\]/i;
 // DECISION:    ### DEC-1: question   then **Resolution:** ...  **Basis:** ...
 const RE_DEC = /^#{2,6}\s*(DEC-[A-Za-z0-9._-]+)\s*:/;
 // DRIFT entry: - **DRIFT-1.2** — verdict: plan-wins — text
@@ -155,7 +162,8 @@ function parseTests() {
     const file = (RE_TEST_FILE.exec(ln) || [])[1];
     const asserts = (RE_TEST_ASSERTS.exec(ln) || [])[1];
     const negPerm = RE_TEST_NEGPERM.test(ln);
-    tests.push({ id: idm[1], tier, covers, file: file && file.trim(), asserts: asserts && asserts.trim(), negPerm, line: ln });
+    const platformSkip = RE_TEST_PLATFORM_SKIP.test(ln);
+    tests.push({ id: idm[1], tier, covers, file: file && file.trim(), asserts: asserts && asserts.trim(), negPerm, platformSkip, line: ln });
   }
   return tests;
 }
@@ -788,6 +796,9 @@ function phase8() {
   for (const test of tests) {
     const r = results.get(test.id);
     if (!r) g.push(`TEST_RESULTS.md: ${test.id} (from TESTS.md) has no result line`);
+    // A `[platform-skip]`-tagged test (genuine `#[cfg]` platform-incompatibility)
+    // may legitimately be SKIP on the CI/dev host instead of PASS.
+    else if (r === 'SKIP' && test.platformSkip) continue;
     else if (r !== 'PASS') g.push(`TEST_RESULTS.md: ${test.id} is ${r}, not PASS`);
   }
   // Frontend-touching branches: require `npm run check` per touched workspace

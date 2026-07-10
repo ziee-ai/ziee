@@ -79,6 +79,16 @@ Human critiques received during this work, verbatim, with resolutions.
   scoped (a perm ALSO introduced in the server crate is NOT exempt) and covered by three new
   selftest-hardening cases. **Phase 3 now passes; A10 is green.**
 
+- **FB-8** [status: resolved] [generalizable: yes] — **TEST-11/59** (the `unsupported.rs` unit
+  tests) are `#[cfg(not(any(windows, target_os = "macos")))]` — Linux-only, not runnable on the
+  macOS host (TEST-11's server copy was additionally DELETED by the relocation, superseded by
+  TEST-59). The lifecycle skill endorses `#[cfg(target_os=…)]` as the ONE legit skip, but phase 8
+  demanded PASS for every test. **Resolution (user chose):** added a `[platform-skip]` tag +
+  phase-8 allowance to `lifecycle-check.mjs` — a test deliberately tagged `[platform-skip]` may be
+  SKIP instead of PASS (a FAIL is still refused; an untagged SKIP is still refused). Tagged
+  TEST-11/59; covered by 3 new selftest cases (37 passed). **Phase 8 now passes — the lifecycle is
+  9/9 green.**
+
 Net: the artifact RESTRUCTURE is complete (five dirs → one umbrella, globally renumbered,
 base `origin/main`, coverage rebuilt vs the real diff, findings fixed to a clean re-audit).
 Cleared: A3 (0 hits), npm run check ×2, gate:ui (desktop/ui). Residual (documented, not

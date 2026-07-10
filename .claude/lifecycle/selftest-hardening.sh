@@ -328,6 +328,27 @@ EOF
 git -C "$R" commit -qam add-negperm-mig
 lc 0 "A10: the migration grant WITH a restricted-user e2e passes (phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
 
+# --- PLATFORM-SKIP: a [platform-skip]-tagged test (genuine #[cfg] platform gate)
+#     may be SKIP instead of PASS at phase 8; an untagged SKIP still fails.
+R="$(build_be)"; D="$R/.lifecycle/bar"
+# Untagged SKIP → phase 8 FAIL (control).
+cat >> "$D/TESTS.md" <<'EOF'
+- **TEST-2** (tier: unit) [covers: ITEM-1] file: `src-app/server/src/modules/bar/other.rs` — asserts: a Linux-only path.
+EOF
+cat >> "$D/TEST_RESULTS.md" <<'EOF'
+- **TEST-2**: SKIP
+EOF
+git -C "$R" commit -qam skip-untagged
+lc 1 "PLATFORM-SKIP: an UNTAGGED SKIP result is REFUSED at phase 8" --phase 8 --repo "$R" --dir "$D" --base main
+# Add the [platform-skip] tag → phase 8 accepts the SKIP.
+perl -0pi -e 's/\*\*TEST-2\*\* \(tier: unit\)/**TEST-2** (tier: unit) [platform-skip]/' "$D/TESTS.md"
+git -C "$R" commit -qam skip-tagged
+lc 0 "PLATFORM-SKIP: a [platform-skip]-tagged SKIP is ACCEPTED at phase 8" --phase 8 --repo "$R" --dir "$D" --base main
+# A [platform-skip] test that is FAIL (not SKIP) still fails — the tag only relaxes SKIP.
+perl -0pi -e 's/\*\*TEST-2\*\*: SKIP/**TEST-2**: FAIL/' "$D/TEST_RESULTS.md"
+git -C "$R" commit -qam skip-tagged-but-fail
+lc 1 "PLATFORM-SKIP: a [platform-skip] test that is FAIL is still REFUSED" --phase 8 --repo "$R" --dir "$D" --base main
+
 # --- A7: a UI diff whose results omit the boot/runtime canary -> phase 8 FAIL
 R="$(new_repo)"; CLEANUP+=("$R")
 git -C "$R" checkout -q -b feat/ui
