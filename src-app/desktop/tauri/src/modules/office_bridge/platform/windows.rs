@@ -54,7 +54,7 @@ use windows::core::{BSTR, GUID, IUnknown, Interface, PCWSTR, Result as WinResult
 
 use ziee::AppError;
 
-use super::{ActResult, DocOp, OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
+use super::{OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
 
 pub struct WindowsOfficePlatform;
 
@@ -295,11 +295,6 @@ unsafe fn com_item(disp: &IDispatch, index: i32) -> WinResult<IDispatch> {
         let v = com_invoke(disp, "Item", &[VARIANT::from(index)], flags)?;
         variant_to_dispatch(&v)
     }
-}
-
-/// `DISPATCH_METHOD`-invoke a method (`InsertAfter`, `Save`).
-unsafe fn com_call(disp: &IDispatch, name: &str, args: &[VARIANT]) -> WinResult<VARIANT> {
-    unsafe { com_invoke(disp, name, args, DISPATCH_METHOD) }
 }
 
 /// `com_get` then coerce to a sub-`IDispatch` in one step.
@@ -618,63 +613,6 @@ fn list_documents_blocking() -> Vec<OpenDoc> {
     out
 }
 
-/// Word `act_on_document`, run on a COM-initialized blocking thread. Finds the
-/// doc whose `FullName` (or `Name`) matches, appends a paragraph, saves, and
-/// reads back the last paragraph's text.
-fn act_word_blocking(target_full_name: &str, text: &str) -> Result<ActResult, String> {
-    let _com = ComGuard::new();
-    // SAFETY: all COM calls run within the `_com` apartment on this thread.
-    unsafe {
-        let app =
-            get_active_dispatch("Word.Application").map_err(|e| format!("Word not attachable: {e}"))?;
-        let documents =
-            com_get_dispatch(&app, "Documents").map_err(|e| format!("Documents: {e}"))?;
-        let count = com_get(&documents, "Count")
-            .map(|v| variant_to_i32(&v))
-            .unwrap_or(0);
-
-        let mut target: Option<IDispatch> = None;
-        for i in 1..=count {
-            if let Ok(doc) = com_item(&documents, i) {
-                let full = com_get_string(&doc, "FullName").unwrap_or_default();
-                let name = com_get_string(&doc, "Name").unwrap_or_default();
-                if full == target_full_name || name == target_full_name {
-                    target = Some(doc);
-                    break;
-                }
-            }
-        }
-        let doc = target
-            .ok_or_else(|| format!("no open Word document matches '{target_full_name}'"))?;
-
-        // Content.InsertAfter("\r" + text) — the spike-proven append.
-        let content = com_get_dispatch(&doc, "Content").map_err(|e| format!("Content: {e}"))?;
-        let arg = VARIANT::from(format!("\r{text}").as_str());
-        com_call(&content, "InsertAfter", &[arg]).map_err(|e| format!("InsertAfter: {e}"))?;
-        com_call(&doc, "Save", &[]).map_err(|e| format!("Save: {e}"))?;
-
-        // Read back the last paragraph's text (Paragraphs.Item(Count).Range.Text).
-        let read_back = com_get_dispatch(&doc, "Paragraphs").ok().and_then(|paragraphs| {
-            let pcount = com_get(&paragraphs, "Count")
-                .map(|v| variant_to_i32(&v))
-                .unwrap_or(0);
-            if pcount < 1 {
-                return None;
-            }
-            com_item(&paragraphs, pcount)
-                .ok()
-                .and_then(|para| com_get_dispatch(&para, "Range").ok())
-                .and_then(|range| com_get_string(&range, "Text"))
-                .map(|s| s.trim().to_string())
-        });
-
-        Ok(ActResult {
-            ok: true,
-            read_back,
-        })
-    }
-}
-
 // =====================================================
 // Elevation check
 // =====================================================
@@ -782,22 +720,6 @@ impl OfficePlatform for WindowsOfficePlatform {
         tokio::task::spawn_blocking(list_documents_blocking)
             .await
             .map_err(|e| AppError::internal_error(format!("office_bridge: COM task join: {e}")))
-    }
-
-    async fn act_on_document(
-        &self,
-        doc_full_name: &str,
-        op: &DocOp,
-    ) -> Result<ActResult, AppError> {
-        let DocOp::AppendParagraph { text } = op;
-        let target = doc_full_name.to_string();
-        let text = text.clone();
-        let res = tokio::task::spawn_blocking(move || act_word_blocking(&target, &text))
-            .await
-            .map_err(|e| AppError::internal_error(format!("office_bridge: COM task join: {e}")))?;
-        res.map_err(|msg| {
-            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "OFFICE_ACT_FAILED", msg)
-        })
     }
 
     fn install_cert_trust(&self, cert_der: &[u8]) -> Result<(), AppError> {

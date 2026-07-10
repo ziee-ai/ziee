@@ -1,12 +1,16 @@
 //! Static tool descriptors emitted by `tools/list`.
 //!
-//! The full `office` tool surface (ITEM-9). Two of these are served *now* by the
-//! native COM daemon via `platform::active()` — `list_open_documents` and
-//! `edit_document`'s `append_paragraph` op. The remaining five are
-//! **pane-mediated** (they need an open Office.js task pane over the bridge,
-//! which lands in a later item); until that RPC is wired, `dispatch_tool`
-//! answers them with an honest, typed capability error rather than pretending
-//! to act.
+//! The `office` tool surface: one native tool (`list_open_documents`, served by
+//! the COM/osascript daemon via `platform::active()`) plus six **pane-mediated**
+//! tools that route to a connected Office.js task pane over the bridge
+//! (`bridge/broker.rs`). Five are typed/structured reads + gated edits
+//! (`read_document`, `get_selection`, `add_comment`, `set_track_changes`,
+//! `get_tracked_changes`); the sixth, `run_office_js`, is the open-ended breadth
+//! surface — the model writes an Office.js body the pane executes inside the
+//! host's `{Word,Excel,PowerPoint}.run`, so "everything Office.js supports" is
+//! reachable at ~one tool schema of context cost instead of one tool per API.
+//! (The former native-only `edit_document`/`append_paragraph` op is removed —
+//! `run_office_js` subsumes it via `body.insertParagraph`.)
 
 use serde_json::{Value, json};
 
@@ -37,8 +41,8 @@ pub fn tool_list() -> Value {
                 }
             },
             {
-                "name": "edit_document",
-                "description": "Apply an edit to one open Office document, identified by its `doc_full_name`. The `append_paragraph` operation adds a paragraph of text to the end of the document body and saves it; this operation works natively today. Returns whether the edit landed plus a short read-back of the appended text.",
+                "name": "run_office_js",
+                "description": "Run an Office.js script against one open Office document, identified by its `doc_full_name`. This is the general-purpose way to read or change the document: you write the body of an async function that receives the Office.js request `context` for the document's host app (Word, Excel, or PowerPoint — selected automatically from the target document), and it runs inside the host's `Word.run` / `Excel.run` / `PowerPoint.run`. You may `await context.sync()` and `return` a JSON-serializable value, which is returned to you. Example (Excel): `const s = context.workbook.worksheets.getActiveWorksheet(); const r = s.getRange('A1'); r.values = [['hello']]; await context.sync(); r.load('address'); await context.sync(); return r.address;`. Requires the document's task pane to be open. On a script error, a structured error (name, message, Office.js error code) is returned so you can correct and retry.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -46,17 +50,12 @@ pub fn tool_list() -> Value {
                             "type": "string",
                             "description": "The app-qualified full name of the target document (from list_open_documents)."
                         },
-                        "op": {
+                        "script": {
                             "type": "string",
-                            "enum": ["append_paragraph"],
-                            "description": "The edit operation to apply. Currently only `append_paragraph`."
-                        },
-                        "text": {
-                            "type": "string",
-                            "description": "The paragraph text to append (for op = append_paragraph)."
+                            "description": "The Office.js script body to run. It receives `context` (the host's request context) in scope, may `await context.sync()`, and may `return` a JSON-serializable value."
                         }
                     },
-                    "required": ["doc_full_name", "op", "text"]
+                    "required": ["doc_full_name", "script"]
                 }
             },
             {
@@ -135,9 +134,10 @@ pub fn tool_list() -> Value {
 mod tests {
     use super::*;
 
-    /// TEST-12 (unit slice) — `tool_list()` advertises all seven `office` tools.
+    /// TEST-2 — `tool_list()` advertises EXACTLY the seven `office` tools:
+    /// `run_office_js` is present, the removed `edit_document` is absent.
     #[test]
-    fn tool_list_contains_all_seven_tools() {
+    fn tool_list_contains_exactly_the_seven_tools() {
         let list = tool_list();
         let names: Vec<&str> = list["tools"]
             .as_array()
@@ -148,7 +148,7 @@ mod tests {
         for expected in [
             "list_open_documents",
             "read_document",
-            "edit_document",
+            "run_office_js",
             "add_comment",
             "set_track_changes",
             "get_tracked_changes",
@@ -159,6 +159,34 @@ mod tests {
                 "tool_list missing `{expected}` (had {names:?})"
             );
         }
+        assert!(
+            !names.contains(&"edit_document"),
+            "removed `edit_document` must be absent (had {names:?})"
+        );
         assert_eq!(names.len(), 7, "expected exactly 7 tools, got {names:?}");
+    }
+
+    /// TEST-1 — `run_office_js` advertises the expected schema: `doc_full_name`
+    /// and `script` are both required string properties.
+    #[test]
+    fn run_office_js_schema_requires_doc_and_script() {
+        let list = tool_list();
+        let tool = list["tools"]
+            .as_array()
+            .expect("tools is an array")
+            .iter()
+            .find(|t| t["name"] == "run_office_js")
+            .expect("run_office_js present");
+        let schema = &tool["inputSchema"];
+        assert_eq!(schema["properties"]["doc_full_name"]["type"], "string");
+        assert_eq!(schema["properties"]["script"]["type"], "string");
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .expect("required is an array")
+            .iter()
+            .map(|v| v.as_str().expect("required entry is a string"))
+            .collect();
+        assert!(required.contains(&"doc_full_name"), "doc_full_name required");
+        assert!(required.contains(&"script"), "script required");
     }
 }

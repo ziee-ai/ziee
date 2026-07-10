@@ -44,6 +44,16 @@ a real Windows + Microsoft Office box.
       returns the selected text.
 - [ ] **read_document**: `read_document` on the open Word doc → returns the body text.
       In Excel → returns the used range as TSV.
+- [ ] **run_office_js** (the open-ended Office.js surface — replaced the removed
+      `edit_document`): in Excel, have the agent call `run_office_js` with a script such
+      as `const s = context.workbook.worksheets.getActiveWorksheet(); const r =
+      s.getRange('A1'); r.values = [['ziee-run']]; r.load('address'); await
+      context.sync(); return r.address;` → cell A1 shows `ziee-run` and the tool result's
+      `structuredContent.result` is A1's address. In Word, a script that appends a
+      paragraph (`context.document.body.insertParagraph('hi', 'End'); await
+      context.sync();`) lands the paragraph. A deliberately-broken script (e.g. a bad
+      range) returns a STRUCTURED `OFFICE_PANE_ERROR` (name/message/Office.js code), not a
+      crash. `run_office_js` requires per-call approval (like the other office tools).
 - [ ] **set_track_changes**: `set_track_changes {enabled:true}` → Word's Track Changes
       turns on (Review ribbon reflects it); `{enabled:false}` turns it off.
 - [ ] **add_comment**: `add_comment {anchor_text, text}` → a review comment appears on

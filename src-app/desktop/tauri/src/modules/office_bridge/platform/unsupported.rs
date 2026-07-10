@@ -10,7 +10,7 @@ use async_trait::async_trait;
 
 use ziee::AppError;
 
-use super::{ActResult, DocOp, OfficeCaps, OfficePlatform, OpenDoc, not_supported_err};
+use super::{OfficeCaps, OfficePlatform, OpenDoc, not_supported_err};
 
 pub struct UnsupportedOfficePlatform;
 
@@ -38,14 +38,6 @@ impl OfficePlatform for UnsupportedOfficePlatform {
     }
 
     async fn list_open_documents(&self) -> Result<Vec<OpenDoc>, AppError> {
-        Err(not_supported_err())
-    }
-
-    async fn act_on_document(
-        &self,
-        _doc_full_name: &str,
-        _op: &DocOp,
-    ) -> Result<ActResult, AppError> {
         Err(not_supported_err())
     }
 
@@ -80,17 +72,6 @@ mod tests {
 
         let list_err = platform.list_open_documents().await.unwrap_err();
         assert_eq!(list_err.error_code(), "OFFICE_PLATFORM_UNSUPPORTED");
-
-        let act_err = platform
-            .act_on_document(
-                "whatever",
-                &DocOp::AppendParagraph {
-                    text: "x".to_string(),
-                },
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(act_err.error_code(), "OFFICE_PLATFORM_UNSUPPORTED");
 
         assert_eq!(
             platform.install_cert_trust(&[0u8]).unwrap_err().error_code(),

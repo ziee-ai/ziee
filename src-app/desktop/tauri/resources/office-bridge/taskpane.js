@@ -9,8 +9,10 @@
 //   3. send a `register` hello carrying {host, doc_key} so the daemon broker can
 //      route this pane's document (bridge/broker.rs, DEC-1),
 //   4. SERVICE daemon->pane JSON-RPC requests (read_document / get_selection /
-//      add_comment / set_track_changes / get_tracked_changes) via Office.js and
-//      reply with the correlated {id, result} | {id, error} (ITEM-9), and
+//      add_comment / set_track_changes / get_tracked_changes, plus the open-ended
+//      run_office_js — the model writes an Office.js body we run inside the host's
+//      {Word,Excel,PowerPoint}.run) via Office.js and reply with the correlated
+//      {id, result} | {id, error} (ITEM-9 / run_office_js), and
 //   5. forward DocumentSelectionChanged + a ping so the link is observably live.
 
 var BRIDGE_URL = 'wss://localhost:44300/bridge';
@@ -84,6 +86,45 @@ function capText(s) {
     text: s.slice(0, MAX_READ_CHARS) + '\n…[truncated: document exceeds ' + MAX_READ_CHARS + ' characters]',
     truncated: true
   };
+}
+
+// Serialize a run_office_js return value into a model-safe, capped payload
+// (DEC-7): returns { result, truncated, text } where `text` is the capped string
+// form (surfaced in the readable tool-result channel) and `result` is the native
+// JSON value when it round-trips and fits, else the capped string. `undefined`
+// (no `return`) → null. A circular / non-serializable value degrades to
+// String(value); this NEVER throws.
+function serializeResult(value) {
+  if (typeof value === 'undefined') { return { result: null, truncated: false, text: '' }; }
+  var text;
+  try {
+    text = JSON.stringify(value);
+    if (typeof text === 'undefined') { text = String(value); } // e.g. a function
+  } catch (e) {
+    text = String(value); // circular / non-serializable
+  }
+  var c = capText(text);
+  var result = c.text;
+  if (!c.truncated) {
+    try { result = JSON.parse(c.text); } catch (e2) { result = c.text; } // non-JSON string
+  }
+  return { result: result, truncated: c.truncated, text: c.text };
+}
+
+// Build a STRUCTURED error string from a thrown Office.js error (DEC-9): the name +
+// message, plus the OfficeExtension.Error `.code` and `.debugInfo` when present, so
+// the daemon's OFFICE_PANE_ERROR carries enough for the model to self-correct in one
+// retry. Pure + node-testable.
+function describeError(prefix, e) {
+  var msg = (e && (e.message || String(e))) || 'unknown error';
+  var out = (e && e.name && msg.indexOf(e.name) !== 0)
+    ? prefix + ' failed: ' + e.name + ': ' + msg
+    : prefix + ' failed: ' + msg;
+  if (e && e.code) { out += ' [code=' + e.code + ']'; }
+  if (e && e.debugInfo) {
+    try { out += ' debugInfo=' + JSON.stringify(e.debugInfo); } catch (_e) { /* ignore */ }
+  }
+  return out;
 }
 
 // Open the same-origin WSS bridge. The token rides the WebSocket subprotocol
@@ -169,6 +210,7 @@ function dispatchOp(id, method, params) {
       case 'add_comment': opAddComment(id, params); break;
       case 'set_track_changes': opSetTrackChanges(id, params); break;
       case 'get_tracked_changes': opGetTrackedChanges(id); break;
+      case 'run_office_js': opRunOfficeJs(id, params); break;
       default: replyErr(id, ERR_UNKNOWN_METHOD, 'unknown pane method: ' + method);
     }
   } catch (e) {
@@ -267,6 +309,43 @@ function opGetTrackedChanges(id) {
   }).catch(function (e) { replyErr(id, ERR_OP_FAILED, 'get_tracked_changes failed: ' + e.message); });
 }
 
+// run_office_js — host-agnostic, open-ended. The model writes an Office.js body; we
+// run it inside the host's {Word,Excel,PowerPoint}.run(context => …), let it
+// `await context.sync()` + `return` a value, and reply the serialized (capped) value
+// (DEC-5/7/8). A compile or runtime error becomes a STRUCTURED replyErr (DEC-9). This
+// tool is gated behind per-call user approval by the daemon (office_bridge is not in
+// the approval-bypass set), so arbitrary-code risk is user-consented per call.
+function opRunOfficeJs(id, params) {
+  var script = params && params.script;
+  if (typeof script !== 'string' || script.trim() === '') {
+    return replyErr(id, ERR_OP_FAILED, 'run_office_js requires a non-empty `script`');
+  }
+  // Resolve the host runner (unknown/unavailable host → unsupported).
+  var run;
+  if (HOST === 'Word' && typeof Word !== 'undefined') { run = function (fn) { return Word.run(fn); }; }
+  else if (HOST === 'Excel' && typeof Excel !== 'undefined') { run = function (fn) { return Excel.run(fn); }; }
+  else if (HOST === 'PowerPoint' && typeof PowerPoint !== 'undefined') { run = function (fn) { return PowerPoint.run(fn); }; }
+  else { return replyErr(id, ERR_UNSUPPORTED_HOST, 'run_office_js is not supported on host ' + HOST); }
+
+  // Compile the script as an async function body with `context` in scope. The leading
+  // + trailing newlines guard a first/last-line `//` comment in the model's script.
+  var body;
+  try {
+    body = new Function('context', '"use strict"; return (async function () {\n' + script + '\n})();');
+  } catch (e) {
+    return replyErr(id, ERR_OP_FAILED, describeError('run_office_js compile', e));
+  }
+
+  run(function (context) {
+    return Promise.resolve(body(context)).then(function (value) {
+      var s = serializeResult(value);
+      reply(id, { result: s.result, truncated: s.truncated, text: s.text });
+    });
+  }).catch(function (e) {
+    replyErr(id, ERR_OP_FAILED, describeError('run_office_js', e));
+  });
+}
+
 // Forward the current selection text on every DocumentSelectionChanged. Uses the
 // host-agnostic common API so one handler covers Word/Excel/PowerPoint.
 function onSelectionChanged() {
@@ -309,5 +388,5 @@ if (typeof Office !== 'undefined' && Office.onReady) {
 // Export the PURE helpers for node-based unit testing (taskpane.test.mjs). No effect
 // in the browser (no `module`); the Office.js op handlers still require a real host.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { baseName: baseName, isPathLike: isPathLike, normPath: normPath, sameDoc: sameDoc, capText: capText, MAX_READ_CHARS: MAX_READ_CHARS };
+  module.exports = { baseName: baseName, isPathLike: isPathLike, normPath: normPath, sameDoc: sameDoc, capText: capText, serializeResult: serializeResult, describeError: describeError, MAX_READ_CHARS: MAX_READ_CHARS };
 }

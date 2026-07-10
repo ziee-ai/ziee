@@ -31706,7 +31706,7 @@
         ]
       },
       "OpenDoc": {
-        "description": "One currently-open Office document, as enumerated by the platform.\n\n `full_name` is the app's own fully-qualified document identifier (path +\n name for a saved doc, or just the name for an unsaved one) — it is the\n stable handle callers pass back to [`OfficePlatform::act_on_document`].",
+        "description": "One currently-open Office document, as enumerated by the platform.\n\n `full_name` is the app's own fully-qualified document identifier (path +\n name for a saved doc, or just the name for an unsaved one) — it is the\n stable handle callers pass back to the pane tools (`read_document`,\n `run_office_js`, …) to target this document.",
         "type": "object",
         "properties": {
           "active": {
@@ -31726,7 +31726,7 @@
             "type": "string"
           },
           "full_name": {
-            "description": "App-qualified full name — the handle for `act_on_document`.",
+            "description": "App-qualified full name — the handle the pane tools target a document by.",
             "type": "string"
           },
           "name": {

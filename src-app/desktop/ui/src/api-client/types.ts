@@ -3795,7 +3795,8 @@ export interface OnboardingProgress {
  *
  *  `full_name` is the app's own fully-qualified document identifier (path +
  *  name for a saved doc, or just the name for an unsaved one) — it is the
- *  stable handle callers pass back to [`OfficePlatform::act_on_document`].
+ *  stable handle callers pass back to the pane tools (`read_document`,
+ *  `run_office_js`, …) to target this document.
  */
 export interface OpenDoc {
   /** Whether this is the app's currently-active document. */
@@ -3808,7 +3809,7 @@ export interface OpenDoc {
    *  diagnostic; opaque to callers.
    */
   attach_method: string
-  /** App-qualified full name — the handle for `act_on_document`. */
+  /** App-qualified full name — the handle the pane tools target a document by. */
   full_name: string
   /** Short document name (e.g. `Report.docx`). */
   name: string

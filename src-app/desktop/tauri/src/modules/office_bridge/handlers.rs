@@ -20,7 +20,7 @@ use ziee::permissions::{RequirePermissions, with_permission};
 use super::bridge::broker;
 use super::models::{ConnectReadiness, OfficeBridgeSettings, UpdateOfficeBridgeSettingsRequest};
 use super::permissions::{OfficeBridgeAdminRead, OfficeBridgeManage, OfficeBridgeUse};
-use super::platform::{self, DocOp, OfficeApp, OfficePlatform, OpenDoc};
+use super::platform::{self, OfficeApp, OfficePlatform, OpenDoc};
 
 // ─────────────────────────── JSON-RPC MCP endpoint ───────────────────────────
 
@@ -205,13 +205,15 @@ fn unsupported_on_ppt_err(op: &str) -> AppError {
 /// `structuredContent`, mirroring web_search) on success.
 ///
 /// Capability model:
-/// - `list_open_documents` + `edit_document`(append_paragraph) route to the native
-///   daemon (`platform::active()` — osascript/COM).
-/// - `read_document` / `get_selection` / `add_comment` / `set_track_changes` /
-///   `get_tracked_changes` are pane-mediated (Office.js) and route to the connected
-///   task pane via `broker::call_pane`, which maps no-pane / timeout / pane-error to
-///   typed errors (`OFFICE_PANE_NOT_CONNECTED` / `OFFICE_PANE_TIMEOUT` /
-///   `OFFICE_PANE_ERROR` / `OFFICE_UNSUPPORTED_ON_HOST`).
+/// - `list_open_documents` routes to the native daemon (`platform::active()` —
+///   osascript/COM); it needs no task pane.
+/// - `read_document` / `get_selection` / `run_office_js` / `add_comment` /
+///   `set_track_changes` / `get_tracked_changes` are pane-mediated (Office.js) and
+///   route to the connected task pane via `broker::call_pane`, which maps no-pane /
+///   timeout / pane-error to typed errors (`OFFICE_PANE_NOT_CONNECTED` /
+///   `OFFICE_PANE_TIMEOUT` / `OFFICE_PANE_ERROR` / `OFFICE_UNSUPPORTED_ON_HOST`).
+/// - `read_document` / `get_selection` / `run_office_js` are host-agnostic (Word +
+///   Excel + PowerPoint) — no capability pre-gate; the pane picks the host runtime.
 /// - `add_comment` / `set_track_changes` / `get_tracked_changes` (Word-only) first
 ///   fast-gate a PowerPoint target natively (`OFFICE_UNSUPPORTED_ON_HOST`) before any
 ///   round-trip; a non-Word non-PPT host is caught by the pane's `-32002` → same code.
@@ -237,45 +239,33 @@ pub async fn dispatch_tool(
             Ok(tool_result(text, structured))
         }
 
-        "edit_document" => {
-            let a: EditDocumentArgs = parse_args(args)?;
-            match a.op.as_str() {
-                "append_paragraph" => {
-                    // `text` is schema-required for this op; reject a missing or
-                    // blank value with a typed invalid-args error rather than
-                    // silently appending an empty paragraph.
-                    let text = a
-                        .text
-                        .filter(|t| !t.trim().is_empty())
-                        .ok_or_else(|| {
-                            AppError::bad_request(
-                                "INVALID_ARGS",
-                                "`edit_document` op `append_paragraph` requires a non-empty `text` argument",
-                            )
-                        })?;
-                    let res = platform
-                        .act_on_document(&a.doc_full_name, &DocOp::AppendParagraph { text })
-                        .await?;
-                    let msg = if res.ok {
-                        format!("Appended a paragraph to {}.", a.doc_full_name)
-                    } else {
-                        format!("Edit to {} did not apply.", a.doc_full_name)
-                    };
-                    let structured = json!({ "ok": res.ok, "read_back": res.read_back });
-                    Ok(tool_result(msg, structured))
-                }
-                other => Err(AppError::bad_request(
-                    "OFFICE_UNKNOWN_OP",
-                    format!("unknown edit_document op: `{other}` (supported: append_paragraph)"),
-                )),
-            }
-        }
-
         // Pane-mediated (Office.js over the WSS bridge): route to the connected
-        // task pane via the broker and await the correlated reply (ITEM-9). These
-        // two are host-agnostic (Word + Excel), so no capability pre-gate.
+        // task pane via the broker and await the correlated reply. These three are
+        // host-agnostic (Word + Excel + PowerPoint), so no capability pre-gate.
         "read_document" | "get_selection" => {
             let doc_full_name = require_doc_full_name(args)?;
+            let result = broker::call_pane(&doc_full_name, name, args.clone()).await?;
+            Ok(pane_tool_result(name, &doc_full_name, result))
+        }
+
+        // Open-ended Office.js execution: the model supplies a `script` body the pane
+        // runs inside the host's `{Word,Excel,PowerPoint}.run`. Validate a non-empty
+        // script before the round-trip (typed `INVALID_ARGS`), then route to the pane;
+        // the pane returns the script's value or a structured error (`OFFICE_PANE_ERROR`).
+        // Per-call user approval is enforced upstream (office_bridge is absent from the
+        // approval-bypass set), so arbitrary-code risk is user-consented per call.
+        "run_office_js" => {
+            let doc_full_name = require_doc_full_name(args)?;
+            let script_ok = args
+                .get("script")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.trim().is_empty());
+            if !script_ok {
+                return Err(AppError::bad_request(
+                    "INVALID_ARGS",
+                    "`run_office_js` requires a non-empty `script` argument",
+                ));
+            }
             let result = broker::call_pane(&doc_full_name, name, args.clone()).await?;
             Ok(pane_tool_result(name, &doc_full_name, result))
         }
@@ -311,11 +301,6 @@ fn tool_result(text: impl Into<String>, structured: Value) -> Value {
     })
 }
 
-fn parse_args<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, AppError> {
-    serde_json::from_value(args.clone())
-        .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))
-}
-
 /// Resolve the host application of an open document by its full name, or `None`
 /// if it is not currently enumerated (so callers fall back to the generic
 /// pane-required error rather than a spurious capability claim).
@@ -327,14 +312,6 @@ async fn doc_host(platform: &dyn OfficePlatform, doc_full_name: &str) -> Option<
         .into_iter()
         .find(|d| d.full_name == doc_full_name)
         .map(|d| d.app)
-}
-
-#[derive(Debug, Deserialize)]
-struct EditDocumentArgs {
-    doc_full_name: String,
-    op: String,
-    #[serde(default)]
-    text: Option<String>,
 }
 
 // ─────────────────────────── Admin REST: settings ───────────────────────────
@@ -625,12 +602,14 @@ mod tests {
         assert!(out["content"][0]["text"].is_string());
     }
 
-    /// TEST-12 (b) — `edit_document`(append_paragraph) routes to the daemon and
-    /// returns `ok` + a `read_back` of the appended text.
+    /// TEST-4 — the removed `edit_document` tool is no longer dispatchable: it now
+    /// returns the generic `UNKNOWN_TOOL` client error (proving the arm — and the
+    /// native `act_on_document`/`DocOp` path it drove — are gone; the crate still
+    /// compiles without them).
     #[tokio::test]
-    async fn test12_edit_document_append_returns_ok_and_read_back() {
+    async fn test4_edit_document_is_removed_unknown_tool() {
         let mock = seeded_mock();
-        let out = dispatch_tool(
+        let err = dispatch_tool(
             &mock,
             "edit_document",
             &json!({
@@ -640,39 +619,59 @@ mod tests {
             }),
         )
         .await
-        .expect("edit_document succeeds");
-        assert_eq!(out["structuredContent"]["ok"], true);
-        assert_eq!(out["structuredContent"]["read_back"], "hello world");
+        .expect_err("edit_document is removed");
+        assert_eq!(err.error_code(), "UNKNOWN_TOOL");
     }
 
-    /// TEST-12 (b cont.) — `edit_document`(append_paragraph) with a missing or
-    /// blank `text` returns a typed invalid-args error (schema marks `text`
-    /// required) instead of silently appending an empty paragraph.
+    /// TEST-5 — `run_office_js` validates its arguments before any pane round-trip:
+    /// a missing `doc_full_name`, or a missing / blank `script`, is a typed
+    /// `INVALID_ARGS` (not a panic, not a pane call).
     #[tokio::test]
-    async fn test12_edit_document_append_empty_text_is_invalid_args() {
+    async fn test5_run_office_js_invalid_args() {
         let mock = seeded_mock();
-        // Missing `text` entirely.
+        // Missing doc_full_name.
+        let err = dispatch_tool(&mock, "run_office_js", &json!({ "script": "return 1;" }))
+            .await
+            .expect_err("missing doc_full_name is invalid");
+        assert_eq!(err.error_code(), "INVALID_ARGS");
+        // Missing script entirely.
         let err = dispatch_tool(
             &mock,
-            "edit_document",
-            &json!({ "doc_full_name": r"C:\Users\test\Report.docx", "op": "append_paragraph" }),
+            "run_office_js",
+            &json!({ "doc_full_name": r"C:\Users\test\Report.docx" }),
         )
         .await
-        .expect_err("missing text is invalid");
+        .expect_err("missing script is invalid");
         assert_eq!(err.error_code(), "INVALID_ARGS");
-        // Present but blank/whitespace-only `text`.
+        // Present but blank/whitespace-only script.
         let err = dispatch_tool(
             &mock,
-            "edit_document",
-            &json!({
-                "doc_full_name": r"C:\Users\test\Report.docx",
-                "op": "append_paragraph",
-                "text": "   ",
-            }),
+            "run_office_js",
+            &json!({ "doc_full_name": r"C:\Users\test\Report.docx", "script": "   " }),
         )
         .await
-        .expect_err("blank text is invalid");
+        .expect_err("blank script is invalid");
         assert_eq!(err.error_code(), "INVALID_ARGS");
+    }
+
+    /// TEST-6 — `run_office_js` with a valid script but NO matching connected pane
+    /// surfaces the typed `OFFICE_PANE_NOT_CONNECTED` (422) via the broker, not a
+    /// panic (decoy panes + a UUID-unique target defeat the sole-pane fallback).
+    #[tokio::test]
+    async fn test6_run_office_js_no_pane_is_not_connected() {
+        let decoys = register_decoy_panes();
+        let mock = seeded_mock();
+        let target = format!(r"C:\Users\test\RunNoPane-{}-{}.xlsx", decoys.0, decoys.1);
+        let err = dispatch_tool(
+            &mock,
+            "run_office_js",
+            &json!({ "doc_full_name": target, "script": "return 42;" }),
+        )
+        .await
+        .expect_err("run_office_js with no pane is not connected");
+        assert_eq!(err.error_code(), broker::OFFICE_PANE_NOT_CONNECTED);
+        assert_eq!(err.status_code(), 422);
+        unregister_decoy_panes(decoys);
     }
 
     /// TEST-12 (c) — `add_comment` on a PowerPoint doc returns the distinct

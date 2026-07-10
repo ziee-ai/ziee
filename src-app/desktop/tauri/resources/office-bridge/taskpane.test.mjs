@@ -48,4 +48,42 @@ assert.equal(big.truncated, true);
 assert.ok(big.text.length <= t.MAX_READ_CHARS + 100);
 assert.ok(big.text.includes('[truncated'), 'truncated text carries an in-band marker');
 
+// serializeResult (TEST-9) — the run_office_js return-value shaping (DEC-7).
+// A small JSON value round-trips to its native shape, truncated=false.
+const num = t.serializeResult(42);
+assert.equal(num.result, 42, 'number round-trips as a native number');
+assert.equal(num.truncated, false);
+const obj = t.serializeResult({ address: 'A1', ok: true });
+assert.deepEqual(obj.result, { address: 'A1', ok: true }, 'object round-trips as a native object');
+assert.equal(obj.truncated, false);
+const str = t.serializeResult('hello');
+assert.equal(str.result, 'hello', 'string round-trips');
+// `undefined` (no return) → null, not a throw.
+const undef = t.serializeResult(undefined);
+assert.equal(undef.result, null, 'undefined → null');
+assert.equal(undef.truncated, false);
+// An over-cap return is truncated (result stays the capped string) and never throws.
+const huge = t.serializeResult('x'.repeat(t.MAX_READ_CHARS + 50));
+assert.equal(huge.truncated, true, 'over-cap return is flagged truncated');
+assert.equal(typeof huge.result, 'string', 'truncated result is the capped string');
+assert.ok(huge.text.includes('[truncated'), 'truncated payload carries the in-band marker');
+// A circular / non-serializable value degrades to a string WITHOUT throwing.
+const circular = {};
+circular.self = circular;
+const circ = t.serializeResult(circular);
+assert.equal(typeof circ.result, 'string', 'circular value degrades to a readable string');
+assert.equal(circ.truncated, false);
+
+// describeError (DEC-9) — structured Office.js error string incl. code + debugInfo.
+const de = t.describeError('run_office_js', {
+  name: 'RichApi.Error',
+  message: 'The range does not exist.',
+  code: 'ItemNotFound',
+  debugInfo: { errorLocation: 'Range.getRange' },
+});
+assert.ok(de.includes('run_office_js failed'), 'prefixed');
+assert.ok(de.includes('The range does not exist.'), 'carries the message');
+assert.ok(de.includes('ItemNotFound'), 'carries the Office.js error code');
+assert.ok(de.includes('debugInfo'), 'carries debugInfo');
+
 console.log('taskpane.test.mjs: all pure-helper assertions passed');

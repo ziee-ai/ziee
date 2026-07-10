@@ -530,3 +530,229 @@ async fn test15_two_panes_route_to_correct_document() {
     pane_a.abort();
     pane_b.abort();
 }
+
+// ───────────────── office-run-office-js: run_office_js pane tool ─────────────────
+
+/// TEST-7 (office-run-office-js) — the full `dispatch_tool` path routes
+/// `run_office_js` to the connected pane carrying `{doc_full_name, script}` and maps
+/// the pane's reply into the MCP `tool_result` shape (`content` + `structuredContent`).
+#[tokio::test]
+async fn run_office_js_dispatch_round_trip() {
+    let doc = "/Users/x/RunBook.xlsx".to_string();
+    let (handle, ws) = bring_up().await;
+    let pane = tokio::spawn(run_mock_pane(ws, "excel", doc.clone(), Mode::Ok, false));
+
+    let out = retry_dispatch(
+        "run_office_js",
+        json!({ "doc_full_name": doc, "script": "return 42;" }),
+    )
+    .await
+    .expect("run_office_js dispatch round-trip");
+
+    // The pane received method=run_office_js with the script param intact.
+    assert_eq!(
+        out.get("structuredContent")
+            .and_then(|s| s.get("got_method"))
+            .and_then(|m| m.as_str()),
+        Some("run_office_js"),
+    );
+    assert_eq!(
+        out.get("structuredContent")
+            .and_then(|s| s.get("got_params"))
+            .and_then(|p| p.get("script"))
+            .and_then(|s| s.as_str()),
+        Some("return 42;"),
+        "the pane received the run_office_js script param"
+    );
+    // Readable content channel present.
+    assert!(
+        out.get("content")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("text"))
+            .is_some(),
+        "readable content channel present"
+    );
+
+    handle.shutdown();
+    pane.abort();
+}
+
+/// Shared live-Excel bring-up for the `#[ignore]` run_office_js live tests (macOS
+/// only): bind the fixed 44300 against the app's trusted cert, open Excel with a
+/// selected cell, and wait for a real task pane to register (the one manual step —
+/// clicking the ribbon button — an Office add-in pane can't be opened by automation).
+/// Returns the bridge handle + the connected pane's target key.
+#[cfg(target_os = "macos")]
+async fn open_excel_and_wait_for_pane() -> (server::BridgeHandle, String) {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("info,ziee_desktop::modules::office_bridge=debug")
+        .with_test_writer()
+        .try_init();
+    let home = std::env::var("HOME").expect("HOME");
+    let data_dir =
+        std::path::PathBuf::from(home).join("Library/Application Support/com.ziee.chat");
+    let handle = server::start(44300, data_dir)
+        .await
+        .expect("bridge binds 44300 (quit the desktop app first if this fails)");
+
+    let _ = std::process::Command::new("open")
+        .args(["-a", "Microsoft Excel"])
+        .status();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(
+            r#"tell application "Microsoft Excel"
+                activate
+                if (count of workbooks) = 0 then make new workbook
+                select range "A1" of active sheet of active workbook
+            end tell"#,
+        )
+        .status();
+
+    eprintln!("\n>>> LIVE run_office_js: Excel is open. NOW click the ribbon: Home -> Ziee -> 'Show Ziee Bridge'.");
+    eprintln!(">>> Waiting up to 600s (10 min) for the pane to connect — no rush...\n");
+    let mut target = String::new();
+    for i in 0..600 {
+        if let Some(key) = broker::connected_pane_keys().into_iter().next() {
+            target = if key.is_empty() {
+                "Untitled".to_string()
+            } else {
+                key
+            };
+            eprintln!(">>> pane connected (target = {target:?})");
+            break;
+        }
+        if i % 10 == 0 && i > 0 {
+            eprintln!(">>> still waiting for a pane... ({i}s)");
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(!target.is_empty(), "a live task pane must connect");
+    (handle, target)
+}
+
+/// TEST-8 (office-run-office-js, live `#[ignore]`) — a hardcoded real Office.js script
+/// passed to `run_office_js` executes in a live Excel task pane and its `return` value
+/// round-trips. Same one manual ribbon-click setup as `test13_live_mac_pane_ops`.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+#[ignore = "live: runs real Office.js in an Excel task pane on this macOS session"]
+async fn run_office_js_live_mac_executes_script() {
+    let (handle, target) = open_excel_and_wait_for_pane().await;
+    let script = "const s = context.workbook.worksheets.getActiveWorksheet();\n\
+                  const r = s.getRange('A1');\n\
+                  r.values = [['ziee-run']];\n\
+                  r.load('address');\n\
+                  await context.sync();\n\
+                  return r.address;";
+    let out = broker::call_pane_with_timeout(
+        &target,
+        "run_office_js",
+        json!({ "doc_full_name": target, "script": script }),
+        Duration::from_secs(20),
+    )
+    .await
+    .expect("run_office_js round-trips through the live pane");
+    eprintln!(">>> run_office_js returned: {out}");
+    let result_str = out.get("result").map(|r| r.to_string()).unwrap_or_default();
+    assert!(
+        result_str.contains("A1"),
+        "the returned range address should contain A1: {out}"
+    );
+    handle.shutdown();
+}
+
+/// TEST-11 (office-run-office-js, real-LLM + live `#[ignore]`) — a REAL
+/// OpenAI-compatible model, given the SHIPPED `run_office_js` tool schema, emits a
+/// tool call whose Office.js `script` then executes in the live Excel pane and returns
+/// a value. Proves the end-to-end: real model writes valid Office.js against the real
+/// schema → the real pane runs it. Soft-skips when `ZIEE_OFFICE_REAL_LLM_URL` is unset
+/// (DEC-6: point it at the coder.ziee LiteLLM `:4000` via an SSH tunnel).
+#[cfg(target_os = "macos")]
+#[tokio::test]
+#[ignore = "live+real-LLM: needs ZIEE_OFFICE_REAL_LLM_URL + an Excel task pane"]
+async fn run_office_js_real_llm_live() {
+    let url = match std::env::var("ZIEE_OFFICE_REAL_LLM_URL") {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            eprintln!("SKIP run_office_js_real_llm_live: ZIEE_OFFICE_REAL_LLM_URL unset");
+            return;
+        }
+    };
+    let model =
+        std::env::var("ZIEE_OFFICE_REAL_LLM_MODEL").unwrap_or_else(|_| "qwen3.6-35b-a3b".to_string());
+    let key = std::env::var("ZIEE_OFFICE_REAL_LLM_KEY").ok();
+
+    // Advertise the ACTUAL run_office_js descriptor we ship to the real model.
+    let list = ziee_desktop::modules::office_bridge::tools::tool_list();
+    let tool = list["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .find(|t| t["name"] == "run_office_js")
+        .expect("run_office_js in tool_list")
+        .clone();
+    let body = json!({
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": "Use the run_office_js tool on the open workbook to set cell A1 of the active worksheet to the text 'hello' and return A1's address."
+        }],
+        "tools": [{ "type": "function", "function": {
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["inputSchema"],
+        }}],
+        "tool_choice": "auto",
+        "max_tokens": 500
+    });
+    let mut req = reqwest::Client::new()
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(body.to_string());
+    if let Some(k) = key {
+        req = req.header("authorization", format!("Bearer {k}"));
+    }
+    let resp = req
+        .send()
+        .await
+        .expect("LLM request sent")
+        .text()
+        .await
+        .expect("LLM response body");
+    let v: Value = serde_json::from_str(&resp).unwrap_or_else(|e| panic!("LLM json ({e}): {resp}"));
+    let func = v["choices"][0]["message"]["tool_calls"][0]["function"].clone();
+    assert_eq!(
+        func["name"], "run_office_js",
+        "the model must call run_office_js: {resp}"
+    );
+    let args: Value = serde_json::from_str(
+        func["arguments"]
+            .as_str()
+            .expect("tool-call arguments is a JSON string"),
+    )
+    .expect("tool-call arguments parse");
+    let script = args["script"]
+        .as_str()
+        .expect("model produced a `script` argument")
+        .to_string();
+    eprintln!(">>> model-written run_office_js script:\n{script}\n");
+
+    // Execute the model's own script in the live pane.
+    let (handle, target) = open_excel_and_wait_for_pane().await;
+    let out = broker::call_pane_with_timeout(
+        &target,
+        "run_office_js",
+        json!({ "doc_full_name": target, "script": script }),
+        Duration::from_secs(30),
+    )
+    .await
+    .expect("the model's run_office_js script executes in the live pane");
+    eprintln!(">>> run_office_js returned: {out}");
+    assert!(
+        out.get("result").is_some() || out.get("text").is_some(),
+        "a result came back from the model's script: {out}"
+    );
+    handle.shutdown();
+}

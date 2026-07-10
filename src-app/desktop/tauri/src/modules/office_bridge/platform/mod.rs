@@ -55,14 +55,15 @@ pub enum OfficeApp {
 ///
 /// `full_name` is the app's own fully-qualified document identifier (path +
 /// name for a saved doc, or just the name for an unsaved one) — it is the
-/// stable handle callers pass back to [`OfficePlatform::act_on_document`].
+/// stable handle callers pass back to the pane tools (`read_document`,
+/// `run_office_js`, …) to target this document.
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub struct OpenDoc {
     /// The owning application (Word/Excel/PowerPoint).
     pub app: OfficeApp,
     /// Short document name (e.g. `Report.docx`).
     pub name: String,
-    /// App-qualified full name — the handle for `act_on_document`.
+    /// App-qualified full name — the handle the pane tools target a document by.
     pub full_name: String,
     /// Filesystem path of the containing folder, if the doc has been saved.
     pub path: Option<String>,
@@ -86,28 +87,6 @@ pub struct OfficeCaps {
     pub office_present: bool,
 }
 
-/// A mutation to apply to a specific open document via
-/// [`OfficePlatform::act_on_document`].
-///
-/// Minimal for ITEM-6 — the full op vocabulary (edit range, add comment,
-/// track-changes, …) grows with the MCP tool surface in ITEM-9.
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
-#[serde(tag = "op", rename_all = "snake_case")]
-pub enum DocOp {
-    /// Append a paragraph of text to the end of the document body.
-    AppendParagraph { text: String },
-}
-
-/// Result of an [`OfficePlatform::act_on_document`] call.
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
-pub struct ActResult {
-    /// Whether the operation was applied successfully.
-    pub ok: bool,
-    /// Optional post-op read-back (e.g. the trailing text after an append) so
-    /// callers can confirm the mutation landed. `None` when not read back.
-    pub read_back: Option<String>,
-}
-
 /// The host-OS-specific Office operations. Selected once at process start via
 /// `cfg` and reached through [`active()`].
 #[async_trait]
@@ -122,14 +101,6 @@ pub trait OfficePlatform: Send + Sync {
 
     /// Enumerate the user's currently-open Word/Excel/PowerPoint documents.
     async fn list_open_documents(&self) -> Result<Vec<OpenDoc>, AppError>;
-
-    /// Apply `op` to the document identified by `doc_full_name` (an app-qualified
-    /// `OpenDoc::full_name`).
-    async fn act_on_document(
-        &self,
-        doc_full_name: &str,
-        op: &DocOp,
-    ) -> Result<ActResult, AppError>;
 
     /// Install the bridge's self-signed cert (DER bytes) into the OS trust
     /// store so the served `https://localhost` task pane is trusted. May
@@ -280,24 +251,6 @@ impl OfficePlatform for MockOfficePlatform {
         Ok(self.docs.clone())
     }
 
-    async fn act_on_document(
-        &self,
-        doc_full_name: &str,
-        op: &DocOp,
-    ) -> Result<ActResult, AppError> {
-        let DocOp::AppendParagraph { text } = op;
-        // Canned success: echo the appended text back so injecting tests can
-        // assert the round-trip reached the (mock) document.
-        if self.docs.iter().any(|d| d.full_name == doc_full_name) {
-            Ok(ActResult {
-                ok: true,
-                read_back: Some(text.clone()),
-            })
-        } else {
-            Err(AppError::not_found(doc_full_name))
-        }
-    }
-
     fn install_cert_trust(&self, _cert_der: &[u8]) -> Result<(), AppError> {
         if self.cert_ok {
             Ok(())
@@ -331,6 +284,29 @@ impl OfficePlatform for MockOfficePlatform {
 mod tests {
     use super::*;
 
+    /// TEST-10 — the `OpenDoc.full_name` doc comment (which schemars carries into
+    /// the desktop OpenAPI schema + generated `types.ts` JSDoc) no longer references
+    /// the removed `act_on_document`, and now points at the pane tools. Guards both
+    /// the ITEM-8 reword AND that this doc comment is the schema SOURCE the desktop
+    /// `openapi.json`/`types.ts` regen consumes.
+    #[test]
+    fn test10_open_doc_full_name_desc_has_no_act_on_document() {
+        let schema =
+            serde_json::to_value(schemars::schema_for!(OpenDoc)).expect("OpenDoc schema serializes");
+        let desc = schema["properties"]["full_name"]["description"]
+            .as_str()
+            .expect("full_name carries a description");
+        assert!(
+            !desc.contains("act_on_document"),
+            "OpenDoc.full_name description must not reference the removed \
+             act_on_document: {desc}"
+        );
+        assert!(
+            desc.contains("pane tools"),
+            "reworded description should reference the pane tools: {desc}"
+        );
+    }
+
     /// TEST-8 — the `#[cfg]`-selected `active()` resolves to a live platform on
     /// every host and the trait is object-safe (usable as `&dyn OfficePlatform`
     /// through both the sync probe path and an async acting method). This is the
@@ -344,8 +320,8 @@ mod tests {
     }
 
     /// TEST-8 (cont.) — the test-only `MockOfficePlatform` is a valid
-    /// `OfficePlatform` returning canned data, so ITEM-9 can inject it to drive
-    /// MCP dispatch without a real Office install.
+    /// `OfficePlatform` returning canned data, so the dispatcher can inject it to
+    /// drive MCP dispatch without a real Office install.
     #[tokio::test]
     async fn test8_mock_platform_returns_canned_data() {
         let mock = MockOfficePlatform::new();
@@ -355,20 +331,7 @@ mod tests {
         let docs = mock.list_open_documents().await.expect("canned docs");
         assert_eq!(docs.len(), 2);
 
-        let target = docs[0].full_name.clone();
-        let res = mock
-            .act_on_document(
-                &target,
-                &DocOp::AppendParagraph {
-                    text: "hello".to_string(),
-                },
-            )
-            .await
-            .expect("mock act succeeds");
-        assert!(res.ok);
-        assert_eq!(res.read_back.as_deref(), Some("hello"));
-
-        // Object-safety through the trait object (what ITEM-9 injection uses).
+        // Object-safety through the trait object (what the dispatcher injection uses).
         let as_dyn: &dyn OfficePlatform = &mock;
         assert!(!as_dyn.office_is_elevated());
     }

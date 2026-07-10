@@ -28,7 +28,7 @@ use axum::http::StatusCode;
 
 use ziee::AppError;
 
-use super::{ActResult, DocOp, OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
+use super::{OfficeApp, OfficeCaps, OfficePlatform, OpenDoc};
 
 /// Whether the macOS transport (Keychain trust + WKWebView same-origin WSS) has
 /// been empirically verified. **`true` as of the 2026-07-08 Mac spike (DEC-9)** —
@@ -114,14 +114,6 @@ fn office_present() -> bool {
 // =====================================================
 // AppleScript helpers (pure)
 // =====================================================
-
-/// Escape a Rust string for embedding inside an AppleScript double-quoted
-/// literal: backslash and double-quote only (the two chars AS treats specially
-/// inside `"..."`). Embedded newlines are left as-is — a raw newline inside an
-/// AS string literal is an edge case not handled here (UNVERIFIED — Mac spike).
-fn applescript_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
 
 /// Build the per-app enumeration script. Guarded by `application "..." is
 /// running` (a boolean reference property that does NOT launch the app), so an
@@ -249,61 +241,6 @@ fn list_documents_blocking() -> Vec<OpenDoc> {
     out
 }
 
-/// Word-only `AppendParagraph`: find the doc whose `full name`/`name` matches,
-/// append a paragraph to the body text, save, and read back the last paragraph.
-/// Mirrors the Windows Word-only append (ITEM-7); a target belonging to
-/// Excel/PowerPoint simply won't match and errors.
-///
-/// Mac spike 2026-07-08 (VERIFIED live against Word): the append + read-back
-/// body works, but two fixes were required — `repeat with d in (get documents)`
-/// (same `-1708` issue as enumeration), and the `save theDoc` is now guarded by
-/// `if (path of theDoc) is not ""` because saving a never-saved document pops a
-/// blocking GUI "Save As" dialog that hangs the osascript call indefinitely.
-fn act_word_blocking(target: &str, text: &str) -> Result<ActResult, String> {
-    let target_esc = applescript_escape(target);
-    let text_esc = applescript_escape(text);
-    let script = format!(
-        r#"if application "Microsoft Word" is running then
-	tell application "Microsoft Word"
-		set theDoc to missing value
-		repeat with d in (get documents)
-			try
-				if (full name of d is "{target}") or (name of d is "{target}") then
-					set theDoc to d
-				end if
-			end try
-		end repeat
-		if theDoc is missing value then error "no open Word document matches"
-		set textObj to text object of theDoc
-		set content of textObj to (content of textObj) & return & "{text}"
-		try
-			if (path of theDoc) is not "" then save theDoc
-		end try
-		set lastPara to "{text}"
-		try
-			set lastPara to content of text object of (last paragraph of textObj)
-		end try
-		return lastPara
-	end tell
-else
-	error "Microsoft Word is not running"
-end if"#,
-        target = target_esc,
-        text = text_esc,
-    );
-    let raw = run_osascript(&script)?;
-    let trimmed = raw.trim().to_string();
-    let read_back = if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    };
-    Ok(ActResult {
-        ok: true,
-        read_back,
-    })
-}
-
 // =====================================================
 // Trait impl
 // =====================================================
@@ -335,26 +272,6 @@ impl OfficePlatform for MacOfficePlatform {
         tokio::task::spawn_blocking(list_documents_blocking)
             .await
             .map_err(|e| AppError::internal_error(format!("office_bridge: osascript task join: {e}")))
-    }
-
-    async fn act_on_document(
-        &self,
-        doc_full_name: &str,
-        op: &DocOp,
-    ) -> Result<ActResult, AppError> {
-        // VERIFIED — 2026-07-08 Mac spike: AppleScript append-paragraph + read-back
-        // (Word only, mirroring the Windows ITEM-7 op). See `act_word_blocking`.
-        let DocOp::AppendParagraph { text } = op;
-        let target = doc_full_name.to_string();
-        let text = text.clone();
-        let res = tokio::task::spawn_blocking(move || act_word_blocking(&target, &text))
-            .await
-            .map_err(|e| {
-                AppError::internal_error(format!("office_bridge: osascript task join: {e}"))
-            })?;
-        res.map_err(|msg| {
-            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "OFFICE_ACT_FAILED", msg)
-        })
     }
 
     fn install_cert_trust(&self, cert_der: &[u8]) -> Result<(), AppError> {
@@ -483,15 +400,6 @@ mod tests {
             MAC_TRANSPORT_VERIFIED,
             "macOS transport verified by the DEC-9 Mac spike"
         );
-    }
-
-    /// AppleScript string escaping handles the two chars special inside a
-    /// double-quoted AS literal.
-    #[test]
-    fn applescript_escape_escapes_quote_and_backslash() {
-        assert_eq!(applescript_escape(r#"a"b"#), r#"a\"b"#);
-        assert_eq!(applescript_escape(r"a\b"), r"a\\b");
-        assert_eq!(applescript_escape("plain"), "plain");
     }
 
     /// Enumeration output parsing: tab-separated fields → `OpenDoc`, with the

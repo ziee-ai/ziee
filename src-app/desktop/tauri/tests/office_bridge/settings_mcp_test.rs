@@ -24,11 +24,12 @@ fn admin_perms() -> &'static [&'static str] {
     &["office_bridge::admin::read", "office_bridge::admin::manage"]
 }
 
-/// The seven `office` tool descriptors `tools/list` must advertise (ITEM-9).
+/// The seven `office` tool descriptors `tools/list` must advertise. `run_office_js`
+/// replaced the removed `edit_document`.
 const EXPECTED_TOOLS: &[&str] = &[
     "list_open_documents",
     "read_document",
-    "edit_document",
+    "run_office_js",
     "add_comment",
     "set_track_changes",
     "get_tracked_changes",

@@ -3,9 +3,8 @@
 //! The task pane and the daemon speak JSON-RPC 2.0 over the `/bridge` WSS
 //! socket. This module owns only the wire *shapes* — the request/response/event
 //! envelopes. Method dispatch (`list_open_documents`, `read_document`,
-//! `edit_document`, …) lands in ITEM-9; for now `/bridge` simply echoes received
-//! text frames back (like the proven spike), so these types are the scaffold the
-//! dispatcher will deserialize into but are not yet routed.
+//! `run_office_js`, …) is routed by the daemon↔pane broker (`bridge/broker.rs`);
+//! these types are the wire scaffold the dispatcher deserializes into.
 //!
 //! `id`/`params`/`result` are kept as `serde_json::Value` so the envelope stays
 //! method-agnostic (JSON-RPC ids may be a number, string, or null; params/result
