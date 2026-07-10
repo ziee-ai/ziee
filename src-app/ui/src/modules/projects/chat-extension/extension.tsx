@@ -124,6 +124,22 @@ function projectIdFromUrl(): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * The project a NEW conversation should be filed into (ITEM-13/39). In a split
+ * the URL points at the FOCUSED pane's project, so deriving from `window.location`
+ * would file a new-chat pane B's conversation into pane A's project. Sending
+ * focuses the pane first, so the focused pane IS the sending pane — use ITS
+ * `projectId` (null for a plain new-chat pane). Single-pane → the URL, unchanged.
+ */
+function sendingPaneProjectId(): string | null {
+  const sv = Stores.SplitView.$
+  if (sv.panes.length >= 2) {
+    const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
+    return focused?.projectId ?? null
+  }
+  return projectIdFromUrl()
+}
+
 
 const projectExtension: ChatExtension = createExtension({
   name: 'project',
@@ -146,7 +162,7 @@ const projectExtension: ChatExtension = createExtension({
   },
 
   afterCreateConversation: async (conversation) => {
-    const projectId = projectIdFromUrl()
+    const projectId = sendingPaneProjectId()
     if (!projectId) return
     try {
       const response = await Stores.Projects.attachConversation(
