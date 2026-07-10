@@ -120,8 +120,7 @@ export function ConversationCard({
           {/* Wrap to two lines before ellipsizing — a hard single-line
               truncate ("Ren…") wasted the available width on mobile. */}
           <Text
-            strong
-            className="text-base sm:flex-1 min-w-0 line-clamp-2 [overflow-wrap:anywhere]"
+            className="text-sm sm:flex-1 min-w-0 line-clamp-2 [overflow-wrap:anywhere]"
           >
             {conversation.title || 'Untitled Conversation'}
           </Text>

@@ -301,14 +301,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 64 |
-| branch | `'type' in it && it.type === 'group'` | 70 |
-| branch | `!collapsed` | 74 |
-| branch | `'type' in it && it.type === 'label'` | 82 |
-| branch | `!(collapsed)` | 83 |
-| branch | `item.icon != null` | 120 |
-| branch | `!collapsed` | 122 |
-| branch | `hasActions` | 124 |
+| branch | `'type' in it && it.type === 'divider'` | 72 |
+| branch | `'type' in it && it.type === 'group'` | 78 |
+| branch | `!collapsed` | 82 |
+| branch | `'type' in it && it.type === 'label'` | 90 |
+| branch | `!(collapsed)` | 91 |
+| branch | `item.icon != null` | 149 |
+| branch | `!collapsed` | 151 |
+| branch | `hasActions` | 153 |
 
 ### `components/ui/kit/multi-select`
 
@@ -468,27 +468,27 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 120 |
-| branch | `!active` | 152 |
-| branch | `view.sort!.dir === 'asc'` | 153 |
-| branch | `meta.sortable` | 156 |
-| branch | `props.filterable` | 230 |
-| branch | `props.columnChooser && hideable.length > 0` | 245 |
-| branch | `props.toolbarExtra` | 273 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 326 |
-| branch | `!tsv` | 328 |
-| branch | `showVirtual` | 339 |
-| branch | `hasToolbar` | 350 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 381 |
-| branch | `caption != null` | 391 |
-| branch | `resizableTable` | 392 |
-| branch | `meta.resizable` | 412 |
-| branch | `busy` | 419 |
-| empty | `rows.length === 0` | 427 |
-| branch | `meta.resizable` | 538 |
-| branch | `mode === 'none'` | 588 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 593 |
-| branch | `!selectionActive(props, col)` | 600 |
+| branch | `v == null \|\| typeof v === 'boolean'` | 126 |
+| branch | `!active` | 158 |
+| branch | `view.sort!.dir === 'asc'` | 159 |
+| branch | `meta.sortable` | 162 |
+| branch | `props.filterable` | 236 |
+| branch | `props.columnChooser && hideable.length > 0` | 252 |
+| branch | `props.toolbarExtra` | 280 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 333 |
+| branch | `!tsv` | 335 |
+| branch | `showVirtual` | 346 |
+| branch | `hasToolbar` | 357 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 388 |
+| branch | `caption != null` | 407 |
+| branch | `resizableTable` | 408 |
+| branch | `meta.resizable` | 428 |
+| branch | `busy` | 435 |
+| empty | `rows.length === 0` | 443 |
+| branch | `meta.resizable` | 559 |
+| branch | `mode === 'none'` | 609 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 614 |
+| branch | `!selectionActive(props, col)` | 621 |
 
 ### `components/ui/kit/tabs`
 
@@ -599,7 +599,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `showTrigger` | 80 |
 | branch | `showClear` | 91 |
-| branch | `showRemove` | 263 |
+| branch | `showRemove` | 267 |
 
 ### `components/ui/shadcn/dialog`
 
@@ -943,10 +943,10 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `conversation.message_count > 0` | 129 |
-| branch | `canDelete && !isInSelectionMode` | 167 |
-| overlay | `<Confirm open>` | 191 |
-| branch | `onSelect` | 209 |
+| branch | `conversation.message_count > 0` | 128 |
+| branch | `canDelete && !isInSelectionMode` | 166 |
+| overlay | `<Confirm open>` | 190 |
+| branch | `onSelect` | 208 |
 
 ### `modules/chat/components/ConversationFindBar`
 
@@ -1029,13 +1029,13 @@ Required states: `delayed`, `empty`
 | branch | `virtualize` | 419 |
 | branch | `idx < 0` | 421 |
 | branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
-| branch | `!c` | 439 |
-| branch | `newTop == null` | 441 |
-| loading | `!loading && count === 0` | 450 |
-| branch | `loadingOlder` | 476 |
-| branch | `virtualize` | 486 |
-| branch | `!msg` | 501 |
-| loading | `(loading \|\| isStreaming)` | 545 |
+| branch | `!c` | 448 |
+| branch | `top == null` | 451 |
+| loading | `!loading && count === 0` | 474 |
+| branch | `loadingOlder` | 500 |
+| branch | `virtualize` | 510 |
+| branch | `!msg` | 525 |
+| loading | `(loading \|\| isStreaming)` | 573 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1164,12 +1164,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 52 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 69 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 85 |
-| branch | `scopedHref?.startsWith('#')` | 106 |
-| empty | `verdict === 'empty'` | 161 |
-| branch | `verdict === 'allowed'` | 162 |
+| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 56 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 73 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 89 |
+| branch | `scopedHref?.startsWith('#')` | 110 |
+| empty | `verdict === 'empty'` | 165 |
+| branch | `verdict === 'allowed'` | 166 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1305,8 +1305,8 @@ Required states: `delayed`, `open`
 | loading | `!loading && recentConversations.length === 0` | 69 |
 | branch | `!c` | 134 |
 | branch | `active?.closest('[role="menu"]')` | 139 |
-| overlay | `<Dropdown open>` | 227 |
-| branch | `!open && keepMenuOpen` | 234 |
+| overlay | `<Dropdown open>` | 233 |
+| branch | `!open && keepMenuOpen` | 240 |
 
 ### `modules/citations/components/CitationCard`
 
@@ -1716,13 +1716,13 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `editableKind(file) === 'markdown'` | 84 |
 | branch | `showFullPage` | 89 |
 | branch | `!hideHeader` | 150 |
-| branch | `canEdit && !editing && !isViewingOld` | 164 |
-| branch | `tooLarge` | 175 |
-| branch | `editing` | 191 |
-| branch | `isViewingOld` | 193 |
-| branch | `oldVersionText === null` | 195 |
-| branch | `tooLarge` | 210 |
-| branch | `Body` | 234 |
+| branch | `canEdit && !editing && !isViewingOld` | 163 |
+| branch | `tooLarge` | 174 |
+| branch | `editing` | 190 |
+| branch | `isViewingOld` | 192 |
+| branch | `oldVersionText === null` | 194 |
+| branch | `tooLarge` | 209 |
+| branch | `Body` | 233 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1938,10 +1938,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 117 |
-| branch | `!fileId` | 131 |
-| branch | `!fileId` | 160 |
-| branch | `truncated` | 180 |
+| branch | `idx < 0` | 120 |
+| branch | `!fileId` | 134 |
+| branch | `!fileId` | 163 |
+| branch | `truncated` | 187 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1957,14 +1957,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 124 |
-| branch | `sheet.truncated` | 164 |
-| branch | `!fileBinaryContent` | 225 |
-| branch | `!file` | 276 |
-| error | `loadError` | 278 |
-| loading | `!fileBinaryContent \|\| loading` | 287 |
-| empty | `sheets.length === 0` | 291 |
-| branch | `sheets.length === 1` | 295 |
+| branch | `idx < 0` | 132 |
+| branch | `sheet.truncated` | 176 |
+| branch | `!fileBinaryContent` | 238 |
+| branch | `!file` | 289 |
+| error | `loadError` | 291 |
+| loading | `!fileBinaryContent \|\| loading` | 300 |
+| empty | `sheets.length === 0` | 304 |
+| branch | `sheets.length === 1` | 308 |
 
 ### `modules/file/viewers/tabular/body`
 
@@ -2604,14 +2604,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!item` | 157 |
-| branch | `primaryItems.length > 0` | 178 |
-| branch | `navigationItems.length > 0` | 192 |
-| branch | `!isIconOnly` | 213 |
-| branch | `isIconOnly` | 226 |
-| branch | `toolsItems.length > 0` | 229 |
-| branch | `!isIconOnly && bottomWidgets.length > 0` | 248 |
-| branch | `footerWidgets.length > 0` | 263 |
+| branch | `!item` | 169 |
+| branch | `primaryItems.length > 0` | 190 |
+| branch | `navigationItems.length > 0` | 205 |
+| branch | `!isIconOnly` | 227 |
+| branch | `isIconOnly` | 240 |
+| branch | `toolsItems.length > 0` | 243 |
+| branch | `!isIconOnly && bottomWidgets.length > 0` | 263 |
+| branch | `footerWidgets.length > 0` | 278 |
 
 ### `modules/layouts/app-layout/components/ResizeHandle`
 
@@ -2631,7 +2631,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isSidebarCollapsed` | 76 |
+| branch | `isSidebarCollapsed` | 82 |
 
 ### `modules/literature/chat-extension/extension`
 
@@ -3024,7 +3024,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `grayed` | 15 |
 | branch | `!grayed` | 30 |
-| branch | `help` | 64 |
+| branch | `help` | 60 |
 
 ### `modules/llm-provider/components/llm-models/shared/LlmModelParametersSection`
 
@@ -3184,9 +3184,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `mcpServerParenLabel(toolCall.server)` | 170 |
-| branch | `toolCall.input !== undefined` | 183 |
-| branch | `!isControlWrite` | 205 |
+| branch | `!isControlWrite` | 189 |
+| branch | `mcpServerParenLabel(toolCall.server)` | 208 |
+| branch | `toolCall.input !== undefined` | 223 |
 
 ### `modules/mcp/chat-extension/components/elicitationFields`
 
@@ -3751,10 +3751,10 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canEdit` | 98 |
-| branch | `canDuplicate` | 113 |
-| branch | `canDelete` | 129 |
-| overlay | `<Confirm open>` | 145 |
+| branch | `canEdit` | 97 |
+| branch | `canDuplicate` | 112 |
+| branch | `canDelete` | 128 |
+| overlay | `<Confirm open>` | 144 |
 
 ### `modules/projects/components/ProjectDefaultsForm`
 
@@ -4159,8 +4159,8 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| overlay | `<Dialog open>` | 63 |
-| branch | `rootError` | 94 |
+| overlay | `<Dialog open>` | 65 |
+| branch | `rootError` | 96 |
 
 ### `modules/user-profile/UserProfileWidget`
 

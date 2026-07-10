@@ -1,5 +1,5 @@
 import { createCodePlugin } from '@streamdown/code'
-import { math } from '@streamdown/math'
+import { createMathPlugin } from '@streamdown/math'
 import { MermaidBlock } from '@/components/common/MermaidBlock'
 import type { ComponentProps } from 'react'
 import type { Streamdown } from 'streamdown'
@@ -30,6 +30,8 @@ export const STREAMDOWN_PLUGINS: NonNullable<
   code: createCodePlugin({
     themes: ['github-light-high-contrast', 'github-dark-high-contrast'],
   }),
-  math,
+  // singleDollarTextMath: enable INLINE math with single `$…$` (default off, which
+  // rendered `$E = mc^2$` as literal text). Block `$$…$$` already worked.
+  math: createMathPlugin({ singleDollarTextMath: true }),
   renderers: [{ language: 'mermaid', component: MermaidBlock }],
 }

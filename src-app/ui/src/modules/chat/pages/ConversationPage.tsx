@@ -663,7 +663,7 @@ export function ConversationPane() {
           <div
             className={cn(
               'w-full max-w-4xl mx-auto',
-              nativeScroll ? 'sticky top-0 z-20 bg-background' : '',
+              nativeScroll ? 'sticky top-0 z-20 bg-card' : '',
             )}
             data-testid="conversation-context-chrome"
           >
@@ -730,7 +730,7 @@ export function ConversationPane() {
           {nativeScroll && !composerHidden && (
             <div
               aria-hidden
-              className="fixed inset-x-0 bottom-0 bg-background animate-in fade-in duration-300"
+              className="fixed inset-x-0 bottom-0 bg-card animate-in fade-in duration-300"
               style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 5px)', zIndex: 9 }}
             />
           )}
@@ -745,7 +745,7 @@ export function ConversationPane() {
               'w-full max-w-4xl mx-auto p-4 pt-0',
               nativeScroll
                 ? cn(
-                    'bg-background',
+                    'bg-card',
                     // Auto-hide on scroll: toggle sticky↔relative (NOT a
                     // transform). Hidden → position:relative so the composer
                     // wipes away with the page as the user reads history; shown →
