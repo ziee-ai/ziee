@@ -1289,18 +1289,25 @@ impl StepDispatcher for ToolDispatcher {
                     };
                 // Same-host trust set: hosts of the user's enabled accessible MCP servers, so an
                 // external server's artifact URL on its own (private/RFC1918) host can be ingested.
-                // is_system servers have their `url` redacted here — those are covered by the
-                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
-                let trusted_hosts = crate::core::repository::Repos
-                    .mcp
-                    .list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)
-                    .await
-                    .map(|resp| {
-                        crate::modules::mcp::resource_link::trusted_hosts_from_urls(
-                            resp.servers.iter().map(|s| s.url.as_deref()),
-                        )
-                    })
-                    .unwrap_or_default();
+                // `trusted_hosts` is only consulted for EXTERNAL links, so skip the DB query
+                // entirely for a built-in emitter (e.g. code_sandbox `ziee://` artifacts — the
+                // common workflow producer). is_system servers have their `url` redacted here —
+                // those are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead
+                // (see resource_link.rs).
+                let trusted_hosts: Vec<String> = if is_built_in {
+                    Vec::new()
+                } else {
+                    crate::core::repository::Repos
+                        .mcp
+                        .list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)
+                        .await
+                        .map(|resp| {
+                            crate::modules::mcp::resource_link::trusted_hosts_from_urls(
+                                resp.servers.iter().map(|s| s.url.as_deref()),
+                            )
+                        })
+                        .unwrap_or_default()
+                };
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     &mut links,
                     ctx.user_id,

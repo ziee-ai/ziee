@@ -65,3 +65,25 @@ means an operator who opts into all-private gets the more-permissive redirect-fo
 uniformly.
 **Basis:** codebase — preserves the existing debug seam; user — env opt-in is a deliberate global
 relaxation.
+
+### DEC-8: Trust set = union of ALL the user's accessible server hosts vs the emitting server's own host only?
+**Resolution:** Union of the acting user's enabled accessible MCP-server hosts (NOT scoped to the
+emitting `server_id`). A blind security review flagged the confused-deputy tradeoff: a
+compromised/injected external server could aim a link at ANOTHER of the user's registered private
+hosts (host-only match, arbitrary port/path). Accepted as designed: (a) the user explicitly chose
+"any enabled registered server's host" so artifacts can chain across the user's registered hosts;
+(b) the trust set is confined to the acting user's OWN accessible servers — hosts the deployment
+already talks to over MCP — so the marginal expansion is reaching other ports/paths on hosts already
+in the trust boundary; (c) IMDS/link-local stays blocked, redirects are disabled on the scoped path.
+Documented in the CLAUDE.md note. LEDGER status: rejected (won't-fix, by-design).
+**Basis:** user — the AskUserQuestion selection "Any enabled registered server's host".
+
+### DEC-9: Add `.no_proxy()` to the scoped redirect-disabled client (parity with discover.rs)?
+**Resolution:** No. `discover.rs` pairs `.no_proxy()` with credential-carrying requests, but the
+resource_link external fetch's OTHER policy paths (public / global opt-in, via
+`build_validated_client`) already do NOT set `.no_proxy()`, and they carry the same external-server
+`Authorization` headers. Adding it to ONLY the scoped path would make the three paths inconsistent
+without closing the (pre-existing, sibling-shared) proxy exposure; a private/loopback trusted host is
+also the case least likely to involve an outbound proxy. Left consistent with the sibling paths.
+LEDGER status: rejected (consistent-with-siblings, pre-existing).
+**Basis:** codebase — the public/global paths' existing behavior; not a regression introduced here.

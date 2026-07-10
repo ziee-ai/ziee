@@ -18,9 +18,10 @@
 //!     ingested. Skipped when no `jwt_secret` is available in this context (the
 //!     dispatcher passes `None`). An EXTERNAL server's link is SSRF-confined: by default
 //!     `PUBLIC_HTTP_OR_HTTPS` (blocks loopback/RFC1918/IMDS), but relaxed to `MCP_USER`
-//!     (private allowed, IMDS still blocked) when the link's host matches a registered MCP
-//!     server's host (same-host trust — redirects disabled) or the release env opt-in
-//!     `ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1` is set. See [`choose_fetch_policy`].
+//!     (RFC1918/loopback + IPv6 ULA allowed; IPv4 link-local/IMDS + IPv6 link-local still
+//!     blocked) when the link's host matches a registered MCP server's host (same-host trust —
+//!     redirects disabled) or the release env opt-in `ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`
+//!     is set. See [`choose_fetch_policy`].
 //!
 //! ### The three `ziee://` guards (security-critical — do not remove)
 //! 1. **Trusted-emitter only** — a `ziee://` host path is honored ONLY when the producing
@@ -251,12 +252,13 @@ pub(crate) enum FetchPolicyKind {
     /// (each hop re-validated against the same policy).
     Public,
     /// Same-host trust: the link host matches a registered MCP server's host. Private / loopback
-    /// allowed (IMDS/link-local still blocked); redirects DISABLED so an off-host redirect can't
-    /// inherit the allowance.
+    /// allowed under `MCP_USER` (which still blocks IPv4 link-local/IMDS `169.254.0.0/16` and IPv6
+    /// link-local `fe80::/10`, but DOES allow RFC1918 + IPv6 ULA `fc00::/7`); redirects DISABLED so
+    /// an off-host redirect can't inherit the allowance.
     PrivateScoped,
-    /// Operator global opt-in (`ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`): private / loopback allowed
-    /// for ALL external hosts (IMDS/link-local still blocked); redirects followed but re-validated
-    /// against the same private policy.
+    /// Operator global opt-in (`ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`): `MCP_USER` for ALL external
+    /// hosts (same block/allow set as `PrivateScoped`); redirects followed but re-validated against
+    /// the same private policy.
     PrivateGlobal,
     /// Debug-only loopback seam (`MCP_RESOURCE_LINK_ALLOW_LOOPBACK=1`, debug builds only).
     DevLocal,
@@ -308,7 +310,8 @@ fn fetch_policy_and_redirects(
 ///
 /// Unlike the debug `MCP_RESOURCE_LINK_ALLOW_LOOPBACK` seam, this is NOT `cfg!(debug_assertions)`-gated
 /// — it is honored in release builds. Off by default; when set it relaxes ALL external
-/// `resource_link` fetches to `MCP_USER` (private/loopback allowed, IMDS/link-local still blocked).
+/// `resource_link` fetches to `MCP_USER` (RFC1918/loopback + IPv6 ULA allowed; IPv4 link-local/IMDS
+/// `169.254.0.0/16` + IPv6 link-local `fe80::/10` still blocked).
 fn resource_link_allow_private_env() -> bool {
     std::env::var("ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE").as_deref() == Ok("1")
 }
@@ -797,25 +800,36 @@ mod tests {
         );
     }
 
-    // TEST-5: resource_link_allow_private_env reads ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE.
-    // Env mutation is process-global; no other unit test reads this var, and we restore it.
+    // TEST-5: resource_link_allow_private_env — OFF by default. Read-only on purpose: mutating this
+    // process-global var would data-race the parallel test binary (`set_var` is `unsafe` in edition
+    // 2024 precisely because of that, and a leaked value would relax a concurrently-spawned server
+    // subprocess's SSRF policy). The `"1"` → enabled mapping is a trivial string compare; the
+    // DECISION it feeds is proven purely by TEST-2 / TEST-8 without touching the global env.
     #[test]
-    fn allow_private_env_reads_the_flag() {
-        const KEY: &str = "ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE";
-        let saved = std::env::var(KEY).ok();
-        // SAFETY: single-threaded within this test; var is exclusive to it.
-        unsafe {
-            std::env::set_var(KEY, "1");
-            assert!(resource_link_allow_private_env(), "\"1\" → enabled");
-            std::env::set_var(KEY, "0");
-            assert!(!resource_link_allow_private_env(), "\"0\" → disabled");
-            std::env::remove_var(KEY);
-            assert!(!resource_link_allow_private_env(), "unset → disabled");
-            match saved {
-                Some(v) => std::env::set_var(KEY, v),
-                None => std::env::remove_var(KEY),
-            }
-        }
+    fn allow_private_env_defaults_disabled() {
+        // No test in this crate sets the var, so it is unset here → the opt-in is OFF.
+        assert!(std::env::var("ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE").is_err());
+        assert!(!resource_link_allow_private_env());
+    }
+
+    // TEST-8: env opt-in end-to-end (pure — no global env mutation). When env_private is true,
+    // choose_fetch_policy → PrivateGlobal → MCP_USER, under which a private host validates OK
+    // (host-match NOT required) while IMDS/link-local stays blocked. This is the release opt-in's
+    // observable effect, proven without racing the process-global env var.
+    #[test]
+    fn env_optin_permits_private_without_host_match() {
+        let kind = choose_fetch_policy("http://10.9.9.9:9005/x", &[], false, true);
+        assert_eq!(kind, FetchPolicyKind::PrivateGlobal);
+        let (policy, follow) = fetch_policy_and_redirects(kind);
+        assert!(follow, "global opt-in follows (re-validated) redirects");
+        assert!(
+            validate_outbound_url("http://10.9.9.9:9005/x", &policy).is_ok(),
+            "opt-in permits an untrusted private host (no host-match)"
+        );
+        assert!(
+            validate_outbound_url("http://169.254.169.254/latest", &policy).is_err(),
+            "IPv4 IMDS/link-local still blocked under the opt-in"
+        );
     }
 
     #[test]

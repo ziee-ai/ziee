@@ -505,25 +505,36 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// External-server HTTP resource_link SSRF policy (same-host trust + env opt-in).
+// External-server HTTP resource_link SSRF policy (same-host trust).
 // A loopback mock stands in for a same-host (private/RFC1918) MCP artifact server.
+// (The release env opt-in ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE is proven purely in the
+// resource_link.rs unit tests — mutating that process-global var here would race the parallel
+// integration binary and could leak into concurrently-spawned server subprocesses.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// 200 response with a 12-byte CSV body (`a,b,c\n1,2,3\n`).
 const OK_CSV_RESPONSE: &str =
     "HTTP/1.1 200 OK\r\nContent-Type: text/csv\r\nContent-Length: 12\r\n\r\na,b,c\n1,2,3\n";
-/// 302 redirect to a DIFFERENT host (an off-host redirect the scoped path must not follow).
-const REDIRECT_RESPONSE: &str =
-    "HTTP/1.1 302 Found\r\nLocation: http://10.9.9.9:9/elsewhere.csv\r\nContent-Length: 0\r\n\r\n";
+
+/// Aborts a mock server's accept loop when dropped, so a test doesn't leak a live accept task
+/// for the rest of the test-process lifetime. Each test binds it to a `_mock` local.
+struct MockGuard(tokio::task::JoinHandle<()>);
+impl Drop for MockGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
 
 /// A loopback HTTP server that answers every request with `response`. Returns its
-/// `http://127.0.0.1:<port>` base URL. The accept loop lives for the process (test-scoped).
-async fn start_fixed_response_mock(response: &'static str) -> String {
+/// `http://127.0.0.1:<port>` base URL and a guard that stops the accept loop on drop.
+async fn start_fixed_response_mock(response: impl Into<String>) -> (String, MockGuard) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let response = std::sync::Arc::new(response.into());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         while let Ok((mut sock, _)) = listener.accept().await {
+            let response = response.clone();
             tokio::spawn(async move {
                 let mut buf = [0u8; 2048];
                 // Read (and discard) the request head; we answer the same way regardless.
@@ -533,7 +544,7 @@ async fn start_fixed_response_mock(response: &'static str) -> String {
             });
         }
     });
-    format!("http://{addr}")
+    (format!("http://{addr}"), MockGuard(handle))
 }
 
 /// Shared setup: TestServer + a user + process-global Repos/file-store pointed at this DB.
@@ -558,7 +569,7 @@ async fn setup_ingest_env(server: &TestServer, tag: &str) -> (Uuid, sqlx::PgPool
 async fn http_link_matched_trusted_host_is_ingested() {
     let server = TestServer::start().await;
     let (uid, pool, store_dir) = setup_ingest_env(&server, "match").await;
-    let base = start_fixed_response_mock(OK_CSV_RESPONSE).await;
+    let (base, _mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await;
 
     let mut links = vec![ziee_link(&format!("{base}/results/de_ad_control_limma.csv"), "de.csv")];
     let outcome = ziee::persist_links(
@@ -595,7 +606,7 @@ async fn http_link_matched_trusted_host_is_ingested() {
 async fn http_link_unmatched_host_is_rejected() {
     let server = TestServer::start().await;
     let (uid, pool, store_dir) = setup_ingest_env(&server, "nomatch").await;
-    let base = start_fixed_response_mock(OK_CSV_RESPONSE).await;
+    let (base, _mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await;
     let uri = format!("{base}/results/x.csv");
 
     let mut links = vec![ziee_link(&uri, "x.csv")];
@@ -626,63 +637,25 @@ async fn http_link_unmatched_host_is_rejected() {
     std::fs::remove_dir_all(&store_dir).ok();
 }
 
-/// TEST-8: release env opt-in — ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1 ingests the private link
-/// even with an EMPTY trusted-host set (host-match not required).
+/// TEST-9: the scoped (same-host trust) path has redirects DISABLED. The mock 302-redirects to a
+/// SECOND, reachable loopback mock that serves 200. If redirects were followed the client would
+/// reach that 200 target (loopback → allowed by MCP_USER) and save the artifact; because they are
+/// disabled, the 302 itself is a non-success response and nothing is saved. This DISTINGUISHES
+/// redirects-disabled from redirects-followed (the target is reachable + successful), so the test
+/// would fail if the redirect-disabling were reverted.
 #[tokio::test]
 #[serial_test::serial(repos, file_storage)]
-async fn http_link_env_optin_allows_private() {
-    let server = TestServer::start().await;
-    let (uid, pool, store_dir) = setup_ingest_env(&server, "envoptin").await;
-    let base = start_fixed_response_mock(OK_CSV_RESPONSE).await;
-
-    const KEY: &str = "ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE";
-    let saved_env = std::env::var(KEY).ok();
-    // SAFETY: this test is `serial(repos, ...)` and no other test reads this var.
-    unsafe { std::env::set_var(KEY, "1") };
-
-    let mut links = vec![ziee_link(&format!("{base}/results/x.csv"), "x.csv")];
-    let outcome = ziee::persist_links(
-        &mut links,
-        uid,
-        None,
-        None,
-        "mcp",
-        None,
-        Uuid::new_v4(),
-        false,
-        &serde_json::json!({}),
-        &[], // trusted_hosts EMPTY — the env opt-in alone must permit the fetch
-        &[],
-        Some("test-secret"),
-        Some("ziee"),
-        Some("ziee-api"),
-    )
-    .await
-    .expect("persist_links");
-
-    // SAFETY: restore before asserting so a panic can't leak the var to later tests.
-    unsafe {
-        match saved_env {
-            Some(v) => std::env::set_var(KEY, v),
-            None => std::env::remove_var(KEY),
-        }
-    }
-
-    assert_eq!(outcome.saved.len(), 1, "env opt-in permits the private fetch");
-    assert!(links[0].file_id.is_some());
-
-    pool.close().await;
-    std::fs::remove_dir_all(&store_dir).ok();
-}
-
-/// TEST-9: off-host redirect on the scoped path — the trusted-host fetch has redirects DISABLED,
-/// so a 302 to a different host is not followed and nothing is saved.
-#[tokio::test]
-#[serial_test::serial(repos, file_storage)]
-async fn http_link_scoped_path_does_not_follow_offhost_redirect() {
+async fn http_link_scoped_path_does_not_follow_redirect() {
     let server = TestServer::start().await;
     let (uid, pool, store_dir) = setup_ingest_env(&server, "redirect").await;
-    let base = start_fixed_response_mock(REDIRECT_RESPONSE).await;
+
+    // The redirect TARGET is a reachable loopback mock serving a real 200 body.
+    let (target, _target_mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await;
+    // The primary mock 302-redirects to that target.
+    let redirect_resp = format!(
+        "HTTP/1.1 302 Found\r\nLocation: {target}/redirected.csv\r\nContent-Length: 0\r\n\r\n"
+    );
+    let (base, _redir_mock) = start_fixed_response_mock(redirect_resp).await;
 
     let mut links = vec![ziee_link(&format!("{base}/results/x.csv"), "x.csv")];
     let outcome = ziee::persist_links(
@@ -704,7 +677,11 @@ async fn http_link_scoped_path_does_not_follow_offhost_redirect() {
     .await
     .expect("persist_links");
 
-    assert_eq!(outcome.saved.len(), 0, "off-host redirect is not followed → nothing saved");
+    assert_eq!(
+        outcome.saved.len(),
+        0,
+        "redirect is not followed (would be 1 if the scoped path followed it to the 200 target)"
+    );
     assert!(links[0].file_id.is_none());
 
     pool.close().await;
