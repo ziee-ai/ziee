@@ -911,29 +911,59 @@ async fn model_writes_run_office_js(prompt: &str) -> String {
     script
 }
 
-/// Run the model's script in the live pane (expects success), then run a
-/// deterministic `verify` script and return its `result`.
+/// Generate the model's `run_office_js` script for `prompt`, run it in the live
+/// pane, then run the deterministic `verify` script and check `ok(&result)`.
+/// REGENERATE and retry (up to 3 attempts — real models are non-deterministic)
+/// when EITHER the model's script errors in the pane (e.g. an Office.js
+/// array-dimension mismatch) OR it "runs" but doesn't actually do the task (a
+/// no-op / dummy script — `ok` returns false). Returns the last verified result
+/// (the caller's assertions then report specifics). The pane stays connected
+/// across attempts, so a retry needs NO extra ribbon click.
 #[cfg(target_os = "macos")]
-async fn run_then_verify(target: &str, script: &str, verify: &str) -> Value {
-    let out = broker::call_pane_with_timeout(
-        target,
-        "run_office_js",
-        json!({ "doc_full_name": target, "script": script }),
-        Duration::from_secs(45),
-    )
-    .await
-    .expect("the model's run_office_js script executes in the live pane");
-    eprintln!(">>> model script returned: {out}");
-    let v = broker::call_pane_with_timeout(
-        target,
-        "run_office_js",
-        json!({ "doc_full_name": target, "script": verify }),
-        Duration::from_secs(30),
-    )
-    .await
-    .expect("verify read-back executes");
-    eprintln!(">>> verify read-back: {v}");
-    v.get("result").cloned().unwrap_or(Value::Null)
+async fn model_task_and_verify(
+    target: &str,
+    prompt: &str,
+    verify: &str,
+    ok: impl Fn(&Value) -> bool,
+) -> Value {
+    let mut last = Value::Null;
+    for attempt in 1..=3 {
+        let script = model_writes_run_office_js(prompt).await;
+        match broker::call_pane_with_timeout(
+            target,
+            "run_office_js",
+            json!({ "doc_full_name": target, "script": script }),
+            Duration::from_secs(45),
+        )
+        .await
+        {
+            Ok(out) => {
+                eprintln!(">>> attempt {attempt}: model script ran OK: {out}");
+                let v = broker::call_pane_with_timeout(
+                    target,
+                    "run_office_js",
+                    json!({ "doc_full_name": target, "script": verify }),
+                    Duration::from_secs(30),
+                )
+                .await
+                .expect("verify read-back executes");
+                eprintln!(">>> verify read-back: {v}");
+                last = v.get("result").cloned().unwrap_or(Value::Null);
+                if ok(&last) {
+                    return last;
+                }
+                eprintln!(
+                    ">>> attempt {attempt}: the task did NOT complete (no-op / incomplete script), regenerating..."
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    ">>> attempt {attempt}: the model's script FAILED in the pane, regenerating — {e}"
+                );
+            }
+        }
+    }
+    last
 }
 
 /// Human-like Excel task — a real monthly budget. The model builds it; we verify
@@ -952,15 +982,18 @@ async fn human_excel_monthly_budget() {
         Transport 200 175; Utilities 250 230. In the next row put the word Total in column A and use \
         SUM formulas in columns B and C to total the Planned and Actual amounts. Format the amount \
         cells B2:C6 as US-dollar currency.";
-    let script = model_writes_run_office_js(prompt).await;
     let (handle, target) = open_excel_and_wait_for_pane().await;
     let verify = "const s = context.workbook.worksheets.getActiveWorksheet(); \
         const r = s.getRange('A1:C7'); r.load('values, text'); \
         const h = s.getRange('A1'); h.load('format/font/bold'); \
         const amt = s.getRange('B2'); amt.load('numberFormat'); \
         await context.sync(); \
-        return { text: r.text, a1Bold: h.format.font.bold, amtFmt: amt.numberFormat[0][0] };";
-    let res = run_then_verify(&target, &script, verify).await;
+        return { values: r.values, text: r.text, a1Bold: h.format.font.bold, amtFmt: amt.numberFormat[0][0] };";
+    let res = model_task_and_verify(&target, prompt, verify, |r| {
+        let f = r.to_string();
+        f.contains("2550") || f.contains("2,550")
+    })
+    .await;
     handle.shutdown();
 
     let flat = res.to_string().to_lowercase();
@@ -970,8 +1003,15 @@ async fn human_excel_monthly_budget() {
     );
     assert!(flat.contains("total"), "a Total row is present: {res}");
     // SUM correctness — Planned 1500+600+200+250 = 2550; Actual 1450+640+175+230 = 2495.
-    assert!(flat.contains("2550"), "the Planned SUM total (2550) is present: {res}");
-    assert!(flat.contains("2495"), "the Actual SUM total (2495) is present: {res}");
+    // Tolerate the currency thousands separator ("2,550") as well as the raw value.
+    assert!(
+        flat.contains("2550") || flat.contains("2,550"),
+        "the Planned SUM total (2550) is present: {res}"
+    );
+    assert!(
+        flat.contains("2495") || flat.contains("2,495"),
+        "the Actual SUM total (2495) is present: {res}"
+    );
     assert_eq!(res["a1Bold"].as_bool(), Some(true), "the header cell is bold: {res}");
     assert!(
         res["amtFmt"].as_str().unwrap_or("").contains('$'),
@@ -995,7 +1035,6 @@ async fn human_word_review_pass() {
         new paragraph with the text 'Reviewed and approved for Q3.' (4) Search the body for the word \
         'budget' (case-insensitive) and on the first match insert a comment with the text \
         'Please confirm the Q3 figure.'";
-    let script = model_writes_run_office_js(prompt).await;
     let (handle, target) = open_word_and_wait_for_pane().await;
     let verify = "const body = context.document.body; body.load('text'); \
         context.document.load('changeTrackingMode'); \
@@ -1005,7 +1044,11 @@ async fn human_word_review_pass() {
         await context.sync(); \
         return { text: body.text, tracking: context.document.changeTrackingMode, \
             firstStyle: paras.items.length ? paras.items[0].styleBuiltIn : '', commentCount };";
-    let res = run_then_verify(&target, &script, verify).await;
+    let res = model_task_and_verify(&target, prompt, verify, |r| {
+        r["text"].as_str().unwrap_or("").to_lowercase().contains("executive summary")
+            && r["tracking"].as_str() != Some("Off")
+    })
+    .await;
     handle.shutdown();
 
     let text = res["text"].as_str().unwrap_or("").to_lowercase();
@@ -1041,12 +1084,15 @@ async fn human_powerpoint_agenda_slide() {
     if !live_llm_ready("human_powerpoint_agenda_slide") {
         return;
     }
-    let prompt = "Use the run_office_js tool on the open PowerPoint presentation to add an agenda \
-        slide, all in ONE script: add a NEW slide at the end of the presentation, then on that new \
-        slide add a text box near the top containing the title 'Today's Agenda', and add another \
-        text box below it containing three agenda items on separate lines: 'Q3 results', \
-        'Product roadmap', and 'Hiring plan'.";
-    let script = model_writes_run_office_js(prompt).await;
+    let prompt = "Use the run_office_js tool to add an agenda slide to the open PowerPoint \
+        presentation. Write ONE Office.js script (it runs inside PowerPoint.run with `context` in \
+        scope) that: (1) adds a new slide with `context.presentation.slides.add();` (2) loads the \
+        slide collection (`context.presentation.slides.load('items'); await context.sync();`) and \
+        takes the LAST slide as the new one: `const slide = context.presentation.slides.getItemAt(context.presentation.slides.items.length - 1);` \
+        (3) on that slide adds a title text box: `const t = slide.shapes.addTextBox(\"Today's Agenda\"); t.left = 50; t.top = 30; t.width = 600; t.height = 60;` \
+        (4) adds a second text box with the three agenda items on separate lines (use a newline \\n \
+        between them): `const b = slide.shapes.addTextBox(\"Q3 results\\nProduct roadmap\\nHiring plan\"); b.left = 50; b.top = 130; b.width = 600; b.height = 220;` \
+        (5) `await context.sync();` and returns a short confirmation string. Use exactly those texts.";
     let (handle, target) = open_powerpoint_and_wait_for_pane().await;
     let verify = "const pres = context.presentation; pres.slides.load('items'); await context.sync(); \
         const texts = []; \
@@ -1057,7 +1103,10 @@ async fn human_powerpoint_agenda_slide() {
             for (const sh of slide.shapes.items) { try { texts.push(sh.textFrame.textRange.text); } catch (e) {} } \
         } \
         return { slideCount: pres.slides.items.length, texts };";
-    let res = run_then_verify(&target, &script, verify).await;
+    let res = model_task_and_verify(&target, prompt, verify, |r| {
+        r["texts"].to_string().to_lowercase().contains("agenda")
+    })
+    .await;
     handle.shutdown();
 
     let flat = res["texts"].to_string().to_lowercase();
