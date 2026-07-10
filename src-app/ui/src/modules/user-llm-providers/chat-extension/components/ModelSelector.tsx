@@ -3,6 +3,7 @@ import { Button, Select, Tooltip } from '@/components/ui'
 import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'
+import { NEW_CHAT_MODEL_KEY } from '@/modules/user-llm-providers/ModelPicker.store'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
 
 /**
@@ -32,8 +33,14 @@ function providerNeedsApiKey(
 }
 
 export function ModelSelector() {
-  const { selectedModelId, providers, error, loading } = Stores.ModelPicker
-  const { sending } = Stores.Chat
+  const { selectedByConversation, providers, error, loading } =
+    Stores.ModelPicker
+  // Key the selection by THIS pane's conversation (resolved via the Stores.Chat
+  // bridge → the pane's own conversation in split; the shared new-chat key when
+  // there's no conversation yet), so each pane keeps its own model. (ITEM-5)
+  const { sending, conversation } = Stores.Chat
+  const modelKey = conversation?.id ?? NEW_CHAT_MODEL_KEY
+  const selectedModelId = selectedByConversation[modelKey]
 
   const [pendingProviderForKey, setPendingProviderForKey] = useState<{
     providerId: string
@@ -93,12 +100,12 @@ export function ModelSelector() {
         }
       }
     }
-    Stores.ModelPicker.setModelId(value)
+    Stores.ModelPicker.setModelId(modelKey, value)
   }
 
   const handleKeyProvided = (modelId: string) => {
     setPendingProviderForKey(null)
-    Stores.ModelPicker.setModelId(modelId)
+    Stores.ModelPicker.setModelId(modelKey, modelId)
   }
 
   // Provider load failed and there's nothing to pick from: a persistent,

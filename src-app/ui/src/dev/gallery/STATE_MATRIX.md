@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **329** surfaces carry at least one renderable-state signal.
-- **1911** signals total: 1514 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
+- **328** surfaces carry at least one renderable-state signal.
+- **1910** signals total: 1513 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -3823,11 +3823,11 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `providerNeedsApiKey(provider)` | 55 |
-| branch | `!value` | 80 |
-| branch | `model` | 86 |
-| error | `error && providers.length === 0` | 107 |
-| branch | `pendingProviderForKey` | 140 |
+| branch | `providerNeedsApiKey(provider)` | 62 |
+| branch | `!value` | 87 |
+| branch | `model` | 93 |
+| error | `error && providers.length === 0` | 114 |
+| branch | `pendingProviderForKey` | 147 |
 
 ### `modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal`
 
@@ -3837,14 +3837,6 @@ Required states: `open`
 |---|---|---|
 | overlay | `<Dialog open>` | 63 |
 | branch | `rootError` | 94 |
-
-### `modules/user-llm-providers/chat-extension/extension`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!picker` | 51 |
 
 ### `modules/user-profile/UserProfileWidget`
 
@@ -4178,14 +4170,14 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 105 |
-| branch | `!open` | 116 |
-| branch | `!conversationId && !modelId` | 121 |
-| overlay | `<Dialog open>` | 166 |
-| branch | `structured` | 182 |
-| branch | `jsonError` | 208 |
-| branch | `!conversationId` | 211 |
-| branch | `conversationId` | 237 |
+| branch | `!open` | 110 |
+| branch | `!open` | 121 |
+| branch | `!conversationId && !modelId` | 126 |
+| overlay | `<Dialog open>` | 171 |
+| branch | `structured` | 187 |
+| branch | `jsonError` | 213 |
+| branch | `!conversationId` | 216 |
+| branch | `conversationId` | 242 |
 
 ### `modules/workflow/components/WorkflowRunProgressView`
 

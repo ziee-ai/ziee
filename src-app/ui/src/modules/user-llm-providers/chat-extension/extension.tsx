@@ -27,45 +27,46 @@ const modelExtension: ChatExtension = createExtension({
   initialize: async () => {
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@/core/stores')
-
-    // 1. Conversation-change → re-initialize the picker. Replaces
-    //    the implicit chat-extension-framework scoping the old
-    //    Stores.Chat.ModelStore used to get for free; now we wire it
-    //    explicitly because the store lives in the user-llm-providers
-    //    module's namespace.
-    useChatStore.subscribe(
-      state => state.conversation?.id,
-      () => {
-        const conversation = useChatStore.getState().conversation
-        Stores.ModelPicker.initializeFromConversation(conversation?.model_id ?? undefined)
-      },
+    const { NEW_CHAT_MODEL_KEY } = await import(
+      '@/modules/user-llm-providers/ModelPicker.store'
     )
 
-    // 2. Editing-message → restore the message's model id while
-    //    editing, then fall back to the conversation default when the
-    //    edit is cancelled or sent.
+    // Editing-message → restore the message's model id (under the primary
+    // pane's conversation key) while editing, then fall back to the
+    // conversation default when the edit is cancelled/sent. Per-conversation
+    // SEEDING is handled by `onConversationLoad` (fires per pane); this
+    // subscription tracks the PRIMARY pane's editing only (a minor split gap —
+    // editing a non-focused pane's message restores under its own conversation
+    // key via onConversationLoad on the next load). (ITEM-5)
     useChatStore.subscribe(
       state => state.editingMessage,
-      (editingMessage) => {
-        const picker = Stores.ModelPicker
-        if (!picker) return
-
+      editingMessage => {
+        const conversation = useChatStore.getState().conversation
+        const key = conversation?.id ?? NEW_CHAT_MODEL_KEY
         if (editingMessage?.model_id) {
-          picker.setModelId(editingMessage.model_id)
+          Stores.ModelPicker.setModelId(key, editingMessage.model_id)
         } else if (!editingMessage) {
-          const conversation = useChatStore.getState().conversation
-          picker.initializeFromConversation(conversation?.model_id ?? undefined)
+          Stores.ModelPicker.initializeFromConversation(
+            key,
+            conversation?.model_id ?? undefined,
+          )
         }
       },
     )
   },
 
   /**
-   * Provide model_id to request.
+   * Provide model_id to the request for the SENDING pane's conversation
+   * (ctx.conversationId; null = new chat → the shared new-chat key). (ITEM-5)
    */
-  composeRequestFields: async () => {
+  composeRequestFields: async ctx => {
     const { Stores } = await import('@/core/stores')
-    const modelId = Stores.ModelPicker.getModelId()
+    const { NEW_CHAT_MODEL_KEY } = await import(
+      '@/modules/user-llm-providers/ModelPicker.store'
+    )
+    const key = ctx.conversationId ?? NEW_CHAT_MODEL_KEY
+    const modelId =
+      Stores.ModelPicker.getModelId(key) ?? Stores.ModelPicker.defaultModelId()
     if (!modelId) {
       throw new Error('No model selected')
     }
@@ -79,15 +80,16 @@ const modelExtension: ChatExtension = createExtension({
   },
 
   /**
-   * Sync model selection when conversation loads or switches. The
-   * conversation-id subscriber above also handles this, but
-   * onConversationLoad runs synchronously in the chat extension
-   * lifecycle (the subscriber fires asynchronously after the store
-   * commits) so keep both to avoid a one-frame stale picker.
+   * Seed the picker for THIS pane's conversation on load/switch — keyed by the
+   * conversation id so each split pane keeps its own model selection (ITEM-5).
+   * Runs per pane (each pane's loadConversation invokes it).
    */
   onConversationLoad: async (conversation: Conversation) => {
     const { Stores } = await import('@/core/stores')
-    Stores.ModelPicker.initializeFromConversation(conversation.model_id ?? undefined)
+    Stores.ModelPicker.initializeFromConversation(
+      conversation.id,
+      conversation.model_id ?? undefined,
+    )
   },
 })
 

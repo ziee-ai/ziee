@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 329 surfaces carry renderable-state signals; 1911 signals total.
+// 328 surfaces carry renderable-state signals; 1910 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3492,11 +3492,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/user-llm-providers/chat-extension/components/ModelSelector",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "providerNeedsApiKey(provider)", line: 55 },
-      { kind: "branch", condition: "!value", line: 80 },
-      { kind: "branch", condition: "model", line: 86 },
-      { kind: "error", condition: "error && providers.length === 0", line: 107 },
-      { kind: "branch", condition: "pendingProviderForKey", line: 140 },
+      { kind: "branch", condition: "providerNeedsApiKey(provider)", line: 62 },
+      { kind: "branch", condition: "!value", line: 87 },
+      { kind: "branch", condition: "model", line: 93 },
+      { kind: "error", condition: "error && providers.length === 0", line: 114 },
+      { kind: "branch", condition: "pendingProviderForKey", line: 147 },
     ],
   },
   "modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal": {
@@ -3505,13 +3505,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "overlay", condition: "<Dialog open>", line: 63 },
       { kind: "branch", condition: "rootError", line: 94 },
-    ],
-  },
-  "modules/user-llm-providers/chat-extension/extension": {
-    surface: "modules/user-llm-providers/chat-extension/extension",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "!picker", line: 51 },
     ],
   },
   "modules/user-profile/UserProfileWidget": {
@@ -3819,14 +3812,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/workflow/components/WorkflowRunDialog",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "!open", line: 105 },
-      { kind: "branch", condition: "!open", line: 116 },
-      { kind: "branch", condition: "!conversationId && !modelId", line: 121 },
-      { kind: "overlay", condition: "<Dialog open>", line: 166 },
-      { kind: "branch", condition: "structured", line: 182 },
-      { kind: "branch", condition: "jsonError", line: 208 },
-      { kind: "branch", condition: "!conversationId", line: 211 },
-      { kind: "branch", condition: "conversationId", line: 237 },
+      { kind: "branch", condition: "!open", line: 110 },
+      { kind: "branch", condition: "!open", line: 121 },
+      { kind: "branch", condition: "!conversationId && !modelId", line: 126 },
+      { kind: "overlay", condition: "<Dialog open>", line: 171 },
+      { kind: "branch", condition: "structured", line: 187 },
+      { kind: "branch", condition: "jsonError", line: 213 },
+      { kind: "branch", condition: "!conversationId", line: 216 },
+      { kind: "branch", condition: "conversationId", line: 242 },
     ],
   },
   "modules/workflow/components/WorkflowRunProgressView": {

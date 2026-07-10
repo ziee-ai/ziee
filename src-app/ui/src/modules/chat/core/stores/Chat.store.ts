@@ -1638,9 +1638,12 @@ const chatStoreConfig = {
         )
       }
 
-      // Collect all request fields from extensions
-      const allRequestFields =
-        await chatExtensionRegistry.composeRequestFields()
+      // Collect all request fields from extensions. Pass THIS pane's
+      // conversation id so per-conversation composer selections (e.g. model)
+      // resolve to the sending pane (ITEM-5); null = a new-chat pane.
+      const allRequestFields = await chatExtensionRegistry.composeRequestFields({
+        conversationId: get().conversation?.id ?? null,
+      })
 
       // Inject branching fields directly (moved from branching extension)
       const pendingBranchFromMessageId = get().pendingBranchFromMessageId

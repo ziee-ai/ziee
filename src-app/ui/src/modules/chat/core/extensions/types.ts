@@ -402,6 +402,16 @@ export type StreamingContentProviders = {
 }
 
 /**
+ * Context passed to send-path extension hooks identifying the SENDING pane's
+ * conversation (ITEM-5). Lets a per-conversation composer selection resolve to
+ * the correct split pane. `conversationId` is null for a not-yet-created
+ * new-chat pane.
+ */
+export interface ChatHookCtx {
+  conversationId: string | null
+}
+
+/**
  * Main extension interface
  * All chat extensions must implement this interface
  */
@@ -706,10 +716,15 @@ export interface ChatExtension {
 
   /**
    * Compose request fields
-   * Add custom fields to chat requests
-   * Extensions should access Stores.Chat for conversation data
+   * Add custom fields to chat requests.
+   *
+   * Receives a `ctx` identifying the SENDING pane's conversation (ITEM-5), so a
+   * per-conversation composer selection (e.g. the model) resolves to the right
+   * pane in split view. `conversationId` is null for a not-yet-created new-chat
+   * pane (use the extension's new-chat key). Extensions that don't need it can
+   * ignore the argument.
    */
-  composeRequestFields?: () =>
+  composeRequestFields?: (ctx: ChatHookCtx) =>
     | ExtensionRequestFields
     | Promise<ExtensionRequestFields>
 

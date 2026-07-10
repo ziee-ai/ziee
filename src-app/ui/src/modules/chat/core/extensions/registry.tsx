@@ -907,7 +907,9 @@ export class ChatExtensionRegistry {
    * Compose request fields from all extensions
    * Extensions access Stores.Chat directly for conversation data
    */
-  async composeRequestFields(): Promise<ExtensionRequestFields> {
+  async composeRequestFields(
+    ctx: import('./types').ChatHookCtx,
+  ): Promise<ExtensionRequestFields> {
     const extensions = this.getExtensions().filter(ext =>
       ext.composeRequestFields !== undefined,
     )
@@ -917,7 +919,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.composeRequestFields) {
-          const extensionFields = await extension.composeRequestFields()
+          const extensionFields = await extension.composeRequestFields(ctx)
           fields = { ...fields, ...extensionFields }
         }
       } catch (error) {
