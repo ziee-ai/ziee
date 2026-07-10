@@ -7,6 +7,7 @@ import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
+import { OpenInNewWindowAction } from '@/modules/chat/components/OpenInNewWindowAction'
 import '@/modules/chat/types'
 import '@/modules/chat/core/events' // Import chat events for type merging
 import '@/modules/chat/extensions' // Auto-discover and register chat extensions
@@ -91,6 +92,15 @@ export default createModule({
         id: 'recent-conversations',
         component: RecentConversationsWidget,
         order: 10,
+      },
+    ],
+    // Per-conversation header decoration: "Open in new window / tab".
+    // order 30 = before the desktop host-mount control (order 40).
+    chatConversationHeaderTrailing: [
+      {
+        id: 'chat-open-in-new-window',
+        order: 30,
+        component: OpenInNewWindowAction,
       },
     ],
   },

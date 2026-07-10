@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 327 surfaces carry renderable-state signals; 1904 signals total.
+// 328 surfaces carry renderable-state signals; 1905 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -918,6 +918,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "!hasModels", line: 25 },
       { kind: "branch", condition: "isBreaking", line: 29 },
+    ],
+  },
+  "modules/chat/components/OpenInNewWindowAction": {
+    surface: "modules/chat/components/OpenInNewWindowAction",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!conversation", line: 22 },
     ],
   },
   "modules/chat/components/PlusMenuItem": {
@@ -3912,6 +3919,7 @@ export const PANEL_RENDERERS: PanelRegistration[] = [
 
 /** Slot registrations (discoverability map for sidebar/settings/panel mount points). */
 export const SLOT_REGISTRATIONS: SlotRegistration[] = [
+  { slot: "chatConversationHeaderTrailing", surface: "modules/chat/module", line: 99 },
   { slot: "settingsAdminPages", surface: "modules/assistant/module", line: 79 },
   { slot: "settingsAdminPages", surface: "modules/auth-providers/module", line: 43 },
   { slot: "settingsAdminPages", surface: "modules/auth/module", line: 80 },
@@ -3942,7 +3950,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsUserPages", surface: "modules/user-llm-providers/module", line: 36 },
   { slot: "settingsUserPages", surface: "modules/web-search/module", line: 67 },
   { slot: "settingsUserPages", surface: "modules/workflow/module", line: 94 },
-  { slot: "sidebarContent", surface: "modules/chat/module", line: 89 },
+  { slot: "sidebarContent", surface: "modules/chat/module", line: 90 },
 ]
 
 export type StateMatrixSurface = keyof typeof STATE_MATRIX

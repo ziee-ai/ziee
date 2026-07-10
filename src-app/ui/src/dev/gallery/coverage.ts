@@ -507,6 +507,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/JumpToLatestButton": { kind: 'via', reason: 'rendered within the chat module page (jump-to-latest)' },
   "modules/file/chat-extension/components/AttachedFileCard": { kind: 'via', reason: 'rendered within the chat module page (message + composer file/image attachments)' },
   "modules/chat/components/ChatHistorySortControl": { kind: 'via', reason: 'rendered in the chat-history page header (sort selector)' },
+  "modules/chat/components/OpenInNewWindowAction": { kind: 'via', reason: 'rendered in the conversation header trailing slot (open in new window/tab)' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 

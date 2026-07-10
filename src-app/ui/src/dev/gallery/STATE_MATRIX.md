@@ -7,10 +7,10 @@
 
 ## Summary
 
-- **327** surfaces carry at least one renderable-state signal.
-- **1904** signals total: 1507 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
+- **328** surfaces carry at least one renderable-state signal.
+- **1905** signals total: 1508 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
-- **31** slot registrations (sidebar / settings / chat mount points).
+- **32** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
@@ -37,6 +37,7 @@ conversation page.
 
 | slot | module surface |
 |---|---|
+| `chatConversationHeaderTrailing` | `modules/chat/module`:99 |
 | `settingsAdminPages` | `modules/assistant/module`:79 |
 | `settingsAdminPages` | `modules/auth-providers/module`:43 |
 | `settingsAdminPages` | `modules/auth/module`:80 |
@@ -67,7 +68,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:36 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:89 |
+| `sidebarContent` | `modules/chat/module`:90 |
 
 ## Per-surface required states
 
@@ -1041,6 +1042,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!hasModels` | 25 |
 | branch | `isBreaking` | 29 |
+
+### `modules/chat/components/OpenInNewWindowAction`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!conversation` | 22 |
 
 ### `modules/chat/components/PlusMenuItem`
 
