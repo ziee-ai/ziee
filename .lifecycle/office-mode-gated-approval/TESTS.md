@@ -36,16 +36,22 @@ in-source `#[cfg(test)]` unit, `tests/…` integration, node `--test` for pane h
 
 - **TEST-12** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/mcp/chat_extension/office_approval.rs` — asserts: `compute_needs_approval(...)` reproduces EVERY pre-existing branch AND the new office branch: (a) built-in server → bypass; (b) control server → delegates to the control classifier (read→bypass, mutating→approve) unchanged; (c) Disabled mode + non-builtin → deny; (d) office_bridge `run_office_js` `read` → bypass; (e) office_bridge `run_office_js` `write` → follows ManualApprove (approve) unless auto-approved; (f) office_bridge `run_office_js` `write` + tool in auto_approved list → bypass (always-allow); (g) normal server ManualApprove not-auto-approved → approve; (h) normal server ManualApprove auto-approved → bypass; (i) normal server AutoApprove → bypass.
 
-## Server — approval loop wiring + the model-behaviour assumption
+## Server — the office approval path, end-to-end through the real loop (ITEM-6, ITEM-7)
 
-> Reality (surfaced in implementation, see DRIFT-1): `office_bridge` is a **desktop-only**
-> MCP server, so it is NOT registrable in the server (`server/tests/mcp`) harness, and
-> the approval-workflow harness is **LLM-driven** — the deterministic office-loop
-> integration tests the plan first imagined aren't feasible as specified. The decision
-> logic is instead pinned **exhaustively by the unit matrix** (TEST-10 / TEST-12 — every
-> branch, every `mode` value, spoof, fail-safe, always-allow), the loop **wiring** is
-> proven behaviour-preserving by the EXISTING approval suite, and a real-LLM test
-> validates the trust-model's core assumption (the model self-classifies `mode`).
+> Reality (corrected — supersedes the earlier "not feasible" note): `office_bridge` is a
+> **desktop-only** MCP server, but the server-side approval decision keys ONLY on the MCP
+> server *id* + tool name + `mode` — never on the pane. So a plain in-process HTTP MCP
+> **mock** (`mock_office_server.rs`) that advertises the SHIPPED `run_office_js` +
+> `list_open_documents` schema, registered under the deterministic
+> `office_bridge_mcp_server_id()` (a direct sqlx id-swap, the same DB-level registration
+> the existing harness uses), drives the exact read→auto-run / write→approval path a real
+> desktop pane would — with a REAL LLM, through the REAL chat→MCP→approval loop, no Excel.
+> The discovery tool (`list_open_documents`, which has no `mode` and gates like any tool)
+> is pre-approved per-conversation so the turn REACHES `run_office_js`, isolating each test
+> to the office read/write bypass itself.
 
 - **TEST-13** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/mcp/mcp_approval_workflow_test.rs` — asserts: the EXISTING approval-workflow suite (auto-approve executes immediately / manual-approve creates a pending approval / approve-and-resume executes) STILL passes end-to-end after the `compute_needs_approval` extraction — the SAME loop that gates office_bridge routes through the extracted fn, so this proves it is behaviour-preserving for control/normal servers live. Runs against the coder.ziee OpenAI-compatible endpoint (`OPENAI_BASE_URL=http://127.0.0.1:4000`, gpt-4o via LiteLLM wildcard — DEC-7).
 - **TEST-14** (tier: integration) [covers: ITEM-6] file: `src-app/desktop/tauri/tests/office_bridge/pane_rpc_test.rs` — asserts: REAL-LLM (soft-skips when `ZIEE_OFFICE_REAL_LLM_URL` unset) — given the SHIPPED `run_office_js` schema, a real model (coder.ziee `qwen3.6-35b-a3b`) declares `mode:"read"` for a pure-read task ("read cell A1") and `mode:"write"` for a mutating task ("set A1 to 'hello'"). This validates the trust-based model's load-bearing assumption — that the model reliably self-classifies read vs write — which is exactly what the auto-approve-reads / prompt-writes gating depends on.
+- **TEST-15** (tier: integration) [covers: ITEM-7] file: `src-app/server/tests/mcp/office_approval_test.rs` — asserts: DENY, end-to-end — a real model issues a `run_office_js` WRITE against the mock office server (under the office id) → a pending approval FOR `run_office_js` is created (asserted by tool name, so the test cannot pass vacuously on the discovery approval) → resuming with a `denied` decision means the tool NEVER executes (the mock records **zero** `run_office_js` calls) and the denied approval is resolved, not left hanging. Soft-skips when no LLM key is configured.
+- **TEST-16** (tier: unit) [covers: ITEM-6] file: `src-app/server/src/modules/mcp/chat_extension/office_approval.rs` — asserts: FAIL-SAFE — `run_office_js_read_bypass` returns FALSE (⇒ the loop treats the call as `write` ⇒ approval required, never a silent auto-run) when `mode` is OMITTED, an unknown/invalid value (`"readonly"`, non-string), or any non-exact casing/whitespace (`"READ"`, `"Read"`, `"read "`). This is the exhaustive missing/invalid-`mode` branch of TEST-10. It stays a **unit** test deliberately: a real LLM cannot be *forced* to omit `mode` on demand, so the fail-safe property — "anything that isn't exactly `read` ⇒ write" — is pinned at the pure-function boundary where it actually lives, rather than mocked into an LLM turn (which would test the mock, not the guarantee).
+- **TEST-17** (tier: integration) [covers: ITEM-6, ITEM-7] file: `src-app/server/tests/mcp/office_approval_test.rs` — asserts: REAL-LLM end-to-end (soft-skips when no LLM key configured) — against the mock office server under the office id, in `manual_approve` mode: a READ task → the model declares `mode:"read"` → `run_office_js` AUTO-RUNS (the mock records the call with `mode=read`) with NO pending approval — which is only possible via the office read-bypass, since `manual_approve` would otherwise gate it; a WRITE task → the model declares `mode:"write"` → a pending approval FOR `run_office_js` is created and the tool is WITHHELD (the mock records no execution). The read-auto-runs / write-pauses contrast on the SAME server + SAME mode is the load-bearing proof the office mode-gating is real and office-specific.

@@ -60,5 +60,33 @@ integration_tests -- --test-threads=1 mcp_approval_workflow_test::test_manual_ap
 mcp_approval_workflow_test::test_auto_approve_executes_tools_immediately
 mcp_approval_workflow_test::test_approve_tool_and_resume_execution`.
 
-(office_bridge itself is desktop-only, so this server suite exercises the loop for control/normal
-servers — the office read-bypass branch is covered by TEST-10/TEST-12 + the real-LLM TEST-14.)
+## Office approval path — end-to-end through the real loop (ran against coder.ziee)
+
+The office read-bypass / write-approval path is the POINT of this feature. It is now covered
+end-to-end (not just by the unit matrix) via `mock_office_server.rs` — an in-process HTTP MCP
+server advertising the shipped `run_office_js` + `list_open_documents` schema, registered under
+the deterministic `office_bridge_mcp_server_id()` (sqlx id-swap), driven by a real model.
+
+- **TEST-15**: PASS — `office_approval_test.rs::test15_denied_write_never_executes`. Real model
+  issues a `run_office_js` WRITE → pending approval FOR `run_office_js` (asserted by tool name,
+  non-vacuous) → resume with `denied` → the mock records **0** `run_office_js` executions and
+  the denied approval is resolved. Log: `run_office_js (server=8d208f31…) needs_approval=true`
+  → "Created 1 pending approval records" → "All 1 tool approvals were denied, skipping LLM call".
+- **TEST-16**: PASS — unit, `office_approval.rs` `run_office_js_read_bypass` — the exhaustive
+  missing/invalid-`mode` fail-safe branch (omitted / `"READ"` / `"Read"` / `"read "` / `"readonly"`
+  / non-string all ⇒ `false` ⇒ treated as write). Ran in `cargo test -p ziee --lib office_approval::`
+  → **10 passed, 0 failed**. (Unit by design — a real LLM can't be forced to omit `mode`.)
+- **TEST-17**: PASS — `office_approval_test.rs::test17_read_auto_runs_write_requires_approval`.
+  In `manual_approve` mode against the mock office server: a READ task → model declares
+  `mode:"read"` → `run_office_js` AUTO-RUNS (mock recorded a call with `mode=read`), NO pending
+  approval — possible ONLY via the office read-bypass; a WRITE task → model declares
+  `mode:"write"` → pending approval FOR `run_office_js`, tool WITHHELD. Log:
+  `run_office_js (server=8d208f31…) needs_approval=false` (read) vs `needs_approval=true` (write).
+
+Run: `OPENAI_API_KEY=sk-litellm-dummy OPENAI_BASE_URL=http://127.0.0.1:4000 cargo test --test
+integration_tests -- --test-threads=1 mcp::office_approval_test` → **2 passed, 0 failed** in 19.3s
+(TEST-15 + TEST-17; both soft-skip on a keyless box).
+
+Correction: an earlier draft dropped TEST-15/16/17 behind a "not feasible — office_bridge is
+desktop-only" note. That was wrong — the decision keys on the server id, so a mock registered
+under the office id drives the full path. The tests are now implemented and green.

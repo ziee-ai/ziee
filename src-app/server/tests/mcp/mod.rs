@@ -6,7 +6,9 @@ use uuid::Uuid;
 // Comprehensive approval workflow tests now live in this directory
 // (mcp_approval_workflow_test) after the chat→mcp bridge extraction.
 
+pub mod mock_office_server;
 pub mod mock_sampling_server;
+mod office_approval_test;
 mod run_in_sandbox_test;
 // Bridge-side tests moved out of tests/chat/ as part of the
 // chat→mcp bridge extraction. They exercise the mcp chat-extension's
