@@ -202,6 +202,7 @@ impl LocalDeployment {
         s: &LlamaCppSettings,
         api_key: &str,
         embeddings: bool,
+        reranking: bool,
     ) -> AppResult<Vec<String>> {
         let mut a = vec![
             "--model".to_string(),
@@ -276,6 +277,12 @@ impl LocalDeployment {
 
         if embeddings {
             a.push("--embeddings".to_string());
+        }
+        if reranking {
+            // llama.cpp couples reranking to rank pooling — both are required.
+            a.push("--reranking".to_string());
+            a.push("--pooling".to_string());
+            a.push("rank".to_string());
         }
         Ok(a)
     }
@@ -1029,7 +1036,13 @@ impl Deployment for LocalDeployment {
                     .get("embeddings")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                Self::llamacpp_argv(model_path, port, &s, &api_key, embeddings)?
+                // Reranker models inject a top-level `reranking: true` (from the
+                // `rerank` capability) in resolve_model_inputs.
+                let reranking = config
+                    .get("reranking")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                Self::llamacpp_argv(model_path, port, &s, &api_key, embeddings, reranking)?
             }
             "mistralrs" => {
                 let s = Self::parse_mistralrs_settings(config);
@@ -1242,7 +1255,7 @@ mod tests {
             numa: Some("distribute".into()),
             ..Default::default()
         };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok", false).unwrap();
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok", false, false).unwrap();
         // Forced hardening flags.
         assert!(pair(&a, "--model", "/m/x.gguf"));
         assert!(pair(&a, "--host", "127.0.0.1"));
@@ -1276,13 +1289,27 @@ mod tests {
     #[test]
     fn llamacpp_argv_flash_attn_on_off_and_embeddings() {
         let on = LlamaCppSettings { flash_attn: Some(true), ..Default::default() };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &on, "t", true).unwrap();
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &on, "t", true, false).unwrap();
         assert!(pair(&a, "--flash-attn", "on"));
         assert!(has(&a, "--embeddings")); // driven by the capabilities arg
         let off = LlamaCppSettings { flash_attn: Some(false), ..Default::default() };
-        let b = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &off, "t", false).unwrap();
+        let b = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &off, "t", false, false).unwrap();
         assert!(pair(&b, "--flash-attn", "off"));
         assert!(!b.join(" ").contains("--embeddings"));
+    }
+
+    // TEST-3 (ITEM-4): a reranker model launches llama.cpp with --reranking +
+    // --pooling rank (llama.cpp couples reranking to rank pooling); a normal
+    // model emits neither.
+    #[test]
+    fn llamacpp_argv_reranking_emits_pooling_rank() {
+        let s = LlamaCppSettings::default();
+        let on = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false, true).unwrap();
+        assert!(has(&on, "--reranking"));
+        assert!(pair(&on, "--pooling", "rank"));
+        let off = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false, false).unwrap();
+        assert!(!off.join(" ").contains("--reranking"));
+        assert!(!pair(&off, "--pooling", "rank"));
     }
 
     #[test]
@@ -1293,7 +1320,7 @@ mod tests {
             n_gpu_layers: Some(99),
             ..Default::default()
         };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false).unwrap();
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false, false).unwrap();
         assert!(pair(&a, "--n-gpu-layers", "0"));
         assert!(!pair(&a, "--n-gpu-layers", "99"));
         assert!(!a.join(" ").contains("--device"));
@@ -1306,7 +1333,7 @@ mod tests {
             device_ids: Some(vec![0, 1]),
             ..Default::default()
         };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false).unwrap();
+        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false, false).unwrap();
         assert!(pair(&a, "--device", "CUDA0,CUDA1"));
     }
 
@@ -1316,7 +1343,7 @@ mod tests {
             cache_type_k: Some("-malicious".into()),
             ..Default::default()
         };
-        assert!(LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false).is_err());
+        assert!(LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &s, "t", false, false).is_err());
     }
 
     #[test]

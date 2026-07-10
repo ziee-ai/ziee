@@ -1,0 +1,850 @@
+//! Integration tests for the knowledge_base module — CRUD, permission/owner
+//! isolation, the search_knowledge tool (FTS-only, no embedder needed), the
+//! cross-user leak guard, and the MCP surface. Runs against the real TestServer
+//! harness (spawned server + per-test isolated DB).
+
+use serde_json::{json, Value};
+use std::time::Duration;
+use uuid::Uuid;
+
+use crate::common::test_helpers::{
+    create_user_with_no_permissions, create_user_with_permissions, TestUser,
+};
+use crate::common::TestServer;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
+
+// ─────────────────────────── helpers ───────────────────────────
+
+async fn power_user(server: &TestServer, name: &str) -> TestUser {
+    create_user_with_permissions(server, name, &["*"]).await
+}
+
+async fn db_pool(server: &TestServer) -> PgPool {
+    PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("connect test db")
+}
+
+async fn wait_for_chunks(pool: &PgPool, file_id: &str, min: i64) {
+    let fid = Uuid::parse_str(file_id).unwrap();
+    for _ in 0..40 {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+            .bind(fid)
+            .fetch_one(pool)
+            .await
+            .expect("count chunks");
+        if n >= min {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!("timed out waiting for >= {min} chunks for file {file_id}");
+}
+
+async fn upload_text(server: &TestServer, user: &TestUser, filename: &str, body: &str) -> String {
+    use reqwest::multipart;
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(body.as_bytes().to_vec())
+            .file_name(filename.to_string())
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload");
+    assert_eq!(resp.status(), 201, "upload: {}", resp.text().await.unwrap_or_default());
+    let v: Value = resp.json().await.unwrap();
+    v["id"].as_str().unwrap().to_string()
+}
+
+async fn create_kb(server: &TestServer, user: &TestUser, name: &str) -> String {
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/knowledge-bases"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": name }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201, "create kb: {}", resp.text().await.unwrap_or_default());
+    let v: Value = resp.json().await.unwrap();
+    v["id"].as_str().unwrap().to_string()
+}
+
+async fn attach_docs(
+    server: &TestServer,
+    user: &TestUser,
+    kb_id: &str,
+    file_ids: &[&str],
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url(&format!("/knowledge-bases/{kb_id}/documents")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "file_ids": file_ids }))
+        .send()
+        .await
+        .unwrap()
+}
+
+fn kb_jsonrpc(server: &TestServer, token: &str, method: &str, params: Value) -> reqwest::RequestBuilder {
+    reqwest::Client::new()
+        .post(server.api_url("/knowledge-base/mcp"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }))
+}
+
+/// Call search_knowledge over an explicit KB set; returns the structuredContent.
+async fn search_knowledge(
+    server: &TestServer,
+    token: &str,
+    query: &str,
+    kb_ids: &[&str],
+) -> Value {
+    let resp = kb_jsonrpc(
+        server,
+        token,
+        "tools/call",
+        json!({ "name": "search_knowledge", "arguments": { "query": query, "knowledge_base_ids": kb_ids } }),
+    )
+    .send()
+    .await
+    .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    body["result"]["structuredContent"].clone()
+}
+
+// ─────────────────────────── TEST-20: CRUD ───────────────────────────
+
+#[tokio::test]
+async fn test_20_kb_crud_lifecycle() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "kb_crud").await;
+    let client = reqwest::Client::new();
+
+    // create
+    let kb_id = create_kb(&server, &user, "Lab protocols").await;
+
+    // list → exactly one
+    let list: Value = client
+        .get(server.api_url("/knowledge-bases"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["document_count"], 0, "new KB has a live COUNT of 0");
+
+    // get by id
+    let got: Value = client
+        .get(server.api_url(&format!("/knowledge-bases/{kb_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(got["name"], "Lab protocols");
+
+    // update (rename)
+    let up = client
+        .put(server.api_url(&format!("/knowledge-bases/{kb_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Renamed KB" }))
+        .send().await.unwrap();
+    assert_eq!(up.status(), 200);
+    let up_body: Value = up.json().await.unwrap();
+    assert_eq!(up_body["name"], "Renamed KB");
+
+    // delete → list empty
+    let del = client
+        .delete(server.api_url(&format!("/knowledge-bases/{kb_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(del.status().is_success(), "delete status {}", del.status());
+    let list2: Value = client
+        .get(server.api_url("/knowledge-bases"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(list2.as_array().unwrap().len(), 0);
+}
+
+// ─────────────────────────── TEST-24: permissions + owner isolation ───────────────────────────
+
+#[tokio::test]
+async fn test_24_permission_and_owner_isolation() {
+    let server = TestServer::start().await;
+
+    // A user with NO permissions cannot list KBs.
+    let noperm = create_user_with_no_permissions(&server, "kb_noperm").await;
+    let r = reqwest::Client::new()
+        .get(server.api_url("/knowledge-bases"))
+        .header("Authorization", format!("Bearer {}", noperm.token))
+        .send().await.unwrap();
+    assert_eq!(r.status(), 403, "no knowledge_base::use → 403");
+
+    // A default Users-group member (no explicit perms) succeeds (migration 134).
+    let member = create_user_with_permissions(&server, "kb_member", &[]).await;
+    let r2 = reqwest::Client::new()
+        .get(server.api_url("/knowledge-bases"))
+        .header("Authorization", format!("Bearer {}", member.token))
+        .send().await.unwrap();
+    assert_eq!(r2.status(), 200, "default Users member holds knowledge_base::use");
+
+    // Owner isolation: user B cannot GET user A's KB → 404 (get_by_id_and_user).
+    let a = power_user(&server, "kb_owner_a").await;
+    let b = power_user(&server, "kb_owner_b").await;
+    let kb_a = create_kb(&server, &a, "A private KB").await;
+    let foreign = reqwest::Client::new()
+        .get(server.api_url(&format!("/knowledge-bases/{kb_a}")))
+        .header("Authorization", format!("Bearer {}", b.token))
+        .send().await.unwrap();
+    assert_eq!(foreign.status(), 404, "a foreign KB is 404, never 200/403");
+}
+
+// ─────────────────────────── TEST-25: search scope + cross-user leak guard ───────────────────────────
+
+#[tokio::test]
+async fn test_25_search_knowledge_scope_and_cross_user_leak_guard() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let a = power_user(&server, "kb_search_a").await;
+    let b = power_user(&server, "kb_search_b").await;
+
+    // User A: a doc with an unguessable phrase, attached to KB-A.
+    let phrase = "quokka telemetry 4517 anomaly";
+    let fid = upload_text(&server, &a, "a.txt", &format!("Intro. {phrase}. Conclusion.")).await;
+    wait_for_chunks(&pool, &fid, 1).await; // FTS-indexed (no embedder needed)
+    let kb_a = create_kb(&server, &a, "A KB").await;
+    let att = attach_docs(&server, &a, &kb_a, &[&fid]).await;
+    assert_eq!(att.status(), 200, "attach: {}", att.text().await.unwrap_or_default());
+
+    // A searches KB-A → finds the passage (FTS-only hybrid).
+    let sc = search_knowledge(&server, &a.token, "quokka telemetry anomaly", &[&kb_a]).await;
+    let hits = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert!(!hits.is_empty(), "owner search returns the passage: {sc}");
+    assert!(hits[0]["content"].as_str().unwrap().contains("quokka"));
+
+    // User B calls search_knowledge with A's kb_id (foreign) — must get ZERO of
+    // A's chunks (resolve_scope_file_ids is owner-filtered). This is the tool
+    // cross-tenant leak guard.
+    let sc_b = search_knowledge(&server, &b.token, "quokka telemetry anomaly", &[&kb_a]).await;
+    let hits_b = sc_b["hits"].as_array().cloned().unwrap_or_default();
+    assert!(hits_b.is_empty(), "B must NOT see A's KB chunks via A's kb_id: {sc_b}");
+
+    // Mixed array (B's own empty KB + A's foreign kb) → still zero A hits.
+    let kb_b = create_kb(&server, &b, "B KB").await;
+    let sc_mixed = search_knowledge(&server, &b.token, "quokka telemetry anomaly", &[&kb_b, &kb_a]).await;
+    let hits_mixed = sc_mixed["hits"].as_array().cloned().unwrap_or_default();
+    assert!(hits_mixed.is_empty(), "mixed own+foreign array leaks nothing from A: {sc_mixed}");
+}
+
+// ─────────────────────────── TEST-21: documents attach + duplicate skip ───────────────────────────
+
+#[tokio::test]
+async fn test_21_attach_documents_and_duplicate_skip() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_docs").await;
+
+    let fid = upload_text(&server, &user, "doc.txt", "hello knowledge world").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let kb = create_kb(&server, &user, "Docs KB").await;
+
+    // first attach → 1 attached, 0 skipped
+    let r1 = attach_docs(&server, &user, &kb, &[&fid]).await;
+    assert_eq!(r1.status(), 200);
+    let b1: Value = r1.json().await.unwrap();
+    assert_eq!(b1["attached"], 1);
+    assert_eq!(b1["skipped_duplicates"], 0);
+
+    // re-drop the SAME file → skipped as duplicate, not double-attached
+    let r2 = attach_docs(&server, &user, &kb, &[&fid]).await;
+    assert_eq!(r2.status(), 200);
+    let b2: Value = r2.json().await.unwrap();
+    assert_eq!(b2["attached"], 0, "duplicate not re-attached");
+    assert_eq!(b2["skipped_duplicates"], 1, "duplicate reported");
+
+    // document_count reflects exactly one document
+    let got: Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(got["document_count"], 1);
+}
+
+// ─────────────────────────── TEST-29: MCP surface ───────────────────────────
+
+#[tokio::test]
+async fn test_29_mcp_initialize_tools_and_gate() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "kb_mcp", &["knowledge_base::use"]).await;
+
+    // initialize → serverInfo name
+    let init = kb_jsonrpc(&server, &user.token, "initialize", json!({}))
+        .send().await.unwrap();
+    assert_eq!(init.status(), 200);
+    let ib: Value = init.json().await.unwrap();
+    assert_eq!(ib["result"]["serverInfo"]["name"], "knowledge_base");
+
+    // tools/list → both tools present
+    let tl = kb_jsonrpc(&server, &user.token, "tools/list", json!({}))
+        .send().await.unwrap();
+    let tb: Value = tl.json().await.unwrap();
+    let names: Vec<String> = tb["result"]["tools"].as_array().unwrap()
+        .iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
+    assert!(names.contains(&"search_knowledge".to_string()), "tools: {names:?}");
+    assert!(names.contains(&"list_knowledge_bases".to_string()), "tools: {names:?}");
+
+    // no-use user → 403 on the MCP endpoint
+    let noperm = create_user_with_no_permissions(&server, "kb_mcp_noperm").await;
+    let gated = kb_jsonrpc(&server, &noperm.token, "tools/list", json!({}))
+        .send().await.unwrap();
+    assert_eq!(gated.status(), 403, "search_knowledge MCP gates on knowledge_base::use");
+}
+
+// ─────────────────────────── TEST-46: docs presence ───────────────────────────
+
+#[tokio::test]
+async fn test_46_claude_md_documents_the_feature() {
+    // ITEM-42: the developer docs describe the KB feature accurately.
+    let claude_md = include_str!("../../../../CLAUDE.md");
+    assert!(claude_md.contains("Knowledge Base"), "CLAUDE.md has a Knowledge Base header");
+    assert!(claude_md.contains("search_knowledge"), "names the search_knowledge tool");
+    assert!(claude_md.contains("rerank"), "names the rerank capability");
+    assert!(claude_md.contains("file_index_state"), "names the index-state table");
+}
+
+// ─────────────────────────── TEST-22: shared chunks data-integrity ───────────────────────────
+
+#[tokio::test]
+async fn test_22_shared_chunks_survive_kb_removal_and_delete() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_shared").await;
+
+    let fid = upload_text(&server, &user, "shared.txt", "shared chunk survival phrase").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let n0: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert!(n0 >= 1);
+
+    let kb_a = create_kb(&server, &user, "KB-A").await;
+    let kb_b = create_kb(&server, &user, "KB-B").await;
+    assert_eq!(attach_docs(&server, &user, &kb_a, &[&fid]).await.status(), 200);
+    assert_eq!(attach_docs(&server, &user, &kb_b, &[&fid]).await.status(), 200);
+
+    // Remove F from KB-A → still retrievable via KB-B, and file_chunks UNCHANGED
+    // (the join row is deleted, never the shared chunks).
+    let del = reqwest::Client::new()
+        .delete(server.api_url(&format!("/knowledge-bases/{kb_a}/documents/{fid}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(del.status().is_success(), "remove doc: {}", del.status());
+    let n1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(n0, n1, "removing from KB-A must not touch shared file_chunks");
+    let via_b = search_knowledge(&server, &user.token, "shared chunk survival", &[&kb_b]).await;
+    assert!(!via_b["hits"].as_array().unwrap().is_empty(), "still retrievable via KB-B");
+
+    // Delete KB-A entirely → the file + its chunks survive (only join rows cascade).
+    let delkb = reqwest::Client::new()
+        .delete(server.api_url(&format!("/knowledge-bases/{kb_a}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(delkb.status().is_success());
+    let n2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(n0, n2, "deleting KB-A must not delete the shared file's chunks");
+    let file_alive: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM files WHERE id = $1")
+        .bind(Uuid::parse_str(&fid).unwrap()).fetch_one(&pool).await.unwrap();
+    assert_eq!(file_alive, 1, "the file itself survives KB deletion");
+}
+
+// ─────────────────────────── TEST-27: conversation + project attachment ───────────────────────────
+
+#[tokio::test]
+async fn test_27_conversation_and_project_attachment() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "kb_attach").await;
+    let client = reqwest::Client::new();
+    let kb = create_kb(&server, &user, "Attach KB").await;
+
+    // conversation attach → GET lists it → detach → empty
+    let conv: Value = client.post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({})).send().await.unwrap().json().await.unwrap();
+    let cid = conv["id"].as_str().unwrap();
+    let put = client.put(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap();
+    assert!(put.status().is_success(), "attach conv: {}", put.status());
+    let listed: Value = client.get(server.api_url(&format!("/conversations/{cid}/knowledge-bases")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1, "conversation lists its attached KB");
+    let det = client.delete(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap();
+    assert!(det.status().is_success());
+    let listed2: Value = client.get(server.api_url(&format!("/conversations/{cid}/knowledge-bases")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(listed2.as_array().unwrap().len(), 0, "detach removes it");
+
+    // project attach → GET lists it
+    let proj: Value = client.post(server.api_url("/projects"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "P" })).send().await.unwrap().json().await.unwrap();
+    let pid = proj["id"].as_str().unwrap();
+    let pput = client.put(server.api_url(&format!("/projects/{pid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap();
+    assert!(pput.status().is_success());
+    let plisted: Value = client.get(server.api_url(&format!("/projects/{pid}/knowledge-bases")))
+        .header("Authorization", format!("Bearer {}", user.token)).send().await.unwrap().json().await.unwrap();
+    assert_eq!(plisted.as_array().unwrap().len(), 1, "project lists its attached KB");
+
+    // foreign KB attach → 404 (another user's conversation/kb)
+    let other = power_user(&server, "kb_attach_other").await;
+    let foreign = client.put(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", other.token)).send().await.unwrap();
+    assert_eq!(foreign.status(), 404, "attaching to another user's conversation → 404");
+}
+
+// ─────────────────────────── TEST-28: owner-scoped sync emit ───────────────────────────
+
+#[tokio::test]
+async fn test_28_mutations_emit_owner_scoped_sync() {
+    use crate::common::sync_probe::SyncProbe;
+    let server = TestServer::start().await;
+    let owner = power_user(&server, "kb_sync_owner").await;
+    let other = power_user(&server, "kb_sync_other").await;
+
+    let mut owner_probe = SyncProbe::open(&server, &owner.token).await;
+    let mut other_probe = SyncProbe::open(&server, &other.token).await;
+
+    let kb_id = create_kb(&server, &owner, "Synced KB").await;
+
+    // The owner receives a knowledge_base/create carrying the new id.
+    let frame = owner_probe
+        .expect_event("knowledge_base", "create", std::time::Duration::from_secs(5))
+        .await;
+    assert_eq!(frame.id, kb_id, "sync frame carries the new KB id");
+
+    // The other user receives NOTHING (owner-scoped audience).
+    other_probe.expect_silence(std::time::Duration::from_secs(2)).await;
+}
+
+// ─────────────────────────── TEST-23: attach-existing triggers reindex ───────────────────────────
+
+#[tokio::test]
+async fn test_23_attaching_unchunked_file_triggers_reindex() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_reindex").await;
+
+    let fid = upload_text(&server, &user, "reindex.txt", "reindexable marmot beacon phrase").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+
+    // Simulate a file that was never chunked (e.g. uploaded before file_rag, or a
+    // chunk purge): drop its chunks so the KB attach path must reindex it.
+    let fuid = Uuid::parse_str(&fid).unwrap();
+    sqlx::query("DELETE FROM file_chunks WHERE file_id = $1").bind(fuid)
+        .execute(&pool).await.unwrap();
+    let n0: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM file_chunks WHERE file_id = $1")
+        .bind(fuid).fetch_one(&pool).await.unwrap();
+    assert_eq!(n0, 0, "chunks purged");
+
+    // Attaching the 0-chunk file to a KB triggers a reindex (handler: "reindex any
+    // attached file that has no chunks yet").
+    let kb = create_kb(&server, &user, "Reindex KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&fid]).await.status(), 200);
+
+    // Chunks reappear → the file becomes searchable via the KB.
+    wait_for_chunks(&pool, &fid, 1).await;
+    let sc = search_knowledge(&server, &user.token, "marmot beacon", &[&kb]).await;
+    assert!(!sc["hits"].as_array().unwrap().is_empty(), "reindexed file is searchable: {sc}");
+}
+
+// ─────────────────────────── TEST-26: search_knowledge with reranking ───────────────────────────
+
+/// Loopback reranker: POST /rerank → `results[{index,relevance_score}]`. A doc
+/// containing `PROMOTE_ME` gets the top score regardless of input order, so the
+/// test can prove the rerank stage ran and reordered the candidate pool. Returns
+/// (base_url, hit_counter).
+async fn start_mock_reranker() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use axum::{routing::post, Router, Json};
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    let hits = Arc::new(AtomicUsize::new(0));
+    let hits2 = hits.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/rerank",
+        post(move |Json(body): Json<Value>| {
+            let hits = hits2.clone();
+            async move {
+                hits.fetch_add(1, Ordering::SeqCst);
+                let docs = body["documents"].as_array().cloned().unwrap_or_default();
+                let mut results: Vec<Value> = docs.iter().enumerate().map(|(i, d)| {
+                    let score = if d.as_str().unwrap_or("").contains("PROMOTE_ME") { 1.0 } else { 0.1 };
+                    json!({ "index": i, "relevance_score": score })
+                }).collect();
+                results.sort_by(|a, b| b["relevance_score"].as_f64().unwrap()
+                    .partial_cmp(&a["relevance_score"].as_f64().unwrap()).unwrap());
+                Json(json!({ "results": results }))
+            }
+        }),
+    );
+    tokio::spawn(async move { let _ = axum::serve(listener, app.into_make_service()).await; });
+    (format!("http://127.0.0.1:{port}"), hits)
+}
+
+#[tokio::test]
+async fn test_26_search_knowledge_reranks_via_provider() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_rerank").await;
+    let client = reqwest::Client::new();
+    let (rerank_url, hits) = start_mock_reranker().await;
+
+    // A provider whose base_url is the loopback reranker + a rerank-capable model.
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Rerank Prov", "provider_type": "openai",
+            "enabled": true, "api_key": "sk-x", "base_url": rerank_url }))
+        .send().await.unwrap().json().await.unwrap();
+    let pid = prov["id"].as_str().expect("provider id");
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": pid, "name": "bge-rerank-test",
+            "display_name": "Rerank Test", "enabled": true,
+            "engine_type": "llamacpp", "file_format": "gguf",
+            "capabilities": { "rerank": true } }))
+        .send().await.unwrap().json().await.unwrap();
+    let model_id = model["id"].as_str().expect("model id");
+
+    // Turn on reranking in file_rag admin (the PUT probes the model → loopback).
+    let put = client.put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "reranker_model_id": model_id, "rerank_enabled": true, "rerank_candidate_k": 20 }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "enable rerank: {}", put.text().await.unwrap_or_default());
+
+    // Two docs both matching the query; only the second carries the promote marker.
+    let f1 = upload_text(&server, &user, "d1.txt", "orbital resonance analysis summary alpha").await;
+    let f2 = upload_text(&server, &user, "d2.txt", "orbital resonance analysis summary PROMOTE_ME beta").await;
+    wait_for_chunks(&pool, &f1, 1).await;
+    wait_for_chunks(&pool, &f2, 1).await;
+    let kb = create_kb(&server, &user, "Rerank KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&f1, &f2]).await.status(), 200);
+
+    // search_knowledge → the reranker ran and the PROMOTE_ME doc is ranked first,
+    // with full provenance (file/page/score).
+    let sc = search_knowledge(&server, &user.token, "orbital resonance analysis", &[&kb]).await;
+    let hits_arr = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert!(hits_arr.len() >= 2, "both docs retrieved before rerank: {sc}");
+    assert!(hits.load(std::sync::atomic::Ordering::SeqCst) > 0,
+        "the reranker endpoint was actually called");
+    assert!(hits_arr[0]["content"].as_str().unwrap().contains("PROMOTE_ME"),
+        "the reranker promoted the marked doc to #1: {sc}");
+    let top = &hits_arr[0];
+    assert!(top["file_id"].is_string() && top["page"].is_number() && top["score"].is_number(),
+        "hit carries provenance (file/page/score): {top}");
+}
+
+// ─────────────────────────── TEST-4: dispatch rerank capability gate ───────────────────────────
+
+#[tokio::test]
+async fn test_4_rerank_rejects_a_non_rerank_model() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "kb_rr_gate").await;
+    let client = reqwest::Client::new();
+    let (rerank_url, _hits) = start_mock_reranker().await;
+
+    // A provider + a CHAT model (NO rerank capability).
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "P", "provider_type": "openai", "enabled": true,
+            "api_key": "sk-x", "base_url": rerank_url }))
+        .send().await.unwrap().json().await.unwrap();
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": prov["id"], "name": "chat-only", "display_name": "Chat",
+            "enabled": true, "engine_type": "llamacpp", "file_format": "gguf",
+            "capabilities": { "chat": true, "rerank": false } }))
+        .send().await.unwrap().json().await.unwrap();
+
+    // Setting it as the reranker probes dispatch::rerank, which rejects a model
+    // not flagged with the rerank capability → 400 (never a 500).
+    let put = client.put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "reranker_model_id": model["id"] }))
+        .send().await.unwrap();
+    assert_eq!(put.status(), 400, "a non-rerank model is rejected: {}", put.text().await.unwrap_or_default());
+}
+
+// ─────────────────────────── TEST-7: promotion from OUTSIDE top_k ───────────────────────────
+
+#[tokio::test]
+async fn test_7_reranker_promotes_a_doc_from_outside_top_k() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_rr_promote").await;
+    let client = reqwest::Client::new();
+    let (rerank_url, hits) = start_mock_reranker().await;
+
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "P", "provider_type": "openai", "enabled": true,
+            "api_key": "sk-x", "base_url": rerank_url }))
+        .send().await.unwrap().json().await.unwrap();
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": prov["id"], "name": "rr", "display_name": "RR",
+            "enabled": true, "engine_type": "llamacpp", "file_format": "gguf",
+            "capabilities": { "rerank": true } }))
+        .send().await.unwrap().json().await.unwrap();
+
+    // top_k=3 but candidate_k=30: the reranker must be able to pull a doc from
+    // the WIDE candidate pool into the final top-3, proving candidate expansion
+    // (not a top_k reshuffle).
+    let put = client.put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "reranker_model_id": model["id"], "rerank_enabled": true,
+            "rerank_candidate_k": 30, "default_top_k": 3 }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "enable rerank: {}", put.text().await.unwrap_or_default());
+
+    // 10 docs matching the query; only the LAST carries the promote marker (so by
+    // plain lexical rank it is one-of-ten, not guaranteed in the top-3).
+    let kb = create_kb(&server, &user, "Promote KB").await;
+    let mut ids: Vec<String> = Vec::new();
+    for i in 0..9 {
+        let f = upload_text(&server, &user, &format!("d{i}.txt"), "shared retrieval query token").await;
+        wait_for_chunks(&pool, &f, 1).await;
+        ids.push(f);
+    }
+    let promoted = upload_text(&server, &user, "promote.txt",
+        "shared retrieval query token PROMOTE_ME distinctive").await;
+    wait_for_chunks(&pool, &promoted, 1).await;
+    ids.push(promoted.clone());
+    let idrefs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+    assert_eq!(attach_docs(&server, &user, &kb, &idrefs).await.status(), 200);
+
+    let sc = search_knowledge(&server, &user.token, "shared retrieval query token", &[&kb]).await;
+    let arr = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert!(hits.load(std::sync::atomic::Ordering::SeqCst) > 0, "reranker was called");
+    assert!(arr.len() <= 3, "final result truncated to top_k=3: {}", arr.len());
+    assert!(!arr.is_empty() && arr[0]["content"].as_str().unwrap().contains("PROMOTE_ME"),
+        "the reranker pulled the marked doc from the wide pool into the top-k #1 slot: {sc}");
+}
+
+// ─────────────────────────── TEST-10: doc index_status derivation ───────────────────────────
+
+#[tokio::test]
+async fn test_10_document_index_status_derivation_and_rollup() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_status").await;
+    let client = reqwest::Client::new();
+
+    // one text file → indexed; one image → no_text.
+    let txt = upload_text(&server, &user, "t.txt", "indexable body").await;
+    wait_for_chunks(&pool, &txt, 1).await;
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    let img = {
+        use reqwest::multipart;
+        let form = multipart::Form::new().part("file",
+            multipart::Part::bytes(PNG.to_vec()).file_name("p.png").mime_str("image/png").unwrap());
+        let r = client.post(server.api_url("/files/upload"))
+            .header("Authorization", format!("Bearer {}", user.token)).multipart(form)
+            .send().await.unwrap();
+        r.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string()
+    };
+    // let the image reach its terminal no_text state
+    for _ in 0..40 {
+        let st: Option<String> = sqlx::query_scalar("SELECT status FROM file_index_state WHERE file_id=$1")
+            .bind(Uuid::parse_str(&img).unwrap()).fetch_optional(&pool).await.unwrap();
+        if st.as_deref() == Some("no_text") { break; }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    let kb = create_kb(&server, &user, "Status KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&txt, &img]).await.status(), 200);
+
+    // list_documents derives each doc's index_status from file_index_state.
+    let docs: Value = client.get(server.api_url(&format!("/knowledge-bases/{kb}/documents")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    let arr = docs.as_array().cloned().unwrap_or_default();
+    let status_of = |fid: &str| arr.iter()
+        .find(|d| d["file_id"].as_str() == Some(fid)).map(|d| d["index_status"].as_str().unwrap().to_string());
+    assert_eq!(status_of(&txt).as_deref(), Some("indexed"), "text doc → indexed: {docs}");
+    assert_eq!(status_of(&img).as_deref(), Some("no_text"), "image doc → no_text: {docs}");
+
+    // the KB rollup (indexing_summary) counts them.
+    let kb_row: Value = client.get(server.api_url(&format!("/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(kb_row["indexing_summary"]["indexed"], 1);
+    assert_eq!(kb_row["indexing_summary"]["no_text"], 1);
+    assert_eq!(kb_row["indexing_summary"]["total"], 2);
+}
+
+// ─────────────────────────── TEST-12: reindex recovers a failed doc ───────────────────────────
+
+#[tokio::test]
+async fn test_12_reindex_recovers_a_failed_document() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_reidx12").await;
+
+    let fid = upload_text(&server, &user, "f.txt", "recoverable indexed body token").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let kb = create_kb(&server, &user, "Reindex12 KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&fid]).await.status(), 200);
+
+    // Force the doc into a `failed` terminal state (e.g. a transient embed error).
+    let fuid = Uuid::parse_str(&fid).unwrap();
+    sqlx::query("UPDATE file_index_state SET status='failed', error='forced' WHERE file_id=$1")
+        .bind(fuid).execute(&pool).await.unwrap();
+
+    // Reindex via the KB endpoint → the file (which has text) reaches `indexed`.
+    let re = reqwest::Client::new()
+        .post(server.api_url(&format!("/knowledge-bases/{kb}/documents/{fid}/reindex")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(re.status().is_success(), "reindex: {}", re.status());
+
+    for _ in 0..40 {
+        let st: Option<String> = sqlx::query_scalar("SELECT status FROM file_index_state WHERE file_id=$1")
+            .bind(fuid).fetch_optional(&pool).await.unwrap();
+        if st.as_deref() == Some("indexed") { return; }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    panic!("reindex did not recover the failed doc to indexed");
+}
+
+// ─────────────────────────── TEST-30: real-LLM agentic retrieval ───────────────────────────
+
+/// A tool-capable OpenAI-compatible model, configured entirely from env (mirrors
+/// the frontend `ZIEE_TEST_LLM_*` seam + `create_test_model_with_config`): base
+/// URL, api key, and model name. Nothing box-specific is hardcoded — the test
+/// soft-skips when the env isn't provided (the established real-LLM pattern).
+fn real_llm_env() -> Option<(String, String, String)> {
+    let base = std::env::var("ZIEE_TEST_LLM_BASE_URL")
+        .or_else(|_| std::env::var("OPENAI_BASE_URL"))
+        .ok()?;
+    let key = std::env::var("OPENAI_API_KEY").ok()?;
+    let model = std::env::var("ZIEE_TEST_LLM_MODEL").ok()?;
+    if base.is_empty() || key.is_empty() || model.is_empty() {
+        return None;
+    }
+    Some((base, key, model))
+}
+
+#[tokio::test]
+async fn test_30_tool_capable_model_fires_search_knowledge_and_answers_from_the_kb() {
+    let Some((real_llm_base, real_llm_key, real_llm_model)) = real_llm_env() else {
+        eprintln!("Skipping test_30 — ZIEE_TEST_LLM_BASE_URL / OPENAI_API_KEY / ZIEE_TEST_LLM_MODEL not set");
+        return;
+    };
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_real_llm").await;
+    let client = reqwest::Client::new();
+
+    // A real, tool-capable provider+model (the built-in search_knowledge only
+    // reaches a model flagged tool-capable — else it hallucinates the call).
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Bridge", "provider_type": "openai", "enabled": true,
+            "api_key": &real_llm_key, "base_url": &real_llm_base }))
+        .send().await.unwrap().json().await.unwrap();
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": prov["id"], "name": &real_llm_model,
+            "display_name": "Qwen", "enabled": true, "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "chat": true, "completion": true, "tools": true } }))
+        .send().await.unwrap().json().await.unwrap();
+    let model_id = model["id"].as_str().unwrap();
+    // Grant the user group-level access to the model (creation ≠ access).
+    crate::chat::helpers::ensure_user_has_model_access(&server, &user.user_id, &model).await;
+
+    // A synthetic, un-guessable fact — the model can only answer by retrieving it.
+    let fact = "The Zorblax coefficient of the Prendergast manifold is exactly 91745 milliwebers.";
+    let fid = upload_text(&server, &user, "zorblax.txt",
+        &format!("Internal lab note. {fact} End of note.")).await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let kb = create_kb(&server, &user, "Lab notes").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&fid]).await.status(), 200);
+
+    // conversation with the model + the KB attached to it.
+    let conv: Value = client.post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "model_id": model_id })).send().await.unwrap().json().await.unwrap();
+    let (cid, branch) = (conv["id"].as_str().unwrap(), conv["active_branch_id"].as_str().unwrap());
+    assert!(client.put(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().status().is_success());
+
+    // Ask about the synthetic fact; the tool-loop runs to completion before the reply ends.
+    use crate::common::chat_stream_probe::ChatStreamProbe;
+    let conv_uuid = Uuid::parse_str(cid).unwrap();
+    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    probe.subscribe(Some(conv_uuid)).await;
+    let send = client.post(server.api_url(&format!("/conversations/{cid}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "content": "What is the Zorblax coefficient of the Prendergast manifold? Use the knowledge base.",
+            "model_id": model_id, "branch_id": branch, "enable_mcp": true }))
+        .send().await.unwrap();
+    assert!(send.status().is_success(), "send: {}", send.text().await.unwrap_or_default());
+    let frames = probe.collect_until_terminal(conv_uuid, Duration::from_secs(120)).await;
+    let reply = ChatStreamProbe::assemble_text(&frames);
+
+    // The model actually FIRED search_knowledge (recorded in mcp_tool_calls)…
+    let fired: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM mcp_tool_calls WHERE conversation_id = $1 AND tool_name = 'search_knowledge'",
+    ).bind(conv_uuid).fetch_one(&pool).await.unwrap();
+    assert!(fired >= 1, "the tool-capable model must fire search_knowledge; reply: {reply}");
+    // …and grounded its answer in the retrieved synthetic fact.
+    assert!(reply.contains("91745"), "answer must carry the retrieved fact (91745): {reply}");
+}
+
+// The admin-configurable search_max_top_k ceiling actually clamps search_knowledge
+// (proves the promoted setting drives retrieval behaviour, not just persistence).
+#[tokio::test]
+async fn test_search_respects_admin_max_top_k() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_max_topk").await;
+
+    // Lower the ceiling to 2.
+    let put = reqwest::Client::new()
+        .put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "search_max_top_k": 2 }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "set max_top_k: {}", put.text().await.unwrap_or_default());
+
+    let kb = create_kb(&server, &user, "TopK KB").await;
+    for i in 0..5 {
+        // Unique body per doc (else identical checksums dedup — see TEST-21).
+        let f = upload_text(&server, &user, &format!("d{i}.txt"),
+            &format!("shared beacon retrieval token here, document number {i}")).await;
+        wait_for_chunks(&pool, &f, 1).await;
+        assert_eq!(attach_docs(&server, &user, &kb, &[&f]).await.status(), 200);
+    }
+
+    // Ask for top_k=50 → clamped to the admin ceiling (2).
+    let resp = kb_jsonrpc(&server, &user.token, "tools/call",
+        json!({ "name": "search_knowledge", "arguments": { "query": "beacon retrieval token", "knowledge_base_ids": [kb], "top_k": 50 } }))
+        .send().await.unwrap();
+    let sc = resp.json::<Value>().await.unwrap()["result"]["structuredContent"].clone();
+    let hits = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert_eq!(hits.len(), 2, "results clamped to admin search_max_top_k=2: {sc}");
+}

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 340 surfaces carry renderable-state signals; 1973 signals total.
+// 354 surfaces carry renderable-state signals; 2024 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1298,12 +1298,32 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error", line: 55 },
     ],
   },
+  "modules/file-rag/components/sections/RerankSection": {
+    surface: "modules/file-rag/components/sections/RerankSection",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!canRead", line: 66 },
+      { kind: "branch", condition: "!settings", line: 77 },
+      { kind: "empty", condition: "noModels", line: 116 },
+      { kind: "branch", condition: "canManage", line: 170 },
+    ],
+  },
+  "modules/file-rag/components/sections/RetrievalLimitsSection": {
+    surface: "modules/file-rag/components/sections/RetrievalLimitsSection",
+    requiredStates: ["error"],
+    signals: [
+      { kind: "branch", condition: "!canRead", line: 62 },
+      { kind: "branch", condition: "!settings", line: 73 },
+      { kind: "branch", condition: "canManage", line: 100 },
+      { kind: "error", condition: "error", line: 110 },
+    ],
+  },
   "modules/file-rag/pages/FileRagAdminPage": {
     surface: "modules/file-rag/pages/FileRagAdminPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "error", condition: "error && !settings", line: 34 },
-      { kind: "loading", condition: "loading && !settings", line: 44 },
+      { kind: "error", condition: "error && !settings", line: 36 },
+      { kind: "loading", condition: "loading && !settings", line: 46 },
     ],
   },
   "modules/file/chat-extension/components/FileAttachMenuItem": {
@@ -1627,15 +1647,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/viewers/pdf/pdfjs-body",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!('file' in props)", line: 30 },
-      { kind: "branch", condition: "status !== 'ready' || !doc || !api", line: 49 },
-      { kind: "branch", condition: "!container || !viewer", line: 52 },
-      { kind: "branch", condition: "!c", line: 93 },
-      { kind: "branch", condition: "!c", line: 101 },
-      { kind: "branch", condition: "findOpen", line: 227 },
-      { kind: "loading", condition: "status === 'loading'", line: 276 },
-      { kind: "error", condition: "status === 'error'", line: 281 },
-      { kind: "error", condition: "error", line: 290 },
+      { kind: "branch", condition: "!('file' in props)", line: 31 },
+      { kind: "branch", condition: "status !== 'ready' || !doc || !api", line: 55 },
+      { kind: "branch", condition: "!container || !viewer", line: 58 },
+      { kind: "branch", condition: "status !== 'ready'", line: 93 },
+      { kind: "branch", condition: "!c", line: 95 },
+      { kind: "branch", condition: "!c", line: 110 },
+      { kind: "branch", condition: "!c", line: 118 },
+      { kind: "branch", condition: "findOpen", line: 244 },
+      { kind: "loading", condition: "status === 'loading'", line: 293 },
+      { kind: "error", condition: "status === 'error'", line: 298 },
+      { kind: "error", condition: "error", line: 307 },
     ],
   },
   "modules/file/viewers/shared/RawCodeView": {
@@ -2124,6 +2146,119 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "error", line: 158 },
       { kind: "loading", condition: "loading && !settings", line: 167 },
       { kind: "branch", condition: "!canManage", line: 193 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/KbMenuItem": {
+    surface: "modules/knowledge-base/chat-extension/components/KbMenuItem",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "empty", condition: "!canUse || kbs.length === 0", line: 25 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/KbSourcePanel": {
+    surface: "modules/knowledge-base/chat-extension/components/KbSourcePanel",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "cancelled", line: 47 },
+      { kind: "branch", condition: "!file", line: 60 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/KbStatusRow": {
+    surface: "modules/knowledge-base/chat-extension/components/KbStatusRow",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "empty", condition: "!canUse || visibleIds.length === 0", line: 19 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard": {
+    surface: "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!isSearchKnowledgeResult(content)", line: 28 },
+      { kind: "branch", condition: "!sc", line: 31 },
+      { kind: "branch", condition: "incomplete", line: 57 },
+      { kind: "empty", condition: "sc.hits.length === 0", line: 65 },
+    ],
+  },
+  "modules/knowledge-base/chat-extension/extension": {
+    surface: "modules/knowledge-base/chat-extension/extension",
+    requiredStates: ["panel-open"],
+    signals: [
+      { kind: "panel", condition: "registerPanelRenderer('kb_source')", line: 48 },
+    ],
+  },
+  "modules/knowledge-base/components/KnowledgeBaseCard": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseCard",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "canManage", line: 62 },
+      { kind: "overlay", condition: "<Confirm open>", line: 100 },
+      { kind: "branch", condition: "chip", line: 125 },
+    ],
+  },
+  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "empty", condition: "files.length === 0", line: 27 },
+      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 78 },
+      { kind: "empty", condition: "documents.length === 0", line: 82 },
+      { kind: "branch", condition: "isRetryable(doc.index_status)", line: 109 },
+    ],
+  },
+  "modules/knowledge-base/components/KnowledgeBaseFormDrawer": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseFormDrawer",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "saving", line: 55 },
+      { kind: "overlay", condition: "<Drawer open>", line: 84 },
+      { kind: "branch", condition: "canSave", line: 101 },
+    ],
+  },
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage": {
+    surface: "modules/knowledge-base/pages/KnowledgeBaseDetailPage",
+    requiredStates: ["delayed","open"],
+    signals: [
+      { kind: "loading", condition: "loading && !kb", line: 35 },
+      { kind: "branch", condition: "!kb", line: 43 },
+      { kind: "branch", condition: "inProgress > 0", line: 111 },
+      { kind: "branch", condition: "kbId", line: 125 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 130 },
+    ],
+  },
+  "modules/knowledge-base/pages/KnowledgeBasesListPage": {
+    surface: "modules/knowledge-base/pages/KnowledgeBasesListPage",
+    requiredStates: ["delayed","error","open"],
+    signals: [
+      { kind: "branch", condition: "kbs.length > 0", line: 63 },
+      { kind: "loading", condition: "loading", line: 78 },
+      { kind: "error", condition: "error", line: 82 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 113 },
+    ],
+  },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview": {
+    surface: "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "!projectId || !canUse", line: 26 },
+      { kind: "branch", condition: "!canUse", line: 50 },
+      { kind: "empty", condition: "count === 0", line: 62 },
+    ],
+  },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": {
+    surface: "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel",
+    requiredStates: ["delayed","empty"],
+    signals: [
+      { kind: "branch", condition: "!projectId || !canUse", line: 26 },
+      { kind: "branch", condition: "!projectId", line: 51 },
+      { kind: "branch", condition: "!projectId", line: 63 },
+      { kind: "branch", condition: "!canUse", line: 79 },
+      { kind: "branch", condition: "!projectId", line: 81 },
+      { kind: "empty", condition: "attachable.length === 0", line: 91 },
+      { kind: "branch", condition: "canUse", line: 131 },
+      { kind: "loading", condition: "loading && attached.length === 0", line: 140 },
+      { kind: "empty", condition: "attached.length === 0", line: 144 },
+      { kind: "branch", condition: "canUse", line: 167 },
     ],
   },
   "modules/layouts/app-layout/AppLayout": {
@@ -4054,6 +4189,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
 /** Right-panel renderers — each is a distinct right-panel-open state to render. */
 export const PANEL_RENDERERS: PanelRegistration[] = [
   { type: "file", surface: "modules/file/chat-extension/extension", line: 151 },
+  { type: "kb_source", surface: "modules/knowledge-base/chat-extension/extension", line: 48 },
   { type: "literature", surface: "modules/literature/chat-extension/extension", line: 27 },
 ]
 
@@ -4101,7 +4237,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 341 keys.
+ * 358 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4195,6 +4331,8 @@ export type RequiredState =
   | "modules/file-rag/components/sections/EnableSection:error"
   | "modules/file-rag/components/sections/FullTextSection:error"
   | "modules/file-rag/components/sections/MaintenanceSection:error"
+  | "modules/file-rag/components/sections/RerankSection:empty"
+  | "modules/file-rag/components/sections/RetrievalLimitsSection:error"
   | "modules/file-rag/pages/FileRagAdminPage:delayed"
   | "modules/file-rag/pages/FileRagAdminPage:error"
   | "modules/file/chat-extension/components/FilePasteHandler:empty"
@@ -4251,6 +4389,21 @@ export type RequiredState =
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:empty"
   | "modules/js-tool/components/JsToolSettingsSection:delayed"
   | "modules/js-tool/components/JsToolSettingsSection:error"
+  | "modules/knowledge-base/chat-extension/components/KbMenuItem:empty"
+  | "modules/knowledge-base/chat-extension/components/KbStatusRow:empty"
+  | "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard:empty"
+  | "modules/knowledge-base/chat-extension/extension:panel-open"
+  | "modules/knowledge-base/components/KnowledgeBaseCard:open"
+  | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty"
+  | "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open"
+  | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed"
+  | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open"
+  | "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed"
+  | "modules/knowledge-base/pages/KnowledgeBasesListPage:error"
+  | "modules/knowledge-base/pages/KnowledgeBasesListPage:open"
+  | "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview:empty"
+  | "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:delayed"
+  | "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:empty"
   | "modules/layouts/app-layout/AppLayout:open"
   | "modules/layouts/app-layout/components/Drawer:empty"
   | "modules/layouts/app-layout/components/ResizeHandle:empty"
@@ -4539,6 +4692,8 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file-rag/components/sections/EnableSection:error",
   "modules/file-rag/components/sections/FullTextSection:error",
   "modules/file-rag/components/sections/MaintenanceSection:error",
+  "modules/file-rag/components/sections/RerankSection:empty",
+  "modules/file-rag/components/sections/RetrievalLimitsSection:error",
   "modules/file-rag/pages/FileRagAdminPage:delayed",
   "modules/file-rag/pages/FileRagAdminPage:error",
   "modules/file/chat-extension/components/FilePasteHandler:empty",
@@ -4595,6 +4750,21 @@ export const REQUIRED_STATE_KEYS = [
   "modules/hub/modules/workflow/components/WorkflowsHubTab:empty",
   "modules/js-tool/components/JsToolSettingsSection:delayed",
   "modules/js-tool/components/JsToolSettingsSection:error",
+  "modules/knowledge-base/chat-extension/components/KbMenuItem:empty",
+  "modules/knowledge-base/chat-extension/components/KbStatusRow:empty",
+  "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard:empty",
+  "modules/knowledge-base/chat-extension/extension:panel-open",
+  "modules/knowledge-base/components/KnowledgeBaseCard:open",
+  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty",
+  "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open",
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed",
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open",
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed",
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:error",
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:open",
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview:empty",
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:delayed",
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:empty",
   "modules/layouts/app-layout/AppLayout:open",
   "modules/layouts/app-layout/components/Drawer:empty",
   "modules/layouts/app-layout/components/ResizeHandle:empty",

@@ -67,6 +67,18 @@ pub enum SyncEntity {
     /// `McpSession::call_tool`, so the per-server "Calls" tab refreshes live.
     /// Notify-only; the client refetches via `GET /api/mcp/tool-calls`.
     McpToolCall,
+    /// A user-owned file's RAG index lifecycle state changed
+    /// (`file_index_state`: pending/indexing/indexed/failed/no_text). Emitted
+    /// owner-scoped from the `file_rag` ingest path on each transition so the
+    /// knowledge-base documents UI reflects per-doc indexing status live. `id`
+    /// is the file_id; the client refetches the KB's document status.
+    FileIndexState,
+    /// A user-owned knowledge base changed (create/rename/delete or its document
+    /// set). Owner-scoped; the client refetches the KB list / detail.
+    KnowledgeBase,
+    /// A document within a knowledge base changed (attach/detach/status). Owner-
+    /// scoped; `id` is the knowledge_base id; the client refetches its documents.
+    KnowledgeBaseDocument,
     /// The caller's own default MCP settings for new conversations changed
     /// (approval mode / auto-approved tools / disabled servers / loop
     /// settings). Owner-scoped; notify-only — the client refetches
@@ -380,5 +392,20 @@ mod tests {
         for (e, name) in cases {
             assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{name}\""));
         }
+    }
+}
+
+#[cfg(test)]
+mod kb_wire_tests {
+    use super::SyncEntity;
+
+    // TEST-19 (ITEM-21): the KB sync entities serialize to the exact snake_case
+    // wire strings the generated TS `sync:<entity>` keys depend on.
+    #[test]
+    fn kb_entities_serialize_snake_case() {
+        let s = |e: SyncEntity| serde_json::to_value(e).unwrap().as_str().unwrap().to_string();
+        assert_eq!(s(SyncEntity::KnowledgeBase), "knowledge_base");
+        assert_eq!(s(SyncEntity::KnowledgeBaseDocument), "knowledge_base_document");
+        assert_eq!(s(SyncEntity::FileIndexState), "file_index_state");
     }
 }
