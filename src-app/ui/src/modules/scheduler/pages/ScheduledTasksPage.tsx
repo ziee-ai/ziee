@@ -35,9 +35,11 @@ function humanizeCron(cron: string): string {
   if (!t) return `Cron: ${cron}`
   if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${t}`
   if (dom === '*' && mon === '*' && isDowList(dow)) {
+    // cron dow 7 is Sunday in many dialects (same as 0) — normalize mod 7 so it
+    // never indexes past DOW_SHORT (was rendering "undefined").
     const days = dow
       .split(',')
-      .map(Number)
+      .map(n => Number(n) % 7)
       .sort((a, b) => a - b)
       .map(n => DOW_SHORT[n])
       .join(', ')

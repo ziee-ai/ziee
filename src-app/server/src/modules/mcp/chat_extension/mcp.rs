@@ -2168,13 +2168,21 @@ impl ChatExtension for McpChatExtension {
             );
 
             if needs_approval {
-                // ITEM-13: in an unattended run, a non-allow-listed approval tool
-                // is DENIED (no orphaned pending row, no truncation) — the turn
-                // continues with a synthesized denial tool_result.
-                if unattended
-                    && !unattended_tool_allowed(&unattended_allowed, &server_id, &tool_name)
-                {
-                    tools_denied_unattended.push((tool_use_id, tool_name, server_id));
+                // ITEM-13/DEC-17: in an unattended run, an approval-required tool is
+                // resolved by the task's allow-list, NOT by a live approval prompt
+                // (there is no user to answer). An ALLOW-LISTED tool was pre-
+                // authorized by the task creator → it AUTO-RUNS (that is the whole
+                // point of the allow-list). A NON-allow-listed tool is DENIED (a
+                // synthesized denial tool_result; no orphaned pending row, no
+                // truncation) so the turn continues. (Blind-audit fix: an allow-
+                // listed tool previously fell through to a pause that no one could
+                // resolve + was omitted from the skipped report.)
+                if unattended {
+                    if unattended_tool_allowed(&unattended_allowed, &server_id, &tool_name) {
+                        tools_to_execute.push((tool_use_id, tool_name, server_id, input));
+                    } else {
+                        tools_denied_unattended.push((tool_use_id, tool_name, server_id));
+                    }
                     continue;
                 }
                 tools_needing_approval.push((tool_use_id, tool_name.clone(), server_id.clone(), input));
@@ -3513,6 +3521,76 @@ mod kb_builtin_tests {
     #[test]
     fn knowledge_base_id_is_a_builtin() {
         assert!(is_builtin_server_id(knowledge_base_server_id()));
+        assert!(!is_builtin_server_id(Uuid::new_v4()));
+    }
+}
+
+/// TEST-25 (ITEM-13): the two load-bearing predicates of the unattended
+/// approval decision in the execute loop
+/// (`needs_approval && unattended && !unattended_tool_allowed(..)` → Deny). These
+/// tests exercise the REAL `unattended_tool_allowed` + `is_builtin_server_id`
+/// (the exact inputs the decision consumes), not a reimplementation of the `if`.
+#[cfg(test)]
+mod scheduler_unattended_tests {
+    use super::{is_builtin_server_id, unattended_tool_allowed};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    // The allow-list predicate: a whole-server grant (no `tool_name`) allows ANY
+    // tool on that server; a per-tool grant allows only the named tool; a
+    // different server / tool is never allowed; an empty list allows nothing.
+    #[test]
+    fn allow_list_matches_whole_server_and_specific_tool() {
+        let srv = Uuid::new_v4().to_string();
+        let other = Uuid::new_v4().to_string();
+
+        // Empty allow-list → nothing is allowed.
+        assert!(!unattended_tool_allowed(&json!([]), &srv, "anything"));
+
+        // Whole-server grant → every tool on `srv`, but nothing on `other`.
+        let whole = json!([{ "server_id": srv }]);
+        assert!(unattended_tool_allowed(&whole, &srv, "foo"));
+        assert!(unattended_tool_allowed(&whole, &srv, "bar"));
+        assert!(!unattended_tool_allowed(&whole, &other, "foo"));
+
+        // Per-tool grant → only the named tool on `srv`.
+        let per_tool = json!([{ "server_id": srv, "tool_name": "foo" }]);
+        assert!(unattended_tool_allowed(&per_tool, &srv, "foo"));
+        assert!(!unattended_tool_allowed(&per_tool, &srv, "bar"));
+        assert!(!unattended_tool_allowed(&per_tool, &other, "foo"));
+    }
+
+    // Decision semantics via the real predicate: in an unattended run, an
+    // approval-required tool is DENIED iff it is NOT allow-listed. `Deny` ⇔
+    // `!unattended_tool_allowed(..)`; adding a matching grant flips it back to
+    // the ordinary (non-denied) approval path.
+    #[test]
+    fn unattended_denies_only_non_allow_listed_tools() {
+        let srv = Uuid::new_v4().to_string();
+        // Not allow-listed → the guard `!unattended_tool_allowed` is true → Deny.
+        assert!(!unattended_tool_allowed(&json!([]), &srv, "delete_everything"));
+        // Allow-listed (whole server) → guard false → NOT denied.
+        let allow = json!([{ "server_id": srv }]);
+        assert!(unattended_tool_allowed(&allow, &srv, "delete_everything"));
+    }
+
+    // A read-only built-in server is `is_builtin` → `needs_approval` is forced
+    // false BEFORE the unattended check, so its tools ALWAYS bypass (never denied
+    // even in an unattended run). A third-party id is not a built-in, so it flows
+    // into the approval/deny decision above.
+    #[test]
+    fn readonly_builtins_bypass_the_unattended_gate() {
+        assert!(is_builtin_server_id(
+            crate::modules::files_mcp::files_mcp_server_id()
+        ));
+        assert!(is_builtin_server_id(
+            crate::modules::memory_mcp::memory_mcp_server_id()
+        ));
+        assert!(is_builtin_server_id(
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id()
+        ));
+        // An arbitrary third-party server is NOT approval-bypassed → it is the
+        // one subject to the unattended allow-list gate.
         assert!(!is_builtin_server_id(Uuid::new_v4()));
     }
 }

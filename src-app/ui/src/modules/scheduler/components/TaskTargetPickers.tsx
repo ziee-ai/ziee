@@ -176,13 +176,27 @@ export const AllowedToolsField = forwardRef<
     label: s.display_name || s.name,
     value: s.id,
   }))
-  const selectedIds = (value ?? []).map(t => t.server_id)
+  const current = value ?? []
+  // De-dupe for the MultiSelect (a server may appear via several tool-specific
+  // grants); dedupe by server_id preserving order.
+  const selectedIds = Array.from(new Set(current.map(t => t.server_id)))
   return (
     <MultiSelect
       ref={ref}
       data-testid="task-form-allowed-tools"
       value={selectedIds}
-      onChange={ids => onChange?.(ids.map(sid => ({ server_id: sid })))}
+      onChange={ids =>
+        onChange?.(
+          // Preserve any existing per-tool grants for a server that stays
+          // selected (the picker is whole-server, but must not silently WIDEN a
+          // tool-specific grant created via the API on a no-op re-save); a newly
+          // added server gets a whole-server grant. (blind-audit fix)
+          ids.flatMap(sid => {
+            const existing = current.filter(t => t.server_id === sid)
+            return existing.length > 0 ? existing : [{ server_id: sid }]
+          }),
+        )
+      }
       onBlur={onBlur}
       id={id}
       name={name}

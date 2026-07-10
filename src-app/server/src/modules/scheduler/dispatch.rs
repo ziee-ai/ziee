@@ -65,14 +65,17 @@ struct RawResult {
     skipped_tools: Vec<super::models::SkippedTool>,
 }
 
-/// ITEM-9/DEC-8: a TRANSIENT failure (timeout / provider blip / 5xx / 409) is
-/// retried a bounded number of times WITHIN the firing (with backoff) before it
-/// counts toward the consecutive-failure cap — a flaky blip shouldn't auto-pause
-/// a task. Terminal classes (auth/permission/validation/target-missing) never
-/// retry. Fixed constant (not admin-tunable): the real operational knob is
-/// `max_consecutive_failures`, which IS admin-configurable.
-const MAX_IN_RUN_ATTEMPTS: u32 = 2;
-
+/// ITEM-9/DEC-8: transient-failure tolerance is provided by the consecutive-
+/// failure CAP (`max_consecutive_failures`, admin-configurable), NOT by an
+/// in-run retry. An earlier design re-ran the whole `dispatch` on a transient
+/// classification, but both targets are NON-IDEMPOTENT — re-running `dispatch_
+/// workflow` re-`spawn_run`s the entire workflow (duplicate/overlapping
+/// execution) and re-running `dispatch_prompt` re-sends the message + re-executes
+/// its tools (double side effects). So the firing runs the target EXACTLY ONCE;
+/// a transient failure is recorded and counts toward the cap like any failure
+/// (the tick only auto-pauses at the cap, so a single blip never pauses).
+/// See DRIFT-1 / FIX_ROUND-1 (blind-audit HIGH: in-run retry re-execution).
+///
 /// Run a task's target, apply change-detection, and notify. Total function.
 pub async fn dispatch(
     pool: &PgPool,
@@ -80,34 +83,12 @@ pub async fn dispatch(
     task: &ScheduledTask,
     _trigger: &str,
 ) -> DispatchOutcome {
-    let mut attempt: u32 = 0;
-    let raw = loop {
-        let result = match task.target_kind.as_str() {
-            "workflow" => dispatch_workflow(pool, task).await,
-            "prompt" => dispatch_prompt(pool, config, task).await,
-            other => Err(AppError::internal_error(format!(
-                "scheduler: unknown target_kind {other}"
-            ))),
-        };
-        match result {
-            Ok(raw) => break Ok(raw),
-            Err(e) => {
-                let status = axum::http::StatusCode::from_u16(e.status_code())
-                    .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-                let retryable = classify(status, false).is_retryable();
-                if retryable && attempt < MAX_IN_RUN_ATTEMPTS {
-                    let backoff = super::failure::retry_backoff_ms(attempt);
-                    tracing::info!(
-                        "scheduler: transient failure on task '{}' (attempt {}), retrying in {}ms: {e}",
-                        task.name, attempt + 1, backoff
-                    );
-                    tokio::time::sleep(Duration::from_millis(backoff)).await;
-                    attempt += 1;
-                    continue;
-                }
-                break Err(e);
-            }
-        }
+    let raw = match task.target_kind.as_str() {
+        "workflow" => dispatch_workflow(pool, task).await,
+        "prompt" => dispatch_prompt(pool, config, task).await,
+        other => Err(AppError::internal_error(format!(
+            "scheduler: unknown target_kind {other}"
+        ))),
     };
 
     match raw {
@@ -213,6 +194,26 @@ async fn dispatch_prompt(
     if let Some(aid) = task.assistant_id {
         if Repos.assistant.get_for_user(aid, task.user_id).await?.is_none() {
             return Err(AppError::not_found("Assistant"));
+        }
+    }
+    // Re-check MODEL access at fire time too (blind-audit fix: create validated it
+    // but the firing did not — a user removed from the provider's group must not
+    // keep invoking that model via the schedule). 403 → Permission → terminal pause.
+    {
+        let model = Repos
+            .llm_model
+            .get_by_id(model_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Model"))?;
+        if !Repos
+            .user_group_llm_provider
+            .user_has_access_to_provider(task.user_id, model.provider_id)
+            .await?
+        {
+            return Err(AppError::forbidden(
+                "SCHEDULER_MODEL_FORBIDDEN",
+                "you do not have access to this model",
+            ));
         }
     }
 
@@ -370,8 +371,11 @@ async fn finalize_success(
     let sig_json = serde_json::to_value(&sig).ok();
     let fingerprint = Some(sig.fingerprint.clone());
 
-    // on_change + nothing changed → record success, send NO notification.
-    if task.notify_on == "on_change" && !outcome.changed {
+    // on_change + nothing changed → record success, send NO notification —
+    // UNLESS tools were skipped this firing. A skipped tool means the result is
+    // degraded/incomplete, so it must not be silently swallowed as "no change"
+    // (blind-audit fix: the ITEM-17 honesty guard was bypassed on this path).
+    if task.notify_on == "on_change" && !outcome.changed && raw.skipped_tools.is_empty() {
         return DispatchOutcome {
             success: true,
             status: "no_change",
@@ -395,9 +399,10 @@ async fn finalize_success(
     // ITEM-17: be honest — a truncated result must not read as a clean success.
     if !raw.skipped_tools.is_empty() {
         let names: Vec<&str> = raw.skipped_tools.iter().map(|s| s.tool_name.as_str()).collect();
+        let n = raw.skipped_tools.len();
+        let noun = if n == 1 { "tool was" } else { "tools were" };
         body.push_str(&format!(
-            "\n\n⚠ {} tool(s) skipped (not permitted unattended): {}. Pre-authorize them on the task to allow.",
-            raw.skipped_tools.len(),
+            "\n\nNote: {n} {noun} skipped (not permitted unattended): {}. Pre-authorize on the task to allow.",
             names.join(", ")
         ));
     }

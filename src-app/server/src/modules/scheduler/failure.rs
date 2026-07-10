@@ -132,4 +132,46 @@ mod tests {
         assert_eq!(retry_backoff_ms(2), 2000);
         assert_eq!(retry_backoff_ms(20), 30_000); // capped
     }
+
+    // TEST-17: `is_retryable` is true for EXACTLY the Transient class and no
+    // other — auth/permission/validation/target-missing/internal are terminal.
+    #[test]
+    fn is_retryable_only_for_transient() {
+        assert!(FailureClass::Transient.is_retryable());
+        for terminal in [
+            FailureClass::Auth,
+            FailureClass::Permission,
+            FailureClass::Validation,
+            FailureClass::TargetMissing,
+            FailureClass::Internal,
+        ] {
+            assert!(
+                !terminal.is_retryable(),
+                "{terminal:?} must be terminal (never retried in-run)"
+            );
+        }
+    }
+
+    // TEST-17: the in-run backoff grows MONOTONICALLY per attempt until it
+    // saturates at the 30s cap (and never regresses past the cap). This is the
+    // schedule that bounds `MAX_IN_RUN_ATTEMPTS` retries in dispatch.rs.
+    #[test]
+    fn backoff_is_monotonic_nondecreasing_then_capped() {
+        let mut prev = 0u64;
+        for attempt in 0..12u32 {
+            let cur = retry_backoff_ms(attempt);
+            assert!(
+                cur >= prev,
+                "backoff must not regress: attempt {attempt} gave {cur} < prev {prev}"
+            );
+            assert!(cur <= 30_000, "backoff must never exceed the 30s cap");
+            prev = cur;
+        }
+        // Strictly increasing before the cap …
+        assert!(retry_backoff_ms(1) > retry_backoff_ms(0));
+        assert!(retry_backoff_ms(2) > retry_backoff_ms(1));
+        // … and pinned at the cap once it saturates.
+        assert_eq!(retry_backoff_ms(6), 30_000);
+        assert_eq!(retry_backoff_ms(7), 30_000);
+    }
 }

@@ -506,3 +506,177 @@ pub async fn set_bound_conversation(
     .map_err(AppError::database_error)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These exercise the real SQL of the repository against a live migrated DB.
+    // DB-gated (mirrors `web_search/repository.rs`): soft-skips when `DATABASE_URL`
+    // is unset / unreachable so `cargo test --lib` without Postgres stays green;
+    // runs for real wherever `DATABASE_URL` points at a migrated DB. Prune has NO
+    // REST/re-export seam, so an in-source DB test is the only real-path home for
+    // TEST-14/15 (the private `prune_runs_older_than` DELETE predicate).
+    async fn db() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+        {
+            Ok(p) => Some(p),
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                None
+            }
+        }
+    }
+
+    /// Insert a minimal, real `users` row (only username/email are NOT NULL
+    /// without a default). FK target for a task row.
+    async fn seed_user(pool: &PgPool) -> Uuid {
+        let uniq = Uuid::new_v4().to_string();
+        let short = &uniq[..8];
+        let id: Uuid = sqlx::query_scalar(
+            "INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id",
+        )
+        .bind(format!("sched_repo_{short}"))
+        .bind(format!("sched_repo_{short}@example.test"))
+        .fetch_one(pool)
+        .await
+        .expect("seed user");
+        id
+    }
+
+    /// Insert a minimal prompt-kind task (model_id NULL — nullable FK) satisfying
+    /// both CHECK constraints. `kind` ∈ {"once","recurring"}.
+    async fn seed_prompt_task(pool: &PgPool, user_id: Uuid, kind: &str, enabled: bool) -> Uuid {
+        let now = Utc::now();
+        let (run_at, cron, next): (Option<time::OffsetDateTime>, Option<String>, Option<time::OffsetDateTime>) =
+            if kind == "once" {
+                (Some(to_offset(now)), None, None)
+            } else {
+                (None, Some("0 9 * * 1".to_string()), Some(to_offset(now)))
+            };
+        let id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO scheduled_tasks
+                (user_id, name, target_kind, prompt, schedule_kind,
+                 run_at, cron_expr, timezone, enabled, next_run_at)
+            VALUES ($1, $2, 'prompt', 'hi', $3, $4, $5, 'UTC', $6, $7)
+            RETURNING id
+            "#,
+        )
+        .bind(user_id)
+        .bind("repo-test")
+        .bind(kind)
+        .bind(run_at)
+        .bind(cron)
+        .bind(enabled)
+        .bind(next)
+        .fetch_one(pool)
+        .await
+        .expect("seed task");
+        id
+    }
+
+    fn run_for(task: Uuid, user: Uuid, fired_at: DateTime<Utc>) -> NewTaskRun {
+        NewTaskRun {
+            scheduled_task_id: task,
+            user_id: user,
+            trigger: "schedule".to_string(),
+            status: "completed".to_string(),
+            error_class: None,
+            error_message: None,
+            notification_id: None,
+            workflow_run_id: None,
+            conversation_id: None,
+            skipped_tools: Vec::new(),
+            fired_at,
+        }
+    }
+
+    // TEST-11 (ITEM-6): the active-task count excludes DISABLED rows, so the
+    // re-enable quota check has no off-by-one (a disabled task being re-enabled
+    // isn't already in the count).
+    #[tokio::test]
+    async fn count_active_excludes_disabled_rows() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        seed_prompt_task(&pool, user, "recurring", true).await; // active
+        seed_prompt_task(&pool, user, "recurring", false).await; // disabled → excluded
+
+        let n = count_active_for_user(&pool, user).await.expect("count");
+        assert_eq!(n, 1, "count_active_for_user must exclude the disabled row");
+    }
+
+    // TEST-19 (ITEM-10): `mark_fired` marks a SPENT once-kind task (no next
+    // occurrence → next_run_at NULL) `paused_reason='completed'` + disabled;
+    // a recurring task that still has a next occurrence stays enabled with a
+    // NULL paused_reason.
+    #[tokio::test]
+    async fn mark_fired_completes_spent_once_and_leaves_recurring_unpaused() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+
+        let once = seed_prompt_task(&pool, user, "once", true).await;
+        mark_fired(&pool, once, None, Utc::now(), None)
+            .await
+            .expect("mark once");
+        let t = get_for_user(&pool, user, once)
+            .await
+            .expect("get once")
+            .expect("once row");
+        assert!(!t.enabled, "a spent once task is disabled");
+        assert_eq!(
+            t.paused_reason.as_deref(),
+            Some("completed"),
+            "a spent once task is marked 'completed'"
+        );
+
+        let rec = seed_prompt_task(&pool, user, "recurring", true).await;
+        let future = Utc::now() + chrono::Duration::days(7);
+        mark_fired(&pool, rec, Some(future), Utc::now(), None)
+            .await
+            .expect("mark recurring");
+        let t = get_for_user(&pool, user, rec)
+            .await
+            .expect("get rec")
+            .expect("rec row");
+        assert!(t.enabled, "a recurring task with a next run stays enabled");
+        assert!(
+            t.paused_reason.is_none(),
+            "a recurring task with a next run keeps a NULL paused_reason"
+        );
+    }
+
+    // TEST-14 / TEST-15 (ITEM-8): `prune_runs_older_than` deletes ONLY runs whose
+    // `fired_at < cutoff`; newer runs are retained.
+    #[tokio::test]
+    async fn prune_deletes_only_runs_older_than_cutoff() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        let task = seed_prompt_task(&pool, user, "recurring", true).await;
+
+        let old_at = Utc::now() - chrono::Duration::days(40);
+        let recent_at = Utc::now() - chrono::Duration::days(1);
+        let old_run = insert_run(&pool, run_for(task, user, old_at))
+            .await
+            .expect("old run");
+        let new_run = insert_run(&pool, run_for(task, user, recent_at))
+            .await
+            .expect("new run");
+
+        // Cutoff = 30 days ago: the 40-day-old run is deleted, the 1-day-old kept.
+        let cutoff = Utc::now() - chrono::Duration::days(30);
+        let deleted = prune_runs_older_than(&pool, cutoff).await.expect("prune");
+        assert!(deleted >= 1, "at least the 40-day-old run is pruned");
+
+        let remaining = list_runs_for_task(&pool, user, task, 100)
+            .await
+            .expect("list runs");
+        let ids: Vec<Uuid> = remaining.iter().map(|r| r.id).collect();
+        assert!(!ids.contains(&old_run), "the old run (fired_at < cutoff) is pruned");
+        assert!(ids.contains(&new_run), "the recent run (fired_at >= cutoff) is retained");
+    }
+}

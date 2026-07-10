@@ -27,13 +27,13 @@ type Preset = 'daily' | 'weekly' | 'monthly' | 'custom'
 
 // Weekly toggle order: Mon → Sun (cron day-of-week: 0=Sun … 6=Sat).
 const WEEK = [
-  { label: 'Mon', value: '1' },
-  { label: 'Tue', value: '2' },
-  { label: 'Wed', value: '3' },
-  { label: 'Thu', value: '4' },
-  { label: 'Fri', value: '5' },
-  { label: 'Sat', value: '6' },
-  { label: 'Sun', value: '0' },
+  { label: 'Mon', full: 'Monday', value: '1' },
+  { label: 'Tue', full: 'Tuesday', value: '2' },
+  { label: 'Wed', full: 'Wednesday', value: '3' },
+  { label: 'Thu', full: 'Thursday', value: '4' },
+  { label: 'Fri', full: 'Friday', value: '5' },
+  { label: 'Sat', full: 'Saturday', value: '6' },
+  { label: 'Sun', full: 'Sunday', value: '0' },
 ]
 
 /** A cron day-of-week field that is a single day OR a comma list (e.g. `1,3,5`). */
@@ -227,7 +227,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
                     data-testid={`schedule-dow-${d.value}`}
                     variant={active ? 'default' : 'outline'}
                     aria-pressed={active}
-                    aria-label={d.label}
+                    aria-label={d.full}
                     onClick={() => toggleDay(d.value)}
                     className={cn('w-14 px-0', active && 'font-semibold')}
                   >

@@ -222,11 +222,22 @@ export function ScheduledTaskFormDrawer() {
     )
       return 'A schedule is required'
     if (!values.schedule.timezone.trim()) return 'A timezone is required'
-    if (values.target_kind === 'workflow' && !hasDeclaredInputs) {
-      try {
-        JSON.parse(values.inputs_json || '{}')
-      } catch {
-        return 'Inputs must be valid JSON'
+    if (values.target_kind === 'workflow') {
+      if (hasDeclaredInputs) {
+        // Typed-input mode: every REQUIRED declared input must be non-empty
+        // (blind-audit fix: FormField `required` is only decorative here — there's
+        // no RHF resolver — so the rule must be enforced explicitly).
+        for (const i of declaredInputs) {
+          if (i.required && !String(values.inputs?.[i.name] ?? '').trim()) {
+            return `${i.name} is required`
+          }
+        }
+      } else {
+        try {
+          JSON.parse(values.inputs_json || '{}')
+        } catch {
+          return 'Inputs must be valid JSON'
+        }
       }
     }
     return null

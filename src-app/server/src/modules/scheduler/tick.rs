@@ -61,8 +61,20 @@ pub async fn run_tick_loop(pool: PgPool, config: Arc<Config>) {
 fn preemptive_pause_reason(task: &super::models::ScheduledTask) -> Option<&'static str> {
     match task.target_kind.as_str() {
         "workflow" if task.workflow_id.is_none() => Some("target_missing"),
+        // `conversation_deleted` requires a prior SUCCESSFUL fire — one that
+        // actually created + bound a conversation (last_status is a success
+        // status) whose binding is now NULL (the conversation was deleted). A
+        // FAILED first fire also leaves bound_conversation_id NULL but sets
+        // last_status='failed' BEFORE create_conversation ran, so it must NOT be
+        // mistaken for a deleted conversation (blind-audit fix: that false
+        // positive bricked a task on a first-fire blip). Such a task retries on
+        // its schedule (counting toward the failure cap) instead.
         "prompt"
-            if task.bound_conversation_id.is_none() && task.last_status.is_some() =>
+            if task.bound_conversation_id.is_none()
+                && matches!(
+                    task.last_status.as_deref(),
+                    Some("completed") | Some("no_change")
+                ) =>
         {
             Some("conversation_deleted")
         }
@@ -224,4 +236,121 @@ pub async fn fire_task(
 
     // Notify the owner's devices that the task (its runs/state) changed.
     super::events::emit_task(crate::modules::sync::SyncAction::Update, task.id, task.user_id, None);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preemptive_pause_reason;
+    use crate::modules::scheduler::models::ScheduledTask;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    /// A minimal `ScheduledTask` with all "referent present, first run" defaults;
+    /// individual tests flip the fields the pause decision reads.
+    fn base_task() -> ScheduledTask {
+        let now = Utc::now();
+        ScheduledTask {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            name: "t".to_string(),
+            enabled: true,
+            paused_reason: None,
+            target_kind: "prompt".to_string(),
+            workflow_id: None,
+            inputs_json: serde_json::json!({}),
+            assistant_id: None,
+            prompt: Some("hi".to_string()),
+            model_id: Some(Uuid::new_v4()),
+            schedule_kind: "recurring".to_string(),
+            run_at: None,
+            cron_expr: Some("0 9 * * 1".to_string()),
+            timezone: "UTC".to_string(),
+            next_run_at: Some(now),
+            last_run_at: None,
+            last_status: None,
+            consecutive_failures: 0,
+            notify_mode: "always".to_string(),
+            notify_on: "always".to_string(),
+            last_result_fingerprint: None,
+            last_result_signature_json: None,
+            bound_conversation_id: None,
+            allowed_unattended_tools: serde_json::json!([]),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    // TEST-12 (ITEM-7): a prompt task whose bound conversation was deleted AFTER
+    // a prior run (bound_conversation_id NULL AND last_status set) pauses
+    // `conversation_deleted`; a genuine first-run prompt task (both NULL) is NOT
+    // paused (it legitimately creates its bound conversation on first fire).
+    #[test]
+    fn prompt_conversation_deleted_pauses_but_first_run_does_not() {
+        // Deleted-after-a-run: bound NULL + last_status Some → pause.
+        let mut deleted = base_task();
+        deleted.target_kind = "prompt".to_string();
+        deleted.bound_conversation_id = None;
+        deleted.last_status = Some("completed".to_string());
+        assert_eq!(
+            preemptive_pause_reason(&deleted),
+            Some("conversation_deleted"),
+            "a prompt task whose bound conversation was deleted must pre-emptively pause"
+        );
+
+        // Genuine first run: bound NULL + last_status NULL → NOT paused.
+        let mut first_run = base_task();
+        first_run.target_kind = "prompt".to_string();
+        first_run.bound_conversation_id = None;
+        first_run.last_status = None;
+        assert_eq!(
+            preemptive_pause_reason(&first_run),
+            None,
+            "a first-run prompt task (never fired) must NOT be paused"
+        );
+
+        // A prompt task that still has its bound conversation → NOT paused
+        // (regardless of last_status).
+        let mut healthy = base_task();
+        healthy.target_kind = "prompt".to_string();
+        healthy.bound_conversation_id = Some(Uuid::new_v4());
+        healthy.last_status = Some("completed".to_string());
+        assert_eq!(preemptive_pause_reason(&healthy), None);
+    }
+
+    // TEST-12: a NULL assistant_id is NEVER a pause reason (NULL = use the user's
+    // default assistant), even after a prior run.
+    #[test]
+    fn null_assistant_is_not_a_pause_reason() {
+        let mut t = base_task();
+        t.target_kind = "prompt".to_string();
+        t.assistant_id = None;
+        t.bound_conversation_id = Some(Uuid::new_v4());
+        t.last_status = Some("completed".to_string());
+        assert_eq!(preemptive_pause_reason(&t), None);
+    }
+
+    // TEST-13 (ITEM-7) — decision logic: a workflow task whose workflow_id is
+    // NULL pre-emptively pauses `target_missing`; a workflow with its id present
+    // is not paused. (Note: the DB CHECK `scheduled_tasks_target_coherent` makes
+    // the NULL-workflow_id *row state* unreachable via normal FK cascade, so the
+    // end-to-end path can't be integration-driven — this asserts the claim-time
+    // decision function that would fire were the state reachable.)
+    #[test]
+    fn workflow_missing_id_pauses_target_missing() {
+        let mut missing = base_task();
+        missing.target_kind = "workflow".to_string();
+        missing.workflow_id = None;
+        missing.prompt = None;
+        assert_eq!(
+            preemptive_pause_reason(&missing),
+            Some("target_missing"),
+            "a workflow task with a NULLed workflow_id must pre-emptively pause"
+        );
+
+        let mut present = base_task();
+        present.target_kind = "workflow".to_string();
+        present.workflow_id = Some(Uuid::new_v4());
+        present.prompt = None;
+        assert_eq!(preemptive_pause_reason(&present), None);
+    }
 }

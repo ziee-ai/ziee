@@ -82,15 +82,6 @@ pub struct UnattendedToolGrant {
     pub tool_name: Option<String>,
 }
 
-impl UnattendedToolGrant {
-    /// Does this grant list authorize the given (server, tool)?
-    pub fn list_allows(grants: &[UnattendedToolGrant], server_id: uuid::Uuid, tool_name: &str) -> bool {
-        grants.iter().any(|g| {
-            g.server_id == server_id
-                && g.tool_name.as_deref().map(|t| t == tool_name).unwrap_or(true)
-        })
-    }
-}
 
 /// Factory function to create the extension instance
 /// Called by the auto-registration system

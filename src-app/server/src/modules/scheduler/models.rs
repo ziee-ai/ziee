@@ -199,3 +199,53 @@ fn default_timezone() -> String {
 fn default_notify_mode() -> String {
     "always".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // TEST-27 (ITEM-14, partial): `parse_allowed_tools` — the parse that feeds the
+    // unattended `mcp_config` server-constrain set built in `dispatch::dispatch_prompt`
+    // — distinguishes a whole-server grant (`tool_name` absent) from a per-tool
+    // grant, and is TOLERANT of a malformed JSONB blob (returns empty, never
+    // errors a read path). NOTE: the full constrain set (built-in-read-only ∪
+    // allow-listed) is assembled INLINE in dispatch_prompt and is not extracted as
+    // a discrete helper, so only the allow-listed-parse half is unit-covered here.
+    #[test]
+    fn parse_allowed_tools_distinguishes_whole_server_and_per_tool() {
+        let srv1 = Uuid::new_v4();
+        let srv2 = Uuid::new_v4();
+
+        // Whole-server grant (no tool_name) + a per-tool grant.
+        let v = serde_json::json!([
+            { "server_id": srv1 },
+            { "server_id": srv2, "tool_name": "search" },
+        ]);
+        let parsed = parse_allowed_tools(&v);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(
+            parsed[0],
+            AllowedTool { server_id: srv1, tool_name: None },
+            "a missing tool_name = whole-server grant"
+        );
+        assert_eq!(
+            parsed[1],
+            AllowedTool {
+                server_id: srv2,
+                tool_name: Some("search".to_string())
+            },
+            "an explicit tool_name = per-tool grant"
+        );
+    }
+
+    #[test]
+    fn parse_allowed_tools_is_tolerant_of_malformed_input() {
+        // A non-array (or otherwise unexpected) shape yields an empty list — a
+        // read path must never error on a garbage JSONB blob.
+        assert!(parse_allowed_tools(&serde_json::json!({})).is_empty());
+        assert!(parse_allowed_tools(&serde_json::json!("nope")).is_empty());
+        assert!(parse_allowed_tools(&serde_json::json!(null)).is_empty());
+        // The safe floor: an empty array = read-only built-ins only.
+        assert!(parse_allowed_tools(&serde_json::json!([])).is_empty());
+    }
+}
