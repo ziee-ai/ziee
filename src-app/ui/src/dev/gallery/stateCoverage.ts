@@ -154,6 +154,8 @@ export const STATE_COVERAGE = {
   "modules/code-sandbox/components/DownloadedRootfsCard:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxResourceLimitsSection:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxResourceLimitsSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
+  "modules/js-tool/components/JsToolSettingsSection:delayed": { skip: true, reason: "via surface — rendered within the js-tool settings page; 'delayed' branch covered by the e2e settings spec" },
+  "modules/js-tool/components/JsToolSettingsSection:error": { skip: true, reason: "via surface — rendered within the js-tool settings page; 'error' branch covered by the e2e settings spec" },
   "modules/code-sandbox/components/SandboxRootfsVersionsSection:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxRootfsVersionsSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/ChunkingSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },

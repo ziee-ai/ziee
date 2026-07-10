@@ -34,8 +34,8 @@ Keep-mine preserves both versions).
 
 ## Note
 
-PLAN.md's ITEM-17 text says migration `132`; the shipped migration is `133` (renamed to
-avoid a collision with `add_openrouter_provider_type` on origin/main). Cosmetic doc lag;
-the code + regen use 133.
+PLAN.md's ITEM-17 text says migration `132`; the shipped migration is `136` (originally
+`133`, renumbered to `136` when merging current main, whose migrations advanced to `135`
+(js_tool). Cosmetic doc lag; the code + regen use the on-disk filename ordering.
 
 **Unresolved drifts:** 0

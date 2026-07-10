@@ -256,3 +256,32 @@ impl From<SSEChatStreamEvent> for axum::response::sse::Event {
             .data(val.data().unwrap_or_default())
     }
 }
+
+#[cfg(test)]
+mod compose_guard {
+    //! Guard against the `compose_chat_stream_events` codegen silently dropping an
+    //! extension-declared SSE variant. Each `SSEChatStreamEventVariants` variant an
+    //! extension declares must appear on the composed `SSEChatStreamEvent` enum
+    //! (macros/build.rs scans the per-module enums into `chat_extensions.rs`).
+    //!
+    //! Historically a stale `chat_extensions.rs` (from a `cargo:rerun-if-changed`
+    //! DIRECTORY watch not re-firing on an IN-PLACE edit — now fixed with per-file
+    //! watches in macros/build.rs) let a NEW variant be referenced by a handler yet
+    //! be absent from `SSEChatStreamEvent`, so the tree built on a warm cache but
+    //! FAILED a clean/CI build with `E0599: no variant …`. Referencing each variant
+    //! constructor as a value here turns that into a LOUD, named compile error at a
+    //! canonical location instead of a surprise deep in a handler.
+    use super::SSEChatStreamEvent;
+
+    #[test]
+    fn extension_stream_variants_are_composed() {
+        // Base variants.
+        let _ = SSEChatStreamEvent::Started;
+        // mcp/chat_extension variants (the class that regressed).
+        let _ = SSEChatStreamEvent::McpApprovalRequired;
+        let _ = SSEChatStreamEvent::McpElicitationRequired;
+        let _ = SSEChatStreamEvent::RunJsApprovalRequired;
+        // chat-internal extension variant.
+        let _ = SSEChatStreamEvent::TitleUpdated;
+    }
+}
