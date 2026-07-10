@@ -46,3 +46,15 @@ src-app/ui/tests/e2e/14-split-chat/independent-streaming.spec.ts	1	999999	correc
 src-app/ui/tests/e2e/14-split-chat/independent-scroll.spec.ts	1	999999	correctness,error-handling,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/persistence.spec.ts	1	999999	correctness,error-handling,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/popout-new-tab.spec.ts	1	999999	correctness,error-handling,patterns-conformance
+src-app/desktop/ui/src/modules/chat/core/popout/openConversationWindow.test.ts	1	999999	tests-quality,correctness,patterns-conformance
+src-app/ui/src/core/store-kit.test.ts	1	999999	tests-quality,correctness,state-management
+src-app/ui/src/dev/gallery/runtime-baseline.js	1	999999	correctness,security,patterns-conformance
+src-app/ui/src/modules/chat/core/popout/openConversationWindow.test.ts	1	999999	tests-quality,correctness,patterns-conformance
+src-app/ui/src/modules/chat/core/split/galleryCoverage.test.ts	1	999999	tests-quality,correctness,patterns-conformance
+src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	999999	tests-quality,correctness,state-management
+src-app/ui/tests/e2e/14-split-chat/composer-isolation.spec.ts	1	999999	tests-quality,correctness,state-management
+src-app/ui/tests/e2e/14-split-chat/find-per-pane.spec.ts	1	999999	tests-quality,correctness,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/focused-affordances.spec.ts	1	999999	tests-quality,correctness,state-management
+src-app/ui/tests/e2e/14-split-chat/mobile-columns.spec.ts	1	999999	tests-quality,correctness,a11y
+src-app/ui/tests/e2e/14-split-chat/new-chat-adopt.spec.ts	1	999999	tests-quality,correctness,state-management
+src-app/ui/tests/e2e/14-split-chat/right-panel-per-pane.spec.ts	1	999999	tests-quality,correctness,state-management

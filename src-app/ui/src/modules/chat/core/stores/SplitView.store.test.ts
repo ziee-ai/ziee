@@ -53,7 +53,7 @@ test('openPane with afterPaneId inserts after that pane', () => {
 })
 
 test('closePane atomically reassigns focus to a surviving neighbour', () => {
-  const a = s().openPane({ conversationId: 'a' })
+  s().openPane({ conversationId: 'a' })
   const b = s().openPane({ conversationId: 'b' })
   const c = s().openPane({ conversationId: 'c' })
   s().focusPane(b!)
