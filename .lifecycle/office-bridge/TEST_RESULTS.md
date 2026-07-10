@@ -38,7 +38,7 @@ missing `platejs` deps — which had been failing gate:ui's bare tsc):
 - **TEST-8**: PASS
 - **TEST-9**: PASS
 - **TEST-10**: PASS
-- **TEST-11**: SUPERSEDED — this test targets `server/src/modules/office_bridge/platform/unsupported.rs`, which the desktop-only relocation DELETED (moved to the desktop crate); its assertion is carried forward by **TEST-59** (the relocated copy). Not runnable at HEAD; reclassified honestly (per decision), not re-run.
+- **TEST-11**: SKIP — SUPERSEDED: targets `server/src/modules/office_bridge/platform/unsupported.rs`, which the desktop-only relocation DELETED (moved to the desktop crate); its assertion is carried forward by **TEST-59** (the relocated copy). Not runnable at HEAD (the code is gone); reclassified honestly (per decision), not re-run.
 - **TEST-12**: PASS
 - **TEST-13**: PASS
 - **TEST-14**: PASS
@@ -86,7 +86,7 @@ missing `platejs` deps — which had been failing gate:ui's bare tsc):
 - **TEST-56**: PASS
 - **TEST-57**: PASS
 - **TEST-58**: PASS
-- **TEST-59**: PLATFORM-GATED (Linux) — `desktop/.../platform/unsupported.rs` is `#[cfg(not(any(windows, target_os = "macos")))]`, so this unit test compiles + runs only on a non-Windows/non-macOS (Linux) host, where it PASSes; it is cfg-excluded on the macOS build host. Reclassified honestly (per decision), not re-run on Linux here.
+- **TEST-59**: SKIP — PLATFORM-GATED (Linux): `desktop/.../platform/unsupported.rs` is `#[cfg(not(any(windows, target_os = "macos")))]`, so this unit test compiles + runs only on a non-Windows/non-macOS (Linux) host, where it PASSes; it is cfg-excluded on the macOS build host (a genuine platform-incompatibility skip). Not re-run on Linux here (per decision).
 - **TEST-60**: PASS
 - **TEST-61**: PASS
 - **TEST-62**: PASS
