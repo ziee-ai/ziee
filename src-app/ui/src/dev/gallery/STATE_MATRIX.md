@@ -7,10 +7,10 @@
 
 ## Summary
 
-- **362** surfaces carry at least one renderable-state signal.
-- **2069** signals total: 1625 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **361** surfaces carry at least one renderable-state signal.
+- **2067** signals total: 1623 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
-- **34** slot registrations (sidebar / settings / chat mount points).
+- **33** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
@@ -38,7 +38,6 @@ conversation page.
 
 | slot | module surface |
 |---|---|
-| `chatConversationHeaderTrailing` | `modules/chat/module`:119 |
 | `settingsAdminPages` | `modules/assistant/module`:79 |
 | `settingsAdminPages` | `modules/auth-providers/module`:43 |
 | `settingsAdminPages` | `modules/auth/module`:80 |
@@ -71,7 +70,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:40 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:104 |
+| `sidebarContent` | `modules/chat/module`:95 |
 
 ## Per-surface required states
 
@@ -680,9 +679,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `selectedAssistantId` | 32 |
-| empty | `availableAssistants.length === 0` | 41 |
-| branch | `dividerAfter` | 131 |
+| branch | `selectedAssistantId` | 27 |
+| empty | `availableAssistants.length === 0` | 36 |
+| branch | `dividerAfter` | 126 |
 
 ### `modules/assistant/chat-extension/components/AssistantSelector`
 
@@ -690,7 +689,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `availableAssistants.length === 0` | 31 |
+| empty | `availableAssistants.length === 0` | 27 |
 
 ### `modules/assistant/chat-extension/components/AssistantStatusChip`
 
@@ -698,8 +697,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!selectedAssistantId` | 17 |
-| branch | `!assistant` | 22 |
+| branch | `!selectedAssistantId` | 13 |
+| branch | `!assistant` | 18 |
 
 ### `modules/assistant/chat-extension/extension`
 
@@ -707,7 +706,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!picker` | 54 |
+| branch | `!picker` | 57 |
 
 ### `modules/assistant/components/AssistantFormDrawer`
 
@@ -1046,14 +1045,6 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!hasModels` | 25 |
 | branch | `isBreaking` | 29 |
 
-### `modules/chat/components/OpenInNewWindowAction`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!conversation` | 22 |
-
 ### `modules/chat/components/PlusMenuItem`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -1061,15 +1052,6 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `trailing != null` | 53 |
-
-### `modules/chat/components/SplitChatView`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `i > 0` | 32 |
-| branch | `!drag.current` | 83 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1097,12 +1079,9 @@ Required states: `empty`, `open`
 | branch | `!activeTab` | 14 |
 | branch | `!resolved` | 17 |
 | empty | `tabs.length === 0` | 50 |
-| branch | `!inPane \|\| !showDrawer` | 141 |
-| branch | `inPane` | 153 |
-| branch | `!showDrawer` | 154 |
-| branch | `isMobile` | 178 |
-| overlay | `<Drawer open>` | 180 |
-| branch | `isOpen` | 220 |
+| branch | `isMobile` | 135 |
+| overlay | `<Drawer open>` | 137 |
+| branch | `isOpen` | 177 |
 
 ### `modules/chat/core/extensions/registry`
 
@@ -1110,10 +1089,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `this.initialized` | 351 |
-| empty | `extensions.length === 0` | 499 |
-| empty | `extensions.length === 0` | 532 |
-| empty | `!registered \|\| registered.length === 0` | 822 |
+| branch | `this.initialized` | 324 |
+| empty | `extensions.length === 0` | 472 |
+| empty | `extensions.length === 0` | 505 |
+| empty | `!registered \|\| registered.length === 0` | 793 |
 
 ### `modules/chat/core/extensions/slots`
 
@@ -1214,10 +1193,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 77 |
-| branch | `isEditing` | 78 |
-| branch | `restoredKeyRef.current === draftKey` | 86 |
-| branch | `isEditingRef.current` | 94 |
+| branch | `!el` | 68 |
+| branch | `isEditing` | 69 |
+| branch | `restoredKeyRef.current === draftKey` | 77 |
+| branch | `isEditingRef.current` | 85 |
 
 ### `modules/chat/extensions/text/components/ThinkingContent`
 
@@ -1267,33 +1246,30 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `panes.length >= 2` | 40 |
-| branch | `!sentinel` | 193 |
-| branch | `!el` | 213 |
-| branch | `!nativeScroll` | 228 |
-| branch | `y < 0 \|\| y > maxY` | 237 |
-| branch | `maxY - y <= 8` | 241 |
-| branch | `Math.abs(dy) < 6` | 247 |
-| branch | `!chat.$.conversation` | 267 |
-| branch | `!conversationId` | 309 |
-| branch | `!sentinel` | 357 |
-| branch | `!entries[0]?.isIntersecting` | 361 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 364 |
-| branch | `!sentinel` | 399 |
-| branch | `!entries[0]?.isIntersecting` | 403 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 404 |
-| loading | `!pending` | 419 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 422 |
-| branch | `!conversation?.id` | 431 |
-| branch | `!m` | 435 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 438 |
-| loading | `loading && !conversation` | 469 |
-| branch | `pane && !conversationId && !conversation` | 479 |
-| loading | `!loading && !conversation` | 529 |
-| error | `error` | 532 |
-| branch | `pane` | 597 |
-| error | `error` | 631 |
-| branch | `nativeScroll && !composerHidden` | 730 |
+| branch | `!sentinel` | 143 |
+| branch | `!el` | 163 |
+| branch | `!nativeScroll` | 178 |
+| branch | `y < 0 \|\| y > maxY` | 187 |
+| branch | `maxY - y <= 8` | 191 |
+| branch | `Math.abs(dy) < 6` | 197 |
+| branch | `!Stores.Chat.$.conversation` | 217 |
+| branch | `!conversationId` | 259 |
+| branch | `!sentinel` | 307 |
+| branch | `!entries[0]?.isIntersecting` | 311 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
+| branch | `!sentinel` | 349 |
+| branch | `!entries[0]?.isIntersecting` | 353 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
+| loading | `!pending` | 369 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
+| branch | `!conversation?.id` | 381 |
+| branch | `!m` | 385 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
+| loading | `loading && !conversation` | 408 |
+| loading | `!loading && !conversation` | 417 |
+| error | `error` | 420 |
+| error | `error` | 477 |
+| branch | `nativeScroll && !composerHidden` | 576 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -3853,12 +3829,13 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `value.schedule_kind === 'once'` | 127 |
-| branch | `!raw` | 136 |
-| branch | `preset !== 'custom'` | 163 |
-| branch | `preset === 'weekly'` | 179 |
-| branch | `preset === 'monthly'` | 190 |
-| branch | `preset === 'custom'` | 203 |
+| branch | `days.size === 1` | 104 |
+| branch | `value.schedule_kind === 'once'` | 156 |
+| branch | `!raw` | 165 |
+| branch | `preset !== 'custom'` | 192 |
+| branch | `preset === 'weekly'` | 208 |
+| branch | `preset === 'monthly'` | 236 |
+| branch | `preset === 'custom'` | 249 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3866,14 +3843,17 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 69 |
-| branch | `err` | 145 |
-| branch | `err` | 168 |
-| overlay | `<Drawer open>` | 198 |
-| branch | `canUse` | 223 |
-| branch | `f.target_kind === 'prompt'` | 259 |
-| branch | `testing` | 339 |
-| branch | `testResult` | 344 |
+| branch | `!open` | 104 |
+| branch | `!open` | 112 |
+| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 159 |
+| branch | `err` | 249 |
+| branch | `err` | 273 |
+| overlay | `<Drawer open>` | 307 |
+| branch | `canUse` | 332 |
+| branch | `targetKind === 'prompt'` | 371 |
+| branch | `hasDeclaredInputs` | 393 |
+| branch | `testing` | 459 |
+| branch | `testResult` | 464 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
@@ -3881,13 +3861,15 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `task.paused_reason` | 66 |
-| branch | `expanded` | 89 |
-| branch | `!runs` | 91 |
-| empty | `runs.length === 0` | 93 |
-| loading | `loading && tasks.length === 0` | 193 |
-| error | `error && tasks.length === 0` | 197 |
-| empty | `tasks.length === 0` | 205 |
+| branch | `task.paused_reason === 'completed'` | 54 |
+| branch | `task.paused_reason` | 61 |
+| branch | `expanded` | 85 |
+| branch | `!runs` | 87 |
+| empty | `runs.length === 0` | 89 |
+| branch | `skippedToolsNote(r.skipped_tools)` | 101 |
+| loading | `loading && tasks.length === 0` | 197 |
+| error | `error && tasks.length === 0` | 201 |
+| empty | `tasks.length === 0` | 209 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 
@@ -4147,11 +4129,11 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `providerNeedsApiKey(provider)` | 62 |
-| branch | `!value` | 87 |
-| branch | `model` | 93 |
-| error | `error && providers.length === 0` | 114 |
-| branch | `pendingProviderForKey` | 147 |
+| branch | `providerNeedsApiKey(provider)` | 55 |
+| branch | `!value` | 80 |
+| branch | `model` | 86 |
+| error | `error && providers.length === 0` | 107 |
+| branch | `pendingProviderForKey` | 140 |
 
 ### `modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal`
 
@@ -4161,6 +4143,14 @@ Required states: `open`
 |---|---|---|
 | overlay | `<Dialog open>` | 65 |
 | branch | `rootError` | 96 |
+
+### `modules/user-llm-providers/chat-extension/extension`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!picker` | 51 |
 
 ### `modules/user-profile/UserProfileWidget`
 
@@ -4570,14 +4560,14 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 110 |
-| branch | `!open` | 121 |
-| branch | `!conversationId && !modelId` | 126 |
-| overlay | `<Dialog open>` | 171 |
-| branch | `structured` | 187 |
-| branch | `jsonError` | 213 |
-| branch | `!conversationId` | 216 |
-| branch | `conversationId` | 242 |
+| branch | `!open` | 105 |
+| branch | `!open` | 116 |
+| branch | `!conversationId && !modelId` | 121 |
+| overlay | `<Dialog open>` | 166 |
+| branch | `structured` | 182 |
+| branch | `jsonError` | 208 |
+| branch | `!conversationId` | 211 |
+| branch | `conversationId` | 237 |
 
 ### `modules/workflow/components/WorkflowRunProgressView`
 

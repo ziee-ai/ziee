@@ -51,6 +51,9 @@ pub struct DispatchOutcome {
     pub conversation_id: Option<Uuid>,
     pub fingerprint: Option<String>,
     pub signature: Option<serde_json::Value>,
+    /// Tools skipped this firing because they weren't permitted unattended
+    /// (ITEM-17 / DEC-17.5). Empty for workflow runs + un-gated paths.
+    pub skipped_tools: Vec<super::models::SkippedTool>,
 }
 
 /// A successful target run, before change-detection/notification.
@@ -58,8 +61,61 @@ struct RawResult {
     text: String,
     workflow_run_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
+    /// Tools skipped during a headless prompt run (ITEM-17); empty for workflow.
+    skipped_tools: Vec<super::models::SkippedTool>,
 }
 
+/// ITEM-14/DEC-17: build the unattended run's `mcp_config.mcp_servers` attach set
+/// from the task's allow-list grants — one entry per distinct server; a
+/// whole-server grant (`tool_name: None`) yields `tools: []` (= all tools), and
+/// per-tool grants for a server are grouped into its `tools`. An EMPTY grant list
+/// yields an EMPTY set ⇒ no third-party servers attach (the read-only safe floor;
+/// built-ins auto-attach separately). Pure + unit-tested (TEST-26/27/34).
+pub(super) fn build_unattended_mcp_servers(
+    grants: &[super::models::AllowedTool],
+) -> Vec<serde_json::Value> {
+    let mut by_server: HashMap<Uuid, (bool, Vec<String>)> = HashMap::new();
+    for g in grants {
+        let entry = by_server.entry(g.server_id).or_insert((false, Vec::new()));
+        match &g.tool_name {
+            Some(t) => entry.1.push(t.clone()),
+            None => entry.0 = true, // whole-server grant
+        }
+    }
+    by_server
+        .into_iter()
+        .map(|(sid, (whole, tools))| {
+            serde_json::json!({ "server_id": sid, "tools": if whole { Vec::<String>::new() } else { tools } })
+        })
+        .collect()
+}
+
+/// ITEM-17/DEC-17.5: the notification line for tools skipped this firing (or
+/// `None` when none were). Proper singular/plural, no emoji. Pure + unit-tested.
+pub(super) fn skipped_tools_note(skipped: &[super::models::SkippedTool]) -> Option<String> {
+    if skipped.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = skipped.iter().map(|s| s.tool_name.as_str()).collect();
+    let n = skipped.len();
+    let noun = if n == 1 { "tool was" } else { "tools were" };
+    Some(format!(
+        "\n\nNote: {n} {noun} skipped (not permitted unattended): {}. Pre-authorize on the task to allow.",
+        names.join(", ")
+    ))
+}
+
+/// ITEM-9/DEC-8: transient-failure tolerance is provided by the consecutive-
+/// failure CAP (`max_consecutive_failures`, admin-configurable), NOT by an
+/// in-run retry. An earlier design re-ran the whole `dispatch` on a transient
+/// classification, but both targets are NON-IDEMPOTENT — re-running `dispatch_
+/// workflow` re-`spawn_run`s the entire workflow (duplicate/overlapping
+/// execution) and re-running `dispatch_prompt` re-sends the message + re-executes
+/// its tools (double side effects). So the firing runs the target EXACTLY ONCE;
+/// a transient failure is recorded and counts toward the cap like any failure
+/// (the tick only auto-pauses at the cap, so a single blip never pauses).
+/// See DRIFT-1 / FIX_ROUND-1 (blind-audit HIGH: in-run retry re-execution).
+///
 /// Run a task's target, apply change-detection, and notify. Total function.
 pub async fn dispatch(
     pool: &PgPool,
@@ -127,6 +183,7 @@ async fn dispatch_workflow(pool: &PgPool, task: &ScheduledTask) -> Result<RawRes
                     text: summarize_workflow_output(run.final_output_json.as_ref()),
                     workflow_run_id: Some(run_id),
                     conversation_id: None,
+                    skipped_tools: Vec::new(),
                 });
             }
             "failed" | "cancelled" => {
@@ -179,6 +236,26 @@ async fn dispatch_prompt(
             return Err(AppError::not_found("Assistant"));
         }
     }
+    // Re-check MODEL access at fire time too (blind-audit fix: create validated it
+    // but the firing did not — a user removed from the provider's group must not
+    // keep invoking that model via the schedule). 403 → Permission → terminal pause.
+    {
+        let model = Repos
+            .llm_model
+            .get_by_id(model_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Model"))?;
+        if !Repos
+            .user_group_llm_provider
+            .user_has_access_to_provider(task.user_id, model.provider_id)
+            .await?
+        {
+            return Err(AppError::forbidden(
+                "SCHEDULER_MODEL_FORBIDDEN",
+                "you do not have access to this model",
+            ));
+        }
+    }
 
     // Resolve the bound conversation (reuse or create), and its active branch.
     let (conversation_id, branch_id) = match task.bound_conversation_id {
@@ -208,13 +285,26 @@ async fn dispatch_prompt(
         }
     };
 
+    // ITEM-14/DEC-17: constrain the third-party MCP servers to the task's
+    // allow-list so a non-allow-listed (esp. Always-mode side-effecting) server
+    // never attaches / pre-executes in an unattended run. `mcp_config = Some`
+    // with an explicit server list means "ONLY these third-party servers"
+    // (empty ⇒ none); built-in read-only servers still auto-attach regardless.
+    let grants = super::models::parse_allowed_tools(&task.allowed_unattended_tools);
+    let mcp_servers = build_unattended_mcp_servers(&grants);
+
     // Build the send request via JSON (extension fields default). Enable MCP so
-    // agentic tasks ("check PubMed…") can use the built-in tools.
+    // agentic tasks ("check PubMed…") can use the built-in tools; mark the run
+    // UNATTENDED so the MCP approval decision denies (not pauses) non-allow-listed
+    // approval-required tools (ITEM-13).
     let mut req_json = serde_json::json!({
         "content": task.prompt.clone().unwrap_or_default(),
         "model_id": model_id,
         "branch_id": branch_id,
         "enable_mcp": true,
+        "unattended": true,
+        "unattended_allowed_tools": task.allowed_unattended_tools.clone(),
+        "mcp_config": { "mcp_servers": mcp_servers },
     });
     if let Some(aid) = task.assistant_id {
         req_json["assistant_id"] = serde_json::json!(aid);
@@ -240,25 +330,54 @@ async fn dispatch_prompt(
     }
 
     // Read the assistant text (join `text` content blocks by sequence order).
-    let text = Repos
+    let mwc = Repos
         .chat
         .core
         .get_message_with_content(assistant_message_id)
-        .await?
-        .map(|mwc| {
-            mwc.contents
+        .await?;
+
+    let (text, skipped_tools) = match mwc {
+        Some(mwc) => {
+            let text = mwc
+                .contents
                 .iter()
                 .filter(|c| c.content_type == "text")
                 .filter_map(|c| c.content.get("text").and_then(|t| t.as_str()))
                 .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
+                .join("\n");
+            // ITEM-17: the unattended-approval gate (mcp.rs) emits a denial
+            // tool_result marked `structured_content.unattended_denied` for each
+            // tool it skipped. Collect them for the run's skipped-tools report.
+            let skipped: Vec<super::models::SkippedTool> = mwc
+                .contents
+                .iter()
+                .filter(|c| c.content_type == "tool_result")
+                .filter_map(|c| {
+                    let sc = c.content.get("structured_content")?;
+                    if sc.get("unattended_denied").and_then(|v| v.as_bool()) == Some(true) {
+                        Some(super::models::SkippedTool {
+                            tool_name: sc
+                                .get("tool_name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("tool")
+                                .to_string(),
+                            reason: "requires approval; not permitted unattended".to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            (text, skipped)
+        }
+        None => (String::new(), Vec::new()),
+    };
 
     Ok(RawResult {
         text,
         workflow_run_id: None,
         conversation_id: Some(conversation_id),
+        skipped_tools,
     })
 }
 
@@ -279,8 +398,11 @@ async fn finalize_success(
     let sig_json = serde_json::to_value(&sig).ok();
     let fingerprint = Some(sig.fingerprint.clone());
 
-    // on_change + nothing changed → record success, send NO notification.
-    if task.notify_on == "on_change" && !outcome.changed {
+    // on_change + nothing changed → record success, send NO notification —
+    // UNLESS tools were skipped this firing. A skipped tool means the result is
+    // degraded/incomplete, so it must not be silently swallowed as "no change"
+    // (blind-audit fix: the ITEM-17 honesty guard was bypassed on this path).
+    if task.notify_on == "on_change" && !outcome.changed && raw.skipped_tools.is_empty() {
         return DispatchOutcome {
             success: true,
             status: "no_change",
@@ -291,6 +413,7 @@ async fn finalize_success(
             conversation_id: raw.conversation_id,
             fingerprint,
             signature: sig_json,
+            skipped_tools: raw.skipped_tools.clone(),
         };
     }
 
@@ -300,6 +423,10 @@ async fn finalize_success(
         body.push_str(&format!("{} new since last run.\n\n", outcome.new_items.len()));
     }
     body.push_str(truncate(&raw.text, NOTIF_BODY_CAP));
+    // ITEM-17: be honest — a truncated result must not read as a clean success.
+    if let Some(note) = skipped_tools_note(&raw.skipped_tools) {
+        body.push_str(&note);
+    }
     let title = format!("Scheduled task '{}' ran", task.name);
 
     let interrupt = task.notify_mode == "always";
@@ -315,7 +442,15 @@ async fn finalize_success(
     if let Some(cid) = raw.conversation_id {
         n = n.conversation(cid);
     }
-    let notification_id = create_and_emit(pool, n).await.ok().map(|row| row.id);
+    // ITEM-11: log (don't silently swallow) a notification-creation failure —
+    // a broken task that also fails to notify was previously undiagnosable.
+    let notification_id = match create_and_emit(pool, n).await {
+        Ok(row) => Some(row.id),
+        Err(e) => {
+            tracing::warn!("scheduler: failed to create task notification for '{}': {e:?}", task.name);
+            None
+        }
+    };
 
     DispatchOutcome {
         success: true,
@@ -327,6 +462,7 @@ async fn finalize_success(
         conversation_id: raw.conversation_id,
         fingerprint,
         signature: sig_json,
+        skipped_tools: raw.skipped_tools.clone(),
     }
 }
 
@@ -349,7 +485,15 @@ async fn finalize_failure(
     )
     .body(truncate(&msg, NOTIF_BODY_CAP))
     .task(task.id);
-    let notification_id = create_and_emit(pool, n).await.ok().map(|row| row.id);
+    // ITEM-11: log (don't silently swallow) a notification-creation failure —
+    // a broken task that also fails to notify was previously undiagnosable.
+    let notification_id = match create_and_emit(pool, n).await {
+        Ok(row) => Some(row.id),
+        Err(e) => {
+            tracing::warn!("scheduler: failed to create task notification for '{}': {e:?}", task.name);
+            None
+        }
+    };
 
     DispatchOutcome {
         success: false,
@@ -361,6 +505,7 @@ async fn finalize_failure(
         conversation_id: None,
         fingerprint: None,
         signature: None,
+        skipped_tools: Vec::new(),
     }
 }
 
@@ -368,5 +513,73 @@ fn truncate(s: &str, max: usize) -> &str {
     match s.char_indices().nth(max) {
         Some((idx, _)) => &s[..idx],
         None => s,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::models::{AllowedTool, SkippedTool};
+    use super::{build_unattended_mcp_servers, skipped_tools_note};
+    use uuid::Uuid;
+
+    // TEST-27/TEST-26: the unattended mcp_config attach set = allow-listed servers.
+    #[test]
+    fn build_unattended_mcp_servers_constrains_to_allow_list() {
+        // Empty allow-list → empty set (read-only safe floor: no third-party attaches).
+        assert!(build_unattended_mcp_servers(&[]).is_empty());
+
+        let s1 = Uuid::new_v4();
+        let s2 = Uuid::new_v4();
+        // Whole-server grant → tools:[] (= all tools); per-tool grants grouped.
+        let grants = vec![
+            AllowedTool { server_id: s1, tool_name: None },
+            AllowedTool { server_id: s2, tool_name: Some("search".into()) },
+            AllowedTool { server_id: s2, tool_name: Some("fetch".into()) },
+        ];
+        let out = build_unattended_mcp_servers(&grants);
+        assert_eq!(out.len(), 2, "one entry per distinct server");
+        let e1 = out.iter().find(|e| e["server_id"] == serde_json::json!(s1)).unwrap();
+        assert_eq!(e1["tools"], serde_json::json!([]), "whole-server grant → all tools");
+        let e2 = out.iter().find(|e| e["server_id"] == serde_json::json!(s2)).unwrap();
+        let tools = e2["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2, "per-tool grants grouped under the server");
+        assert!(tools.contains(&serde_json::json!("search")) && tools.contains(&serde_json::json!("fetch")));
+        // A non-allow-listed server is NEVER in the attach set.
+        let s3 = Uuid::new_v4();
+        assert!(!out.iter().any(|e| e["server_id"] == serde_json::json!(s3)));
+    }
+
+    // TEST-31: the skipped-tools notification line (round-trip into the body).
+    #[test]
+    fn skipped_tools_note_is_honest_and_pluralized() {
+        assert_eq!(skipped_tools_note(&[]), None, "no skips → no note");
+        let one = vec![SkippedTool { tool_name: "post_message".into(), reason: "x".into() }];
+        let n1 = skipped_tools_note(&one).unwrap();
+        assert!(n1.contains("1 tool was skipped"), "singular: {n1}");
+        assert!(n1.contains("post_message"));
+        assert!(!n1.contains('⚠'), "no emoji");
+        let two = vec![
+            SkippedTool { tool_name: "a".into(), reason: "x".into() },
+            SkippedTool { tool_name: "b".into(), reason: "x".into() },
+        ];
+        let n2 = skipped_tools_note(&two).unwrap();
+        assert!(n2.contains("2 tools were skipped"), "plural: {n2}");
+        assert!(n2.contains("a, b"));
+    }
+
+    // TEST-34: the DisabledServer predicate the scheduled-workflow disabled-servers
+    // gate (ITEM-18b) relies on — a whole-server disable blocks all its tools; a
+    // tool-scoped disable blocks only that tool.
+    #[test]
+    fn disabled_server_predicate_blocks_correctly() {
+        use crate::modules::mcp::chat_extension::approval::models::DisabledServer;
+        let sid = Uuid::new_v4();
+        let whole = DisabledServer { server_id: sid, tools: vec![] };
+        assert!(whole.is_server_disabled(), "empty tools = whole server disabled");
+        assert!(whole.is_tool_disabled("anything"));
+        let scoped = DisabledServer { server_id: sid, tools: vec!["send".into()] };
+        assert!(!scoped.is_server_disabled(), "tool-scoped ≠ whole-server");
+        assert!(scoped.is_tool_disabled("send"));
+        assert!(!scoped.is_tool_disabled("read"));
     }
 }

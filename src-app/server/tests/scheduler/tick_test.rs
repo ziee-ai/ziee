@@ -168,3 +168,65 @@ async fn tick_run_now_does_not_disable_or_advance_a_recurring_task() {
     );
     let _ = StatusCode::OK;
 }
+
+/// TEST-18 (ITEM-10): after a `once` task fires on schedule its row is
+/// `enabled=false`, `next_run_at=NULL`, and — crucially — `paused_reason` is the
+/// distinct `'completed'` sentinel (NOT NULL). A user pause leaves paused_reason
+/// NULL, so the UI can render a "Completed" badge distinct from a paused/disabled
+/// state. This asserts the exact sentinel the existing once-fire test does not.
+#[tokio::test]
+async fn tick_once_task_marks_paused_reason_completed() {
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("SCHEDULER_TICK_MS".to_string(), "300".to_string())],
+        ..Default::default()
+    })
+    .await;
+    let user = create_user_with_permissions(&server, "tick_done", &["scheduler::use"]).await;
+    let (_stub, model) = crate::chat::helpers::create_stub_model(&server, &user.user_id).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let run_at = (Utc::now() + chrono::Duration::seconds(2)).to_rfc3339();
+    let task: Value = client()
+        .post(server.api_url("/scheduled-tasks"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": "Once completes",
+            "target_kind": "prompt",
+            "prompt": "Say hello.",
+            "model_id": model_id,
+            "schedule_kind": "once",
+            "run_at": run_at,
+            "timezone": "UTC",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = task["id"].as_str().unwrap().to_string();
+    // Before firing, a live once task carries NO paused_reason.
+    assert!(
+        task["paused_reason"].is_null(),
+        "a fresh once task is not yet 'completed'"
+    );
+
+    // The tick fires it → a result notification lands.
+    wait_for_notification(&server, &user.token).await;
+
+    let refetched: Value = client()
+        .get(server.api_url(&format!("/scheduled-tasks/{id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(refetched["enabled"], false, "spent once task is disabled");
+    assert!(refetched["next_run_at"].is_null(), "spent once task has no next run");
+    assert_eq!(
+        refetched["paused_reason"], "completed",
+        "a spent once task is marked 'completed' (distinct from a user pause / NULL)"
+    );
+}

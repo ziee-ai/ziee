@@ -43,6 +43,7 @@ pub mod failure;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
+pub mod prune;
 pub mod repository;
 pub mod routes;
 pub mod schedule;
@@ -80,6 +81,10 @@ impl AppModule for SchedulerModule {
         let pool = (*ctx.db_pool).clone();
         let config = ctx.config.clone();
         tokio::spawn(async move { tick::run_tick_loop(pool, config).await });
+        // Boot-spawned run-history retention prune (ITEM-8/DEC-7): reuses the
+        // admin `notification_retention_days` window; 0 = keep forever.
+        let prune_pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move { prune::run_prune_loop(prune_pool).await });
         Ok(())
     }
 

@@ -18,3 +18,4 @@ mod dispatch_behavior_test;
 mod sync_emit_test;
 mod test_fire_test;
 mod tick_test;
+mod validation_test;

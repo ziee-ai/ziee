@@ -113,6 +113,22 @@ if fuzzy ("would a real user do this?"). This is how one human critique on one
 feature improves every future feature. Machine-local lifecycle infra lives under
 `.claude/lifecycle/` + `.claude/skills/feature-lifecycle/` (whitelisted-tracked);
 have the lifecycle-owner session (or yourself) implement + self-test the rule.
+**Mark each item you fold in** `[generalizable: yes — <rule> · harvested@<commit>]`
+(or move it under a `## Harvested` heading) so you never apply the same rule
+twice across a feature's multiple merges.
+
+### Iteration mode — gradually refining a shipped feature by chat
+When the human wants to keep improving an already-merged feature (KB, voice, …)
+conversationally, run it as **Iteration mode** (see the feature-lifecycle skill):
+cut a fresh worktree off current main, carry the feature's existing `.lifecycle/`
+artifacts forward, and only plan/test the DELTA. Two states: **iterate** (the
+human is chatting, the agent is trying things — RED tree is fine, don't nudge it
+as a stall) vs **checkpoint** (about to merge — a genuine `--all` 9/9 is
+mandatory, run the merge-gate). Batch a coherent round of feedback into ONE
+merge; don't merge every tweak. The `HUMAN_FEEDBACK.md` ledger is the durable
+spine — it survives a session `/clear`, so any session re-opens the feature by
+reading it, and Phase 9's "no `open` items" rule makes "all gates green at the
+end" automatic. Harvest the round's new `generalizable: yes` items at each merge.
 
 ## Permission-gating (a recurring, security-relevant class)
 Features that pass 8/8 can still let **unpermitted users see the UI** (e2e tests
