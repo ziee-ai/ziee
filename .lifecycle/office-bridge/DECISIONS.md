@@ -1,6 +1,6 @@
 # DECISIONS — office-bridge (consolidated)
 
-All up-front decisions from the five stages, renumbered. Zero TBD.
+All up-front decisions from the five stages, renumbered. No unresolved decisions remain.
 
 ## Stage: Foundation — module, settings, watcher, bridge listener
 
