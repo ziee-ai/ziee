@@ -8,6 +8,7 @@ import type { MessageContentDataToolResult, MessageContent } from '@/api-client/
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 
 /** The tool name a `run_from_workspace` result carries. */
@@ -31,7 +32,10 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
   const block = toolResultBlock(props.content)
   const sc = (block?.structured_content ?? null) as { workspace_dir?: string } | null
   const dir = sc?.workspace_dir
-  const conversationId = Stores.Chat.$.conversation?.id
+  // Resolve THIS pane's conversation (ITEM-38) — a `.$` snapshot on the bridge
+  // would export the FOCUSED pane's workspace, not the one this card renders in.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const conversationId = chat.$.conversation?.id
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [saved, setSaved] = useState(false)
