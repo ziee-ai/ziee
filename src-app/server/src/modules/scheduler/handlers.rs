@@ -41,6 +41,21 @@ fn map_schedule_err(e: ScheduleError) -> (StatusCode, AppError) {
     AppError::bad_request("SCHEDULER_INVALID_SCHEDULE", e.to_string()).into()
 }
 
+/// ITEM-18/DEC-18: does the workflow's compiled IR contain an `elicit`
+/// (human-input) step? Such a workflow parks as `waiting` in a headless run.
+fn workflow_has_elicit_step(wf: &crate::modules::workflow::models::Workflow) -> bool {
+    wf.compiled_ir_json
+        .as_ref()
+        .and_then(|ir| ir.get("steps"))
+        .and_then(|s| s.as_array())
+        .map(|steps| {
+            steps
+                .iter()
+                .any(|st| st.get("kind").and_then(|k| k.as_str()) == Some("elicit"))
+        })
+        .unwrap_or(false)
+}
+
 /// ITEM-5/6: a task's `model_id` must exist AND be one whose provider the user
 /// can access — 404 for a missing model (don't leak existence), 403 for an
 /// inaccessible one. Mirrors `workflow/runner.rs::resolve_run_model`; without
@@ -156,6 +171,19 @@ pub async fn create_task(
             .await?
             {
                 return Err(AppError::not_found("Workflow").into());
+            }
+            // ITEM-18/DEC-18: a workflow with an `elicit` (human-input) step can't
+            // run unattended — it would park as `waiting` and the scheduler would
+            // time out after 15 min, falsely recording a failure. Reject up front.
+            let wf = crate::modules::workflow::repository::find_by_id(Repos.pool(), wf_id).await?;
+            if let Some(wf) = wf {
+                if workflow_has_elicit_step(&wf) {
+                    return Err(AppError::bad_request(
+                        "SCHEDULER_WORKFLOW_NEEDS_INPUT",
+                        "this workflow needs interactive input (an elicit step) and can't be scheduled to run unattended",
+                    )
+                    .into());
+                }
             }
         }
     }

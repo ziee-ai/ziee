@@ -22,7 +22,9 @@ function targetSummary(t: ScheduledTask): string {
   return t.target_kind === 'workflow' ? 'Workflow' : 'Prompt'
 }
 
-const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** A single day OR a comma list of days (e.g. `1,3,5`). */
+const isDowList = (s: string) => /^\d(,\d)*$/.test(s)
 function humanizeCron(cron: string): string {
   const p = cron.trim().split(/\s+/)
   if (p.length !== 5) return `Cron: ${cron}`
@@ -32,7 +34,15 @@ function humanizeCron(cron: string): string {
     : null
   if (!t) return `Cron: ${cron}`
   if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${t}`
-  if (dom === '*' && mon === '*' && /^\d$/.test(dow)) return `Weekly on ${DOW_NAMES[Number(dow)]} at ${t}`
+  if (dom === '*' && mon === '*' && isDowList(dow)) {
+    const days = dow
+      .split(',')
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(n => DOW_SHORT[n])
+      .join(', ')
+    return `Weekly on ${days} at ${t}`
+  }
   if (/^\d+$/.test(dom) && mon === '*' && dow === '*') return `Monthly on day ${dom} at ${t}`
   return `Cron: ${cron}`
 }

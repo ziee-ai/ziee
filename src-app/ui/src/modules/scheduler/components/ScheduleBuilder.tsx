@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 
-import { Flex, Input, InputNumber, Segmented, Select, Text } from '@/components/ui'
+import {
+  Button,
+  Flex,
+  Input,
+  InputNumber,
+  Segmented,
+  Select,
+  Text,
+} from '@/components/ui'
+import { cn } from '@/lib/utils'
 
 export interface ScheduleValue {
   schedule_kind: 'once' | 'recurring'
@@ -16,15 +25,19 @@ interface Props {
 
 type Preset = 'daily' | 'weekly' | 'monthly' | 'custom'
 
-const DOW = [
-  { label: 'Sunday', value: '0' },
-  { label: 'Monday', value: '1' },
-  { label: 'Tuesday', value: '2' },
-  { label: 'Wednesday', value: '3' },
-  { label: 'Thursday', value: '4' },
-  { label: 'Friday', value: '5' },
-  { label: 'Saturday', value: '6' },
+// Weekly toggle order: Mon → Sun (cron day-of-week: 0=Sun … 6=Sat).
+const WEEK = [
+  { label: 'Mon', value: '1' },
+  { label: 'Tue', value: '2' },
+  { label: 'Wed', value: '3' },
+  { label: 'Thu', value: '4' },
+  { label: 'Fri', value: '5' },
+  { label: 'Sat', value: '6' },
+  { label: 'Sun', value: '0' },
 ]
+
+/** A cron day-of-week field that is a single day OR a comma list (e.g. `1,3,5`). */
+const isDowList = (s: string) => /^\d(,\d)*$/.test(s)
 
 /** Classify a cron into a preset (best-effort; falls back to 'custom'). */
 function presetOf(cron: string | undefined): Preset {
@@ -35,7 +48,7 @@ function presetOf(cron: string | undefined): Preset {
   const numeric = (s: string) => /^\d+$/.test(s)
   if (!numeric(min) || !numeric(hour)) return 'custom'
   if (dom === '*' && mon === '*' && dow === '*') return 'daily'
-  if (dom === '*' && mon === '*' && numeric(dow)) return 'weekly'
+  if (dom === '*' && mon === '*' && isDowList(dow)) return 'weekly'
   if (numeric(dom) && mon === '*' && dow === '*') return 'monthly'
   return 'custom'
 }
@@ -77,8 +90,29 @@ export function ScheduleBuilder({ value, onChange }: Props) {
   }, [value.schedule_kind])
 
   const { min, hour } = timeOf(value.cron_expr)
-  const dow = fieldOr(value.cron_expr, 4, '1')
+  // Day-of-week is a comma list for weekly (ITEM-12): `1,3,5`. Default Monday.
+  const dowRaw = (value.cron_expr ?? '').trim().split(/\s+/)[4]
+  const dow = dowRaw && isDowList(dowRaw) ? dowRaw : '1'
+  const selectedDays = new Set(dow.split(',').filter(Boolean))
   const dom = fieldOr(value.cron_expr, 2, '1')
+
+  // Toggle a single day in/out of the weekly set, keeping ≥1 day selected so
+  // the emitted cron day-of-week field never goes empty/invalid. Emits a SORTED
+  // comma list (e.g. Mon+Wed+Fri → `1,3,5`).
+  const toggleDay = (dayVal: string) => {
+    const days = new Set(selectedDays)
+    if (days.has(dayVal)) {
+      if (days.size === 1) return
+      days.delete(dayVal)
+    } else {
+      days.add(dayVal)
+    }
+    const sorted = [...days]
+      .map(Number)
+      .sort((a, b) => a - b)
+      .join(',')
+    emitCron('weekly', hour, min, sorted, dom)
+  }
   const timeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 
   const emitCron = (nextPreset: Preset, h: number, m: number, nextDow: string, nextDom: string) => {
@@ -177,14 +211,31 @@ export function ScheduleBuilder({ value, onChange }: Props) {
           )}
 
           {preset === 'weekly' && (
-            <Select
-              data-standalone-control
+            <Flex
+              className="flex-wrap gap-1"
               data-testid="schedule-dow"
-              aria-label="Day of week"
-              value={dow}
-              onChange={v => emitCron('weekly', hour, min, v as string, dom)}
-              options={DOW}
-            />
+              role="group"
+              aria-label="Days of week"
+            >
+              {WEEK.map(d => {
+                const active = selectedDays.has(d.value)
+                return (
+                  <Button
+                    key={d.value}
+                    type="button"
+                    data-standalone-control
+                    data-testid={`schedule-dow-${d.value}`}
+                    variant={active ? 'default' : 'outline'}
+                    aria-pressed={active}
+                    aria-label={d.label}
+                    onClick={() => toggleDay(d.value)}
+                    className={cn('w-14 px-0', active && 'font-semibold')}
+                  >
+                    {d.label}
+                  </Button>
+                )
+              })}
+            </Flex>
           )}
 
           {preset === 'monthly' && (

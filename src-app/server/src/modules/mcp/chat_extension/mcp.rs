@@ -229,6 +229,25 @@ fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
         && matches!(tool_name, "remember" | "forget")
 }
 
+/// ITEM-13/DEC-17: is `(server_id, tool_name)` in an unattended run's allow-list?
+/// The allow-list is a JSON array of `{ server_id, tool_name? }` (tool_name
+/// absent ⇒ whole server allowed). Parsed generically from `context.metadata`
+/// to avoid a type dependency across the extension boundary.
+fn unattended_tool_allowed(allow: &serde_json::Value, server_id: &str, tool_name: &str) -> bool {
+    allow
+        .as_array()
+        .map(|arr| {
+            arr.iter().any(|g| {
+                g.get("server_id").and_then(|v| v.as_str()) == Some(server_id)
+                    && g.get("tool_name")
+                        .and_then(|v| v.as_str())
+                        .map(|t| t == tool_name)
+                        .unwrap_or(true)
+            })
+        })
+        .unwrap_or(false)
+}
+
 /// Privileged built-in servers (files, memory, elicitation, bio, web_search,
 /// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
 /// read-only / save-only / user-prompting and auto-attached, so a
@@ -991,6 +1010,21 @@ impl ChatExtension for McpChatExtension {
         send_request: &SendMessageRequest,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
+        // ITEM-13/DEC-17: stash the unattended signal + allow-list into context
+        // metadata so `after_llm_call` (which has no `send_request`) can branch
+        // the approval decision to deny-not-pause. Default-false, so an
+        // interactive request is byte-identical (nothing is inserted).
+        if send_request.unattended {
+            context
+                .metadata
+                .insert("unattended".to_string(), serde_json::json!(true));
+            context.metadata.insert(
+                "unattended_allowed_tools".to_string(),
+                serde_json::to_value(&send_request.unattended_allowed_tools)
+                    .unwrap_or_else(|_| serde_json::json!([])),
+            );
+        }
+
         // === STEP 1: Process tool approvals (if resuming after approval) ===
         if let Some(approvals) = &send_request.tool_approvals {
             tracing::info!(
@@ -2040,6 +2074,22 @@ impl ChatExtension for McpChatExtension {
         // pairing every tool_use with a tool_result.
         let mut tools_disabled = Vec::new();
 
+        // ITEM-13: unattended (scheduled) run signals stashed by before_llm_call.
+        // A tool that would need approval and is NOT allow-listed is denied here
+        // (turn continues) rather than creating an orphaned pending approval.
+        let unattended = context
+            .metadata
+            .get("unattended")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let unattended_allowed = context
+            .metadata
+            .get("unattended_allowed_tools")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([]));
+        // (tool_use_id, tool_name, server_id) denied because unattended + not allow-listed.
+        let mut tools_denied_unattended: Vec<(String, String, String)> = Vec::new();
+
         for (tool_use_id, tool_name, server_id, input) in tool_uses {
             // Privileged built-in servers bypass approval entirely.
             let is_builtin = uuid::Uuid::parse_str(&server_id)
@@ -2109,6 +2159,15 @@ impl ChatExtension for McpChatExtension {
             );
 
             if needs_approval {
+                // ITEM-13: in an unattended run, a non-allow-listed approval tool
+                // is DENIED (no orphaned pending row, no truncation) — the turn
+                // continues with a synthesized denial tool_result.
+                if unattended
+                    && !unattended_tool_allowed(&unattended_allowed, &server_id, &tool_name)
+                {
+                    tools_denied_unattended.push((tool_use_id, tool_name, server_id));
+                    continue;
+                }
                 tools_needing_approval.push((tool_use_id, tool_name.clone(), server_id.clone(), input));
             } else {
                 tools_to_execute.push((tool_use_id, tool_name, server_id, input));
@@ -2216,6 +2275,33 @@ impl ChatExtension for McpChatExtension {
                 resource_links: None,
                 hidden_content: None,
                 structured_content: None,
+            };
+            tool_results.push(denial.to_message_content());
+        }
+
+        // ITEM-13/17: unattended-denied tools get a denial tool_result too (turn
+        // stays protocol-valid + continues), with a structured marker the
+        // scheduler reads back for its skipped-tools report. Because these are
+        // NOT in `tools_needing_approval`, the pause-for-approval block below is
+        // skipped → no orphaned pending rows, no truncation.
+        for (tool_use_id, tool_name, server_id_str) in &tools_denied_unattended {
+            let denial = McpContentData::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                name: Some(tool_name.clone()),
+                server_id: Some(server_id_str.clone()),
+                content: format!(
+                    "Tool '{tool_name}' requires approval and is not permitted to run \
+                     unattended for this scheduled task; it was skipped."
+                ),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: Some(serde_json::json!({
+                    "unattended_denied": true,
+                    "tool_name": tool_name,
+                })),
             };
             tool_results.push(denial.to_message_content());
         }

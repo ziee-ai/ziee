@@ -244,13 +244,39 @@ async fn dispatch_prompt(
         }
     };
 
+    // ITEM-14/DEC-17: constrain the third-party MCP servers to the task's
+    // allow-list so a non-allow-listed (esp. Always-mode side-effecting) server
+    // never attaches / pre-executes in an unattended run. `mcp_config = Some`
+    // with an explicit server list means "ONLY these third-party servers"
+    // (empty ⇒ none); built-in read-only servers still auto-attach regardless.
+    let grants = super::models::parse_allowed_tools(&task.allowed_unattended_tools);
+    let mut by_server: HashMap<Uuid, (bool, Vec<String>)> = HashMap::new();
+    for g in &grants {
+        let entry = by_server.entry(g.server_id).or_insert((false, Vec::new()));
+        match &g.tool_name {
+            Some(t) => entry.1.push(t.clone()),
+            None => entry.0 = true, // whole-server grant
+        }
+    }
+    let mcp_servers: Vec<serde_json::Value> = by_server
+        .into_iter()
+        .map(|(sid, (whole, tools))| {
+            serde_json::json!({ "server_id": sid, "tools": if whole { Vec::<String>::new() } else { tools } })
+        })
+        .collect();
+
     // Build the send request via JSON (extension fields default). Enable MCP so
-    // agentic tasks ("check PubMed…") can use the built-in tools.
+    // agentic tasks ("check PubMed…") can use the built-in tools; mark the run
+    // UNATTENDED so the MCP approval decision denies (not pauses) non-allow-listed
+    // approval-required tools (ITEM-13).
     let mut req_json = serde_json::json!({
         "content": task.prompt.clone().unwrap_or_default(),
         "model_id": model_id,
         "branch_id": branch_id,
         "enable_mcp": true,
+        "unattended": true,
+        "unattended_allowed_tools": task.allowed_unattended_tools.clone(),
+        "mcp_config": { "mcp_servers": mcp_servers },
     });
     if let Some(aid) = task.assistant_id {
         req_json["assistant_id"] = serde_json::json!(aid);
@@ -276,28 +302,54 @@ async fn dispatch_prompt(
     }
 
     // Read the assistant text (join `text` content blocks by sequence order).
-    let text = Repos
+    let mwc = Repos
         .chat
         .core
         .get_message_with_content(assistant_message_id)
-        .await?
-        .map(|mwc| {
-            mwc.contents
+        .await?;
+
+    let (text, skipped_tools) = match mwc {
+        Some(mwc) => {
+            let text = mwc
+                .contents
                 .iter()
                 .filter(|c| c.content_type == "text")
                 .filter_map(|c| c.content.get("text").and_then(|t| t.as_str()))
                 .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
+                .join("\n");
+            // ITEM-17: the unattended-approval gate (mcp.rs) emits a denial
+            // tool_result marked `structured_content.unattended_denied` for each
+            // tool it skipped. Collect them for the run's skipped-tools report.
+            let skipped: Vec<super::models::SkippedTool> = mwc
+                .contents
+                .iter()
+                .filter(|c| c.content_type == "tool_result")
+                .filter_map(|c| {
+                    let sc = c.content.get("structured_content")?;
+                    if sc.get("unattended_denied").and_then(|v| v.as_bool()) == Some(true) {
+                        Some(super::models::SkippedTool {
+                            tool_name: sc
+                                .get("tool_name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("tool")
+                                .to_string(),
+                            reason: "requires approval; not permitted unattended".to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            (text, skipped)
+        }
+        None => (String::new(), Vec::new()),
+    };
 
     Ok(RawResult {
         text,
         workflow_run_id: None,
         conversation_id: Some(conversation_id),
-        // Populated by the unattended-approval gate (ITEM-13/17); empty until
-        // the MCP pipeline reports skipped tools for this headless run.
-        skipped_tools: Vec::new(),
+        skipped_tools,
     })
 }
 
@@ -340,6 +392,15 @@ async fn finalize_success(
         body.push_str(&format!("{} new since last run.\n\n", outcome.new_items.len()));
     }
     body.push_str(truncate(&raw.text, NOTIF_BODY_CAP));
+    // ITEM-17: be honest — a truncated result must not read as a clean success.
+    if !raw.skipped_tools.is_empty() {
+        let names: Vec<&str> = raw.skipped_tools.iter().map(|s| s.tool_name.as_str()).collect();
+        body.push_str(&format!(
+            "\n\n⚠ {} tool(s) skipped (not permitted unattended): {}. Pre-authorize them on the task to allow.",
+            raw.skipped_tools.len(),
+            names.join(", ")
+        ));
+    }
     let title = format!("Scheduled task '{}' ran", task.name);
 
     let interrupt = task.notify_mode == "always";

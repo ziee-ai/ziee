@@ -52,6 +52,44 @@ pub struct SendMessageRequestFields {
     /// Tool approval decisions for resuming after approval workflow
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_approvals: Option<Vec<crate::modules::mcp::chat_extension::ToolApprovalDecision>>,
+
+    /// UNATTENDED run (ITEM-13/DEC-17): set by the scheduler for a headless
+    /// firing (no user to approve). When true, a tool that would require
+    /// per-call approval AND is not in `unattended_allowed_tools` is DENIED
+    /// (synthesized denial tool_result) instead of creating an orphaned pending
+    /// approval + truncating the turn. Never set by an interactive client.
+    #[serde(default)]
+    pub unattended: bool,
+
+    /// Per-task allow-list for an unattended run: servers/tools the task's
+    /// creator pre-authorized to run without the approval speed-bump.
+    /// Fully-qualified path so the `compose_chat_extensions` macro resolves the
+    /// type at its (external) expansion site — mirrors how `mcp_config` above
+    /// uses a full `crate::…` path.
+    #[serde(default)]
+    pub unattended_allowed_tools:
+        Vec<crate::modules::mcp::chat_extension::extension::UnattendedToolGrant>,
+}
+
+/// One pre-authorized (server, tool?) grant for an unattended run. `tool_name`
+/// `None` allow-lists the whole server. Structurally identical to the
+/// scheduler's `AllowedTool` (deserialized from the same JSON), kept here so
+/// mcp has no scheduler dependency.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+pub struct UnattendedToolGrant {
+    pub server_id: uuid::Uuid,
+    #[serde(default)]
+    pub tool_name: Option<String>,
+}
+
+impl UnattendedToolGrant {
+    /// Does this grant list authorize the given (server, tool)?
+    pub fn list_allows(grants: &[UnattendedToolGrant], server_id: uuid::Uuid, tool_name: &str) -> bool {
+        grants.iter().any(|g| {
+            g.server_id == server_id
+                && g.tool_name.as_deref().map(|t| t == tool_name).unwrap_or(true)
+        })
+    }
 }
 
 /// Factory function to create the extension instance
