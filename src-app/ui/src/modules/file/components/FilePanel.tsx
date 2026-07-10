@@ -13,6 +13,8 @@ import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
 import { DeliverablePinButton } from '@/modules/file/components/DeliverablePinButton'
 import { editableKind } from '@/modules/file/utils/editableTypes'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 /** Hard cap on previewable file size — the SINGLE outer OOM backstop that
  *  prevents even fetching a pathological file. Files above this never trigger a
@@ -115,7 +117,13 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
   // Canvas edit mode — only offered for editable text types (markdown in v1) at
   // the head version. Entering edit replaces the read-only viewer body.
   const [editing, setEditing] = useState(false)
-  const canEdit = editableKind(file) !== null && !tooLarge
+  // Editing appends a new file version (a `files::upload` mutation), so the Edit
+  // affordance is gated on FilesUpload — a user without it must never reach the
+  // editable canvas (FileEditBody / CsvGridEditor), not merely 403 on Save. This
+  // mirrors the module's affordance-gating convention (FileCard's canDownload,
+  // FileUploadButton's canUpload).
+  const canUpload = usePermission(Permissions.FilesUpload)
+  const canEdit = editableKind(file) !== null && !tooLarge && canUpload
   // Exit edit mode when the panel is reused for a DIFFERENT file (the global
   // FilePreviewDrawer swaps the `file` prop without remounting FilePanel). Without
   // this, a stale editor could Save one file's content onto another. Belt-and-

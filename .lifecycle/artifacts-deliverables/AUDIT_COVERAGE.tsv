@@ -27,7 +27,7 @@ src-app/ui/src/components/kit/editor/LazyMarkdownEditor.tsx	1	35	state-managemen
 src-app/ui/src/components/kit/editor/MarkdownToolbar.tsx	1	65	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/components/kit/editor/types.ts	1	8	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/components/ui/testIds.generated.ts	1	1444	state-management,a11y,patterns-conformance,correctness,error-handling
-src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4405	i18n-copy,patterns-conformance,correctness
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4413	i18n-copy,patterns-conformance,correctness
 src-app/ui/src/dev/gallery/coverage.ts	1	535	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/dev/gallery/galleryCoverage.generated.ts	1	454	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/dev/gallery/mockApi.ts	1	406	state-management,a11y,patterns-conformance,correctness,error-handling
@@ -35,14 +35,14 @@ src-app/ui/src/dev/gallery/overlay-allowlist.json	1	46	patterns-conformance,corr
 src-app/ui/src/dev/gallery/overlay-registry.generated.json	1	1088	patterns-conformance,correctness,api-contract
 src-app/ui/src/dev/gallery/seededSurfaces.tsx	1	1368	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/dev/gallery/stateCoverage.ts	1	431	state-management,a11y,patterns-conformance,correctness,error-handling
-src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	4772	state-management,a11y,patterns-conformance,correctness,error-handling
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	4779	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/modules/chat/extensions/export/extension.tsx	1	229	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/modules/file/components/CanvasSelectionPopover.tsx	1	123	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/modules/file/components/CsvGridEditor.tsx	1	118	state-management,a11y,patterns-conformance,correctness,error-handling
-src-app/ui/src/modules/file/components/DeliverablePinButton.tsx	1	47	state-management,a11y,patterns-conformance,correctness,error-handling
+src-app/ui/src/modules/file/components/DeliverablePinButton.tsx	1	51	state-management,a11y,patterns-conformance,correctness,error-handling,perms/authz
 src-app/ui/src/modules/file/components/FileEditBody.tsx	1	243	state-management,a11y,patterns-conformance,correctness,error-handling
-src-app/ui/src/modules/file/components/FileExportMenu.tsx	1	91	state-management,a11y,patterns-conformance,correctness,error-handling
-src-app/ui/src/modules/file/components/FilePanel.tsx	1	254	state-management,a11y,patterns-conformance,correctness,error-handling
+src-app/ui/src/modules/file/components/FileExportMenu.tsx	1	96	state-management,a11y,patterns-conformance,correctness,error-handling,perms/authz
+src-app/ui/src/modules/file/components/FilePanel.tsx	1	262	state-management,a11y,patterns-conformance,correctness,error-handling,perms/authz
 src-app/ui/src/modules/file/components/FileVersionBar.tsx	1	129	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/modules/file/components/FileVersionDiff.tsx	1	63	state-management,a11y,patterns-conformance,correctness,error-handling
 src-app/ui/src/modules/file/module.tsx	1	84	state-management,a11y,patterns-conformance,correctness,error-handling

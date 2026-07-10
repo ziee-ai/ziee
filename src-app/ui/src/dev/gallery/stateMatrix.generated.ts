@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 338 surfaces carry renderable-state signals; 1965 signals total.
+// 339 surfaces carry renderable-state signals; 1966 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1410,8 +1410,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/components/DeliverablePinButton",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!convId", line: 16 },
-      { kind: "branch", condition: "isDeliverable", line: 44 },
+      { kind: "branch", condition: "!convId || !canEditConversation", line: 20 },
+      { kind: "branch", condition: "isDeliverable", line: 48 },
     ],
   },
   "modules/file/components/FileCard": {
@@ -1455,21 +1455,28 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "kind === 'code'", line: 203 },
     ],
   },
+  "modules/file/components/FileExportMenu": {
+    surface: "modules/file/components/FileExportMenu",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!canDownload", line: 43 },
+    ],
+  },
   "modules/file/components/FilePanel": {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 79 },
-      { kind: "branch", condition: "editableKind(file) === 'markdown'", line: 82 },
-      { kind: "branch", condition: "showFullPage", line: 87 },
-      { kind: "branch", condition: "!hideHeader", line: 142 },
-      { kind: "branch", condition: "canEdit && !editing && !isViewingOld", line: 156 },
-      { kind: "branch", condition: "tooLarge", line: 167 },
-      { kind: "branch", condition: "editing", line: 183 },
-      { kind: "branch", condition: "isViewingOld", line: 185 },
-      { kind: "branch", condition: "oldVersionText === null", line: 187 },
-      { kind: "branch", condition: "tooLarge", line: 202 },
-      { kind: "branch", condition: "Body", line: 226 },
+      { kind: "branch", condition: "HeaderActions", line: 81 },
+      { kind: "branch", condition: "editableKind(file) === 'markdown'", line: 84 },
+      { kind: "branch", condition: "showFullPage", line: 89 },
+      { kind: "branch", condition: "!hideHeader", line: 150 },
+      { kind: "branch", condition: "canEdit && !editing && !isViewingOld", line: 164 },
+      { kind: "branch", condition: "tooLarge", line: 175 },
+      { kind: "branch", condition: "editing", line: 191 },
+      { kind: "branch", condition: "isViewingOld", line: 193 },
+      { kind: "branch", condition: "oldVersionText === null", line: 195 },
+      { kind: "branch", condition: "tooLarge", line: 210 },
+      { kind: "branch", condition: "Body", line: 234 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {

@@ -1,7 +1,8 @@
 import { Download } from 'lucide-react'
 import { Button, Popover, message } from '@/components/ui'
 import { ApiClient } from '@/api-client'
-import type { File as FileEntity } from '@/api-client/types'
+import { Permissions, type File as FileEntity } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 
 interface ExportFormat {
   key: string
@@ -35,7 +36,11 @@ const EXPORT_FORMATS: ExportFormat[] = [
  * Download button, which returns the original bytes untouched.
  */
 export function FileExportMenu({ file }: { file: FileEntity }) {
+  // Export downloads server-converted content (`files::download`). Hide the
+  // affordance entirely for users lacking the permission — not just 403 on use.
+  const canDownload = usePermission(Permissions.FilesDownload)
   const stem = file.filename.replace(/\.[^.]+$/, '') || file.filename
+  if (!canDownload) return null
 
   const doExport = async (fmt: ExportFormat) => {
     try {

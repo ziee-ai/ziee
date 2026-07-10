@@ -6,6 +6,35 @@ the full static frontend gate are GREEN in BOTH workspaces; the e2e specs run on
 full-page canvas surface, including the two v1 features un-deferred this round (image
 paste-embed, ITEM-21; selection→ask/edit popover, ITEM-15/16).
 
+## Permission gating (pre-merge verification — all four PERMISSION_GATING.md layers)
+
+The feature adds **no new permission** (DEC-1): every surface rides the existing
+`files::*` / `conversations::*` gating, enforced at the backend. A pre-merge sweep
+confirmed the client also **hides** each affordance for users lacking the permission
+(not merely 403-on-use), matching the backend `RequirePermissions`:
+
+- **Layer 1 (nav/slot):** the file module registers no nav slots and the deliverables
+  surface adds none — nothing to gate.
+- **Layer 2 (route):** `/files/:fileId` is `requiresAuth` (pre-existing module posture);
+  its content fetches are backend-gated (`files::read`/`download` → 403/empty), so an
+  unpermitted user gets no content.
+- **Layer 3 (affordances) — 3 gaps found + FIXED to the module's `usePermission` convention:**
+  - `FilePanel` **Edit toggle** — was type/size-only; now also `usePermission(FilesUpload)`
+    (Save appends a version = `files::upload`, upload.rs:294). An unpermitted user can no
+    longer enter the editable canvas (FileEditBody / CsvGridEditor).
+  - `FileExportMenu` — now `usePermission(FilesDownload)` (export_file requires
+    `files::download`, export.rs:36); renders `null` otherwise.
+  - `DeliverablePinButton` — now `usePermission(ConversationsEdit)` (pin/unpin require
+    `conversations::edit`, deliverables.rs:194/223); renders `null` otherwise.
+  - Conversation-export "+" menu: requires `messages::read` (export.rs:123), which is the
+    baseline to see any chat — adequately gated by its surrounding surface (no change).
+- **Layer 4 (canvas renderer):** the editable body is reachable only via the now-gated
+  Edit toggle; the read-only viewer renders for any authed user with backend-gated data.
+
+Verified: `npm run check` PASS in both workspaces (incl. state-matrix regen for the new
+permission branches), e2e 7/7 (admin retains all affordances), gallery admin-seed
+(`is_admin` short-circuit) still renders every affordance → 0 new HIGH.
+
 ## Frontend gate (both workspaces)
 
 - `npm run check (ui): PASS` — tsc + biome guardrails + lint:colors/settings-field/adjacent-inline/icon-action/logical-direction/tooltip-placement + check:kit-manifest/testid-registry/design-spec/gallery-coverage/gallery-crawl/state-matrix/overlay-registry.

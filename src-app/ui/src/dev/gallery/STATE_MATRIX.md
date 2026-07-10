@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **338** surfaces carry at least one renderable-state signal.
-- **1965** signals total: 1553 branch, 117 empty, 101 error, 103 loading, 89 overlay, 2 panel.
+- **339** surfaces carry at least one renderable-state signal.
+- **1966** signals total: 1554 branch, 117 empty, 101 error, 103 loading, 89 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -1582,8 +1582,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!convId` | 16 |
-| branch | `isDeliverable` | 44 |
+| branch | `!convId \|\| !canEditConversation` | 20 |
+| branch | `isDeliverable` | 48 |
 
 ### `modules/file/components/FileCard`
 
@@ -1628,23 +1628,31 @@ Required states: `error`
 | branch | `kind === 'csv'` | 196 |
 | branch | `kind === 'code'` | 203 |
 
+### `modules/file/components/FileExportMenu`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!canDownload` | 43 |
+
 ### `modules/file/components/FilePanel`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 79 |
-| branch | `editableKind(file) === 'markdown'` | 82 |
-| branch | `showFullPage` | 87 |
-| branch | `!hideHeader` | 142 |
-| branch | `canEdit && !editing && !isViewingOld` | 156 |
-| branch | `tooLarge` | 167 |
-| branch | `editing` | 183 |
-| branch | `isViewingOld` | 185 |
-| branch | `oldVersionText === null` | 187 |
-| branch | `tooLarge` | 202 |
-| branch | `Body` | 226 |
+| branch | `HeaderActions` | 81 |
+| branch | `editableKind(file) === 'markdown'` | 84 |
+| branch | `showFullPage` | 89 |
+| branch | `!hideHeader` | 150 |
+| branch | `canEdit && !editing && !isViewingOld` | 164 |
+| branch | `tooLarge` | 175 |
+| branch | `editing` | 191 |
+| branch | `isViewingOld` | 193 |
+| branch | `oldVersionText === null` | 195 |
+| branch | `tooLarge` | 210 |
+| branch | `Body` | 234 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
