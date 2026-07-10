@@ -9,10 +9,8 @@ use crate::{
     },
     traits::AIProvider,
 };
-use async_stream::stream;
 use async_trait::async_trait;
 use futures_core::Stream;
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::pin::Pin;
@@ -508,16 +506,6 @@ impl AnthropicProvider {
         }
     }
 
-    /// True when the model rejects sampling params (`temperature`/`top_p`/`top_k`)
-    /// — Opus 4.7/4.8 family, per the model registry. Unknown models default to
-    /// allowed (back-compat); a brand-new restricted model 400s until registered.
-    fn sampling_restricted(model: &str) -> bool {
-        crate::model_registry::lookup("anthropic", model)
-            .and_then(|c| c.supports_sampling_params)
-            .map(|ok| !ok)
-            .unwrap_or(false)
-    }
-
     /// Map a unified effort level to the Anthropic `output_config.effort` value.
     /// `Dynamic` → `None` (let adaptive thinking decide).
     fn effort_str(effort: Option<crate::models::ThinkingEffort>) -> Option<&'static str> {
@@ -578,7 +566,15 @@ impl AnthropicProvider {
             body["stream"] = json!(true);
         }
 
-        let sampling_ok = !Self::sampling_restricted(&request.model);
+        // Resolve the parameter contract (capability + thinking reconciliation)
+        // up front so the wire body is correct by construction.
+        let contract = request.model_caps.clone().unwrap_or_default();
+        let rp = crate::param_policy::resolve(
+            crate::param_policy::ProviderFamily::Anthropic,
+            &request.model,
+            request,
+            &contract,
+        );
         let cache_on = !request.disable_prompt_cache;
 
         // System prompt. Cache the stable tools+system prefix by rendering system
@@ -595,16 +591,20 @@ impl AnthropicProvider {
             }
         }
 
-        // Sampling params (gated for restricted models). Anthropic accepts at most
-        // one of temperature / top_p — prefer temperature.
-        if sampling_ok {
+        // Sampling params. Eligibility is resolved by the param-policy layer
+        // (restricted models + active-thinking omit them). Anthropic accepts at
+        // most one of temperature / top_p — prefer temperature.
+        use crate::param_policy::UnifiedParam;
+        if rp.allows(UnifiedParam::Temperature) {
             match (request.temperature, request.top_p) {
                 (Some(temp), _) => body["temperature"] = json!(temp),
                 (None, Some(top_p)) => body["top_p"] = json!(top_p),
                 (None, None) => {}
             }
-            if let Some(top_k) = request.top_k {
-                body["top_k"] = json!(top_k);
+            if rp.allows(UnifiedParam::TopK) {
+                if let Some(top_k) = request.top_k {
+                    body["top_k"] = json!(top_k);
+                }
             }
         }
 
@@ -659,6 +659,210 @@ impl AnthropicProvider {
 
 }
 
+/// Anthropic SSE response adapter — maps Anthropic's `message_start` /
+/// `message_delta` / `content_block_*` / `error` events into unified chunks. The
+/// generic driver (`super::sse`) owns the decode/buffer/split scaffolding.
+struct AnthropicSse;
+
+/// Anthropic reports input + cache tokens on `message_start` and the final
+/// output tokens on `message_delta`, so they must be accumulated across events.
+#[derive(Default)]
+struct AnthropicSseState {
+    usage_input: u32,
+    usage_cache_read: Option<u32>,
+    usage_cache_creation: Option<u32>,
+}
+
+impl super::sse::SseAdapter for AnthropicSse {
+    type State = AnthropicSseState;
+
+    fn delimiters(&self) -> &'static [&'static str] {
+        &["\n\n"]
+    }
+
+    fn label(&self) -> &'static str {
+        "Anthropic"
+    }
+
+    fn map_event(&self, event_block: &str, state: &mut Self::State) -> super::sse::EventOutcome {
+        use crate::models::{ContentBlockDelta, FinishReason, StreamChatChunk, StreamUsage};
+        use crate::param_policy::ProviderFamily;
+
+        let mut items: Vec<Result<StreamChatChunk, ProviderError>> = Vec::new();
+
+        // Anthropic events are "event: <type>\ndata: {...}"; process the first
+        // `data:` line in the block.
+        for line in event_block.lines() {
+            let Some(data) = line.strip_prefix("data: ") else {
+                continue;
+            };
+            if data == "[DONE]" {
+                break;
+            }
+
+            // Truncate at a char boundary for trace logging.
+            let truncated = data
+                .char_indices()
+                .nth(200)
+                .map(|(i, _)| &data[..i])
+                .unwrap_or(data);
+            tracing::trace!("Anthropic SSE event: {}", truncated);
+
+            if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {
+                tracing::trace!("Anthropic: Parsed event type: {}", chunk_data.event_type);
+
+                // Error events.
+                if chunk_data.event_type == "error" {
+                    if let Some(error) = chunk_data.error {
+                        items.push(Err(ProviderError::from_anthropic_error(
+                            &error.error_type,
+                            &error.message,
+                        )));
+                        break;
+                    }
+                }
+
+                // Capture input + cache tokens from message_start.
+                if chunk_data.event_type == "message_start" {
+                    if let Some(stream_usage) = chunk_data.usage.as_ref() {
+                        state.usage_input = stream_usage.input_tokens.unwrap_or(0);
+                        state.usage_cache_read = stream_usage.cache_read_input_tokens;
+                        state.usage_cache_creation = stream_usage.cache_creation_input_tokens;
+                    }
+                }
+
+                // message_delta → usage + canonical finish reason.
+                if chunk_data.event_type == "message_delta" {
+                    let mut finish_reason = None;
+                    let mut usage = None;
+
+                    if let Some(message_delta) = chunk_data.message {
+                        finish_reason = message_delta
+                            .stop_reason
+                            .map(|r| FinishReason::canonicalize(ProviderFamily::Anthropic, &r));
+                    }
+
+                    if let Some(stream_usage) = chunk_data.usage {
+                        let output = stream_usage.output_tokens.unwrap_or(0);
+                        // Prefer the delta's input if present, else the value
+                        // captured at message_start.
+                        let delta_input = stream_usage.input_tokens.unwrap_or(0);
+                        let input = if delta_input > 0 {
+                            delta_input
+                        } else {
+                            state.usage_input
+                        };
+                        usage = Some(StreamUsage {
+                            prompt_tokens: input,
+                            completion_tokens: output,
+                            total_tokens: input + output,
+                            reasoning_tokens: None,
+                            cache_read_input_tokens: state
+                                .usage_cache_read
+                                .or(stream_usage.cache_read_input_tokens),
+                            cache_creation_input_tokens: state
+                                .usage_cache_creation
+                                .or(stream_usage.cache_creation_input_tokens),
+                        });
+                    }
+
+                    if finish_reason.is_some() || usage.is_some() {
+                        items.push(Ok(StreamChatChunk {
+                            content: Vec::new(),
+                            finish_reason,
+                            usage,
+                            refusal: None,
+                            safety_ratings: Vec::new(),
+                            safety_blocked: false,
+                        }));
+                    }
+                }
+
+                // content_block_start → tool_use open / redacted_thinking.
+                if chunk_data.event_type == "content_block_start" {
+                    if let Some(content_block) = chunk_data.content_block {
+                        if content_block.block_type == "tool_use" {
+                            let index = chunk_data.index.unwrap_or(0);
+                            items.push(Ok(StreamChatChunk {
+                                content: vec![ContentBlockDelta::ToolUseDelta {
+                                    index,
+                                    id: content_block.id,
+                                    name: content_block.name,
+                                    input_delta: None,
+                                }],
+                                finish_reason: None,
+                                usage: None,
+                                refusal: None,
+                                safety_ratings: Vec::new(),
+                                safety_blocked: false,
+                            }));
+                        } else if content_block.block_type == "redacted_thinking" {
+                            if let Some(data) = content_block.data {
+                                let index = chunk_data.index.unwrap_or(0);
+                                items.push(Ok(StreamChatChunk {
+                                    content: vec![ContentBlockDelta::RedactedThinkingDelta {
+                                        index,
+                                        data,
+                                    }],
+                                    finish_reason: None,
+                                    usage: None,
+                                    refusal: None,
+                                    safety_ratings: Vec::new(),
+                                    safety_blocked: false,
+                                }));
+                            }
+                        }
+                    }
+                }
+
+                // content_block_delta → text / thinking / signature / tool json.
+                if chunk_data.event_type == "content_block_delta" {
+                    if let Some(delta) = chunk_data.delta {
+                        let index = chunk_data.index.unwrap_or(0);
+                        let content_delta = match delta.delta_type.as_str() {
+                            "text_delta" => delta
+                                .text
+                                .map(|text| ContentBlockDelta::TextDelta { index, delta: text }),
+                            "thinking_delta" => delta.thinking.map(|thinking| {
+                                ContentBlockDelta::ThinkingDelta {
+                                    index,
+                                    delta: thinking,
+                                }
+                            }),
+                            "signature_delta" => delta.signature.map(|signature| {
+                                ContentBlockDelta::ThinkingSignatureDelta { index, signature }
+                            }),
+                            "input_json_delta" => delta.partial_json.map(|partial_json| {
+                                ContentBlockDelta::ToolUseDelta {
+                                    index,
+                                    id: None,
+                                    name: None,
+                                    input_delta: Some(partial_json),
+                                }
+                            }),
+                            _ => None, // Ignore unknown delta types
+                        };
+
+                        if let Some(delta) = content_delta {
+                            items.push(Ok(StreamChatChunk {
+                                content: vec![delta],
+                                finish_reason: None,
+                                usage: None,
+                                refusal: None,
+                                safety_ratings: Vec::new(),
+                                safety_blocked: false,
+                            }));
+                        }
+                    }
+                }
+            }
+            break; // Only process the first data line in the block.
+        }
+
+        super::sse::EventOutcome::emit(items)
+    }
+}
+
 #[async_trait]
 impl AIProvider for AnthropicProvider {
     fn name(&self) -> &str {
@@ -694,237 +898,15 @@ impl AIProvider for AnthropicProvider {
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+            return Err(ProviderError::from_anthropic_http(status.as_u16(), &error_text));
         }
 
-        // Get byte stream
-        let byte_stream = response.bytes_stream();
-
-        // Create SSE parser stream
-        let output_stream = stream! {
-            let mut buffer = String::new();
-            let mut decoder = super::Utf8StreamDecoder::default();
-            let mut byte_stream = Box::pin(byte_stream);
-
-            // Usage accumulators: Anthropic reports input + cache tokens on
-            // `message_start` and the final output tokens on `message_delta`.
-            let mut usage_input: u32 = 0;
-            let mut usage_cache_read: Option<u32> = None;
-            let mut usage_cache_creation: Option<u32> = None;
-
-            while let Some(chunk_result) = byte_stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        // Decode incrementally so a multi-byte UTF-8 char split
-                        // across chunk boundaries doesn't abort the stream.
-                        buffer.push_str(&decoder.decode(&chunk));
-
-                        // Process complete SSE events (Anthropic format: "event: ...\ndata: {...}\n\n")
-                        while let Some(index) = buffer.find("\n\n") {
-                            let event_block = buffer[..index].to_string();
-                            buffer.drain(..=index + 1);
-
-                            // Extract data line from event block
-                            for line in event_block.lines() {
-                                if line.starts_with("data: ") {
-                                    let data = &line[6..]; // Skip "data: "
-
-                                    if data == "[DONE]" {
-                                        break;
-                                    }
-
-                                    // Truncate at a char boundary for trace logging.
-                                    let truncated = data.char_indices().nth(200).map(|(i, _)| &data[..i]).unwrap_or(data);
-                                    tracing::trace!("Anthropic SSE event: {}", truncated);
-
-                                    // Try to parse as JSON
-                                    if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {
-                                        tracing::trace!("Anthropic: Parsed event type: {}", chunk_data.event_type);
-                                        // Handle error events
-                                        if chunk_data.event_type == "error" {
-                                            if let Some(error) = chunk_data.error {
-                                                yield Err(ProviderError::from_anthropic_error(
-                                                    &error.error_type,
-                                                    &error.message
-                                                ));
-                                                break;
-                                            }
-                                        }
-
-                                        // Capture input + cache tokens from message_start.
-                                        if chunk_data.event_type == "message_start" {
-                                            if let Some(stream_usage) = chunk_data.usage.as_ref() {
-                                                usage_input = stream_usage.input_tokens.unwrap_or(0);
-                                                usage_cache_read = stream_usage.cache_read_input_tokens;
-                                                usage_cache_creation = stream_usage.cache_creation_input_tokens;
-                                            }
-                                        }
-
-                                        // Handle message_delta for usage and finish reason
-                                        if chunk_data.event_type == "message_delta" {
-                                            let mut finish_reason = None;
-                                            let mut usage = None;
-
-                                            if let Some(message_delta) = chunk_data.message {
-                                                finish_reason = message_delta.stop_reason;
-                                            }
-
-                                            if let Some(stream_usage) = chunk_data.usage {
-                                                let output = stream_usage.output_tokens.unwrap_or(0);
-                                                // Prefer the delta's input if present, else the value
-                                                // captured at message_start.
-                                                let delta_input = stream_usage.input_tokens.unwrap_or(0);
-                                                let input = if delta_input > 0 { delta_input } else { usage_input };
-                                                usage = Some(crate::models::StreamUsage {
-                                                    prompt_tokens: input,
-                                                    completion_tokens: output,
-                                                    total_tokens: input + output,
-                                                    reasoning_tokens: None,
-                                                    cache_read_input_tokens: usage_cache_read
-                                                        .or(stream_usage.cache_read_input_tokens),
-                                                    cache_creation_input_tokens: usage_cache_creation
-                                                        .or(stream_usage.cache_creation_input_tokens),
-                                                });
-                                            }
-
-                                            if finish_reason.is_some() || usage.is_some() {
-                                                yield Ok(StreamChatChunk {
-                                                    content: Vec::new(),
-                                                    finish_reason,
-                                                    usage,
-                                                    refusal: None,
-                                                    safety_ratings: Vec::new(),
-                                                    safety_blocked: false,
-                                                });
-                                            }
-                                        }
-
-                                        // Handle content_block_start for tool_use
-                                        if chunk_data.event_type == "content_block_start" {
-                                            tracing::trace!("Anthropic: Processing content_block_start, has content_block: {}, block_type: {:?}",
-                                                chunk_data.content_block.is_some(),
-                                                chunk_data.content_block.as_ref().map(|b| b.block_type.as_str()));
-
-                                            if let Some(content_block) = chunk_data.content_block {
-                                                if content_block.block_type == "tool_use" {
-                                                    let index = chunk_data.index.unwrap_or(0);
-                                                    tracing::trace!(
-                                                        "Anthropic: Tool use start at index {}: id={:?}, name={:?}",
-                                                        index,
-                                                        content_block.id,
-                                                        content_block.name
-                                                    );
-
-                                                    yield Ok(StreamChatChunk {
-                                                        content: vec![crate::models::ContentBlockDelta::ToolUseDelta {
-                                                            index,
-                                                            id: content_block.id,
-                                                            name: content_block.name,
-                                                            input_delta: None,
-                                                        }],
-                                                        finish_reason: None,
-                                                        usage: None,
-                                                        refusal: None,
-                                                        safety_ratings: Vec::new(),
-                                                        safety_blocked: false,
-                                                    });
-                                                } else if content_block.block_type == "redacted_thinking" {
-                                                    if let Some(data) = content_block.data {
-                                                        let index = chunk_data.index.unwrap_or(0);
-                                                        yield Ok(StreamChatChunk {
-                                                            content: vec![crate::models::ContentBlockDelta::RedactedThinkingDelta {
-                                                                index,
-                                                                data,
-                                                            }],
-                                                            finish_reason: None,
-                                                            usage: None,
-                                                            refusal: None,
-                                                            safety_ratings: Vec::new(),
-                                                            safety_blocked: false,
-                                                        });
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Handle content_block_delta
-                                        if chunk_data.event_type == "content_block_delta" {
-                                            if let Some(delta) = chunk_data.delta {
-                                                let index = chunk_data.index.unwrap_or(0);
-                                                let content_delta = match delta.delta_type.as_str() {
-                                                    "text_delta" => {
-                                                        delta.text.map(|text| {
-                                                            crate::models::ContentBlockDelta::TextDelta {
-                                                                index,
-                                                                delta: text,
-                                                            }
-                                                        })
-                                                    }
-                                                    "thinking_delta" => {
-                                                        delta.thinking.map(|thinking| {
-                                                            crate::models::ContentBlockDelta::ThinkingDelta {
-                                                                index,
-                                                                delta: thinking,
-                                                            }
-                                                        })
-                                                    }
-                                                    "signature_delta" => {
-                                                        delta.signature.map(|signature| {
-                                                            crate::models::ContentBlockDelta::ThinkingSignatureDelta {
-                                                                index,
-                                                                signature,
-                                                            }
-                                                        })
-                                                    }
-                                                    "input_json_delta" => {
-                                                        delta.partial_json.map(|partial_json| {
-                                                            crate::models::ContentBlockDelta::ToolUseDelta {
-                                                                index,
-                                                                id: None,
-                                                                name: None,
-                                                                input_delta: Some(partial_json),
-                                                            }
-                                                        })
-                                                    }
-                                                    _ => None, // Ignore unknown delta types
-                                                };
-
-                                                if let Some(delta) = content_delta {
-                                                    yield Ok(StreamChatChunk {
-                                                        content: vec![delta],
-                                                        finish_reason: None,
-                                                        usage: None,
-                                                        refusal: None,
-                                                        safety_ratings: Vec::new(),
-                                                        safety_blocked: false,
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    }
-                                    break; // Only process first data line in block
-                                }
-                            }
-                        }
-
-                        // Guard against an upstream that never emits an event
-                        // delimiter (would otherwise grow `buffer` until OOM).
-                        if buffer.len() > super::MAX_SSE_BUFFER_BYTES {
-                            yield Err(ProviderError::streaming(
-                                "Anthropic: SSE buffer exceeded maximum size",
-                            ));
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        yield Err(ProviderError::Network(e));
-                        break;
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(output_stream))
+        // Drive the SSE response through the shared generic driver; the
+        // Anthropic-specific event mapping lives in `AnthropicSse::map_event`.
+        Ok(Box::pin(super::sse::drive_sse(
+            response.bytes_stream(),
+            AnthropicSse,
+        )))
     }
 
     async fn embeddings(
@@ -1157,6 +1139,42 @@ mod tests {
             let body = AnthropicProvider::build_request_body(&r, true);
             assert_eq!(body["temperature"], 0.5);
             assert!(body.get("top_p").is_none(), "never both temperature and top_p");
+        }
+
+        // TEST-6: sonnet-5 (catalog), a brand-new opus (family pattern), and
+        // thinking-active all omit sampling; a row override can re-enable it.
+        #[test]
+        fn sonnet5_family_pattern_and_row_override_gating() {
+            // sonnet-5: catalog says sampling-restricted.
+            let mut r = req("claude-sonnet-5");
+            r.temperature = Some(0.5);
+            r.top_k = Some(40);
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert!(body.get("temperature").is_none());
+            assert!(body.get("top_k").is_none());
+
+            // A brand-new opus id absent from the catalog: family pattern gates it.
+            let mut r = req("claude-opus-4-9");
+            r.temperature = Some(0.5);
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert!(body.get("temperature").is_none(), "opus family pattern omits sampling");
+
+            // Thinking active on an otherwise-allowed model omits sampling too.
+            let mut r = req("claude-sonnet-4-6");
+            r.temperature = Some(0.5);
+            r.thinking = Some(ThinkingConfig::adaptive_with_effort(ThinkingEffort::High));
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert!(body.get("temperature").is_none(), "adaptive thinking omits sampling");
+
+            // Row override RE-ENABLES sampling on sonnet-5.
+            let mut r = req("claude-sonnet-5");
+            r.temperature = Some(0.5);
+            r.model_caps = Some(crate::param_policy::ModelParamContract {
+                supports_sampling_params: Some(true),
+                ..Default::default()
+            });
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert_eq!(body["temperature"], 0.5, "row override wins over catalog");
         }
 
         #[test]

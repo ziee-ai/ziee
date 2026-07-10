@@ -20,7 +20,6 @@ use crate::{
 use async_stream::stream;
 use async_trait::async_trait;
 use futures_core::Stream;
-use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -28,10 +27,6 @@ use std::pin::Pin;
 
 /// OpenAI provider (zero-sized, stateless)
 pub struct OpenAIProvider;
-
-/// Models that require non-streaming due to organization verification requirements
-/// These models require org verification for streaming, so we use non-streaming internally
-const MODELS_REQUIRING_NON_STREAMING: &[&str] = &["gpt-5", "gpt-5-mini"];
 
 /// OpenAI API message format
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -313,7 +308,7 @@ impl OpenAIProvider {
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+            return Err(ProviderError::from_openai_http(status.as_u16(), &error_text));
         }
 
         // Parse response
@@ -373,7 +368,12 @@ impl OpenAIProvider {
                 if !content_deltas.is_empty() || message.refusal.is_some() {
                     yield Ok(StreamChatChunk {
                         content: content_deltas,
-                        finish_reason: choice.finish_reason.clone(),
+                        finish_reason: choice.finish_reason.clone().map(|r| {
+                            crate::models::FinishReason::canonicalize(
+                                crate::param_policy::ProviderFamily::OpenAiCompat,
+                                &r,
+                            )
+                        }),
                         usage: None,
                         refusal: message.refusal.clone(),
                         safety_ratings: Vec::new(),
@@ -641,17 +641,22 @@ impl OpenAIProvider {
         }
     }
 
-    /// Pure request-body assembly (no HTTP), so the wire shape is unit-testable.
-    /// `requires_non_streaming` is the gpt-5 org-verification workaround flag.
-    fn build_request_body(request: &ChatRequest, requires_non_streaming: bool) -> serde_json::Value {
+    /// Pure request-body assembly (no HTTP), driven by the resolved parameter
+    /// policy so the wire shape is correct by construction and unit-testable.
+    fn build_request_body(
+        request: &ChatRequest,
+        rp: &crate::param_policy::ResolvedParams,
+    ) -> serde_json::Value {
         use crate::models::{ThinkingEffort, ThinkingMode};
+        use crate::param_policy::UnifiedParam;
 
         let messages = Self::convert_messages(&request.messages);
 
+        let stream = !rp.disable_stream;
         let mut body = json!({
             "model": request.model,
             "messages": messages,
-            "stream": !requires_non_streaming,
+            "stream": stream,
         });
 
         // When streaming, ask the provider to emit a final usage chunk
@@ -659,66 +664,67 @@ impl OpenAIProvider {
         // backends omit `usage` from streamed responses, so token accounting
         // (chat cost, workflow run `total_tokens`) silently reads 0. The
         // streaming parser already consumes the usage chunk when present.
-        if !requires_non_streaming {
+        if stream {
             body["stream_options"] = json!({ "include_usage": true });
         }
 
-        // Thinking → reasoning_effort. A reasoning model rejects temperature/top_p
-        // and the penalties, so gate those below.
-        let is_reasoning_model = match &request.thinking {
-            Some(thinking) if thinking.mode != ThinkingMode::Disabled => {
-                if let Some(effort) = thinking.effort {
-                    let effort_str = match effort {
-                        ThinkingEffort::Minimal => "minimal",
-                        ThinkingEffort::Low => "low",
-                        ThinkingEffort::Medium => "medium",
-                        // OpenAI reasoning_effort tops out at "high".
-                        ThinkingEffort::High | ThinkingEffort::XHigh | ThinkingEffort::Max => "high",
-                        ThinkingEffort::Dynamic => "medium",
-                    };
-                    body["reasoning_effort"] = json!(effort_str);
-                }
-                if let Some(max_tokens) = request.max_tokens {
-                    body["max_completion_tokens"] = json!(max_tokens);
-                }
-                true
-            }
-            _ => false,
-        };
-
-        // temperature / top_p / penalties — non-reasoning models only, and not on
-        // gpt-5 (which only accepts default sampling).
-        if !is_reasoning_model {
-            if !requires_non_streaming {
-                if let Some(temp) = request.temperature {
-                    body["temperature"] = json!(temp);
-                }
-                if let Some(top_p) = request.top_p {
-                    body["top_p"] = json!(top_p);
-                }
-                if let Some(fp) = request.frequency_penalty {
-                    body["frequency_penalty"] = json!(fp);
-                }
-                if let Some(pp) = request.presence_penalty {
-                    body["presence_penalty"] = json!(pp);
-                }
-            }
-            if let Some(max_tokens) = request.max_tokens {
-                if requires_non_streaming {
-                    body["max_completion_tokens"] = json!(max_tokens);
-                } else {
-                    body["max_tokens"] = json!(max_tokens);
+        // reasoning_effort — for reasoning models when a thinking effort is set.
+        if rp.use_reasoning_effort {
+            if let Some(thinking) = &request.thinking {
+                if thinking.mode != ThinkingMode::Disabled {
+                    if let Some(effort) = thinking.effort {
+                        let effort_str = match effort {
+                            ThinkingEffort::Minimal => "minimal",
+                            ThinkingEffort::Low => "low",
+                            ThinkingEffort::Medium => "medium",
+                            // OpenAI reasoning_effort tops out at "high".
+                            ThinkingEffort::High | ThinkingEffort::XHigh | ThinkingEffort::Max => {
+                                "high"
+                            }
+                            ThinkingEffort::Dynamic => "medium",
+                        };
+                        body["reasoning_effort"] = json!(effort_str);
+                    }
                 }
             }
         }
 
-        // seed / stop: the gpt-5 org-verification family rejects these (only
-        // default sampling + max_completion_tokens), so gate them like temp/top_p.
-        // (OpenAI Chat Completions has no top_k — it is intentionally omitted.)
-        if !requires_non_streaming {
+        // Sampling params — emitted only when the policy allows them (reasoning
+        // models + the gpt-5 org-verification family omit them). OpenAI Chat
+        // Completions has no top_k, so it is never in the OpenAI family's set.
+        if rp.allows(UnifiedParam::Temperature) {
+            if let Some(temp) = request.temperature {
+                body["temperature"] = json!(temp);
+            }
+        }
+        if rp.allows(UnifiedParam::TopP) {
+            if let Some(top_p) = request.top_p {
+                body["top_p"] = json!(top_p);
+            }
+        }
+        if rp.allows(UnifiedParam::FrequencyPenalty) {
+            if let Some(fp) = request.frequency_penalty {
+                body["frequency_penalty"] = json!(fp);
+            }
+        }
+        if rp.allows(UnifiedParam::PresencePenalty) {
+            if let Some(pp) = request.presence_penalty {
+                body["presence_penalty"] = json!(pp);
+            }
+        }
+        // Max output tokens under the resolved wire field name
+        // (`max_tokens` vs `max_completion_tokens`).
+        if rp.allows(UnifiedParam::MaxTokens) {
+            if let Some(max_tokens) = request.max_tokens {
+                body[rp.max_tokens_field.key()] = json!(max_tokens);
+            }
+        }
+        if rp.allows(UnifiedParam::Seed) {
             if let Some(seed) = request.seed {
                 body["seed"] = json!(seed);
             }
+        }
+        if rp.allows(UnifiedParam::Stop) {
             if let Some(stop) = &request.stop {
                 if !stop.is_empty() {
                     body["stop"] = json!(stop);
@@ -745,6 +751,141 @@ impl OpenAIProvider {
 
 }
 
+/// OpenAI-compatible SSE response adapter — maps `choices[].delta` (text /
+/// reasoning / tool-call deltas), the final `usage` chunk, and `finish_reason`
+/// into unified chunks. The generic driver owns the scaffolding.
+struct OpenAiSse;
+
+/// OpenAI emits reasoning + answer in the same delta object with no per-stream
+/// index. Once reasoning appears, text shifts to index 1 and tools to +2 so the
+/// answer isn't merged into the thinking block; the offsets freeze on first real
+/// content so a tool call keeps ONE index across chunks.
+#[derive(Default)]
+struct OpenAiSseState {
+    reasoning_seen: bool,
+    frozen_offsets: Option<(usize, usize)>,
+}
+
+impl super::sse::SseAdapter for OpenAiSse {
+    type State = OpenAiSseState;
+
+    fn delimiters(&self) -> &'static [&'static str] {
+        &["\n\n"]
+    }
+
+    fn label(&self) -> &'static str {
+        "OpenAI"
+    }
+
+    fn map_event(&self, event: &str, state: &mut Self::State) -> super::sse::EventOutcome {
+        use crate::models::{ContentBlockDelta, FinishReason, StreamChatChunk, StreamUsage};
+        use crate::param_policy::ProviderFamily;
+
+        let Some(data) = super::sse::single_data_line(event) else {
+            return super::sse::EventOutcome::empty();
+        };
+        if data == "[DONE]" {
+            return super::sse::EventOutcome::emit_then_break(Vec::new());
+        }
+
+        let mut items: Vec<Result<StreamChatChunk, ProviderError>> = Vec::new();
+
+        if let Ok(chunk_data) = serde_json::from_str::<OpenAIStreamChunk>(data) {
+            // Usage metadata (final chunk).
+            if let Some(usage) = chunk_data.usage {
+                items.push(Ok(StreamChatChunk {
+                    content: Vec::new(),
+                    finish_reason: None,
+                    usage: Some(StreamUsage {
+                        prompt_tokens: usage.prompt_tokens,
+                        completion_tokens: usage.completion_tokens,
+                        total_tokens: usage.total_tokens,
+                        reasoning_tokens: usage
+                            .completion_tokens_details
+                            .and_then(|d| d.reasoning_tokens),
+                        cache_read_input_tokens: usage
+                            .prompt_tokens_details
+                            .and_then(|d| d.cached_tokens),
+                        cache_creation_input_tokens: None,
+                    }),
+                    refusal: None,
+                    safety_ratings: Vec::new(),
+                    safety_blocked: false,
+                }));
+            }
+
+            if let Some(choice) = chunk_data.choices.first() {
+                let delta = &choice.delta;
+                let mut content_deltas = Vec::new();
+
+                // Reasoning content delta (DeepSeek-R1 style) → thinking.
+                if let Some(ref reasoning) = delta.reasoning_content {
+                    if !reasoning.is_empty() {
+                        state.reasoning_seen = true;
+                        content_deltas.push(ContentBlockDelta::ThinkingDelta {
+                            index: 0,
+                            delta: reasoning.clone(),
+                        });
+                    }
+                }
+
+                // Index offset so text/tools never collide with the thinking
+                // block at index 0. Freeze on first real content.
+                let has_content = delta.content.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+                let has_tools = delta.tool_calls.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+                let (text_index, tool_offset) = if has_content || has_tools {
+                    *state
+                        .frozen_offsets
+                        .get_or_insert(if state.reasoning_seen { (1, 2) } else { (0, 0) })
+                } else {
+                    (0, 0) // unused this chunk
+                };
+
+                if let Some(ref text) = delta.content {
+                    if !text.is_empty() {
+                        content_deltas.push(ContentBlockDelta::TextDelta {
+                            index: text_index,
+                            delta: text.clone(),
+                        });
+                    }
+                }
+
+                if let Some(ref tool_calls) = delta.tool_calls {
+                    for tc in tool_calls {
+                        content_deltas.push(ContentBlockDelta::ToolUseDelta {
+                            index: tc.index as usize + tool_offset,
+                            id: tc.id.clone(),
+                            name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                            input_delta: tc.function.as_ref().and_then(|f| f.arguments.clone()),
+                        });
+                    }
+                }
+
+                // Yield if there's content, a refusal, or a finish_reason
+                // (finish can arrive on an empty delta, e.g. "tool_calls").
+                if !content_deltas.is_empty()
+                    || delta.refusal.is_some()
+                    || choice.finish_reason.is_some()
+                {
+                    items.push(Ok(StreamChatChunk {
+                        content: content_deltas,
+                        finish_reason: choice
+                            .finish_reason
+                            .clone()
+                            .map(|r| FinishReason::canonicalize(ProviderFamily::OpenAiCompat, &r)),
+                        usage: None,
+                        refusal: delta.refusal.clone(),
+                        safety_ratings: Vec::new(),
+                        safety_blocked: false,
+                    }));
+                }
+            }
+        }
+
+        super::sse::EventOutcome::emit(items)
+    }
+}
+
 #[async_trait]
 impl AIProvider for OpenAIProvider {
     fn name(&self) -> &str {
@@ -762,15 +903,21 @@ impl AIProvider for OpenAIProvider {
     > {
         let client = super::http_client();
 
-        // gpt-5 / gpt-5-mini require the non-streaming org-verification workaround.
-        let requires_non_streaming =
-            MODELS_REQUIRING_NON_STREAMING.contains(&request.model.as_str());
+        // Resolve the parameter contract up front (capability + reasoning +
+        // gpt-5 non-streaming quirk) so the body is correct by construction.
+        let contract = request.model_caps.clone().unwrap_or_default();
+        let rp = crate::param_policy::resolve(
+            crate::param_policy::ProviderFamily::OpenAiCompat,
+            &request.model,
+            &request,
+            &contract,
+        );
 
         // Build the request body (pure, unit-testable).
-        let body = Self::build_request_body(&request, requires_non_streaming);
+        let body = Self::build_request_body(&request, &rp);
 
-        // If model requires non-streaming, use the workaround.
-        if requires_non_streaming {
+        // The gpt-5 org-verification family requires the non-streaming workaround.
+        if rp.disable_stream {
             return Self::non_streaming_to_stream(&client, api_key, base_url, body).await;
         }
 
@@ -787,160 +934,15 @@ impl AIProvider for OpenAIProvider {
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+            return Err(ProviderError::from_openai_http(status.as_u16(), &error_text));
         }
 
-        // Get byte stream
-        let byte_stream = response.bytes_stream();
-
-        // Create SSE parser stream
-        let output_stream = stream! {
-            let mut buffer = String::new();
-            let mut decoder = super::Utf8StreamDecoder::default();
-            let mut byte_stream = Box::pin(byte_stream);
-
-            // OpenAI emits reasoning_content and the answer in the same delta object
-            // with no per-stream index. Once reasoning appears, shift text to index 1
-            // and tools to +2 so the answer isn't merged into the thinking block.
-            // (Reasoning models emit reasoning before content, so this latches early.)
-            let mut reasoning_seen = false;
-            // Freeze (text_index, tool_offset) the first time real content is placed,
-            // so a tool call's deltas keep ONE index across chunks even in the
-            // pathological case where tool deltas arrive before reasoning (otherwise
-            // the offset would flip mid-call and split one tool call into two).
-            let mut frozen_offsets: Option<(usize, usize)> = None;
-
-            while let Some(chunk_result) = byte_stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        // Decode incrementally so a multi-byte UTF-8 char split
-                        // across chunk boundaries doesn't abort the stream.
-                        buffer.push_str(&decoder.decode(&chunk));
-
-                        // Process complete SSE events
-                        while let Some(index) = buffer.find("\n\n") {
-                            let event = buffer[..index].to_string();
-                            buffer.drain(..=index + 1);
-
-                            // Parse event
-                            if event.starts_with("data: ") {
-                                let data = &event[6..]; // Skip "data: "
-
-                                if data == "[DONE]" {
-                                    break;
-                                }
-
-                                // Try to parse as JSON
-                                if let Ok(chunk_data) = serde_json::from_str::<OpenAIStreamChunk>(data) {
-                                    // Check for usage metadata (final chunk)
-                                    if let Some(usage) = chunk_data.usage {
-                                        yield Ok(StreamChatChunk {
-                                            content: Vec::new(),
-                                            finish_reason: None,
-                                            usage: Some(crate::models::StreamUsage {
-                                                prompt_tokens: usage.prompt_tokens,
-                                                completion_tokens: usage.completion_tokens,
-                                                total_tokens: usage.total_tokens,
-                                                reasoning_tokens: usage.completion_tokens_details
-                                                    .and_then(|d| d.reasoning_tokens),
-                                                cache_read_input_tokens: usage.prompt_tokens_details
-                                                    .and_then(|d| d.cached_tokens),
-                                                cache_creation_input_tokens: None,
-                                            }),
-                                            refusal: None,
-                                            safety_ratings: Vec::new(),
-                                            safety_blocked: false,
-                                        });
-                                    }
-
-                                    if let Some(choice) = chunk_data.choices.first() {
-                                        let delta = &choice.delta;
-
-                                        // Build content block deltas
-                                        let mut content_deltas = Vec::new();
-
-                                        // Reasoning content delta (DeepSeek-R1 style) -> thinking
-                                        if let Some(ref reasoning) = delta.reasoning_content {
-                                            if !reasoning.is_empty() {
-                                                reasoning_seen = true;
-                                                content_deltas.push(crate::models::ContentBlockDelta::ThinkingDelta {
-                                                    index: 0,
-                                                    delta: reasoning.clone(),
-                                                });
-                                            }
-                                        }
-
-                                        // Index offset so text/tools never collide with the
-                                        // thinking block at index 0. Freeze on first real
-                                        // content so the offset can't change mid-stream.
-                                        let has_content =
-                                            delta.content.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
-                                        let has_tools =
-                                            delta.tool_calls.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
-                                        let (text_index, tool_offset) = if has_content || has_tools {
-                                            *frozen_offsets
-                                                .get_or_insert(if reasoning_seen { (1, 2) } else { (0, 0) })
-                                        } else {
-                                            (0, 0) // unused this chunk
-                                        };
-
-                                        // Text content delta
-                                        if let Some(ref text) = delta.content {
-                                            if !text.is_empty() {
-                                                content_deltas.push(crate::models::ContentBlockDelta::TextDelta {
-                                                    index: text_index,
-                                                    delta: text.clone(),
-                                                });
-                                            }
-                                        }
-
-                                        // Tool call deltas
-                                        if let Some(ref tool_calls) = delta.tool_calls {
-                                            for tc in tool_calls {
-                                                content_deltas.push(crate::models::ContentBlockDelta::ToolUseDelta {
-                                                    index: tc.index as usize + tool_offset,
-                                                    id: tc.id.clone(),
-                                                    name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                                                    input_delta: tc.function.as_ref().and_then(|f| f.arguments.clone()),
-                                                });
-                                            }
-                                        }
-
-                                        // Yield if there's any content, refusal, or finish_reason
-                                        // (finish_reason can arrive on an empty delta, e.g. "tool_calls")
-                                        if !content_deltas.is_empty() || delta.refusal.is_some() || choice.finish_reason.is_some() {
-                                            yield Ok(StreamChatChunk {
-                                                content: content_deltas,
-                                                finish_reason: choice.finish_reason.clone(),
-                                                usage: None,
-                                                refusal: delta.refusal.clone(),
-                                                safety_ratings: Vec::new(),
-                                                safety_blocked: false,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Guard against an upstream that never emits a delimiter
-                        // (would otherwise grow `buffer` until OOM).
-                        if buffer.len() > super::MAX_SSE_BUFFER_BYTES {
-                            yield Err(ProviderError::streaming(
-                                "OpenAI: SSE buffer exceeded maximum size",
-                            ));
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        yield Err(ProviderError::Network(e));
-                        break;
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(output_stream))
+        // Drive the SSE response through the shared generic driver; the
+        // OpenAI-specific event mapping lives in `OpenAiSse::map_event`.
+        Ok(Box::pin(super::sse::drive_sse(
+            response.bytes_stream(),
+            OpenAiSse,
+        )))
     }
 
     async fn embeddings(
@@ -1100,15 +1102,15 @@ mod tests {
 
     /// gpt-5 and gpt-5-mini require the org-verification "non-streaming" workaround
     /// AND they reject the older `max_tokens` / non-default `temperature` / `top_p`
-    /// parameters. The list drives the per-request body shape.
+    /// parameters. The policy predicate drives the per-request body shape.
     #[test]
     fn test_models_requiring_non_streaming_includes_gpt5_family() {
-        assert!(MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-5"));
-        assert!(MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-5-mini"));
-        // gpt-4 family should NOT be in this list (they support streaming +
-        // max_tokens + temperature normally).
-        assert!(!MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-4o"));
-        assert!(!MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-4-turbo"));
+        use crate::param_policy::openai_requires_non_streaming;
+        assert!(openai_requires_non_streaming("gpt-5"));
+        assert!(openai_requires_non_streaming("gpt-5-mini"));
+        // gpt-4 family should NOT be non-streaming.
+        assert!(!openai_requires_non_streaming("gpt-4o"));
+        assert!(!openai_requires_non_streaming("gpt-4-turbo"));
     }
 
     /// OpenAI streams often emit a final chunk whose `delta` is empty and whose
@@ -1177,6 +1179,7 @@ mod tests {
             ChatMessage, ChatRequest, ContentBlock, DocumentSource, ImageSource, Role,
             ThinkingConfig, ThinkingEffort,
         };
+        use crate::param_policy::{resolve, ModelParamContract, ProviderFamily, ResolvedParams};
 
         fn req() -> ChatRequest {
             ChatRequest {
@@ -1187,12 +1190,22 @@ mod tests {
             }
         }
 
+        /// Resolve the OpenAI-compat policy for a request (default: no DB row override).
+        fn rp(r: &ChatRequest) -> ResolvedParams {
+            resolve(
+                ProviderFamily::OpenAiCompat,
+                &r.model,
+                r,
+                &ModelParamContract::default(),
+            )
+        }
+
         #[test]
         fn reasoning_effort_caps_at_high_and_no_top_k() {
             let mut r = req();
             r.thinking = Some(ThinkingConfig::adaptive_with_effort(ThinkingEffort::Max));
             r.top_k = Some(40);
-            let body = OpenAIProvider::build_request_body(&r, false);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
             assert_eq!(body["reasoning_effort"], "high"); // XHigh/Max -> high
             assert!(body.get("top_k").is_none(), "OpenAI has no top_k");
         }
@@ -1206,13 +1219,47 @@ mod tests {
             r.stop = Some(vec!["END".into()]);
             r.user = Some("u9".into());
             r.prompt_cache_key = Some("conv-1".into());
-            let body = OpenAIProvider::build_request_body(&r, false);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
             assert_eq!(body["frequency_penalty"], 0.5);
             assert_eq!(body["presence_penalty"], 0.25);
             assert_eq!(body["seed"], 7);
             assert_eq!(body["stop"][0], "END");
             assert_eq!(body["user"], "u9");
             assert_eq!(body["prompt_cache_key"], "conv-1");
+        }
+
+        // TEST-7: reasoning model → max_completion_tokens + no sampling; a plain
+        // model → max_tokens + sampling; gpt-5 → non-streaming + max_completion_tokens.
+        #[test]
+        fn reasoning_and_gpt5_field_shapes() {
+            // Non-reasoning gpt-4o with sampling set (0.5 is exact in f32).
+            let mut r = req();
+            r.temperature = Some(0.5);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
+            assert_eq!(body["max_tokens"], 1024);
+            assert!(body.get("max_completion_tokens").is_none());
+            assert_eq!(body["temperature"], 0.5);
+            assert_eq!(body["stream"], true);
+
+            // o-series reasoning model: no temperature, max_completion_tokens.
+            let mut r = req();
+            r.model = "o3-mini".to_string();
+            r.temperature = Some(0.5);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
+            assert!(body.get("temperature").is_none(), "reasoning rejects temperature");
+            assert_eq!(body["max_completion_tokens"], 1024);
+            assert!(body.get("max_tokens").is_none());
+
+            // gpt-5 org-verification: non-streaming + max_completion_tokens, no sampling.
+            let mut r = req();
+            r.model = "gpt-5".to_string();
+            r.temperature = Some(0.5);
+            r.seed = Some(1);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
+            assert_eq!(body["stream"], false, "gpt-5 must be non-streaming");
+            assert_eq!(body["max_completion_tokens"], 1024);
+            assert!(body.get("temperature").is_none());
+            assert!(body.get("seed").is_none());
         }
 
         #[test]
@@ -1227,7 +1274,7 @@ mod tests {
                     },
                 }],
             )];
-            let body = OpenAIProvider::build_request_body(&r, false);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
             let part = &body["messages"][0]["content"][0];
             assert_eq!(part["type"], "file");
             assert_eq!(part["file"]["filename"], "document.pdf");
@@ -1243,7 +1290,7 @@ mod tests {
                     source: DocumentSource::File { file_id: "file-abc".into(), media_type: None },
                 }],
             )];
-            let body = OpenAIProvider::build_request_body(&r, false);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
             assert_eq!(body["messages"][0]["content"][0]["file"]["file_id"], "file-abc");
         }
 
@@ -1267,7 +1314,7 @@ mod tests {
                     is_error: None,
                 }],
             )];
-            let body = OpenAIProvider::build_request_body(&r, false);
+            let body = OpenAIProvider::build_request_body(&r, &rp(&r));
             let msgs = body["messages"].as_array().unwrap();
             // The tool turn expands to: role:tool (text) + role:user (image_url).
             assert_eq!(msgs.len(), 2);

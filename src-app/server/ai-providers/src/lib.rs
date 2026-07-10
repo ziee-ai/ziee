@@ -59,6 +59,7 @@
 mod error;
 pub mod model_registry;
 mod models;
+pub mod param_policy;
 mod provider;
 mod providers;
 mod traits;
@@ -79,6 +80,13 @@ pub use providers::anthropic::ANTHROPIC_VERSION;
 
 // Re-export the curated catalog (P1.j).
 pub use model_registry::{lookup as registry_lookup, known_ids_for as registry_known_ids};
+
+// Re-export the declarative parameter-contract layer so the server can build a
+// `ModelParamContract` from a DB model row and resolve thinking/param policy.
+pub use param_policy::{
+    ModelParamContract, ProviderFamily, ResolvedParams, UnifiedParam, MaxTokensField,
+    resolved_thinking_style,
+};
 
 // Re-export AIProvider trait for testing
 pub use traits::AIProvider;

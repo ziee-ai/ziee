@@ -7,10 +7,8 @@ use crate::{
     models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk, FileUpload, FileUploadResponse},
     traits::AIProvider,
 };
-use async_stream::stream;
 use async_trait::async_trait;
 use futures_core::Stream;
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
@@ -636,7 +634,12 @@ impl GeminiProvider {
 
         Some(StreamChatChunk {
             content: content_deltas,
-            finish_reason: candidate.finish_reason.clone(),
+            finish_reason: candidate.finish_reason.as_deref().map(|r| {
+                crate::models::FinishReason::canonicalize(
+                    crate::param_policy::ProviderFamily::Gemini,
+                    r,
+                )
+            }),
             usage: None,
             refusal: None,
             safety_ratings,
@@ -665,18 +668,53 @@ impl GeminiProvider {
     /// Pure request assembly (no HTTP), so the wire shape is unit-testable.
     fn build_request_body(request: &ChatRequest) -> GeminiRequest {
         use crate::models::ThinkingMode;
+        use crate::param_policy::UnifiedParam;
+
+        // Resolve the parameter contract (capability gating). Gemini accepts
+        // sampling alongside thinkingConfig, so nothing is dropped for thinking;
+        // this gates only when a model is capability-restricted.
+        let contract = request.model_caps.clone().unwrap_or_default();
+        let rp = crate::param_policy::resolve(
+            crate::param_policy::ProviderFamily::Gemini,
+            &request.model,
+            request,
+            &contract,
+        );
 
         let mut generation_config = GeminiGenerationConfig {
-            temperature: request.temperature,
-            top_p: request.top_p,
-            top_k: request.top_k, // model default when None (was hard-coded to 40)
+            temperature: rp
+                .allows(UnifiedParam::Temperature)
+                .then_some(request.temperature)
+                .flatten(),
+            top_p: rp
+                .allows(UnifiedParam::TopP)
+                .then_some(request.top_p)
+                .flatten(),
+            // model default when None (was hard-coded to 40)
+            top_k: rp
+                .allows(UnifiedParam::TopK)
+                .then_some(request.top_k)
+                .flatten(),
             max_output_tokens: request
                 .max_tokens
                 .map(|t| i32::try_from(t).unwrap_or(i32::MAX)),
-            presence_penalty: request.presence_penalty,
-            frequency_penalty: request.frequency_penalty,
-            seed: request.seed,
-            stop_sequences: request.stop.clone().filter(|s| !s.is_empty()),
+            presence_penalty: rp
+                .allows(UnifiedParam::PresencePenalty)
+                .then_some(request.presence_penalty)
+                .flatten(),
+            frequency_penalty: rp
+                .allows(UnifiedParam::FrequencyPenalty)
+                .then_some(request.frequency_penalty)
+                .flatten(),
+            seed: rp
+                .allows(UnifiedParam::Seed)
+                .then_some(request.seed)
+                .flatten(),
+            stop_sequences: if rp.allows(UnifiedParam::Stop) {
+                request.stop.clone().filter(|s| !s.is_empty())
+            } else {
+                None
+            },
             thinking_config: None,
         };
 
@@ -708,6 +746,92 @@ impl GeminiProvider {
                 .as_ref()
                 .map(Self::convert_tool_config),
         }
+    }
+}
+
+/// Gemini SSE response adapter — maps `streamGenerateContent` events
+/// (candidate parts, `usageMetadata`, `promptFeedback.blockReason`) into unified
+/// chunks. The generic driver owns the decode/buffer/split scaffolding.
+struct GeminiSse;
+
+impl super::sse::SseAdapter for GeminiSse {
+    type State = ();
+
+    fn delimiters(&self) -> &'static [&'static str] {
+        // Gemini uses \r\n\r\n; fall back to \n\n. First match wins.
+        &["\r\n\r\n", "\n\n"]
+    }
+
+    fn label(&self) -> &'static str {
+        "Gemini"
+    }
+
+    fn map_event(&self, event: &str, _state: &mut Self::State) -> super::sse::EventOutcome {
+        use crate::models::{StreamChatChunk, StreamUsage};
+
+        let Some(data) = super::sse::single_data_line(event) else {
+            return super::sse::EventOutcome::empty();
+        };
+        tracing::trace!(
+            "Gemini: Parsing SSE data: {}",
+            data.char_indices()
+                .nth(200)
+                .map(|(i, _)| &data[..i])
+                .unwrap_or(data)
+        );
+
+        let response = match serde_json::from_str::<GeminiResponse>(data) {
+            Ok(r) => r,
+            Err(e) => {
+                // A single malformed / forward-incompatible event must not abort
+                // an otherwise-good stream — skip it (matches OpenAI/Anthropic).
+                tracing::debug!("Gemini: skipping unparseable SSE event: {}", e);
+                return super::sse::EventOutcome::empty();
+            }
+        };
+
+        let mut items: Vec<Result<StreamChatChunk, ProviderError>> = Vec::new();
+
+        // Prompt feedback (prompt blocking) — terminal.
+        if let Some(prompt_feedback) = response.prompt_feedback {
+            if let Some(block_reason) = prompt_feedback.block_reason {
+                items.push(Err(ProviderError::provider(format!(
+                    "Prompt blocked: {}",
+                    block_reason
+                ))));
+                return super::sse::EventOutcome::emit_then_break(items);
+            }
+        }
+
+        // Usage metadata (typically in the final chunk).
+        if let Some(usage) = response.usage_metadata {
+            items.push(Ok(StreamChatChunk {
+                content: Vec::new(),
+                finish_reason: None,
+                usage: Some(StreamUsage {
+                    // Clamp before the cast — a negative i32 would wrap to a huge
+                    // u32 and corrupt accounting.
+                    prompt_tokens: usage.prompt_token_count.unwrap_or(0).max(0) as u32,
+                    completion_tokens: usage.candidates_token_count.unwrap_or(0).max(0) as u32,
+                    total_tokens: usage.total_token_count.unwrap_or(0).max(0) as u32,
+                    reasoning_tokens: usage.thoughts_token_count.map(|t| t.max(0) as u32),
+                    cache_read_input_tokens: usage.cached_content_token_count.map(|t| t.max(0) as u32),
+                    cache_creation_input_tokens: None,
+                }),
+                refusal: None,
+                safety_ratings: Vec::new(),
+                safety_blocked: false,
+            }));
+        }
+
+        // Candidate content.
+        if let Some(candidate) = response.candidates.first() {
+            if let Some(chunk) = GeminiProvider::convert_stream_chunk(candidate) {
+                items.push(Ok(chunk));
+            }
+        }
+
+        super::sse::EventOutcome::emit(items)
     }
 }
 
@@ -765,143 +889,15 @@ impl AIProvider for GeminiProvider {
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(
-                status.as_u16(),
-                error_text,
-            ));
+            return Err(ProviderError::from_gemini_http(status.as_u16(), &error_text));
         }
 
-        // Get byte stream
-        let byte_stream = response.bytes_stream();
-
-        // Create SSE parser stream
-        let output_stream = stream! {
-            let mut buffer = String::new();
-            let mut decoder = super::Utf8StreamDecoder::default();
-            let mut byte_stream = Box::pin(byte_stream);
-
-            while let Some(chunk_result) = byte_stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        tracing::trace!("Gemini: Received chunk ({} bytes)", chunk.len());
-
-                        // Decode incrementally so a multi-byte UTF-8 char split
-                        // across chunk boundaries doesn't abort the stream.
-                        buffer.push_str(&decoder.decode(&chunk));
-
-                        // Process complete SSE events (Gemini uses \r\n\r\n)
-                        while let Some(index) = buffer.find("\r\n\r\n").or_else(|| buffer.find("\n\n")) {
-                            let event = buffer[..index].to_string();
-                            // Check if we found \r\n\r\n (4 chars) or \n\n (2 chars)
-                            let drain_len = if buffer[index..].starts_with("\r\n\r\n") { index + 4 } else { index + 2 };
-                            buffer.drain(..drain_len);
-
-                            tracing::trace!("Gemini: Found complete SSE event ({} bytes)", event.len());
-
-                            // Parse event
-                            if event.starts_with("data: ") {
-                                let data = &event[6..]; // Skip "data: "
-                                tracing::trace!(
-                                    "Gemini: Parsing SSE data: {}",
-                                    data.char_indices().nth(200).map(|(i, _)| &data[..i]).unwrap_or(data)
-                                );
-
-                                // Try to parse as JSON
-                                match serde_json::from_str::<GeminiResponse>(data) {
-                                    Ok(response) => {
-                                    // Log the raw response for debugging
-                                    tracing::trace!("Gemini API Response: {}", data);
-
-                                    // Check for prompt feedback (prompt blocking)
-                                    if let Some(prompt_feedback) = response.prompt_feedback {
-                                        if let Some(block_reason) = prompt_feedback.block_reason {
-                                            yield Err(ProviderError::provider(format!(
-                                                "Prompt blocked: {}",
-                                                block_reason
-                                            )));
-                                            break;
-                                        }
-                                    }
-
-                                    // Extract usage metadata (typically in final chunk)
-                                    if let Some(usage) = response.usage_metadata {
-                                        yield Ok(StreamChatChunk {
-                                            content: Vec::new(),
-                                            finish_reason: None,
-                                            usage: Some(crate::models::StreamUsage {
-                                                // Clamp before the cast — a negative i32 would
-                                                // wrap to a huge u32 and corrupt accounting.
-                                                prompt_tokens: usage.prompt_token_count.unwrap_or(0).max(0) as u32,
-                                                completion_tokens: usage.candidates_token_count.unwrap_or(0).max(0) as u32,
-                                                total_tokens: usage.total_token_count.unwrap_or(0).max(0) as u32,
-                                                reasoning_tokens: usage.thoughts_token_count.map(|t| t.max(0) as u32),
-                                                cache_read_input_tokens: usage
-                                                    .cached_content_token_count
-                                                    .map(|t| t.max(0) as u32),
-                                                cache_creation_input_tokens: None,
-                                            }),
-                                            refusal: None,
-                                            safety_ratings: Vec::new(),
-                                            safety_blocked: false,
-                                        });
-                                    }
-
-                                    // Extract content from candidate
-                                    if let Some(candidate) = response.candidates.first() {
-                                        // Log candidate parts for debugging
-                                        let parts = candidate.content.as_ref().map(|c| c.parts.as_slice()).unwrap_or_default();
-                                        tracing::trace!("Gemini candidate has {} parts, finish_reason={:?}", parts.len(), candidate.finish_reason);
-                                        for (i, part) in parts.iter().enumerate() {
-                                            match part {
-                                                GeminiPart::Text { text, .. } => {
-                                                    tracing::trace!("  Part {}: Text ({}chars)", i, text.len());
-                                                }
-                                                GeminiPart::FunctionCall { function_call } => {
-                                                    tracing::trace!("  Part {}: FunctionCall name={}", i, function_call.name);
-                                                }
-                                                GeminiPart::FunctionResponse { function_response } => {
-                                                    tracing::trace!("  Part {}: FunctionResponse name={}", i, function_response.name);
-                                                }
-                                                _ => {
-                                                    tracing::trace!("  Part {}: Other", i);
-                                                }
-                                            }
-                                        }
-
-                                        if let Some(chunk) = Self::convert_stream_chunk(candidate) {
-                                            yield Ok(chunk);
-                                        }
-                                    }
-                                    }
-                                    Err(e) => {
-                                        // A single malformed / forward-incompatible event
-                                        // must not abort an otherwise-good stream — skip it
-                                        // (matches the OpenAI/Anthropic parsers, which also
-                                        // skip unparseable events instead of erroring).
-                                        tracing::debug!("Gemini: skipping unparseable SSE event: {}", e);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Guard against an upstream that never emits an event
-                        // delimiter (would otherwise grow `buffer` until OOM).
-                        if buffer.len() > super::MAX_SSE_BUFFER_BYTES {
-                            yield Err(ProviderError::streaming(
-                                "Gemini: SSE buffer exceeded maximum size",
-                            ));
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        yield Err(ProviderError::Network(e));
-                        break;
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(output_stream))
+        // Drive the SSE response through the shared generic driver; the
+        // Gemini-specific event mapping lives in `GeminiSse::map_event`.
+        Ok(Box::pin(super::sse::drive_sse(
+            response.bytes_stream(),
+            GeminiSse,
+        )))
     }
 
     async fn embeddings(
@@ -1231,7 +1227,8 @@ mod tests {
         );
         let chunk = chunk.unwrap();
         assert!(chunk.content.is_empty());
-        assert_eq!(chunk.finish_reason.as_deref(), Some("STOP"));
+        // Finish reason is canonicalized: Gemini "STOP" -> unified "stop".
+        assert_eq!(chunk.finish_reason.as_deref(), Some("stop"));
     }
 
     /// A chunk with neither content nor finish_reason returns `None` (nothing
@@ -1274,6 +1271,35 @@ mod tests {
             // when unset, topK is omitted (model default), not forced to 40.
             let b2 = body(&req());
             assert!(b2["generationConfig"].get("topK").is_none());
+        }
+
+        // TEST-8: capability gating — a DB-row override that marks the model
+        // sampling-restricted drops temperature/topP/topK from generationConfig,
+        // while maxOutputTokens (a required cap) stays. Serialize-to-Value is the
+        // exact wire the provider sends via `.json(&gemini_request)`.
+        #[test]
+        fn capability_gating_drops_sampling_but_keeps_max_output() {
+            let mut r = req();
+            r.temperature = Some(0.5);
+            r.top_p = Some(0.9);
+            r.top_k = Some(12);
+            // Default (no override): sampling passes through.
+            let b = body(&r);
+            assert_eq!(b["generationConfig"]["temperature"], 0.5);
+            assert_eq!(b["generationConfig"]["topK"], 12);
+            assert_eq!(b["generationConfig"]["maxOutputTokens"], 8192);
+
+            // Row override forbids sampling.
+            r.model_caps = Some(crate::param_policy::ModelParamContract {
+                supports_sampling_params: Some(false),
+                ..Default::default()
+            });
+            let b = body(&r);
+            assert!(b["generationConfig"].get("temperature").is_none());
+            assert!(b["generationConfig"].get("topP").is_none());
+            assert!(b["generationConfig"].get("topK").is_none());
+            // The required output cap is unaffected.
+            assert_eq!(b["generationConfig"]["maxOutputTokens"], 8192);
         }
 
         #[test]
