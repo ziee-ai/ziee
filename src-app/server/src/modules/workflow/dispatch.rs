@@ -1253,6 +1253,22 @@ impl StepDispatcher for ToolDispatcher {
                         Ok(Some(s)) => (s.is_built_in, s.headers),
                         _ => (false, serde_json::json!({})),
                     };
+                // Same-host trust set: hosts of the user's enabled accessible MCP servers, so an
+                // external server's artifact URL on its own (private/RFC1918) host can be ingested.
+                // is_system servers have their `url` redacted here — those are covered by the
+                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
+                let trusted_hosts: Vec<String> = crate::core::repository::Repos
+                    .mcp
+                    .list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)
+                    .await
+                    .map(|resp| {
+                        resp.servers
+                            .iter()
+                            .filter_map(|s| s.url.as_deref())
+                            .filter_map(crate::modules::mcp::resource_link::host_of)
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     &mut links,
                     ctx.user_id,
@@ -1263,6 +1279,7 @@ impl StepDispatcher for ToolDispatcher {
                     server_id,
                     is_built_in,
                     &headers,
+                    &trusted_hosts,
                     &allowed_roots,
                     Some(manager.jwt_secret()), // E9
                     Some(manager.jwt_issuer()),

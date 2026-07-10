@@ -708,6 +708,16 @@ impl McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
+                // Same-host trust set: hosts of the enabled, accessible MCP servers, so an external
+                // server's artifact URL on its own (private/RFC1918) host can be ingested. is_system
+                // servers have their `url` redacted in this list — those are covered by the
+                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
+                let trusted_hosts: Vec<String> = accessible_servers
+                    .iter()
+                    .filter_map(|s| s.url.as_deref())
+                    .filter_map(crate::modules::mcp::resource_link::host_of)
+                    .collect();
+
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
                     context.user_id,
@@ -718,6 +728,7 @@ impl McpChatExtension {
                     server.id,
                     server.is_built_in,
                     &server.headers,
+                    &trusted_hosts,
                     &allowed_roots,
                     Some(self.config.jwt.secret.as_str()),
                     Some(self.config.jwt.issuer.as_str()),
@@ -2557,6 +2568,16 @@ impl ChatExtension for McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
+                // Same-host trust set: hosts of the enabled, accessible MCP servers, so an external
+                // server's artifact URL on its own (private/RFC1918) host can be ingested. is_system
+                // servers have their `url` redacted in this list — those are covered by the
+                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
+                let trusted_hosts: Vec<String> = accessible_servers
+                    .iter()
+                    .filter_map(|s| s.url.as_deref())
+                    .filter_map(crate::modules::mcp::resource_link::host_of)
+                    .collect();
+
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
                     context.user_id,
@@ -2567,6 +2588,7 @@ impl ChatExtension for McpChatExtension {
                     server.id,
                     server.is_built_in,
                     &server.headers,
+                    &trusted_hosts,
                     &allowed_roots,
                     Some(self.config.jwt.secret.as_str()),
                     Some(self.config.jwt.issuer.as_str()),

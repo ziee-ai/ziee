@@ -16,7 +16,11 @@
 //!   * everything else (`is_saved:false` / `None`, an HTTP(S) URL) — fetched over HTTP
 //!     (short-lived JWT for built-in servers, configured headers for external ones) and
 //!     ingested. Skipped when no `jwt_secret` is available in this context (the
-//!     dispatcher passes `None`).
+//!     dispatcher passes `None`). An EXTERNAL server's link is SSRF-confined: by default
+//!     `PUBLIC_HTTP_OR_HTTPS` (blocks loopback/RFC1918/IMDS), but relaxed to `MCP_USER`
+//!     (private allowed, IMDS still blocked) when the link's host matches a registered MCP
+//!     server's host (same-host trust — redirects disabled) or the release env opt-in
+//!     `ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1` is set. See [`choose_fetch_policy`].
 //!
 //! ### The three `ziee://` guards (security-critical — do not remove)
 //! 1. **Trusted-emitter only** — a `ziee://` host path is honored ONLY when the producing
@@ -214,12 +218,103 @@ async fn save_bytes_as_artifact(
     ))
 }
 
+/// Lowercased URL host, or `None` when `url` doesn't parse or carries no host.
+///
+/// Used both to build the trusted-host set (from the registered MCP servers' `url`s) and to
+/// match a `resource_link`'s host against it. Matching is host-only (port ignored): a server
+/// registered at `http://172.21.0.1:9004/mcp` vouches for its artifact server on the SAME host
+/// (`http://172.21.0.1:9005/...`).
+pub(crate) fn host_of(url: &str) -> Option<String> {
+    url::Url::parse(url)
+        .ok()?
+        .host_str()
+        .map(|h| h.to_ascii_lowercase())
+}
+
+/// Which SSRF policy the external-server HTTP fetch of a `resource_link` uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FetchPolicyKind {
+    /// Default: public hosts only (blocks loopback / RFC1918 / IMDS). Redirects followed
+    /// (each hop re-validated against the same policy).
+    Public,
+    /// Same-host trust: the link host matches a registered MCP server's host. Private / loopback
+    /// allowed (IMDS/link-local still blocked); redirects DISABLED so an off-host redirect can't
+    /// inherit the allowance.
+    PrivateScoped,
+    /// Operator global opt-in (`ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`): private / loopback allowed
+    /// for ALL external hosts (IMDS/link-local still blocked); redirects followed but re-validated
+    /// against the same private policy.
+    PrivateGlobal,
+    /// Debug-only loopback seam (`MCP_RESOURCE_LINK_ALLOW_LOOPBACK=1`, debug builds only).
+    DevLocal,
+}
+
+/// Decide the fetch policy for an external `resource_link`. Precedence:
+/// debug-loopback seam → global private opt-in → same-host match → public default.
+///
+/// `trusted_hosts` are already-lowercased hosts (built via [`host_of`]) of the enabled, accessible
+/// MCP servers; a private fetch is permitted only when the link's host is one of them (or the global
+/// opt-in / debug seam is active).
+pub(crate) fn choose_fetch_policy(
+    link_uri: &str,
+    trusted_hosts: &[String],
+    debug_loopback: bool,
+    env_private: bool,
+) -> FetchPolicyKind {
+    if debug_loopback {
+        return FetchPolicyKind::DevLocal;
+    }
+    if env_private {
+        return FetchPolicyKind::PrivateGlobal;
+    }
+    if let Some(host) = host_of(link_uri)
+        && !host.is_empty()
+        && trusted_hosts.iter().any(|h| h == &host)
+    {
+        return FetchPolicyKind::PrivateScoped;
+    }
+    FetchPolicyKind::Public
+}
+
+/// Map a [`FetchPolicyKind`] to its `(OutboundUrlPolicy, follow_redirects)`. `follow_redirects=false`
+/// (the scoped path) means the client is built with `redirect(Policy::none())` so an off-host
+/// redirect cannot inherit the private allowance.
+fn fetch_policy_and_redirects(
+    kind: FetchPolicyKind,
+) -> (crate::utils::url_validator::OutboundUrlPolicy, bool) {
+    use crate::utils::url_validator::OutboundUrlPolicy;
+    match kind {
+        FetchPolicyKind::Public => (OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS, true),
+        FetchPolicyKind::PrivateScoped => (OutboundUrlPolicy::MCP_USER, false),
+        FetchPolicyKind::PrivateGlobal => (OutboundUrlPolicy::MCP_USER, true),
+        FetchPolicyKind::DevLocal => (OutboundUrlPolicy::DEV_LOCAL, true),
+    }
+}
+
+/// Whether the release-honored `ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1` global opt-in is set.
+///
+/// Unlike the debug `MCP_RESOURCE_LINK_ALLOW_LOOPBACK` seam, this is NOT `cfg!(debug_assertions)`-gated
+/// — it is honored in release builds. Off by default; when set it relaxes ALL external
+/// `resource_link` fetches to `MCP_USER` (private/loopback allowed, IMDS/link-local still blocked).
+fn resource_link_allow_private_env() -> bool {
+    std::env::var("ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE").as_deref() == Ok("1")
+}
+
 /// Ingest every persistable `resource_link` in `links` into the file store.
 ///
 /// See the module docs for the per-link dispatch + the three `ziee://` guards. The save
 /// tail (process → store → DB row → cross-device sync) is identical across URI shapes.
 /// `file_id`/`version`/`version_id` are stamped back onto each saved link, and `ziee://`
 /// URIs are rewritten to `/api/files/{id}` (guard #3) before this returns.
+///
+/// `trusted_hosts` is the set of lowercased hosts of the enabled, accessible MCP servers (built via
+/// [`host_of`]). An external (non-built-in) HTTP link whose host matches one of them is fetched
+/// under `OutboundUrlPolicy::MCP_USER` (private/loopback allowed, IMDS/link-local still blocked) with
+/// redirects DISABLED — this is the same-host allowance that lets a same-host multi-container MCP
+/// deployment ingest its artifacts. The release env var `ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`
+/// relaxes this to ALL external hosts. Everything else stays on `PUBLIC_HTTP_OR_HTTPS`. The
+/// LLM-facing URI of an HTTP link is intentionally NOT rewritten (only `file_id` is stamped, which
+/// the UI uses to render via `/api/files/{id}`) so external→external artifact chaining still works.
 ///
 /// When `workflow_run_id` is `Some`, each newly-ingested (run-created) file is linked to
 /// that run via `Repos.file.set_workflow_run_id` after the save loop, so the A5 cascade
@@ -236,6 +331,7 @@ pub async fn persist_links(
     server_id: Uuid,
     server_is_built_in: bool,
     server_headers: &serde_json::Value,
+    trusted_hosts: &[String],
     allowed_roots: &[PathBuf],
     jwt_secret: Option<&str>,
     jwt_issuer: Option<&str>,
@@ -396,17 +492,26 @@ pub async fn persist_links(
                 }
             }
         } else {
-            // Debug-only test seam (compiled out of release via
-            // `cfg!(debug_assertions)`): relax to DEV_LOCAL so a loopback mock
-            // download server can stand in for a public host. Mirrors
-            // `WEB_SEARCH_FETCH_ALLOW_LOOPBACK` / `LIT_SEARCH_ALLOW_LOOPBACK`.
-            let policy = if cfg!(debug_assertions)
-                && std::env::var("MCP_RESOURCE_LINK_ALLOW_LOOPBACK").as_deref() == Ok("1")
-            {
-                crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
-            } else {
-                crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
-            };
+            // Choose the SSRF policy for this external link:
+            //   * debug seam (`MCP_RESOURCE_LINK_ALLOW_LOOPBACK=1`, debug builds only) → DEV_LOCAL,
+            //     mirroring `WEB_SEARCH_FETCH_ALLOW_LOOPBACK` / `LIT_SEARCH_ALLOW_LOOPBACK`;
+            //   * global opt-in (`ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`, release-honored) →
+            //     MCP_USER for ALL external hosts (private allowed, IMDS still blocked);
+            //   * same-host trust (link host matches a registered MCP server's host) → MCP_USER
+            //     with redirects DISABLED so an off-host redirect can't inherit the allowance;
+            //   * otherwise PUBLIC_HTTP_OR_HTTPS (unchanged default: blocks loopback/RFC1918/IMDS).
+            // NOTE: `trusted_hosts` is built from the accessible-server list, whose `url` is
+            // redacted for is_system servers — a same-host server registered as a *system* server
+            // won't be covered by the scoped trust; use the env opt-in for that deployment.
+            let debug_loopback = cfg!(debug_assertions)
+                && std::env::var("MCP_RESOURCE_LINK_ALLOW_LOOPBACK").as_deref() == Ok("1");
+            let kind = choose_fetch_policy(
+                &link.uri,
+                trusted_hosts,
+                debug_loopback,
+                resource_link_allow_private_env(),
+            );
+            let (policy, follow_redirects) = fetch_policy_and_redirects(kind);
             if let Err(e) = crate::utils::url_validator::validate_outbound_url(&link.uri, &policy) {
                 tracing::error!(
                     "resource_link external fetch rejected by SSRF policy for '{}': {e}",
@@ -414,7 +519,17 @@ pub async fn persist_links(
                 );
                 continue;
             }
-            match crate::utils::url_validator::build_validated_client(policy) {
+            // Scoped same-host trust disables redirects (an off-host redirect must not inherit the
+            // private allowance); the public / global-opt-in paths keep the validated redirect
+            // policy, which re-validates every hop against `policy`.
+            let built = if follow_redirects {
+                crate::utils::url_validator::build_validated_client(policy)
+            } else {
+                crate::utils::url_validator::validated_client_builder(policy)
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+            };
+            match built {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::error!("Failed to build HTTP client for resource_link fetch: {e}");

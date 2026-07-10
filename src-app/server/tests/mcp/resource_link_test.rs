@@ -89,6 +89,7 @@ async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -174,6 +175,7 @@ async fn ziee_link_from_external_server_is_ignored() {
         Uuid::new_v4(), // external/user server id → not a trusted emitter
         false,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -213,6 +215,7 @@ async fn ziee_workflow_runs_handle_is_not_ingested_and_preserved() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[],
         None,
         None, // jwt_issuer
@@ -255,6 +258,7 @@ async fn ziee_link_read_failure_is_blanked() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -293,6 +297,7 @@ async fn http_link_without_jwt_secret_is_skipped() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[],
         None, // no jwt secret → HTTP branch is skipped (the dispatcher path)
         None, // jwt_issuer
@@ -381,6 +386,7 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -468,6 +474,7 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
