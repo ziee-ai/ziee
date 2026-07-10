@@ -8,7 +8,7 @@
 ## Summary
 
 - **338** surfaces carry at least one renderable-state signal.
-- **1941** signals total: 1526 branch, 122 empty, 98 error, 102 loading, 90 overlay, 3 panel.
+- **1939** signals total: 1525 branch, 122 empty, 97 error, 102 loading, 90 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 89 |
 | `empty` | 97 |
-| `error` | 77 |
+| `error` | 76 |
 | `open` | 76 |
 | `panel-open` | 3 |
 
@@ -2316,12 +2316,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `content.content_type !== 'tool_result'` | 39 |
-| branch | `block.name !== 'search_knowledge'` | 41 |
-| branch | `!sc \|\| !Array.isArray(sc.hits)` | 43 |
-| branch | `incomplete` | 76 |
-| empty | `sc.hits.length === 0` | 84 |
-| branch | `c.content_type !== 'tool_result'` | 137 |
+| branch | `!isSearchKnowledgeResult(content)` | 28 |
+| branch | `!sc` | 31 |
+| branch | `incomplete` | 57 |
+| empty | `sc.hits.length === 0` | 65 |
 
 ### `modules/knowledge-base/chat-extension/extension`
 
@@ -2343,14 +2341,14 @@ Required states: `open`
 
 ### `modules/knowledge-base/components/KnowledgeBaseDocumentsPanel`
 
-Required states: `empty`, `error`
+Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `files.length === 0` | 37 |
-| empty | `documentsLoading && documents.length === 0` | 88 |
-| empty | `documents.length === 0` | 92 |
-| error | `(doc.index_status === 'failed' \|\| doc.index_status === 'no_text')` | 119 |
+| empty | `files.length === 0` | 27 |
+| empty | `documentsLoading && documents.length === 0` | 78 |
+| empty | `documents.length === 0` | 82 |
+| branch | `isRetryable(doc.index_status)` | 109 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseFormDrawer`
 

@@ -14,17 +14,7 @@ import {
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { type KnowledgeBaseDocument, Permissions } from '@/api-client/types'
-
-const STATUS: Record<
-  string,
-  { tone: 'success' | 'warning' | 'error' | 'default'; label: string }
-> = {
-  indexed: { tone: 'success', label: 'Indexed' },
-  indexing: { tone: 'warning', label: 'Indexing' },
-  pending: { tone: 'warning', label: 'Pending' },
-  failed: { tone: 'error', label: 'Failed' },
-  no_text: { tone: 'default', label: 'No text' },
-}
+import { docStatusBadge, isRetryable } from '../docStatus'
 
 interface Props {
   kbId: string
@@ -102,7 +92,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
           dataSource={documents}
           rowKey="file_id"
           renderItem={(doc: KnowledgeBaseDocument) => {
-            const status = STATUS[doc.index_status] ?? STATUS.pending
+            const status = docStatusBadge(doc.index_status)
             return (
               <Flex align="center" justify="between" gap="small" className="w-full py-1">
                 <Flex align="center" gap="small" className="min-w-0">
@@ -116,7 +106,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
                     {status.label}
                   </Tag>
                   <Can permission={Permissions.KnowledgeBaseManage}>
-                    {(doc.index_status === 'failed' || doc.index_status === 'no_text') && (
+                    {isRetryable(doc.index_status) && (
                       <Tooltip content="Re-index">
                         <Button
                           data-testid={`kb-document-reindex-${doc.file_id}`}

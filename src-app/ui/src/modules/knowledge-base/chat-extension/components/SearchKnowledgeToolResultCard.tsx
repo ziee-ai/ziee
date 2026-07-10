@@ -4,24 +4,13 @@ import type { MessageContentDataToolResult } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
-
-/** A single retrieved passage (verbatim from the tool's `structuredContent`). */
-interface KbHit {
-  file_id: string
-  filename: string
-  page: number
-  char_start: number
-  char_end: number
-  score: number
-  content: string
-}
-interface SearchKnowledgeResult {
-  hits: KbHit[]
-  query: string
-  mode: string
-  truncated: boolean
-  indexing_incomplete?: { searchable: number; total: number }
-}
+import {
+  type KbHit,
+  hitToPanelData,
+  isIndexingIncomplete,
+  isSearchKnowledgeResult,
+  parseSearchKnowledge,
+} from '../searchKnowledge'
 
 /**
  * Inline renderer for a `search_knowledge` tool result — the retrieval
@@ -36,27 +25,19 @@ interface SearchKnowledgeResult {
  */
 export function SearchKnowledgeToolResultCard(props: ContentRendererProps) {
   const { content } = props
-  if (content.content_type !== 'tool_result') return null
+  if (!isSearchKnowledgeResult(content)) return <MessageFilesView {...props} />
   const block = content.content as MessageContentDataToolResult
-  if (block.name !== 'search_knowledge') return <MessageFilesView {...props} />
-  const sc = block.structured_content as SearchKnowledgeResult | null | undefined
-  if (!sc || !Array.isArray(sc.hits)) return <MessageFilesView {...props} />
+  const sc = parseSearchKnowledge(block)
+  if (!sc) return <MessageFilesView {...props} />
 
-  const incomplete =
-    sc.indexing_incomplete && sc.indexing_incomplete.searchable < sc.indexing_incomplete.total
+  const incomplete = isIndexingIncomplete(sc)
 
   const openSource = (h: KbHit) => {
     Stores.Chat.displayInRightPanel({
       id: `kb:${h.file_id}:${h.page}:${h.char_start}`,
       title: `${h.filename} · p${h.page}`.slice(0, 60),
       type: 'kb_source',
-      data: {
-        fileId: h.file_id,
-        filename: h.filename,
-        page: h.page,
-        charStart: h.char_start,
-        charEnd: h.char_end,
-      },
+      data: hitToPanelData(h),
     })
   }
 
@@ -133,7 +114,4 @@ export function SearchKnowledgeToolResultCard(props: ContentRendererProps) {
  */
 SearchKnowledgeToolResultCard.contentMatch = (
   c: ContentRendererProps['content'],
-): boolean => {
-  if (c.content_type !== 'tool_result') return false
-  return (c.content as MessageContentDataToolResult).name === 'search_knowledge'
-}
+): boolean => isSearchKnowledgeResult(c)

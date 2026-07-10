@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 338 surfaces carry renderable-state signals; 1941 signals total.
+// 338 surfaces carry renderable-state signals; 1939 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2096,12 +2096,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "content.content_type !== 'tool_result'", line: 39 },
-      { kind: "branch", condition: "block.name !== 'search_knowledge'", line: 41 },
-      { kind: "branch", condition: "!sc || !Array.isArray(sc.hits)", line: 43 },
-      { kind: "branch", condition: "incomplete", line: 76 },
-      { kind: "empty", condition: "sc.hits.length === 0", line: 84 },
-      { kind: "branch", condition: "c.content_type !== 'tool_result'", line: 137 },
+      { kind: "branch", condition: "!isSearchKnowledgeResult(content)", line: 28 },
+      { kind: "branch", condition: "!sc", line: 31 },
+      { kind: "branch", condition: "incomplete", line: 57 },
+      { kind: "empty", condition: "sc.hits.length === 0", line: 65 },
     ],
   },
   "modules/knowledge-base/chat-extension/extension": {
@@ -2122,12 +2120,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel": {
     surface: "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel",
-    requiredStates: ["empty","error"],
+    requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "files.length === 0", line: 37 },
-      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 88 },
-      { kind: "empty", condition: "documents.length === 0", line: 92 },
-      { kind: "error", condition: "(doc.index_status === 'failed' || doc.index_status === 'no_text')", line: 119 },
+      { kind: "empty", condition: "files.length === 0", line: 27 },
+      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 78 },
+      { kind: "empty", condition: "documents.length === 0", line: 82 },
+      { kind: "branch", condition: "isRetryable(doc.index_status)", line: 109 },
     ],
   },
   "modules/knowledge-base/components/KnowledgeBaseFormDrawer": {
@@ -4056,7 +4054,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 342 keys.
+ * 341 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4208,7 +4206,6 @@ export type RequiredState =
   | "modules/knowledge-base/chat-extension/extension:panel-open"
   | "modules/knowledge-base/components/KnowledgeBaseCard:open"
   | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty"
-  | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error"
   | "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open"
   | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed"
   | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open"
@@ -4553,7 +4550,6 @@ export const REQUIRED_STATE_KEYS = [
   "modules/knowledge-base/chat-extension/extension:panel-open",
   "modules/knowledge-base/components/KnowledgeBaseCard:open",
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty",
-  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error",
   "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open",
   "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed",
   "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open",
