@@ -3,9 +3,10 @@ import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-
-// Maximum file size (100MB) — mirrors FileUploadArea / FileUploadButton.
-const MAX_FILE_SIZE = 100 * 1024 * 1024
+import {
+  MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE,
+  MAX_FILE_UPLOAD_LABEL,
+} from '@/modules/file/constants'
 
 /**
  * FilePasteHandler (ITEM-8 — paste image from clipboard)
@@ -65,8 +66,8 @@ export function FilePasteHandler() {
         .forEach((f) =>
           message.error(
             f.name
-              ? `Pasted image ${f.name} is too large. Maximum size is 100MB.`
-              : 'Pasted image is too large. Maximum size is 100MB.',
+              ? `Pasted image ${f.name} is too large. Maximum size is ${MAX_FILE_UPLOAD_LABEL}.`
+              : `Pasted image is too large. Maximum size is ${MAX_FILE_UPLOAD_LABEL}.`,
           ),
         )
 

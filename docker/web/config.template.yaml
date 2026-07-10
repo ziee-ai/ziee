@@ -37,6 +37,10 @@ server:
   # nginx sets X-Forwarded-* (and strips inbound), so trust them for OAuth
   # redirect_uri derivation.
   trust_forwarded_headers: true
+  # Per-file upload cap in MiB. The server derives the route body limit as
+  # cap + 16 MiB, so keep nginx's client_max_body_size (1024m) >= that. Raise
+  # ZIEE_MAX_FILE_UPLOAD_MB for large scientific/genomics files.
+  max_file_upload_mb: ${ZIEE_MAX_FILE_UPLOAD_MB}
   # Disabled: behind nginx every client shares the loopback source IP, so the
   # per-IP limiter would throttle all users as one. Re-enable + widen if you
   # front this with a per-client key extractor.

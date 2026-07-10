@@ -2,8 +2,10 @@ import { Paperclip } from 'lucide-react'
 import { Upload, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
-
-const MAX_FILE_SIZE = 100 * 1024 * 1024
+import {
+  MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE,
+  MAX_FILE_UPLOAD_LABEL,
+} from '@/modules/file/constants'
 
 /**
  * FileAttachMenuItem Component
@@ -18,7 +20,9 @@ export function FileAttachMenuItem() {
     incoming
       .filter(f => f.size > MAX_FILE_SIZE)
       .forEach(f =>
-        message.error(`File ${f.name} is too large. Maximum size is 100MB.`),
+        message.error(
+          `File ${f.name} is too large. Maximum size is ${MAX_FILE_UPLOAD_LABEL}.`,
+        ),
       )
     const files = incoming.filter(f => f.size <= MAX_FILE_SIZE)
     if (files.length > 0) {

@@ -1473,10 +1473,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 33 |
-| branch | `!canUploadRef.current` | 36 |
-| branch | `!dt` | 38 |
-| empty | `collected.length === 0` | 57 |
+| branch | `!el` | 34 |
+| branch | `!canUploadRef.current` | 37 |
+| branch | `!dt` | 39 |
+| empty | `collected.length === 0` | 58 |
 
 ### `modules/file/chat-extension/components/FilePreviewList`
 
@@ -1493,9 +1493,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 29 |
-| empty | `dropped.length === 0` | 52 |
-| branch | `dragging && host` | 87 |
+| branch | `!el` | 30 |
+| empty | `dropped.length === 0` | 53 |
+| branch | `dragging && host` | 90 |
 
 ### `modules/file/chat-extension/components/FileUploadButton`
 
@@ -1503,7 +1503,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canUpload` | 19 |
+| branch | `!canUpload` | 20 |
 
 ### `modules/file/chat-extension/components/ImageContent`
 
@@ -1655,26 +1655,26 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!projectId` | 68 |
-| empty | `!projectId \|\| selectedFileIds.size === 0` | 80 |
-| empty | `!projectId \|\| incoming.length === 0` | 104 |
-| branch | `atCap` | 105 |
-| empty | `accepted.length === 0` | 121 |
-| branch | `!canUpload` | 130 |
-| branch | `!body` | 134 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 145 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 151 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 157 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 161 |
-| branch | `!project` | 183 |
-| branch | `canUpload` | 195 |
-| branch | `selectedFileIds.size > 0` | 230 |
-| empty | `!(uploadingRows.length === 0)` | 256 |
-| branch | `initialLoading` | 278 |
-| empty | `files.length === 0` | 282 |
-| branch | `canEdit` | 312 |
-| branch | `atCap` | 358 |
-| branch | `isDragging && drawerBody` | 371 |
+| branch | `!projectId` | 66 |
+| empty | `!projectId \|\| selectedFileIds.size === 0` | 78 |
+| empty | `!projectId \|\| incoming.length === 0` | 102 |
+| branch | `atCap` | 103 |
+| empty | `accepted.length === 0` | 119 |
+| branch | `!canUpload` | 128 |
+| branch | `!body` | 132 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 143 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 149 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 155 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 159 |
+| branch | `!project` | 181 |
+| branch | `canUpload` | 193 |
+| branch | `selectedFileIds.size > 0` | 228 |
+| empty | `!(uploadingRows.length === 0)` | 254 |
+| branch | `initialLoading` | 276 |
+| empty | `files.length === 0` | 280 |
+| branch | `canEdit` | 310 |
+| branch | `atCap` | 356 |
+| branch | `isDragging && drawerBody` | 369 |
 
 ### `modules/file/viewers/image/body`
 

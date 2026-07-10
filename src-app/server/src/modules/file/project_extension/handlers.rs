@@ -283,29 +283,34 @@ impl Drop for OrphanFileCleanup {
     }
 }
 
+/// OpenAPI description for the upload-and-attach endpoint. Extracted to a const
+/// so the size-cap copy stays cap-agnostic (the per-file cap is configurable via
+/// `config.server.max_file_upload_mb`) and a unit test can guard against the
+/// stale hardcoded-limit copy reappearing.
+const UPLOAD_AND_ATTACH_DESCRIPTION: &str =
+    "**Multipart/form-data** upload. Send the file bytes in a part named `file` with a \
+     filename (Content-Disposition: form-data; name=\"file\"; filename=\"<name>\"). The \
+     server creates the file row + storage artifacts AND attaches the new file to the \
+     project in one round-trip. Failures roll back the upload via a Drop-guard so no \
+     orphans survive client disconnects.\n\
+     \n\
+     Enforces the file module's configurable per-file size cap, per-user quota (10 GiB), \
+     MIME sniffing + smuggling rejection, and the project's 100-file cap.\n\
+     \n\
+     Error codes:\n\
+     - `MISSING_FILE` (400) — no `file` part in the multipart body.\n\
+     - `FILE_TOO_LARGE` (400) — file exceeds the configured per-file size cap.\n\
+     - `STORAGE_QUOTA_EXCEEDED` (400) — per-user quota exhausted.\n\
+     - `MIME_MISMATCH` (400) — declared MIME doesn't match sniffed bytes.\n\
+     - `ZIP_BOMB_DETECTED` (400) — OOXML/ODF container expansion exceeds limits.\n\
+     - `PROJECT_FILE_COUNT_CAP` (422) — project already has 100 files.";
+
 pub fn upload_and_attach_file_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(ProjectsEdit, FilesUpload)>(op)
         .id("Project.uploadAndAttachFile")
         .tag("Projects")
         .summary("Upload a file and attach it to a project (multipart)")
-        .description(
-            "**Multipart/form-data** upload. Send the file bytes in a part named `file` with a \
-             filename (Content-Disposition: form-data; name=\"file\"; filename=\"<name>\"). The \
-             server creates the file row + storage artifacts AND attaches the new file to the \
-             project in one round-trip. Failures roll back the upload via a Drop-guard so no \
-             orphans survive client disconnects.\n\
-             \n\
-             Enforces the file module's size cap (100 MiB), per-user quota (10 GiB), MIME \
-             sniffing + smuggling rejection, and the project's 100-file cap.\n\
-             \n\
-             Error codes:\n\
-             - `MISSING_FILE` (400) — no `file` part in the multipart body.\n\
-             - `FILE_TOO_LARGE` (400) — over 100 MiB.\n\
-             - `STORAGE_QUOTA_EXCEEDED` (400) — per-user quota exhausted.\n\
-             - `MIME_MISMATCH` (400) — declared MIME doesn't match sniffed bytes.\n\
-             - `ZIP_BOMB_DETECTED` (400) — OOXML/ODF container expansion exceeds limits.\n\
-             - `PROJECT_FILE_COUNT_CAP` (422) — project already has 100 files.",
-        )
+        .description(UPLOAD_AND_ATTACH_DESCRIPTION)
         .response::<201, Json<FileEntity>>()
         .response_with::<400, (), _>(|res| res.description("Upload-validation error"))
         .response_with::<404, (), _>(|res| res.description("Project not found"))
@@ -355,4 +360,23 @@ pub fn detach_file_docs(op: TransformOperation) -> TransformOperation {
         )
         .response_with::<204, (), _>(|res| res.description("File detached"))
         .response_with::<404, (), _>(|res| res.description("Project or file not attached"))
+}
+
+#[cfg(test)]
+mod description_tests {
+    use super::UPLOAD_AND_ATTACH_DESCRIPTION;
+
+    #[test]
+    fn upload_description_has_no_stale_hardcoded_cap() {
+        // The per-file cap is configurable; the docs must not cite a fixed size.
+        assert!(
+            !UPLOAD_AND_ATTACH_DESCRIPTION.contains("100 MiB")
+                && !UPLOAD_AND_ATTACH_DESCRIPTION.contains("100 MB"),
+            "upload-and-attach docs must not hardcode a size cap"
+        );
+        assert!(
+            UPLOAD_AND_ATTACH_DESCRIPTION.contains("configurable per-file size cap"),
+            "upload-and-attach docs must describe the configurable per-file size cap"
+        );
+    }
 }
