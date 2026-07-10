@@ -131,7 +131,14 @@ export function ScheduledTaskFormDrawer() {
         model_id: editing.model_id ?? '',
         notify_mode: editing.notify_mode !== 'silent',
         notify_on_change: editing.notify_on === 'on_change',
-        allowed_unattended_tools: editing.allowed_unattended_tools ?? [],
+        // The ScheduledTask response types this JSONB column loosely (`{}`);
+        // it is always an AllowedUnattendedTool[] at runtime (mirror of the
+        // create/update field). Cast to the form's typed shape.
+        allowed_unattended_tools:
+          (editing.allowed_unattended_tools as
+            | AllowedUnattendedTool[]
+            | null
+            | undefined) ?? [],
         schedule: {
           schedule_kind:
             editing.schedule_kind === 'once' ? 'once' : 'recurring',
