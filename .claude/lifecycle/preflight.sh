@@ -125,6 +125,38 @@ else
   warn "cannot scan for stale Vite (no pgrep/ps on PATH) — if e2e serves stale code, kill the dev server manually" ""
 fi
 
+# 7. dev server config present with a REAL jwt secret — a fresh worktree ships only
+#    config/dev.example.yaml (dev.yaml is gitignored / per-machine), so the backend
+#    can't boot, and it hard-refuses to boot on the example's placeholder jwt secret.
+#    Both are recurring fresh-worktree blockers (see live-server setup log). Auto-fix:
+#    seed dev.yaml from the example with a generated secret (only when absent —
+#    non-destructive; the example defaults to embedded Postgres, so it's zero-config).
+PLACEHOLDER='dev-secret-change-in-production-min-32-chars-long'
+CFG_DIR="$REPO/src-app/server/config"
+DEV_CFG="$CFG_DIR/dev.yaml"
+DEV_EX="$CFG_DIR/dev.example.yaml"
+gen_secret() {
+  if command -v openssl >/dev/null 2>&1; then openssl rand -base64 48 | tr -d '\n'
+  elif [ -r /dev/urandom ]; then head -c 36 /dev/urandom | base64 | tr -d '\n'
+  else printf 'dev-%s-%s-change-me-to-a-random-48-char-secret' "$(date +%s)" "$$"; fi
+}
+if [ ! -f "$DEV_CFG" ]; then
+  if [ -f "$DEV_EX" ]; then
+    SECRET="$(gen_secret)"
+    # replace only the exact placeholder VALUE (| delimiter: base64 never contains |).
+    sed "s|\"$PLACEHOLDER\"|\"$SECRET\"|" "$DEV_EX" > "$DEV_CFG"
+    ok "bootstrapped config/dev.yaml from dev.example.yaml (generated a random jwt.secret; defaults to embedded Postgres — edit for an external DB)"
+  else
+    bad "config/dev.yaml missing and no dev.example.yaml to seed from" \
+        "author $DEV_CFG manually — the server will not boot without it"
+  fi
+elif grep -qE "^[[:space:]]*secret:[[:space:]]*\"$PLACEHOLDER\"" "$DEV_CFG"; then
+  bad "config/dev.yaml still has the placeholder jwt.secret — the server refuses to boot" \
+      "set jwt.secret to a random >=32-char value:  openssl rand -base64 48"
+else
+  ok "config/dev.yaml present with a non-placeholder jwt.secret"
+fi
+
 echo ""
 if [ "$FAIL" -ne 0 ]; then
   echo "preflight: $FAIL blocking problem(s) — fix them before building."
