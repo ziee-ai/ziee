@@ -19,6 +19,8 @@ import { SettingsPageContainer } from '@/modules/settings/components/SettingsPag
 export function NotificationsPage() {
   const { items, unread, total, page, perPage, unreadOnly, loading, error } =
     Stores.Notifications
+  // Guard against a malformed/absent response leaving `items` undefined.
+  const list = items ?? []
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -63,11 +65,11 @@ export function NotificationsPage() {
         </Button>
       </Flex>
 
-      {loading && items.length === 0 ? (
+      {loading && list.length === 0 ? (
         <Flex className="justify-center py-12">
           <Spin size="lg" label="Loading notifications" />
         </Flex>
-      ) : error && items.length === 0 ? (
+      ) : error && list.length === 0 ? (
         <ErrorState
           variant="page"
           resource="notifications"
@@ -75,14 +77,14 @@ export function NotificationsPage() {
           onRetry={() => void Stores.Notifications.load()}
           data-testid="notifications-error"
         />
-      ) : items.length === 0 ? (
+      ) : list.length === 0 ? (
         <Empty
           description="No notifications yet"
           data-testid="notifications-empty"
         />
       ) : (
         <Flex className="flex-col gap-2">
-          {items.map(n => (
+          {list.map(n => (
             <Card key={n.id} data-testid={`notification-card-${n.id}`}>
               <Flex className="items-start gap-3">
                 {!n.read_at && (

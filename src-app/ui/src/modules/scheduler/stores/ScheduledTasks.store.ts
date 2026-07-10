@@ -85,6 +85,10 @@ export const ScheduledTasks = defineStore('ScheduledTasks', {
       runNow: async (id: string) => {
         await ApiClient.ScheduledTask.runNow({ id })
       },
+      continueRun: async (runId: string): Promise<string> => {
+        const res = await ApiClient.ScheduledTask.continueRun({ run_id: runId })
+        return res.conversation_id
+      },
       testFire: async (req: TestFireRequest): Promise<TestFireResult> => {
         return ApiClient.ScheduledTask.testFire(req)
       },

@@ -36,9 +36,11 @@ export const Notifications = defineStore('Notifications', {
           unread_only: s.unreadOnly,
         })
         set(draft => {
-          draft.items = resp.items
-          draft.total = resp.total
-          draft.unread = resp.unread
+          // Defensive: never let `items` become undefined — a malformed/empty
+          // response must not crash the page on `items.length`.
+          draft.items = resp.items ?? []
+          draft.total = resp.total ?? 0
+          draft.unread = resp.unread ?? 0
           draft.loading = false
         })
       } catch (error) {

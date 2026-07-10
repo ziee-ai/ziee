@@ -97,10 +97,26 @@ function TaskRow({ task }: { task: ScheduledTask }) {
               ) : (
                 <Flex className="flex-col gap-1">
                   {runs.map(r => (
-                    <Text key={r.id} className="text-muted-foreground text-xs">
-                      {new Date(r.fired_at).toLocaleString()} — {r.status}
-                      {r.error_class ? ` (${r.error_class})` : ''}
-                    </Text>
+                    <Flex key={r.id} className="items-center gap-2">
+                      <Text className="text-muted-foreground text-xs">
+                        {new Date(r.fired_at).toLocaleString()} — {r.status}
+                        {r.error_class ? ` (${r.error_class})` : ''}
+                      </Text>
+                      <Button
+                        data-testid={`run-continue-${r.id}`}
+                        variant="ghost"
+                        className="h-auto px-1 py-0 text-xs"
+                        onClick={async () => {
+                          const conversationId =
+                            await Stores.ScheduledTasks.continueRun(r.id)
+                          if (conversationId) {
+                            window.location.href = `/conversations/${conversationId}`
+                          }
+                        }}
+                      >
+                        Continue in chat
+                      </Button>
+                    </Flex>
                   ))}
                 </Flex>
               )}

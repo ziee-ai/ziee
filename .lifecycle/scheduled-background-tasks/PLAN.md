@@ -70,13 +70,13 @@ for this category. These items close them.
 - **ITEM-29**: Notification delivery/triage level — `notify_mode` per task honored by `notification::create_and_emit`: `always` → durable row **+** live toast/badge; `silent` → durable inbox row only (no interrupt). Non-actionable/low-signal results stay out of the interrupt channel (per the agent-notification-triage best practice) while still being auditable.
 - **ITEM-30**: Task-bound conversation for the `prompt` kind — a recurring prompt task owns ONE `bound_conversation_id`; the first firing creates it, each subsequent firing **appends a turn** to it (not a fresh conversation), so follow-up is native ("open the task's conversation and keep chatting"). Deleting that conversation **pauses** the task (`paused_reason='conversation_deleted'`), mirroring ChatGPT's "task pauses if its chat is deleted."
 - **ITEM-31**: Per-task run history — `repository::list_task_runs(task_id)` + `GET /api/scheduled-tasks/{id}/runs` + a "Runs" section in the task detail drawer (fired-at / status / link to the run or conversation). Owner-scoped.
-> **DESCOPED — (was ITEM-32) "Continue in chat" for `workflow`-kind results**
-> (see DRIFT-2.1). No `POST /api/scheduled-tasks/runs/{run_id}/continue` seam was
-> built. The `prompt`-target BOUND conversation (ITEM-30) already gives native
-> follow-up for the common case ("open the task's conversation and keep
-> chatting"); workflow-result continue-in-chat is deferred to a follow-up. This
-> item is intentionally NOT an `ITEM-N` line so the bipartite test gate does not
-> require coverage for descoped scope.
+- **ITEM-32**: "Continue in chat" for a scheduled-task run — a backend seam +
+  `POST /api/scheduled-tasks/runs/{run_id}/continue` that opens a NEW conversation
+  seeded with the run's output/context (owner-scoped, cross-user 404), and a
+  "Continue in chat" button on each run row that navigates to that seeded
+  conversation. (Originally descoped in DRIFT-2.1; RE-SCOPED + implemented per
+  DRIFT-3 after the lifecycle hardening's A5 shrink-guard — the plan is not
+  shrunk to pass.)
 
 - **ITEM-33**: Frontend surfacing — paused-state badge + `paused_reason`, a
   resume action, the `notify_mode` toggle in the form drawer, and the run-history

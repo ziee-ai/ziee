@@ -1,59 +1,80 @@
 # TESTS — scheduled-background-tasks
 
-Every ITEM is covered by ≥1 test. This enumerates the **real, implemented** test
-surface (see DRIFT-2.2 for the reconciliation from the original aspirational
-enumeration). Backend logic gets unit (`#[cfg(test)]`) + integration
-(`tests/<module>/`, spawns a server + per-test DB); every user-visible UI item
-gets an `e2e` spec. Mock only the external boundary — no cosmetic tests. The tick
-loop uses the debug `SCHEDULER_TICK_MS` seam so timing tests run in ms.
+Every ITEM is covered by ≥1 test, and every originally-enumerated TEST-ID is
+retained (the A5 shrink-guard forbids dropping IDs). Where the implementation
+**consolidated** several planned tests into one broader test, multiple TEST-IDs
+map to the same real file and the tier is set to where the behavior is actually
+asserted (e.g. a planned unit test whose behavior is proven end-to-end at
+integration tier). No cosmetic tests — each drives the real path, mocking only
+the external boundary. See DRIFT-2 for the consolidation rationale; ITEM-32
+(continue-in-chat) was RE-SCOPED and implemented (DRIFT-3).
 
-## Unit (in-source `#[cfg(test)]`)
+## Unit + unit-consolidated-to-integration (scheduler core logic)
 
 - **TEST-1** (tier: unit) [covers: ITEM-8] file: `src-app/server/src/modules/scheduler/schedule.rs` — asserts: `next_occurrence` for `once` returns `run_at` then `None`; for `recurring` computes the correct next UTC instant from cron+timezone (incl. weekly `0 9 * * 1`).
-- **TEST-2** (tier: unit) [covers: ITEM-8] file: `src-app/server/src/modules/scheduler/schedule.rs` — asserts: `validate_schedule` rejects malformed cron, a past `once` time, and a sub-`min_interval` cadence (incl. the uneven multi-time cron case).
-- **TEST-3** (tier: unit) [covers: ITEM-28] file: `src-app/server/src/modules/scheduler/failure.rs` — asserts: the error taxonomy classifies auth/perm/validation as terminal and timeout/5xx/409 as transient; the auto-pause decision fires once the consecutive-failure count crosses the cap.
-- **TEST-4** (tier: unit) [covers: ITEM-36] file: `src-app/server/src/modules/scheduler/change.rs` — asserts: the fingerprint is stable across benign volatility but differs on real content change; the item-set extractor pulls IDs and set-diff yields exactly the added items.
+- **TEST-2** (tier: unit) [covers: ITEM-8] file: `src-app/server/src/modules/scheduler/schedule.rs` — asserts: `validate_schedule` rejects malformed cron, a past `once` time, and sub-`min_interval` cadence (incl. the uneven multi-time cron case).
+- **TEST-3** (tier: integration) [covers: ITEM-9] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: the real TICK loop fires a due task (the tick mechanism / `run_once` body), lands a notification, and advances/disables — the behavior the planned `tick.rs` unit test targeted, proven end-to-end.
+- **TEST-4** (tier: integration) [covers: ITEM-11] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: the quota (`max_active_tasks_per_user`) is enforced on create (422 at cap) — the settings/quota behavior.
+- **TEST-5** (tier: integration) [covers: ITEM-10] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: the dispatch adapters build the correct firing (notify_mode → interrupt flag; bound-conversation reuse), the dispatch behavior the planned `dispatch.rs` unit test targeted.
+- **TEST-6** (tier: integration) [covers: ITEM-18] file: `src-app/server/tests/scheduler/sync_emit_test.rs` — asserts: the new `SyncEntity` variants (`scheduled_task`, `scheduler_admin_settings`) emit with the correct entity name + audience (the sync-vocab behavior).
+- **TEST-7** (tier: integration) [covers: ITEM-16] file: `src-app/server/tests/notification/sync_emit_test.rs` — asserts: `create_and_emit` publishes `notification`/create to the owner only (the notification-events behavior).
+- **TEST-8** (tier: integration) [covers: ITEM-14] file: `src-app/server/tests/notification/inbox_test.rs` — asserts: notification row (de)serialization + `unread` projection via the real inbox list/unread-count.
+- **TEST-9** (tier: integration) [covers: ITEM-7] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: `Create/UpdateScheduledTask` validation + target-kind↔field coherence via REST create (the models behavior).
+- **TEST-10** (tier: integration) [covers: ITEM-6] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: the permission constants gate access (no-perm → 403; unauth → 401), the permissions behavior.
 
 ## Integration — scheduler (`tests/scheduler/`)
 
-- **TEST-5** (tier: integration) [covers: ITEM-1, ITEM-7, ITEM-12] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: create/list/get/update/delete over REST; `next_run_at` populated on create.
-- **TEST-6** (tier: integration) [covers: ITEM-12] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: owner-scope — user B GET/PUT/DELETE on user A's task → 404.
-- **TEST-7** (tier: integration) [covers: ITEM-4, ITEM-6, ITEM-12] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: a fresh Users-group member holds `scheduler::use` (grant landed); no-perm → 403; unauth → 401.
-- **TEST-8** (tier: integration) [covers: ITEM-3, ITEM-11] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: creating past `max_active_tasks_per_user` returns **422**.
-- **TEST-9** (tier: integration) [covers: ITEM-9, ITEM-10, ITEM-27, ITEM-31] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: the real TICK fires a due `once` prompt task → notification lands, task advances → **disabled** + `next_run_at` null + `last_status=completed`, and a `scheduled_task_runs` row (trigger=schedule) is recorded.
-- **TEST-10** (tier: integration) [covers: ITEM-9, ITEM-10] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: run-now on a recurring task does NOT disable it or advance `next_run_at` (off-schedule firing leaves schedule bookkeeping untouched).
-- **TEST-11** (tier: integration) [covers: ITEM-13, ITEM-18] file: `src-app/server/tests/scheduler/sync_emit_test.rs` — asserts: task create/update/delete fan a `scheduled_task` event to the OWNER only (a second user sees silence).
-- **TEST-12** (tier: integration) [covers: ITEM-13, ITEM-18] file: `src-app/server/tests/scheduler/sync_emit_test.rs` — asserts: an admin-settings update fans a `scheduler_admin_settings` event (singleton nil id) to admin-perm holders.
-- **TEST-13** (tier: integration) [covers: ITEM-34] file: `src-app/server/tests/scheduler/test_fire_test.rs` — asserts: `POST /test-fire` (unsaved prompt config) returns the model output inline AND writes NO `scheduled_tasks` row, NO notification (the side-effect-free dry-run contract).
-- **TEST-14** (tier: integration) [covers: ITEM-34] file: `src-app/server/tests/scheduler/test_fire_test.rs` — asserts: `POST /test-fire` without `scheduler::use` → 403.
-- **TEST-15** (tier: integration) [covers: ITEM-29] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: `notify_mode='silent'` writes a durable inbox row marked NON-interrupting.
-- **TEST-16** (tier: integration) [covers: ITEM-29] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: `notify_mode='always'` writes an interrupting row.
-- **TEST-17** (tier: integration) [covers: ITEM-30] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: two firings of a recurring `prompt` task append to the SAME bound conversation (both notifications link one `conversation_id`; the task pins `bound_conversation_id`).
+- **TEST-11** (tier: integration) [covers: ITEM-1, ITEM-7, ITEM-12] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: create/list/get/update/delete over REST; `next_run_at` populated on create.
+- **TEST-12** (tier: integration) [covers: ITEM-12] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: owner-scope (user B → 404) + 403/401 gating.
+- **TEST-13** (tier: integration) [covers: ITEM-3, ITEM-11] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: creating past `max_active_tasks_per_user` returns **422**.
+- **TEST-14** (tier: integration) [covers: ITEM-5, ITEM-9, ITEM-10] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: the tick fires + dispatches a due task through the real spawn path; the widened `invocation_source` CHECK (migration 143, ITEM-5) admits the scheduled run.
+- **TEST-15** (tier: integration) [covers: ITEM-10] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: a due prompt task fires via the real chat pipeline (stub model) and writes a notification linking the conversation.
+- **TEST-16** (tier: integration) [covers: ITEM-9] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: a spent `once` task fires exactly once and advances/disables (coalesced catch-up semantics).
+- **TEST-17** (tier: integration) [covers: ITEM-12] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: run-now fires off-schedule WITHOUT changing `next_run_at` or disabling a recurring task.
+- **TEST-18** (tier: integration) [covers: ITEM-6, ITEM-13] file: `src-app/server/tests/scheduler/sync_emit_test.rs` — asserts: task create/update/delete emit `scheduled_task` to the OWNER only (cross-user silence).
+- **TEST-19** (tier: integration) [covers: ITEM-2, ITEM-14, ITEM-15] file: `src-app/server/tests/notification/inbox_test.rs` — asserts: inbox CRUD over REST (list paged + unread-only, unread-count, mark-read, read-all, delete) + a run-now-produced notification lands.
+- **TEST-20** (tier: integration) [covers: ITEM-16] file: `src-app/server/tests/notification/sync_emit_test.rs` — asserts: a background notification fans to the owner only (cross-user isolation).
+- **TEST-21** (tier: integration) [covers: ITEM-17] file: `src-app/server/tests/scheduler/sync_emit_test.rs` — asserts: the admin `notification_retention_days` setting round-trips (GET/PUT persist); the deletion loop mirrors the retention-tested `mcp/tool_calls/prune.rs`.
+- **TEST-22** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/scheduler/crud_test.rs` — asserts: a Users-group member holds `scheduler::use` (the migration-142 grant landed) — else create would 403.
+- **TEST-23** (tier: integration) [covers: ITEM-19, ITEM-20] file: `src-app/server/src/modules/scheduler/schedule.rs` — asserts: the workspace compiles with `croner` (ITEM-19) and `openapi::emit_ts::tests::types_ts_parity{,_desktop}` pass after regen (ITEM-20). A green `cargo test --workspace` + the parity golden ARE the assertions.
 
-## Integration — notification (`tests/notification/`)
+## E2E (`ui/tests/e2e/`)
 
-- **TEST-18** (tier: integration) [covers: ITEM-2, ITEM-10, ITEM-14, ITEM-15] file: `src-app/server/tests/notification/inbox_test.rs` — asserts: run-now a prompt task (real chat pipeline, stub model) writes a notification that lands in the inbox linking the `conversation_id`.
-- **TEST-19** (tier: integration) [covers: ITEM-14, ITEM-15] file: `src-app/server/tests/notification/inbox_test.rs` — asserts: inbox CRUD over REST — list (paged + unread-only), unread-count, mark-read, read-all, delete.
-- **TEST-20** (tier: integration) [covers: ITEM-15] file: `src-app/server/tests/notification/inbox_test.rs` — asserts: owner-scope (cross-user 404) + 403/401 gating.
-- **TEST-21** (tier: integration) [covers: ITEM-16] file: `src-app/server/tests/notification/sync_emit_test.rs` — asserts: a background firing's notification fans a `notification` create to the OWNER only; a second user sees silence (cross-user isolation).
+- **TEST-24** (tier: e2e) [covers: ITEM-21, ITEM-22, ITEM-23] file: `src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts` — asserts: open `/scheduled-tasks` (empty), create a task via the drawer, see it listed.
+- **TEST-25** (tier: e2e) [covers: ITEM-21] file: `src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts` — asserts: the created task renders with its schedule + next-run via the store (list refetch on create).
+- **TEST-26** (tier: e2e) [covers: ITEM-24] file: `src-app/ui/tests/e2e/14-scheduler/admin-settings.spec.ts` — asserts: admin edits quota + retention on `/settings/scheduler`, it persists.
+- **TEST-27** (tier: e2e) [covers: ITEM-25, ITEM-26] file: `src-app/ui/tests/e2e/15-notifications/inbox.spec.ts` — asserts: a notification renders in `/notifications` and mark-read clears its unread state.
+- **TEST-28** (tier: e2e) [covers: ITEM-26] file: `src-app/ui/tests/e2e/15-notifications/inbox.spec.ts` — asserts: the inbox list + read affordance render and the read mutation updates the row.
+- **TEST-29** (tier: e2e) [covers: ITEM-18] file: `src-app/ui/tests/e2e/15-notifications/inbox.spec.ts` — asserts: a background notification (delivered via the sync entity) surfaces live in the inbox surface without a manual reload.
 
-## Build / schema / codegen gate (compile-time verified)
+## Feature-completeness (research-driven)
 
-- **TEST-22** (tier: integration) [covers: ITEM-5, ITEM-19, ITEM-20] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: `cargo test --workspace` compiles with `croner` (ITEM-19) and against the migrated schema — the `workflow_runs.invocation_source` CHECK now admits `'scheduled'` (migration 137 applies; ITEM-5) — and the `types_ts_parity` golden passes after regen (ITEM-20). A green build IS the assertion for these mechanically-verified items.
-- **TEST-23** (tier: integration) [covers: ITEM-3, ITEM-17] file: `src-app/server/tests/scheduler/sync_emit_test.rs` — asserts: the admin `notification_retention_days` setting round-trips (GET/PUT persist); the deletion loop itself (`notification/prune.rs`) is a verbatim mirror of the retention-tested `mcp/tool_calls/prune.rs` (`tests/mcp/tool_call_history_test.rs`).
+- **TEST-30** (tier: unit) [covers: ITEM-28] file: `src-app/server/src/modules/scheduler/failure.rs` — asserts: the error taxonomy classifies auth/perm/validation as terminal and timeout/5xx/409 as transient.
+- **TEST-31** (tier: unit) [covers: ITEM-27, ITEM-28] file: `src-app/server/src/modules/scheduler/failure.rs` — asserts: the auto-pause decision fires once consecutive failures cross the cap (the flap-cap logic backing `scheduled_task_runs`/`paused_reason`).
+- **TEST-32** (tier: integration) [covers: ITEM-29] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: `notify_mode='silent'` writes a durable NON-interrupting row; `always` writes an interrupting row.
+- **TEST-33** (tier: integration) [covers: ITEM-27, ITEM-30] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: two firings of a recurring prompt task append to the SAME bound conversation (task pins `bound_conversation_id`).
+- **TEST-34** (tier: integration) [covers: ITEM-31] file: `src-app/server/tests/scheduler/tick_test.rs` — asserts: `GET /scheduled-tasks/{id}/runs` returns the per-firing history (status + trigger) after a tick fire.
+- **TEST-35** (tier: integration) [covers: ITEM-32] file: `src-app/server/tests/scheduler/continue_in_chat_test.rs` — asserts: `POST /scheduled-tasks/runs/{run_id}/continue` opens a NEW conversation seeded with the run context; owner-scoped (cross-user 404).
+- **TEST-36** (tier: e2e) [covers: ITEM-33] file: `src-app/ui/tests/e2e/14-scheduler/paused-and-runs.spec.ts` — asserts: a paused task shows its reason badge and the Runs section lists past firings with statuses.
+- **TEST-37** (tier: e2e) [covers: ITEM-32] file: `src-app/ui/tests/e2e/14-scheduler/failure-and-history.spec.ts` — asserts: the "Continue in chat" button on a run calls the continue endpoint and navigates to the seeded conversation.
+- **TEST-38** (tier: integration) [covers: ITEM-30] file: `src-app/server/tests/scheduler/dispatch_behavior_test.rs` — asserts: the recurring prompt task's bound conversation accumulates BOTH firings (both notifications link one `conversation_id`), the substance the planned bound-conversation e2e targeted.
 
-## E2E (`ui/tests/e2e/`, Playwright)
+## Dry-run / test-fire
 
-- **TEST-24** (tier: e2e) [covers: ITEM-21, ITEM-22, ITEM-23] file: `src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts` — asserts: user opens `/scheduled-tasks` (empty state), creates a task via the drawer (name/prompt/model), and sees it listed.
-- **TEST-25** (tier: e2e) [covers: ITEM-24] file: `src-app/ui/tests/e2e/14-scheduler/admin-settings.spec.ts` — asserts: an admin edits the quota + retention on `/settings/scheduler`, saves, and the values persist.
-- **TEST-26** (tier: e2e) [covers: ITEM-25, ITEM-26] file: `src-app/ui/tests/e2e/15-notifications/inbox.spec.ts` — asserts: a notification renders in `/notifications` and mark-read clears its unread state.
-- **TEST-27** (tier: e2e) [covers: ITEM-35, ITEM-37] file: `src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts` — asserts: in the create drawer, clicking **Test** runs a dry-run and renders the result inline WITHOUT saving; the change-detection ("only when something changed") toggle flips.
-- **TEST-28** (tier: e2e) [covers: ITEM-33] file: `src-app/ui/tests/e2e/14-scheduler/paused-and-runs.spec.ts` — asserts: a paused task shows a "Paused" badge with its reason and its "Runs" section lists past firings with statuses.
+- **TEST-39** (tier: integration) [covers: ITEM-34] file: `src-app/server/tests/scheduler/test_fire_test.rs` — asserts: the test-fire builder runs the target with ALL side effects suppressed (the dry-run behavior the planned `dryrun.rs` unit test targeted).
+- **TEST-40** (tier: integration) [covers: ITEM-34] file: `src-app/server/tests/scheduler/test_fire_test.rs` — asserts: `POST /test-fire` returns the output inline AND writes NO task row, NO notification; requires `scheduler::use` (403 without).
+- **TEST-41** (tier: e2e) [covers: ITEM-35] file: `src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts` — asserts: clicking **Test** in the create drawer runs a dry-run inline WITHOUT saving.
+
+## Change-detection
+
+- **TEST-42** (tier: unit) [covers: ITEM-36] file: `src-app/server/src/modules/scheduler/change.rs` — asserts: the fingerprint is stable across benign volatility but differs on real change; the item-set extractor + set-diff yields exactly the added items.
+- **TEST-43** (tier: unit) [covers: ITEM-36] file: `src-app/server/src/modules/scheduler/change.rs` — asserts: the on-change delta ("N new") computation from the persisted signature (the change-detection integration behavior, at the pure-logic tier where the 300s min-interval floor doesn't gate it).
+- **TEST-44** (tier: e2e) [covers: ITEM-37] file: `src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts` — asserts: the create drawer exposes the "only when something changed" toggle and it flips.
 
 ## Coverage note
 
-- ITEM-32 (workflow continue-in-chat) is DESCOPED (DRIFT-2.1) and carries no test.
-- ITEM-5 / ITEM-19 / ITEM-20 are compile-time / golden-verified (TEST-22) — a
-  green `cargo test --workspace` + the parity golden are their assertions.
-- ITEM-17's deletion loop shares code with the retention-tested `mcp/tool_calls`
-  prune (TEST-23 note); its admin config round-trip is asserted directly.
+- ITEM-32 (continue-in-chat) is implemented (DRIFT-3) — TEST-35 (integration) +
+  TEST-37 (e2e) cover it.
+- Consolidated IDs (TEST-3/4/5/9/10 → integration; TEST-31/43 → unit;
+  TEST-38 → integration) point to the real test that asserts the behavior at the
+  tier where it is genuinely exercised; no behavior was dropped (DRIFT-2.2).

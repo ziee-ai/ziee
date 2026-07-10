@@ -419,6 +419,32 @@ pub async fn list_runs_for_task(
     Ok(rows)
 }
 
+/// Fetch a single run row owner-scoped (its `user_id` denormalizes the task
+/// owner). Used by the continue-in-chat endpoint (cross-user → None → 404).
+pub async fn get_run_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+    run_id: Uuid,
+) -> Result<Option<ScheduledTaskRun>, AppError> {
+    let row = sqlx::query_as!(
+        ScheduledTaskRun,
+        r#"
+        SELECT
+            id, scheduled_task_id, user_id, trigger, status, error_class,
+            error_message, notification_id, workflow_run_id, conversation_id,
+            fired_at as "fired_at: _", finished_at as "finished_at: _"
+        FROM scheduled_task_runs
+        WHERE id = $1 AND user_id = $2
+        "#,
+        run_id,
+        user_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
 /// Set the bound conversation for a prompt-kind task (first firing).
 pub async fn set_bound_conversation(
     pool: &PgPool,

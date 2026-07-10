@@ -17,6 +17,7 @@ use super::models::{
     CreateScheduledTask, ScheduledTask, ScheduledTaskRun, UpdateScheduledTask, MAX_NAME_LEN,
     MAX_PROMPT_LEN,
 };
+use super::continue_chat::{self, ContinueResult};
 use super::dryrun::{self, TestFireRequest, TestFireResult};
 use super::tick;
 use super::permissions::{SchedulerAdminManage, SchedulerAdminRead, SchedulerUse};
@@ -326,6 +327,30 @@ pub fn list_task_runs_docs(op: TransformOperation) -> TransformOperation {
         .id("ScheduledTask.listRuns")
         .summary("List a scheduled task's run history")
         .response::<200, Json<Vec<ScheduledTaskRun>>>()
+}
+
+/// POST /api/scheduled-tasks/runs/{run_id}/continue — open a NEW conversation
+/// seeded with this run's output/context so the user can keep chatting about a
+/// background result (ITEM-32). Owner-scoped (cross-user run → 404).
+#[debug_handler]
+pub async fn continue_run(
+    auth: RequirePermissions<(SchedulerUse,)>,
+    Path(run_id): Path<Uuid>,
+) -> ApiResult<Json<ContinueResult>> {
+    let run = repository::get_run_for_user(Repos.pool(), auth.user.id, run_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Scheduled task run"))?;
+    let conversation_id =
+        continue_chat::continue_run_in_chat(Repos.pool(), auth.user.id, &run).await?;
+    Ok((StatusCode::CREATED, Json(ContinueResult { conversation_id })))
+}
+
+pub fn continue_run_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.continueRun")
+        .summary("Continue a scheduled-task run in a new chat")
+        .description("Opens a new conversation seeded with the run's output/context.")
+        .response::<201, Json<ContinueResult>>()
 }
 
 /// POST /api/scheduled-tasks/test-fire — run the target ONCE, side-effect-free,

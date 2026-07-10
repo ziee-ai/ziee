@@ -571,6 +571,14 @@ export type ContentBlockDelta = {
   name?: string | null
 }
 
+/**
+ * Response of the continue-in-chat endpoint: the id of the freshly-seeded
+ *  conversation the client should navigate to.
+ */
+export interface ContinueResult {
+  conversation_id: string
+}
+
 /** Conversation entity - Represents a chat conversation with an AI assistant */
 export interface Conversation {
   title?: string
@@ -7224,6 +7232,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'ScheduledTask.continueRun': 'POST /api/scheduled-tasks/runs/{run_id}/continue',
   'ScheduledTask.create': 'POST /api/scheduled-tasks',
   'ScheduledTask.delete': 'DELETE /api/scheduled-tasks/{id}',
   'ScheduledTask.get': 'GET /api/scheduled-tasks/{id}',
@@ -7621,6 +7630,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
+  'ScheduledTask.continueRun': { run_id: string }
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }
@@ -8018,6 +8028,7 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'ScheduledTask.continueRun': ContinueResult
   'ScheduledTask.create': ScheduledTask
   'ScheduledTask.delete': void
   'ScheduledTask.get': ScheduledTask

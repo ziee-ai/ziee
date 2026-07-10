@@ -12,6 +12,7 @@
 // between two scheduled firings, and a clean terminal-failure injection would
 // need a stub error seam the scheduler doesn't expose.
 
+mod continue_in_chat_test;
 mod crud_test;
 mod dispatch_behavior_test;
 mod sync_emit_test;
