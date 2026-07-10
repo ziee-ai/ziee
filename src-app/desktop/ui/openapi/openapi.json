@@ -20605,124 +20605,6 @@
         ]
       }
     },
-    "/api/js-tool/settings": {
-      "get": {
-        "tags": [
-          "Programmatic Tools"
-        ],
-        "summary": "Read the singleton run_js (js_tool) limits configuration",
-        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
-        "operationId": "JsTool.getSettings",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the run_js (js_tool) resource-limits configuration.",
-                        "name": "JsToolSettingsRead",
-                        "value": "js_tool::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: js_tool::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsToolSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Programmatic Tools"
-        ],
-        "summary": "Update the singleton run_js (js_tool) limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
-        "operationId": "JsTool.updateSettings",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateJsToolSettings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
-                        "name": "JsToolSettingsManage",
-                        "value": "js_tool::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: js_tool::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsToolSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/app/setup/status": {
       "get": {
         "tags": [
@@ -21324,6 +21206,124 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/js-tool/settings": {
+      "get": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Read the singleton run_js (js_tool) limits configuration",
+        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
+        "operationId": "JsTool.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the run_js (js_tool) resource-limits configuration.",
+                        "name": "JsToolSettingsRead",
+                        "value": "js_tool::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Update the singleton run_js (js_tool) limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
+        "operationId": "JsTool.updateSettings",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateJsToolSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
+                        "name": "JsToolSettingsManage",
+                        "value": "js_tool::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
           }
         },
         "security": [
@@ -24469,6 +24469,218 @@
           }
         ]
       }
+    },
+    "/api/office-bridge/settings": {
+      "get": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "Read office-bridge settings",
+        "description": "\n\n**Required Permission:** `office_bridge::admin::read`\n\nRead office-bridge settings (enable, port, connection state).",
+        "operationId": "OfficeBridge.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read office-bridge settings (enable, port, connection state).",
+                        "name": "OfficeBridgeAdminRead",
+                        "value": "office_bridge::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeBridgeSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "Update office-bridge settings (enable, port)",
+        "description": "\n\n**Required Permission:** `office_bridge::admin::manage`\n\nUpdate office-bridge settings (enable, port).",
+        "operationId": "OfficeBridge.updateSettings",
+        "requestBody": {
+          "description": "PUT body for the global settings. Every field optional → absent = leave.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOfficeBridgeSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update office-bridge settings (enable, port).",
+                        "name": "OfficeBridgeManage",
+                        "value": "office_bridge::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficeBridgeSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/office-bridge/documents": {
+      "get": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "List the user's currently-open Office documents",
+        "description": "\n\n**Required Permission:** `office_bridge::use`\n\nUse the office-bridge tools for open Office documents.",
+        "operationId": "OfficeBridge.listDocuments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the office-bridge tools for open Office documents.",
+                        "name": "OfficeBridgeUse",
+                        "value": "office_bridge::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpenDoc"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/office-bridge/connect": {
+      "post": {
+        "tags": [
+          "OfficeBridge"
+        ],
+        "summary": "Run the [Connect] installer flow (trust cert, sideload add-in, report readiness)",
+        "description": "\n\n**Required Permission:** `office_bridge::admin::manage`\n\nUpdate office-bridge settings (enable, port).",
+        "operationId": "OfficeBridge.connect",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update office-bridge settings (enable, port).",
+                        "name": "OfficeBridgeManage",
+                        "value": "office_bridge::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: office_bridge::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Readiness report returned by the admin `[Connect]` installer flow (ITEM-13).\n\n The `[Connect]` action runs the one-shot install steps (trust the bridge CA,\n register the add-in manifest for sideloading) and reports where the host\n ended up. Every step is best-effort: a failed step sets its boolean `false`\n and appends a human-readable note to `message` rather than failing the whole\n request, so the admin sees a partial-success report instead of a 500.\n\n Like [`OfficeBridgeSettings`], this DTO must NEVER carry the bridge's\n per-session token or any secret — it is display/diagnostic state only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectReadiness"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -25910,6 +26122,45 @@
           "label",
           "required",
           "placeholder"
+        ]
+      },
+      "ConnectReadiness": {
+        "description": "Readiness report returned by the admin `[Connect]` installer flow (ITEM-13).\n\n The `[Connect]` action runs the one-shot install steps (trust the bridge CA,\n register the add-in manifest for sideloading) and reports where the host\n ended up. Every step is best-effort: a failed step sets its boolean `false`\n and appends a human-readable note to `message` rather than failing the whole\n request, so the admin sees a partial-success report instead of a 500.\n\n Like [`OfficeBridgeSettings`], this DTO must NEVER carry the bridge's\n per-session token or any secret — it is display/diagnostic state only.",
+        "type": "object",
+        "properties": {
+          "bridge_port": {
+            "description": "The TCP port the bridge HTTPS+WSS listener uses (echoed for the UI).",
+            "type": "integer",
+            "format": "int32"
+          },
+          "cert_trusted": {
+            "description": "Whether the bridge CA was successfully installed into the OS trust store\n (one UAC prompt on Windows). False ⇒ see `message`.",
+            "type": "boolean"
+          },
+          "message": {
+            "description": "Human-readable summary of the outcome — a success line when every step\n landed, else the concatenated per-step failure/warning notes.",
+            "type": "string"
+          },
+          "office_elevated_warning": {
+            "description": "True ⇒ warn the user: Office is running elevated (as administrator), so\n the add-in platform is disabled and the bridge cannot attach. Office must\n be restarted without administrator rights.",
+            "type": "boolean"
+          },
+          "office_present": {
+            "description": "Whether a Microsoft Office installation was detected on the host.",
+            "type": "boolean"
+          },
+          "sideloaded": {
+            "description": "Whether the add-in manifest was registered for sideloading. False ⇒ see\n `message`.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "office_present",
+          "office_elevated_warning",
+          "cert_trusted",
+          "sideloaded",
+          "bridge_port",
+          "message"
         ]
       },
       "ConnectorCatalogEntry": {
@@ -35068,6 +35319,49 @@
           "per_page"
         ]
       },
+      "OfficeApp": {
+        "description": "Which Office application a document belongs to.",
+        "type": "string",
+        "enum": [
+          "word",
+          "excel",
+          "power_point"
+        ]
+      },
+      "OfficeBridgeSettings": {
+        "description": "Deployment-wide office-bridge settings (singleton row). Returned by GET.",
+        "type": "object",
+        "properties": {
+          "cert_fingerprint": {
+            "description": "Public fingerprint of the locally-trusted bridge cert (not a secret).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "description": "Runtime admin toggle (distinct from the deploy-level config kill switch).",
+            "type": "boolean"
+          },
+          "last_connected_at": {
+            "description": "Last time a task pane successfully connected, or null if never.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "port": {
+            "description": "Fixed TCP port the bridge HTTPS+WSS listener binds (default 44300).",
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "enabled",
+          "port"
+        ]
+      },
       "OnboardingProgress": {
         "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
         "type": "object",
@@ -35088,6 +35382,55 @@
         "required": [
           "completed_guide_ids",
           "completed_step_ids"
+        ]
+      },
+      "OpenDoc": {
+        "description": "One currently-open Office document, as enumerated by the platform.\n\n `full_name` is the app's own fully-qualified document identifier (path +\n name for a saved doc, or just the name for an unsaved one) — it is the\n stable handle callers pass back to the pane tools (`read_document`,\n `run_office_js`, …) to target this document.",
+        "type": "object",
+        "properties": {
+          "active": {
+            "description": "Whether this is the app's currently-active document.",
+            "type": "boolean"
+          },
+          "app": {
+            "description": "The owning application (Word/Excel/PowerPoint).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OfficeApp"
+              }
+            ]
+          },
+          "attach_method": {
+            "description": "How the platform attached to this doc (e.g. `\"com_get_active_object\"`,\n `\"accessible_object_from_window\"`, `\"enum_windows_presence\"`). Purely\n diagnostic; opaque to callers.",
+            "type": "string"
+          },
+          "full_name": {
+            "description": "App-qualified full name — the handle the pane tools target a document by.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Short document name (e.g. `Report.docx`).",
+            "type": "string"
+          },
+          "path": {
+            "description": "Filesystem path of the containing folder, if the doc has been saved.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "saved": {
+            "description": "Whether the document has no unsaved changes (`Document.Saved`).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "app",
+          "name",
+          "full_name",
+          "saved",
+          "active",
+          "attach_method"
         ]
       },
       "OperatingSystemInfo": {
@@ -39930,6 +40273,11 @@
             "const": "bibliography_entry"
           },
           {
+            "description": "An open Office document was opened or closed on the user's desktop\n (the `office_bridge` watch loop diffs successive `list_open_documents`\n snapshots). Owner-scoped (DEC-7 — `Audience::owner(user_id)`, never\n `everyone()`); notify-only — the client refetches the open-documents\n list (self-gated on `office_bridge::use`). `id` is a stable\n `Uuid::new_v5` derived from the document's `full_name`, so\n open/close of the same document address the same entity id.",
+            "type": "string",
+            "const": "office_document"
+          },
+          {
             "description": "A user's scheduled task changed (create/update/enable/pause/delete) or a\n firing advanced its run history. Owner-scoped; notify-only — the client\n refetches `/api/scheduled-tasks` (and, if open, the task's runs).",
             "type": "string",
             "const": "scheduled_task"
@@ -41807,6 +42155,27 @@
             ]
           },
           "metadata": true
+        }
+      },
+      "UpdateOfficeBridgeSettingsRequest": {
+        "description": "PUT body for the global settings. Every field optional → absent = leave.",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          }
         }
       },
       "UpdateProfileRequest": {
