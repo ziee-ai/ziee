@@ -339,19 +339,28 @@ McpToolUseGroup.contentSpan = (blocks: MessageContent[], index: number): number 
  * MCP Extension
  * Handles MCP tool calls, approval workflows, and renders tool call UI
  */
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneMcpSubs = new WeakMap<object, Array<() => void>>()
+
 const mcpExtension: ChatExtension = createExtension({
   name: 'mcp',
   description: 'Handles MCP tool calls and approval workflows',
   priority: 50, // Higher priority to handle events early
 
-  initialize: async () => {
-    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+  initialize: async (ctx) => {
     const { Stores } = await import('@/core/stores')
     const { ApiClient } = await import('@/api-client')
 
-    useChatStore.subscribe(
-      state => state.editingMessage,
-      async (editingMessage) => {
+    // Bind the editing-message restore to the OWNING pane's chat store
+    // (ctx.chatStore, ITEM-34/5) so editing in a non-focused pane restores that
+    // pane's MCP server selection. Unsub stored per-pane for cleanup.
+    const chatStore = ctx.chatStore
+    const subs: Array<() => void> = []
+    paneMcpSubs.set(chatStore, subs)
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        async (editingMessage: any) => {
         const mcpStore = Stores.McpComposer
         if (!mcpStore) return
 
@@ -376,12 +385,13 @@ const mcpExtension: ChatExtension = createExtension({
           }
         } else {
           // Edit cancelled or sent — restore from stored conversation config
-          const conversation = useChatStore.getState().conversation
+          const conversation = chatStore.getState().conversation
           if (conversation) {
             mcpStore.setCurrentConversation(conversation.id)
           }
         }
-      }
+        },
+      ),
     )
   },
 
@@ -1089,7 +1099,13 @@ const mcpExtension: ChatExtension = createExtension({
     input_area_suffix: { component: McpConfigModal, order: 20 },
   },
 
-  cleanup: async () => {},
+  cleanup: async (ctx) => {
+    const subs = paneMcpSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneMcpSubs.delete(ctx.chatStore)
+    }
+  },
 })
 
 export default mcpExtension

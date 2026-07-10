@@ -32,6 +32,9 @@ declare module '@/modules/chat/core/stores/Chat.store' {
   }
 }
 
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneKbSubs = new WeakMap<object, Array<() => void>>()
+
 const knowledgeBaseExtension: ChatExtension = createExtension({
   name: 'knowledge-base',
   description: 'Knowledge base grounding: composer attach + retrieval transparency',
@@ -39,8 +42,8 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   // static `contentMatch` already scopes it to `search_knowledge` blocks.
   priority: 70,
 
-  initialize: async () => {
-    const { registerPanelRenderer, useChatStore } = await import(
+  initialize: async (ctx) => {
+    const { registerPanelRenderer } = await import(
       '@/modules/chat/core/stores/Chat.store'
     )
     const { Stores } = await import('@/core/stores')
@@ -52,15 +55,27 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     // Reset the composer selection when the active conversation changes to a
     // NEW (unsaved) chat — onConversationLoad only fires for EXISTING
     // conversations, so without this the pending buffer from conversation A
-    // would leak into a fresh chat and get attached on first send. Mirrors the
-    // file extension's conversation-change subscription. A change to a real id
+    // would leak into a fresh chat and get attached on first send. Binds to the
+    // OWNING pane's chat store (ctx.chatStore, ITEM-34/5). A change to a real id
     // is handled by onConversationLoad (which re-hydrates from the server).
-    useChatStore.subscribe(
-      state => state.conversation?.id,
-      id => {
-        if (!id) Stores.KnowledgeBaseComposer.setCurrentConversation(null)
-      },
+    const subs: Array<() => void> = []
+    paneKbSubs.set(ctx.chatStore, subs)
+    subs.push(
+      ctx.chatStore.subscribe(
+        (state: any) => state.conversation?.id,
+        (id: string | undefined) => {
+          if (!id) Stores.KnowledgeBaseComposer.setCurrentConversation(null)
+        },
+      ),
     )
+  },
+
+  cleanup: async (ctx) => {
+    const subs = paneKbSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneKbSubs.delete(ctx.chatStore)
+    }
   },
 
   slots: {

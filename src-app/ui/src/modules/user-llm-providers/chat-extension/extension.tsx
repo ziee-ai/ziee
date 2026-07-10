@@ -19,40 +19,53 @@ import type { Conversation } from '@/api-client/types'
  * Auto-discovered by chat/extensions/index.ts via the
  * import.meta.glob over '../../STAR/chat-extension/extension.tsx'.
  */
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneModelSubs = new WeakMap<object, Array<() => void>>()
+
 const modelExtension: ChatExtension = createExtension({
   name: 'model',
   description: 'Handles model selection for chat messages',
   priority: 10, // High priority - before text (5)
 
-  initialize: async () => {
-    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+  initialize: async (ctx) => {
     const { Stores } = await import('@/core/stores')
     const { NEW_CHAT_MODEL_KEY } = await import(
       '@/modules/user-llm-providers/ModelPicker.store'
     )
 
-    // Editing-message → restore the message's model id (under the primary
-    // pane's conversation key) while editing, then fall back to the
-    // conversation default when the edit is cancelled/sent. Per-conversation
-    // SEEDING is handled by `onConversationLoad` (fires per pane); this
-    // subscription tracks the PRIMARY pane's editing only (a minor split gap —
-    // editing a non-focused pane's message restores under its own conversation
-    // key via onConversationLoad on the next load). (ITEM-5)
-    useChatStore.subscribe(
-      state => state.editingMessage,
-      editingMessage => {
-        const conversation = useChatStore.getState().conversation
-        const key = conversation?.id ?? NEW_CHAT_MODEL_KEY
-        if (editingMessage?.model_id) {
-          Stores.ModelPicker.setModelId(key, editingMessage.model_id)
-        } else if (!editingMessage) {
-          Stores.ModelPicker.initializeFromConversation(
-            key,
-            conversation?.model_id ?? undefined,
-          )
-        }
-      },
+    // Editing-message → restore the message's model id, then fall back to the
+    // conversation default when the edit is cancelled/sent. Binds to the OWNING
+    // pane's chat store (ctx.chatStore, ITEM-34/5) + keys by THAT pane's
+    // conversation, so editing in a non-focused pane restores the right pane's
+    // selection. (Per-conversation SEEDING is `onConversationLoad`, per pane.)
+    const chatStore = ctx.chatStore
+    const subs: Array<() => void> = []
+    paneModelSubs.set(chatStore, subs)
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        (editingMessage: any) => {
+          const conversation = chatStore.getState().conversation
+          const key = conversation?.id ?? NEW_CHAT_MODEL_KEY
+          if (editingMessage?.model_id) {
+            Stores.ModelPicker.setModelId(key, editingMessage.model_id)
+          } else if (!editingMessage) {
+            Stores.ModelPicker.initializeFromConversation(
+              key,
+              conversation?.model_id ?? undefined,
+            )
+          }
+        },
+      ),
     )
+  },
+
+  cleanup: async (ctx) => {
+    const subs = paneModelSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneModelSubs.delete(ctx.chatStore)
+    }
   },
 
   /**

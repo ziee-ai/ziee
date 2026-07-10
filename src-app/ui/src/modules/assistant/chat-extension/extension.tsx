@@ -23,15 +23,15 @@ import { AssistantStatusChip } from '@/modules/assistant/chat-extension/componen
  * Auto-discovered by chat/extensions/index.ts via import.meta.glob
  * over '../../STAR/chat-extension/extension.tsx'.
  */
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneAssistantSubs = new WeakMap<object, Array<() => void>>()
+
 const assistantExtension: ChatExtension = createExtension({
   name: 'assistant',
   description: 'Provides assistant selection and configuration',
   priority: 80,
 
-  initialize: async () => {
-    const { useChatStore } = await import(
-      '@/modules/chat/core/stores/Chat.store'
-    )
+  initialize: async (ctx) => {
     const { Stores } = await import('@/core/stores')
     const { NEW_CHAT_ASSISTANT_KEY } = await import(
       '@/modules/assistant/stores/AssistantPicker.store'
@@ -39,20 +39,23 @@ const assistantExtension: ChatExtension = createExtension({
 
     // Per-conversation keying makes the old "reset on conversation change"
     // subscription unnecessary — a conversation with no map entry simply has no
-    // assistant (ITEM-5). Only the editing-message restore remains, keyed by the
-    // PRIMARY pane's conversation (a minor split gap for editing in a non-focused
-    // pane — its restore uses the primary key; the per-conversation selection is
-    // otherwise fully pane-scoped).
+    // assistant (ITEM-5). The editing-message restore binds to the OWNING pane's
+    // chat store (ctx.chatStore, ITEM-34/5) + keys by THAT pane's conversation,
+    // so editing in a non-focused pane restores the right pane's selection.
     let preEditAssistantId: string | null = null
-    const primaryKey = () =>
-      useChatStore.getState().conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
+    const chatStore = ctx.chatStore
+    const paneKey = () =>
+      chatStore.getState().conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
+    const subs: Array<() => void> = []
+    paneAssistantSubs.set(chatStore, subs)
 
-    useChatStore.subscribe(
-      state => state.editingMessage,
-      async editingMessage => {
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        async (editingMessage: any) => {
         const picker = Stores.AssistantPicker
         if (!picker) return
-        const key = primaryKey()
+        const key = paneKey()
 
         if (editingMessage) {
           // Save the assistant the user had selected before initiating the edit.
@@ -88,7 +91,8 @@ const assistantExtension: ChatExtension = createExtension({
           }
           preEditAssistantId = null
         }
-      },
+        },
+      ),
     )
   },
 
@@ -114,8 +118,12 @@ const assistantExtension: ChatExtension = createExtension({
     return {}
   },
 
-  cleanup: async () => {
-    console.log('[Assistant Extension] Cleaned up')
+  cleanup: async (ctx) => {
+    const subs = paneAssistantSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneAssistantSubs.delete(ctx.chatStore)
+    }
   },
 })
 
