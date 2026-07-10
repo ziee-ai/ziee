@@ -3,6 +3,12 @@ import { defineStore } from '@/core/store-kit'
 import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
+import {
+  PENDING_CONVERSATION_KEY,
+  addApprovalDecisionTo,
+  getApprovalDecisionsFrom,
+  clearApprovalDecisionsIn,
+} from '@/modules/mcp/stores/approvalRouting'
 
 // Enable Map support in Immer
 enableMapSet()
@@ -38,6 +44,10 @@ export interface McpToolCall {
   server: string
   /** Server UUID */
   server_id?: string
+  /** The streaming message this call belongs to (ITEM-33) — correlates a
+   *  `notifications/progress` (server + message_id, no tool_use_id) to the RIGHT
+   *  pane's call, so two panes running a tool on the same server don't cross-bleed. */
+  message_id?: string
   tool_name: string
   status: 'started' | 'pending_approval' | 'completed' | 'error'
   input?: unknown
@@ -74,7 +84,14 @@ interface ConversationMcpConfig {
 }
 
 /** Special key for pending (new conversation) config */
-export const PENDING_CONVERSATION_KEY = '__pending__'
+// Per-conversation approval routing (ITEM-33) lives in a pure, enum-free module
+// (imported at the top) so it can be unit-tested without importing this store.
+// Re-exported so existing `PENDING_CONVERSATION_KEY` / `approvalKeyOf` importers
+// are unchanged.
+export {
+  PENDING_CONVERSATION_KEY,
+  approvalKeyOf,
+} from '@/modules/mcp/stores/approvalRouting'
 
 /** Build a config-map key for a project (so the same conversationConfigs
  *  Map can hold both conversation- and project-scoped configs without a
@@ -122,7 +139,9 @@ export const McpComposer = defineStore('McpComposer', {
   immer: true,
   state: {
     toolCalls: new Map<string, McpToolCall>(),
-    approvalDecisions: [] as ToolApprovalDecision[],
+    // Per-conversation approval decisions (ITEM-33): keyed by approvalKeyOf so a
+    // pane's approval is sent only with ITS conversation's next message.
+    approvalDecisions: new Map<string, ToolApprovalDecision[]>(),
     conversationConfigs: new Map<string, ConversationMcpConfig>(),
     currentConversationId: null as string | null,
     currentProjectId: null as string | null,
@@ -165,10 +184,19 @@ export const McpComposer = defineStore('McpComposer', {
      * so we correlate to the in-flight call(s) from that server (typically
      * the single running execute_command download).
      */
-    setToolCallProgress: (server: string, progress: McpToolProgressState) => {
+    setToolCallProgress: (
+      server: string,
+      messageId: string | undefined,
+      progress: McpToolProgressState,
+    ) => {
       set(state => {
         for (const [id, call] of state.toolCalls) {
-          if (call.server === server && call.status === 'started') {
+          // Match server AND the owning streaming message (ITEM-33), so a
+          // progress event only updates the pane whose message spawned the call.
+          // When the event carries no message_id, fall back to server-only (the
+          // pre-split behaviour) so single-pane is unchanged.
+          const messageMatch = !messageId || call.message_id === messageId
+          if (call.server === server && messageMatch && call.status === 'started') {
             state.toolCalls.set(id, { ...call, progress })
           }
         }
@@ -207,32 +235,43 @@ export const McpComposer = defineStore('McpComposer', {
     /**
      * Add an approval decision (will be sent with next message)
      */
-    addApprovalDecision: (decision: ToolApprovalDecision) => {
+    addApprovalDecision: (
+      conversationKey: string,
+      decision: ToolApprovalDecision,
+    ) => {
       set(state => {
-        state.approvalDecisions.push(decision)
+        state.approvalDecisions = addApprovalDecisionTo(
+          state.approvalDecisions,
+          conversationKey,
+          decision,
+        )
       })
       console.log(
         '[MCP Store] Added approval decision:',
+        conversationKey,
         decision.decision,
         decision.tool_use_id,
       )
     },
 
     /**
-     * Get all pending approval decisions
+     * Get the pending approval decisions for ONE conversation (ITEM-33).
      */
-    getApprovalDecisions: (): ToolApprovalDecision[] => {
-      return get().approvalDecisions
+    getApprovalDecisions: (conversationKey: string): ToolApprovalDecision[] => {
+      return getApprovalDecisionsFrom(get().approvalDecisions, conversationKey)
     },
 
     /**
-     * Clear all approval decisions (after sending)
+     * Clear ONE conversation's approval decisions (after that conversation sends).
      */
-    clearApprovalDecisions: () => {
+    clearApprovalDecisions: (conversationKey: string) => {
       set(state => {
-        state.approvalDecisions = []
+        state.approvalDecisions = clearApprovalDecisionsIn(
+          state.approvalDecisions,
+          conversationKey,
+        )
       })
-      console.log('[MCP Store] Cleared approval decisions')
+      console.log('[MCP Store] Cleared approval decisions for', conversationKey)
     },
 
     // Conversation config actions
@@ -822,6 +861,32 @@ export const McpComposer = defineStore('McpComposer', {
      */
     getSelectedServersConfig: (): McpServerConfig[] => {
       const selections = Array.from(get().selectedServers.values())
+      return selections.map(sel => ({
+        server_id: sel.server_id,
+        tools: sel.tools.length > 0 ? sel.tools : undefined,
+      }))
+    },
+
+    /**
+     * The selected-servers config for a SPECIFIC conversation (ITEM-33) —
+     * resolved from the per-conversation `conversationConfigs` (keyed), NOT the
+     * single-active `selectedServers`. This is what the send path uses so two
+     * split panes each send with THEIR OWN MCP server selection instead of
+     * collapsing to whichever pane loaded last. Falls back to the active
+     * `selectedServers` when the conversation has no stored config yet (the
+     * just-created / same-conversation case).
+     */
+    getSelectedServersConfigFor: (
+      conversationId: string | null | undefined,
+    ): McpServerConfig[] => {
+      const state = get()
+      const key = conversationId ?? PENDING_CONVERSATION_KEY
+      const config = state.conversationConfigs.get(key)
+      const selections = config
+        ? Array.from(config.selectedServers.values())
+        : conversationId === state.currentConversationId
+          ? Array.from(state.selectedServers.values())
+          : []
       return selections.map(sel => ({
         server_id: sel.server_id,
         tools: sel.tools.length > 0 ? sel.tools : undefined,

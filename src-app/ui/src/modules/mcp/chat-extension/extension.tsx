@@ -407,6 +407,7 @@ const mcpExtension: ChatExtension = createExtension({
         tool_use_id: data.tool_use_id,
         server: data.server,
         tool_name: data.tool_name,
+        message_id: get().streamingMessage?.id,
         status: 'started',
         input: data.input,
       })
@@ -495,7 +496,7 @@ const mcpExtension: ChatExtension = createExtension({
       // download). Attach it to the running tool call(s) for this server so
       // the tool card can render a live progress bar.
       const mcpStore = Stores.McpComposer
-      mcpStore.setToolCallProgress(data.server, {
+      mcpStore.setToolCallProgress(data.server, data.message_id, {
         progress: data.progress,
         total: data.total ?? undefined,
         message: data.message ?? undefined,
@@ -513,6 +514,7 @@ const mcpExtension: ChatExtension = createExtension({
         server: data.server,
         server_id: data.server_id,
         tool_name: data.tool_name,
+        message_id: get().streamingMessage?.id,
         status: 'pending_approval',
         input: data.input,
       })
@@ -874,10 +876,14 @@ const mcpExtension: ChatExtension = createExtension({
   // Allow empty text when there are pending tool approvals
   beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
 
-    // Check if there are approval decisions queued to send
-    const approvalDecisions = mcpStore.getApprovalDecisions()
+    // Check if there are approval decisions queued to send for THIS (sending =
+    // focused) conversation (ITEM-33) — not another pane's.
+    const approvalDecisions = mcpStore.getApprovalDecisions(
+      approvalKeyOf(Stores.Chat.$.conversation?.id),
+    )
     const hasApprovalDecisions = approvalDecisions.length > 0
 
     if (hasApprovalDecisions) {
@@ -889,11 +895,17 @@ const mcpExtension: ChatExtension = createExtension({
   },
 
   // Compose request fields to include MCP config and approval decisions
-  composeRequestFields: async () => {
+  composeRequestFields: async (ctx) => {
     const { Stores } = await import('@/core/stores')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
-    const selectedServers = mcpStore.getSelectedServersConfig()
-    const approvalDecisions = mcpStore.getApprovalDecisions()
+    // Resolve the SENDING pane's own MCP config + approvals (ITEM-33) — from the
+    // per-conversation keyed state, not the single-active pointer, so two split
+    // panes send with their own selection and one pane's approval never leaks.
+    const selectedServers = mcpStore.getSelectedServersConfigFor(ctx.conversationId)
+    const approvalDecisions = mcpStore.getApprovalDecisions(
+      approvalKeyOf(ctx.conversationId),
+    )
 
     const fields: {
       enable_mcp?: boolean
@@ -1070,7 +1082,9 @@ const mcpExtension: ChatExtension = createExtension({
       }
     }
 
-    mcpStore.clearApprovalDecisions()
+    // Clear only the SENDING conversation's approvals (ITEM-33).
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
+    mcpStore.clearApprovalDecisions(approvalKeyOf(conversation?.id))
 
     return {}
   },
