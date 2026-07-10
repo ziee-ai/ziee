@@ -149,6 +149,16 @@ impl ChatStreamRegistry {
         true
     }
 
+    /// Read-only: is a generation currently in flight for this conversation?
+    /// The slot is dropped when the terminal (`complete`/`error`) frame is
+    /// published, so this flips false exactly when the turn finishes — the
+    /// signal background code (e.g. the scheduler's prompt dispatch) polls to
+    /// know a detached turn has completed. Does NOT claim the slot.
+    pub fn is_generating(&self, conversation_id: Uuid) -> bool {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.generations.contains_key(&conversation_id)
+    }
+
     /// Release the in-flight slot WITHOUT delivering a terminal frame — used
     /// only when generation setup fails before the streaming loop starts.
     /// (The normal path drops the buffer via the terminal frame in
@@ -278,6 +288,12 @@ pub fn publish_frame(owner_id: Uuid, frame: ChatStreamFrame) {
 /// [`ChatStreamRegistry::begin_generation`]).
 pub fn begin_generation(conversation_id: Uuid) -> bool {
     registry().begin_generation(conversation_id)
+}
+
+/// Read-only: is a generation in flight for this conversation? (see
+/// [`ChatStreamRegistry::is_generating`]). Flips false when the turn finishes.
+pub fn is_generating(conversation_id: Uuid) -> bool {
+    registry().is_generating(conversation_id)
 }
 
 /// Deliver a raw extension SSE event to subscribers of a conversation (see
