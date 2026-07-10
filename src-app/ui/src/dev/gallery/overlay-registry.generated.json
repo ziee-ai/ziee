@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 75,
-    "hosts": 56,
-    "triggers": 19,
+    "total": 77,
+    "hosts": 57,
+    "triggers": 20,
     "wiredOpen": 37
   },
   "hosts": [
@@ -132,6 +132,19 @@
       "occurrences": [
         {
           "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/file/components/FileVersionBar",
+      "class": "host",
+      "primitives": [
+        "Dialog"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Dialog",
           "mode": "controlled"
         }
       ]
@@ -898,6 +911,19 @@
       "occurrences": [
         {
           "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/file/components/FileExportMenu",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
           "mode": "trigger"
         }
       ]

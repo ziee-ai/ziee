@@ -19,6 +19,7 @@ pub fn extension_of(filename: &str) -> String {
 }
 
 pub mod embedded;
+pub mod export;
 pub mod magic;
 pub mod pandoc;
 pub mod pdfium;

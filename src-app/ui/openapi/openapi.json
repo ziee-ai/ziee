@@ -3644,6 +3644,59 @@
         ]
       }
     },
+    "/api/files/{file_id}/export": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Export a file",
+        "description": "Download the file's head content converted to md/docx/pdf/odt/rtf/html as an attachment.",
+        "operationId": "File.export",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "description": "Target format: `md | docx | pdf | odt | rtf | html`.",
+            "required": true,
+            "schema": {
+              "description": "Target format: `md | docx | pdf | odt | rtf | html`.",
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download file content",
+                        "name": "FilesDownload",
+                        "value": "files::download"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::download",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/files/{file_id}/download-with-token": {
       "get": {
         "tags": [
@@ -3759,6 +3812,55 @@
           },
           "404": {
             "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Append a file version",
+        "description": "Append a new head version from user-supplied text content (the user side of co-editing a deliverable). Byte-identical content is a no-op.",
+        "operationId": "File.appendVersion",
+        "requestBody": {
+          "description": "Body for `POST /files/{id}/versions`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upload new files",
+                        "name": "FilesUpload",
+                        "value": "files::upload"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::upload",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4292,6 +4394,135 @@
           },
           "404": {
             "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/deliverables": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "List conversation deliverables",
+        "description": "The files a conversation produced: model-authored files (derived) plus user-pinned files, minus user-hidden ones.",
+        "operationId": "File.listDeliverables",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/deliverables/{file_id}": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Pin/hide a conversation deliverable",
+        "description": "Promote a file into (pinned=true) or hide it from (pinned=false) the deliverables list.",
+        "operationId": "File.pinDeliverable",
+        "requestBody": {
+          "description": "Body for `POST /conversations/{id}/deliverables/{file_id}`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinDeliverableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Remove a conversation deliverable curation",
+        "description": "Delete the pin/hide row for a file, reverting it to the derived default.",
+        "operationId": "File.unpinDeliverable",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -9577,6 +9808,59 @@
         ]
       }
     },
+    "/api/conversations/{id}/export": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Export a conversation",
+        "description": "Download the conversation's active-branch transcript rendered to md/docx/pdf/odt/rtf/html.",
+        "operationId": "Chat.exportConversation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "description": "Target format: `md | docx | pdf | odt | rtf | html`.",
+            "required": true,
+            "schema": {
+              "description": "Target format: `md | docx | pdf | odt | rtf | html`.",
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read messages in conversations",
+                        "name": "MessagesRead",
+                        "value": "messages::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/conversations/{id}/messages/search": {
       "get": {
         "tags": [
@@ -14428,233 +14712,6 @@
         }
       }
     },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/memories": {
       "get": {
         "tags": [
@@ -15601,6 +15658,233 @@
                     ]
                   },
                   "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -21460,6 +21744,19 @@
       }
     },
     "schemas": {
+      "AppendVersionRequest": {
+        "description": "Body for `POST /files/{id}/versions`.",
+        "type": "object",
+        "properties": {
+          "content": {
+            "description": "New full text content for the file. A new head version is appended;\n byte-identical content is a no-op.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -22900,6 +23197,19 @@
           "user_id",
           "created_at",
           "updated_at"
+        ]
+      },
+      "ConversationExportQuery": {
+        "description": "`?format=` for `GET /conversations/{id}/export`.",
+        "type": "object",
+        "properties": {
+          "format": {
+            "description": "Target format: `md | docx | pdf | odt | rtf | html`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
         ]
       },
       "ConversationListResponse": {
@@ -25207,6 +25517,19 @@
         ]
       },
       "ExportQuery": {
+        "description": "`?format=` for `GET /files/{id}/export`.",
+        "type": "object",
+        "properties": {
+          "format": {
+            "description": "Target format: `md | docx | pdf | odt | rtf | html`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ]
+      },
+      "ExportQuery2": {
         "type": "object",
         "properties": {
           "format": {
@@ -31557,6 +31880,17 @@
           "required_permissions"
         ]
       },
+      "PinDeliverableRequest": {
+        "description": "Body for `POST /conversations/{id}/deliverables/{file_id}`.",
+        "type": "object",
+        "properties": {
+          "pinned": {
+            "description": "`true` promotes the file into the deliverables list; `false` hides a\n derived file. Defaults to `true`.",
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
       "PingResponse": {
         "type": "object",
         "properties": {
@@ -35575,6 +35909,11 @@
             "description": "The caller's own default MCP settings for new conversations changed\n (approval mode / auto-approved tools / disabled servers / loop\n settings). Owner-scoped; notify-only — the client refetches\n `GET /api/mcp/defaults` (gated `conversations::read`). `id` is\n `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).",
             "type": "string",
             "const": "mcp_defaults"
+          },
+          {
+            "description": "A conversation's deliverables curation changed (a file pinned/hidden as a\n deliverable). Owner-scoped; notify-only — the client refetches\n `GET /api/conversations/{id}/deliverables`. `id` is the conversation id.",
+            "type": "string",
+            "const": "deliverable"
           },
           {
             "description": "Admin view of an LLM provider (full admin provider table).",

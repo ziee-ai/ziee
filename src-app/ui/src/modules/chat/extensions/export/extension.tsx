@@ -7,6 +7,7 @@ import {
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import type { MessageWithContent } from '@/api-client/types'
+import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 
 /**
@@ -62,82 +63,87 @@ function exportAsJSON(): void {
 }
 
 /**
- * Export conversation as plain text
+ * Backend-driven export. Renders the FULL active-branch transcript (a faithful
+ * serializer that keeps tool calls / attachments / code, unlike the client-side
+ * text-only extractor) and, for docx/pdf/odt/rtf/html, converts it via the
+ * embedded pandoc + typst on the server. Returns a real downloadable file.
  */
-function exportAsText(): void {
-  // Access raw state outside React context
-  const { conversation, messages } = Stores.Chat.$
+async function exportViaBackend(
+  format: string,
+  ext: string,
+  mime: string,
+  label: string,
+): Promise<void> {
+  const { conversation } = Stores.Chat.$
   if (!conversation) return
-
-  const messagesArray = Array.from(messages.values())
-
-  const text = messagesArray
-    .map(msg => {
-      const role = msg.role === 'user' ? 'User' : 'Assistant'
-      const content = extractMessageText(msg)
-      return `${role}:\n${content}\n`
+  try {
+    const res = await ApiClient.Chat.exportConversation({
+      id: conversation.id,
+      format,
     })
-    .join('\n---\n\n')
-
-  const blob = new Blob([text], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `conversation-${conversation.id.slice(0, 8)}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
-
-  message.success('Conversation exported as text')
+    const blob =
+      res instanceof Blob ? res : new Blob([res as BlobPart], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `conversation-${conversation.id.slice(0, 8)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success(`Conversation exported as ${label}`)
+  } catch (e) {
+    console.error('[export] conversation export failed', format, e)
+    message.error(`Failed to export as ${label}`)
+  }
 }
 
 /**
- * Export conversation as Markdown
- */
-function exportAsMarkdown(): void {
-  // Access raw state outside React context
-  const { conversation, messages } = Stores.Chat.$
-  if (!conversation) return
-
-  const messagesArray = Array.from(messages.values())
-
-  const markdown = messagesArray
-    .map(msg => {
-      const role = msg.role === 'user' ? '**User**' : '**Assistant**'
-      const content = extractMessageText(msg)
-      return `${role}:\n\n${content}\n`
-    })
-    .join('\n---\n\n')
-
-  const blob = new Blob([markdown], { type: 'text/markdown' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `conversation-${conversation.id.slice(0, 8)}.md`
-  a.click()
-  URL.revokeObjectURL(url)
-
-  message.success('Conversation exported as Markdown')
-}
-
-/**
- * Export menu items
+ * Export menu items. JSON is a client-side structured dump; every other format
+ * is rendered server-side (faithful transcript + pandoc conversion).
  */
 function getExportMenuItems() {
   return [
-    {
-      key: 'json',
-      label: 'Export as JSON',
-      onClick: () => exportAsJSON(),
-    },
-    {
-      key: 'txt',
-      label: 'Export as Text',
-      onClick: () => exportAsText(),
-    },
+    { key: 'json', label: 'Export as JSON', onClick: () => exportAsJSON() },
     {
       key: 'md',
       label: 'Export as Markdown',
-      onClick: () => exportAsMarkdown(),
+      onClick: () => exportViaBackend('md', 'md', 'text/markdown', 'Markdown'),
+    },
+    {
+      key: 'docx',
+      label: 'Export as Word (.docx)',
+      onClick: () =>
+        exportViaBackend(
+          'docx',
+          'docx',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Word',
+        ),
+    },
+    {
+      key: 'pdf',
+      label: 'Export as PDF',
+      onClick: () => exportViaBackend('pdf', 'pdf', 'application/pdf', 'PDF'),
+    },
+    {
+      key: 'odt',
+      label: 'Export as ODT',
+      onClick: () =>
+        exportViaBackend(
+          'odt',
+          'odt',
+          'application/vnd.oasis.opendocument.text',
+          'ODT',
+        ),
+    },
+    {
+      key: 'rtf',
+      label: 'Export as RTF',
+      onClick: () => exportViaBackend('rtf', 'rtf', 'application/rtf', 'RTF'),
+    },
+    {
+      key: 'html',
+      label: 'Export as HTML',
+      onClick: () => exportViaBackend('html', 'html', 'text/html', 'HTML'),
     },
   ]
 }

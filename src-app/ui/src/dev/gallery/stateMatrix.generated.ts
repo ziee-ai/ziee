@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 335 surfaces carry renderable-state signals; 1955 signals total.
+// 340 surfaces carry renderable-state signals; 1974 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1036,10 +1036,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/export/extension",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!conversation", line: 35 },
-      { kind: "branch", condition: "!conversation", line: 70 },
-      { kind: "branch", condition: "!conversation", line: 99 },
-      { kind: "empty", condition: "messages.length === 0", line: 159 },
+      { kind: "branch", condition: "!conversation", line: 36 },
+      { kind: "branch", condition: "!conversation", line: 78 },
+      { kind: "empty", condition: "messages.length === 0", line: 165 },
     ],
   },
   "modules/chat/extensions/keyboard/extension": {
@@ -1418,6 +1417,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!fileStore", line: 283 },
     ],
   },
+  "modules/file/components/CanvasSelectionPopover": {
+    surface: "modules/file/components/CanvasSelectionPopover",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "empty", condition: "!s || s.rangeCount === 0 || !text || !container", line: 42 },
+      { kind: "branch", condition: "!container.contains(range.commonAncestorContainer)", line: 48 },
+      { kind: "branch", condition: "!sel", line: 64 },
+      { kind: "branch", condition: "instruction == null || !instruction.trim()", line: 81 },
+    ],
+  },
+  "modules/file/components/DeliverablePinButton": {
+    surface: "modules/file/components/DeliverablePinButton",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!convId || !canEditConversation", line: 20 },
+      { kind: "branch", condition: "isDeliverable", line: 48 },
+    ],
+  },
   "modules/file/components/FileCard": {
     surface: "modules/file/components/FileCard",
     requiredStates: ["error","open"],
@@ -1445,18 +1462,42 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "overlay", condition: "<Confirm open>", line: 386 },
     ],
   },
+  "modules/file/components/FileEditBody": {
+    surface: "modules/file/components/FileEditBody",
+    requiredStates: ["error"],
+    signals: [
+      { kind: "branch", condition: "cancelled", line: 63 },
+      { kind: "branch", condition: "!dirty", line: 89 },
+      { kind: "error", condition: "loadError", line: 113 },
+      { kind: "branch", condition: "text === null", line: 143 },
+      { kind: "branch", condition: "kind === null || kind === 'markdown'", line: 156 },
+      { kind: "branch", condition: "changedUnderneath", line: 163 },
+      { kind: "branch", condition: "kind === 'csv'", line: 196 },
+      { kind: "branch", condition: "kind === 'code'", line: 203 },
+    ],
+  },
+  "modules/file/components/FileExportMenu": {
+    surface: "modules/file/components/FileExportMenu",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!canDownload", line: 43 },
+    ],
+  },
   "modules/file/components/FilePanel": {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 75 },
-      { kind: "branch", condition: "showFullPage", line: 78 },
-      { kind: "branch", condition: "!hideHeader", line: 122 },
-      { kind: "branch", condition: "tooLarge", line: 136 },
-      { kind: "branch", condition: "isViewingOld", line: 152 },
-      { kind: "branch", condition: "oldVersionText === null", line: 154 },
-      { kind: "branch", condition: "tooLarge", line: 169 },
-      { kind: "branch", condition: "Body", line: 193 },
+      { kind: "branch", condition: "HeaderActions", line: 81 },
+      { kind: "branch", condition: "editableKind(file) === 'markdown'", line: 84 },
+      { kind: "branch", condition: "showFullPage", line: 89 },
+      { kind: "branch", condition: "!hideHeader", line: 150 },
+      { kind: "branch", condition: "canEdit && !editing && !isViewingOld", line: 164 },
+      { kind: "branch", condition: "tooLarge", line: 175 },
+      { kind: "branch", condition: "editing", line: 191 },
+      { kind: "branch", condition: "isViewingOld", line: 193 },
+      { kind: "branch", condition: "oldVersionText === null", line: 195 },
+      { kind: "branch", condition: "tooLarge", line: 210 },
+      { kind: "branch", condition: "Body", line: 234 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {
@@ -1471,10 +1512,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/file/components/FileVersionBar": {
     surface: "modules/file/components/FileVersionBar",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "versions.length <= 1", line: 44 },
+      { kind: "branch", condition: "isViewingOld", line: 90 },
+      { kind: "overlay", condition: "<Dialog open>", line: 119 },
+    ],
+  },
+  "modules/file/components/FileVersionDiff": {
+    surface: "modules/file/components/FileVersionDiff",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "versions.length <= 1", line: 42 },
-      { kind: "branch", condition: "isViewingOld", line: 88 },
+      { kind: "branch", condition: "a == null || b == null", line: 31 },
     ],
   },
   "modules/file/components/FileViewPage": {
@@ -4054,7 +4103,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 338 keys.
+ * 341 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4155,9 +4204,12 @@ export type RequiredState =
   | "modules/file/chat-extension/components/MessageFilesView:empty"
   | "modules/file/chat-extension/extension:empty"
   | "modules/file/chat-extension/extension:panel-open"
+  | "modules/file/components/CanvasSelectionPopover:empty"
   | "modules/file/components/FileCard:error"
   | "modules/file/components/FileCard:open"
+  | "modules/file/components/FileEditBody:error"
   | "modules/file/components/FilePreviewDrawer:open"
+  | "modules/file/components/FileVersionBar:open"
   | "modules/file/components/FileViewPage:delayed"
   | "modules/file/project-extension/components/ProjectFilesInlinePreview:empty"
   | "modules/file/project-extension/components/ProjectFilesManagePanel:empty"
@@ -4496,9 +4548,12 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/chat-extension/components/MessageFilesView:empty",
   "modules/file/chat-extension/extension:empty",
   "modules/file/chat-extension/extension:panel-open",
+  "modules/file/components/CanvasSelectionPopover:empty",
   "modules/file/components/FileCard:error",
   "modules/file/components/FileCard:open",
+  "modules/file/components/FileEditBody:error",
   "modules/file/components/FilePreviewDrawer:open",
+  "modules/file/components/FileVersionBar:open",
   "modules/file/components/FileViewPage:delayed",
   "modules/file/project-extension/components/ProjectFilesInlinePreview:empty",
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty",

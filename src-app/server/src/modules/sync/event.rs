@@ -73,6 +73,10 @@ pub enum SyncEntity {
     /// `GET /api/mcp/defaults` (gated `conversations::read`). `id` is
     /// `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).
     McpDefaults,
+    /// A conversation's deliverables curation changed (a file pinned/hidden as a
+    /// deliverable). Owner-scoped; notify-only — the client refetches
+    /// `GET /api/conversations/{id}/deliverables`. `id` is the conversation id.
+    Deliverable,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).
