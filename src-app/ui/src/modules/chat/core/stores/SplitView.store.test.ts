@@ -118,6 +118,43 @@ test('reorderPanes moves a pane; out-of-bounds is a no-op', () => {
   )
 })
 
+// TEST-46 (split-chat ITEM-24): the one-conversation-per-workspace guard on the
+// low-level actions + paneId stability across reorder.
+test('openPane for a conversation already open focuses that pane, no duplicate', () => {
+  const a = s().openPane({ conversationId: 'a' })
+  const b = s().openPane({ conversationId: 'b' })
+  const again = s().openPane({ conversationId: 'a' })
+  assert.equal(again, a, 'openPane returns the existing pane holding that conversation')
+  assert.equal(s().panes.length, 2, 'no duplicate pane is created')
+  assert.equal(s().focusedPaneId, a, 'the existing pane is focused')
+  assert.ok(b)
+})
+
+test('setPaneConversation onto a conversation open elsewhere focuses it, no duplicate', () => {
+  const a = s().openPane({ conversationId: 'a' })
+  const b = s().openPane({ conversationId: 'b' })
+  // Point pane b at conversation 'a' (already in pane a) — must NOT duplicate.
+  s().setPaneConversation(b!, 'a')
+  assert.equal(s().panes.length, 2)
+  assert.equal(
+    s().panes.filter((p) => p.conversationId === 'a').length,
+    1,
+    'conversation a is still held by exactly one pane',
+  )
+  assert.equal(s().focusedPaneId, a, 'focus moves to the pane already holding a')
+})
+
+test('paneId + conversation are stable across reorderPanes', () => {
+  const a = s().openPane({ conversationId: 'a' })
+  const b = s().openPane({ conversationId: 'b' })
+  const c = s().openPane({ conversationId: 'c' })
+  s().reorderPanes(0, 2)
+  const ids = s().panes.map((p) => p.paneId)
+  const convs = s().panes.map((p) => p.conversationId)
+  assert.deepEqual(convs, ['b', 'c', 'a'], 'conversations move with their panes')
+  assert.deepEqual(ids, [b, c, a], 'each pane keeps its stable id when moved')
+})
+
 test('setDividerWidth clamps to MIN/MAX_PANE_WIDTH', () => {
   s().setDividerWidth(0, 10) // below MIN
   assert.equal(s().dividerWidths[0], SPLIT_LIMITS.MIN_PANE_WIDTH)
