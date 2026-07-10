@@ -161,3 +161,33 @@ async fn spawn_failure_when_no_engine_is_502() {
         "no runtime version available → engine_start_failed → 502"
     );
 }
+
+// TEST-5 (ITEM-4): the /v1/rerank proxy forwards to the engine's /v1/rerank with
+// the bearer rewrite + auto-start, exactly like embeddings/chat. A 200 with the
+// stub's reranking proves the full front-door → forward path for reranking.
+#[tokio::test]
+async fn rerank_proxy_roundtrip() {
+    let mock = mock_release::setup().await;
+    let admin = create_user_with_permissions(&mock.server, "admin", LOCAL_RUNTIME_ADMIN_PERMS).await;
+    let (proxy_token, model) = ready_model(&mock, &admin.token, "/tmp/ziee-stub-rerank.gguf").await;
+
+    let resp = reqwest::Client::new()
+        .post(mock.server.api_url("/local-llm/v1/rerank"))
+        .header("Authorization", format!("Bearer {proxy_token}"))
+        .json(&json!({
+            "model": model,
+            "query": "q",
+            "documents": ["plain one", "the PROMOTE_ME winner", "plain two"]
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let text = resp.text().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "auto-start + rerank forward should 200; body: {text}");
+    let body: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let results = body["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 3, "all docs scored: {text}");
+    // the stub promotes the PROMOTE_ME doc (index 1) to the top result.
+    assert_eq!(results[0]["index"].as_i64(), Some(1), "reranked top is the PROMOTE_ME doc: {text}");
+}
