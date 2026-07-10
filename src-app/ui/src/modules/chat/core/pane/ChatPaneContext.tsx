@@ -12,7 +12,8 @@ import {
 } from '@/modules/chat/core/stores/Chat.store'
 import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBridge'
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
-import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import { PaneExtensionRuntime } from '@/modules/chat/core/extensions/PaneExtensionRuntime'
+import type { ChatExtStoreApi } from '@/modules/chat/core/extensions/types'
 import { Stores } from '@/core'
 import { message } from '@/components/ui'
 
@@ -56,15 +57,27 @@ export function ChatPaneProvider({
 }) {
   const store = ChatPaneStore.use()
 
-  // Seed this pane's extension stores (e.g. the composer `TextStore`) BEFORE the
-  // subtree renders. The store's own `init` also injects them, but `init` runs
-  // post-mount — too late for a child (TextInput) that reads `pane.store.TextStore`
-  // on its FIRST render. Idempotent (skips already-present stores); runs in a
-  // render-phase useMemo so it completes before children render.
+  // Build + attach THIS pane's extension runtime (ITEM-34) and seed its own
+  // extension stores (e.g. the composer `TextStore`) BEFORE the subtree renders.
+  // The runtime owns this pane's `initialized` flag + binds every extension's
+  // initialize/cleanup ctx to THIS pane's store; attaching it makes the store's
+  // loadConversation/reset route lifecycle through it (see `extLifecycle`).
+  // Render-phase useMemo so both complete before a child (TextInput) reads
+  // `pane.store.TextStore` on its first render. Idempotent inject skips
+  // already-present stores.
   useMemo(() => {
-    chatExtensionRegistry.injectExtensionStores(
+    const api = store.__api__ as unknown as ChatExtStoreApi
+    const runtime = new PaneExtensionRuntime(
+      api,
+      (name) =>
+        ((store.__api__.getState() as unknown as Record<string, unknown>)[
+          name
+        ] as import('@/core/stores').StoreProxy<any> | undefined) ?? null,
+    )
+    runtime.injectExtensionStores(
       store.__api__.getState() as unknown as Record<string, unknown>,
     )
+    store.attachExtensionRuntime(runtime)
     return null
   }, [store])
 

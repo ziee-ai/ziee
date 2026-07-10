@@ -450,6 +450,12 @@ interface ChatState {
   streamingMessageId: string | null
   /** This instance's own chat-token stream client (ITEM-6); null before init. */
   chatStreamClient: ChatStreamClient | null
+  /** This pane's extension runtime (ITEM-34); null on the single-pane primary. */
+  extensionRuntime: import('../extensions/types').ExtensionLifecycle | null
+  /** Attach a per-pane extension runtime (called by ChatPaneProvider on mount). */
+  attachExtensionRuntime: (
+    runtime: import('../extensions/types').ExtensionLifecycle | null,
+  ) => void
   stopStreaming: () => void
 
   // ── Right panel ───────────────────────────────────────────────────────────
@@ -510,6 +516,13 @@ const chatInitialState = {
     // This instance's own chat-token stream client (ITEM-6). Created in `init`
     // so actions can scope it via `setActiveConversation`; null before init.
     chatStreamClient: null as ChatStreamClient | null,
+    // This pane's extension runtime (ITEM-34). Attached by `ChatPaneProvider` on
+    // mount so lifecycle/hooks bind to THIS pane's store + its own `initialized`
+    // flag. Null on the single-pane primary store → falls back to the global
+    // `chatExtensionRegistry` (which binds to the singleton = correct).
+    extensionRuntime: null as import(
+      '../extensions/types'
+    ).ExtensionLifecycle | null,
     conversationStateCache: new Map<string, ChatStateSnapshot>(),
     cacheClearTimers: new Map<string, NodeJS.Timeout>(),
     // Branch initial state
@@ -537,7 +550,19 @@ const chatStoreConfig = {
     getRaw: () => typeof chatInitialState,
   ) => {
     const get = getRaw as () => ChatState
+    // Resolve the extension lifecycle target (ITEM-34): this pane's runtime when
+    // attached (split), else the global registry (single-pane, binds to the
+    // singleton). Every initialize/cleanup/injectExtensionStores call routes here.
+    const extLifecycle = (): import('../extensions/types').ExtensionLifecycle =>
+      get().extensionRuntime ?? chatExtensionRegistry
     return {
+
+    /** Attach a per-pane extension runtime (ChatPaneProvider, on mount). */
+    attachExtensionRuntime: (
+      runtime: import('../extensions/types').ExtensionLifecycle | null,
+    ) => {
+      set({ extensionRuntime: runtime })
+    },
 
     // ── Conversation state management ──────────────────────────────────────
 
@@ -722,7 +747,7 @@ const chatStoreConfig = {
           },
         }))
 
-        await chatExtensionRegistry.cleanup()
+        await extLifecycle().cleanup()
         // Clear messages on switch so consumers never momentarily see the
         // OUTGOING conversation's messages under the new conversation id.
         // (Outgoing state was already saved via saveConversationState above;
@@ -757,7 +782,7 @@ const chatStoreConfig = {
       const cacheHit = get().loadConversationState(id)
       if (cacheHit) {
         console.log(`[Chat.store] Cache hit for conversation: ${id}`)
-        await chatExtensionRegistry.initialize()
+        await extLifecycle().initialize()
 
         const { conversation } = get()
         if (conversation) {
@@ -804,7 +829,7 @@ const chatStoreConfig = {
         await get().loadBranches(id)
         if (get().conversation?.id !== id) return
 
-        await chatExtensionRegistry.initialize()
+        await extLifecycle().initialize()
         await chatExtensionRegistry.onConversationLoad(conversation)
 
         // Restore panel tabs from localStorage (after initialize() so registry is populated)
@@ -1695,7 +1720,7 @@ const chatStoreConfig = {
           type: 'conversation.created',
           data: { conversation },
         })
-        await chatExtensionRegistry.initialize()
+        await extLifecycle().initialize()
         await chatExtensionRegistry.onConversationLoad(conversation)
       }
 
@@ -1997,7 +2022,7 @@ const chatStoreConfig = {
           rightPanel.activeId,
         )
 
-        await chatExtensionRegistry.cleanup()
+        await extLifecycle().cleanup()
       }
 
       set(state => ({
@@ -2062,7 +2087,7 @@ const chatStoreConfig = {
     // Give THIS instance its own extension-store instances (e.g. the composer
     // `TextStore`) so split panes don't share one. Idempotent — the primary's
     // register-time seed is left in place, so single-pane is unchanged (ITEM-4/5).
-    chatExtensionRegistry.injectExtensionStores(
+    ;(get().extensionRuntime ?? chatExtensionRegistry).injectExtensionStores(
       get() as unknown as Record<string, unknown>,
     )
 

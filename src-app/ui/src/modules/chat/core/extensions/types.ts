@@ -402,6 +402,18 @@ export type StreamingContentProviders = {
 }
 
 /**
+ * The pane-lifecycle subset of the extension system a chat store drives (ITEM-34).
+ * Both the global `chatExtensionRegistry` (single-pane) and a per-pane
+ * `PaneExtensionRuntime` satisfy it, so a store routes through
+ * `get().extensionRuntime ?? chatExtensionRegistry`.
+ */
+export interface ExtensionLifecycle {
+  initialize(): Promise<void>
+  cleanup(): Promise<void>
+  injectExtensionStores(chatState: Record<string, unknown>): void
+}
+
+/**
  * The raw chat StoreApi an extension binds to — the SUBSCRIBE/GETSTATE/SETSTATE
  * surface (with the `subscribeWithSelector` 3-arg overload) of the OWNING pane's
  * chat store, replacing the module-global `useChatStore` singleton (ITEM-5/34,
