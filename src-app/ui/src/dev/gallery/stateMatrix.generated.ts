@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 325 surfaces carry renderable-state signals; 1895 signals total.
+// 325 surfaces carry renderable-state signals; 1896 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2510,9 +2510,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "grayed", line: 15 },
-      { kind: "branch", condition: "!grayed", line: 30 },
-      { kind: "branch", condition: "help", line: 64 },
+      { kind: "branch", condition: "grayed", line: 16 },
+      { kind: "branch", condition: "!grayed", line: 31 },
+      { kind: "branch", condition: "help", line: 141 },
+      { kind: "branch", condition: "help", line: 184 },
     ],
   },
   "modules/llm-provider/components/llm-models/shared/LlmModelParametersSection": {

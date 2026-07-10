@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1895** signals total: 1500 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1896** signals total: 1501 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2759,9 +2759,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `grayed` | 15 |
-| branch | `!grayed` | 30 |
-| branch | `help` | 64 |
+| branch | `grayed` | 16 |
+| branch | `!grayed` | 31 |
+| branch | `help` | 141 |
+| branch | `help` | 184 |
 
 ### `modules/llm-provider/components/llm-models/shared/LlmModelParametersSection`
 

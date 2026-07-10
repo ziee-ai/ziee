@@ -11,7 +11,8 @@
 //!
 //! Coverage — the consumer wiring the crate's Tier-1 unit tests can't reach:
 //!   * sampling: `model.parameters` reach the wire; OpenAI omits `top_k`; empty
-//!     params omit temperature (no forced default) but still default `max_tokens`.
+//!     params OMIT temperature (no forced default) but still default max_tokens;
+//!     a `supports_sampling_params:false` row override omits sampling end-to-end.
 //!   * thinking: registry-gated enable emits `reasoning_effort` (+ non-streaming
 //!     for gpt-5); an unknown model gets no thinking; a model's `reasoning_content`
 //!     is persisted as a thinking content block with `ThinkingMetadata.token_count`.
@@ -190,19 +191,97 @@ async fn model_params_reach_provider_request() {
     );
 }
 
+// TEST-16: empty params OMIT temperature (never force-injected) but still
+// default max_tokens (a required field).
 #[tokio::test]
 async fn empty_model_params_omit_temperature_and_default_max_tokens() {
     let (stub, _turn) = run_turn("default_user", StubPlan::default(), "stub-model", None).await;
 
     let req = stub.last_request();
-    // No forced temperature default: an unset model temperature is omitted so the
-    // provider applies its own default (we never send a value it might reject).
     assert!(
         req.get("temperature").is_none(),
-        "unset temperature must be omitted (no forced 0.7), got: {req}"
+        "temperature must be omitted when the user set none, got: {req}"
     );
-    // max_tokens still falls back to the default.
     assert_eq!(req["max_tokens"], 8192, "default max_tokens");
+}
+
+// TEST-18: a DB-row capability override (`supports_sampling_params: false`)
+// omits sampling on the wire END-TO-END, even for a model the catalog/family
+// would allow — the row is the top-priority source of the parameter contract.
+#[tokio::test]
+async fn row_override_omits_sampling_end_to_end() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "row_override_user", chat_perms()).await;
+    let stub = StubChat::start(StubPlan::default()).await;
+
+    // Admin creates a custom(→openai) provider + a model with the override set,
+    // AND a configured temperature that would otherwise be sent.
+    let admin = create_user_with_permissions(
+        &server,
+        "row_override_admin",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let provider: Value = client
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": format!("RowOverride {}", &Uuid::new_v4().to_string()[..8]),
+            "provider_type": "custom",
+            "enabled": true,
+            "api_key": "test",
+            "base_url": stub.base_url(),
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let model: Value = client
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "provider_id": provider["id"],
+            "name": "restricted-stub",
+            "display_name": "Restricted Stub",
+            "enabled": true,
+            "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "chat": true, "supports_sampling_params": false },
+            "parameters": { "temperature": 0.5, "top_p": 0.25 }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    helpers::ensure_user_has_model_access(&server, &user.user_id, &model).await;
+    let model_id = parse_uuid(&model["id"]);
+
+    let conversation =
+        create_conversation(&server, &user.token, Some(model_id), Some("preset")).await;
+    let conv_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+    let _turn = send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "hi").await;
+    drop(server);
+
+    let req = stub.last_request();
+    assert!(
+        req.get("temperature").is_none(),
+        "row override supports_sampling_params=false must omit temperature, got: {req}"
+    );
+    assert!(
+        req.get("top_p").is_none(),
+        "row override must omit top_p too, got: {req}"
+    );
 }
 
 // ── T1: thinking enable/disable + persistence ─────────────────────────────

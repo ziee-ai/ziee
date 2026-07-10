@@ -64,7 +64,7 @@ impl StreamingService {
         // Create provider from model_id
         use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
-        let (provider, model_name, model_id, provider_id, model_params) =
+        let (provider, model_name, model_id, provider_id, model_params, model_caps) =
             create_provider_from_model_id(request.model_id, user_id).await?;
 
         // Conditionally create user message (check extensions)
@@ -373,15 +373,20 @@ impl StreamingService {
                     messages,
                     ..Default::default()
                 };
-                // Apply model-level generation parameters (sampling). `temperature`
-                // is forwarded only when configured (no forced 0.7); `max_tokens`
-                // still defaults. The provider gates params it rejects (e.g.
-                // Anthropic drops temperature/top_p/top_k for restricted or
-                // thinking-active models).
+                // Apply model-level generation parameters (sampling). Temperature
+                // is forwarded only when the user set it (never force-injected);
+                // the provider adapter then gates params a model rejects.
                 apply_model_params(&mut chat_request, &model_params);
-                // Registry-gated thinking (None for models that don't support it).
-                chat_request.thinking =
-                    thinking_config_for(provider_for_task.provider_type(), &model_name);
+                // Per-model capability override (editable DB row) → the top-priority
+                // source of the parameter contract. The adapter falls back to the
+                // curated catalog + provider model-family policy when a field is unset.
+                chat_request.model_caps = Some(model_caps.to_param_contract());
+                // Thinking resolved from the row → catalog → family policy.
+                chat_request.thinking = thinking_config_for(
+                    provider_for_task.provider_type(),
+                    &model_name,
+                    &model_caps,
+                );
                 // OpenAI prompt-cache routing key (ignored by other providers).
                 chat_request.prompt_cache_key = Some(conversation_id.to_string());
 
@@ -686,9 +691,20 @@ impl StreamingService {
                             (acc.finish_reason.clone(), acc.usage.clone())
                         };
 
-                        // Use finish_reason from provider, or default to "stop" if not provided
-                        let mut final_finish_reason =
-                            finish_reason.unwrap_or_else(|| "stop".to_string());
+                        // Canonicalize the provider's raw finish_reason into the
+                        // unified vocabulary (stop/length/tool_calls/…) for the
+                        // client, or default to "stop" if not provided. MCP
+                        // sampling reads the raw provider value on its own path.
+                        let mut final_finish_reason = finish_reason
+                            .map(|r| {
+                                ai_providers::FinishReason::canonicalize(
+                                    ai_providers::ProviderFamily::from_provider_type(
+                                        provider_for_task.provider_type(),
+                                    ),
+                                    &r,
+                                )
+                            })
+                            .unwrap_or_else(|| "stop".to_string());
 
                         // Empty-completion guard: the turn terminated (no tool call to
                         // run) but produced NO user-visible answer across ANY iteration
@@ -1088,15 +1104,20 @@ impl StreamingService {
 
 }
 
-/// Build a thinking config from the model registry, or `None` when the model is
-/// unknown or doesn't support thinking. Registry-driven only (no DB/UI toggle).
-fn thinking_config_for(provider_type: &str, model_id: &str) -> Option<ai_providers::ThinkingConfig> {
+/// Build a thinking config, or `None` when the model doesn't support thinking.
+/// The thinking style is resolved dynamically: the editable DB model row →
+/// curated catalog → provider model-family policy (so a user can enable thinking
+/// on an uncatalogued model, and new models in a known family are auto-covered).
+fn thinking_config_for(
+    provider_type: &str,
+    model_id: &str,
+    caps: &crate::modules::llm_model::models::ModelCapabilities,
+) -> Option<ai_providers::ThinkingConfig> {
     use ai_providers::{ThinkingConfig, ThinkingEffort, ThinkingMode};
-    let caps = ai_providers::registry_lookup(provider_type, model_id)?;
-    if caps.supports_thinking != Some(true) {
-        return None;
-    }
-    let cfg = if caps.thinking_style.as_deref() == Some("budget") {
+    let family = ai_providers::ProviderFamily::from_provider_type(provider_type);
+    let contract = caps.to_param_contract();
+    let style = ai_providers::resolved_thinking_style(family, model_id, &contract)?;
+    let cfg = if style == "budget" {
         ThinkingConfig {
             mode: ThinkingMode::Enabled,
             budget_tokens: Some(4096),
@@ -1115,10 +1136,10 @@ fn thinking_config_for(provider_type: &str, model_id: &str) -> Option<ai_provide
 }
 
 /// Map model-level generation parameters onto a `ChatRequest`. `temperature` is
-/// forwarded only when genuinely configured on the model row — no forced default,
-/// so we never send a sampling value the provider might reject (e.g. Anthropic
-/// thinking-enabled / sampling-restricted models). `max_tokens` still defaults to
-/// 8192 when unset (Anthropic requires it).
+/// forwarded ONLY when the user configured it — never force-injected — so a model
+/// that rejects a non-default temperature isn't sent one it never asked for. The
+/// provider adapter then gates params a model rejects. `max_tokens` keeps its
+/// required-field default (Anthropic mandates the field).
 fn apply_model_params(
     req: &mut ai_providers::ChatRequest,
     p: &crate::modules::llm_model::models::ModelParameters,
@@ -2084,22 +2105,40 @@ mod tests {
     }
 
 
+    // TEST-15: thinking resolves via row → catalog → family policy.
     #[test]
-    fn thinking_config_for_registry_gated() {
+    fn thinking_config_for_resolves_row_catalog_family() {
+        use crate::modules::llm_model::models::ModelCapabilities;
         use ai_providers::ThinkingMode;
-        // Adaptive thinking model.
-        let cfg = thinking_config_for("anthropic", "claude-opus-4-7").expect("thinking enabled");
+        let none = ModelCapabilities::default();
+        // Catalog: adaptive thinking model.
+        let cfg = thinking_config_for("anthropic", "claude-opus-4-7", &none).expect("thinking enabled");
         assert_eq!(cfg.mode, ThinkingMode::Adaptive);
         assert!(cfg.effort.is_some());
-        // Non-thinking model.
-        assert!(thinking_config_for("openai", "gpt-4o").is_none());
-        // Unknown model.
-        assert!(thinking_config_for("anthropic", "no-such-model").is_none());
+        // Catalog: a non-thinking model (haiku is catalogued but not thinking-capable).
+        assert!(thinking_config_for("anthropic", "claude-haiku-4-5", &none).is_none());
+        assert!(thinking_config_for("openai", "gpt-4o", &none).is_none());
+        // Family pattern: an uncatalogued o-series model still enables thinking.
+        assert!(thinking_config_for("openai", "o5-mini", &none).is_some());
+        // Row override enables thinking on an otherwise-unknown model.
+        let row = ModelCapabilities {
+            supports_thinking: Some(true),
+            ..Default::default()
+        };
+        assert!(thinking_config_for("openai", "totally-unknown", &row).is_some());
+        // Row override disables thinking even for a thinking-capable family.
+        let off = ModelCapabilities {
+            supports_thinking: Some(false),
+            ..Default::default()
+        };
+        assert!(thinking_config_for("anthropic", "claude-opus-4-7", &off).is_none());
     }
 
 
+    // TEST-15: temperature is forwarded only when set (no forced 0.7); max_tokens
+    // keeps its required-field default.
     #[test]
-    fn apply_model_params_maps_and_defaults() {
+    fn apply_model_params_maps_and_omits_temperature() {
         use crate::modules::llm_model::models::ModelParameters;
 
         // Configured params flow through.
@@ -2115,9 +2154,8 @@ mod tests {
         assert_eq!(req.top_k, Some(20));
         assert_eq!(req.stop, Some(vec!["END".to_string()]));
 
-        // Unset temperature is NOT force-defaulted (no more 0.7): the provider
-        // applies its own default and we never send a value it might reject.
-        // max_tokens still falls back (Anthropic requires it).
+        // Empty params: temperature is OMITTED (never force-injected); max_tokens
+        // still gets its required-field default.
         let mut req2 = ai_providers::ChatRequest::default();
         apply_model_params(&mut req2, &ModelParameters::default());
         assert_eq!(req2.temperature, None);

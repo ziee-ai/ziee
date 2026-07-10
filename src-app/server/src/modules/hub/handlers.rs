@@ -1619,6 +1619,9 @@ pub async fn create_model_from_hub(
             text_embedding: Some(hub_caps.text_embedding),
             image_generator: Some(hub_caps.image_generator),
             context_length: source.context_length.and_then(|n| u32::try_from(n).ok()),
+            // Thinking/sampling contract overrides are not carried by the hub
+            // catalog (they're inferred from the provider model-family policy).
+            ..Default::default()
         }
     });
 

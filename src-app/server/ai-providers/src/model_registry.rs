@@ -33,8 +33,8 @@ pub struct ModelCapabilities {
     /// OpenAI reasoning models) or `"budget"` (legacy fixed token budget).
     pub thinking_style: Option<String>,
     /// Whether the model accepts sampling params (`temperature`/`top_p`/`top_k`).
-    /// `Some(false)` for the Anthropic Opus 4.7/4.8 + Claude 5 families (e.g.
-    /// Sonnet 5) — they 400 on these. `None` = unknown → treated as allowed.
+    /// `Some(false)` for Anthropic Opus 4.7/4.8 (they 400 on these). `None` =
+    /// unknown → treated as allowed.
     pub supports_sampling_params: Option<bool>,
     #[serde(default)]
     pub deprecated: bool,
@@ -139,6 +139,18 @@ mod tests {
         assert!(lookup("unknown-provider", "anything").is_none());
     }
 
+    // TEST-9: the curated catalog carries claude-sonnet-5 as sampling-restricted,
+    // and a dated SKU resolves to the base entry (prefix-tolerant lookup).
+    #[test]
+    fn sonnet_5_sampling_restricted_and_dated_resolves() {
+        let c = lookup("anthropic", "claude-sonnet-5").expect("sonnet-5 in catalog");
+        assert_eq!(c.supports_sampling_params, Some(false));
+        assert_eq!(c.supports_thinking, Some(true));
+        assert_eq!(c.thinking_style.as_deref(), Some("adaptive"));
+        let dated = lookup("anthropic", "claude-sonnet-5-20260115").expect("dated sonnet-5 resolves");
+        assert_eq!(dated.supports_sampling_params, Some(false));
+    }
+
     #[test]
     fn known_ids_for_openai_nonempty() {
         let ids = known_ids_for("openai");
@@ -166,23 +178,6 @@ mod tests {
         let c = lookup("anthropic", "claude-sonnet-4-6").unwrap();
         assert_eq!(c.supports_thinking, Some(true));
         assert_eq!(c.supports_sampling_params, Some(true));
-    }
-
-    #[test]
-    fn sonnet_5_thinking_adaptive_and_sampling_restricted() {
-        // Claude 5 family rejects temperature/top_p/top_k (mirrors Opus 4.8).
-        let c = lookup("anthropic", "claude-sonnet-5").unwrap();
-        assert_eq!(c.supports_thinking, Some(true));
-        assert_eq!(c.thinking_style.as_deref(), Some("adaptive"));
-        assert_eq!(c.supports_sampling_params, Some(false));
-    }
-
-    #[test]
-    fn dated_sonnet_5_resolves_to_base_and_stays_restricted() {
-        // Prefix-tolerant lookup: a dated SKU resolves to the bare entry so the
-        // sampling gate still fires.
-        let c = lookup("anthropic", "claude-sonnet-5-20260115").expect("dated sonnet-5 resolves");
-        assert_eq!(c.supports_sampling_params, Some(false));
     }
 
     #[test]

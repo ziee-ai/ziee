@@ -51,7 +51,7 @@ pub enum ProviderError {
 /// endpoint could otherwise return a multi-megabyte or newline-laden body to
 /// bloat logs or forge entries; and a reflective endpoint could echo request
 /// material. Truncates to a char boundary and collapses CR/LF to spaces.
-pub(crate) fn sanitize_error_body(body: &str) -> String {
+fn sanitize_error_body(body: &str) -> String {
     const MAX: usize = 1024;
     let cleaned: String = body
         .chars()
@@ -119,8 +119,7 @@ impl ProviderError {
 
     /// Creates error from an Anthropic error event. Both fields are untrusted
     /// provider output (HTTP error body or SSE `error` event), so each is bounded +
-    /// newline-collapsed via `sanitize_error_body` before being embedded — a
-    /// hostile/oversized `type` or `message` can't bloat or forge logs/UI.
+    /// newline-collapsed via `sanitize_error_body` before being embedded.
     pub fn from_anthropic_error(error_type: &str, message: &str) -> Self {
         let error_type = sanitize_error_body(error_type);
         let message = sanitize_error_body(message);
@@ -133,6 +132,104 @@ impl ProviderError {
             _ => Self::provider(format!("Anthropic {}: {}", error_type, message)),
         }
     }
+
+    /// Classify by HTTP status (reliable across providers) using an
+    /// already-sanitized `message` as the text. The status is the authoritative
+    /// signal (401/403→auth, 429→rate-limit, 400/404→invalid, 408/504→timeout).
+    fn from_status_with_message(status: u16, message: String) -> Self {
+        match status {
+            401 | 403 => Self::auth(message),
+            429 => Self::rate_limit(message),
+            400 | 404 => Self::invalid_request(message),
+            408 | 504 => Self::timeout(message),
+            _ => Self::provider(message),
+        }
+    }
+
+    /// Build a clean, typed error from an Anthropic HTTP error body. The HTTP
+    /// status drives the variant (so a 404 stays invalid-request, a 429 stays
+    /// rate-limit); the parsed `{"error":{type,message}}` message is the text.
+    /// The response side of the adapter maps each provider's error wire shape
+    /// into the common `ProviderError` — no reactive self-heal.
+    pub fn from_anthropic_http(status: u16, body: &str) -> Self {
+        let message = parse_anthropic_error(body)
+            .map(|(_, m)| m)
+            .unwrap_or_else(|| body.to_string());
+        Self::from_status_with_message(status, sanitize_error_body(&message))
+    }
+
+    /// Build a clean, typed error from an OpenAI HTTP error body
+    /// (`{"error":{"message","type","param","code"}}`). Status-driven variant +
+    /// the parsed message.
+    pub fn from_openai_http(status: u16, body: &str) -> Self {
+        let message = parse_openai_error(body)
+            .map(|e| e.message)
+            .unwrap_or_else(|| body.to_string());
+        Self::from_status_with_message(status, sanitize_error_body(&message))
+    }
+
+    /// Build a clean, typed error from a Gemini HTTP error body
+    /// (`{"error":{"status","message"}}`). Status-driven variant + the parsed
+    /// message (the RPC `status` string is informational only).
+    pub fn from_gemini_http(status: u16, body: &str) -> Self {
+        let message = parse_gemini_error(body)
+            .map(|(_, m)| m)
+            .unwrap_or_else(|| body.to_string());
+        Self::from_status_with_message(status, sanitize_error_body(&message))
+    }
+
+    /// A Gemini in-stream `promptFeedback.blockReason` (untrusted, free-string)
+    /// as a typed error, sanitized/bounded like every other provider string.
+    pub fn gemini_prompt_blocked(block_reason: &str) -> Self {
+        Self::provider(format!("Prompt blocked: {}", sanitize_error_body(block_reason)))
+    }
+}
+
+/// A parsed OpenAI error envelope. `param`/`code` are retained for callers that
+/// want to reason about which field was rejected (surfaced as a clean message;
+/// there is no reactive self-heal).
+pub(crate) struct OpenAiError {
+    pub message: String,
+    #[allow(dead_code)]
+    pub code: Option<String>,
+    #[allow(dead_code)]
+    pub param: Option<String>,
+}
+
+/// Parse `{"error":{"message","type","param","code"}}` (OpenAI-compatible).
+pub(crate) fn parse_openai_error(body: &str) -> Option<OpenAiError> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let err = v.get("error")?;
+    let message = err.get("message")?.as_str()?.to_string();
+    Some(OpenAiError {
+        message,
+        code: err.get("code").and_then(|c| c.as_str()).map(str::to_string),
+        param: err.get("param").and_then(|p| p.as_str()).map(str::to_string),
+    })
+}
+
+/// Parse an Anthropic error envelope `{"error":{"type","message"}}` into its
+/// `(type, message)` pair; `None` when the body isn't the expected shape.
+pub(crate) fn parse_anthropic_error(body: &str) -> Option<(String, String)> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let err = v.get("error")?;
+    let ty = err.get("type")?.as_str()?.to_string();
+    let msg = err.get("message")?.as_str()?.to_string();
+    Some((ty, msg))
+}
+
+/// Parse a Gemini error envelope `{"error":{"status","message"}}` into its
+/// `(status, message)` pair; `None` when the body isn't the expected shape.
+pub(crate) fn parse_gemini_error(body: &str) -> Option<(String, String)> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let err = v.get("error")?;
+    let status = err
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
+    let msg = err.get("message")?.as_str()?.to_string();
+    Some((status, msg))
 }
 
 // Note: All providers now use custom HTTP implementations
@@ -168,5 +265,80 @@ mod tests {
     #[test]
     fn sanitize_body_short_input_unchanged() {
         assert_eq!(sanitize_error_body("hello"), "hello");
+    }
+
+    // TEST-11: typed per-provider error parsers → the common ProviderError.
+    // The HTTP status drives the variant; the parsed message is preserved (and a
+    // clean message — not the raw JSON blob — proves the typed parse ran).
+    #[test]
+    fn openai_error_maps_to_typed_variant() {
+        let body = r#"{"error":{"message":"Unsupported parameter: 'temperature'","type":"invalid_request_error","param":"temperature","code":"unsupported_parameter"}}"#;
+        let parsed = parse_openai_error(body).expect("parses");
+        assert_eq!(parsed.param.as_deref(), Some("temperature"));
+        assert_eq!(parsed.code.as_deref(), Some("unsupported_parameter"));
+        match ProviderError::from_openai_http(400, body) {
+            ProviderError::InvalidRequest(m) => {
+                assert!(m.contains("Unsupported parameter"), "clean message preserved");
+                assert!(!m.contains('{'), "raw JSON blob must not leak");
+            }
+            other => panic!("expected InvalidRequest, got {other:?}"),
+        }
+        // Status is authoritative regardless of the envelope contents.
+        assert!(matches!(
+            ProviderError::from_openai_http(429, body),
+            ProviderError::RateLimit(_)
+        ));
+        // Unparseable body still classifies by status (raw body as text).
+        assert!(matches!(
+            ProviderError::from_openai_http(401, "not json"),
+            ProviderError::Authentication(_)
+        ));
+    }
+
+    #[test]
+    fn anthropic_error_maps_to_typed_variant() {
+        let body = r#"{"error":{"type":"not_found_error","message":"model not found"}}"#;
+        let (ty, msg) = parse_anthropic_error(body).expect("parses");
+        assert_eq!(ty, "not_found_error");
+        assert_eq!(msg, "model not found");
+        // A 404 with a non-400 `type` still classifies by HTTP status (was a
+        // regression when it routed everything through the type mapping).
+        match ProviderError::from_anthropic_http(404, body) {
+            ProviderError::InvalidRequest(m) => assert!(m.contains("model not found")),
+            other => panic!("expected InvalidRequest for 404, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn gemini_error_maps_status_to_variant() {
+        let body = r#"{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"bad top_k"}}"#;
+        let (status, msg) = parse_gemini_error(body).expect("parses");
+        assert_eq!(status, "INVALID_ARGUMENT");
+        assert_eq!(msg, "bad top_k");
+        match ProviderError::from_gemini_http(400, body) {
+            ProviderError::InvalidRequest(m) => assert!(m.contains("bad top_k")),
+            other => panic!("expected InvalidRequest, got {other:?}"),
+        }
+        // A 429 whose envelope `status` is empty/non-standard still maps to
+        // RateLimit by HTTP status (was downgraded to generic provider before).
+        let empty_status = r#"{"error":{"message":"quota"}}"#;
+        assert!(matches!(
+            ProviderError::from_gemini_http(429, empty_status),
+            ProviderError::RateLimit(_)
+        ));
+        let perm = r#"{"error":{"status":"PERMISSION_DENIED","message":"no"}}"#;
+        assert!(matches!(
+            ProviderError::from_gemini_http(403, perm),
+            ProviderError::Authentication(_)
+        ));
+    }
+
+    #[test]
+    fn gemini_prompt_blocked_is_sanitized() {
+        // CR/LF-laden untrusted block reason must be collapsed (anti log-forging).
+        let e = ProviderError::gemini_prompt_blocked("SAFETY\n injected: line");
+        let s = e.to_string();
+        assert!(!s.contains('\n') && !s.contains('\r'));
+        assert!(s.contains("Prompt blocked"));
     }
 }
