@@ -70,6 +70,11 @@ export const STATE_COVERAGE = {
     reason:
       "full-page file view (/files/:id) — static/e2e-verified surface; ':delayed' is the route lazy-load fallback, exercised by the full-page-view e2e spec",
   },
+  'modules/file/components/FileEditBody:error': {
+    skip: true,
+    reason:
+      "canvas load-failure guard: when the head-text fetch fails, an error panel with Retry renders and Save is unreachable (data-loss guard — no blank clobber). Transient fetch-failure state, not deterministically snapshottable in the seeded gallery (the edit-body cell mocks a successful /text); the guard is verified by the FileEditBody logic + the happy edit path by seeded-artifact-canvas-edit-body and the 14-artifacts e2e suite",
+  },
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
   },

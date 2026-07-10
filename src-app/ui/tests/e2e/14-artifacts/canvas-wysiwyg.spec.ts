@@ -56,8 +56,10 @@ test.describe('Artifacts — canvas WYSIWYG edit + save + export', () => {
     // Reload re-fetches the saved head from the server — the edit persisted.
     await page.reload()
     await expect(page.getByTestId('file-view-page')).toBeVisible()
-    await expect(page.getByText('Canvas H2 marker', { exact: false }).first()).toBeVisible()
 
+    // Persistence is asserted AUTHORITATIVELY via the exported bytes below (the
+    // rendered markdown viewer tokenizes text across highlight spans, so a DOM
+    // getByText is unreliable). The export runs against the reloaded server head.
     // Export-as-markdown downloads a real file whose bytes carry the heading
     // syntax the toolbar produced (WYSIWYG → markdown round-trip end-to-end).
     await page.getByTestId('file-export-menu').click()

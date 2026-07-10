@@ -30,8 +30,83 @@ async fn upload_text(
     crate::chat::helpers::parse_uuid(&body["id"])
 }
 
+async fn upload_with_mime(
+    server: &crate::common::TestServer,
+    token: &str,
+    filename: &str,
+    content: &str,
+    mime: &str,
+) -> Uuid {
+    let form = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(content.as_bytes().to_vec())
+            .file_name(filename.to_string())
+            .mime_str(mime)
+            .unwrap(),
+    );
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    crate::chat::helpers::parse_uuid(&body["id"])
+}
+
 fn client() -> reqwest::Client {
     reqwest::Client::new()
+}
+
+// TEST-6b (ITEM-19, ITEM-20): appending a new version of a NON-markdown text file
+// (csv / python) re-extracts its text pages so `/text` returns the edited head —
+// the co-edit path for code + csv deliverables must not go stale after Save.
+#[tokio::test]
+async fn test_append_version_text_reextracted_for_csv_and_code() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "artifacts_reextract",
+        &["files::read", "files::upload", "files::download"],
+    )
+    .await;
+
+    for (filename, mime, orig, edited, marker) in [
+        ("data.csv", "text/csv", "name,score\nAlice,10\n", "name,score\nBob,10\n", "Bob"),
+        (
+            "script.py",
+            "text/x-python",
+            "def hello():\n    return 1\n",
+            "def hello():\n    return 1\nCODE_EDIT_MARKER = 42\n",
+            "CODE_EDIT_MARKER",
+        ),
+    ] {
+        let fid = upload_with_mime(&server, &user.token, filename, orig, mime).await;
+        let resp = client()
+            .post(server.api_url(&format!("/files/{fid}/versions")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&json!({ "content": edited }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{filename}: append ok");
+
+        let text = client()
+            .get(server.api_url(&format!("/files/{fid}/text")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(
+            text.contains(marker),
+            "{filename}: /text must reflect the edited head (re-extracted); got: {text}"
+        );
+    }
 }
 
 // TEST-10 (ITEM-1): append-version bumps the head and changes the content.

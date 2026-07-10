@@ -8,7 +8,7 @@
 ## Summary
 
 - **328** surfaces carry at least one renderable-state signal.
-- **1906** signals total: 1510 branch, 112 empty, 96 error, 99 loading, 87 overlay, 2 panel.
+- **1907** signals total: 1510 branch, 112 empty, 97 error, 99 loading, 87 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 86 |
 | `empty` | 90 |
-| `error` | 75 |
+| `error` | 76 |
 | `open` | 73 |
 | `panel-open` | 2 |
 
@@ -1570,7 +1570,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `!convId` | 16 |
-| branch | `isDeliverable` | 43 |
+| branch | `isDeliverable` | 44 |
 
 ### `modules/file/components/FileCard`
 
@@ -1602,16 +1602,17 @@ Required states: `error`, `open`
 
 ### `modules/file/components/FileEditBody`
 
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `cancelled` | 60 |
-| branch | `!dirty` | 82 |
-| branch | `text === null` | 106 |
-| branch | `changedUnderneath` | 116 |
-| branch | `kind === 'csv'` | 149 |
-| branch | `kind === 'code'` | 156 |
+| branch | `cancelled` | 61 |
+| branch | `!dirty` | 87 |
+| error | `loadError` | 111 |
+| branch | `text === null` | 141 |
+| branch | `changedUnderneath` | 151 |
+| branch | `kind === 'csv'` | 184 |
+| branch | `kind === 'code'` | 191 |
 
 ### `modules/file/components/FilePanel`
 

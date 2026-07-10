@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 328 surfaces carry renderable-state signals; 1906 signals total.
+// 328 surfaces carry renderable-state signals; 1907 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1401,7 +1401,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "!convId", line: 16 },
-      { kind: "branch", condition: "isDeliverable", line: 43 },
+      { kind: "branch", condition: "isDeliverable", line: 44 },
     ],
   },
   "modules/file/components/FileCard": {
@@ -1433,14 +1433,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/file/components/FileEditBody": {
     surface: "modules/file/components/FileEditBody",
-    requiredStates: [],
+    requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "cancelled", line: 60 },
-      { kind: "branch", condition: "!dirty", line: 82 },
-      { kind: "branch", condition: "text === null", line: 106 },
-      { kind: "branch", condition: "changedUnderneath", line: 116 },
-      { kind: "branch", condition: "kind === 'csv'", line: 149 },
-      { kind: "branch", condition: "kind === 'code'", line: 156 },
+      { kind: "branch", condition: "cancelled", line: 61 },
+      { kind: "branch", condition: "!dirty", line: 87 },
+      { kind: "error", condition: "loadError", line: 111 },
+      { kind: "branch", condition: "text === null", line: 141 },
+      { kind: "branch", condition: "changedUnderneath", line: 151 },
+      { kind: "branch", condition: "kind === 'csv'", line: 184 },
+      { kind: "branch", condition: "kind === 'code'", line: 191 },
     ],
   },
   "modules/file/components/FilePanel": {
@@ -3960,7 +3961,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 326 keys.
+ * 327 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4063,6 +4064,7 @@ export type RequiredState =
   | "modules/file/chat-extension/extension:panel-open"
   | "modules/file/components/FileCard:error"
   | "modules/file/components/FileCard:open"
+  | "modules/file/components/FileEditBody:error"
   | "modules/file/components/FilePreviewDrawer:open"
   | "modules/file/components/FileVersionBar:open"
   | "modules/file/components/FileViewPage:delayed"
@@ -4392,6 +4394,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/chat-extension/extension:panel-open",
   "modules/file/components/FileCard:error",
   "modules/file/components/FileCard:open",
+  "modules/file/components/FileEditBody:error",
   "modules/file/components/FilePreviewDrawer:open",
   "modules/file/components/FileVersionBar:open",
   "modules/file/components/FileViewPage:delayed",
