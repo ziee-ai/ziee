@@ -35,3 +35,9 @@ src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1784	1786	state-management
 src-app/ui/tests/e2e/chat/empty-completion.spec.ts	1	100	tests-quality,edge-cases,security
 src-app/ui/src/components/ui/testIds.generated.ts	2	2	patterns-conformance,tests-quality,correctness
 src-app/ui/src/components/ui/testIds.generated.ts	116	116	patterns-conformance,tests-quality,correctness
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	11	11	patterns-conformance,tests-quality,correctness
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	909	915	patterns-conformance,tests-quality,correctness
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1013	1034	patterns-conformance,tests-quality,correctness
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	7	7	patterns-conformance,tests-quality,correctness
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	797	803	patterns-conformance,tests-quality,correctness
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	892	913	patterns-conformance,tests-quality,correctness
