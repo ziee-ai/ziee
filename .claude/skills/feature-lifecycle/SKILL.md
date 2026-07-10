@@ -47,6 +47,12 @@ Match these line formats precisely or the gate will not pass.
 - **Test** — `- **TEST-2** (tier: integration) [covers: ITEM-1, ITEM-3] file: \`path/to/test.rs\` — asserts: <what it proves>`
   (tier ∈ `unit | integration | e2e`). **UI work must enumerate ≥1 `tier: e2e`
   test** — the gate refuses an all-unit plan for a frontend-touching diff.
+- **Restricted-user e2e** (`[negative-perm]` tag) — `- **TEST-7** (tier: e2e) [negative-perm] [covers: ITEM-3] file: \`.../foo.spec.ts\` — asserts: a user LACKING foo::use sees NO Foo UI (nav entry, page, composer, buttons all absent)`.
+  REQUIRED whenever the diff introduces a user-facing permission
+  (`X::use`/`X::read`/`X::manage` defined in a `modules/*/permissions.rs` or
+  granted in a migration). This is the FRONTEND half of the authz gate (A10),
+  paired with the backend deny test (A9). It must be `tier: e2e` — a 403/deny
+  integration test does NOT satisfy it (that's A9).
 - **Decision** — `### DEC-1: <question>` then a `**Resolution:** <answer>` line
   and a `**Basis:** <convention|user|codebase>` line
 - **Drift entry** — `- **DRIFT-1.2** — verdict: plan-wins — <text>`
@@ -140,7 +146,31 @@ PLAN.md's *Files to touch*). If a **frontend** path (`src-app/ui/**` or
 enumerated, the gate fails** — an all-unit plan for UI work is refused. Budget
 the e2e specs here; phase 8 runs them.
 
-Gate: `--phase 3` (fails loudly if any ITEM is unmapped, or a UI diff has no e2e test).
+**Permission-gating rule (A10) — MANDATORY when your feature adds a
+permission.** If the feature introduces a user-facing permission (a
+`X::use`/`X::read`/`X::manage` defined in a `modules/*/permissions.rs` OR
+granted in a migration), you MUST verify + test that **unpermitted users see
+NOTHING** at every layer, and enumerate the **restricted-user e2e** that proves
+the UI is ABSENT — not just 403-on-use. Walk all four gating layers from
+`.claude/PERMISSION_GATING.md` — **slot → route → `<Can>` → `usePermission`** —
+and assert, in a spec that logs in as a user LACKING the permission, that every
+surface (sidebar/nav entry, route/page, composer, action buttons, menu items)
+is absent. Tag it `[negative-perm]` at `tier: e2e`. The happy-path e2e (which
+runs WITH the permission) can never catch an ungated surface; this spec is the
+only thing that forces the negative case. The gate fails phase 3 if a permission
+is introduced but no `(tier: e2e) [negative-perm]` spec is enumerated. This is
+the FRONTEND half of the authz proof — paired with the backend deny test
+(A9, phase 8).
+
+> **Honest limit of the gate.** A10 enforces only that ONE restricted-user e2e
+> *exists and passes* — it CANNOT verify that spec covers EVERY gated surface (a
+> test could assert the nav entry is hidden yet miss an ungated composer). That
+> is why the rule above is to walk ALL FOUR layers inside the spec; the gate is
+> a floor, not a ceiling. Under-covering here is exactly how live2/live3/live4
+> shipped ungated surfaces past a green 8/8 lifecycle.
+
+Gate: `--phase 3` (fails loudly if any ITEM is unmapped, a UI diff has no e2e
+test, or a new permission has no restricted-user `[negative-perm]` e2e).
 
 ## Phase 4 — DECISIONS.md
 
@@ -277,6 +307,9 @@ workspace:
    ```bash
    cd src-app/ui && npx playwright test tests/e2e/<file> --workers=1
    ```
+   This includes any `[negative-perm]` **restricted-user** spec (A10): run it
+   and record its TEST-ID as PASS — the gate requires the negative-permission
+   e2e to pass, not just the happy-path one.
 
 Write `TEST_RESULTS.md` with a `- **TEST-N**: PASS` line for **every** TEST-ID
 from Phase 3 (plus the `npm run check (<ws>): PASS` line(s) above for a UI diff).
@@ -301,8 +334,15 @@ so budget for them — they are not optional polish:
 - **A8** a new built-in MCP server must include BOTH `mcp.rs` edits
   (`auto_attach_builtin_ids` + `is_builtin_server_id`) — else it registers but
   the model never sees the tools.
-- **A9** a new permission must have a DENY-path test (403/forbidden), not only
-  the allow path.
+- **A9** a new permission must have a BACKEND DENY-path test (403/forbidden),
+  not only the allow path.
+- **A10** a new user-facing permission (`X::use`/`X::read`/`X::manage` in a
+  `modules/*/permissions.rs` or a migration grant) must ALSO have a
+  **restricted-user e2e** — `(tier: e2e) [negative-perm]` — that logs in as a
+  user LACKING the permission and asserts the feature UI is ABSENT, and it must
+  be enumerated (phase 3) and PASS (phase 8). A9 proves the API refuses; A10
+  proves the UI is hidden. Both are required — a 403 backend test alone leaves
+  an ungated menu item / composer / nav entry invisible to the gate.
 - **R2-5** every `/api/` e2e route-mock the diff adds must match a live route in
   `openapi.json` — a renamed route makes the mock a silent no-op that
   false-greens the spec.
