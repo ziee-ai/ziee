@@ -509,13 +509,92 @@ impl AnthropicProvider {
     }
 
     /// True when the model rejects sampling params (`temperature`/`top_p`/`top_k`)
-    /// — Opus 4.7/4.8 family, per the model registry. Unknown models default to
-    /// allowed (back-compat); a brand-new restricted model 400s until registered.
+    /// — the Opus 4.7/4.8 + Claude 5 (e.g. Sonnet 5) families, per the model
+    /// registry. Unknown models default to allowed (back-compat); a brand-new
+    /// restricted model 400s until registered (then self-heals — see
+    /// `is_unsupported_sampling_error`).
     fn sampling_restricted(model: &str) -> bool {
         crate::model_registry::lookup("anthropic", model)
             .and_then(|c| c.supports_sampling_params)
             .map(|ok| !ok)
             .unwrap_or(false)
+    }
+
+    /// Parse an Anthropic error envelope `{"error":{"type","message"}}` into its
+    /// `(type, message)` pair using untyped `Value` access; `None` for a body that
+    /// isn't the expected JSON shape.
+    fn parse_error_envelope(body: &str) -> Option<(String, String)> {
+        let v: serde_json::Value = serde_json::from_str(body).ok()?;
+        let err = v.get("error")?;
+        let ty = err.get("type")?.as_str()?.to_string();
+        let msg = err.get("message")?.as_str()?.to_string();
+        Some((ty, msg))
+    }
+
+    /// True when a 400 error `message` says a sampling param (`temperature`/
+    /// `top_p`/`top_k`) is **unsupported for this model** — the only case the
+    /// self-heal may repair by stripping the param and retrying.
+    ///
+    /// Deliberately fail-closed: an invalid-**value** error (e.g. "temperature:
+    /// Input should be less than or equal to 1") names the param but is NOT
+    /// repairable — stripping there would silently swallow the operator's
+    /// misconfiguration and answer at the provider default. So we require an
+    /// explicit "unsupported / not-permitted" indicator, not just the param name.
+    fn is_unsupported_sampling_error(message: &str) -> bool {
+        let m = message.to_lowercase();
+        let names_param =
+            m.contains("temperature") || m.contains("top_p") || m.contains("top_k");
+        if !names_param {
+            return false;
+        }
+        // Phrases Anthropic uses when a param is not accepted at all for the model
+        // (restricted model, or thinking-active temperature). Kept specific so a
+        // value-validation 400 that merely mentions the param isn't misread as
+        // unsupported (e.g. bare "unexpected"/"not allowed" would over-match).
+        const UNSUPPORTED_HINTS: [&str; 8] = [
+            "not permitted",       // pydantic: "Extra inputs are not permitted"
+            "extra input",         // pydantic: "Extra inputs ..."
+            "not supported",       // "temperature is not supported ..."
+            "unsupported",         // "unsupported_parameter" / "unsupported ..."
+            "only be set to 1",    // thinking-active temperature
+            "unexpected keyword",  // "unexpected keyword argument ..."
+            "unexpected parameter",
+            "cannot be used with", // "temperature cannot be used with thinking"
+        ];
+        UNSUPPORTED_HINTS.iter().any(|h| m.contains(h))
+    }
+
+    /// Remove the sampling keys from an already-built request body. Returns `true`
+    /// when at least one was present (i.e. a retry could change the outcome). All
+    /// three are stripped together: Anthropic's sampling support is all-or-nothing
+    /// per model / thinking-state, so an "unsupported" 400 rejects the whole set.
+    fn strip_sampling_params(body: &mut serde_json::Value) -> bool {
+        let Some(obj) = body.as_object_mut() else {
+            return false;
+        };
+        let mut removed = false;
+        for key in ["temperature", "top_p", "top_k"] {
+            removed |= obj.remove(key).is_some();
+        }
+        removed
+    }
+
+    /// Build a clean `ProviderError` from an Anthropic HTTP error. For a **400**
+    /// with a parseable envelope, prefer the human-readable `type`+`message` (via
+    /// `from_anthropic_error`, which sanitizes both) over the raw JSON blob. Other
+    /// statuses keep the existing status-driven `from_status_code` mapping (also
+    /// sanitized) so a non-400 isn't silently reclassified by its error `type`.
+    fn clean_http_error(
+        status: u16,
+        parsed: Option<(String, String)>,
+        raw: &str,
+    ) -> ProviderError {
+        match parsed {
+            Some((ty, msg)) if status == 400 => {
+                ProviderError::from_anthropic_error(&ty, &msg)
+            }
+            _ => ProviderError::from_status_code(status, raw.to_string()),
+        }
     }
 
     /// Map a unified effort level to the Anthropic `output_config.effort` value.
@@ -578,7 +657,17 @@ impl AnthropicProvider {
             body["stream"] = json!(true);
         }
 
-        let sampling_ok = !Self::sampling_restricted(&request.model);
+        // Sampling params (temperature/top_p/top_k) are gated two ways:
+        //  - restricted models (Opus 4.7/4.8, Sonnet 5, …) reject them outright; and
+        //  - whenever thinking is active, Anthropic requires temperature == 1 and
+        //    400s on any other value — it defaults to 1 when the sampling block is
+        //    absent, so we omit the block entirely rather than emit a value the
+        //    operator did not configure.
+        let thinking_active = matches!(
+            request.thinking.as_ref().map(|t| t.mode),
+            Some(ThinkingMode::Adaptive | ThinkingMode::Enabled)
+        );
+        let sampling_ok = !Self::sampling_restricted(&request.model) && !thinking_active;
         let cache_on = !request.disable_prompt_cache;
 
         // System prompt. Cache the stable tools+system prefix by rendering system
@@ -677,25 +766,56 @@ impl AIProvider for AnthropicProvider {
         let client = super::http_client();
 
         // Build the request body (pure, unit-testable).
-        let body = Self::build_request_body(&request, true);
+        let mut body = Self::build_request_body(&request, true);
 
-        // Make streaming request
-        let response = client
-            .post(format!("{}/messages", base_url))
-            .header("x-api-key", api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("anthropic-beta", "files-api-2025-04-14")  // Enable Files API beta
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+        // Make streaming request. Self-heal: if the provider 400s because a
+        // sampling param (temperature/top_p/top_k) is unsupported for this model
+        // — e.g. a model whose requirements changed or was added manually and
+        // isn't in the static registry — strip the offending params and retry
+        // once. On a non-repairable failure, surface a clean, human-readable
+        // provider error (parsed Anthropic type+message) instead of the raw JSON.
+        let mut attempted_repair = false;
+        let response = loop {
+            let resp = client
+                .post(format!("{}/messages", base_url))
+                .header("x-api-key", api_key)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("anthropic-beta", "files-api-2025-04-14")  // Enable Files API beta
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await?;
 
-        // Check status
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
-        }
+            let status = resp.status();
+            if status.is_success() {
+                break resp;
+            }
+
+            let error_text = resp.text().await.unwrap_or_default();
+            // Parse the error envelope once; reuse it for both the repair decision
+            // and the clean surfaced error (no double parse).
+            let parsed = Self::parse_error_envelope(&error_text);
+            let message = parsed
+                .as_ref()
+                .map(|(_, m)| m.as_str())
+                .unwrap_or(error_text.as_str());
+            if status.as_u16() == 400
+                && !attempted_repair
+                && Self::is_unsupported_sampling_error(message)
+                && Self::strip_sampling_params(&mut body)
+            {
+                attempted_repair = true;
+                // `request.model` is untrusted (operator-supplied) — sanitize it
+                // before logging to prevent CR/LF log-forging.
+                tracing::warn!(
+                    "Anthropic: 400 on unsupported sampling params for model {}; stripping temperature/top_p/top_k and retrying once",
+                    crate::error::sanitize_error_body(&request.model)
+                );
+                continue;
+            }
+
+            return Err(Self::clean_http_error(status.as_u16(), parsed, &error_text));
+        };
 
         // Get byte stream
         let byte_stream = response.bytes_stream();
@@ -1251,6 +1371,362 @@ mod tests {
             assert_eq!(tr["type"], "tool_result");
             assert_eq!(tr["content"][0]["type"], "text");
             assert_eq!(tr["content"][1]["type"], "image");
+        }
+
+        #[test]
+        fn adaptive_thinking_omits_sampling_on_allowed_model() {
+            // Failure #2: with thinking active, temperature/top_p/top_k must be
+            // omitted even on a sampling-ALLOWED model (Anthropic requires
+            // temperature == 1 with thinking and 400s otherwise).
+            let mut r = req("claude-3-5-sonnet"); // unknown to registry -> allowed
+            r.thinking = Some(ThinkingConfig::adaptive_with_effort(ThinkingEffort::High));
+            r.temperature = Some(0.7);
+            r.top_p = Some(0.9);
+            r.top_k = Some(40);
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert!(body.get("temperature").is_none());
+            assert!(body.get("top_p").is_none());
+            assert!(body.get("top_k").is_none());
+            assert_eq!(body["thinking"]["type"], "adaptive");
+        }
+
+        #[test]
+        fn enabled_thinking_omits_sampling_keeps_budget() {
+            let mut r = req("claude-3-5-sonnet");
+            r.thinking = Some(ThinkingConfig::with_budget(4096));
+            r.temperature = Some(0.7);
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert!(body.get("temperature").is_none());
+            assert_eq!(body["thinking"]["type"], "enabled");
+            assert_eq!(body["thinking"]["budget_tokens"], 4096);
+        }
+
+        #[test]
+        fn no_thinking_allowed_model_keeps_temperature() {
+            // thinking = None on an allowed model -> temperature still sent.
+            let mut r = req("claude-3-5-sonnet");
+            r.temperature = Some(0.5);
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert_eq!(body["temperature"], 0.5);
+
+            // explicitly-disabled thinking likewise keeps sampling.
+            let mut r2 = req("claude-3-5-sonnet");
+            r2.thinking = Some(ThinkingConfig::disabled());
+            r2.temperature = Some(0.5);
+            let body2 = AnthropicProvider::build_request_body(&r2, true);
+            assert_eq!(body2["temperature"], 0.5);
+        }
+
+        #[test]
+        fn sonnet_5_omits_sampling_via_registry() {
+            // Failure #1: claude-sonnet-5 is registry-restricted, so sampling
+            // params are dropped even without thinking.
+            let mut r = req("claude-sonnet-5");
+            r.temperature = Some(0.7);
+            r.top_p = Some(0.9);
+            r.top_k = Some(40);
+            let body = AnthropicProvider::build_request_body(&r, true);
+            assert!(body.get("temperature").is_none());
+            assert!(body.get("top_p").is_none());
+            assert!(body.get("top_k").is_none());
+        }
+    }
+
+    mod self_heal {
+        use super::super::AnthropicProvider;
+        use crate::error::ProviderError;
+        use serde_json::json;
+
+        fn err_body(message: &str) -> String {
+            format!(
+                r#"{{"type":"error","error":{{"type":"invalid_request_error","message":"{message}"}}}}"#
+            )
+        }
+
+        #[test]
+        fn is_unsupported_sampling_error_matches_only_unsupported() {
+            // Param unsupported for the model -> repairable.
+            assert!(AnthropicProvider::is_unsupported_sampling_error(
+                "temperature may only be set to 1 when thinking is enabled or in adaptive mode."
+            ));
+            assert!(AnthropicProvider::is_unsupported_sampling_error("top_p is not supported"));
+            assert!(AnthropicProvider::is_unsupported_sampling_error(
+                "temperature: Extra inputs are not permitted"
+            ));
+            // Invalid-VALUE errors name the param but must NOT be repaired —
+            // stripping there would silently swallow the misconfiguration.
+            assert!(!AnthropicProvider::is_unsupported_sampling_error(
+                "temperature: Input should be less than or equal to 1"
+            ));
+            assert!(!AnthropicProvider::is_unsupported_sampling_error("temperature must be <= 1"));
+            // Broad words that merely appear must NOT over-match (hints are specific).
+            assert!(!AnthropicProvider::is_unsupported_sampling_error(
+                "temperature triggered an unexpected internal error"
+            ));
+            assert!(!AnthropicProvider::is_unsupported_sampling_error(
+                "temperature: value not allowed for this range"
+            ));
+            // Unrelated 400 (no sampling param named) -> not a repair.
+            assert!(!AnthropicProvider::is_unsupported_sampling_error(
+                "max_tokens: must be greater than 0"
+            ));
+        }
+
+        #[test]
+        fn strip_sampling_params_removes_only_sampling_keys() {
+            let mut body = json!({
+                "model": "claude-sonnet-5",
+                "messages": [],
+                "thinking": {"type": "adaptive"},
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "top_k": 40,
+            });
+            assert!(AnthropicProvider::strip_sampling_params(&mut body));
+            assert!(body.get("temperature").is_none());
+            assert!(body.get("top_p").is_none());
+            assert!(body.get("top_k").is_none());
+            assert_eq!(body["model"], "claude-sonnet-5");
+            assert_eq!(body["thinking"]["type"], "adaptive");
+            // nothing left to strip -> false (no pointless retry).
+            assert!(!AnthropicProvider::strip_sampling_params(&mut body));
+        }
+
+        #[test]
+        fn clean_http_error_prefers_and_sanitizes_message() {
+            // Prefers the parsed human-readable message over the raw JSON blob.
+            let raw = err_body("temperature must be 1");
+            let parsed = AnthropicProvider::parse_error_envelope(&raw);
+            match AnthropicProvider::clean_http_error(400, parsed, &raw) {
+                ProviderError::InvalidRequest(m) => {
+                    assert_eq!(m, "temperature must be 1");
+                    assert!(!m.contains('{'), "clean message, not the raw JSON blob");
+                }
+                other => panic!("expected InvalidRequest, got {other:?}"),
+            }
+
+            // Untrusted message is sanitized: CR/LF collapsed + length bounded
+            // (same control the raw-body from_status_code path applies).
+            let long = "x".repeat(5000);
+            let raw2 = err_body(&format!("bad temperature line1\\nline2 {long}"));
+            let parsed2 = AnthropicProvider::parse_error_envelope(&raw2);
+            match AnthropicProvider::clean_http_error(400, parsed2, &raw2) {
+                ProviderError::InvalidRequest(m) => {
+                    assert!(!m.contains('\n') && !m.contains('\r'), "newlines collapsed");
+                    assert!(m.contains("[truncated]"), "oversized message bounded");
+                }
+                other => panic!("expected InvalidRequest, got {other:?}"),
+            }
+
+            // Non-JSON body -> falls back to the sanitized from_status_code error.
+            match AnthropicProvider::clean_http_error(400, None, "not json blob") {
+                ProviderError::InvalidRequest(m) => assert!(m.contains("not json blob")),
+                other => panic!("expected InvalidRequest, got {other:?}"),
+            }
+        }
+
+        // Minimal HTTP/1.1 reader: parse headers + Content-Length body.
+        async fn read_http_request(sock: &mut tokio::net::TcpStream) -> String {
+            use tokio::io::AsyncReadExt;
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 4096];
+            loop {
+                let n = sock.read(&mut tmp).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&tmp[..n]);
+                if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buf[..pos]).to_lowercase();
+                    let cl = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    let body_start = pos + 4;
+                    while buf.len() < body_start + cl {
+                        let n = sock.read(&mut tmp).await.unwrap();
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                    }
+                    break;
+                }
+            }
+            String::from_utf8_lossy(&buf).to_string()
+        }
+
+        fn http_400(json: &str) -> String {
+            format!(
+                "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                json.len(),
+                json
+            )
+        }
+
+        fn http_200_sse() -> String {
+            let sse = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n\n";
+            format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n{sse}"
+            )
+        }
+
+        // Loopback mock: serves `responses` (each a full HTTP/1.1 message) over
+        // `responses.len()` sequential connections, capturing each request body.
+        // `connection: close` on every response forces reqwest to open a fresh
+        // TCP connection per request (no keep-alive reuse).
+        async fn spawn_mock(
+            responses: Vec<String>,
+        ) -> (
+            String,
+            tokio::task::JoinHandle<()>,
+            std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        ) {
+            use std::sync::{Arc, Mutex};
+            use tokio::io::AsyncWriteExt;
+            use tokio::net::TcpListener;
+
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let bodies = Arc::new(Mutex::new(Vec::<String>::new()));
+            let bodies_srv = bodies.clone();
+            let handle = tokio::spawn(async move {
+                for resp in responses {
+                    let (mut sock, _) = listener.accept().await.unwrap();
+                    let req = read_http_request(&mut sock).await;
+                    bodies_srv.lock().unwrap().push(req);
+                    sock.write_all(resp.as_bytes()).await.unwrap();
+                    let _ = sock.flush().await;
+                    let _ = sock.shutdown().await;
+                }
+            });
+            (format!("http://{addr}"), handle, bodies)
+        }
+
+        fn chat_request(model: &str, temperature: f32) -> crate::models::ChatRequest {
+            use crate::models::{ChatMessage, ChatRequest};
+            let mut request = ChatRequest {
+                model: model.to_string(),
+                messages: vec![ChatMessage::user("hi")],
+                max_tokens: Some(64),
+                ..Default::default()
+            };
+            request.temperature = Some(temperature);
+            request
+        }
+
+        #[tokio::test]
+        async fn stream_chat_self_heals_unsupported_sampling_400_and_retries_once() {
+            // Wrapped in a timeout so a retry/connection regression FAILS FAST
+            // instead of hanging the mock's accept loop indefinitely.
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                use crate::traits::AIProvider;
+                use futures_util::StreamExt;
+
+                let (base_url, server, bodies) = spawn_mock(vec![
+                    http_400(&err_body(
+                        "temperature may only be set to 1 when thinking is enabled or in adaptive mode.",
+                    )),
+                    http_200_sse(),
+                ])
+                .await;
+
+                // Allowed model, no thinking -> first body carries temperature.
+                let request = chat_request("claude-3-5-sonnet", 0.5);
+                let mut stream = AnthropicProvider
+                    .stream_chat("test-key", &base_url, request)
+                    .await
+                    .expect("self-heal should retry and yield an Ok stream");
+                // Drain the tiny stream so the mock's second connection completes.
+                while stream.next().await.is_some() {}
+                server.await.unwrap();
+
+                let captured = bodies.lock().unwrap();
+                assert_eq!(captured.len(), 2, "initial request + exactly one retry");
+                assert!(
+                    captured[0].contains("\"temperature\""),
+                    "first request carries temperature"
+                );
+                assert!(
+                    !captured[1].contains("\"temperature\""),
+                    "retry strips temperature"
+                );
+            })
+            .await
+            .expect("test timed out — likely a retry/connection regression");
+        }
+
+        #[tokio::test]
+        async fn stream_chat_surfaces_invalid_value_400_without_retry() {
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                use crate::traits::AIProvider;
+
+                // An invalid-VALUE 400 (param accepted, value bad) must NOT be
+                // self-healed: no retry, and the real error surfaces cleanly.
+                let (base_url, server, bodies) = spawn_mock(vec![http_400(&err_body(
+                    "temperature: Input should be less than or equal to 1",
+                ))])
+                .await;
+
+                let request = chat_request("claude-3-5-sonnet", 5.0);
+                // The Ok variant (boxed stream) isn't Debug, so match rather than expect_err.
+                let err = match AnthropicProvider
+                    .stream_chat("test-key", &base_url, request)
+                    .await
+                {
+                    Ok(_) => panic!("invalid-value 400 must not be self-healed (got Ok stream)"),
+                    Err(e) => e,
+                };
+                server.await.unwrap();
+
+                match err {
+                    ProviderError::InvalidRequest(m) => {
+                        assert!(
+                            m.contains("less than or equal to 1"),
+                            "surfaces the real value error, got: {m}"
+                        );
+                        assert!(!m.contains('{'), "clean message, not the raw JSON blob");
+                    }
+                    other => panic!("expected InvalidRequest, got {other:?}"),
+                }
+
+                let captured = bodies.lock().unwrap();
+                assert_eq!(captured.len(), 1, "no retry on an invalid-value 400");
+            })
+            .await
+            .expect("test timed out");
+        }
+
+        #[tokio::test]
+        async fn stream_chat_retries_at_most_once_on_persistent_sampling_400() {
+            // The `attempted_repair` guard: if the stripped retry ALSO 400s, we
+            // must NOT loop — exactly two requests, then a clean surfaced error.
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                use crate::traits::AIProvider;
+
+                let unsupported = err_body("temperature: Extra inputs are not permitted");
+                let (base_url, server, bodies) =
+                    spawn_mock(vec![http_400(&unsupported), http_400(&unsupported)]).await;
+
+                let request = chat_request("claude-3-5-sonnet", 0.5);
+                let err = match AnthropicProvider
+                    .stream_chat("test-key", &base_url, request)
+                    .await
+                {
+                    Ok(_) => panic!("a persistently-400ing retry must surface an error"),
+                    Err(e) => e,
+                };
+                server.await.unwrap();
+
+                assert!(matches!(err, ProviderError::InvalidRequest(_)));
+                let captured = bodies.lock().unwrap();
+                assert_eq!(captured.len(), 2, "retry at most once, then give up");
+                assert!(captured[0].contains("\"temperature\""), "first request carries temperature");
+                assert!(!captured[1].contains("\"temperature\""), "retry stripped temperature");
+            })
+            .await
+            .expect("test timed out — the attempted_repair guard may have regressed");
         }
     }
 }

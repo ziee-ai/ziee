@@ -11,7 +11,7 @@
 //!
 //! Coverage — the consumer wiring the crate's Tier-1 unit tests can't reach:
 //!   * sampling: `model.parameters` reach the wire; OpenAI omits `top_k`; empty
-//!     params fall back to the temperature/max_tokens defaults.
+//!     params omit temperature (no forced default) but still default `max_tokens`.
 //!   * thinking: registry-gated enable emits `reasoning_effort` (+ non-streaming
 //!     for gpt-5); an unknown model gets no thinking; a model's `reasoning_content`
 //!     is persisted as a thinking content block with `ThinkingMetadata.token_count`.
@@ -191,16 +191,17 @@ async fn model_params_reach_provider_request() {
 }
 
 #[tokio::test]
-async fn empty_model_params_fall_back_to_defaults() {
+async fn empty_model_params_omit_temperature_and_default_max_tokens() {
     let (stub, _turn) = run_turn("default_user", StubPlan::default(), "stub-model", None).await;
 
     let req = stub.last_request();
-    // 0.7 is not exact in f32 — assert ~0.7 rather than exact-eq.
-    let temp = req["temperature"].as_f64().expect("temperature present");
+    // No forced temperature default: an unset model temperature is omitted so the
+    // provider applies its own default (we never send a value it might reject).
     assert!(
-        (temp - 0.7).abs() < 1e-4,
-        "default temperature should be ~0.7, got {temp}"
+        req.get("temperature").is_none(),
+        "unset temperature must be omitted (no forced 0.7), got: {req}"
     );
+    // max_tokens still falls back to the default.
     assert_eq!(req["max_tokens"], 8192, "default max_tokens");
 }
 
@@ -303,6 +304,73 @@ async fn cache_read_tokens_surface_on_complete_frame() {
     assert_eq!(
         complete.data["usage"]["cache_read_input_tokens"], 30,
         "cached_tokens should surface as cache_read_input_tokens on complete, got: {}",
+        complete.data
+    );
+}
+
+// ── Empty-completion guard ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn empty_completion_reports_finish_reason_empty() {
+    // The model streams reasoning but NO answer text and NO tool call — the
+    // "silent stop" case. The terminal `complete` frame must carry
+    // finish_reason "empty" (not a bare "stop"), and NO `error` frame is
+    // emitted (an empty completion is a benign notice, not a hard error).
+    let plan = StubPlan::text("").with_reasoning("thinking, but I produced no answer", 5);
+    let (_stub, turn) = run_turn("empty_completion_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "empty",
+        "a reasoning-only / no-tool-call turn must report finish_reason \"empty\", got: {}",
+        complete.data
+    );
+    assert!(
+        turn.frames.iter().all(|f| f.event_type != "error"),
+        "no error frame should be emitted for an empty completion, got frames: {:?}",
+        turn.frames.iter().map(|f| &f.event_type).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn fully_empty_completion_reports_finish_reason_empty() {
+    // Harsher variant: NO answer text, NO reasoning, NO tool call — the model
+    // returned a completely empty completion. `finalize` persists zero content
+    // blocks; the guard must still report finish_reason "empty".
+    let plan = StubPlan::text("");
+    let (_stub, turn) = run_turn("fully_empty_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "empty",
+        "a fully-empty completion must report finish_reason \"empty\", got: {}",
+        complete.data
+    );
+}
+
+#[tokio::test]
+async fn normal_text_completion_reports_stop() {
+    // Control: a turn that DID produce answer text keeps the provider's normal
+    // terminal finish_reason ("stop") — the empty-completion guard must not fire.
+    let plan = StubPlan::text("here is the answer");
+    let (_stub, turn) = run_turn("normal_completion_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "stop",
+        "a normal text turn must keep finish_reason \"stop\", got: {}",
         complete.data
     );
 }
