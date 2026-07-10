@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 332 surfaces carry renderable-state signals; 1937 signals total.
+// 327 surfaces carry renderable-state signals; 1904 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -2058,6 +2058,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "searchTerm || selectedTags.length > 0", line: 91 },
     ],
   },
+  "modules/js-tool/components/JsToolSettingsSection": {
+    surface: "modules/js-tool/components/JsToolSettingsSection",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "branch", condition: "!canRead", line: 144 },
+      { kind: "error", condition: "error", line: 158 },
+      { kind: "loading", condition: "loading && !settings", line: 167 },
+      { kind: "branch", condition: "!canManage", line: 193 },
+    ],
+  },
   "modules/layouts/app-layout/AppLayout": {
     surface: "modules/layouts/app-layout/AppLayout",
     requiredStates: ["open"],
@@ -2621,6 +2631,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "isRichAskUser", line: 302 },
     ],
   },
+  "modules/mcp/chat-extension/components/JsToolApprovalContent": {
+    surface: "modules/mcp/chat-extension/components/JsToolApprovalContent",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "submitting || resolved !== null", line: 39 },
+      { kind: "branch", condition: "resolved === 'approved'", line: 51 },
+      { kind: "branch", condition: "resolved === 'denied'", line: 51 },
+      { kind: "branch", condition: "mcpServerParenLabel(data.server)", line: 62 },
+      { kind: "branch", condition: "data.input !== undefined", line: 74 },
+      { kind: "branch", condition: "resolved === null", line: 84 },
+    ],
+  },
   "modules/mcp/chat-extension/components/McpMenuItem": {
     surface: "modules/mcp/chat-extension/components/McpMenuItem",
     requiredStates: ["delayed"],
@@ -2666,29 +2688,29 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/extension",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "toolCall.status === 'pending_approval'", line: 31 },
-      { kind: "branch", condition: "serverLabel", line: 47 },
-      { kind: "error", condition: "(toolCall.status === 'completed' || toolCall.status === 'error')", line: 55 },
-      { kind: "branch", condition: "toolCall.status === 'started' && toolCall.progress", line: 73 },
-      { kind: "branch", condition: "toolCall.progress.message", line: 75 },
-      { kind: "branch", condition: "isExpanded", line: 98 },
-      { kind: "branch", condition: "toolCall.input !== undefined", line: 100 },
-      { kind: "branch", condition: "toolCall.result !== undefined", line: 109 },
-      { kind: "error", condition: "toolCall.error", line: 118 },
-      { kind: "branch", condition: "!toolUseData.id", line: 149 },
-      { kind: "branch", condition: "toolCall", line: 156 },
-      { kind: "branch", condition: "mcpServerParenLabel(server?.display_name)", line: 182 },
-      { kind: "branch", condition: "toolResultData", line: 187 },
-      { kind: "branch", condition: "hasDetails", line: 195 },
-      { kind: "branch", condition: "isExpanded", line: 206 },
-      { kind: "branch", condition: "!!toolUseData.input", line: 208 },
-      { kind: "branch", condition: "toolResultData", line: 216 },
-      { kind: "branch", condition: "toolResultData.is_error", line: 219 },
-      { kind: "branch", condition: "isExpanded", line: 300 },
-      { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 325 },
-      { kind: "branch", condition: "!mcpStore", line: 355 },
-      { kind: "branch", condition: "!streamingMessage", line: 693 },
-      { kind: "branch", condition: "!toolUseId", line: 708 },
+      { kind: "branch", condition: "toolCall.status === 'pending_approval'", line: 32 },
+      { kind: "branch", condition: "serverLabel", line: 48 },
+      { kind: "error", condition: "(toolCall.status === 'completed' || toolCall.status === 'error')", line: 56 },
+      { kind: "branch", condition: "toolCall.status === 'started' && toolCall.progress", line: 74 },
+      { kind: "branch", condition: "toolCall.progress.message", line: 76 },
+      { kind: "branch", condition: "isExpanded", line: 99 },
+      { kind: "branch", condition: "toolCall.input !== undefined", line: 101 },
+      { kind: "branch", condition: "toolCall.result !== undefined", line: 110 },
+      { kind: "error", condition: "toolCall.error", line: 119 },
+      { kind: "branch", condition: "!toolUseData.id", line: 150 },
+      { kind: "branch", condition: "toolCall", line: 157 },
+      { kind: "branch", condition: "mcpServerParenLabel(server?.display_name)", line: 183 },
+      { kind: "branch", condition: "toolResultData", line: 188 },
+      { kind: "branch", condition: "hasDetails", line: 196 },
+      { kind: "branch", condition: "isExpanded", line: 207 },
+      { kind: "branch", condition: "!!toolUseData.input", line: 209 },
+      { kind: "branch", condition: "toolResultData", line: 217 },
+      { kind: "branch", condition: "toolResultData.is_error", line: 220 },
+      { kind: "branch", condition: "isExpanded", line: 301 },
+      { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 326 },
+      { kind: "branch", condition: "!mcpStore", line: 356 },
+      { kind: "branch", condition: "!streamingMessage", line: 783 },
+      { kind: "branch", condition: "!toolUseId", line: 798 },
     ],
   },
   "modules/mcp/components/McpConfigModal": {
@@ -2780,10 +2802,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/components/common/McpToolCallsTab",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "row.is_built_in", line: 59 },
-      { kind: "error", condition: "error", line: 110 },
-      { kind: "branch", condition: "expandedCall", line: 132 },
-      { kind: "branch", condition: "expandedCall.error_message", line: 147 },
+      { kind: "branch", condition: "row.is_built_in", line: 60 },
+      { kind: "error", condition: "error", line: 111 },
+      { kind: "branch", condition: "expandedCall", line: 133 },
+      { kind: "branch", condition: "expandedCall.error_message", line: 148 },
     ],
   },
   "modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer": {
@@ -3016,40 +3038,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading && !settings", line: 47 },
     ],
   },
-  "modules/notification/components/NotificationBellWidget": {
-    surface: "modules/notification/components/NotificationBellWidget",
-    requiredStates: ["empty","open"],
-    signals: [
-      { kind: "branch", condition: "unread > 0", line: 32 },
-      { kind: "empty", condition: "recent.length === 0", line: 42 },
-      { kind: "branch", condition: "!n.read_at", line: 58 },
-      { kind: "branch", condition: "n.body", line: 63 },
-      { kind: "overlay", condition: "<Popover open>", line: 91 },
-    ],
-  },
-  "modules/notification/components/NotificationToastListener": {
-    surface: "modules/notification/components/NotificationToastListener",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "event.data.action !== 'create'", line: 22 },
-      { kind: "branch", condition: "!hasPermissionNow(Permissions.NotificationsRead)", line: 23 },
-      { kind: "branch", condition: "!id || id === '00000000-0000-0000-0000-000000000000'", line: 26 },
-      { kind: "branch", condition: "!n.interrupt", line: 29 },
-    ],
-  },
-  "modules/notification/pages/NotificationsPage": {
-    surface: "modules/notification/pages/NotificationsPage",
-    requiredStates: ["delayed","empty","error"],
-    signals: [
-      { kind: "loading", condition: "loading && items.length === 0", line: 66 },
-      { kind: "error", condition: "error && items.length === 0", line: 70 },
-      { kind: "empty", condition: "items.length === 0", line: 78 },
-      { kind: "branch", condition: "!n.read_at", line: 88 },
-      { kind: "branch", condition: "n.body", line: 98 },
-      { kind: "branch", condition: "!n.read_at", line: 108 },
-      { kind: "branch", condition: "total > perPage", line: 133 },
-    ],
-  },
   "modules/onboarding/OnboardingPage": {
     surface: "modules/onboarding/OnboardingPage",
     requiredStates: [],
@@ -3260,57 +3248,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!layoutDef", line: 111 },
       { kind: "branch", condition: "guards.length > 0", line: 177 },
       { kind: "branch", condition: "protectedRoutes.length > 0", line: 191 },
-    ],
-  },
-  "modules/scheduler/components/ScheduleBuilder": {
-    surface: "modules/scheduler/components/ScheduleBuilder",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 127 },
-      { kind: "branch", condition: "!raw", line: 136 },
-      { kind: "branch", condition: "preset !== 'custom'", line: 163 },
-      { kind: "branch", condition: "preset === 'weekly'", line: 179 },
-      { kind: "branch", condition: "preset === 'monthly'", line: 190 },
-      { kind: "branch", condition: "preset === 'custom'", line: 203 },
-    ],
-  },
-  "modules/scheduler/components/ScheduledTaskFormDrawer": {
-    surface: "modules/scheduler/components/ScheduledTaskFormDrawer",
-    requiredStates: ["open"],
-    signals: [
-      { kind: "branch", condition: "!open", line: 69 },
-      { kind: "branch", condition: "err", line: 145 },
-      { kind: "branch", condition: "err", line: 168 },
-      { kind: "overlay", condition: "<Drawer open>", line: 198 },
-      { kind: "branch", condition: "canUse", line: 223 },
-      { kind: "branch", condition: "f.target_kind === 'prompt'", line: 259 },
-      { kind: "branch", condition: "testing", line: 339 },
-      { kind: "branch", condition: "testResult", line: 344 },
-    ],
-  },
-  "modules/scheduler/pages/ScheduledTasksPage": {
-    surface: "modules/scheduler/pages/ScheduledTasksPage",
-    requiredStates: ["delayed","empty","error"],
-    signals: [
-      { kind: "branch", condition: "task.paused_reason", line: 66 },
-      { kind: "branch", condition: "expanded", line: 89 },
-      { kind: "branch", condition: "!runs", line: 91 },
-      { kind: "empty", condition: "runs.length === 0", line: 93 },
-      { kind: "loading", condition: "loading && tasks.length === 0", line: 177 },
-      { kind: "error", condition: "error && tasks.length === 0", line: 181 },
-      { kind: "empty", condition: "tasks.length === 0", line: 189 },
-    ],
-  },
-  "modules/scheduler/pages/SchedulerAdminPage": {
-    surface: "modules/scheduler/pages/SchedulerAdminPage",
-    requiredStates: ["delayed","error"],
-    signals: [
-      { kind: "branch", condition: "!f", line: 49 },
-      { kind: "loading", condition: "loading && !settings", line: 58 },
-      { kind: "branch", condition: "!canManage", line: 78 },
-      { kind: "error", condition: "error", line: 87 },
-      { kind: "branch", condition: "f", line: 96 },
-      { kind: "branch", condition: "canManage", line: 168 },
     ],
   },
   "modules/server-update/AboutSettings": {
@@ -3981,13 +3918,13 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/code-sandbox/module", line: 62 },
   { slot: "settingsAdminPages", surface: "modules/file-rag/module", line: 31 },
   { slot: "settingsAdminPages", surface: "modules/hardware/module", line: 45 },
+  { slot: "settingsAdminPages", surface: "modules/js-tool/module", line: 39 },
   { slot: "settingsAdminPages", surface: "modules/literature/module", line: 65 },
   { slot: "settingsAdminPages", surface: "modules/llm-local-runtime/module", line: 89 },
   { slot: "settingsAdminPages", surface: "modules/llm-provider/module", line: 137 },
   { slot: "settingsAdminPages", surface: "modules/llm-repository/module", line: 56 },
   { slot: "settingsAdminPages", surface: "modules/mcp/module", line: 141 },
   { slot: "settingsAdminPages", surface: "modules/memory/module", line: 71 },
-  { slot: "settingsAdminPages", surface: "modules/scheduler/module", line: 78 },
   { slot: "settingsAdminPages", surface: "modules/server-update/module", line: 35 },
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
@@ -4016,7 +3953,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 336 keys.
+ * 327 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4161,6 +4098,8 @@ export type RequiredState =
   | "modules/hub/modules/workflow/components/WorkflowHubCard:open"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed"
   | "modules/hub/modules/workflow/components/WorkflowsHubTab:empty"
+  | "modules/js-tool/components/JsToolSettingsSection:delayed"
+  | "modules/js-tool/components/JsToolSettingsSection:error"
   | "modules/layouts/app-layout/AppLayout:open"
   | "modules/layouts/app-layout/components/Drawer:empty"
   | "modules/layouts/app-layout/components/ResizeHandle:empty"
@@ -4250,11 +4189,6 @@ export type RequiredState =
   | "modules/memory/components/sections/SemanticSearchSection:open"
   | "modules/memory/pages/MemoryAdminPage:delayed"
   | "modules/memory/pages/MemoryAdminPage:error"
-  | "modules/notification/components/NotificationBellWidget:empty"
-  | "modules/notification/components/NotificationBellWidget:open"
-  | "modules/notification/pages/NotificationsPage:delayed"
-  | "modules/notification/pages/NotificationsPage:empty"
-  | "modules/notification/pages/NotificationsPage:error"
   | "modules/onboarding/OnboardingRedirect:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty"
@@ -4278,12 +4212,6 @@ export type RequiredState =
   | "modules/projects/pages/ProjectDetailPage:empty"
   | "modules/projects/pages/ProjectsListPage:delayed"
   | "modules/projects/pages/ProjectsListPage:error"
-  | "modules/scheduler/components/ScheduledTaskFormDrawer:open"
-  | "modules/scheduler/pages/ScheduledTasksPage:delayed"
-  | "modules/scheduler/pages/ScheduledTasksPage:empty"
-  | "modules/scheduler/pages/ScheduledTasksPage:error"
-  | "modules/scheduler/pages/SchedulerAdminPage:delayed"
-  | "modules/scheduler/pages/SchedulerAdminPage:error"
   | "modules/server-update/AboutSettings:error"
   | "modules/skill/components/ConversationSkillsPanel:delayed"
   | "modules/skill/components/ConversationSkillsPanel:empty"
@@ -4500,6 +4428,8 @@ export const REQUIRED_STATE_KEYS = [
   "modules/hub/modules/workflow/components/WorkflowHubCard:open",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:delayed",
   "modules/hub/modules/workflow/components/WorkflowsHubTab:empty",
+  "modules/js-tool/components/JsToolSettingsSection:delayed",
+  "modules/js-tool/components/JsToolSettingsSection:error",
   "modules/layouts/app-layout/AppLayout:open",
   "modules/layouts/app-layout/components/Drawer:empty",
   "modules/layouts/app-layout/components/ResizeHandle:empty",
@@ -4589,11 +4519,6 @@ export const REQUIRED_STATE_KEYS = [
   "modules/memory/components/sections/SemanticSearchSection:open",
   "modules/memory/pages/MemoryAdminPage:delayed",
   "modules/memory/pages/MemoryAdminPage:error",
-  "modules/notification/components/NotificationBellWidget:empty",
-  "modules/notification/components/NotificationBellWidget:open",
-  "modules/notification/pages/NotificationsPage:delayed",
-  "modules/notification/pages/NotificationsPage:empty",
-  "modules/notification/pages/NotificationsPage:error",
   "modules/onboarding/OnboardingRedirect:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty",
@@ -4617,12 +4542,6 @@ export const REQUIRED_STATE_KEYS = [
   "modules/projects/pages/ProjectDetailPage:empty",
   "modules/projects/pages/ProjectsListPage:delayed",
   "modules/projects/pages/ProjectsListPage:error",
-  "modules/scheduler/components/ScheduledTaskFormDrawer:open",
-  "modules/scheduler/pages/ScheduledTasksPage:delayed",
-  "modules/scheduler/pages/ScheduledTasksPage:empty",
-  "modules/scheduler/pages/ScheduledTasksPage:error",
-  "modules/scheduler/pages/SchedulerAdminPage:delayed",
-  "modules/scheduler/pages/SchedulerAdminPage:error",
   "modules/server-update/AboutSettings:error",
   "modules/skill/components/ConversationSkillsPanel:delayed",
   "modules/skill/components/ConversationSkillsPanel:empty",

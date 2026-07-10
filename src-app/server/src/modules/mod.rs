@@ -15,6 +15,7 @@ pub mod files_mcp;
 pub mod code_sandbox;
 pub mod hardware;
 pub mod health;
+pub mod js_tool;
 pub mod hub;
 pub mod llm_local_runtime;
 pub mod llm_model;

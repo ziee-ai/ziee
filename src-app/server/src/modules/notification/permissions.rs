@@ -3,7 +3,7 @@
 use crate::modules::permissions::types::PermissionCheck;
 
 /// Read + manage YOUR OWN notifications (list / unread-count / mark-read /
-/// read-all / delete). Granted to the default Users group by migration 136.
+/// read-all / delete). Granted to the default Users group by migration 142.
 ///
 /// The inbox is strictly per-user (every query is `WHERE user_id = $1`), so the
 /// same permission covers the reads and the per-user mutations — there is no

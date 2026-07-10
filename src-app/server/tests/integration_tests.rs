@@ -17,6 +17,7 @@ mod files_mcp;
 mod hardware;
 mod health;
 mod hub;
+mod js_tool;
 mod lit_search;
 mod llm_local_runtime;
 mod llm_model;

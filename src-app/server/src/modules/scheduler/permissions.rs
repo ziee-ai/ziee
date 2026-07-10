@@ -3,7 +3,7 @@
 use crate::modules::permissions::types::PermissionCheck;
 
 /// Create, run, test, and manage YOUR OWN scheduled tasks. Granted to the
-/// default Users group by migration 135. The task's TARGET execution is
+/// default Users group by migration 142. The task's TARGET execution is
 /// re-checked downstream (workflow `workflows::execute` / model access at
 /// spawn time), so this grants only the scheduling capability, not a bypass of
 /// what the user could already run by hand.

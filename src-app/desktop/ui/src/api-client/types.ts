@@ -981,23 +981,6 @@ export interface CreateProjectRequest {
   name?: string
 }
 
-/** Create-task request body. */
-export interface CreateScheduledTask {
-  assistant_id?: string
-  cron_expr?: string
-  inputs_json?: unknown
-  model_id: string
-  name: string
-  notify_mode?: string
-  notify_on?: string
-  prompt?: string
-  run_at?: string
-  schedule_kind: string
-  target_kind: string
-  timezone?: string
-  workflow_id?: string
-}
-
 /**
  * `POST /api/skills/install-from-hub` body. Mirrors
  *  `CreateAssistantFromHubRequest` — just the hub identity, server
@@ -2341,6 +2324,30 @@ export interface ItemProgress {
 }
 
 /**
+ * One row of `js_tool_settings`. Field names match the SQL columns (snake_case)
+ *  so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up
+ *  to 4 GiB exceeds i32); the rest are `i32`.
+ */
+export interface JsToolSettings {
+  /** Per-call approval wait before resolving as cancel (seconds). */
+  approval_timeout_secs: number
+  created_at: string
+  /** Per-run parallel sub-tool dispatch cap. */
+  max_concurrent_dispatch: number
+  /** Process-global concurrent-interpreter admission cap. */
+  max_concurrent_runs: number
+  /** `rquickjs` `set_max_stack_size` (bytes). */
+  max_stack_bytes: number
+  /** Per-run recorded sub-call trace cap. */
+  max_trace_entries: number
+  /** `rquickjs` `set_memory_limit` (bytes). */
+  memory_bytes: number
+  updated_at: string
+  /** Active-execution wall-clock backstop (seconds; excludes approval waits). */
+  wall_secs: number
+}
+
+/**
  * The optional/required API key field for a connector — drives the write-only
  *  key input + "Get a key" link in the admin UI.
  */
@@ -2444,13 +2451,6 @@ export interface ListModelsQuery {
   perPage?: number
   /** Optional provider ID to filter models by */
   providerId?: string
-}
-
-export interface ListNotificationsQuery {
-  page?: number
-  per_page?: number
-  /** Return only unread notifications. */
-  unread_only?: boolean
 }
 
 export interface ListPromptsResponse {
@@ -3725,31 +3725,6 @@ export interface MutationResponse {
   ok: boolean
 }
 
-/** A row of `notifications`. */
-export interface Notification {
-  title: string
-  body: string
-  conversation_id?: string
-  created_at: string
-  id: string
-  /** TRUE => client may toast on arrival; FALSE => durable inbox row only. */
-  interrupt: boolean
-  kind: string
-  read_at?: string
-  scheduled_task_id?: string
-  user_id: string
-  workflow_run_id?: string
-}
-
-/** Paged list response. */
-export interface NotificationPage {
-  items: Notification[]
-  page: number
-  per_page: number
-  total: number
-  unread: number
-}
-
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -4529,6 +4504,7 @@ export type SSEChatStreamEvent = {
   mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
   mcpToolProgress: SSEChatStreamMcpToolProgressData
   artifactCreated: SSEChatStreamArtifactCreatedData
+  runJsApprovalRequired: SSEChatStreamRunJsApprovalRequiredData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -4606,6 +4582,28 @@ export interface SSEChatStreamMcpToolStartData {
   tool_name: string
   /** Unique identifier for this tool use */
   tool_use_id: string
+}
+
+/**
+ * Event data for a `run_js` script's per-call tool approval.
+ *
+ *  Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's
+ *  decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a
+ *  turn-boundary flow resumed by re-sending the message), this is resolved by a
+ *  SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same
+ *  in-process oneshot mechanism `ask_user` uses — because a live QuickJS call
+ *  stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;
+ *  `decline`/`cancel` → the host fn throws a catchable error into the script.
+ */
+export interface SSEChatStreamRunJsApprovalRequiredData {
+  /** Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond */
+  elicitation_id: string
+  /** Sub-tool input parameters */
+  input: unknown
+  /** MCP server that owns the sub-tool (display name) */
+  server: string
+  /** Name of the sub-tool the script wants to call */
+  tool_name: string
 }
 
 /**
@@ -4937,65 +4935,6 @@ export interface SaveUserConnectorKeyRequest {
 /** PUT body to set the calling user's own key for a provider. */
 export interface SaveUserProviderKeyRequest {
   api_key: string
-}
-
-/** A row of `scheduled_tasks`. */
-export interface ScheduledTask {
-  assistant_id?: string
-  bound_conversation_id?: string
-  consecutive_failures: number
-  created_at: string
-  cron_expr?: string
-  enabled: boolean
-  id: string
-  inputs_json: unknown
-  last_result_fingerprint?: string
-  last_result_signature_json?: unknown
-  last_run_at?: string
-  last_status?: string
-  model_id?: string
-  name: string
-  next_run_at?: string
-  notify_mode: string
-  notify_on: string
-  /**
-   * Set when AUTO-paused (`max_failures` / `conversation_deleted` /
-   *  `target_missing`); NULL for a user enable/disable.
-   */
-  paused_reason?: string
-  prompt?: string
-  run_at?: string
-  schedule_kind: string
-  target_kind: string
-  timezone: string
-  updated_at: string
-  user_id: string
-  workflow_id?: string
-}
-
-/** A row of `scheduled_task_runs` — one per firing (the "Runs" history). */
-export interface ScheduledTaskRun {
-  conversation_id?: string
-  error_class?: string
-  error_message?: string
-  finished_at?: string
-  fired_at: string
-  id: string
-  notification_id?: string
-  scheduled_task_id: string
-  status: string
-  trigger: string
-  user_id: string
-  workflow_run_id?: string
-}
-
-/** The singleton settings row. */
-export interface SchedulerAdminSettings {
-  max_active_tasks_per_user: number
-  max_consecutive_failures: number
-  min_interval_seconds: number
-  notification_retention_days: number
-  updated_at: string
 }
 
 /**
@@ -5349,7 +5288,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5370,23 +5309,6 @@ export interface TestExtractRequest {
   assistant_message: string
   user_id: string
   user_message: string
-}
-
-/** The target config to test (an unsaved drawer config or a saved task's fields). */
-export interface TestFireRequest {
-  assistant_id?: string
-  inputs_json?: unknown
-  model_id: string
-  prompt?: string
-  target_kind: string
-  workflow_id?: string
-}
-
-/** The inline result of a test-fire. */
-export interface TestFireResult {
-  error?: string
-  ok: boolean
-  text: string
 }
 
 /**
@@ -5563,11 +5485,6 @@ export interface TunnelStartResponse {
 
 export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
 
-/** Unread-count response. */
-export interface UnreadCount {
-  unread: number
-}
-
 /** Request structure for updating an existing assistant */
 export interface UpdateAssistantRequest {
   /** Update description (max 4 KiB per 10-assistant F-02) */
@@ -5718,6 +5635,20 @@ export interface UpdateHostMountPolicyRequest {
   allow_readwrite?: boolean
   allowed_prefixes?: string[]
   enabled?: boolean
+}
+
+/**
+ * Admin PUT payload. All fields optional; absent fields preserve their existing
+ *  value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.
+ */
+export interface UpdateJsToolSettings {
+  approval_timeout_secs?: number
+  max_concurrent_dispatch?: number
+  max_concurrent_runs?: number
+  max_stack_bytes?: number
+  max_trace_entries?: number
+  memory_bytes?: number
+  wall_secs?: number
 }
 
 /**
@@ -5911,30 +5842,6 @@ export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
-}
-
-/** Update-task request body (all fields optional; only present ones change). */
-export interface UpdateScheduledTask {
-  assistant_id?: string
-  cron_expr?: string
-  enabled?: boolean
-  inputs_json?: unknown
-  model_id?: string
-  name?: string
-  notify_mode?: string
-  notify_on?: string
-  prompt?: string
-  run_at?: string
-  schedule_kind?: string
-  timezone?: string
-}
-
-/** Admin update body (all fields required — the form always sends the full set). */
-export interface UpdateSchedulerAdminSettings {
-  max_active_tasks_per_user: number
-  max_consecutive_failures: number
-  min_interval_seconds: number
-  notification_retention_days: number
 }
 
 /** PUT body for the session settings. Every field optional → absent = leave. */
@@ -6626,6 +6533,8 @@ export enum Permissions {
   HubModelsRead = 'hub::models::read',
   HubModelsRefresh = 'hub::models::refresh',
   HubModelsVersionRead = 'hub::models::read_version',
+  JsToolSettingsManage = 'js_tool::settings::manage',
+  JsToolSettingsRead = 'js_tool::settings::read',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
   LitSearchUse = 'lit_search::use',
@@ -6664,7 +6573,6 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
-  NotificationsRead = 'notifications::read',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
   ProjectsCreate = 'projects::create',
@@ -6679,9 +6587,6 @@ export enum Permissions {
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
-  SchedulerAdminManage = 'scheduler::admin::manage',
-  SchedulerAdminRead = 'scheduler::admin::read',
-  SchedulerUse = 'scheduler::use',
   ServerUpdateRead = 'server_update::read',
   SessionSettingsManage = 'auth::session_settings::manage',
   SessionSettingsRead = 'auth::session_settings::read',
@@ -6765,6 +6670,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsRead: 'View hub models',
   HubModelsRefresh: 'Refresh hub models from GitHub',
   HubModelsVersionRead: 'View hub models version information',
+  JsToolSettingsManage: 'Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.',
+  JsToolSettingsRead: 'Read the run_js (js_tool) resource-limits configuration.',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LitSearchUse: 'Use the literature search + screening tools.',
@@ -6803,7 +6710,6 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
-  NotificationsRead: 'Read and manage your own notifications.',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
   ProjectsCreate: 'Create chat projects',
@@ -6818,9 +6724,6 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
-  SchedulerAdminManage: 'Change deployment-wide scheduler settings.',
-  SchedulerAdminRead: 'View deployment-wide scheduler settings.',
-  SchedulerUse: 'Create, run, test, and manage your own scheduled/recurring tasks.',
   ServerUpdateRead: 'View the cached server update-availability status.',
   SessionSettingsManage: 'Update session settings (access-token TTL + max session length).',
   SessionSettingsRead: 'Read session settings (access-token TTL + max session length).',
@@ -6995,6 +6898,8 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'JsTool.getSettings': 'GET /api/js-tool/settings',
+  'JsTool.updateSettings': 'PUT /api/js-tool/settings',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -7115,12 +7020,6 @@ export const ApiEndpoints = {
   'Message.searchInConversation': 'GET /api/conversations/{id}/messages/search',
   'Message.send': 'POST /api/conversations/{id}/messages',
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
-  'Notification.delete': 'DELETE /api/notifications/{id}',
-  'Notification.get': 'GET /api/notifications/{id}',
-  'Notification.list': 'GET /api/notifications',
-  'Notification.markAllRead': 'POST /api/notifications/read-all',
-  'Notification.markRead': 'POST /api/notifications/{id}/read',
-  'Notification.unreadCount': 'GET /api/notifications/unread-count',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -7157,16 +7056,6 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
-  'ScheduledTask.create': 'POST /api/scheduled-tasks',
-  'ScheduledTask.delete': 'DELETE /api/scheduled-tasks/{id}',
-  'ScheduledTask.get': 'GET /api/scheduled-tasks/{id}',
-  'ScheduledTask.list': 'GET /api/scheduled-tasks',
-  'ScheduledTask.listRuns': 'GET /api/scheduled-tasks/{id}/runs',
-  'ScheduledTask.runNow': 'POST /api/scheduled-tasks/{id}/run-now',
-  'ScheduledTask.testFire': 'POST /api/scheduled-tasks/test-fire',
-  'ScheduledTask.update': 'PUT /api/scheduled-tasks/{id}',
-  'SchedulerAdminSettings.get': 'GET /api/scheduler/admin-settings',
-  'SchedulerAdminSettings.update': 'PUT /api/scheduler/admin-settings',
   'ServerUpdate.getStatus': 'GET /api/server-update/status',
   'Skill.delete': 'DELETE /api/skills/{id}',
   'Skill.get': 'GET /api/skills/{id}',
@@ -7390,6 +7279,8 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'JsTool.getSettings': void
+  'JsTool.updateSettings': UpdateJsToolSettings
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7510,12 +7401,6 @@ export type ApiEndpointParameters = {
   'Message.searchInConversation': { id: string; page?: number; per_page?: number; q?: string }
   'Message.send': { id: string } & SendMessageRequest
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
-  'Notification.delete': { id: string }
-  'Notification.get': { id: string }
-  'Notification.list': { page?: number; per_page?: number; unread_only?: boolean }
-  'Notification.markAllRead': void
-  'Notification.markRead': { id: string }
-  'Notification.unreadCount': void
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -7552,16 +7437,6 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
-  'ScheduledTask.create': CreateScheduledTask
-  'ScheduledTask.delete': { id: string }
-  'ScheduledTask.get': { id: string }
-  'ScheduledTask.list': void
-  'ScheduledTask.listRuns': { id: string }
-  'ScheduledTask.runNow': { id: string }
-  'ScheduledTask.testFire': TestFireRequest
-  'ScheduledTask.update': { id: string } & UpdateScheduledTask
-  'SchedulerAdminSettings.get': void
-  'SchedulerAdminSettings.update': UpdateSchedulerAdminSettings
   'ServerUpdate.getStatus': void
   'Skill.delete': { id: string }
   'Skill.get': { id: string }
@@ -7785,6 +7660,8 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'JsTool.getSettings': JsToolSettings
+  'JsTool.updateSettings': JsToolSettings
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
@@ -7905,12 +7782,6 @@ export type ApiEndpointResponses = {
   'Message.searchInConversation': MessageSearchResults
   'Message.send': SendMessageResponse
   'Message.stopGeneration': void
-  'Notification.delete': void
-  'Notification.get': Notification
-  'Notification.list': NotificationPage
-  'Notification.markAllRead': UnreadCount
-  'Notification.markRead': UnreadCount
-  'Notification.unreadCount': UnreadCount
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress
@@ -7947,16 +7818,6 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
-  'ScheduledTask.create': ScheduledTask
-  'ScheduledTask.delete': void
-  'ScheduledTask.get': ScheduledTask
-  'ScheduledTask.list': ScheduledTask[]
-  'ScheduledTask.listRuns': ScheduledTaskRun[]
-  'ScheduledTask.runNow': ScheduledTask
-  'ScheduledTask.testFire': TestFireResult
-  'ScheduledTask.update': ScheduledTask
-  'SchedulerAdminSettings.get': SchedulerAdminSettings
-  'SchedulerAdminSettings.update': SchedulerAdminSettings
   'ServerUpdate.getStatus': UpdateStatusResponse
   'Skill.delete': void
   'Skill.get': Skill

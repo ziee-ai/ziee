@@ -102,6 +102,8 @@ pub enum SyncEntity {
     AssistantCoreMemory,
     /// Code-sandbox resource-limit settings (singleton).
     CodeSandboxSettings,
+    /// run_js (js_tool) resource-limit settings (singleton, admin-scoped).
+    JsToolSettings,
     /// Code-sandbox rootfs version list changed (install/evict/delete).
     CodeSandboxRootfsVersion,
     /// Hub catalog settings (singleton).

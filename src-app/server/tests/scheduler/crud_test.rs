@@ -133,7 +133,7 @@ async fn owner_scoped_cross_user_is_404() {
 async fn permission_and_auth_gating() {
     let server = TestServer::start().await;
     // A user WITHOUT scheduler::use. `scheduler::use` is granted to the default
-    // Users group (migration 135), so we must use `create_user_with_only_permissions`
+    // Users group (migration 142), so we must use `create_user_with_only_permissions`
     // (which removes the user from the default group) to get a genuinely
     // unauthorized user.
     let noperm = crate::common::test_helpers::create_user_with_only_permissions(

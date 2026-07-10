@@ -3,6 +3,7 @@
 #
 #   docker compose up --build      # build + boot the whole stack
 #   open http://localhost:8080     # the website
+#   ZIEE_WEB_PORT=8090 docker compose up   # override the host port (e.g. parallel stacks)
 #
 # The SAME image deploys against an EXTERNAL managed Postgres by only changing
 # the ZIEE_DB_* env — see docker-compose.external-db.yml and docker/web/README.md.
@@ -27,7 +28,9 @@ services:
       ZIEE_JWT_SECRET: ziee-local-compose-jwt-secret-change-me-32chars
       ZIEE_STORAGE_KEY: ziee-local-compose-storage-key-change-me-32chars
     ports:
-      - "8080:8080"
+      # Host port is configurable so parallel stacks (e.g. multiple worktrees)
+      # don't collide on 8080; the in-container port stays 8080. Default keeps 8080.
+      - "${ZIEE_WEB_PORT:-8080}:8080"
     volumes:
       - ziee-data:/var/lib/ziee
     restart: unless-stopped

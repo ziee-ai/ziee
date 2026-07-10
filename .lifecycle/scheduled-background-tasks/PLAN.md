@@ -22,11 +22,11 @@ Nothing about the LLM-execution or realtime pathways is reinvented.
 ## Items
 
 ### Backend — data model & permissions
-- **ITEM-1**: Migration `..132_create_scheduled_tasks.sql` — owner-scoped `scheduled_tasks` table: `id`, `user_id` (FK users CASCADE), `name`, `enabled` bool, `target_kind` CHECK IN (`workflow`,`prompt`), workflow-target cols (`workflow_id` FK SET NULL, `inputs_json` JSONB, `model_id` FK SET NULL), prompt-target cols (`assistant_id` FK SET NULL, `prompt` TEXT, `model_id` shared), schedule cols (`schedule_kind` CHECK IN (`once`,`recurring`), `run_at` TIMESTAMPTZ, `cron_expr` TEXT, `timezone` TEXT), `next_run_at` TIMESTAMPTZ (indexed), `last_run_at`, `last_status`, `created_at`, `updated_at`. Partial index `(enabled, next_run_at) WHERE enabled` for the due-scan.
-- **ITEM-2**: Migration `..133_create_notifications.sql` — owner-scoped `notifications` table: `id`, `user_id` (FK CASCADE), `kind` TEXT, `title` TEXT, `body` TEXT, deep-link refs `scheduled_task_id`/`workflow_run_id`/`conversation_id` (all FK SET NULL), `read_at` TIMESTAMPTZ NULL, `created_at`. Index `(user_id, created_at DESC)` and partial `(user_id) WHERE read_at IS NULL` for the unread count.
-- **ITEM-3**: Migration `..134_create_scheduler_admin_settings.sql` — singleton (`id=1`) `scheduler_admin_settings`: `max_active_tasks_per_user` INT (default 20), `min_interval_seconds` INT (default 300, the cron-floor), `notification_retention_days` INT (default 30), `seeded_from_config` bool. Mirrors `memory_admin_settings`.
-- **ITEM-4**: Migration `..135_grant_scheduler_notifications_permissions_to_users.sql` — append `scheduler::use` + `notifications::read` to the default Users group (mirrors migration 104/107). Admin perms (`scheduler::admin::read/manage`) ride the Administrators `*` wildcard.
-- **ITEM-5**: Migration `..136_add_scheduled_invocation_source.sql` — widen the `workflow_runs.invocation_source` CHECK to include `'scheduled'` (currently `manual`/`conversation`/`agent`/`mcp_tool`).
+- **ITEM-1**: Migration `..139_create_scheduled_tasks.sql` — owner-scoped `scheduled_tasks` table: `id`, `user_id` (FK users CASCADE), `name`, `enabled` bool, `target_kind` CHECK IN (`workflow`,`prompt`), workflow-target cols (`workflow_id` FK SET NULL, `inputs_json` JSONB, `model_id` FK SET NULL), prompt-target cols (`assistant_id` FK SET NULL, `prompt` TEXT, `model_id` shared), schedule cols (`schedule_kind` CHECK IN (`once`,`recurring`), `run_at` TIMESTAMPTZ, `cron_expr` TEXT, `timezone` TEXT), `next_run_at` TIMESTAMPTZ (indexed), `last_run_at`, `last_status`, `created_at`, `updated_at`. Partial index `(enabled, next_run_at) WHERE enabled` for the due-scan.
+- **ITEM-2**: Migration `..140_create_notifications.sql` — owner-scoped `notifications` table: `id`, `user_id` (FK CASCADE), `kind` TEXT, `title` TEXT, `body` TEXT, deep-link refs `scheduled_task_id`/`workflow_run_id`/`conversation_id` (all FK SET NULL), `read_at` TIMESTAMPTZ NULL, `created_at`. Index `(user_id, created_at DESC)` and partial `(user_id) WHERE read_at IS NULL` for the unread count.
+- **ITEM-3**: Migration `..141_create_scheduler_admin_settings.sql` — singleton (`id=1`) `scheduler_admin_settings`: `max_active_tasks_per_user` INT (default 20), `min_interval_seconds` INT (default 300, the cron-floor), `notification_retention_days` INT (default 30), `seeded_from_config` bool. Mirrors `memory_admin_settings`.
+- **ITEM-4**: Migration `..142_grant_scheduler_notifications_permissions_to_users.sql` — append `scheduler::use` + `notifications::read` to the default Users group (mirrors migration 104/107). Admin perms (`scheduler::admin::read/manage`) ride the Administrators `*` wildcard.
+- **ITEM-5**: Migration `..143_add_scheduled_invocation_source.sql` — widen the `workflow_runs.invocation_source` CHECK to include `'scheduled'` (currently `manual`/`conversation`/`agent`/`mcp_tool`).
 
 ### Backend — scheduler module (`modules/scheduler/`)
 - **ITEM-6**: Module skeleton — `mod.rs` (linkme `MODULE_ENTRIES` registration, `order` after workflow=82/chat, `AppModule` impl spawning the tick + prune loops in `init`) + `permissions.rs` (`SchedulerUse`, `SchedulerAdminRead`, `SchedulerAdminManage`). Mirrors `citations/mod.rs` + `memory/mod.rs`.
@@ -65,7 +65,7 @@ Tasks, Gemini Scheduled Actions, Claude Cowork Scheduled Tasks, Firecrawl
 /monitor, Google Scholar alerts) surfaced experience gaps that are table-stakes
 for this category. These items close them.
 
-- **ITEM-27**: Migration `..137_scheduled_task_runs_and_columns.sql` — (a) new per-firing audit table `scheduled_task_runs` (`id`, `scheduled_task_id` FK CASCADE, `fired_at`, `status`, `error_class` TEXT, `notification_id` FK SET NULL, `workflow_run_id` FK SET NULL, `conversation_id` FK SET NULL) — the "run history / activity feed" every comparable product exposes; (b) new `scheduled_tasks` columns: `consecutive_failures` INT DEFAULT 0, `paused_reason` TEXT NULL, `notify_mode` TEXT CHECK IN (`always`,`silent`) DEFAULT `always`, `bound_conversation_id` UUID FK SET NULL, and the change-detection columns (DEC-20, v1): `notify_on` TEXT CHECK IN (`always`,`on_change`) DEFAULT `always`, `last_result_fingerprint` TEXT NULL, `last_result_signature_json` JSONB NULL (the persisted item-set for exact set-diff).
+- **ITEM-27**: Migration `..144_create_scheduled_task_runs.sql` — (a) new per-firing audit table `scheduled_task_runs` (`id`, `scheduled_task_id` FK CASCADE, `fired_at`, `status`, `error_class` TEXT, `notification_id` FK SET NULL, `workflow_run_id` FK SET NULL, `conversation_id` FK SET NULL) — the "run history / activity feed" every comparable product exposes; (b) new `scheduled_tasks` columns: `consecutive_failures` INT DEFAULT 0, `paused_reason` TEXT NULL, `notify_mode` TEXT CHECK IN (`always`,`silent`) DEFAULT `always`, `bound_conversation_id` UUID FK SET NULL, and the change-detection columns (DEC-20, v1): `notify_on` TEXT CHECK IN (`always`,`on_change`) DEFAULT `always`, `last_result_fingerprint` TEXT NULL, `last_result_signature_json` JSONB NULL (the persisted item-set for exact set-diff).
 - **ITEM-28**: Failure-handling policy (`tick.rs`/`dispatch.rs`) — an error taxonomy that **never retries** auth/permission/validation (4xx-class, terminal: disable + notify) and retries transient (timeout/5xx/provider-blip) with exponential backoff; increments `consecutive_failures` on a failed firing and **auto-pauses** the task after an admin `max_consecutive_failures` (default 5), writing a failure notification. Reuses the flap-cap shape from `llm_local_runtime/auto_start.rs`.
 - **ITEM-29**: Notification delivery/triage level — `notify_mode` per task honored by `notification::create_and_emit`: `always` → durable row **+** live toast/badge; `silent` → durable inbox row only (no interrupt). Non-actionable/low-signal results stay out of the interrupt channel (per the agent-notification-triage best practice) while still being auditable.
 - **ITEM-30**: Task-bound conversation for the `prompt` kind — a recurring prompt task owns ONE `bound_conversation_id`; the first firing creates it, each subsequent firing **appends a turn** to it (not a fresh conversation), so follow-up is native ("open the task's conversation and keep chatting"). Deleting that conversation **pauses** the task (`paused_reason='conversation_deleted'`), mirroring ChatGPT's "task pauses if its chat is deleted."
@@ -90,12 +90,12 @@ for this category. These items close them.
 ## Files to touch
 
 ### Backend (new)
-- `src-app/server/migrations/00000000000132_create_scheduled_tasks.sql`
-- `src-app/server/migrations/00000000000133_create_notifications.sql`
-- `src-app/server/migrations/00000000000134_create_scheduler_admin_settings.sql`
-- `src-app/server/migrations/00000000000135_grant_scheduler_notifications_permissions_to_users.sql`
-- `src-app/server/migrations/00000000000136_add_scheduled_invocation_source.sql`
-- `src-app/server/migrations/00000000000137_scheduled_task_runs_and_columns.sql`
+- `src-app/server/migrations/00000000000139_create_scheduled_tasks.sql`
+- `src-app/server/migrations/00000000000140_create_notifications.sql`
+- `src-app/server/migrations/00000000000141_create_scheduler_admin_settings.sql`
+- `src-app/server/migrations/00000000000142_grant_scheduler_notifications_permissions_to_users.sql`
+- `src-app/server/migrations/00000000000143_add_scheduled_invocation_source.sql`
+- `src-app/server/migrations/00000000000144_create_scheduled_task_runs.sql`
 - `src-app/server/src/modules/scheduler/{mod,models,repository,permissions,schedule,tick,dispatch,failure,dryrun,change,settings,routes,handlers,events}.rs`
 - `src-app/server/src/modules/notification/{mod,models,repository,permissions,routes,handlers,events,prune}.rs`
 
