@@ -117,3 +117,17 @@ missing `platejs` deps — which had been failing gate:ui's bare tsc):
 > WINDOWS_PANE_VERIFICATION.md and are opt-in; they are NOT re-run in a headless gate. The
 > `npm run check` + e2e results are the per-stage runs. See HUMAN_FEEDBACK.md for the
 > validator-vs-live-test items that keep a headless `--all` from being mechanically green.
+
+## Human-like real-LLM live validation (verified live this session, macOS + coder.ziee)
+
+Each drove the real model (qwen3.6-35b-a3b via coder.ziee LiteLLM :4000) to write a
+multi-step `run_office_js` script, ran it in a live Office task pane (manual ribbon click),
+and verified the document changed via a deterministic read-back. Regenerate-and-retry
+handles model non-determinism.
+
+- **TEST-84**: PASS — EXCEL budget. Read-back: headers Category/Planned/Actual, rows + Total
+  `$2,550.00 / $2,495.00` (SUM correct), `a1Bold=true`, `amtFmt="$#,##0.00"`.
+- **TEST-85**: PASS — WORD review. Read-back: `firstStyle="Heading1"` ("Executive Summary"),
+  `tracking="TrackAll"`, "Reviewed and approved for Q3." appended, `commentCount=1` (on "budget").
+- **TEST-86**: PASS — POWERPOINT agenda. Read-back: `slideCount` 1→2, new slide texts
+  `"Today's Agenda"` + `"Q3 results\nProduct roadmap\nHiring plan"`.
