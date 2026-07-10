@@ -1,5 +1,6 @@
 import { Combobox, Tooltip } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { NEW_CHAT_ASSISTANT_KEY } from '@/modules/assistant/stores/AssistantPicker.store'
 
 interface AssistantSelectorProps {
   disabled?: boolean
@@ -9,11 +10,14 @@ export function AssistantSelector({
   disabled = false,
 }: AssistantSelectorProps) {
   // Access assistant store directly - reactive via store proxy
-  const { availableAssistants, selectedAssistantId, selectAssistant } =
+  const { availableAssistants, selectedByConversation, selectAssistant } =
     Stores.AssistantPicker
+  // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
+  const key = Stores.Chat.conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
+  const selectedAssistantId = selectedByConversation[key]
 
   const handleChange = (assistantId: string) => {
-    selectAssistant(assistantId)
+    selectAssistant(key, assistantId)
   }
 
   // Build options for the combobox

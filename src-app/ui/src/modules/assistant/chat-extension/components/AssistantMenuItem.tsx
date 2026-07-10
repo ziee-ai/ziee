@@ -1,6 +1,7 @@
 import { Popover } from '@/components/ui'
 import { Bot, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
+import { NEW_CHAT_ASSISTANT_KEY } from '@/modules/assistant/stores/AssistantPicker.store'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
 /**
@@ -9,16 +10,20 @@ import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
  * Opens a submenu to the right showing available assistants.
  */
 export function AssistantMenuItem() {
-  const { availableAssistants, selectedAssistantId, selectAssistant, loading } =
+  const { availableAssistants, selectedByConversation, selectAssistant, clearAssistant, loading } =
     Stores.AssistantPicker
   const { close } = usePlusDropdown()
+  // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
+  const key = Stores.Chat.conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
+  const selectedAssistantId = selectedByConversation[key]
 
   const selectedAssistant = availableAssistants.find(
     (a: any) => a.id === selectedAssistantId,
   )
 
   const handleSelect = (id: string | null) => {
-    selectAssistant(id as any)
+    if (id) selectAssistant(key, id)
+    else clearAssistant(key)
     close()
   }
 

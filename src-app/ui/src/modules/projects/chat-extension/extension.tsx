@@ -122,12 +122,12 @@ const projectExtension: ChatExtension = createExtension({
     // any cached membership from a previous session is stale.
     const project = await loadProjectForConversation(conversation.id, true)
     if (project?.default_assistant_id) {
-      // Seed the assistant picker with the project's default when
-      // the user hasn't picked one. One-shot — won't override an
-      // explicit user choice.
+      // Seed the assistant picker with the project's default when the user
+      // hasn't picked one, keyed by THIS conversation so it's pane-scoped
+      // (ITEM-5). One-shot — won't override an explicit user choice.
       const picker = Stores.AssistantPicker
-      if (!picker.selectedAssistantId) {
-        picker.selectAssistant(project.default_assistant_id)
+      if (!picker.getAssistantId(conversation.id)) {
+        picker.selectAssistant(conversation.id, project.default_assistant_id)
       }
     }
   },

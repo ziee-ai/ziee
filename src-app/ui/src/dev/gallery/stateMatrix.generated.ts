@@ -583,31 +583,31 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/assistant/chat-extension/components/AssistantMenuItem",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "selectedAssistantId", line: 27 },
-      { kind: "empty", condition: "availableAssistants.length === 0", line: 36 },
-      { kind: "branch", condition: "dividerAfter", line: 126 },
+      { kind: "branch", condition: "selectedAssistantId", line: 32 },
+      { kind: "empty", condition: "availableAssistants.length === 0", line: 41 },
+      { kind: "branch", condition: "dividerAfter", line: 131 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantSelector": {
     surface: "modules/assistant/chat-extension/components/AssistantSelector",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "availableAssistants.length === 0", line: 27 },
+      { kind: "empty", condition: "availableAssistants.length === 0", line: 31 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantStatusChip": {
     surface: "modules/assistant/chat-extension/components/AssistantStatusChip",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!selectedAssistantId", line: 13 },
-      { kind: "branch", condition: "!assistant", line: 18 },
+      { kind: "branch", condition: "!selectedAssistantId", line: 17 },
+      { kind: "branch", condition: "!assistant", line: 22 },
     ],
   },
   "modules/assistant/chat-extension/extension": {
     surface: "modules/assistant/chat-extension/extension",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!picker", line: 57 },
+      { kind: "branch", condition: "!picker", line: 54 },
     ],
   },
   "modules/assistant/components/AssistantFormDrawer": {

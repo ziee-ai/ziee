@@ -4,17 +4,27 @@ import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@/core/store-kit'
 
 /**
+ * The composer key for a not-yet-created (new-chat) conversation's assistant
+ * selection. Mirrors ModelPicker's NEW_CHAT_MODEL_KEY (ITEM-5).
+ */
+export const NEW_CHAT_ASSISTANT_KEY = '__new_chat__'
+
+/**
  * Assistant picker store — the user's per-chat-composer assistant selection plus
  * the cached list of available assistants. Lives at `Stores.AssistantPicker`.
- * `availableAssistants` lazy-loads once on first access; `selectedAssistantId`
- * is reset per conversation by the chat-extension's `initialize()` hook.
+ * `availableAssistants` is a GLOBAL catalog (lazy-loads once on first access).
+ * The SELECTION is PER-CONVERSATION (`selectedByConversation`, keyed by
+ * conversation id or `NEW_CHAT_ASSISTANT_KEY`) so two split panes each keep
+ * their own assistant (ITEM-5). Per-conversation keying makes the old
+ * reset-on-conversation-switch unnecessary — a conversation with no entry simply
+ * has no assistant.
  */
 export const AssistantPicker = defineStore('AssistantPicker', {
   immer: true,
   state: {
-    /** Assistant selected in the active composer (or null for "no assistant"). */
-    selectedAssistantId: null as string | null,
-    /** Cached list of assistants the user can pick from. */
+    /** Selected assistant id per conversation key (value null = "no assistant"). */
+    selectedByConversation: {} as Record<string, string | null>,
+    /** Cached list of assistants the user can pick from (GLOBAL catalog). */
     availableAssistants: [] as Assistant[],
     loading: false,
     error: null as string | null,
@@ -46,26 +56,19 @@ export const AssistantPicker = defineStore('AssistantPicker', {
     }
     return {
       loadAssistants,
-      selectAssistant: (assistantId: string) => {
+      selectAssistant: (key: string, assistantId: string) => {
         set(s => {
-          s.selectedAssistantId = assistantId
+          s.selectedByConversation[key] = assistantId
         })
       },
-      clearAssistant: () => {
+      clearAssistant: (key: string) => {
         set(s => {
-          s.selectedAssistantId = null
+          s.selectedByConversation[key] = null
         })
       },
-      /**
-       * Reset per-conversation state. Called from the chat-extension's
-       * `initialize()` subscriber when the active conversation changes (replaces
-       * the per-conversation auto-scoping createExtensionStore used to provide).
-       */
-      reset: () => {
-        set(s => {
-          s.selectedAssistantId = null
-        })
-      },
+      /** The selected assistant id for a conversation key (null = none / unset). */
+      getAssistantId: (key: string): string | null =>
+        get().selectedByConversation[key] ?? null,
     }
   },
   init: ({ on, actions }) => {

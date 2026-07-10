@@ -677,9 +677,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `selectedAssistantId` | 27 |
-| empty | `availableAssistants.length === 0` | 36 |
-| branch | `dividerAfter` | 126 |
+| branch | `selectedAssistantId` | 32 |
+| empty | `availableAssistants.length === 0` | 41 |
+| branch | `dividerAfter` | 131 |
 
 ### `modules/assistant/chat-extension/components/AssistantSelector`
 
@@ -687,7 +687,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `availableAssistants.length === 0` | 27 |
+| empty | `availableAssistants.length === 0` | 31 |
 
 ### `modules/assistant/chat-extension/components/AssistantStatusChip`
 
@@ -695,8 +695,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!selectedAssistantId` | 13 |
-| branch | `!assistant` | 18 |
+| branch | `!selectedAssistantId` | 17 |
+| branch | `!assistant` | 22 |
 
 ### `modules/assistant/chat-extension/extension`
 
@@ -704,7 +704,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!picker` | 57 |
+| branch | `!picker` | 54 |
 
 ### `modules/assistant/components/AssistantFormDrawer`
 

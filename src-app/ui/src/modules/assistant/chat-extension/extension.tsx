@@ -33,52 +33,46 @@ const assistantExtension: ChatExtension = createExtension({
       '@/modules/chat/core/stores/Chat.store'
     )
     const { Stores } = await import('@/core/stores')
-
-    // 1. Conversation-change → reset picker. Replaces the implicit
-    //    chat-extension-framework scoping the old Stores.Chat.AssistantStore
-    //    used to get for free; now we wire it explicitly because the
-    //    store lives in the assistant module's namespace.
-    useChatStore.subscribe(
-      state => state.conversation?.id,
-      () => {
-        Stores.AssistantPicker.reset()
-      },
+    const { NEW_CHAT_ASSISTANT_KEY } = await import(
+      '@/modules/assistant/stores/AssistantPicker.store'
     )
 
-    // 2. Editing-message → restore the originally-attributed assistant.
-    //    Save the pre-edit selection so we can restore it when the edit
-    //    completes or is cancelled — never clear the user's choice.
+    // Per-conversation keying makes the old "reset on conversation change"
+    // subscription unnecessary — a conversation with no map entry simply has no
+    // assistant (ITEM-5). Only the editing-message restore remains, keyed by the
+    // PRIMARY pane's conversation (a minor split gap for editing in a non-focused
+    // pane — its restore uses the primary key; the per-conversation selection is
+    // otherwise fully pane-scoped).
     let preEditAssistantId: string | null = null
+    const primaryKey = () =>
+      useChatStore.getState().conversation?.id ?? NEW_CHAT_ASSISTANT_KEY
 
     useChatStore.subscribe(
       state => state.editingMessage,
-      async (editingMessage) => {
+      async editingMessage => {
         const picker = Stores.AssistantPicker
         if (!picker) return
+        const key = primaryKey()
 
         if (editingMessage) {
-          // Save the assistant the user had selected before initiating
-          // the edit, so we can restore it afterwards.
-          preEditAssistantId = picker.$.selectedAssistantId
+          // Save the assistant the user had selected before initiating the edit.
+          preEditAssistantId = picker.getAssistantId(key)
 
-          // Per-message assistant attribution moved off the Message
-          // row into the assistant bridge's own message_assistant
-          // table (backend migration 75). Fetch via the assistant-
-          // owned endpoint.
+          // Per-message assistant attribution moved off the Message row into the
+          // assistant bridge's own message_assistant table (backend migration
+          // 75). Fetch via the assistant-owned endpoint.
           try {
             const { ApiClient } = await import('@/api-client')
             const resp = await ApiClient.Message.getAssistant({
               id: editingMessage.id,
             })
             if (resp.assistant_id) {
-              picker.selectAssistant(resp.assistant_id)
+              picker.selectAssistant(key, resp.assistant_id)
             } else {
-              picker.clearAssistant()
+              picker.clearAssistant(key)
             }
           } catch (err) {
-            // Soft-fail: no attribution recorded (pre-migration
-            // message or write hook failed at send-time) → keep
-            // current assistant selection.
+            // Soft-fail: no attribution recorded → keep current selection.
             preEditAssistantId = null
             console.warn(
               '[Assistant Extension] Failed to load message assistant attribution:',
@@ -86,12 +80,11 @@ const assistantExtension: ChatExtension = createExtension({
             )
           }
         } else {
-          // Edit cancelled or sent — restore the pre-edit selection
-          // instead of blindly clearing.
+          // Edit cancelled or sent — restore the pre-edit selection.
           if (preEditAssistantId) {
-            picker.selectAssistant(preEditAssistantId)
+            picker.selectAssistant(key, preEditAssistantId)
           } else {
-            picker.clearAssistant()
+            picker.clearAssistant(key)
           }
           preEditAssistantId = null
         }
@@ -104,10 +97,13 @@ const assistantExtension: ChatExtension = createExtension({
     toolbar_status: { component: AssistantStatusChip, order: 20 },
   },
 
-  composeRequestFields: async (): Promise<ExtensionRequestFields> => {
-    // Read via `$` (hook-free snapshot) outside a React component context.
-    const selectedAssistantId =
-      Stores.AssistantPicker.$.selectedAssistantId
+  composeRequestFields: async (ctx): Promise<ExtensionRequestFields> => {
+    // The SENDING pane's assistant (ctx.conversationId; null = new chat). (ITEM-5)
+    const { NEW_CHAT_ASSISTANT_KEY } = await import(
+      '@/modules/assistant/stores/AssistantPicker.store'
+    )
+    const key = ctx.conversationId ?? NEW_CHAT_ASSISTANT_KEY
+    const selectedAssistantId = Stores.AssistantPicker.getAssistantId(key)
 
     if (selectedAssistantId) {
       return {
