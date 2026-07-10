@@ -23,8 +23,16 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const confPath = join(here, 'nginx.conf');
 
+/** Strip `#` line comments so a stray brace inside a comment can't desync the
+ *  brace matcher. nginx has no block comments; values with literal `#` are not
+ *  used in this file. */
+function stripComments(conf) {
+  return conf.replace(/#[^\n]*/g, '');
+}
+
 /** Extract the body of the `location /api { ... }` block (brace-matched). */
-function apiLocationBlock(conf) {
+function apiLocationBlock(rawConf) {
+  const conf = stripComments(rawConf);
   const marker = /location\s+\/api\s*\{/.exec(conf);
   if (!marker) return null;
   let depth = 0;
@@ -50,12 +58,21 @@ const REQUIRED = [
   },
   {
     name: 'add_header X-Accel-Buffering no',
-    re: /^\s*add_header\s+X-Accel-Buffering\s+no\b/im,
+    // The value must be exactly `no` — a nearby token like `no-cache` must NOT
+    // satisfy the guard, so require whitespace/`;` after it (not just \b, which
+    // treats `-` as a boundary).
+    re: /^\s*add_header\s+X-Accel-Buffering\s+no(?=\s|;)/im,
     why: 'the disable-buffering signal an outer/edge nginx honors (Coder published URL)',
   },
 ];
 
-const conf = readFileSync(confPath, 'utf8');
+let conf;
+try {
+  conf = readFileSync(confPath, 'utf8');
+} catch (err) {
+  console.error(`check-sse-headers: FAIL — cannot read ${confPath}: ${err.message}`);
+  process.exit(1);
+}
 const block = apiLocationBlock(conf);
 
 const failures = [];

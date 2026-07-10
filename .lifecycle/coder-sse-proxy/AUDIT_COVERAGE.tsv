@@ -1,0 +1,4 @@
+file	start	end	angles
+docker/web/nginx.conf	76	90	correctness,security,error-handling,perf,patterns-conformance,api-contract,concurrency,config-correctness,i18n-copy
+docker/web/check-sse-headers.mjs	1	80	correctness,security,error-handling,tests-quality,patterns-conformance,config-correctness
+docker/web/README.md	154	159	i18n-copy,patterns-conformance,api-contract,config-correctness

@@ -155,8 +155,10 @@ TeamCity build step notes:
   via `add_header` so an **outer** reverse proxy (e.g. a Coder / ingress `nginx`
   published in front) also streams `/api` SSE un-buffered — nginx consumes the
   axum-set copy, so it must be re-emitted here to reach the edge.
-  `check-sse-headers.mjs` (`node docker/web/check-sse-headers.mjs`) guards both
-  directives against regression.
+  `check-sse-headers.mjs` guards both directives against regression: the
+  Dockerfile's `config-check` stage runs it on every image build (the runtime
+  COPYs `nginx.conf` from that stage, so the build fails if a directive is
+  dropped), and it can be run standalone with `node docker/web/check-sse-headers.mjs`.
 - **`entrypoint.sh`** — renders the config, then supervises `ziee` + `nginx`
   under `tini`; if either exits the container exits (Docker restarts it).
 - **`config.template.yaml`** — external Postgres, loopback server, sandbox off,
