@@ -2,20 +2,23 @@ import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { seedProjectFile } from '../file/helpers'
 
-// TEST-21 (ITEM-21): pasting an image into the markdown canvas uploads it via
-// POST /api/files/upload and inserts an image node that serializes to a markdown
-// `![](/api/files/{id}/raw)` link — surviving Save + reload.
+// TEST-21 (ITEM-21): dropping (or pasting) an image into the markdown canvas
+// uploads it via POST /api/files/upload and inserts an image node that
+// serializes to a markdown `![](/api/files/{id}/raw)` link — surviving Save +
+// reload. The editor's native handler serves both drop and paste; this spec
+// drives the drop path (Chromium honors DragEvent.dataTransfer for synthetic
+// dispatch, unlike ClipboardEvent's read-only clipboardData).
 //
 // A 1x1 transparent PNG (base64).
 const PNG_1x1 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
 test.describe('Artifacts — image paste-embed', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
   })
 
-  test('paste an image → upload + insert → persists on reload', async ({
+  test('drop an image → upload + insert → persists on reload', async ({
     page,
     testInfra,
   }) => {
@@ -35,15 +38,17 @@ test.describe('Artifacts — image paste-embed', () => {
     await expect(editable).toBeVisible()
     await editable.click()
 
-    // Dispatch a synthetic paste carrying a PNG File — the ImagePlugin uploads it
-    // (real POST /api/files/upload) and inserts an <img>.
+    // Dispatch a synthetic DROP carrying a PNG File — Chromium honors the
+    // DragEvent constructor's `dataTransfer` (unlike ClipboardEvent's read-only
+    // clipboardData), so the editor's native drop handler uploads it (real POST
+    // /api/files/upload) and inserts an <img>.
     await editable.evaluate((el, b64) => {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-      const file = new File([bytes], 'pasted.png', { type: 'image/png' })
+      const file = new File([bytes], 'dropped.png', { type: 'image/png' })
       const dt = new DataTransfer()
       dt.items.add(file)
       el.dispatchEvent(
-        new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }),
+        new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }),
       )
     }, PNG_1x1)
 

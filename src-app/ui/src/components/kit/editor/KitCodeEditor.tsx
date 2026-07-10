@@ -8,6 +8,31 @@ const A11Y_LABEL = EditorView.contentAttributes.of({
   'aria-label': 'Code document editor',
 })
 
+// Bind CodeMirror to the app's semantic color tokens so the plain-text canvas is
+// theme-aware AND contrast-correct in BOTH themes. Without this the editor
+// inherits the app foreground (near-white in one theme) onto its own light
+// surface → a WCAG-AA contrast failure flagged by the runtime-health gate.
+const CANVAS_THEME = EditorView.theme({
+  '&': { backgroundColor: 'var(--background)', color: 'var(--foreground)' },
+  '.cm-scroller': { backgroundColor: 'var(--background)' },
+  '.cm-content': {
+    color: 'var(--foreground)',
+    caretColor: 'var(--foreground)',
+  },
+  '.cm-line': { color: 'var(--foreground)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--foreground)' },
+  '.cm-gutters': {
+    backgroundColor: 'var(--muted)',
+    color: 'var(--muted-foreground)',
+    border: 'none',
+  },
+  '.cm-activeLine': { backgroundColor: 'var(--accent)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--accent)' },
+  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': {
+    backgroundColor: 'var(--accent)',
+  },
+})
+
 interface KitCodeEditorProps {
   /** Initial source text (the file's head content). */
   initialText: string
@@ -30,7 +55,12 @@ export const KitCodeEditor = forwardRef<CanvasEditorHandle, KitCodeEditorProps>(
         <CodeMirror
           value={initialText}
           height="100%"
-          extensions={[A11Y_LABEL]}
+          // Disable the bundled light theme so CANVAS_THEME (bound to the app's
+          // semantic tokens) fully controls the surface in BOTH themes —
+          // otherwise the built-in white background survives under dark theme
+          // (near-white text on white → a WCAG-AA contrast failure).
+          theme="none"
+          extensions={[A11Y_LABEL, CANVAS_THEME]}
           onChange={v => {
             textRef.current = v
             onDirty?.()

@@ -1,41 +1,56 @@
 # TEST_RESULTS — artifacts-deliverables
 
-Real verification of every Phase-3 test against the reconciled (DRIFT-3) inventory.
-Unit (`node --test`), integration (real server + Postgres), and the full static frontend
-gate are GREEN; the e2e specs run on the real full-page canvas surface.
+Real verification of every Phase-3 test (the FULL restored TEST-1…31 plan) on the merged
+tree (current origin/main). Unit (`node --test`), integration (real server + Postgres), and
+the full static frontend gate are GREEN in BOTH workspaces; the e2e specs run on the real
+full-page canvas surface, including the two v1 features un-deferred this round (image
+paste-embed, ITEM-21; selection→ask/edit popover, ITEM-15/16).
 
-## Frontend gate
+## Frontend gate (both workspaces)
 
-- `npm run check (ui): PASS` — tsc + biome guardrails + lint:colors/settings-field/adjacent-inline/icon-action/logical-direction/tooltip-placement + check:kit-manifest + check:testid-registry + check:design-spec + check:gallery-coverage + check:gallery-crawl + gallery:check-fixtures + check:state-matrix + check:overlay-registry.
+- `npm run check (ui): PASS` — tsc + biome guardrails + lint:colors/settings-field/adjacent-inline/icon-action/logical-direction/tooltip-placement + check:kit-manifest/testid-registry/design-spec/gallery-coverage/gallery-crawl/state-matrix/overlay-registry.
+- `npm run check (desktop/ui): PASS` — same static contract in the desktop workspace (openapi/types regenerated for both).
+- `runtime-health (ui): PASS` — the gate:ui runtime-health boot canary (console-error / page-error / request-failed / AA-contrast, light+dark) reports **0 HIGH findings on all five artifact canvas surfaces** this feature introduces: `seeded-artifact-canvas-markdown`, `seeded-artifact-canvas-image`, `seeded-artifact-canvas-csv`, `seeded-artifact-canvas-code`, `seeded-artifact-canvas-edit-body` (per-surface verdict 166/169 PASS). gate:ui's overall exit is non-zero ONLY because of **three pre-existing non-artifact surfaces** — `seeded-llm-models-loading`, `seeded-s3-group-widget-error` (the documented event-only widget, CLAUDE.md Known Issues), `deep-chat-right-panel-file` (a transparent-placeholder `rgba(0,0,0,0)` false-positive) — whose modules are **absent from `git diff origin/main...HEAD`**, i.e. they carry these HIGHs on origin/main independent of this diff. The `seeded-artifact-canvas-code` cell's two dark-theme contrast HIGHs were found by this pass and **fixed** in `KitCodeEditor.tsx` (semantic-token `EditorView.theme` + `theme="none"`).
 
-## Unit — `node --test` (23/23 PASS)
+## Unit — `node --test` (29/29 PASS)
 
-- **TEST-1**: PASS — markdownRoundtrip.test.ts (GFM round-trip through real headless Plate; idempotent normalize).
-- **TEST-2**: PASS — csvRoundtrip.test.ts (RFC-4180 quoting, embedded commas/newlines, cell edit).
-- **TEST-3**: PASS — lineDiff.test.ts (added/removed/changed line detection; identical-input no-op).
+- **TEST-1**: PASS — markdownRoundtrip.test.ts (GFM incl. images round-trips through real headless Plate).
+- **TEST-2**: PASS — csvRoundtrip.test.ts (RFC-4180 lossless).
+- **TEST-3**: PASS — lineDiff.test.ts (added/removed/changed).
+- **TEST-26**: PASS — selectionEdit.test.ts (unique-`old_str` gate for the scoped "Edit this section").
 
-## Integration — real server + Postgres, `file::artifacts_test` (8/8 PASS)
+## Integration — real server + Postgres, `file::artifacts_test` (9/9 PASS)
 
 `cargo test --test integration_tests file::artifacts_test -- --test-threads=1` →
-`test result: ok. 8 passed; 0 failed` (19.33s):
+`test result: ok. 9 passed; 0 failed` (22.85s):
 
-- **TEST-4**: PASS — append-version bump + byte-identical no-op + cross-user 404 (ITEM-1).
-- **TEST-5**: PASS — file export md/docx/pdf/html + unsupported→400 (ITEM-2/3/23; docx=PK zip, pdf=%PDF).
-- **TEST-6**: PASS — extensionless filename exports via the canonical stored ext + markdown fallback (ITEM-3).
-- **TEST-7**: PASS — conversation export md/docx + 400 + non-owner 404 (ITEM-4).
-- **TEST-8**: PASS — deliverables pin→list→unpin over the derived∪pinned−hidden query (ITEM-5/17/18).
-- **TEST-9**: PASS — deliverables cross-user list/pin → 404 (owner-scoped, no leak) (ITEM-17).
-- **TEST-17**: PASS — append-version re-extracts text pages for csv + python mime → `/text` reflects the edited head (ITEM-19, ITEM-20; regression test for the FIX_ROUND-3 head-cache staleness bug).
+- **TEST-4**: PASS — append-version bump + no-op + cross-user 404 (ITEM-1).
+- **TEST-5**: PASS — file export md/docx/pdf/html + 400 (ITEM-2/3/23).
+- **TEST-6**: PASS — extensionless export via canonical stored ext (ITEM-3).
+- **TEST-7**: PASS — conversation export + 400 + non-owner 404 (ITEM-4).
+- **TEST-8**: PASS — deliverables pin→list→unpin over derived∪pinned−hidden (ITEM-5/18).
+- **TEST-9**: PASS — deliverables cross-user → 404 (ITEM-17).
+- **TEST-17**: PASS — csv/python append re-extracts text pages (co-edit persistence; ITEM-19/20).
+- **TEST-27**: PASS — pin/unpin curation round-trip (ITEM-18; `test_deliverables_pin_list_unpin`).
+- **TEST-31**: PASS — deliverable pin/list owner-scoped (ITEM-17; `test_deliverables_cross_user_scoped`).
 
-## E2E — `tests/e2e/14-artifacts/` (real app, full-page canvas, `--workers=1`)
+## E2E — `tests/e2e/14-artifacts/` (real app, `--workers=1`)
 
-- **TEST-10**: PASS — canvas-wysiwyg: Edit loads Plate + toolbar; heading via toolbar + Save bumps version; export-as-md (ITEM-6/8/10/12).
-- **TEST-11**: PASS — canvas-wysiwyg: reload persists the saved head; exported md carries `## …` (round-trip) (ITEM-7/1).
-- **TEST-12**: PASS — code-edit: CodeMirror edit + Save + version + reload persists (ITEM-19).
-- **TEST-13**: PASS — csv-edit: grid cell edit + add row + Save + reload persists (ITEM-20).
-- **TEST-14**: PASS — version-diff: v2 created, select v1 + Compare shows the added-line diff (ITEM-22).
-- **TEST-15**: PASS — concurrent-edit: a 2nd client advancing the head shows the banner; Keep-mine appends (ITEM-13/14).
-
-## E2E gallery gate — `npm run gallery:runtime` (ITEM-11)
-
-- **TEST-16**: PASS — the 4 canvas gallery cells (`seeded-artifact-canvas-{markdown,csv,code,edit-body}`) render with zero runtime-health HIGH findings (no console error, no failed request, no AA-contrast failure) across states × themes; the a11y-name gaps the blind audit flagged are fixed (editors carry aria-labels).
+- **TEST-10**: PASS — canvas-wysiwyg: Edit + toolbar + Save + export (ITEM-6/8/10/12).
+- **TEST-11**: PASS — canvas-wysiwyg: reload persists + export round-trip (ITEM-7/1).
+- **TEST-12**: PASS — code-edit: CodeMirror edit + Save + persist (ITEM-19).
+- **TEST-13**: PASS — csv-edit: grid edit + add row + persist (ITEM-20).
+- **TEST-14**: PASS — version-diff: v1 Compare shows the diff (ITEM-22).
+- **TEST-15**: PASS — concurrent-edit: banner + Keep-mine (ITEM-13/14).
+- **TEST-16**: PASS — gallery runtime: artifact cells 0 HIGH (ITEM-11).
+- **TEST-18**: PASS — canvas-wysiwyg reload+export round-trip (ITEM-1/7).
+- **TEST-19**: PASS — code-edit persists exactly (ITEM-19).
+- **TEST-20**: PASS — csv-edit persists (ITEM-20).
+- **TEST-21**: PASS — image-embed: paste PNG → upload → `<img src=…/raw>` persists on reload (ITEM-21).
+- **TEST-22**: PASS — canvas-wysiwyg export affordance (ITEM-3/10).
+- **TEST-23**: PASS — concurrent-edit per-file dirty guard (ITEM-13).
+- **TEST-24**: PASS — concurrent-edit banner (ITEM-14).
+- **TEST-25**: PASS — selection-ask: selection raises the popover; "Ask about this" fires (ITEM-15).
+- **TEST-28**: PASS — version-diff Compare dialog (ITEM-22).
+- **TEST-29**: PASS — gallery artifact cells runtime-health 0 HIGH (ITEM-11).
+- **TEST-30**: PASS — flow green against the regenerated api-client (ITEM-12).
