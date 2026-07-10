@@ -78,13 +78,16 @@ checks, all green.
 - **TEST-21**: PASS
 - **TEST-22**: PASS
 - **TEST-33**: PASS
-- **TEST-37**: PASS — REAL-network test (`#[ignore]`), run explicitly against the
-  actual `ziee-ai/whisper.cpp` `v1.9.1` GitHub release (published by the fork's
-  `release.yml` CI): `TestServer` → `POST /voice/versions/download {version:latest}`
-  → resolved v1.9.1 → downloaded `whisper-server-linux-x86_64-cpu.tar.gz` →
-  mandatory `.sha256` verified → extracted + registered → binary ran (exit 0,
-  CPU backend loaded via `$ORIGIN`). Output: "downloaded from ziee-ai/whisper.cpp,
-  sha256-verified, extracted, and ran successfully ✅" — `1 passed`.
+- **TEST-37**: PASS — REAL-network test, **SOFT-SKIP (not `#[ignore]`)**, runs in
+  the default `voice::` suite. The external whisper-release gate is CLEARED
+  (`v1.9.1` published), so it ran for REAL against the live release: `TestServer` →
+  `POST /voice/versions/download {version:latest}` → resolved v1.9.1 → downloaded
+  `whisper-server-linux-x86_64-cpu.tar.gz` → mandatory `.sha256` verified →
+  extracted + registered → binary ran (exit 0, CPU backend loaded via `$ORIGIN`).
+  Output: "downloaded from ziee-ai/whisper.cpp, sha256-verified, extracted, and ran
+  successfully ✅" — `1 passed`. (Had the release NOT been published, it would have
+  printed `SOFT-SKIP [external gate: whisper-release]` and passed as a skip — the
+  gate is marked, never claimed as green.)
 
 ## E2e (`npx playwright test tests/e2e/14-voice/<spec> --workers=1`, run one-at-a-time)
 

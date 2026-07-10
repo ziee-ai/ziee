@@ -15,13 +15,20 @@
 //! sidecars match what the runtime enforces, and that the packaged binary is
 //! self-contained (libs resolve via RPATH `$ORIGIN` / `@loader_path`).
 //!
-//! `#[ignore]` by default: needs network + a PUBLISHED release, so it can't run
-//! in the offline CI matrix — same gating rationale as the llm runtime's
-//! `gold_smoke`. Run it explicitly:
+//! SOFT-SKIP, NOT `#[ignore]`: this runs in the default `voice::` suite. The ONE
+//! legit external dependency is the `ziee-ai/whisper.cpp` binary release. The test
+//! probes the GitHub release API first; if the release isn't published OR GitHub is
+//! unreachable / rate-limited, it SOFT-SKIPS (clear `SOFT-SKIP [external gate:
+//! whisper-release]` marker + early return, so it never falsely fails an offline /
+//! release-not-yet-cut run). The instant the release exists, it auto-runs for REAL
+//! with no flag — and once the release is confirmed present, every downstream step
+//! is a hard assertion (a name/sha256/packaging contract break is a genuine FAILURE,
+//! not skipped). This is the [[feedback_no_ignore_unless_platform]] discipline: an
+//! external gate is soft-skipped + marked, never hidden behind `#[ignore]`.
 //!
 //!   source tests/.env.test
 //!   cargo test --test integration_tests \
-//!     -- --ignored voice::real_repo_test::real_whisper_release --test-threads=1
+//!     -- voice::real_repo_test::real_whisper_release --test-threads=1
 
 use std::time::Duration;
 
@@ -31,9 +38,42 @@ use super::{drive_download_to_terminal, VOICE_ADMIN_PERMS};
 use crate::common::test_helpers::create_user_with_permissions;
 use crate::common::TestServer;
 
+/// The real repo whose published release this test validates against.
+const WHISPER_LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/ziee-ai/whisper.cpp/releases/latest";
+
 #[tokio::test]
-#[ignore = "hits the real ziee-ai/whisper.cpp GitHub release (network + published release required)"]
 async fn real_whisper_release_downloads_verifies_and_runs() {
+    // SOFT-SKIP gate — probe the external dependency (the published binary release)
+    // BEFORE doing any work. A missing release / unreachable / rate-limited GitHub
+    // is an EXTERNAL gate → skip (not a product failure). A 2xx means the release is
+    // published, so from here on every assertion is REAL.
+    match reqwest::Client::new()
+        .get(WHISPER_LATEST_RELEASE_API)
+        .header("User-Agent", "ziee-voice-real-repo-test")
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => { /* release published — run for real */ }
+        Ok(r) => {
+            eprintln!(
+                "SOFT-SKIP [external gate: whisper-release]: {WHISPER_LATEST_RELEASE_API} \
+                 returned HTTP {} (no published release yet, or GitHub rate-limited); \
+                 skipping the real download e2e.",
+                r.status()
+            );
+            return;
+        }
+        Err(e) => {
+            eprintln!(
+                "SOFT-SKIP [external gate: whisper-release]: GitHub unreachable ({e}); \
+                 skipping the real download e2e."
+            );
+            return;
+        }
+    }
+
     // Plain TestServer — NO mock_release, NO mirror env → the downloader points
     // at the real https://api.github.com + https://github.com hosts.
     let server = TestServer::start().await;
