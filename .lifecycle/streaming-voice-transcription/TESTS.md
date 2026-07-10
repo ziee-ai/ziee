@@ -1,0 +1,39 @@
+# TESTS — streaming-voice-transcription
+
+Every ITEM maps to ≥1 TEST; every TEST names ITEM(s), a tier, a target file, and
+what it proves. Backend items get unit + integration; user-visible UI items get
+e2e. Mocks only the external boundary (whisper `/inference` via the real
+`stub_whisper_binary()`; browser media APIs in e2e) — no cosmetic tests.
+
+## Backend — unit (`#[cfg(test)]`)
+
+- **TEST-1** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/voice/stream.rs` — asserts: `clamp_wav_tail` keeps the last `secs` of PCM and rewrites the RIFF/`data` sizes (result duration ≈ window); is a no-op when the clip is shorter than the window; and returns the input unchanged on an unparseable/non-WAV header.
+- **TEST-2** (tier: unit) [covers: ITEM-2] file: `src-app/server/src/modules/voice/handlers.rs` — asserts: `validate_settings_patch` rejects out-of-range `stream_interval_ms` (300..=10000), `stream_window_secs` (2..=120) with a 400 `VALIDATION_ERROR` and accepts in-range values + `streaming_enabled` toggles.
+- **TEST-14** (tier: unit) [covers: ITEM-6] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: the `types_ts_parity` golden — `types.ts` regenerated from the committed `openapi.json` matches the committed `types.ts` (so the new `Voice.transcribeStream` key + changed schemas are regenerated, not hand-edited).
+
+## Backend — integration (`tests/voice/streaming_test.rs`, real stub whisper)
+
+- **TEST-3** (tier: integration) [covers: ITEM-4, ITEM-5] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: the hero path — with the `stub_whisper_binary()` runtime registered + model staged, `POST /voice/transcribe/stream` (multipart WAV, `voice::transcribe` user) auto-starts whisper, forwards the tail-clamped audio to `/inference`, and returns 200 `{ text, language, duration_ms }` with the canned transcript.
+- **TEST-4** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: with `streaming_enabled=false` (PUT settings), `POST /voice/transcribe/stream` returns 409 (feature-off) while batch `/voice/transcribe` still works — the two modes are independently toggled.
+- **TEST-5** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: the backend deny path (A9) — `POST /voice/transcribe/stream` returns 401 with no token and 403 for a user lacking `voice::transcribe`.
+- **TEST-6** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: a non-WAV / oversized body is rejected with a clean 4xx (`VOICE_NOT_WAV` / `VOICE_CLIP_TOO_LARGE`), never a 500, before any runtime is touched.
+- **TEST-7** (tier: integration) [covers: ITEM-1, ITEM-2, ITEM-3] file: `src-app/server/tests/voice/settings_test.rs` — asserts: `GET/PUT /voice/settings` round-trips `streaming_enabled`/`stream_interval_ms`/`stream_window_secs` (admin-gated), out-of-range values 400, `GET /voice/capability` reflects them for a non-admin `voice::transcribe` user, and PUT emits the `VoiceSettings` sync event.
+
+## Frontend — unit (node:test)
+
+- **TEST-8** (tier: unit) [covers: ITEM-8] file: `src-app/ui/src/modules/chat/extensions/voice/voiceLogic.test.ts` — asserts: `shouldRunInterim` is true only while `recording` with `capability.streaming_enabled` and the live pref on; `resolveLivePref` defaults a per-device pref to `streaming_enabled` when unset and honors a stored value; `composeInterimCaption` trims and maps blank → cleared.
+
+## Frontend — e2e (`tests/e2e/14-voice/`, Playwright, mocked media + cassette)
+
+- **TEST-9** (tier: e2e) [covers: ITEM-7, ITEM-9] file: `src-app/ui/tests/e2e/14-voice/live-captions-stream.spec.ts` — asserts: with streaming enabled + live pref on, recording shows the live-caption strip updating from mocked `/voice/transcribe/stream` interim responses; on Stop the authoritative `/voice/transcribe` text is appended to the composer, the caption clears, and NO message is auto-sent (composer retains the text; send never fires).
+- **TEST-10** (tier: e2e) [covers: ITEM-9, ITEM-7] file: `src-app/ui/tests/e2e/14-voice/streaming-toggle.spec.ts` — asserts: toggling "Live captions" OFF suppresses the interim loop (no `/voice/transcribe/stream` request; batch-only behavior) and ON re-enables it, and the per-device pref persists across a reload.
+- **TEST-11** (tier: e2e) [covers: ITEM-10] file: `src-app/ui/tests/e2e/14-voice/streaming-settings-admin.spec.ts` — asserts: an admin edits `streaming_enabled`/`stream_interval_ms`/`stream_window_secs` in `VoiceConfigCard`, the values persist (reload), and out-of-range input is validated before submit.
+- **TEST-12** (tier: e2e) [negative-perm] [covers: ITEM-9] file: `src-app/ui/tests/e2e/14-voice/mic-button-gating.spec.ts` — asserts: a user LACKING `voice::transcribe` sees NO voice surface at all — no composer mic button, no live-caption strip, no Live-captions toggle (defensive; not A10-forced since streaming introduces no new permission).
+- **TEST-13** (tier: e2e) [covers: ITEM-11, ITEM-9] file: `src-app/ui/tests/e2e/14-voice/visual-states.spec.ts` — asserts: the new MicButton recording-with-live-caption gallery state renders with zero runtime-health findings (drives the `gate:ui` / `check:state-matrix` coverage for the new render state).
+- **TEST-15** (tier: e2e) [covers: ITEM-9] file: `src-app/desktop/ui/tests/e2e/voice-desktop-surface.spec.ts` — asserts: the desktop build renders the composer mic button AND the Live-captions toggle (ui-core is shared with desktop via glob discovery), confirming no desktop-side regression.
+
+## Frontend static gate (recorded in TEST_RESULTS.md at phase 8)
+
+- `npm run check (ui): PASS` and `npm run check (desktop/ui): PASS` (tsc + biome +
+  lint:colors + check:state-matrix + check:testid-registry + …).
+- `gate:ui (ui): PASS` (A7 boot/runtime canary — runtime-health + Layer A/axe).
