@@ -1070,10 +1070,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/text/components/TextInput",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!el", line: 68 },
-      { kind: "branch", condition: "isEditing", line: 69 },
-      { kind: "branch", condition: "restoredKeyRef.current === draftKey", line: 77 },
-      { kind: "branch", condition: "isEditingRef.current", line: 85 },
+      { kind: "branch", condition: "!el", line: 77 },
+      { kind: "branch", condition: "isEditing", line: 78 },
+      { kind: "branch", condition: "restoredKeyRef.current === draftKey", line: 86 },
+      { kind: "branch", condition: "isEditingRef.current", line: 94 },
     ],
   },
   "modules/chat/extensions/text/components/ThinkingContent": {

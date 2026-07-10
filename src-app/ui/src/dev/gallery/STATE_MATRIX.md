@@ -1212,10 +1212,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 68 |
-| branch | `isEditing` | 69 |
-| branch | `restoredKeyRef.current === draftKey` | 77 |
-| branch | `isEditingRef.current` | 85 |
+| branch | `!el` | 77 |
+| branch | `isEditing` | 78 |
+| branch | `restoredKeyRef.current === draftKey` | 86 |
+| branch | `isEditingRef.current` | 94 |
 
 ### `modules/chat/extensions/text/components/ThinkingContent`
 
