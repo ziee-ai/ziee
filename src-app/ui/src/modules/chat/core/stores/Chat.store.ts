@@ -15,9 +15,8 @@ import type {
 } from '@/api-client/types'
 import type { SSEEvent } from '@/modules/chat/core/extensions/types'
 import {
-  setActiveConversation,
-  startChatStream,
-  stopChatStream,
+  type ChatStreamClient,
+  createChatStreamClient,
 } from '@/modules/chat/core/stream/ChatStreamClient'
 import {
   computeChildAnchor,
@@ -168,20 +167,14 @@ const PANEL_STORAGE_KEY = 'ziee-right-panel-tabs-v2'
 const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 // ── Chat-token stream module state ──────────────────────────────────────────
-// These live at MODULE scope (not store state) so they survive store re-init.
-// `chatStreamWired` makes the auth-driven stream lifecycle a once-only wiring
-// (the store's `__init__.__store__` can run again after a destroy; re-running
-// the `useAuthStore.subscribe` would STACK subscribers — cf. core/sync/index).
-let chatStreamWired = false
-// Serializes `applyStreamFrame` calls: the `chat:token` EventBus handler is
-// fire-and-forget, so without this, fast successive frames' async assembly
-// would interleave and drop/duplicate tokens. The old per-request SSE reader
-// awaited each callback; this restores that ordering.
-let frameApplyTail: Promise<void> = Promise.resolve()
 // Min interval between reconnect-driven open-conversation refetches, so a
 // flapping stream can't storm `loadMessages` (mirrors SyncClient's debounce).
+// `frameApplyTail` (frame-apply serialization), `lastChatResyncAt` (resync
+// throttle) and the stream client were formerly MODULE-scope singletons; they
+// are now PER-INSTANCE (declared in `init`) so each split pane serializes /
+// throttles / streams independently and one pane's teardown can't disturb
+// another's (ITEM-6).
 const CHAT_RESYNC_MIN_INTERVAL_MS = 5_000
-let lastChatResyncAt = 0
 
 function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
   try {
@@ -453,6 +446,8 @@ interface ChatState {
   // The assistant message id of the in-flight generation (from the send
   // response), used to address the stop-generation endpoint.
   streamingMessageId: string | null
+  /** This instance's own chat-token stream client (ITEM-6); null before init. */
+  chatStreamClient: ChatStreamClient | null
   stopStreaming: () => void
 
   // ── Right panel ───────────────────────────────────────────────────────────
@@ -506,6 +501,9 @@ const chatInitialState = {
     tempUserMessageId: null as string | null,
     streamingAbortController: null as AbortController | null,
     streamingMessageId: null as string | null,
+    // This instance's own chat-token stream client (ITEM-6). Created in `init`
+    // so actions can scope it via `setActiveConversation`; null before init.
+    chatStreamClient: null as ChatStreamClient | null,
     conversationStateCache: new Map<string, ChatStateSnapshot>(),
     cacheClearTimers: new Map<string, NodeJS.Timeout>(),
     // Branch initial state
@@ -678,7 +676,7 @@ const chatStoreConfig = {
       // Scope this device's token stream to the conversation being opened, so
       // it receives (only) this conversation's live assistant tokens — and a
       // catch-up replay if it is mid-generation. Deduped for a no-op repeat.
-      void setActiveConversation(id)
+      void get().chatStreamClient?.setActiveConversation(id)
 
       const currentConversation = get().conversation
       const loadingId = get().loadingConversationId
@@ -1715,7 +1713,7 @@ const chatStoreConfig = {
         // Subscribe this device's token stream to the (possibly just-created)
         // conversation BEFORE kicking off generation, so it receives all of its
         // own tokens. Idempotent/deduped for an already-open conversation.
-        await setActiveConversation(conversation.id)
+        await get().chatStreamClient?.setActiveConversation(conversation.id)
 
         // Fire-and-forget: the assistant reply streams over the chat-token
         // stream (applied by `applyStreamFrame` via the `chat:token` router),
@@ -1960,7 +1958,7 @@ const chatStoreConfig = {
 
     reset: async () => {
       // Leaving for a new chat: stop receiving any conversation's tokens.
-      void setActiveConversation(null)
+      void get().chatStreamClient?.setActiveConversation(null)
       const { conversation } = get()
       if (conversation) {
         get().saveConversationState(conversation.id)
@@ -2016,12 +2014,27 @@ const chatStoreConfig = {
   init: ({
     set,
     get: getRaw,
+    on,
     onCleanup,
   }: StoreInitCtx<typeof chatInitialState>) => {
     const get = getRaw as () => ChatState
-    void (async () => {
-        const { Stores } = await import('@/core/stores')
 
+    // Idempotent: `__init__.__store__` can be invoked more than once per instance
+    // (a local pane self-inits via `.use()`, and the `Stores.Chat` proxy's lazy
+    // init check may also fire it for the focused pane). Bail if this instance
+    // already created its client, so we never stack a second client / auth
+    // subscription.
+    if (get().chatStreamClient) return
+
+    // Per-instance stream/serialization state (formerly module singletons). Each
+    // pane serializes its own frame-apply chain, throttles its own resync, and
+    // owns its own stream client — so panes never couple (ITEM-6).
+    let frameApplyTail: Promise<void> = Promise.resolve()
+    let lastChatResyncAt = 0
+    const streamClient = createChatStreamClient()
+    set({ chatStreamClient: streamClient })
+
+    void (async () => {
         // Cross-device sync: when the currently-OPEN conversation changed on
         // another device (a completed message turn, rename, branch switch,
         // edit/delete), refetch its messages + branches. Skip while we're
@@ -2070,7 +2083,7 @@ const chatStoreConfig = {
           void reloadOpen(id)
         }
 
-        Stores.EventBus.on(
+        on(
           'sync:conversation',
           event => {
             if (event.data.action === 'delete') {
@@ -2083,63 +2096,61 @@ const chatStoreConfig = {
             }
             void reloadOpen(event.data.id)
           },
-          'Chat',
         )
 
-        Stores.EventBus.on('sync:reconnect', () => resyncOpen(), 'Chat')
+        on('sync:reconnect', () => resyncOpen())
 
-        // Live chat-token stream lifecycle. Owned by the chat module (this
-        // stream serves only chat); start on auth, restart on user-switch,
-        // stop on logout — mirrors core/sync's index but module-local. Wired
-        // ONCE: __init__.__store__ can run again after a store destroy, and a
-        // second `useAuthStore.subscribe` would stack subscribers.
-        if (!chatStreamWired) {
-          chatStreamWired = true
-          const { useAuthStore } = await import('@/modules/auth/Auth.store')
-          let currentUserId = useAuthStore.getState().user?.id
-          const applyAuth = (userId: string | undefined) => {
-            stopChatStream()
-            if (userId) startChatStream()
-          }
-          applyAuth(currentUserId)
-          useAuthStore.subscribe(state => {
-            const id = state.user?.id
-            if (id === currentUserId) return
-            currentUserId = id
-            applyAuth(id)
-          })
+        // Live chat-token stream lifecycle for THIS instance's own client. Start
+        // on auth, restart on user-switch, stop on logout — mirrors core/sync's
+        // index but per-instance. The auth subscription + the client are torn
+        // down in `onCleanup`, so a re-init (or a pane unmount) never stacks
+        // subscribers or leaks a connection.
+        const { useAuthStore } = await import('@/modules/auth/Auth.store')
+        let currentUserId = useAuthStore.getState().user?.id
+        const applyAuth = (userId: string | undefined) => {
+          streamClient.stop()
+          if (userId) streamClient.start()
         }
+        applyAuth(currentUserId)
+        const unsubscribeAuth = useAuthStore.subscribe(state => {
+          const id = state.user?.id
+          if (id === currentUserId) return
+          currentUserId = id
+          applyAuth(id)
+        })
+        onCleanup(unsubscribeAuth)
 
         // Inbound: route each live generation frame to the open conversation.
         // Fires on EVERY device (sender or receiver) — whichever has the
-        // conversation open renders live tokens. SERIALIZED via a tail promise:
-        // applyStreamFrame is async (awaits extension hooks / loadMessages), so
-        // concurrent invocations would interleave and corrupt streamingMessage.
-        Stores.EventBus.on(
-          'chat:token',
-          event => {
-            frameApplyTail = frameApplyTail
-              .then(() =>
-                get().applyStreamFrame(
-                  event.data.conversation_id,
-                  event.data.event,
-                ),
-              )
-              .catch(err => console.error('[chat:token] apply failed', err))
-          },
-          'Chat',
-        )
+        // conversation open renders live tokens. SERIALIZED via a per-instance
+        // tail promise: applyStreamFrame is async (awaits extension hooks /
+        // loadMessages), so concurrent invocations would interleave and corrupt
+        // streamingMessage. `applyStreamFrame` filters by conversation id, so a
+        // frame for another pane's conversation is a cheap no-op here.
+        on('chat:token', event => {
+          frameApplyTail = frameApplyTail
+            .then(() =>
+              get().applyStreamFrame(
+                event.data.conversation_id,
+                event.data.event,
+              ),
+            )
+            .catch(err => console.error('[chat:token] apply failed', err))
+        })
 
         // On stream (re)connect the server replays the reply-so-far (catch-up);
         // also reconcile the open conversation from the DB (debounced).
-        Stores.EventBus.on('chat:stream-reconnect', () => resyncOpen(), 'Chat')
+        on('chat:stream-reconnect', () => resyncOpen())
     })()
     onCleanup(() => {
       console.log('[Chat.store] Destroying - cleaning up resources')
 
-      void import('@/core/stores').then(({ Stores }) =>
-        Stores.EventBus.removeGroupListeners('Chat'),
-      )
+      // Stop this instance's own stream client (its own SSE connection). The
+      // `ctx.on` subscriptions + the auth unsubscribe are torn down by the
+      // store-kit builder's per-group cleanup — NO manual
+      // `removeGroupListeners('Chat')` here: for a split pane that would wipe the
+      // PRIMARY pane's ('Chat'-group) listeners too.
+      streamClient.stop()
 
       const state = get()
 
