@@ -1,0 +1,7 @@
+file	start	end	angles
+src-app/ui/src/modules/chat/core/utils/footnoteScope.ts	1	78	correctness,edge-cases,regressions,error-handling,security,dom-clobbering,redos,api-contract,patterns-conformance,naming,perf
+src-app/ui/src/modules/chat/core/utils/footnoteScope.test.ts	1	61	tests-quality,correctness,patterns-conformance
+src-app/ui/src/modules/chat/core/utils/useStreamdownComponents.tsx	1	200	correctness,regressions,security,api-contract,patterns-conformance,naming,a11y,perf,i18n,state-management
+src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts	1	360	tests-quality,state-management,a11y,i18n,correctness
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1000	1100	patterns-conformance,correctness,regressions
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1100	1200	patterns-conformance,correctness,regressions
