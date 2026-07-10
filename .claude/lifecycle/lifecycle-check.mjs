@@ -279,11 +279,236 @@ function parseLedger() {
 }
 
 // ---------------------------------------------------------------------------
+// diff-added-lines + git-status helpers (for the A3/A4/A8/A9 content gates)
+// ---------------------------------------------------------------------------
+// Every ADDED (+) line in base...HEAD (excluding lifecycle + generated files),
+// with its file + new-side line number. Used to scan for skip/ignore markers,
+// cosmetic-test smells, permission adds without deny-tests, etc.
+let _addedCache = null;
+function diffAddedLines() {
+  if (_addedCache) return _addedCache;
+  let out;
+  try { out = git(repo, 'diff', `${baseRef}...HEAD`, '--no-color', '-U0', '--', '.', ...DIFF_EXCLUDES); }
+  catch { try { out = git(repo, 'diff', baseRef, '--no-color', '-U0', '--', '.', ...DIFF_EXCLUDES); } catch { out = ''; } }
+  const added = [];
+  let file = null, ln = 0;
+  for (const line of out.split(/\r?\n/)) {
+    const fm = /^\+\+\+ b\/(.+)$/.exec(line);
+    if (fm) { file = fm[1] === '/dev/null' ? null : fm[1]; continue; }
+    const hm = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (hm) { ln = parseInt(hm[1], 10); continue; }
+    if (line.startsWith('+') && !line.startsWith('+++')) { if (file) added.push({ file, ln, text: line.slice(1) }); ln++; }
+    // '-' and '\ No newline' lines don't advance the new-side counter (with -U0
+    // there are no context lines).
+  }
+  _addedCache = added;
+  return added;
+}
+// Working-tree status (porcelain), minus known-noisy entries (the pgvector
+// submodule + scratch logs) — for the A2 clean-tree gate.
+function dirtyWorkingTree() {
+  let out;
+  try { out = git(repo, 'status', '--porcelain'); } catch { return []; }
+  return out.split(/\r?\n/).map((s) => s.replace(/\r$/, '')).filter((l) => {
+    if (!l.trim()) return false;
+    const path = l.slice(3);
+    if (/(^|\/)vendor\/pgvector(\/|$)/.test(path)) return false;   // noisy submodule
+    if (/\.log$/.test(path)) return false;                          // scratch logs
+    return true;
+  });
+}
+// The set of TEST-IDs in a given blob of TESTS.md text.
+function testIdsIn(text) {
+  const ids = new Set();
+  if (!text) return ids;
+  for (const ln of text.split(/\r?\n/)) {
+    const m = RE_TEST_ID.exec(ln);
+    if (m && /^\s*-\s/.test(ln)) ids.add(m[1]);
+  }
+  return ids;
+}
+// The TESTS.md path relative to the repo (for git-history lookups).
+function testsRelPath() {
+  return join(featureDir, 'TESTS.md').replace(repo + '/', '');
+}
+// TEST-IDs that appeared in ANY earlier committed version of TESTS.md on this
+// branch — used by the A5 shrink-guard to detect silently-removed tests.
+function priorTestIds() {
+  const rel = testsRelPath();
+  let commits = [];
+  try { commits = git(repo, 'log', '--format=%H', '--', rel).split(/\r?\n/).filter(Boolean); }
+  catch { return null; }
+  // skip the newest (== current committed) so we compare against strictly-older versions
+  const union = new Set();
+  let sawAny = false;
+  for (const c of commits.slice(1)) {
+    let blob = '';
+    try { blob = git(repo, 'show', `${c}:${rel}`); } catch { continue; }
+    sawAny = true;
+    for (const id of testIdsIn(blob)) union.add(id);
+  }
+  return sawAny ? union : null;
+}
+
+// ---------------------------------------------------------------------------
 // per-phase validators — each returns { present, gaps: [] }
 // ---------------------------------------------------------------------------
 const FORBIDDEN_DECISION = /\b(TBD|TODO|ASK)\b|\?\?\?|<\s*(ask|decide|todo)\s*>/i;
 const ANGLE_MIN = 10;
 const COVERAGE_MIN_ANGLES = 3;
+
+// ---------------------------------------------------------------------------
+// A1-A9 — the hardening checks (see LIFECYCLE_HARDENING_MASTER.md)
+// ---------------------------------------------------------------------------
+// A1: reject >1 .lifecycle feature dir even under an explicit --dir (a second
+// feature dir sneaks onto the branch → the pre-push `--all` gate validates the
+// wrong one → silent push-doom).
+function checkA1() {
+  const root = join(repo, '.lifecycle');
+  if (!existsSync(root)) return [];
+  let subs = [];
+  try { subs = readdirSync(root).filter((d) => { try { return statSync(join(root, d)).isDirectory(); } catch { return false; } }); }
+  catch { return []; }
+  if (subs.length > 1) return [`A1: .lifecycle/ has ${subs.length} feature dirs (${subs.join(', ')}) — a branch may carry exactly ONE. Remove the stray(s) before pushing.`];
+  return [];
+}
+
+// A3: diff-added test skips/ignores. Only genuine platform-incompatibility is a
+// legit skip, and that MUST be a #[cfg(target_os=...)] gate — never #[ignore]/.skip.
+const RE_SKIP = /#\[\s*ignore\b|(?:^|[^\w.])(?:test|it|describe|context)\.(?:skip|only)\s*\(|(?:^|[^\w])x(?:it|describe)\s*\(/;
+function checkA3() {
+  const g = [];
+  for (const a of diffAddedLines()) {
+    if (RE_SKIP.test(a.text))
+      g.push(`A3: ${a.file}:${a.ln}: diff ADDS a test skip/ignore/only ("${a.text.trim().slice(0, 70)}") — no #[ignore]/.skip to go green; a real platform gate is #[cfg(target_os=...)].`);
+  }
+  return g;
+}
+
+// A4: cosmetic / always-true assertions — a test must assert real behavior.
+const RE_COSMETIC = /\bassert!\s*\(\s*true\s*[,)]|\bassert_eq!\s*\(\s*true\s*,\s*true\s*\)|\bassert_eq!\s*\(\s*(\d+)\s*,\s*\1\s*\)|expect\s*\(\s*true\s*\)\s*\.\s*to(?:Be|Equal|BeTruthy)\b|expect\s*\(\s*(\d+)\s*\)\s*\.\s*toBe\s*\(\s*\2\s*\)/;
+function checkA4() {
+  const g = [];
+  for (const a of diffAddedLines()) {
+    if (RE_COSMETIC.test(a.text))
+      g.push(`A4: ${a.file}:${a.ln}: cosmetic/always-true assertion ("${a.text.trim().slice(0, 70)}") — assert the real behavior, not a tautology.`);
+  }
+  return g;
+}
+
+// A5: TESTS.md shrink-guard — a TEST-ID that existed in an earlier committed
+// TESTS.md must not silently vanish (tests removed to make the gate pass).
+function checkA5() {
+  const cur = read('TESTS.md');
+  if (cur == null) return [];
+  const prior = priorTestIds();
+  if (!prior || prior.size === 0) return [];
+  const now = testIdsIn(cur);
+  const vanished = [...prior].filter((id) => !now.has(id));
+  if (vanished.length)
+    return [`A5: TESTS.md dropped ${vanished.length} previously-enumerated test(s) (${vanished.slice(0, 8).join(', ')}) — do not shrink the test plan to pass; re-add or justify each in an amend.`];
+  return [];
+}
+
+// A7: boot/runtime canary result line — a UI diff must record that the runtime-
+// health/gate:ui pass ran (a non-booting app or a root ErrorBoundary crash is
+// otherwise invisible; "green e2e" can ship a non-rendering app).
+const RE_BOOT_CANARY = /(?:gate:ui|boot[ -]?canary|runtime[ -]?health)\s*\(\s*([A-Za-z0-9._/\- ]+?)\s*\)\s*:?\s*.*?\b(PASS|FAIL)\b/i;
+
+// A8: a diff that adds a built-in MCP server must include BOTH the
+// auto_attach_builtin_ids AND is_builtin_server_id edits (else it registers but
+// the model never sees the tools).
+function checkA8() {
+  const added = diffAddedLines();
+  const addsBuiltinMcp = added.some((a) => /\bfn\s+\w*_mcp_server_id\s*\(/.test(a.text));
+  if (!addsBuiltinMcp) return [];
+  const all = added.map((a) => a.text).join('\n');
+  const missing = [];
+  if (!/auto_attach_builtin_ids/.test(all)) missing.push('auto_attach_builtin_ids');
+  if (!/is_builtin_server_id/.test(all)) missing.push('is_builtin_server_id');
+  if (missing.length)
+    return [`A8: the diff registers a built-in MCP server (a *_mcp_server_id fn) but the mcp/chat_extension/mcp.rs edit(s) ${missing.join(' + ')} are missing — without both, the server registers yet the model never sees its tools.`];
+  return [];
+}
+
+// A9: a diff that adds a permission must include a test asserting the DENY path.
+function checkA9() {
+  const added = diffAddedLines();
+  const addsPerm = added.some((a) => /const\s+PERMISSION\s*:/.test(a.text) || /PERMISSION\s*:\s*&(?:'static\s+)?str\s*=/.test(a.text));
+  if (!addsPerm) return [];
+  const all = added.map((a) => a.text).join('\n');
+  const tt = read('TESTS.md') || '';
+  const hasDeny = /\b403\b|forbidden|denied|\bdeny\b|without[_ ].*perm|requires?_the_.*permission|lacks?[_ ].*perm/i.test(all + '\n' + tt);
+  if (!hasDeny)
+    return ['A9: the diff adds a permission but no test asserts the DENY path (403/forbidden). A new permission must prove the negative — a user lacking it is refused — not only the allow path.'];
+  return [];
+}
+
+// R2-5: e2e route-mock staleness. A `page.route('**/api/…')` mock that points at
+// a route no live backend registers silently intercepts nothing → the spec
+// false-greens (a renamed/removed route poisons every dependent spec). We check
+// each STATIC /api/ mock the DIFF adds against the union of both workspaces'
+// openapi.json path sets — the canonical live-route registry. Template-literal
+// mocks (`${…}`) can't be resolved statically and are skipped.
+function openApiApiPaths() {
+  // → array of normalized segment-arrays ({param} → '*') for every /api/* path.
+  const files = [
+    join(repo, 'src-app/ui/openapi/openapi.json'),
+    join(repo, 'src-app/desktop/ui/openapi/openapi.json'),
+  ];
+  const out = [];
+  let anyPresent = false;
+  for (const f of files) {
+    if (!existsSync(f)) continue;
+    anyPresent = true;
+    let spec;
+    try { spec = JSON.parse(readFileSync(f, 'utf8')); } catch { continue; }
+    for (const p of Object.keys(spec.paths || {})) {
+      const segs = p.replace(/^\//, '').split('/').filter(Boolean)
+        .map((s) => (/^\{.*\}$/.test(s) ? '*' : s));
+      if (segs[0] === 'api') out.push(segs);
+    }
+  }
+  return anyPresent ? out : null;
+}
+function mockMatchesARoute(mockSegs, routes) {
+  return routes.some((r) => {
+    const n = Math.min(mockSegs.length, r.length);
+    for (let i = 0; i < n; i++) {
+      if (mockSegs[i] === '*' || r[i] === '*') continue;
+      if (mockSegs[i] !== r[i]) return false;
+    }
+    return true; // one is a wildcard-consistent prefix of the other
+  });
+}
+function checkR2_5() {
+  const routes = openApiApiPaths();
+  if (!routes) return []; // no openapi.json (non-ziee fixture) → nothing to check
+  const g = [];
+  const RE_ROUTE = /\.route\(\s*[`'"]([^`'"]+)[`'"]/g;
+  for (const a of diffAddedLines()) {
+    if (!/(^|\/)tests\/e2e\//.test(a.file)) continue;
+    let m;
+    RE_ROUTE.lastIndex = 0;
+    while ((m = RE_ROUTE.exec(a.text))) {
+      const raw = m[1];
+      if (raw.includes('${')) continue;            // template literal — unresolvable
+      const apiIdx = raw.indexOf('/api/');
+      if (apiIdx === -1) continue;                 // only gate /api/ mocks
+      // static segments from '/api/…' up to the first wildcard/query segment
+      const tail = raw.slice(apiIdx + 1).split('?')[0];
+      const seg = [];
+      for (const s of tail.split('/').filter(Boolean)) {
+        if (s.includes('*')) break;                // glob tail — stop the static prefix
+        seg.push(s);
+      }
+      if (seg.length < 2) continue;                // just '/api' — too broad to judge
+      if (!mockMatchesARoute(seg, routes))
+        g.push(`R2-5: ${a.file}:${a.ln}: e2e route-mock "${raw}" targets /${seg.join('/')} which matches NO live route in openapi.json — a renamed/removed route makes this mock a silent no-op (the spec false-greens). Update the mock to the current route.`);
+    }
+  }
+  return g;
+}
 
 function phase1() {
   const g = [];
@@ -347,6 +572,7 @@ function phase3() {
   if (fe.size > 0 && !tests.some((t) => t.tier === 'e2e')) {
     g.push(`TESTS.md: frontend workspace(s) {${[...fe].join(', ')}} are touched but no "(tier: e2e)" test is enumerated — UI work requires ≥1 e2e-tier test; an all-unit plan is refused.`);
   }
+  for (const x of checkA5()) g.push(x); // A5 shrink-guard
   return { present: true, gaps: g };
 }
 
@@ -442,6 +668,16 @@ function phase8() {
   const g = [];
   const t = read('TEST_RESULTS.md');
   if (t == null) return { present: false, gaps: ['TEST_RESULTS.md missing'] };
+  // A2: clean working tree — no uncommitted load-bearing files at phase 8.
+  const dirty = dirtyWorkingTree();
+  if (dirty.length)
+    g.push(`A2: working tree not clean at phase 8 — uncommitted/untracked: ${dirty.slice(0, 10).map((l) => l.slice(3)).join(', ')}${dirty.length > 10 ? ', …' : ''}. Commit or remove before declaring done (load-bearing files must be on the branch).`);
+  // A3/A4/A8/A9 + R2-5: diff-content gates.
+  for (const x of checkA3()) g.push(x);
+  for (const x of checkA4()) g.push(x);
+  for (const x of checkA8()) g.push(x);
+  for (const x of checkA9()) g.push(x);
+  for (const x of checkR2_5()) g.push(x);
   const tests = parseTests();
   if (!tests) return { present: true, gaps: ['TESTS.md missing — cannot verify results'] };
   const results = new Map();
@@ -469,8 +705,16 @@ function phase8() {
     }
     for (const w of feWs) {
       const v = checked.get(w.toLowerCase());
-      if (!v) g.push(`TEST_RESULTS.md: frontend workspace "${w}" was touched but no "npm run check (${w}): PASS" line is present (tsc + biome guardrails + lint:colors/settings-field + check:kit-manifest/testid-registry/design-spec/gallery-coverage/state-matrix).`);
+      if (!v) g.push(`TEST_RESULTS.md: frontend workspace "${w}" was touched but no "npm run check (${w}): PASS" line is present (tsc + biome guardrails + lint:colors/settings-field + check:kit-manifest/testid-registry/design-spec/gallery-coverage/state-matrix). A6: the gallery + gate:ui + runtime-health IS the browser-verify harness — "I can't verify in a browser" is NOT a valid gap; run it against the mock-API gallery build.`);
       else if (v !== 'PASS') g.push(`TEST_RESULTS.md: "npm run check (${w})" is ${v}, not PASS.`);
+    }
+    // A7: boot/runtime canary — require a recorded gate:ui/runtime-health/boot-canary PASS per FE workspace.
+    const canary = new Map();
+    for (const ln of t.split(/\r?\n/)) { const m = RE_BOOT_CANARY.exec(ln); if (m) canary.set(m[1].trim().toLowerCase(), m[2].toUpperCase()); }
+    for (const w of feWs) {
+      const v = canary.get(w.toLowerCase());
+      if (!v) g.push(`A7: TEST_RESULTS.md: no boot/runtime canary line for "${w}" — record "gate:ui (${w}): PASS" (runtime-health boot + console-error + ErrorBoundary vs the REAL prod build, BEFORE specs). A green e2e can still ship a non-booting app or a root crash on an un-exercised path.`);
+      else if (v !== 'PASS') g.push(`A7: TEST_RESULTS.md: "gate:ui (${w})" is ${v}, not PASS.`);
     }
     const e2e = tests.filter((tt) => tt.tier === 'e2e');
     if (e2e.length === 0) {
@@ -516,6 +760,8 @@ process.stdout.write(`lifecycle-check  feature=${featureDir.replace(repo + '/', 
 
 if (wantAll) {
   const results = [];
+  const glob = checkA1(); // A1 runs globally, regardless of --dir
+  if (glob.length) results.push({ n: 0, name: 'GLOBAL', present: true, gaps: glob });
   for (let n = 1; n <= 8; n++) results.push(runOne(n));
   const anyFail = report(results);
   // contiguity: no completed (present & OK) phase may sit above a PENDING one
@@ -537,8 +783,9 @@ if (wantAll) {
 if (phaseArg) {
   const n = parseInt(phaseArg, 10);
   if (!(n >= 1 && n <= 8)) fail(`--phase must be 1..8 (got ${phaseArg})`);
+  const glob = checkA1(); // A1 runs globally, regardless of --dir
   const r = runOne(n);
-  const anyFail = report([r]);
+  const anyFail = report(glob.length ? [{ n: 0, name: 'GLOBAL', present: true, gaps: glob }, r] : [r]);
   if (!r.present) {
     process.stderr.write(`lifecycle-check: phase ${n} ${r.name} PENDING — artifacts not created yet.\n`);
     process.exit(1);
