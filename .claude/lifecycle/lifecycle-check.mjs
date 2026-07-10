@@ -809,10 +809,49 @@ function phase8() {
   return { present: true, gaps: g };
 }
 
-const PHASES = [null, phase1, phase2, phase3, phase4, phase5, phase6, phase7, phase8];
+// Phase 9 — HUMAN_FEEDBACK.md (merge-readiness gate; PENDING until human review).
+// The session records every human critique verbatim + its resolution here. The
+// gate is PENDING (not fail) while the file is absent — a feature can be 8/8 and
+// still awaiting human review. It FAILS once the file exists with an unresolved
+// [status: open] item, and requires either ≥1 FB entry or an explicit "no human
+// feedback received" statement (so absence is a deliberate claim, not an
+// oversight). At merge, the orchestrator reads this file and folds every
+// [generalizable: yes] item into the lifecycle skill.
+function phase9() {
+  const t = read('HUMAN_FEEDBACK.md');
+  if (t == null)
+    return {
+      present: false,
+      gaps: [
+        'HUMAN_FEEDBACK.md missing — record each human critique + resolution before merge, or state "no human feedback received"',
+      ],
+    };
+  const g = [];
+  const RE_FB = /^\s*-\s*\*\*FB-\d+\*\*\s*\[status:\s*(open|resolved|wontfix)\]/i;
+  const open = [];
+  let count = 0;
+  for (const ln of t.split(/\r?\n/)) {
+    const m = RE_FB.exec(ln);
+    if (m) {
+      count++;
+      if (m[1].toLowerCase() === 'open') open.push(ln.trim().slice(0, 90));
+    }
+  }
+  if (open.length)
+    g.push(
+      `HUMAN_FEEDBACK: ${open.length} item(s) still [status: open] — resolve (or mark wontfix with rationale) before merge: ${open[0]}`,
+    );
+  if (count === 0 && !/no\s+human\s+feedback\s+received/i.test(t))
+    g.push(
+      'HUMAN_FEEDBACK.md has no FB-N entries and no explicit "no human feedback received" statement — state one or the other',
+    );
+  return { present: true, gaps: g };
+}
+
+const PHASES = [null, phase1, phase2, phase3, phase4, phase5, phase6, phase7, phase8, phase9];
 const PHASE_NAMES = [
   '', 'PLAN', 'PLAN_AUDIT', 'TESTS', 'DECISIONS',
-  'IMPLEMENT+DRIFT', 'BLIND_AUDIT', 'FIX_LOOP', 'TEST_RESULTS',
+  'IMPLEMENT+DRIFT', 'BLIND_AUDIT', 'FIX_LOOP', 'TEST_RESULTS', 'HUMAN_FEEDBACK',
 ];
 
 // ---------------------------------------------------------------------------
@@ -843,7 +882,7 @@ if (wantAll) {
   const results = [];
   const glob = checkA1(); // A1 runs globally, regardless of --dir
   if (glob.length) results.push({ n: 0, name: 'GLOBAL', present: true, gaps: glob });
-  for (let n = 1; n <= 8; n++) results.push(runOne(n));
+  for (let n = 1; n <= 9; n++) results.push(runOne(n));
   const anyFail = report(results);
   // contiguity: no completed (present & OK) phase may sit above a PENDING one
   let sawPending = false;
@@ -857,13 +896,13 @@ if (wantAll) {
     process.exit(1);
   }
   const highest = results.filter((r) => r.present).map((r) => r.n).pop() || 0;
-  process.stdout.write(`lifecycle-check: OK — phases 1..${highest} complete (${highest}/8).\n`);
+  process.stdout.write(`lifecycle-check: OK — phases 1..${highest} complete (${highest}/9).\n`);
   process.exit(0);
 }
 
 if (phaseArg) {
   const n = parseInt(phaseArg, 10);
-  if (!(n >= 1 && n <= 8)) fail(`--phase must be 1..8 (got ${phaseArg})`);
+  if (!(n >= 1 && n <= 9)) fail(`--phase must be 1..9 (got ${phaseArg})`);
   const glob = checkA1(); // A1 runs globally, regardless of --dir
   const r = runOne(n);
   const anyFail = report(glob.length ? [{ n: 0, name: 'GLOBAL', present: true, gaps: glob }, r] : [r]);

@@ -67,6 +67,9 @@ Match these line formats precisely or the gate will not pass.
 - **Frontend gate line** (`TEST_RESULTS.md`, REQUIRED once the diff touches a UI
   workspace) — `npm run check (ui): PASS` — one line per touched workspace; the
   label is `ui` (→ `src-app/ui`) or `desktop/ui` (→ `src-app/desktop/ui`)
+- **Human-feedback entry** (`HUMAN_FEEDBACK.md`) —
+  `- **FB-1** [status: resolved] — <verbatim feedback> → <resolution> [generalizable: yes — <rule>]`
+  (`status` ∈ `open | resolved | wontfix`; any `open` fails phase 9)
 
 ---
 
@@ -353,6 +356,40 @@ an inline tail — the failing test's assertion/panic is in the body, and a
 re-run to recover it wastes minutes ([[feedback_periodic_check_stuck]]).
 
 Gate: `--phase 8`.
+
+## Phase 9 — HUMAN_FEEDBACK.md (the human-review gate; last before merge)
+
+Maintain `.lifecycle/<feature>/HUMAN_FEEDBACK.md` as a **living ledger** from the
+moment the feature is testable. When the human reviews the running feature and
+gives feedback — a UX critique, a missed convention, a "no user would do this" —
+record it **VERBATIM** immediately, then resolve it and log how. Never
+paraphrase-away or silently drop a human critique.
+
+One entry per feedback item, in this exact shape (the gate parses it):
+
+```
+- **FB-1** [status: resolved] — <verbatim human feedback> → <how you addressed it> [generalizable: yes — <candidate lifecycle rule the whole fleet should follow>]
+- **FB-2** [status: open] — <verbatim feedback not yet fixed>
+- **FB-3** [status: wontfix] — <feedback> → <rationale for not doing it>
+```
+
+- `[status: …]` ∈ `open | resolved | wontfix`. **Any `open` item FAILS the gate**
+  — the feature is not merge-ready with unaddressed human feedback.
+- `[generalizable: yes — <rule>]` flags feedback that isn't specific to this
+  feature but is a **convention the whole fleet should follow** (e.g. "select an
+  entity with a picker, never a raw ID text input"; "reuse existing page/drawer
+  layouts, don't build bespoke"). The orchestrator HARVESTS every
+  `generalizable: yes` item at merge and folds it into this skill / a lint — so
+  one human's feedback improves every future feature.
+- If the human gave **no** feedback, the file must exist and state
+  **"no human feedback received"** explicitly — absence is a deliberate claim.
+
+This gate is **PENDING** (informational, does not block the build) while the file
+is absent — a feature can be 8/8 and still awaiting human review. It reaches
+**9/9 (truly merge-ready)** only once the file exists and every item is resolved.
+The merge does not happen until the orchestrator has read this ledger.
+
+Gate: `--phase 9` (fails on any `[status: open]`; pending while the file is absent).
 
 ---
 
