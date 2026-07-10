@@ -910,11 +910,9 @@ impl McpChatExtension {
                 // server's artifact URL on its own (private/RFC1918) host can be ingested. is_system
                 // servers have their `url` redacted in this list — those are covered by the
                 // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
-                let trusted_hosts: Vec<String> = accessible_servers
-                    .iter()
-                    .filter_map(|s| s.url.as_deref())
-                    .filter_map(crate::modules::mcp::resource_link::host_of)
-                    .collect();
+                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_urls(
+                    accessible_servers.iter().map(|s| s.url.as_deref()),
+                );
 
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
@@ -2867,11 +2865,9 @@ impl ChatExtension for McpChatExtension {
                 // server's artifact URL on its own (private/RFC1918) host can be ingested. is_system
                 // servers have their `url` redacted in this list — those are covered by the
                 // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
-                let trusted_hosts: Vec<String> = accessible_servers
-                    .iter()
-                    .filter_map(|s| s.url.as_deref())
-                    .filter_map(crate::modules::mcp::resource_link::host_of)
-                    .collect();
+                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_urls(
+                    accessible_servers.iter().map(|s| s.url.as_deref()),
+                );
 
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,

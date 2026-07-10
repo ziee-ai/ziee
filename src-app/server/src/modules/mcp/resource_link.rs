@@ -231,6 +231,19 @@ pub(crate) fn host_of(url: &str) -> Option<String> {
         .map(|h| h.to_ascii_lowercase())
 }
 
+/// Build the same-host trust set — the deduplicated, lowercased hosts of the given MCP-server URLs
+/// (skipping stdio servers with no `url` and any URL without a host). This is the value the call
+/// sites pass as `trusted_hosts` to [`persist_links`]; a single helper keeps the chat and workflow
+/// derivations identical.
+pub(crate) fn trusted_hosts_from_urls<'a>(
+    urls: impl IntoIterator<Item = Option<&'a str>>,
+) -> Vec<String> {
+    let mut hosts: Vec<String> = urls.into_iter().flatten().filter_map(host_of).collect();
+    hosts.sort();
+    hosts.dedup();
+    hosts
+}
+
 /// Which SSRF policy the external-server HTTP fetch of a `resource_link` uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FetchPolicyKind {
@@ -672,6 +685,138 @@ pub async fn persist_links(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::url_validator::{validate_outbound_url, OutboundUrlPolicy};
+
+    // TEST-1: host_of lowercases + extracts host, ignoring port/scheme-case.
+    #[test]
+    fn host_of_is_host_only_case_insensitive() {
+        assert_eq!(host_of("http://172.21.0.1:9004/mcp"), Some("172.21.0.1".into()));
+        // Same host, different port + upper-case scheme → same lowercased host.
+        assert_eq!(host_of("HTTP://172.21.0.1:9005/results/x.csv"), Some("172.21.0.1".into()));
+        assert_eq!(host_of("http://RCPA.Local:9005/x"), Some("rcpa.local".into()));
+        // No host / unparseable → None (no panic).
+        assert_eq!(host_of("not a url"), None);
+        assert_eq!(host_of("ziee:///abs/path"), None);
+    }
+
+    // TEST-10: trusted_hosts_from_urls — the shared derivation used by both the chat and workflow
+    // call sites. Skips None (stdio servers) + hostless URLs, lowercases, and dedups.
+    #[test]
+    fn trusted_hosts_from_urls_dedups_and_lowercases() {
+        let urls = vec![
+            Some("http://172.21.0.1:9004/mcp"), // RCPA
+            Some("http://172.21.0.1:9005/x"),   // same host, different port → dedups
+            Some("HTTP://RCPA.Local:9004/mcp"), // lowercased
+            None,                               // stdio server → skipped
+            Some("not a url"),                  // hostless → skipped
+            Some("http://10.0.0.5:9004"),       // DSCC on a different host
+        ];
+        let hosts = trusted_hosts_from_urls(urls);
+        assert_eq!(hosts, vec!["10.0.0.5", "172.21.0.1", "rcpa.local"]);
+    }
+
+    // TEST-2: choose_fetch_policy precedence — debug > env > host-match > public.
+    #[test]
+    fn choose_fetch_policy_precedence() {
+        let trusted = vec!["172.21.0.1".to_string()];
+        let link = "http://172.21.0.1:9005/results/x.csv";
+        let untrusted_link = "http://10.9.9.9:9005/x";
+
+        // trusted host, no env, no debug → scoped.
+        assert_eq!(
+            choose_fetch_policy(link, &trusted, false, false),
+            FetchPolicyKind::PrivateScoped
+        );
+        // untrusted host, env off → public.
+        assert_eq!(
+            choose_fetch_policy(untrusted_link, &trusted, false, false),
+            FetchPolicyKind::Public
+        );
+        // untrusted host, env on → global.
+        assert_eq!(
+            choose_fetch_policy(untrusted_link, &trusted, false, true),
+            FetchPolicyKind::PrivateGlobal
+        );
+        // trusted host + env on → global wins (env precedence over host-match).
+        assert_eq!(
+            choose_fetch_policy(link, &trusted, false, true),
+            FetchPolicyKind::PrivateGlobal
+        );
+        // debug loopback is highest precedence.
+        assert_eq!(
+            choose_fetch_policy(untrusted_link, &trusted, true, true),
+            FetchPolicyKind::DevLocal
+        );
+        // empty trusted set → never scoped.
+        assert_eq!(
+            choose_fetch_policy(link, &[], false, false),
+            FetchPolicyKind::Public
+        );
+    }
+
+    // TEST-3: kind → (policy, follow_redirects) mapping. `OutboundUrlPolicy` is not `PartialEq`,
+    // so a policy is identified by its distinguishing capability fields.
+    #[test]
+    fn fetch_policy_and_redirects_mapping() {
+        // Public: no localhost, no private, no link-local; redirects followed.
+        let (p, r) = fetch_policy_and_redirects(FetchPolicyKind::Public);
+        assert!(!p.allow_localhost && !p.allow_private && !p.allow_link_local);
+        assert!(r, "public follows (re-validated) redirects");
+        // PrivateScoped: MCP_USER (localhost + private, NO link-local); redirects DISABLED.
+        let (p, r) = fetch_policy_and_redirects(FetchPolicyKind::PrivateScoped);
+        assert!(p.allow_localhost && p.allow_private && !p.allow_link_local);
+        assert!(!r, "scoped path disables redirects (off-host must not inherit)");
+        // PrivateGlobal: MCP_USER; redirects followed.
+        let (p, r) = fetch_policy_and_redirects(FetchPolicyKind::PrivateGlobal);
+        assert!(p.allow_localhost && p.allow_private && !p.allow_link_local);
+        assert!(r);
+        // DevLocal: localhost only (no private, no link-local); redirects followed.
+        let (p, r) = fetch_policy_and_redirects(FetchPolicyKind::DevLocal);
+        assert!(p.allow_localhost && !p.allow_private && !p.allow_link_local);
+        assert!(r);
+    }
+
+    // TEST-4: end-to-end policy behavior on IP literals (no DNS) — private allowed under
+    // MCP_USER, blocked under PUBLIC; IMDS/link-local always blocked even under MCP_USER.
+    #[test]
+    fn policy_behavior_on_ip_literals() {
+        let private = "http://172.21.0.1:9005/results/x.csv";
+        assert!(
+            validate_outbound_url(private, &OutboundUrlPolicy::MCP_USER).is_ok(),
+            "MCP_USER allows RFC1918 private"
+        );
+        assert!(
+            validate_outbound_url(private, &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS).is_err(),
+            "PUBLIC blocks RFC1918 private (the default that broke ingest)"
+        );
+        // IMDS / link-local stays blocked even under the trusted MCP_USER policy.
+        assert!(
+            validate_outbound_url("http://169.254.169.254/latest/meta-data", &OutboundUrlPolicy::MCP_USER)
+                .is_err(),
+            "MCP_USER still blocks IMDS/link-local"
+        );
+    }
+
+    // TEST-5: resource_link_allow_private_env reads ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE.
+    // Env mutation is process-global; no other unit test reads this var, and we restore it.
+    #[test]
+    fn allow_private_env_reads_the_flag() {
+        const KEY: &str = "ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE";
+        let saved = std::env::var(KEY).ok();
+        // SAFETY: single-threaded within this test; var is exclusive to it.
+        unsafe {
+            std::env::set_var(KEY, "1");
+            assert!(resource_link_allow_private_env(), "\"1\" → enabled");
+            std::env::set_var(KEY, "0");
+            assert!(!resource_link_allow_private_env(), "\"0\" → disabled");
+            std::env::remove_var(KEY);
+            assert!(!resource_link_allow_private_env(), "unset → disabled");
+            match saved {
+                Some(v) => std::env::set_var(KEY, v),
+                None => std::env::remove_var(KEY),
+            }
+        }
+    }
 
     #[test]
     fn trusted_emitter_gate_accepts_builtins_rejects_others() {
