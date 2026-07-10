@@ -66,6 +66,18 @@ Match these line formats precisely or the gate will not pass.
 
 ## Phase 1 — PLAN.md
 
+**Preflight FIRST** — before writing a line of the plan, run the environment
+gate so a setup problem surfaces now, not three phases deep into a red build:
+
+```bash
+bash .claude/lifecycle/preflight.sh --repo <worktree-root>
+# exit 0 → env ready. non-zero → fix the printed problem (hub-seed, build-DB
+# isolation, node_modules, pgvector submodule, stale Vite) before proceeding.
+```
+
+(This is the same gate on Linux, macOS, and Windows git-bash — it avoids
+GNU-only tool flags and guards Unix-only tools.)
+
 Write `.lifecycle/<feature>/PLAN.md` with three required sections:
 
 - `## Items` — every unit of work as `- **ITEM-N**: <desc>`. IDs are the spine of
@@ -74,6 +86,15 @@ Write `.lifecycle/<feature>/PLAN.md` with three required sections:
 - `## Patterns to follow` — for each area, name the **closest existing module**
   to mirror (file structure, naming, idioms). This is a hard project rule
   ([[feedback_match_existing_patterns]]).
+
+**P3 — conflict-surface scoping (BASE.md).** Also write a short
+`.lifecycle/<feature>/BASE.md` recording what CURRENT main touches that this
+branch will also touch: the highest existing migration number
+(`ls src-app/server/migrations | tail -1`), any files/modules you expect to
+edit that main is actively changing, and whether an `openapi.json` regen is
+implied. This makes a migration-number or file collision visible at plan time
+rather than as a build.rs failure after a long merge — and it is exactly what
+the merge-gate re-checks against real main at merge time.
 
 Gate: `--phase 1`.
 
@@ -134,6 +155,24 @@ ambiguous into ONE `AskUserQuestion` at plan time. **Zero** `TBD`/`TODO`/`ASK`/
 **Resolution:** case-insensitive substring (ILIKE '%q%')
 **Basis:** convention — matches conversations title filter in chat/repository.rs
 ```
+
+**Configurable-settings rule (mandatory DEC).** Any operational tunable the
+feature introduces — resource limits (memory/CPU/timeout/size caps), retention
+periods, rate/quota limits, concurrency caps, feature enable/disable toggles,
+model/provider selection, thresholds — MUST get an explicit DEC answering
+**"fixed constant, or admin-configurable settings row?"** Default to
+**admin-configurable** following the existing singleton-settings pattern
+(`code_sandbox_settings` / `session_settings` / `memory_admin_settings`: a
+settings table + migration with sane defaults, read-at-use with cache
+invalidation, REST GET/PUT gated by a `<feature>::settings::{read,manage}`
+permission, a sync entity, an admin settings card mirroring the closest
+existing one, and bounds validation so an admin can't footgun the server).
+Choose a fixed constant ONLY with an explicit rationale (e.g. a security
+boundary that must not be operator-weakened) — and even then, structure it as a
+`Limits`-style struct (not inline magic numbers) so it can be promoted to
+configurable later without a rewrite. Never ship an operational tunable as a
+bare hardcoded constant by omission. Enumerate the settings CRUD + gate + sync +
+validation in TESTS.md when configurable.
 
 Gate: `--phase 4`.
 
@@ -246,7 +285,87 @@ no passing `npm run check` line, or if any enumerated `tier: e2e` spec is not
 PASS. Never `#[ignore]` (or `.skip`) to go green — only genuine
 platform-incompatibility is a legit skip ([[feedback_no_ignore_unless_platform]]).
 
+**Phase 8 also enforces these deterministically** (from the diff + `TEST_RESULTS.md`),
+so budget for them — they are not optional polish:
+
+- **A2** clean working tree — every load-bearing file committed on the branch
+  (no uncommitted change the gate can't see).
+- **A3** no diff-added `#[ignore]`/`.skip`/`.only`; **A4** no cosmetic/always-true
+  assertion (`assert!(true)`, `expect(x).toBe(x)`).
+- **A5** TESTS.md may not shrink — a previously-enumerated TEST-ID cannot vanish.
+- **A7** a UI diff must record a boot/runtime canary line
+  (`gate:ui (<ws>): PASS`) — a green e2e can still ship a non-booting app or a
+  root ErrorBoundary crash on an un-exercised path. **A6:** the gallery +
+  `gate:ui` + `runtime-health` IS the browser-verify harness — "I can't verify
+  in a browser" is not a valid gap.
+- **A8** a new built-in MCP server must include BOTH `mcp.rs` edits
+  (`auto_attach_builtin_ids` + `is_builtin_server_id`) — else it registers but
+  the model never sees the tools.
+- **A9** a new permission must have a DENY-path test (403/forbidden), not only
+  the allow path.
+- **R2-5** every `/api/` e2e route-mock the diff adds must match a live route in
+  `openapi.json` — a renamed route makes the mock a silent no-op that
+  false-greens the spec.
+
+**P4 — full-output capture.** Save the FULL test log as an artifact
+(`| tee /data/pbya/ziee/tmp/lifecycle-logs/<feature>-{int,e2e}.log`), never just
+an inline tail — the failing test's assertion/panic is in the body, and a
+re-run to recover it wastes minutes ([[feedback_periodic_check_stuck]]).
+
 Gate: `--phase 8`.
+
+---
+
+## Phase discipline (binding behavioral rules)
+
+These are the human-judgment rules the deterministic gate cannot encode. They
+are binding, not advisory — each traces to a specific failure that reached main
+or wasted many sessions.
+
+- **B1 — box load is NOT a deferral reason.** "The machine is busy, I'll do it
+  later" is not a valid stop. Check actual CPU headroom (`%idle`/`%iowait` via
+  `top`/`iostat`/Activity Monitor/`Get-Counter` on Windows), not the load
+  average — a high load average with idle CPU is fine. "Blocked" requires a
+  SPECIFIC error (a port bind failure, a docker daemon down, a compile error),
+  never a resource metric.
+- **B3 — never edit the SHARED test harness to route around YOUR feature's
+  problem.** `tests/common/*`, the gallery cassette, `playwright.*.config`, the
+  build DB helper are shared infrastructure. If your test needs them changed,
+  that's a signal your feature is wrong or the change belongs in its own
+  reviewed commit — not a silent workaround that breaks everyone else.
+- **B4 — a warm build is NOT a clean build.** New SSE/content-block variants,
+  proc-macro registrations, and codegen inputs can compile against a STALE
+  expansion in an incremental tree yet fail from clean. Validate them with
+  `cargo clean -p <crate> && cargo check` before believing them. (The
+  authoritative catch is the merge-gate's C1; this is the cheap local mitigation.)
+- **B5 — don't stop to ask permission mid-task.** Continue authorized work to
+  completion; surface genuinely ambiguous PRODUCT decisions once, up front, in
+  Phase 4 — not as a mid-implementation halt ([[feedback_autonomous_loop]]).
+- **P1 — independently re-verify the load-bearing gate yourself.** Trust the
+  ARTIFACT you re-ran, not a sub-agent's "it passes" self-report. Before
+  declaring a phase done, re-run its gate in the actual worktree and read the
+  output. This is the single biggest clean-vs-red differentiator.
+- **P5 — native-verify a cfg-gated arm on ITS OWN platform.** A
+  `#[cfg(target_os = "windows")]` / `#[cfg(target_os = "macos")]` block is
+  invisible to a Linux `cargo check` — it is never compiled. Before pushing
+  platform-specific code you MUST `cargo check` it on that OS (the Mac / Windows
+  build hosts — [[project_crossplatform_build_test_hosts]]) and give it a
+  cfg-gated unit test that runs there. A Linux-only green is not coverage of a
+  Windows/macOS arm.
+- **R2-3 — diff-review desktop `ui/` overrides against the server `ui/`
+  equivalent (SECURITY).** `src-app/desktop/ui/` carries HAND-WRITTEN overrides
+  (not just codegen). When you change logic in `src-app/ui/`, diff the desktop
+  counterpart and confirm no security-relevant logic was dropped — a dropped
+  `evaluatePermission` filter once reached desktop prod. Codegen'd files
+  (`openapi.json`/`api-client/types.ts`) are regenerated for both by
+  `just openapi-regen`; the hand-written surfaces are the risk.
+
+**Cross-platform reality.** This infra runs on Linux, macOS, and Windows.
+`lifecycle-check.mjs`, `merge-gate.mjs` are pure Node (portable); `preflight.sh`,
+`selftest*.sh`, and the git hook run under bash — present on all three via
+git-bash on Windows (git runs its hooks through that same bash). Keep any new
+shell in this dir POSIX-portable (no GNU-only flags; guard Unix-only tools with
+`command -v`).
 
 ---
 
@@ -274,3 +393,24 @@ and pre-push hook can gate it. They are process records, not product code —
 **strip them when merging to main**: the merge driver (or the final commit
 before merge) runs `git rm -r .lifecycle` so main never accumulates lifecycle
 artifacts. The branch history preserves them for audit.
+
+## Merge-gate (required before ANY push to main)
+
+The per-branch `--all` gate CANNOT catch a collision with *current* main: the
+pre-push hook EXEMPTS pushes to main by design, so a migration-number clash, a
+stale branch, a dropped desktop regen, or a proc-macro variant that only fails
+from a clean tree are all invisible to it. **Before merging/pushing to main, run
+the merge-gate** — it stages the merge onto fresh `origin/main` and re-checks
+against reality:
+
+```bash
+node .claude/lifecycle/merge-gate.mjs <feature-branch>
+# C4 stale-branch · C2 migration-collision · staging-merge + P2 completeness ·
+# C5 .lifecycle strip · C3 regen-parity (BOTH ui/ + desktop/ui/) · C1 clean build
+# exit 0 → the merge onto current main is clean. non-zero → fix the reported gate.
+```
+
+Add `--keep-staging` to push the validated merge straight from the staging
+worktree; `--skip-heavy` to run only the fast deterministic gates (C2/C4/P2/C5)
+when iterating. This codifies — and replaces — the by-hand
+staging-merge/`cargo clean`/regen-both-workspaces discipline.
