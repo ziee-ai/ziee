@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **334** surfaces carry at least one renderable-state signal.
-- **1947** signals total: 1538 branch, 116 empty, 100 error, 103 loading, 88 overlay, 2 panel.
+- **335** surfaces carry at least one renderable-state signal.
+- **1954** signals total: 1545 branch, 116 empty, 100 error, 103 loading, 88 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -46,9 +46,9 @@ conversation page.
 | `settingsAdminPages` | `modules/js-tool/module`:39 |
 | `settingsAdminPages` | `modules/literature/module`:65 |
 | `settingsAdminPages` | `modules/llm-local-runtime/module`:89 |
-| `settingsAdminPages` | `modules/llm-provider/module`:137 |
+| `settingsAdminPages` | `modules/llm-provider/module`:143 |
 | `settingsAdminPages` | `modules/llm-repository/module`:56 |
-| `settingsAdminPages` | `modules/mcp/module`:141 |
+| `settingsAdminPages` | `modules/mcp/module`:147 |
 | `settingsAdminPages` | `modules/memory/module`:71 |
 | `settingsAdminPages` | `modules/scheduler/module`:78 |
 | `settingsAdminPages` | `modules/server-update/module`:35 |
@@ -60,15 +60,15 @@ conversation page.
 | `settingsUserPages` | `modules/assistant/module`:69 |
 | `settingsUserPages` | `modules/citations/module`:37 |
 | `settingsUserPages` | `modules/literature/module`:77 |
-| `settingsUserPages` | `modules/mcp/module`:132 |
+| `settingsUserPages` | `modules/mcp/module`:137 |
 | `settingsUserPages` | `modules/memory/module`:61 |
 | `settingsUserPages` | `modules/profile/module`:37 |
 | `settingsUserPages` | `modules/settings-general/module`:25 |
 | `settingsUserPages` | `modules/skill/module`:95 |
-| `settingsUserPages` | `modules/user-llm-providers/module`:36 |
+| `settingsUserPages` | `modules/user-llm-providers/module`:40 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:89 |
+| `sidebarContent` | `modules/chat/module`:95 |
 
 ## Per-surface required states
 
@@ -1468,6 +1468,14 @@ Required states: `delayed`, `error`
 | error | `error && !settings` | 34 |
 | loading | `loading && !settings` | 44 |
 
+### `modules/file/chat-extension/components/FileAttachMenuItem`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!canUpload` | 21 |
+
 ### `modules/file/chat-extension/components/FilePasteHandler`
 
 Required states: `empty`
@@ -1494,9 +1502,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 29 |
-| empty | `dropped.length === 0` | 52 |
-| branch | `dragging && host` | 87 |
+| branch | `!el` | 38 |
+| branch | `!canUploadRef.current` | 42 |
+| branch | `!canUploadRef.current` | 57 |
+| empty | `dropped.length === 0` | 63 |
+| branch | `dragging && host` | 98 |
 
 ### `modules/file/chat-extension/components/FileUploadButton`
 
@@ -2353,14 +2363,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!item` | 151 |
-| branch | `primaryItems.length > 0` | 172 |
-| branch | `navigationItems.length > 0` | 186 |
-| branch | `!isIconOnly` | 207 |
-| branch | `isIconOnly` | 220 |
-| branch | `toolsItems.length > 0` | 223 |
-| branch | `!isIconOnly && bottomWidgets.length > 0` | 242 |
-| branch | `footerWidgets.length > 0` | 257 |
+| branch | `!item` | 157 |
+| branch | `primaryItems.length > 0` | 178 |
+| branch | `navigationItems.length > 0` | 192 |
+| branch | `!isIconOnly` | 213 |
+| branch | `isIconOnly` | 226 |
+| branch | `toolsItems.length > 0` | 229 |
+| branch | `!isIconOnly && bottomWidgets.length > 0` | 248 |
+| branch | `footerWidgets.length > 0` | 263 |
 
 ### `modules/layouts/app-layout/components/ResizeHandle`
 
@@ -2639,7 +2649,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!providerId` | 25 |
+| branch | `!providerId` | 31 |
 
 ### `modules/llm-provider/components/ProviderHeader`
 
@@ -2805,10 +2815,11 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 37 |
-| error | `error` | 56 |
-| loading | `loading` | 60 |
-| empty | `providers.length === 0` | 64 |
+| loading | `loading` | 42 |
+| branch | `canManage` | 48 |
+| error | `error` | 63 |
+| loading | `loading` | 67 |
+| empty | `providers.length === 0` | 71 |
 
 ### `modules/llm-repository/components/LlmRepositoryDrawer`
 
@@ -3153,11 +3164,11 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading` | 45 |
-| branch | `canManage` | 51 |
-| error | `error` | 66 |
-| loading | `loading` | 70 |
-| empty | `servers.length === 0` | 74 |
+| loading | `loading` | 50 |
+| branch | `canManage` | 56 |
+| error | `error` | 71 |
+| loading | `loading` | 75 |
+| empty | `servers.length === 0` | 79 |
 
 ### `modules/memory/chat-extension/components/MemoryStatusPill`
 
@@ -3463,24 +3474,25 @@ Required states: `delayed`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!projectId` | 137 |
-| overlay | `<Confirm open>` | 248 |
-| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 299 |
-| branch | `cancelled` | 301 |
-| branch | `event.data.conversationId !== conversationId` | 319 |
-| branch | `event.data.conversationId !== conversationId` | 333 |
-| loading | `state.kind === 'loading'` | 346 |
-| branch | `state.kind === 'in_project'` | 350 |
-| overlay | `<AddToProjectModal open>` | 387 |
-| branch | `loaded` | 429 |
-| branch | `cancelled` | 431 |
-| branch | `event.data.conversationId !== conversation.id` | 448 |
-| branch | `event.data.conversationId !== conversation.id` | 458 |
-| branch | `!project` | 479 |
-| branch | `!ok` | 486 |
-| branch | `project` | 498 |
-| branch | `loaded` | 515 |
-| overlay | `<AddToProjectModal open>` | 528 |
+| branch | `!projectId` | 150 |
+| overlay | `<Confirm open>` | 261 |
+| branch | `cached !== undefined && (cached === null \|\| cached.name)` | 317 |
+| branch | `cancelled` | 319 |
+| branch | `event.data.conversationId !== conversationId` | 337 |
+| branch | `event.data.conversationId !== conversationId` | 351 |
+| branch | `!canUseProjects` | 365 |
+| loading | `state.kind === 'loading'` | 367 |
+| branch | `state.kind === 'in_project'` | 371 |
+| overlay | `<AddToProjectModal open>` | 408 |
+| branch | `loaded` | 454 |
+| branch | `cancelled` | 456 |
+| branch | `event.data.conversationId !== conversation.id` | 473 |
+| branch | `event.data.conversationId !== conversation.id` | 483 |
+| branch | `!project` | 504 |
+| branch | `!ok` | 511 |
+| branch | `project` | 523 |
+| branch | `loaded` | 540 |
+| overlay | `<AddToProjectModal open>` | 553 |
 
 ### `modules/projects/components/AddToProjectModal`
 
@@ -3541,8 +3553,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `name === 'knowledge_kinds'` | 84 |
-| branch | `name === 'advanced_settings'` | 92 |
+| branch | `name === 'knowledge_kinds'` | 101 |
+| branch | `name === 'advanced_settings'` | 112 |
 
 ### `modules/projects/core/extensions/slots`
 
@@ -3550,8 +3562,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `renderers.length === 0` | 36 |
-| branch | `fallback` | 37 |
+| empty | `renderers.length === 0` | 51 |
+| branch | `fallback` | 52 |
 
 ### `modules/projects/pages/ProjectDetailPage`
 
@@ -3960,8 +3972,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `group.is_system` | 141 |
-| branch | `registeredWidgets.length > 0` | 176 |
+| branch | `group.is_system` | 145 |
+| branch | `registeredWidgets.length > 0` | 180 |
 
 ### `modules/user/components/group/GroupMembersDrawer`
 
@@ -4110,10 +4122,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `content.content_type !== 'tool_result'` | 15 |
-| branch | `!dir \|\| !conversationId` | 40 |
-| branch | `!dir \|\| !conversationId` | 54 |
-| branch | `canGraduate` | 85 |
+| branch | `content.content_type !== 'tool_result'` | 17 |
+| branch | `!dir \|\| !conversationId` | 50 |
+| branch | `!dir \|\| !conversationId` | 64 |
+| branch | `canGraduate` | 95 |
+| branch | `canSave` | 97 |
+| branch | `canDownload` | 110 |
 
 ### `modules/workflow/components/DryRunPreviewDialog`
 

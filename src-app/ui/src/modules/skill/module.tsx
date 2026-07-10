@@ -116,6 +116,8 @@ export default createModule({
       {
         order: 30,
         component: GroupSystemSkillsWidget,
+        // Widget loads group system-skills (skills::assign_to_groups).
+        permission: Permissions.SkillsAssignToGroups,
       },
     ],
   },
