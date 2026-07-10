@@ -365,7 +365,7 @@ export function LlmModelsSection() {
               <div className="flex items-start gap-3 flex-wrap">
                 {/* Model Info */}
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <div className={'flex-1 min-w-48'}>
                       <Text className="font-medium">
                         {llmModel.display_name}
@@ -388,11 +388,11 @@ export function LlmModelsSection() {
                   </div>
 
                   <div className="space-y-1">
-                    <Text type="secondary" className="text-xs block">
+                    <Text type="secondary" className="text-sm block">
                       Model ID: {llmModel.name}
                     </Text>
                     {llmModel.is_active && llmModel.port && (
-                      <Text type="secondary" className="text-xs block">
+                      <Text type="secondary" className="text-sm block">
                         Running on:{' '}
                         <a
                           href={`http://127.0.0.1:${llmModel.port}`}
@@ -411,37 +411,37 @@ export function LlmModelsSection() {
                     {llmModel.capabilities && (
                       <Flex wrap className="gap-3 pt-1 flex-wrap">
                         {llmModel.capabilities.vision && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             👁️ Vision
                           </Text>
                         )}
                         {llmModel.capabilities.audio && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             🎵 Audio
                           </Text>
                         )}
                         {llmModel.capabilities.tools && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             🔧 Tools
                           </Text>
                         )}
                         {llmModel.capabilities.code_interpreter && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             💻 Code
                           </Text>
                         )}
                         {llmModel.capabilities.chat && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             💬 Chat
                           </Text>
                         )}
                         {llmModel.capabilities.text_embedding && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             🔍 Embedding
                           </Text>
                         )}
                         {llmModel.capabilities.image_generator && (
-                          <Text type="secondary" className="text-xs">
+                          <Text type="secondary" className="text-sm">
                             🎨 Image Gen
                           </Text>
                         )}
@@ -450,7 +450,7 @@ export function LlmModelsSection() {
                   </div>
                 </div>
               </div>
-              {index < llmModels.length - 1 && <Separator className="my-0" />}
+              {index < llmModels.length - 1 && <Separator className="my-4" />}
             </div>
           ))}
         </div>

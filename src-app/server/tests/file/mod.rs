@@ -13,6 +13,7 @@ mod artifacts_test;
 mod file_attachments_test;
 mod file_attachments_real_providers_test;
 mod pdf_raw_test;
+mod text_rects_test;
 mod provider_routing_integration_test;
 
 // Get the path to test data

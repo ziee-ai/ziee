@@ -3588,6 +3588,88 @@
         ]
       }
     },
+    "/api/files/{file_id}/text-rects": {
+      "get": {
+        "summary": "Citation highlight rectangles for a chunk's span on a page.",
+        "description": "\n\n**Required Permission:** `files::read`\n\nView file metadata and list files",
+        "operationId": "File.getTextRects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextRectsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/files/{file_id}/download": {
       "get": {
         "tags": [
@@ -5935,6 +6017,21 @@
         }
       }
     },
+    "/api/local-llm/v1/rerank": {
+      "post": {
+        "tags": [
+          "Local LLM Proxy"
+        ],
+        "summary": "OpenAI-compatible /v1/rerank proxy (cross-encoder reranker).",
+        "operationId": "LocalLlmProxy.rerank",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {}
+          },
+          "required": true
+        }
+      }
+    },
     "/api/local-llm/v1/models": {
       "get": {
         "tags": [
@@ -7034,6 +7131,937 @@
           },
           "404": {
             "description": "Download not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/transcribe": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Transcribe a recorded audio clip (WAV) into text for the composer",
+        "description": "\n\n**Required Permission:** `voice::transcribe`\n\nRecord audio and transcribe it into the chat composer.",
+        "operationId": "Voice.transcribe",
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Record audio and transcribe it into the chat composer.",
+                        "name": "VoiceTranscribe",
+                        "value": "voice::transcribe"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::transcribe",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of a transcription request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/capability": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Voice dictation readiness for the composer mic button",
+        "description": "\n\n**Required Permission:** `voice::transcribe`\n\nRecord audio and transcribe it into the chat composer.",
+        "operationId": "Voice.capability",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Record audio and transcribe it into the chat composer.",
+                        "name": "VoiceTranscribe",
+                        "value": "voice::transcribe"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::transcribe",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Readiness snapshot for the composer mic button. Reachable by any user holding\n `voice::transcribe` (NOT admin-gated) so a normal user can decide whether to\n enable/disable/hide the mic without touching an admin endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCapability"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/settings": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Read voice dictation settings",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide voice settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Update voice dictation settings (enable, model, language, caps)",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.updateSettings",
+        "requestBody": {
+          "description": "PUT body for the global settings. Every field optional → absent = leave.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVoiceSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide voice settings (singleton row). Returned by GET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/sync-cache": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Back-fill the runtime-version registry from cached whisper binaries on disk",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.syncVersionCache",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response after syncing cache with database.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncCacheResponse2"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "List all registered whisper runtime versions",
+        "operationId": "Voice.listVersions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Page number (1-indexed, default 1).",
+            "schema": {
+              "description": "Page number (1-indexed, default 1).",
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "description": "Items per page (default 500, max 500).",
+            "schema": {
+              "description": "Items per page (default 500, max 500).",
+              "type": "integer",
+              "format": "int64",
+              "default": 500
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing a list of whisper runtime versions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVersionListResponse2"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/check-updates": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "Check for available whisper runtime version updates from GitHub, scoped to the host",
+        "operationId": "Voice.checkVersionUpdates",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for the update check: upstream releases diffed against what is\n installed, scoped to the host platform/arch. Drafts are omitted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableUpdatesResponse2"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/download": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "Start (or join) a detached download of a whisper runtime version. Returns immediately with task identifiers + an SSE URL; the download keeps running on the server even after the client disconnects, so a page reload can pick it up via GET /voice/versions/downloads.",
+        "operationId": "Voice.downloadVersion",
+        "requestBody": {
+          "description": "Request to download and register a whisper runtime version. `platform` /\n `arch` default to the detected host and `backend` defaults to `cpu` (the\n v1 whisper backend) when omitted — an admin installs the host's build with\n just a version tag.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadVersionRequest2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response when a download task is started (or joined for an already-running\n download of the same version/backend). Detached: the download keeps running\n on the server even after the HTTP request returns.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadVersionStartedResponse2"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/downloads": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "List in-flight whisper download tasks (for repainting progress after a page reload)",
+        "operationId": "Voice.listVersionDownloads",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "`GET /voice/versions/downloads` response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadListResponse2"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/downloads/{key}/events": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "Subscribe to SSE progress events for one whisper download task. Sends Connected with the current snapshot immediately, replays buffered Progress frames, then live-streams until Complete/Failed.",
+        "operationId": "Voice.subscribeVersionDownloadEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEEngineDownloadEvent2"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such download task"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/{id}": {
+      "delete": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "Delete a whisper runtime version (409 when it is the default or in use by the instance)",
+        "operationId": "Voice.deleteVersion",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "remove_binary",
+            "description": "Whether to remove the binary file from disk (defaults to false).",
+            "schema": {
+              "description": "Whether to remove the binary file from disk (defaults to false).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Runtime version deleted successfully"
+          },
+          "409": {
+            "description": "Version is in use / is the system default"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/versions/{id}/set-default": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "description": "Set a whisper runtime version as the system default",
+        "operationId": "Voice.setDefaultVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing a single whisper runtime version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVersionResponse2"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Runtime version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/instance": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Read the managed whisper-server instance state",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getInstance",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot of the single managed whisper-server instance (singleton row).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceInstanceInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/instance/restart": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Restart the whisper-server with the configured model",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.restartInstance",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot of the single managed whisper-server instance (singleton row).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceInstanceInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/instance/stop": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Stop the managed whisper-server instance",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.stopInstance",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot of the single managed whisper-server instance (singleton row).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceInstanceInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/model/status": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Whisper ggml model presence + size on disk",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getModelStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Readiness of the configured (or a requested) ggml model on disk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceModelStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/model/download": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Download the configured (or a specified) whisper ggml model",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.downloadModel",
+        "requestBody": {
+          "description": "Optional body for the model download endpoint. Absent `model` → the\n currently-configured settings model.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Readiness of the configured (or a requested) ggml model on disk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceModelStatus"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -20129,6 +21157,124 @@
         ]
       }
     },
+    "/api/js-tool/settings": {
+      "get": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Read the singleton run_js (js_tool) limits configuration",
+        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
+        "operationId": "JsTool.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the run_js (js_tool) resource-limits configuration.",
+                        "name": "JsToolSettingsRead",
+                        "value": "js_tool::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Update the singleton run_js (js_tool) limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
+        "operationId": "JsTool.updateSettings",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateJsToolSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
+                        "name": "JsToolSettingsManage",
+                        "value": "js_tool::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/app/setup/status": {
       "get": {
         "tags": [
@@ -21732,6 +22878,700 @@
           }
         ]
       }
+    },
+    "/api/knowledge-bases": {
+      "get": {
+        "summary": "List the caller's knowledge bases.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBase"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create a knowledge base.",
+        "description": "\n\n**Required Permission:** `knowledge_base::manage`\n\nCreate, rename, delete knowledge bases and manage their documents.",
+        "operationId": "KnowledgeBase.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeBaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, rename, delete knowledge bases and manage their documents.",
+                        "name": "KnowledgeBaseManage",
+                        "value": "knowledge_base::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),\n never denormalized (an external file delete would drift a stored counter).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBase"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/knowledge-bases/{id}": {
+      "get": {
+        "summary": "Get one knowledge base.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),\n never denormalized (an external file delete would drift a stored counter).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBase"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Rename / describe a knowledge base.",
+        "description": "\n\n**Required Permission:** `knowledge_base::manage`\n\nCreate, rename, delete knowledge bases and manage their documents.",
+        "operationId": "KnowledgeBase.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKnowledgeBaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, rename, delete knowledge bases and manage their documents.",
+                        "name": "KnowledgeBaseManage",
+                        "value": "knowledge_base::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),\n never denormalized (an external file delete would drift a stored counter).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBase"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Delete a knowledge base.",
+        "description": "\n\n**Required Permission:** `knowledge_base::manage`\n\nCreate, rename, delete knowledge bases and manage their documents.",
+        "operationId": "KnowledgeBase.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, rename, delete knowledge bases and manage their documents.",
+                        "name": "KnowledgeBaseManage",
+                        "value": "knowledge_base::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/knowledge-bases/{id}/documents": {
+      "get": {
+        "summary": "List a KB's documents with index status.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.listDocuments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBaseDocument"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Attach existing files to a KB.",
+        "description": "\n\n**Required Permission:** `knowledge_base::manage`\n\nCreate, rename, delete knowledge bases and manage their documents.",
+        "operationId": "KnowledgeBase.attachDocuments",
+        "requestBody": {
+          "description": "Attach already-uploaded files to a KB by id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachDocumentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, rename, delete knowledge bases and manage their documents.",
+                        "name": "KnowledgeBaseManage",
+                        "value": "knowledge_base::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Result of an attach operation — how many were newly linked vs skipped as\n duplicates already in the KB (checksum dedup, DEC-36).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachDocumentsResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/knowledge-bases/{id}/documents/{file_id}": {
+      "delete": {
+        "summary": "Remove a document from a KB (join only).",
+        "description": "\n\n**Required Permission:** `knowledge_base::manage`\n\nCreate, rename, delete knowledge bases and manage their documents.",
+        "operationId": "KnowledgeBase.removeDocument",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, rename, delete knowledge bases and manage their documents.",
+                        "name": "KnowledgeBaseManage",
+                        "value": "knowledge_base::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/knowledge-bases/{id}/documents/{file_id}/reindex": {
+      "post": {
+        "summary": "Retry indexing a KB document.",
+        "description": "\n\n**Required Permission:** `knowledge_base::manage`\n\nCreate, rename, delete knowledge bases and manage their documents.",
+        "operationId": "KnowledgeBase.reindexDocument",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, rename, delete knowledge bases and manage their documents.",
+                        "name": "KnowledgeBaseManage",
+                        "value": "knowledge_base::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{cid}/knowledge-bases": {
+      "get": {
+        "summary": "List KBs attached to a conversation.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.listConversation",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBase"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{cid}/knowledge-bases/{kb_id}": {
+      "put": {
+        "summary": "Attach a KB to a conversation.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.attachConversation",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Detach a KB from a conversation.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.detachConversation",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{pid}/knowledge-bases": {
+      "get": {
+        "summary": "List KBs attached to a project.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.listProject",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeBase"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{pid}/knowledge-bases/{kb_id}": {
+      "put": {
+        "summary": "Attach a KB to a project.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.attachProject",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Detach a KB from a project.",
+        "description": "\n\n**Required Permission:** `knowledge_base::use`\n\nSearch your knowledge bases and attach them to conversations/projects.",
+        "operationId": "KnowledgeBase.detachProject",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Search your knowledge bases and attach them to conversations/projects.",
+                        "name": "KnowledgeBaseUse",
+                        "value": "knowledge_base::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: knowledge_base::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -21932,6 +23772,40 @@
         },
         "required": [
           "entry_ids"
+        ]
+      },
+      "AttachDocumentsRequest": {
+        "description": "Attach already-uploaded files to a KB by id.",
+        "type": "object",
+        "properties": {
+          "file_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "file_ids"
+        ]
+      },
+      "AttachDocumentsResult": {
+        "description": "Result of an attach operation — how many were newly linked vs skipped as\n duplicates already in the KB (checksum dedup, DEC-36).",
+        "type": "object",
+        "properties": {
+          "attached": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "skipped_duplicates": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "attached",
+          "skipped_duplicates"
         ]
       },
       "AttachFileRequest": {
@@ -22141,6 +24015,31 @@
           "versions"
         ]
       },
+      "AvailableUpdatesResponse2": {
+        "description": "Response for the update check: upstream releases diffed against what is\n installed, scoped to the host platform/arch. Drafts are omitted.",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "description": "Host architecture (`x86_64`/`aarch64`).",
+            "type": "string"
+          },
+          "platform": {
+            "description": "Host platform the asset-readiness was computed for (`linux`/`macos`/`windows`).",
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableVersion2"
+            }
+          }
+        },
+        "required": [
+          "platform",
+          "arch",
+          "versions"
+        ]
+      },
       "AvailableVersion": {
         "description": "One upstream release in the update-check diff, enriched with what we\n have installed and whether its binary is published for *this host*.",
         "type": "object",
@@ -22187,6 +24086,73 @@
           },
           "size_bytes": {
             "description": "Byte size of the archive the inline Install button would\n fetch (recommended backend when set, else the first\n published backend). `None` when no asset matches this host\n or GitHub omitted the size — UI hides the size label in\n that case.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version": {
+            "description": "Release tag (e.g. `v0.0.1-alpha`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "installed",
+          "installed_backends",
+          "binary_ready",
+          "available_backends",
+          "prerelease"
+        ]
+      },
+      "AvailableVersion2": {
+        "description": "One upstream release in the update-check diff, enriched with what we have\n installed and whether its binary is published for *this host*.",
+        "type": "object",
+        "properties": {
+          "available_backends": {
+            "description": "Backends published upstream for the host platform/arch.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "binary_ready": {
+            "description": "True if the binary for the host platform/arch is published upstream.\n False ⇒ the release exists but its build for this host is pending.",
+            "type": "boolean"
+          },
+          "installed": {
+            "description": "True if at least one backend of this version is installed for the host.",
+            "type": "boolean"
+          },
+          "installed_backends": {
+            "description": "Backends already installed for the host platform/arch (e.g. `[\"cpu\"]`).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prerelease": {
+            "description": "GitHub prerelease flag.",
+            "type": "boolean"
+          },
+          "published_at": {
+            "description": "ISO-8601 publish timestamp, if present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recommended_backend": {
+            "description": "The backend artifact recommended for this host given detected GPU/driver.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "description": "Byte size of the archive the inline Install button would fetch.",
             "type": [
               "integer",
               "null"
@@ -23682,6 +25648,24 @@
           "permissions"
         ]
       },
+      "CreateKnowledgeBaseRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
       "CreateLlmModelRequest": {
         "description": "Request to create a new LLM model",
         "type": "object",
@@ -24429,6 +26413,18 @@
           }
         }
       },
+      "DeleteVersionQuery2": {
+        "type": "object",
+        "properties": {
+          "remove_binary": {
+            "description": "Whether to remove the binary file from disk (defaults to false).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "DependencyKind": {
         "description": "`kind` discriminant on `HubDependency`. On the wire the values are\n `model` / `mcp-server` (kebab-case).",
         "type": "string",
@@ -24788,6 +26784,34 @@
           "downloads"
         ]
       },
+      "DownloadListResponse2": {
+        "description": "`GET /voice/versions/downloads` response.",
+        "type": "object",
+        "properties": {
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadSnapshot2"
+            }
+          }
+        },
+        "required": [
+          "downloads"
+        ]
+      },
+      "DownloadModelRequest": {
+        "description": "Optional body for the model download endpoint. Absent `model` → the\n currently-configured settings model.",
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "DownloadPaginationQuery": {
         "type": "object",
         "properties": {
@@ -25108,6 +27132,72 @@
           "bytes_received"
         ]
       },
+      "DownloadSnapshot2": {
+        "description": "One entry returned by `GET /voice/versions/downloads`. Lists every download\n task currently held by the in-process registry (running OR\n terminal-but-not-replaced).",
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "percent": {
+            "description": "0..=100 when `total_bytes` is set.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "result_version_id": {
+            "description": "Result version id when terminal=Completed; null otherwise.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_bytes": {
+            "description": "`None` when the upstream omitted Content-Length.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "version",
+          "backend",
+          "status",
+          "bytes_received"
+        ]
+      },
       "DownloadStatus": {
         "description": "Download status enum",
         "type": "string",
@@ -25194,6 +27284,43 @@
           "backend"
         ]
       },
+      "DownloadVersionRequest2": {
+        "description": "Request to download and register a whisper runtime version. `platform` /\n `arch` default to the detected host and `backend` defaults to `cpu` (the\n v1 whisper backend) when omitted — an admin installs the host's build with\n just a version tag.",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "description": "Architecture (x86_64, aarch64). Defaults to the host arch.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "backend": {
+            "description": "Backend (cpu, cuda, metal). Defaults to `cpu`.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "platform": {
+            "description": "Platform (linux, macos, windows). Defaults to the host platform.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "version": {
+            "description": "Version tag (e.g., \"v1.0.0\", or \"latest\").",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
       "DownloadVersionStartedResponse": {
         "description": "Response when a download task is started (or joined for an\n already-running download of the same engine/version/backend).\n Detached: the download keeps running on the server even after the\n HTTP request returns or the client disconnects, so a page reload\n can pick up the in-flight task via `GET /versions/downloads`.",
         "type": "object",
@@ -25228,6 +27355,42 @@
           "task_id",
           "key",
           "engine",
+          "version",
+          "backend",
+          "status",
+          "events_url"
+        ]
+      },
+      "DownloadVersionStartedResponse2": {
+        "description": "Response when a download task is started (or joined for an already-running\n download of the same version/backend). Detached: the download keeps running\n on the server even after the HTTP request returns.",
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "events_url": {
+            "description": "Ready-to-use SSE URL for the frontend's EventSource (relative to the API\n root). Includes the encoded key.",
+            "type": "string"
+          },
+          "key": {
+            "description": "Composite key `whisper@{version}@{backend}` — also the path segment for\n the events / snapshot endpoints.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current status snapshot at the moment the task was started or joined.",
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
           "version",
           "backend",
           "status",
@@ -25413,6 +27576,18 @@
         ]
       },
       "EngineDownloadStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "downloading",
+          "verifying",
+          "extracting",
+          "registering",
+          "completed",
+          "failed"
+        ]
+      },
+      "EngineDownloadStatus2": {
         "type": "string",
         "enum": [
           "pending",
@@ -25766,7 +27941,39 @@
             "maximum": 32767,
             "minimum": -32768
           },
+          "kb_max_documents": {
+            "type": "integer",
+            "format": "int32"
+          },
           "max_chunks_per_file": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rerank_candidate_k": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rerank_enabled": {
+            "type": "boolean"
+          },
+          "reranker_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "search_max_hit_chars": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "search_max_top_k": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "search_snippet_chars": {
             "type": "integer",
             "format": "int32"
           },
@@ -25793,6 +28000,12 @@
           "fts_rrf_k",
           "fts_candidate_multiplier",
           "fts_min_rank",
+          "rerank_enabled",
+          "rerank_candidate_k",
+          "kb_max_documents",
+          "search_max_hit_chars",
+          "search_snippet_chars",
+          "search_max_top_k",
           "updated_at"
         ]
       },
@@ -26508,6 +28721,33 @@
         },
         "required": [
           "conversation_id"
+        ]
+      },
+      "HighlightRect": {
+        "type": "object",
+        "properties": {
+          "h": {
+            "type": "number",
+            "format": "float"
+          },
+          "w": {
+            "type": "number",
+            "format": "float"
+          },
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
         ]
       },
       "HubAssistant": {
@@ -27625,6 +29865,44 @@
           "manifest_path"
         ]
       },
+      "IndexingSummary": {
+        "description": "Per-KB rollup of document index states, so the UI can show\n \"all indexed / M indexing / K failed / P no-text\" and gate grounding.",
+        "type": "object",
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "indexed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "indexing": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "no_text": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "total",
+          "indexed",
+          "indexing",
+          "failed",
+          "no_text",
+          "pending"
+        ]
+      },
       "InstallTaskState": {
         "type": "object",
         "properties": {
@@ -27969,6 +30247,85 @@
           "label"
         ]
       },
+      "KnowledgeBase": {
+        "description": "A user-owned knowledge base. `document_count` is derived at read (COUNT(*)),\n never denormalized (an external file delete would drift a stored counter).",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "document_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "indexing_summary": {
+            "description": "Rollup of per-document index status (from `file_index_state`).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IndexingSummary"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "document_count",
+          "indexing_summary",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "KnowledgeBaseDocument": {
+        "description": "One document in a KB, with its derived index status.",
+        "type": "object",
+        "properties": {
+          "added_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "chunk_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "index_status": {
+            "description": "One of pending|indexing|indexed|failed|no_text (from `file_index_state`;\n `pending` when no state row exists yet).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "filename",
+          "added_at",
+          "index_status",
+          "chunk_count"
+        ]
+      },
       "LinkAccountRequest": {
         "type": "object",
         "properties": {
@@ -28055,6 +30412,27 @@
         "required": [
           "entries"
         ]
+      },
+      "ListDocsQuery": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          }
+        }
       },
       "ListMemoriesQuery": {
         "description": "List/page query params. Accepts `page` + `per_page` (1-based)\n plus optional server-side filters that get pushed all the way\n down to the SQL WHERE clause:\n\n   - `search` — case-insensitive substring match on `content`\n   - `kind`   — exact match on the memory kind\n                (preference / fact / goal / relationship / other)\n   - `source` — exact match on the source\n                (manual / extraction / mcp_tool)\n\n `limit`/`offset` are still accepted as legacy fallback for\n scripted callers — the standard page/per_page path is preferred.",
@@ -28326,6 +30704,23 @@
           },
           "per_page": {
             "description": "Items per page (default 50, max 500)",
+            "type": "integer",
+            "format": "int64",
+            "default": 500
+          }
+        }
+      },
+      "ListVersionsQuery3": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "description": "Page number (1-indexed, default 1).",
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "per_page": {
+            "description": "Items per page (default 500, max 500).",
             "type": "integer",
             "format": "int64",
             "default": 500
@@ -31128,6 +33523,13 @@
               "null"
             ]
           },
+          "rerank": {
+            "description": "Reranker (cross-encoder) capability - scores query/document relevance for\n retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;\n mutually exclusive with `chat` in the admin UI. Delivered via the hub.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "text_embedding": {
             "description": "Text embedding capability - can generate text embeddings for semantic search",
             "type": [
@@ -31167,6 +33569,11 @@
             "default": false
           },
           "image_generator": {
+            "type": "boolean",
+            "default": false
+          },
+          "rerank": {
+            "description": "Reranker (cross-encoder) capability. `default` so pre-existing manifests\n (which omit it) still parse.",
             "type": "boolean",
             "default": false
           },
@@ -33178,6 +35585,21 @@
           "versions"
         ]
       },
+      "RuntimeVersionListResponse2": {
+        "description": "Response containing a list of whisper runtime versions.",
+        "type": "object",
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVersionResponse2"
+            }
+          }
+        },
+        "required": [
+          "versions"
+        ]
+      },
       "RuntimeVersionResponse": {
         "description": "Response containing a single runtime version",
         "type": "object",
@@ -33215,6 +35637,48 @@
         "required": [
           "id",
           "engine",
+          "version",
+          "platform",
+          "arch",
+          "backend",
+          "binary_path",
+          "is_system_default",
+          "created_at"
+        ]
+      },
+      "RuntimeVersionResponse2": {
+        "description": "Response containing a single whisper runtime version.",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "binary_path": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_system_default": {
+            "type": "boolean"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
           "version",
           "platform",
           "arch",
@@ -33924,6 +36388,30 @@
           "duration_ms"
         ]
       },
+      "SSEEngineDownloadCompleteData2": {
+        "type": "object",
+        "properties": {
+          "bytes_downloaded": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "version_id",
+          "bytes_downloaded",
+          "duration_ms"
+        ]
+      },
       "SSEEngineDownloadConnectedData": {
         "type": "object",
         "properties": {
@@ -33951,6 +36439,34 @@
           "task_id",
           "key",
           "engine",
+          "version",
+          "backend",
+          "status"
+        ]
+      },
+      "SSEEngineDownloadConnectedData2": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EngineDownloadStatus2"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
           "version",
           "backend",
           "status"
@@ -34008,7 +36524,70 @@
           }
         ]
       },
+      "SSEEngineDownloadEvent2": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SSEEngineDownloadConnectedData2"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "progress": {
+                "$ref": "#/components/schemas/SSEEngineDownloadProgressData2"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "progress"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "complete": {
+                "$ref": "#/components/schemas/SSEEngineDownloadCompleteData2"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "complete"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "failed": {
+                "$ref": "#/components/schemas/SSEEngineDownloadFailedData2"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "failed"
+            ]
+          }
+        ]
+      },
       "SSEEngineDownloadFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "SSEEngineDownloadFailedData2": {
         "type": "object",
         "properties": {
           "error": {
@@ -34040,6 +36619,40 @@
           },
           "total_bytes": {
             "description": "May be `None` when the upstream omits Content-Length (rare\n for GitHub Releases). The UI shows an indeterminate bar.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "status",
+          "bytes_received"
+        ]
+      },
+      "SSEEngineDownloadProgressData2": {
+        "type": "object",
+        "properties": {
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "percent": {
+            "description": "`None` when `total_bytes` is None; otherwise 0.0..=100.0.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EngineDownloadStatus2"
+          },
+          "total_bytes": {
+            "description": "`None` when the upstream omits Content-Length.",
             "type": [
               "integer",
               "null"
@@ -35836,6 +38449,24 @@
           "message"
         ]
       },
+      "SyncCacheResponse2": {
+        "description": "Response after syncing cache with database.",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "synced_count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "synced_count",
+          "message"
+        ]
+      },
       "SyncConnectedData": {
         "description": "Handshake payload: the server-assigned connection id. The client\n echoes it back via the `X-Sync-Connection-Id` header on mutations so\n the fan-out can skip the originating connection (self-echo suppression).",
         "type": "object",
@@ -35904,6 +38535,21 @@
             "description": "A recorded MCP tool-call invocation (`mcp_tool_calls`). Emitted\n owner-scoped on Create from the detached recording task in\n `McpSession::call_tool`, so the per-server \"Calls\" tab refreshes live.\n Notify-only; the client refetches via `GET /api/mcp/tool-calls`.",
             "type": "string",
             "const": "mcp_tool_call"
+          },
+          {
+            "description": "A user-owned file's RAG index lifecycle state changed\n (`file_index_state`: pending/indexing/indexed/failed/no_text). Emitted\n owner-scoped from the `file_rag` ingest path on each transition so the\n knowledge-base documents UI reflects per-doc indexing status live. `id`\n is the file_id; the client refetches the KB's document status.",
+            "type": "string",
+            "const": "file_index_state"
+          },
+          {
+            "description": "A user-owned knowledge base changed (create/rename/delete or its document\n set). Owner-scoped; the client refetches the KB list / detail.",
+            "type": "string",
+            "const": "knowledge_base"
+          },
+          {
+            "description": "A document within a knowledge base changed (attach/detach/status). Owner-\n scoped; `id` is the knowledge_base id; the client refetches its documents.",
+            "type": "string",
+            "const": "knowledge_base_document"
           },
           {
             "description": "The caller's own default MCP settings for new conversations changed\n (approval mode / auto-approved tools / disabled servers / loop\n settings). Owner-scoped; notify-only — the client refetches\n `GET /api/mcp/defaults` (gated `conversations::read`). `id` is\n `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).",
@@ -36019,6 +38665,16 @@
             "description": "Deployment-wide literature search settings + connector config (singleton).\n Notify-only; the frontend refetches settings + the connector catalog.",
             "type": "string",
             "const": "lit_search_settings"
+          },
+          {
+            "description": "Deployment-wide voice dictation settings (singleton). Notify-only;\n delivered to holders of `voice::admin::read` — the admin UI refetches\n `GET /api/voice/settings`.",
+            "type": "string",
+            "const": "voice_settings"
+          },
+          {
+            "description": "Voice whisper-server runtime version list changed (install/delete/set-default).\n Notify-only; delivered to holders of `voice::admin::read`.",
+            "type": "string",
+            "const": "voice_runtime_version"
           },
           {
             "description": "Deployment-wide MCP user policy (singleton `mcp_user_policy`): which\n transports regular users may install + the enforced stdio sandbox\n flavor + tool-call retention. Delivered to holders of `mcp_servers::read`\n (the read-perm gating `GET /api/mcp/user-policy`); notify-only — each\n recipient refetches the sanitized policy. `id` is `Uuid::nil()`.",
@@ -36481,6 +39137,57 @@
           }
         }
       },
+      "TextRectsQuery": {
+        "description": "Query for the citation text-rects endpoint: a byte range into the page's\n cleaned text (a chunk's char_start/char_end).",
+        "type": "object",
+        "properties": {
+          "end": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "page",
+          "start",
+          "end"
+        ]
+      },
+      "TextRectsResponse": {
+        "type": "object",
+        "properties": {
+          "page_h": {
+            "type": "number",
+            "format": "float"
+          },
+          "page_w": {
+            "description": "Rects are fraction-normalized to the page (0..1), origin top-left, so the\n UI overlays them on the page image without knowing the render scale.",
+            "type": "number",
+            "format": "float"
+          },
+          "rects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HighlightRect"
+            }
+          }
+        },
+        "required": [
+          "page_w",
+          "page_h",
+          "rects"
+        ]
+      },
       "ThinkingMetadata": {
         "description": "Metadata for thinking content",
         "type": "object",
@@ -36691,6 +39398,30 @@
           "status",
           "created_at",
           "updated_at"
+        ]
+      },
+      "TranscriptionResponse": {
+        "description": "Result of a transcription request.",
+        "type": "object",
+        "properties": {
+          "duration_ms": {
+            "description": "Wall-clock transcription time in milliseconds.",
+            "type": "integer",
+            "format": "int64"
+          },
+          "language": {
+            "description": "The language whisper used / detected.",
+            "type": "string"
+          },
+          "text": {
+            "description": "The recognized text.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "language",
+          "duration_ms"
         ]
       },
       "TransportType": {
@@ -37038,7 +39769,58 @@
             ],
             "format": "int32"
           },
+          "kb_max_documents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "max_chunks_per_file": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "rerank_candidate_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "rerank_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reranker_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "search_max_hit_chars": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "search_max_top_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "search_snippet_chars": {
             "type": [
               "integer",
               "null"
@@ -37200,6 +39982,25 @@
               "null"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "UpdateKnowledgeBaseRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },
@@ -38120,6 +40921,73 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "UpdateVoiceSettingsRequest": {
+        "description": "PUT body for the global settings. Every field optional → absent = leave.",
+        "type": "object",
+        "properties": {
+          "auto_start_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "drain_timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "idle_unload_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "max_clip_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "max_upload_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },
@@ -39140,6 +42008,184 @@
         "required": [
           "versions",
           "unresolved"
+        ]
+      },
+      "VoiceCapability": {
+        "description": "Readiness snapshot for the composer mic button. Reachable by any user holding\n `voice::transcribe` (NOT admin-gated) so a normal user can decide whether to\n enable/disable/hide the mic without touching an admin endpoint.",
+        "type": "object",
+        "properties": {
+          "can_transcribe": {
+            "description": "True when enabled && runtime_ready && model_ready — the mic is usable.",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "Feature enabled (config deploy switch AND runtime settings toggle).",
+            "type": "boolean"
+          },
+          "max_clip_seconds": {
+            "description": "Max clip length the user may record.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "model": {
+            "description": "The configured model name (for display).",
+            "type": "string"
+          },
+          "model_ready": {
+            "description": "The configured whisper model is present on disk.",
+            "type": "boolean"
+          },
+          "runtime_ready": {
+            "description": "A whisper-server runtime binary is installed for this host.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "runtime_ready",
+          "model_ready",
+          "model",
+          "max_clip_seconds",
+          "can_transcribe"
+        ]
+      },
+      "VoiceInstanceInfo": {
+        "description": "Snapshot of the single managed whisper-server instance (singleton row).",
+        "type": "object",
+        "properties": {
+          "active_model": {
+            "description": "Configured/active whisper model file (e.g. `ggml-base.bin`), if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_url": {
+            "description": "Loopback base URL (admin-only surface, so returned unredacted).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_failure_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "local_port": {
+            "description": "Loopback port the whisper-server is bound to, if running.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "restart_attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "state": {
+            "description": "Fine health-state-machine name (starting/healthy/unhealthy/…/failed).",
+            "type": "string"
+          },
+          "state_changed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "description": "Coarse lifecycle: `stopped` | `running`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "state",
+          "restart_attempts",
+          "state_changed_at"
+        ]
+      },
+      "VoiceModelStatus": {
+        "description": "Readiness of the configured (or a requested) ggml model on disk.",
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        },
+        "required": [
+          "model",
+          "present"
+        ]
+      },
+      "VoiceSettings": {
+        "description": "Deployment-wide voice settings (singleton row). Returned by GET.",
+        "type": "object",
+        "properties": {
+          "auto_start_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "drain_timeout_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "description": "Runtime admin toggle (distinct from the deploy-level config kill switch).",
+            "type": "boolean"
+          },
+          "idle_unload_secs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "language": {
+            "description": "Default transcription language ('auto' = whisper auto-detect).",
+            "type": "string"
+          },
+          "max_clip_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "max_upload_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "model": {
+            "description": "Selected whisper ggml model name (tiny | base | base.en | small).",
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "enabled",
+          "model",
+          "language",
+          "idle_unload_secs",
+          "auto_start_timeout_secs",
+          "drain_timeout_secs",
+          "max_clip_seconds",
+          "max_upload_bytes",
+          "updated_at"
         ]
       },
       "WebSearchSettings": {

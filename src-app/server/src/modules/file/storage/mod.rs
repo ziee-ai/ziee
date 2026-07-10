@@ -32,6 +32,23 @@ pub trait FileStorage: Send + Sync {
         text: &str,
     ) -> StorageResult<PathBuf>;
 
+    /// Save per-page citation geometry (JSON) — a derivative like the text page.
+    async fn save_geometry_page(
+        &self,
+        user_id: Uuid,
+        file_id: Uuid,
+        page_num: u32,
+        geometry_json: &str,
+    ) -> StorageResult<PathBuf>;
+
+    /// Load per-page citation geometry (JSON).
+    async fn load_geometry_page(
+        &self,
+        user_id: Uuid,
+        file_id: Uuid,
+        page_num: u32,
+    ) -> StorageResult<String>;
+
     /// Save image (page or thumbnail)
     async fn save_image(
         &self,

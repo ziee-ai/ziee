@@ -1,0 +1,23 @@
+# Test-only stub standing in for `whisper-server` in voice-runtime
+# integration + E2E tests. Launched by the *real* deployment path exactly as
+# if it were the fork-built whisper-server, so spawn → `/` health probe →
+# `/inference` forward all run for real; only the transcript is canned.
+# NEVER published or shipped.
+[package]
+name = "stub-whisper-server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = ""
+
+[[bin]]
+name = "stub-whisper-server"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+serde_json.workspace = true

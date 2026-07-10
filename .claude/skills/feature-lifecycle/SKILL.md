@@ -380,7 +380,12 @@ One entry per feedback item, in this exact shape (the gate parses it):
   entity with a picker, never a raw ID text input"; "reuse existing page/drawer
   layouts, don't build bespoke"). The orchestrator HARVESTS every
   `generalizable: yes` item at merge and folds it into this skill / a lint — so
-  one human's feedback improves every future feature.
+  one human's feedback improves every future feature. Once folded in, the
+  orchestrator marks that entry
+  `[generalizable: yes — <rule> · harvested@<commit>]` (or moves it under a
+  `## Harvested` heading). This matters for a feature that merges MULTIPLE times
+  (see **Iteration mode**): the harvest mark stops the same rule being applied
+  twice and leaves an audit trail of which feedback became which rule.
 - If the human gave **no** feedback, the file must exist and state
   **"no human feedback received"** explicitly — absence is a deliberate claim.
 
@@ -390,6 +395,40 @@ is absent — a feature can be 8/8 and still awaiting human review. It reaches
 The merge does not happen until the orchestrator has read this ledger.
 
 Gate: `--phase 9` (fails on any `[status: open]`; pending while the file is absent).
+
+---
+
+## Iteration mode (re-entering an already-merged feature)
+
+A merged feature is rarely final — the human comes back to refine it gradually,
+conversationally. Iteration mode is the SAME lifecycle, entered against a feature
+that already shipped, with three adjustments:
+
+1. **Reuse, extend — don't rebuild.** Cut a fresh worktree off *current*
+   `origin/main` and carry the feature's existing `.lifecycle/<feature>/`
+   artifacts forward (copy them in). Only THIS round's DELTA needs new PLAN items
+   + new TESTS.md rows; prior items stay as satisfied context. Do NOT re-plan or
+   re-test the whole feature — and do NOT drop prior test-IDs (A5 still guards
+   shrinkage).
+
+2. **Red between checkpoints is fine; green at the checkpoint is mandatory.**
+   While you and the human are chatting and trying things, the tree may be red —
+   that's iterating, not a stall. The gate only has to be a genuine `--all` 9/9
+   at a **checkpoint** — when the orchestrator is about to merge a coherent round
+   of changes. Batch a round of related feedback into ONE merge; don't merge
+   every single tweak (keeps main clean and each merge-gate run meaningful).
+
+3. **The ledger is the spine AND the memory.** `HUMAN_FEEDBACK.md` persists on the
+   branch and survives a context `/clear`: a session re-opening the feature reads
+   the ledger to recover what was asked and decided. Each new piece of feedback is
+   a new `FB-N` (verbatim, `status: open`) → implement it → add the test that
+   covers it → flip `resolved`. Phase 9 fails while any `open` remains, so "all
+   gates pass at the end" is automatic: you cannot merge with unaddressed
+   feedback.
+
+Across an iterated feature's multiple merges, the orchestrator harvests only the
+NOT-yet-harvested `generalizable: yes` items each round (per the harvest mark in
+Phase 9), so each rule is folded into this skill exactly once.
 
 ---
 

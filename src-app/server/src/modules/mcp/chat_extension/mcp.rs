@@ -215,6 +215,11 @@ fn auto_attach_builtin_ids(
             ids.push((entry.server_id)());
         }
     }
+    // Knowledge base — attaches behind `attach_knowledge_base_mcp` (set only when
+    // ≥1 KB is bound to the conversation); read-only search, approval-bypassed.
+    if flag(crate::modules::knowledge_base::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::knowledge_base::knowledge_base_server_id());
+    }
     // `control` attaches behind the flag set by the control chat extension
     // (`attach_control_mcp`), gated on the deploy kill-switch + tool-capable.
     // Unlike the read-only built-ins it is NOT approval-bypassed (see
@@ -311,6 +316,10 @@ pub(crate) fn is_builtin_server_id(id: Uuid) -> bool {
         // on the caller's own verified library and never invent data (fabricated
         // DOIs return not_found), so it is approval-bypassed like the others.
         || id == crate::modules::citations::citations_server_id()
+        // knowledge_base is approval-bypassed: `search_knowledge` /
+        // `list_knowledge_bases` are read-only retrieval over the caller's own
+        // KBs; results are treated as untrusted data.
+        || id == crate::modules::knowledge_base::knowledge_base_server_id()
         // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
         // read-only reads of skills already installed + available to the caller,
         // auto-attached for tool-capable chats with ≥1 available skill.
@@ -3499,5 +3508,20 @@ mod builtin_tests {
         all.extend_from_slice(&needs_approval);
         let unique: std::collections::HashSet<_> = all.iter().collect();
         assert_eq!(unique.len(), all.len(), "built-in server ids must be unique");
+    }
+}
+
+#[cfg(test)]
+mod kb_builtin_tests {
+    use super::is_builtin_server_id;
+    use crate::modules::knowledge_base::knowledge_base_server_id;
+    use uuid::Uuid;
+
+    // TEST-18 (ITEM-21): the KB built-in server id is approval-bypassed (read-only
+    // retrieval over the caller's own KBs); an arbitrary id is not.
+    #[test]
+    fn knowledge_base_id_is_a_builtin() {
+        assert!(is_builtin_server_id(knowledge_base_server_id()));
+        assert!(!is_builtin_server_id(Uuid::new_v4()));
     }
 }

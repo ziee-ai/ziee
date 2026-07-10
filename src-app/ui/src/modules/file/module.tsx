@@ -6,6 +6,7 @@ import { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'
 import { useFileVersionsStore } from './stores/FileVersions.store'
 import { useDeliverablesStore } from './stores/Deliverables.store'
 import { ProjectFiles } from './project-extension/stores/ProjectFiles.store'
+import { PdfHighlight } from './stores/PdfHighlight.store'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
@@ -66,6 +67,7 @@ export default createModule({
     { name: 'Deliverables', store: useDeliverablesStore },
     // defineStore handle already carries its { name, store } — name once.
     ProjectFiles,
+    PdfHighlight,
   ],
   components: [
     {

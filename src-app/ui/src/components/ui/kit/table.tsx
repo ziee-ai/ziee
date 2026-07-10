@@ -68,6 +68,12 @@ export interface TableProps<T> {
   /** Max height (CSS length) of the virtualized scroll box; short tables shrink
    *  to fit, taller ones cap here and scroll. Default `min(60vh, 36rem)`. */
   maxHeight?: string
+  /** Fill the parent's height instead of hugging content: the root grows to
+   *  `h-full` and the virtualized scroll box flexes to fill it (dropping the
+   *  `maxHeight` cap) so the grid uses all available space and scrolls within
+   *  it. Requires a definite-height parent + `virtualized`. Used by full-panel
+   *  file viewers; inline previews leave it off so a 2-row table stays compact. */
+  fillHeight?: boolean
   // ── opt-in Table-level capabilities ──
   /** Clickable sort on every column that doesn't set `sortable:false`. */
   sortable?: boolean
@@ -231,10 +237,11 @@ function TableToolbar<T>({ props, view }: { props: TableProps<T>; view: TableVie
         <Input
           size="sm"
           allowClear
-          // flex-1 min-w-0 (basis-0) so the filter SHRINKS to keep the Columns
-          // button on the same row on a narrow toolbar instead of the button
-          // wrapping below it; max-w-64 still caps its width on a wide toolbar.
-          className="flex-1 min-w-0 max-w-64"
+          // flex-1 (basis-0) so the filter shrinks to keep the Columns button on
+          // the same row instead of wrapping below it; min-w-40 keeps the input
+          // usable (never collapses to an unreadable sliver) and max-w-64 caps it
+          // on a wide toolbar.
+          className="flex-1 min-w-40 max-w-64"
           aria-label="Filter rows"
           placeholder={props.filterPlaceholder ?? 'Filter…'}
           value={view.query}
@@ -343,7 +350,7 @@ export function Table<T>(props: TableProps<T>) {
   if (!hasToolbar && !selecting) return body
   return (
     <div
-      className="flex flex-col min-h-0"
+      className={cn('flex flex-col min-h-0', props.fillHeight && 'h-full')}
       onKeyDown={selecting ? onKeyDown : undefined}
       data-testid={`${props['data-testid']}-root`}
     >
@@ -364,7 +371,7 @@ function cellPresentation<T>(col: TableColumn<T>, meta: ColMeta, record: T): { c
 }
 
 function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolean }) {
-  const { rowKey, caption, empty, className, onRowClick, busy, view, 'data-testid': testid } = props
+  const { rowKey, caption, empty, className, onRowClick, busy, fillHeight, view, 'data-testid': testid } = props
   const cols = view.visibleColumns as TableColumn<T>[]
   const rows = view.viewData
   const resizableTable = !!props.resizable
@@ -387,7 +394,16 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
   }, [props.scrollToIndex])
 
   return (
-    <Base ref={rootRef} className={cn(resizableTable && 'table-fixed', className)} data-testid={testid}>
+    <Base
+      ref={rootRef}
+      className={cn(resizableTable && 'table-fixed', className)}
+      // fillHeight: the table's own container flexes to fill the panel and
+      // scrolls BOTH axes, so a small plain table keeps its content-auto column
+      // widths (table-auto) instead of being forced onto the virtualized grid's
+      // fixed widths.
+      containerClassName={fillHeight ? 'flex-1 min-h-0 overflow-auto' : undefined}
+      data-testid={testid}
+    >
       {caption != null && <TableCaption>{caption}</TableCaption>}
       {resizableTable && (
         <colgroup>
@@ -479,7 +495,7 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
 function VirtualTable<T>(props: TableProps<T> & { view: TableView<T> }) {
   const {
     rowKey, className, onRowClick, estimateRowHeight = 40,
-    maxHeight = 'min(60vh, 36rem)', view, 'data-testid': testid,
+    maxHeight = 'min(60vh, 36rem)', fillHeight, view, 'data-testid': testid,
   } = props
   const cols = view.visibleColumns as TableColumn<T>[]
   const dataSource = view.viewData
@@ -519,8 +535,13 @@ function VirtualTable<T>(props: TableProps<T> & { view: TableView<T> }) {
       axis="both"
       autoHide="leave"
       events={{ initialized: () => setScrollReady(true) }}
-      style={{ maxHeight }}
-      className="w-full rounded-md border border-border bg-background"
+      // fillHeight: flex to fill the parent (dropping the maxHeight cap) so the
+      // grid uses all available panel height and scrolls within it.
+      style={fillHeight ? undefined : { maxHeight }}
+      className={cn(
+        'w-full rounded-md border border-border bg-background',
+        fillHeight && 'flex-1 min-h-0',
+      )}
     >
       <table data-testid={testid} className={cn('w-max text-sm', className)} style={{ display: 'grid' }}>
         <thead className="sticky top-0 z-[1] bg-muted/80" style={{ display: 'grid' }}>

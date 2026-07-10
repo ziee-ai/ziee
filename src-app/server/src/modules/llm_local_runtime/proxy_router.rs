@@ -15,7 +15,7 @@ use axum::extract::DefaultBodyLimit;
 use super::proxy::LOCAL_PROXY_PATH;
 use super::proxy_handlers::{
     proxy_chat_completions, proxy_chat_completions_docs, proxy_embeddings, proxy_embeddings_docs,
-    proxy_models, proxy_models_docs,
+    proxy_models, proxy_models_docs, proxy_rerank, proxy_rerank_docs,
 };
 
 /// Cap on the inbound request body the proxy buffers before
@@ -35,6 +35,11 @@ pub fn proxy_router() -> ApiRouter {
         .api_route(
             &format!("{}/embeddings", LOCAL_PROXY_PATH),
             post_with(proxy_embeddings, proxy_embeddings_docs)
+                .layer(DefaultBodyLimit::max(PROXY_BODY_LIMIT)),
+        )
+        .api_route(
+            &format!("{}/rerank", LOCAL_PROXY_PATH),
+            post_with(proxy_rerank, proxy_rerank_docs)
                 .layer(DefaultBodyLimit::max(PROXY_BODY_LIMIT)),
         )
         .api_route(

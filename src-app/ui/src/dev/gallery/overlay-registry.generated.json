@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 77,
-    "hosts": 57,
-    "triggers": 20,
+    "total": 83,
+    "hosts": 60,
+    "triggers": 23,
     "wiredOpen": 37
   },
   "hosts": [
@@ -76,6 +76,19 @@
         },
         {
           "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/chat/extensions/voice/components/MicButton",
+      "class": "host",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
           "mode": "controlled"
         }
       ]
@@ -203,6 +216,32 @@
     },
     {
       "surface": "modules/hub/modules/workflow/components/WorkflowDetailsDrawer",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/knowledge-base/components/KnowledgeBaseCard",
+      "class": "host",
+      "primitives": [
+        "Confirm"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Confirm",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/knowledge-base/components/KnowledgeBaseFormDrawer",
       "class": "host",
       "primitives": [
         "Drawer"
@@ -972,6 +1011,32 @@
       ]
     },
     {
+      "surface": "modules/knowledge-base/chat-extension/components/KbMenuItem",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
       "surface": "modules/llm-local-runtime/components/RuntimeVersionCard",
       "class": "trigger",
       "primitives": [
@@ -1065,6 +1130,19 @@
           "primitive": "Drawer",
           "mode": "trigger"
         },
+        {
+          "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/voice/components/InstalledVersionsCard",
+      "class": "trigger",
+      "primitives": [
+        "Confirm"
+      ],
+      "occurrences": [
         {
           "primitive": "Confirm",
           "mode": "trigger"
