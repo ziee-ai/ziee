@@ -65,3 +65,4 @@ src-app/ui/scripts/gate-ui.mjs	1	999999	correctness,patterns-conformance,error-h
 src-app/ui/scripts/runtime-health.mjs	1	999999	correctness,patterns-conformance,error-handling
 src-app/ui/src/dev/gallery/RUNTIME_FINDINGS.md	1	999999	correctness,patterns-conformance,tests-quality
 src-app/ui/tests/e2e/visual/layout-baseline.ts	1	999999	tests-quality,correctness,patterns-conformance
+src-app/desktop/ui/scripts/runtime-health.mjs	1	999999	correctness,patterns-conformance,error-handling
