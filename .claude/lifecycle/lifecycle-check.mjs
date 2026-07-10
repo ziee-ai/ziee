@@ -472,12 +472,29 @@ const RE_GATING_PERM = /["'`][a-z][a-z0-9_]*(?:::[a-z0-9_]+)*::(?:use|read|manag
 // one. Scoping to those two file kinds is what keeps the trigger precise.
 const RE_PERM_SRC = /(?:^|\/)modules\/[^/]+\/permissions\.rs$/;
 const RE_MIGRATION = /(?:^|\/)migrations\/[^/]+\.sql$/;
+// The desktop crate — a SINGLE-USER app whose one user is ALWAYS an administrator.
+const RE_DESKTOP_CRATE = /(?:^|\/)desktop\/tauri\//;
 function diffIntroducesGatingPerm() {
   for (const a of diffAddedLines()) {
     if (!RE_PERM_SRC.test(a.file) && !RE_MIGRATION.test(a.file)) continue;
     if (RE_GATING_PERM.test(a.text)) return true;
   }
   return false;
+}
+// A10 exemption — desktop-only (single-admin) features. The desktop app is a
+// single-user shell whose user always holds `*` (admin), so a X::use/::read/::manage
+// permission introduced ONLY in the desktop crate (desktop/tauri/**) has no
+// restricted-user FRONTEND scenario: there is no non-admin user to hide the UI from.
+// The permission is a server-side-module artifact (A9 backend-deny still exists, it is
+// simply always satisfied at runtime), so A10's frontend-hidden e2e does not apply.
+// True only when EVERY perm-introducing file in the diff is under desktop/tauri/**.
+function gatingPermIsDesktopOnly() {
+  const files = new Set();
+  for (const a of diffAddedLines()) {
+    if (!RE_PERM_SRC.test(a.file) && !RE_MIGRATION.test(a.file)) continue;
+    if (RE_GATING_PERM.test(a.text)) files.add(a.file);
+  }
+  return files.size > 0 && [...files].every((f) => RE_DESKTOP_CRATE.test(f));
 }
 // Phase-3 runs BEFORE implementation, so the diff may not yet carry the
 // permission. Infer the introduction up-front from PLAN.md: its "Files to touch"
@@ -503,6 +520,8 @@ function negPermE2eTests(tests) {
 // enumerated in TESTS.md. Runs at phase 3 AND phase 8.
 function checkA10Enumeration() {
   if (!introducesGatingPerm()) return [];
+  // Desktop-only (single-admin) features have no restricted-user frontend scenario.
+  if (gatingPermIsDesktopOnly()) return [];
   const tests = parseTests() || [];
   if (negPermE2eTests(tests).length > 0) return [];
   const misTagged = tests.filter((t) => t.negPerm && t.tier !== 'e2e');

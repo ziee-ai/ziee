@@ -113,6 +113,47 @@ EOF
   echo "$R"
 }
 
+# ---------------------------------------------------------------------------
+# build_perm_desktop — a DESKTOP-ONLY feature that introduces foo::use ONLY in
+# the desktop crate (desktop/tauri/**). The desktop app is single-admin, so A10
+# (frontend-hidden) must NOT fire and NO restricted-user e2e is required.
+# Backend-only diff (desktop/tauri) → phase 3 needs no e2e either.
+# ---------------------------------------------------------------------------
+build_perm_desktop() {
+  local R; R="$(new_repo)"; CLEANUP+=("$R")
+  git -C "$R" checkout -q -b feat/perm-desktop
+  mkdir -p "$R/src-app/desktop/tauri/src/modules/foo" "$R/.lifecycle/foo"
+  cat > "$R/src-app/desktop/tauri/src/modules/foo/permissions.rs" <<'EOF'
+pub struct FooUse;
+impl PermissionCheck for FooUse {
+    const PERMISSION: &'static str = "foo::use";
+}
+EOF
+  local D="$R/.lifecycle/foo"
+  cat > "$D/PLAN.md" <<'EOF'
+# PLAN — foo
+## Items
+- **ITEM-1**: Define the foo::use permission (desktop-only module).
+## Files to touch
+- `src-app/desktop/tauri/src/modules/foo/permissions.rs` — new perm (ITEM-1).
+## Patterns to follow
+- Mirror an existing desktop permissions.rs.
+EOF
+  write_common "$D" "src-app/desktop/tauri/src/modules/foo/permissions.rs" 5
+  cat > "$D/TESTS.md" <<'EOF'
+# TESTS — foo
+- **TEST-1** (tier: unit) [covers: ITEM-1] file: `src-app/desktop/tauri/src/modules/foo/permissions.rs` — asserts: PERMISSION is foo::use.
+- **TEST-2** (tier: integration) [covers: ITEM-1] file: `src-app/desktop/tauri/tests/foo/foo.rs` — asserts: a user lacking foo::use gets 403 forbidden.
+EOF
+  cat > "$D/TEST_RESULTS.md" <<'EOF'
+# TEST_RESULTS — foo
+- **TEST-1**: PASS
+- **TEST-2**: PASS
+EOF
+  git -C "$R" add -A && git -C "$R" commit -qm feat-perm-desktop
+  echo "$R"
+}
+
 echo "== lifecycle-hardening self-test =="
 echo "-- Part A: lifecycle-check.mjs A1-A9 --"
 
@@ -216,6 +257,22 @@ EOF
 git -C "$R" commit -qam add-negperm-e2e
 lc 0 "A10: new ::use perm WITH a restricted-user e2e passes (phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
 lc 0 "A10: new ::use perm WITH a restricted-user e2e passes (phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
+
+# A10-DESKTOP: a ::use perm introduced ONLY in the desktop crate (single-admin app)
+# is EXEMPT — no restricted-user e2e required (there is no non-admin user to hide from).
+R="$(build_perm_desktop)"; D="$R/.lifecycle/foo"
+lc 0 "A10: a desktop-only ::use perm is EXEMPT (no restricted-user e2e; phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
+lc 0 "A10: a desktop-only ::use perm is EXEMPT (no restricted-user e2e; phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
+# Guard: a perm ALSO introduced in the server crate is NOT desktop-only → A10 still fires.
+mkdir -p "$R/src-app/server/src/modules/foo"
+cat > "$R/src-app/server/src/modules/foo/permissions.rs" <<'EOF'
+pub struct FooRead;
+impl PermissionCheck for FooRead {
+    const PERMISSION: &'static str = "foo::read";
+}
+EOF
+git -C "$R" add -A && git -C "$R" commit -qm add-server-perm
+lc 1 "A10: a perm ALSO in the server crate is NOT exempt (still REFUSED, phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
 
 # A10-4: the restricted-user e2e is enumerated but its RESULT is FAIL -> phase 8 FAIL
 R="$(build_perm)"; D="$R/.lifecycle/foo"

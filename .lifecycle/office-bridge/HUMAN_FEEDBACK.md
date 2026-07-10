@@ -66,10 +66,12 @@ Human critiques received during this work, verbatim, with resolutions.
   runtime). **User's correction:** "Desktop functionality actually does not need a permission gate
   because it will always be admin to use it." I had over-engineered a frontend-hidden UI gate + a
   restricted-user e2e to satisfy A10; per this correction I **reverted** the gate (commit
-  `Revert "feat(office-bridge/ui): frontend-hidden gate…"`) and did not ship the e2e. Generalizable:
-  the A10 check should exempt desktop-only (single-admin) features — the permission is a server-side
-  artifact there, not a user-facing frontend gate. A10 stays red on the deterministic gate, correctly
-  documented as N/A rather than papered over.
+  `Revert "feat(office-bridge/ui): frontend-hidden gate…"`) and did not ship the e2e. **Resolution
+  (user chose):** added a principled **A10 exemption** to `lifecycle-check.mjs` — when every
+  permission-introducing file in the diff is under the desktop crate (`desktop/tauri/**`), A10 is
+  skipped (a single-admin desktop app has no non-admin user to hide the UI from). It is narrowly
+  scoped (a perm ALSO introduced in the server crate is NOT exempt) and covered by three new
+  selftest-hardening cases. **Phase 3 now passes; A10 is green.**
 
 Net: the artifact RESTRUCTURE is complete (five dirs → one umbrella, globally renumbered,
 base `origin/main`, coverage rebuilt vs the real diff, findings fixed to a clean re-audit).
