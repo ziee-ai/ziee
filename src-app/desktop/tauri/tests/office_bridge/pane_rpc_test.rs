@@ -494,6 +494,62 @@ async fn run_office_js_dispatch_round_trip() {
 /// desktop app first so nothing else holds 44300.
 #[cfg(target_os = "macos")]
 async fn open_excel_and_wait_for_pane() -> (server::BridgeHandle, String) {
+    open_office_app_and_wait(
+        "Microsoft Excel",
+        r#"tell application "Microsoft Excel"
+                activate
+                if (count of workbooks) = 0 then make new workbook
+                select range "A1" of active sheet of active workbook
+            end tell"#,
+    )
+    .await
+}
+
+/// Live Word bring-up: open Word with a short starter document that contains the
+/// word "budget", so the human "review pass" task has a real comment target.
+#[cfg(target_os = "macos")]
+async fn open_word_and_wait_for_pane() -> (server::BridgeHandle, String) {
+    open_office_app_and_wait(
+        "Microsoft Word",
+        "tell application \"Microsoft Word\"\n\
+                activate\n\
+                if (count of documents) = 0 then make new document\n\
+                set content of text object of active document to \"Q3 Draft Report\" & return & \"The marketing budget needs review before the board meeting on Friday.\" & return & \"Please add your notes below.\"\n\
+            end tell",
+    )
+    .await
+}
+
+/// Live PowerPoint bring-up: open PowerPoint with an empty presentation. Requires
+/// macOS Automation (TCC) consent for PowerPoint (System Settings → Privacy →
+/// Automation), otherwise the osascript seed is denied (error -10003).
+#[cfg(target_os = "macos")]
+async fn open_powerpoint_and_wait_for_pane() -> (server::BridgeHandle, String) {
+    open_office_app_and_wait(
+        "Microsoft PowerPoint",
+        "tell application \"Microsoft PowerPoint\"\n\
+                activate\n\
+                if (count of presentations) = 0 then make new presentation\n\
+            end tell",
+    )
+    .await
+}
+
+/// Shared live bring-up (macOS): bind the fixed 44300 against the app's trusted
+/// cert, open `app`, run `setup_osascript` to seed a document, then wait for the
+/// one manual step — clicking the ribbon button — to connect a task pane (an
+/// Office add-in pane can't be opened by automation). Returns the bridge handle +
+/// the connected pane's target key.
+///
+/// Run these live tests ONE AT A TIME (they all bind the fixed port 44300 and each
+/// needs a manual ribbon click, so they cannot run concurrently): name a single
+/// test on the cargo invocation, and quit the desktop app first so nothing else
+/// holds 44300.
+#[cfg(target_os = "macos")]
+async fn open_office_app_and_wait(
+    app: &str,
+    setup_osascript: &str,
+) -> (server::BridgeHandle, String) {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("info,ziee_desktop::modules::office_bridge=debug")
         .with_test_writer()
@@ -505,22 +561,14 @@ async fn open_excel_and_wait_for_pane() -> (server::BridgeHandle, String) {
         .await
         .expect("bridge binds 44300 (quit the desktop app first if this fails)");
 
-    let _ = std::process::Command::new("open")
-        .args(["-a", "Microsoft Excel"])
-        .status();
+    let _ = std::process::Command::new("open").args(["-a", app]).status();
     tokio::time::sleep(Duration::from_secs(5)).await;
     let _ = std::process::Command::new("osascript")
         .arg("-e")
-        .arg(
-            r#"tell application "Microsoft Excel"
-                activate
-                if (count of workbooks) = 0 then make new workbook
-                select range "A1" of active sheet of active workbook
-            end tell"#,
-        )
+        .arg(setup_osascript)
         .status();
 
-    eprintln!("\n>>> LIVE run_office_js: Excel is open. NOW click the ribbon: Home -> Ziee -> 'Show Ziee Bridge'.");
+    eprintln!("\n>>> LIVE run_office_js: {app} is open. NOW click the ribbon: Home -> Ziee -> 'Show Ziee Bridge'.");
     eprintln!(">>> Waiting up to 600s (10 min) for the pane to connect — no rush...\n");
     let mut target = String::new();
     for i in 0..600 {
@@ -762,4 +810,262 @@ async fn run_office_js_real_llm_declares_mode() {
             "model must declare mode={expected:?} for task {task:?} (got {mode:?})"
         );
     }
+}
+
+// ============================================================================
+// Human-like real-LLM live tests — realistic, research-backed tasks a person
+// actually does, across Excel / Word / PowerPoint. Each drives the REAL model
+// (coder.ziee) to write ONE multi-step `run_office_js` Office.js script, runs the
+// model's OWN script in the live pane, then VERIFIES the document actually changed
+// via a deterministic (non-LLM) read-back — not a toy "set A1 to hello".
+//
+// Scenarios grounded in common tutorials/showcases:
+//   - Excel: a monthly budget — Category/Planned/Actual headers (bold), expense
+//     rows, a Total row with SUM, currency-formatted amounts.
+//   - Word: a document review pass — a Heading-1 heading, a tracked-changes edit,
+//     and a comment on the word "budget".
+//   - PowerPoint: an agenda slide — a new slide with a title + agenda items.
+//
+// SOFT-SKIP (A3): return unless BOTH `ZIEE_OFFICE_LIVE=1` (a live pane) and
+// `ZIEE_OFFICE_REAL_LLM_URL` (the real model) are set. Run ONE AT A TIME (each
+// binds 44300 + needs a manual ribbon click). PowerPoint also needs macOS
+// Automation (TCC) consent.
+// ============================================================================
+
+/// Both the live-pane and real-LLM gates set? Else print SKIP and return false.
+#[cfg(target_os = "macos")]
+fn live_llm_ready(test: &str) -> bool {
+    if std::env::var("ZIEE_OFFICE_LIVE").is_err() {
+        eprintln!("SKIP {test}: set ZIEE_OFFICE_LIVE=1 (needs a live Office task pane)");
+        return false;
+    }
+    if std::env::var("ZIEE_OFFICE_REAL_LLM_URL")
+        .map(|u| u.is_empty())
+        .unwrap_or(true)
+    {
+        eprintln!("SKIP {test}: set ZIEE_OFFICE_REAL_LLM_URL (real model via coder.ziee)");
+        return false;
+    }
+    true
+}
+
+/// Ask the REAL model to write ONE `run_office_js` script for `prompt` against the
+/// SHIPPED tool schema; return the model's `script` argument. Assumes the LLM env
+/// is set (guarded by `live_llm_ready`).
+#[cfg(target_os = "macos")]
+async fn model_writes_run_office_js(prompt: &str) -> String {
+    let url = std::env::var("ZIEE_OFFICE_REAL_LLM_URL").expect("ZIEE_OFFICE_REAL_LLM_URL");
+    let model = std::env::var("ZIEE_OFFICE_REAL_LLM_MODEL")
+        .unwrap_or_else(|_| "qwen3.6-35b-a3b".to_string());
+    let key = std::env::var("ZIEE_OFFICE_REAL_LLM_KEY").ok();
+    let list = ziee_desktop::modules::office_bridge::tools::tool_list();
+    let tool = list["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .find(|t| t["name"] == "run_office_js")
+        .expect("run_office_js in tool_list")
+        .clone();
+    let body = json!({
+        "model": model,
+        "messages": [{ "role": "user", "content": prompt }],
+        "tools": [{ "type": "function", "function": {
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["inputSchema"],
+        }}],
+        "tool_choice": "auto",
+        "max_tokens": 1500
+    });
+    let mut req = reqwest::Client::new()
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(body.to_string());
+    if let Some(k) = key {
+        req = req.header("authorization", format!("Bearer {k}"));
+    }
+    let resp = req
+        .send()
+        .await
+        .expect("LLM request sent")
+        .text()
+        .await
+        .expect("LLM response body");
+    let v: Value = serde_json::from_str(&resp).unwrap_or_else(|e| panic!("LLM json ({e}): {resp}"));
+    let func = v["choices"][0]["message"]["tool_calls"][0]["function"].clone();
+    assert_eq!(
+        func["name"], "run_office_js",
+        "the model must call run_office_js: {resp}"
+    );
+    let args: Value = serde_json::from_str(
+        func["arguments"]
+            .as_str()
+            .expect("tool-call arguments is a JSON string"),
+    )
+    .expect("tool-call arguments parse");
+    let script = args["script"]
+        .as_str()
+        .expect("model produced a `script`")
+        .to_string();
+    eprintln!(">>> model-written run_office_js script:\n{script}\n");
+    script
+}
+
+/// Run the model's script in the live pane (expects success), then run a
+/// deterministic `verify` script and return its `result`.
+#[cfg(target_os = "macos")]
+async fn run_then_verify(target: &str, script: &str, verify: &str) -> Value {
+    let out = broker::call_pane_with_timeout(
+        target,
+        "run_office_js",
+        json!({ "doc_full_name": target, "script": script }),
+        Duration::from_secs(45),
+    )
+    .await
+    .expect("the model's run_office_js script executes in the live pane");
+    eprintln!(">>> model script returned: {out}");
+    let v = broker::call_pane_with_timeout(
+        target,
+        "run_office_js",
+        json!({ "doc_full_name": target, "script": verify }),
+        Duration::from_secs(30),
+    )
+    .await
+    .expect("verify read-back executes");
+    eprintln!(">>> verify read-back: {v}");
+    v.get("result").cloned().unwrap_or(Value::Null)
+}
+
+/// Human-like Excel task — a real monthly budget. The model builds it; we verify
+/// the structure, the SUM totals (Planned 2550 / Actual 2495), the bold header,
+/// and currency formatting.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn human_excel_monthly_budget() {
+    if !live_llm_ready("human_excel_monthly_budget") {
+        return;
+    }
+    let prompt = "Use the run_office_js tool on the open Excel workbook to build a simple monthly \
+        budget on the active worksheet, all in ONE script. Put the headers Category, Planned, and \
+        Actual in A1, B1, C1, and make the header cells A1:C1 bold. Starting in row 2 add these four \
+        rows exactly as (Category, Planned, Actual): Rent 1500 1450; Groceries 600 640; \
+        Transport 200 175; Utilities 250 230. In the next row put the word Total in column A and use \
+        SUM formulas in columns B and C to total the Planned and Actual amounts. Format the amount \
+        cells B2:C6 as US-dollar currency.";
+    let script = model_writes_run_office_js(prompt).await;
+    let (handle, target) = open_excel_and_wait_for_pane().await;
+    let verify = "const s = context.workbook.worksheets.getActiveWorksheet(); \
+        const r = s.getRange('A1:C7'); r.load('values, text'); \
+        const h = s.getRange('A1'); h.load('format/font/bold'); \
+        const amt = s.getRange('B2'); amt.load('numberFormat'); \
+        await context.sync(); \
+        return { text: r.text, a1Bold: h.format.font.bold, amtFmt: amt.numberFormat[0][0] };";
+    let res = run_then_verify(&target, &script, verify).await;
+    handle.shutdown();
+
+    let flat = res.to_string().to_lowercase();
+    assert!(
+        flat.contains("category") && flat.contains("planned") && flat.contains("actual"),
+        "budget headers present: {res}"
+    );
+    assert!(flat.contains("total"), "a Total row is present: {res}");
+    // SUM correctness — Planned 1500+600+200+250 = 2550; Actual 1450+640+175+230 = 2495.
+    assert!(flat.contains("2550"), "the Planned SUM total (2550) is present: {res}");
+    assert!(flat.contains("2495"), "the Actual SUM total (2495) is present: {res}");
+    assert_eq!(res["a1Bold"].as_bool(), Some(true), "the header cell is bold: {res}");
+    assert!(
+        res["amtFmt"].as_str().unwrap_or("").contains('$'),
+        "the amounts are currency-formatted: {res}"
+    );
+}
+
+/// Human-like Word task — a real review pass. The model adds a Heading-1 heading,
+/// turns on tracked changes, appends a paragraph, and comments on "budget"; we
+/// verify each landed.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn human_word_review_pass() {
+    if !live_llm_ready("human_word_review_pass") {
+        return;
+    }
+    let prompt = "Use the run_office_js tool on the open Word document to do a quick review pass, \
+        all in ONE script: (1) at the very START of the document body, insert a new paragraph with \
+        the text 'Executive Summary' and set that paragraph's style to the built-in Heading 1 style. \
+        (2) Turn ON tracked changes for the document. (3) At the END of the document body, insert a \
+        new paragraph with the text 'Reviewed and approved for Q3.' (4) Search the body for the word \
+        'budget' (case-insensitive) and on the first match insert a comment with the text \
+        'Please confirm the Q3 figure.'";
+    let script = model_writes_run_office_js(prompt).await;
+    let (handle, target) = open_word_and_wait_for_pane().await;
+    let verify = "const body = context.document.body; body.load('text'); \
+        context.document.load('changeTrackingMode'); \
+        const paras = body.paragraphs; paras.load('items/text, items/styleBuiltIn'); \
+        let commentCount = -1; \
+        try { const cs = body.getComments(); cs.load('items'); await context.sync(); commentCount = cs.items.length; } catch (e) { commentCount = -1; } \
+        await context.sync(); \
+        return { text: body.text, tracking: context.document.changeTrackingMode, \
+            firstStyle: paras.items.length ? paras.items[0].styleBuiltIn : '', commentCount };";
+    let res = run_then_verify(&target, &script, verify).await;
+    handle.shutdown();
+
+    let text = res["text"].as_str().unwrap_or("").to_lowercase();
+    assert!(
+        text.contains("executive summary"),
+        "the 'Executive Summary' heading was inserted: {res}"
+    );
+    assert!(
+        text.contains("reviewed and approved for q3"),
+        "the tracked paragraph was appended: {res}"
+    );
+    assert!(
+        res["firstStyle"].as_str().unwrap_or("").to_lowercase().contains("heading"),
+        "the first paragraph is Heading-1 styled: {res}"
+    );
+    assert_ne!(
+        res["tracking"].as_str(),
+        Some("Off"),
+        "tracked changes is ON: {res}"
+    );
+    let comments = res["commentCount"].as_i64().unwrap_or(-1);
+    assert!(
+        comments >= 1,
+        "a comment was inserted (getComments returned {comments}): {res}"
+    );
+}
+
+/// Human-like PowerPoint task — a real agenda slide. The model adds a slide with a
+/// title + agenda items; we verify the text appears on a slide.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn human_powerpoint_agenda_slide() {
+    if !live_llm_ready("human_powerpoint_agenda_slide") {
+        return;
+    }
+    let prompt = "Use the run_office_js tool on the open PowerPoint presentation to add an agenda \
+        slide, all in ONE script: add a NEW slide at the end of the presentation, then on that new \
+        slide add a text box near the top containing the title 'Today's Agenda', and add another \
+        text box below it containing three agenda items on separate lines: 'Q3 results', \
+        'Product roadmap', and 'Hiring plan'.";
+    let script = model_writes_run_office_js(prompt).await;
+    let (handle, target) = open_powerpoint_and_wait_for_pane().await;
+    let verify = "const pres = context.presentation; pres.slides.load('items'); await context.sync(); \
+        const texts = []; \
+        for (const slide of pres.slides.items) { \
+            slide.shapes.load('items'); await context.sync(); \
+            for (const sh of slide.shapes.items) { try { sh.textFrame.textRange.load('text'); } catch (e) {} } \
+            await context.sync(); \
+            for (const sh of slide.shapes.items) { try { texts.push(sh.textFrame.textRange.text); } catch (e) {} } \
+        } \
+        return { slideCount: pres.slides.items.length, texts };";
+    let res = run_then_verify(&target, &script, verify).await;
+    handle.shutdown();
+
+    let flat = res["texts"].to_string().to_lowercase();
+    assert!(
+        flat.contains("agenda"),
+        "the agenda title is present on a slide: {res}"
+    );
+    assert!(flat.contains("q3 results"), "agenda item 'Q3 results' present: {res}");
+    assert!(flat.contains("product roadmap"), "agenda item 'Product roadmap' present: {res}");
+    assert!(flat.contains("hiring plan"), "agenda item 'Hiring plan' present: {res}");
 }
