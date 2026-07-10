@@ -483,3 +483,17 @@ table, migration, `<feature>::settings` permission, sync entity, or admin card i
 owed. (A future server-backed-sync flip is the only path that would introduce one.)
 **Basis:** convention — the mandatory configurable-settings DEC, answered:
 fixed/client, not admin-configurable, with rationale.
+
+### DEC-53: How much of the composer is truly per-pane — full isolation, or bridge/follow-focus? (FB-4)
+**Resolution:** **Full per-pane isolation of all FIVE composer stores** —
+`TextStore` (done), `File` (attachments), `ModelPicker` (model), `AssistantPicker`
+(assistant), `McpComposer` (MCP/approval). Each pane-scoped composer component
+binds to `useChatPane().store`, so its ACTIONS + snapshot reads target its own
+pane; the stores are per-pane-instanced or strictly pane-keyed (not the global
+`NEW_CHAT` key that makes two new-chat panes share). This **supersedes
+DRIFT-1.2/1.3/1.4** (which left File/Assistant/MCP follow-focus and Model
+new-chat-key-shared) and **DRIFT-1.7** (bridge ≠ isolation for actions). The
+`Stores.Chat` bridge is retained ONLY for genuinely out-of-subtree consumers
+(DEC-5), not for anything inside a pane subtree.
+**Basis:** user — FB-4 ("two chat inputs … still share state"); the partial v1
+isolation is a confirmed defect, so full per-pane is required, not follow-focus.

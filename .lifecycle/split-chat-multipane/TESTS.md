@@ -74,7 +74,7 @@ dropped (A5). Key reconciliations:
 
 ## Audit-gap tests (from the re-audit)
 
-- **TEST-31** (tier: e2e) [covers: ITEM-5] file: `src-app/ui/tests/e2e/14-split-chat/composer-isolation.spec.ts` — asserts: per-pane composer isolation for the SHIPPED per-pane stores — draft text (per-pane `TextStore`) and selected model (per-conversation re-key) set in pane A do not appear/apply in pane B (file/assistant/MCP follow focus, DRIFT-1.2/1.3/1.4).
+- **TEST-31** (tier: e2e) [covers: ITEM-5, ITEM-32] file: `src-app/ui/tests/e2e/14-split-chat/composer-isolation.spec.ts` — asserts: **v2 (FB-4)** — FULL per-pane composer isolation with **NO focus-click first** (the focus-click is what masked the bug): sending in pane B posts to pane B's conversation, not the focused pane A's; two NEW-CHAT panes hold INDEPENDENT model AND assistant selections (change pane A's → pane B unchanged); a file attached in pane B appears only in pane B's composer; a send blocked (upload in flight) in pane A does not disable pane B's Send. Every one of the five composer stores is per-pane, not focus-following (supersedes DRIFT-1.2/1.3/1.4).
 - **TEST-32** (tier: e2e) [covers: ITEM-6, ITEM-2] file: `src-app/ui/tests/e2e/14-split-chat/independent-streaming.spec.ts` — asserts: a live frame reaches only its owning pane's store (the `applyStreamFrame` conversation-id filter over the shared `chat:token` bus, DRIFT-1.5) — pane B receives no assistant message during pane A's stream.
 - **TEST-33** (tier: e2e) [covers: ITEM-6] file: `src-app/ui/tests/e2e/14-split-chat/independent-streaming.spec.ts` — asserts: each pane's stream connection is programmed for its OWN conversation — pane A streaming never reprograms/leaks into pane B's connection.
 

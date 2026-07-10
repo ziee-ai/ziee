@@ -76,12 +76,34 @@ truth.
   that index); drag a pane header to `reorderPanes`. *Implements the v1-deferred
   ITEM-16/DRIFT-1.10*; pointer-based, tokens for ghost/drop highlights.
 
-*Reused unchanged (the audit must treat these as the foundation, not re-review):*
-the per-pane `ChatPaneStore`/`ChatPaneProvider`, per-pane streaming/scroll/
-right-panel isolation (ITEM-2..10, 18, 19, 21), the `Stores.Chat` context-aware
-bridge (ITEM-9), the pop-out util (ITEM-P1..P4), the divider, and the composer
-nested-store binding fix. v2 touches these only where the reconciliation/persist
-layer plugs in.
+- **ITEM-32**: **Complete the per-pane composer migration (the FB-4 fix).** v1
+  migrated ONLY `TextInput` (the textarea draft) to `useChatPane()`; **~16 other
+  composer/pane components still read `Stores.Chat` directly** — `ChatInput`
+  (send + `useSendBlockers`), `ModelSelector`, `AssistantSelector` + menu/chip,
+  `FilePreviewList`/`FileUploadButton`/`InlineFilePreview`/`AttachedFileCard`, the
+  `MemoryStatusPill`/`SummarizationStatusPill`, `ToolCallPendingApprovalContent`,
+  `TextContent`, `WorkflowWorkspaceRunCard`, `ProjectConversationsList`. The
+  context-aware bridge makes reactive READS per-pane but resolves **actions +
+  `.$`/getState/setState/subscribe to `focusedApi()`** — so their Send, model/
+  assistant selection, file attach, and send-blockers effectively target the
+  FOCUSED pane, not their own (two new-chat panes even share the `NEW_CHAT`
+  model/assistant key). **Bind every pane-scoped composer component to
+  `useChatPane().store`** so its actions + snapshots hit ITS pane, and make the
+  FIVE composer stores genuinely per-pane (TextStore done; **File / ModelPicker /
+  AssistantPicker / McpComposer must be per-pane-instanced or pane-keyed, NOT
+  follow-focus** — this **supersedes DRIFT-1.2/1.3/1.4**, which left them
+  focus-following, and **corrects DRIFT-1.7's** claim that the bridge obviated
+  migrating ~40 consumers: true for reactive reads, FALSE for actions/snapshots).
+  The bridge is retained ONLY for genuinely out-of-subtree consumers (DEC-5).
+  *This is the v1 ITEM-5/ITEM-10 work made real + verified.*
+
+*Reused unchanged (the audit treats these as the foundation):* the per-pane
+`ChatPaneStore`/`ChatPaneProvider`, per-pane streaming/scroll/right-panel
+isolation (ITEM-2..7 view + ITEM-6 stream + ITEM-18 right-panel), the pop-out
+util (ITEM-P1..P4), and the divider. **NOT reused unchanged — corrected by
+ITEM-32:** the composer/extension per-pane binding (ITEM-5/10/19) was only
+partially done in v1 (bridge-reliant); ITEM-32 completes it. The `Stores.Chat`
+bridge (ITEM-9) stays but narrows to out-of-subtree use only.
 
 ## Delivery phases
 
