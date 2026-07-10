@@ -35,39 +35,7 @@ pub async fn transcribe(
 
     // Pull the `file` field bytes. Keep the `Bytes` (refcounted) rather than
     // copying into a `Vec` — it is forwarded to whisper-server as-is below.
-    let mut audio: Option<axum::body::Bytes> = None;
-    loop {
-        let field = match multipart.next_field().await {
-            Ok(Some(f)) => f,
-            Ok(None) => break,
-            // A transport/parse error must surface as a clear 400, not fall
-            // through to the "no audio" error below.
-            Err(e) => {
-                return Err(AppError::bad_request(
-                    "VOICE_BAD_UPLOAD",
-                    format!("malformed multipart upload: {e}"),
-                )
-                .into());
-            }
-        };
-        if field.name() == Some("file") {
-            let bytes = field
-                .bytes()
-                .await
-                .map_err(|e| AppError::bad_request("VOICE_BAD_UPLOAD", format!("read field: {e}")))?;
-            if bytes.len() > ABSOLUTE_MAX_BYTES {
-                return Err(AppError::bad_request(
-                    "VOICE_CLIP_TOO_LARGE",
-                    "audio upload exceeds the maximum size",
-                )
-                .into());
-            }
-            audio = Some(bytes);
-        }
-    }
-    let audio = audio.ok_or_else(|| {
-        AppError::bad_request("VOICE_NO_AUDIO", "missing multipart `file` field (audio/wav)")
-    })?;
+    let audio = read_audio_field(&mut multipart).await?;
 
     // Logical size cap (bytes) from settings.
     if audio.len() as i64 > settings.max_upload_bytes {
@@ -111,7 +79,16 @@ pub async fn transcribe(
     };
 
     let started = Instant::now();
-    let text = forward_to_whisper(&handle.base_url, audio, &lang).await?;
+    // Batch transcription keeps the generous 300s ceiling (whisper cold-start +
+    // a full 120s clip decode). The streaming handler passes a shorter interim
+    // timeout so a slow tick can't wedge its loop.
+    let text = forward_to_whisper(
+        &handle.base_url,
+        audio,
+        &lang,
+        std::time::Duration::from_secs(300),
+    )
+    .await?;
     let duration_ms = started.elapsed().as_millis() as i64;
 
     Ok((
@@ -132,12 +109,52 @@ pub fn transcribe_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<TranscriptionResponse>>()
 }
 
+/// Read the single multipart `file` field (the WAV) as refcounted `Bytes`,
+/// enforcing the absolute hard ceiling. Shared by the batch + streaming handlers.
+/// A transport/parse error is a clean 400 (`VOICE_BAD_UPLOAD`); a missing field is
+/// `VOICE_NO_AUDIO`; over-ceiling is `VOICE_CLIP_TOO_LARGE`.
+pub(super) async fn read_audio_field(
+    multipart: &mut Multipart,
+) -> Result<axum::body::Bytes, AppError> {
+    let mut audio: Option<axum::body::Bytes> = None;
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(f)) => f,
+            Ok(None) => break,
+            Err(e) => {
+                return Err(AppError::bad_request(
+                    "VOICE_BAD_UPLOAD",
+                    format!("malformed multipart upload: {e}"),
+                ));
+            }
+        };
+        if field.name() == Some("file") {
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::bad_request("VOICE_BAD_UPLOAD", format!("read field: {e}")))?;
+            if bytes.len() > ABSOLUTE_MAX_BYTES {
+                return Err(AppError::bad_request(
+                    "VOICE_CLIP_TOO_LARGE",
+                    "audio upload exceeds the maximum size",
+                ));
+            }
+            audio = Some(bytes);
+        }
+    }
+    audio.ok_or_else(|| {
+        AppError::bad_request("VOICE_NO_AUDIO", "missing multipart `file` field (audio/wav)")
+    })
+}
+
 /// POST the WAV to whisper-server's native `/inference` endpoint (multipart) and
-/// parse the `{ "text": ... }` response.
-async fn forward_to_whisper(
+/// parse the `{ "text": ... }` response. Shared by the batch transcribe handler
+/// (300s) and the streaming handler (a shorter interim `timeout`).
+pub(super) async fn forward_to_whisper(
     base_url: &str,
     audio: axum::body::Bytes,
     lang: &str,
+    timeout: std::time::Duration,
 ) -> Result<String, AppError> {
     // `Part::stream_with_length` over the refcounted `Bytes` avoids the extra
     // full-clip copy `Part::bytes` (which needs an owned `Vec`) would force,
@@ -156,7 +173,7 @@ async fn forward_to_whisper(
     }
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(timeout)
         .build()
         .map_err(AppError::internal_with_id)?;
 
@@ -198,8 +215,9 @@ fn parse_inference_text(body: &str) -> Result<String, AppError> {
 }
 
 /// Validate the bytes are a RIFF/WAVE container. Returns a 4xx (not 500) on a
-/// non-WAV body so a bad client upload is a clear client error.
-fn validate_wav(bytes: &[u8]) -> Result<(), AppError> {
+/// non-WAV body so a bad client upload is a clear client error. Shared with the
+/// streaming handler.
+pub(super) fn validate_wav(bytes: &[u8]) -> Result<(), AppError> {
     let is_wav = bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE";
     if !is_wav {
         return Err(AppError::bad_request(

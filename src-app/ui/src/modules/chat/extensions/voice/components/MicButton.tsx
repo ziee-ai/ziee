@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
-import { Loader2, Mic, Square, X } from 'lucide-react'
+import { Captions, CaptionsOff, Loader2, Mic, Square, X } from 'lucide-react'
 import { Button, Popover, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
@@ -36,7 +36,7 @@ function formatElapsed(ms: number): string {
  * readers don't re-announce it every tick.
  */
 export function MicButton() {
-  const { status, elapsedMs, capability, capabilityLoaded, stageText, announcement } =
+  const { status, elapsedMs, capability, capabilityLoaded, stageText, announcement, interimText, liveCaptions } =
     Stores.Chat.VoiceStore
   // PERMISSION gate (layer 4 — explicit, at the render site). Independent of the
   // feature/binary-availability gate below: a user whose group lacks
@@ -81,6 +81,31 @@ export function MicButton() {
     }
     setHintOpen(false)
   }
+
+  // Live-captions availability + per-device toggle (only when the deployment
+  // offers streaming captions). Idle-only affordance so the mode is chosen before
+  // recording (the interim loop is armed at record start).
+  const streamingAvailable = !!capability.streaming_enabled
+  const liveToggle = streamingAvailable ? (
+    <Tooltip content={liveCaptions ? 'Live captions on' : 'Live captions off'}>
+      <Button
+        data-testid="voice-live-toggle"
+        data-tooltip-wrapped=""
+        icon={
+          liveCaptions ? (
+            <Captions className="size-4" />
+          ) : (
+            <CaptionsOff className="size-4 text-muted-foreground" />
+          )
+        }
+        variant="ghost"
+        size="default"
+        aria-label={liveCaptions ? 'Turn live captions off' : 'Turn live captions on'}
+        aria-pressed={liveCaptions}
+        onClick={() => Stores.Chat.VoiceStore.setLiveCaptions(!liveCaptions)}
+      />
+    </Tooltip>
+  ) : null
 
   // The primary mic affordance (idle), reused by the plain + privacy-hint states.
   const micButtonTrigger = (
@@ -137,10 +162,22 @@ export function MicButton() {
     // timer is aria-hidden — the live region carries the discrete announcements.
     content = (
       <div
-        className="flex items-center gap-1"
+        className="flex items-center gap-2"
         role="group"
         aria-label="Recording voice dictation"
       >
+        {/* Live-caption preview (transient, visual-only — the persistent live
+            region carries discrete announcements; a growing transcript must not
+            be re-announced every tick). Never written to the composer. */}
+        {liveCaptions && interimText && (
+          <span
+            data-testid="voice-live-caption"
+            aria-hidden="true"
+            className="text-xs text-muted-foreground truncate max-w-48"
+          >
+            {interimText}
+          </span>
+        )}
         <span
           className="size-2 rounded-full bg-destructive animate-pulse"
           aria-hidden="true"
@@ -230,9 +267,20 @@ export function MicButton() {
         {micButtonTrigger}
       </Popover>
     )
+    content = (
+      <div className="flex items-center gap-1">
+        {content}
+        {liveToggle}
+      </div>
+    )
   } else {
-    // Idle (hint dismissed): plain mic affordance.
-    content = <Tooltip content="Dictate a message">{micButtonTrigger}</Tooltip>
+    // Idle (hint dismissed): plain mic affordance + the live-captions toggle.
+    content = (
+      <div className="flex items-center gap-1">
+        <Tooltip content="Dictate a message">{micButtonTrigger}</Tooltip>
+        {liveToggle}
+      </div>
+    )
   }
 
   // ONE persistent live region (stable position-0 node) + the state content.

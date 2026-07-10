@@ -117,16 +117,31 @@ export async function installVoiceBrowserMocks(
         ondataavailable: ((e: { data: Blob }) => void) | null = null
         onstop: (() => void) | null = null
         onerror: ((e: unknown) => void) | null = null
+        _sliceTimer: ReturnType<typeof setInterval> | null = null
         constructor(stream: unknown) {
           this.stream = stream
         }
-        start() {
+        start(timeslice?: number) {
           this.state = 'recording'
+          // Real MediaRecorder started with a timeslice flushes a chunk every
+          // `timeslice` ms; the live-caption loop relies on that to have audio to
+          // decode while recording. Emit a real WAV blob on the same cadence.
+          if (typeof timeslice === 'number' && timeslice > 0) {
+            this._sliceTimer = setInterval(() => {
+              if (this.state === 'recording' && this.ondataavailable) {
+                this.ondataavailable({ data: makeWavBlob() })
+              }
+            }, timeslice)
+          }
         }
         requestData() {
           if (this.ondataavailable) this.ondataavailable({ data: makeWavBlob() })
         }
         stop() {
+          if (this._sliceTimer) {
+            clearInterval(this._sliceTimer)
+            this._sliceTimer = null
+          }
           if (this.state === 'inactive') {
             if (this.onstop) this.onstop()
             return
@@ -211,12 +226,18 @@ export interface VoiceApiState {
   transcribe: TranscriptionResponse
   /** How many times POST /transcribe was called. */
   transcribeCount: number
+  /** The interim payload POST /transcribe/stream returns. */
+  streamTranscribe: TranscriptionResponse
+  /** How many times POST /transcribe/stream was called. */
+  streamCount: number
 }
 
 export interface VoiceRouteController {
   state: VoiceApiState
   /** Replace the transcribe payload the next POST returns. */
   setTranscribe: (r: TranscriptionResponse) => void
+  /** Replace the interim (stream) payload the next POST returns. */
+  setStream: (r: TranscriptionResponse) => void
 }
 
 const now = () => new Date().toISOString()
@@ -247,6 +268,8 @@ export function readyCapability(
     can_transcribe: true,
     model: 'base',
     max_clip_seconds: 60,
+    streaming_enabled: true,
+    stream_interval_ms: 1000,
     ...over,
   }
 }
@@ -260,6 +283,8 @@ export function defaultVoiceState(
       enabled: true,
       model: 'base',
       language: 'auto',
+      streaming_enabled: true,
+      stream_interval_ms: 1000,
       idle_unload_secs: 300,
       auto_start_timeout_secs: 30,
       drain_timeout_secs: 30,
@@ -312,6 +337,12 @@ export function defaultVoiceState(
       duration_ms: 640,
     },
     transcribeCount: 0,
+    streamTranscribe: {
+      text: 'hello from the live',
+      language: 'en',
+      duration_ms: 120,
+    },
+    streamCount: 0,
     ...over,
   }
 }
@@ -403,6 +434,11 @@ export async function routeVoice(
       }
       state.settings = { ...state.settings, ...body, updated_at: now() }
       return fulfillJson(route, state.settings)
+    }
+
+    if (seg === 'transcribe/stream' && method === 'POST') {
+      state.streamCount++
+      return fulfillJson(route, state.streamTranscribe)
     }
 
     if (seg === 'transcribe' && method === 'POST') {
@@ -500,6 +536,9 @@ export async function routeVoice(
     state,
     setTranscribe: (r: TranscriptionResponse) => {
       state.transcribe = r
+    },
+    setStream: (r: TranscriptionResponse) => {
+      state.streamTranscribe = r
     },
   }
 }

@@ -103,6 +103,16 @@ pub fn validate_settings_patch(body: &UpdateVoiceSettingsRequest) -> Result<(), 
             "max_upload_bytes out of range (1024..=67108864)",
         ));
     }
+    if let Some(n) = body.stream_interval_ms
+        && !(300..=10_000).contains(&n)
+    {
+        // Matches the DB CHECK on stream_interval_ms. Sub-300ms would flood the
+        // whisper instance; >10s stops feeling live.
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "stream_interval_ms out of range (300..=10000)",
+        ));
+    }
     Ok(())
 }
 
@@ -124,6 +134,8 @@ pub async fn update_settings(
             body.drain_timeout_secs,
             body.max_clip_seconds,
             body.max_upload_bytes,
+            body.streaming_enabled,
+            body.stream_interval_ms,
         )
         .await?;
 
@@ -161,6 +173,9 @@ pub async fn get_capability(
         model: settings.model,
         max_clip_seconds: settings.max_clip_seconds,
         can_transcribe: enabled && runtime_ready && model_ready,
+        // Live captions need the deployment toggle AND the master enable.
+        streaming_enabled: enabled && settings.streaming_enabled,
+        stream_interval_ms: settings.stream_interval_ms,
     };
     Ok((StatusCode::OK, Json(cap)))
 }
@@ -224,6 +239,8 @@ mod tests {
             drain_timeout_secs: Some(30),
             max_clip_seconds: Some(120),
             max_upload_bytes: Some(1_048_576),
+            streaming_enabled: Some(true),
+            stream_interval_ms: Some(1500),
         };
         assert!(validate_settings_patch(&ok).is_ok());
         // Empty patch (all None → leave everything) is valid.
@@ -310,11 +327,27 @@ mod tests {
             &UpdateVoiceSettingsRequest { max_upload_bytes: Some(67_108_865), ..base() },
             "max_upload above range",
         );
+        // stream_interval_ms: 300..=10000 (TEST-1)
+        assert_validation_400(
+            &UpdateVoiceSettingsRequest { stream_interval_ms: Some(299), ..base() },
+            "stream_interval below range",
+        );
+        assert_validation_400(
+            &UpdateVoiceSettingsRequest { stream_interval_ms: Some(10_001), ..base() },
+            "stream_interval above range",
+        );
         // Boundary values are inclusive-OK.
         assert!(validate_settings_patch(&UpdateVoiceSettingsRequest {
             idle_unload_secs: Some(0),
             max_clip_seconds: Some(3_600),
             max_upload_bytes: Some(67_108_864),
+            stream_interval_ms: Some(300),
+            ..base()
+        })
+        .is_ok());
+        assert!(validate_settings_patch(&UpdateVoiceSettingsRequest {
+            stream_interval_ms: Some(10_000),
+            streaming_enabled: Some(false),
             ..base()
         })
         .is_ok());

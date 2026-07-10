@@ -18,6 +18,10 @@ pub struct VoiceSettings {
     pub drain_timeout_secs: i32,
     pub max_clip_seconds: i32,
     pub max_upload_bytes: i64,
+    /// Live streaming captions available deployment-wide (also needs `enabled`).
+    pub streaming_enabled: bool,
+    /// Interim decode cadence in milliseconds for live captions.
+    pub stream_interval_ms: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -40,6 +44,10 @@ pub struct UpdateVoiceSettingsRequest {
     pub max_clip_seconds: Option<i32>,
     #[serde(default)]
     pub max_upload_bytes: Option<i64>,
+    #[serde(default)]
+    pub streaming_enabled: Option<bool>,
+    #[serde(default)]
+    pub stream_interval_ms: Option<i32>,
 }
 
 /// Readiness snapshot for the composer mic button. Reachable by any user holding
@@ -59,6 +67,11 @@ pub struct VoiceCapability {
     pub max_clip_seconds: i32,
     /// True when enabled && runtime_ready && model_ready — the mic is usable.
     pub can_transcribe: bool,
+    /// Live streaming captions available (deployment `streaming_enabled` AND
+    /// `enabled`). The composer runs the interim loop only when this is true.
+    pub streaming_enabled: bool,
+    /// Interim decode cadence (ms) the composer paces its live-caption loop at.
+    pub stream_interval_ms: i32,
 }
 
 /// Result of a transcription request.

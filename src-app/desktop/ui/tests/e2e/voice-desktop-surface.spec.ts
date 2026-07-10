@@ -93,6 +93,8 @@ async function routeVoiceReady(page: Page): Promise<void> {
           can_transcribe: true,
           model: 'base',
           max_clip_seconds: 60,
+          streaming_enabled: true,
+          stream_interval_ms: 1000,
         }),
       )
     if (seg === 'settings')
@@ -106,6 +108,8 @@ async function routeVoiceReady(page: Page): Promise<void> {
           drain_timeout_secs: 30,
           max_clip_seconds: 60,
           max_upload_bytes: 26214400,
+          streaming_enabled: true,
+          stream_interval_ms: 1000,
           updated_at: now,
         }),
       )
@@ -172,6 +176,29 @@ test.describe('desktop voice surface (TEST-30)', () => {
     await expect(
       page.getByTestId('desktop-settings-menu-item-voice'),
     ).toBeVisible()
+  })
+
+  // TEST-15 — streaming parity: the streaming-augmented voice code (live
+  // captions) rides the SAME glob-shared module, so its arrival must not break
+  // desktop discovery. The mocked desktop harness renders only the settings menu
+  // (not the composer / sub-pages — see the NOTE below), so the toggle + caption
+  // rendering is covered by the ui `14-voice` specs on the shared code; here we
+  // assert the streaming-augmented module still boots + discovers cleanly on
+  // desktop with NO console/page errors.
+  test('the streaming-augmented voice module boots cleanly on desktop', async ({
+    page,
+  }) => {
+    const findings: string[] = []
+    const NOISE = /favicon|\/@vite\/|@react-refresh|hot-update|sockjs|__vite|\.map(\?|$)/i
+    page.on('console', msg => {
+      if (msg.type() === 'error' && !NOISE.test(msg.text())) findings.push(`console: ${msg.text()}`)
+    })
+    page.on('pageerror', err => findings.push(`page: ${err.message}`))
+
+    await page.goto('/settings')
+    await expect(page.getByTestId('desktop-settings-menu')).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('desktop-settings-menu-item-voice')).toBeVisible()
+    expect(findings, findings.join('\n')).toEqual([])
   })
 
   // NOTE: settings SUB-page rendering (e.g. `/settings/voice`) is intentionally
