@@ -50,7 +50,7 @@ test.describe('Split chat — per-pane scroll + virtualization', () => {
     const pane0 = byTestId(page, 'chat-pane-0')
     const pane1 = byTestId(page, 'chat-pane-1')
     await expect(pane0.getByTestId('chat-messages')).toBeVisible({ timeout: 30000 })
-    await expect(pane1.getByTestId('new-chat-greeting')).toBeVisible()
+    await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Pane 0 virtualizes: newest mounted, oldest virtualized OUT, only a subset
     // of the 30 messages in the DOM.
@@ -72,7 +72,7 @@ test.describe('Split chat — per-pane scroll + virtualization', () => {
     await expect(pane0.locator('[data-message-id="v-29"]')).toHaveCount(0)
 
     // Pane 1 is completely unaffected by pane 0's scroll/pagination.
-    await expect(pane1.getByTestId('new-chat-greeting')).toBeVisible()
+    await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
     await expect(pane1.getByTestId('chat-message')).toHaveCount(0)
   })
 })

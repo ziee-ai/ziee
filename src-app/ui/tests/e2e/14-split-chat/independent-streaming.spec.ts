@@ -57,7 +57,7 @@ test.describe('Split chat — streaming isolation', () => {
     await expect(pane1).toBeVisible({ timeout: 15000 })
 
     // pane 1 is a new-chat pane (greeting), and has NO assistant message.
-    await expect(pane1.getByTestId('new-chat-greeting')).toBeVisible()
+    await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Send a short prompt in pane 0. Click into the pane first (a real user
     // focuses the pane they type in — this sets the focused pane so the send
@@ -78,6 +78,6 @@ test.describe('Split chat — streaming isolation', () => {
     // ...and pane 1 NEVER receives an assistant message (no cross-pane bleed).
     await expect(pane1.locator('[data-role="assistant"]')).toHaveCount(0)
     // pane 1 is still the fresh new-chat pane.
-    await expect(pane1.getByTestId('new-chat-greeting')).toBeVisible()
+    await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
   })
 })

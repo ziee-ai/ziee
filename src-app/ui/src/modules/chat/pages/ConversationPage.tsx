@@ -512,7 +512,7 @@ export function ConversationPane() {
         <div className="flex flex-1 min-h-0 flex-col items-center justify-center p-4">
           <div className="w-full max-w-3xl">
             <div className="mb-8 text-center">
-              <Title level={2} data-testid="new-chat-greeting">
+              <Title level={2} data-testid="pane-new-chat-greeting">
                 How can I help you today?
               </Title>
             </div>
