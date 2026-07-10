@@ -53,6 +53,9 @@ test.describe('Split chat — per-pane scroll + virtualization', () => {
     const pane0 = byTestId(page, 'chat-pane-0')
     const pane1 = byTestId(page, 'chat-pane-1')
     await expect(pane0.getByTestId('chat-messages')).toBeVisible({ timeout: 30000 })
+    // pane 1 opens the conversation PICKER (ITEM-27); "Start a new chat" reaches
+    // the new-chat composer (greeting), a pane with no message history.
+    await pane1.getByTestId('pane-start-new-chat').click()
     await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Pane 0 virtualizes: newest mounted, oldest virtualized OUT, only a subset

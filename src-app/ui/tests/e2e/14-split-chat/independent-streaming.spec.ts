@@ -47,7 +47,9 @@ test.describe('Split chat — streaming isolation', () => {
     await expect(pane0).toBeVisible({ timeout: 15000 })
     await expect(pane1).toBeVisible({ timeout: 15000 })
 
-    // pane 1 is a new-chat pane (greeting), and has NO assistant message.
+    // pane 1 opens the conversation PICKER (ITEM-27); choose "Start a new chat"
+    // to reach the new-chat composer (greeting), which has NO assistant message.
+    await pane1.getByTestId('pane-start-new-chat').click()
     await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Send a short prompt in pane 0. Click into the pane first (a real user

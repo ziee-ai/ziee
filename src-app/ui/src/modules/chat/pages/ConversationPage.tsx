@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
-import { Alert, Button, ErrorState, Title, Tooltip } from '@/components/ui'
+import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
 import { Columns2, Search as SearchIcon, X } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/modules/chat/components/MessageList'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
+import { ConversationPickerPane } from '@/modules/chat/components/ConversationPickerPane'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
@@ -472,55 +473,14 @@ export function ConversationPane() {
     )
   }
 
-  // New-chat PANE: a split pane with no conversation targeted yet is a fresh
-  // chat, NOT a "not found". Render the composer (greeting + ChatInput) so the
-  // user can start a conversation in this pane. (Single-pane new chat uses the
-  // NewChatPage route instead.)
+  // Empty PANE (ITEM-27): a split pane with no conversation targeted yet is the
+  // second slot of a split waiting to be filled. Render the conversation PICKER
+  // (searchable list of existing conversations + "Start a new chat") so the slot
+  // can hold an EXISTING conversation — not only a fresh one (FB-3). The new-chat
+  // path inside the picker reaches the same greeting + composer + adoption.
+  // (Single-pane new chat uses the NewChatPage route instead.)
   if (pane && !conversationId && !conversation) {
-    return (
-      <div className="flex h-full flex-col">
-        <div
-          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3"
-          data-testid="chat-pane-header"
-        >
-          <span className="min-w-0 truncate text-sm text-muted-foreground">
-            New chat
-          </span>
-          <div className="flex items-center gap-1">
-            <Tooltip content="Open in split view">
-              <Button
-                data-testid="chat-split-btn"
-                variant="ghost"
-                size="icon"
-                icon={<Columns2 />}
-                aria-label="Open in split view"
-                onClick={onSplit}
-              />
-            </Tooltip>
-            <Tooltip content="Close pane">
-              <Button
-                data-testid="chat-pane-close"
-                variant="ghost"
-                size="icon"
-                icon={<X />}
-                aria-label="Close pane"
-                onClick={() => Stores.SplitView.closePane(pane.paneId)}
-              />
-            </Tooltip>
-          </div>
-        </div>
-        <div className="flex flex-1 min-h-0 flex-col items-center justify-center p-4">
-          <div className="w-full max-w-3xl">
-            <div className="mb-8 text-center">
-              <Title level={2} data-testid="pane-new-chat-greeting">
-                How can I help you today?
-              </Title>
-            </div>
-            <ChatInput />
-          </div>
-        </div>
-      </div>
-    )
+    return <ConversationPickerPane paneId={pane.paneId} />
   }
 
   // No conversation to show. A load FAILURE (the store set `error`) is a

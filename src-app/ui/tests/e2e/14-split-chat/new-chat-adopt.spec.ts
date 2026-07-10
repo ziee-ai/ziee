@@ -45,6 +45,9 @@ test.describe('Split chat — new-chat pane adopt (no window hijack)', () => {
     const pane0 = byTestId(page, 'chat-pane-0')
     const pane1 = byTestId(page, 'chat-pane-1')
     await expect(pane0).toBeVisible({ timeout: 15000 })
+    // pane 1 opens the conversation PICKER (ITEM-27); "Start a new chat" reaches
+    // the new-chat composer that adopts the created conversation into this slot.
+    await pane1.getByTestId('pane-start-new-chat').click()
     await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Send in the new-chat pane.
