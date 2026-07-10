@@ -1525,10 +1525,14 @@ export interface FileRagAdminSettings {
   fts_min_rank: number
   fts_rrf_k: number
   id: number
+  kb_max_documents: number
   max_chunks_per_file: number
   rerank_candidate_k: number
   rerank_enabled: boolean
   reranker_model_id?: string
+  search_max_hit_chars: number
+  search_max_top_k: number
+  search_snippet_chars: number
   semantic_enabled: boolean
   updated_at: string
 }
@@ -5651,10 +5655,14 @@ export interface UpdateFileRagAdminSettingsRequest {
   fts_enabled?: boolean
   fts_min_rank?: number
   fts_rrf_k?: number
+  kb_max_documents?: number
   max_chunks_per_file?: number
   rerank_candidate_k?: number
   rerank_enabled?: boolean
   reranker_model_id?: string
+  search_max_hit_chars?: number
+  search_max_top_k?: number
+  search_snippet_chars?: number
   semantic_enabled?: boolean
 }
 

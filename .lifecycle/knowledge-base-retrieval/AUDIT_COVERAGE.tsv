@@ -235,3 +235,16 @@ src-app/ui/tests/e2e/14-knowledge-base/kb-documents.spec.ts	1	45	correctness,err
 src-app/ui/tests/e2e/14-knowledge-base/kb-list.spec.ts	1	54	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
 src-app/ui/tests/e2e/14-knowledge-base/kb-project-extension.spec.ts	1	51	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
 src-app/ui/tests/e2e/14-knowledge-base/reranker-admin.spec.ts	1	35	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
+src-app/server/migrations/00000000000137_add_retrieval_limits.sql	1	20	correctness,error-handling,security,api-contract,state-management,patterns-conformance,a11y,tests-quality
+src-app/server/src/modules/file_rag/handlers.rs	195	210	correctness,error-handling,security,api-contract,state-management,patterns-conformance,a11y,tests-quality
+src-app/server/src/modules/file_rag/models.rs	75	90	correctness,error-handling,security,api-contract,state-management,patterns-conformance,a11y,tests-quality
+src-app/server/src/modules/file_rag/repository.rs	100	155	correctness,error-handling,security,api-contract,state-management,patterns-conformance,a11y,tests-quality
+src-app/server/tests/file_rag/mod.rs	1495	1920	tests-quality,correctness,patterns-conformance,concurrency
+src-app/ui/src/modules/file-rag/components/sections/RetrievalLimitsSection.tsx	1	160	correctness,error-handling,security,api-contract,state-management,patterns-conformance,a11y,tests-quality
+src-app/ui/src/modules/file-rag/pages/FileRagAdminPage.tsx	50	60	correctness,error-handling,security,api-contract,state-management,patterns-conformance,a11y,tests-quality
+src-app/ui/src/components/ui/testIds.generated.ts	410	425	tests-quality,patterns-conformance,api-contract
+src-app/ui/src/dev/gallery/fixtures/recorded/crawl.json	500	3400	tests-quality,patterns-conformance,api-contract
+src-app/desktop/ui/src/dev/gallery/fixtures/recorded/crawl.json	300	3000	tests-quality,patterns-conformance,api-contract
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1320	4520	tests-quality,patterns-conformance,api-contract
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1485	1790	tests-quality,patterns-conformance,api-contract
+src-app/ui/tests/e2e/14-knowledge-base/kb-citation-flow.spec.ts	1	60	tests-quality,correctness,patterns-conformance,error-handling

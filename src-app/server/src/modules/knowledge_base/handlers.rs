@@ -135,9 +135,6 @@ fn rpc_err(e: AppError) -> (StatusCode, JsonRpcError) {
     (StatusCode::OK, JsonRpcError::internal(e.to_string()))
 }
 
-/// Cap a chunk's text so the aggregate `structuredContent` stays bounded.
-const MAX_HIT_CHARS: usize = 2000;
-
 async fn search_knowledge(
     user_id: Uuid,
     conversation_id: Option<Uuid>,
@@ -158,7 +155,11 @@ async fn search_knowledge(
     let scope_ids = Repos.knowledge_base.resolve_scope_file_ids(user_id, &kb_ids).await?;
 
     let admin = Repos.file_rag.get_admin_settings().await?;
-    let top_k = args.top_k.unwrap_or(admin.default_top_k as i64).clamp(1, 50);
+    // Retrieval limits are admin-configurable (Document RAG admin settings).
+    let max_top_k = admin.search_max_top_k as i64;
+    let top_k = args.top_k.unwrap_or(admin.default_top_k as i64).clamp(1, max_top_k);
+    let max_hit_chars = admin.search_max_hit_chars as usize;
+    let snippet_chars = admin.search_snippet_chars as usize;
 
     let result = crate::modules::file_rag::retrieval::semantic_search(
         &scope_ids, user_id, &args.query, top_k, &admin,
@@ -184,7 +185,7 @@ async fn search_knowledge(
         .hits
         .iter()
         .map(|h| {
-            let content: String = h.content.chars().take(MAX_HIT_CHARS).collect();
+            let content: String = h.content.chars().take(max_hit_chars).collect();
             json!({
                 "file_id": h.file_id,
                 "filename": name_of(&h.file_id),
@@ -204,7 +205,7 @@ async fn search_knowledge(
             .hits
             .iter()
             .map(|h| {
-                let snippet: String = h.content.chars().take(160).collect();
+                let snippet: String = h.content.chars().take(snippet_chars).collect();
                 format!("{}:p{}: {}", name_of(&h.file_id), h.page_number, snippet.replace('\n', " "))
             })
             .collect();
@@ -369,9 +370,11 @@ pub async fn attach_documents(
     if !Repos.knowledge_base.owns(auth.user.id, id).await? {
         return Err(AppError::not_found("KnowledgeBase").into());
     }
+    // The per-KB document cap is admin-configurable (Document RAG admin settings).
+    let cap = Repos.file_rag.get_admin_settings().await?.kb_max_documents as i64;
     let result = Repos
         .knowledge_base
-        .add_documents_capped(auth.user.id, id, &body.file_ids)
+        .add_documents_capped(auth.user.id, id, &body.file_ids, cap)
         .await?;
     // Reindex any attached file that has no chunks yet (attach-existing path).
     let need = Repos

@@ -1497,10 +1497,18 @@ async fn admin_read_permission_grant_takes_effect_mid_session() {
 /// DELETE+INSERT swap (no doubled rows, no lost index). Drives the real
 /// `reindex_file` entrypoint twice concurrently.
 #[tokio::test]
+#[serial_test::serial(repos, file_storage)]
 async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
     let server = TestServer::start().await;
     let user = power_user(&server, "rag_concurrent_ingest").await;
     let pool = db_pool(&server).await;
+    // This test calls the in-process `reindex_file` entrypoint directly, so the
+    // process-global RepositoryFactory + file storage must be initialized (the
+    // spawned server only inits its own process). Mirrors file/mod.rs:1859; the
+    // `#[serial(repos, file_storage)]` guard keeps parallel tests from
+    // clobbering these process-global singletons.
+    ziee::init_repositories(pool.clone());
+    ziee::init_file_storage(server.data_dir().join("files"));
 
     set_rag_settings(&server, &user, json!({ "enabled": true })).await;
     let file_id = upload_text(
@@ -1540,10 +1548,17 @@ async fn concurrent_reindex_of_same_file_keeps_chunks_consistent() {
 /// With NO embedding model configured, freshly-indexed chunks have NULL
 /// embeddings — exactly the mid-rebuild state — so this reproduces it directly.
 #[tokio::test]
+#[serial_test::serial(repos, file_storage)]
 async fn search_during_embed_rebuild_vector_arm_excludes_null_embeddings_fts_still_serves() {
     let server = TestServer::start().await;
     let user = power_user(&server, "rag_embed_race").await;
     let pool = db_pool(&server).await;
+    // Calls the in-process `*_hit_count_for_test` search entrypoints directly,
+    // so the process-global RepositoryFactory + file storage must be
+    // initialized. Mirrors file/mod.rs:1859; `#[serial(repos, file_storage)]`
+    // keeps parallel tests from clobbering these process-global singletons.
+    ziee::init_repositories(pool.clone());
+    ziee::init_file_storage(server.data_dir().join("files"));
 
     // FTS-only deployment (no embedding model) → chunks land with NULL embeddings.
     set_rag_settings(&server, &user, json!({ "enabled": true })).await;
@@ -1847,7 +1862,7 @@ async fn concurrent_reindex_same_file_yields_one_consistent_chunk_set() {
     tokio::time::sleep(Duration::from_millis(800)).await;
     wait_for_chunks(&pool, &file_id, 1).await;
     let chunk_contents: Vec<String> = sqlx::query_scalar(
-        "SELECT content FROM file_chunks WHERE file_id = $1 ORDER BY chunk_index",
+        "SELECT content FROM file_chunks WHERE file_id = $1::uuid ORDER BY chunk_index",
     )
     .bind(&file_id)
     .fetch_all(&pool)
@@ -1894,7 +1909,7 @@ async fn semantic_search_with_null_embeddings_degrades_gracefully() {
     wait_for_chunks(&pool, &file_ids[0], 1).await;
 
     // Simulate the mid-rebuild window: every chunk embedding is NULL.
-    sqlx::query("UPDATE file_chunks SET embedding = NULL WHERE file_id = $1")
+    sqlx::query("UPDATE file_chunks SET embedding = NULL WHERE file_id = $1::uuid")
         .bind(&file_ids[0])
         .execute(&pool)
         .await
@@ -2030,4 +2045,41 @@ async fn test_11b_no_text_file_lands_no_text() {
 
     let status = wait_index_status(&pool, &fid).await;
     assert_eq!(status, "no_text", "an image (no extractable text) lands no_text, not indexed/failed");
+}
+
+// Retrieval / KB limits promoted from compiled-in constants to admin settings
+// (migration 137): round-trip + range validation (DB CHECK + handler).
+#[tokio::test]
+async fn test_retrieval_limit_settings_roundtrip_and_validation() {
+    let server = TestServer::start().await;
+    let admin = power_user(&server, "frag_limits_admin").await;
+
+    // defaults preserve prior compiled-in behaviour.
+    let d = get_settings(&server, &admin).await;
+    assert_eq!(d["kb_max_documents"], 2000);
+    assert_eq!(d["search_max_hit_chars"], 2000);
+    assert_eq!(d["search_snippet_chars"], 160);
+    assert_eq!(d["search_max_top_k"], 50);
+
+    // valid updates persist + read back.
+    let ok = put_settings_raw(&server, &admin, json!({
+        "kb_max_documents": 500, "search_max_hit_chars": 1200,
+        "search_snippet_chars": 200, "search_max_top_k": 25,
+    })).await;
+    assert!(ok.status().is_success(), "valid limits: {}", ok.text().await.unwrap_or_default());
+    let g = get_settings(&server, &admin).await;
+    assert_eq!(g["kb_max_documents"], 500);
+    assert_eq!(g["search_max_hit_chars"], 1200);
+    assert_eq!(g["search_snippet_chars"], 200);
+    assert_eq!(g["search_max_top_k"], 25);
+
+    // out-of-range each → clean 400 (mirrors the DB CHECK), never a 500.
+    for (field, val) in [
+        ("kb_max_documents", 0), ("kb_max_documents", 100001),
+        ("search_max_hit_chars", 50), ("search_snippet_chars", 5000),
+        ("search_max_top_k", 501),
+    ] {
+        let bad = put_settings_raw(&server, &admin, json!({ field: val })).await;
+        assert_eq!(bad.status(), 400, "{field}={val} must be rejected: {}", bad.text().await.unwrap_or_default());
+    }
 }

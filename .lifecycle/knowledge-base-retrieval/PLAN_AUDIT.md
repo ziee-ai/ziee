@@ -90,3 +90,4 @@ No `BLOCKED` verdicts. Every prior-audit CRITICAL/HIGH is now an item with a tes
 Remaining CONCERNs are handled by explicit items/tests/DECs (esp. ITEM-7 promotion
 test, ITEM-12 real-worker emit test, ITEM-22 geometry prototype-first, ITEM-18
 owner-scope/dedup tests, ITEM-10 seed lockstep).
+- **ITEM-43** — verdict: PASS — mirrors the reranker-column migration (135) + settings plumbing exactly; needs `just openapi-regen` (new FileRagAdminSettings fields) in BOTH ui + desktop.

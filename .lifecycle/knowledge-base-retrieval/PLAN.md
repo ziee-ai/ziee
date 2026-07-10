@@ -115,6 +115,8 @@ single-sibling Tooltip, controlled Confirm).
 - Structure-aware scientific-PDF ingest (GROBID/Docling; licensing: avoid Marker/Nougat) → separate initiative; enables table-atomic chunking + metadata-filtered retrieval.
 - OCR for scanned PDFs (v1 marks them `no_text`, doesn't OCR); MedCPT domain-reranker A/B; MeSH query expansion; SPECTER2 "related papers"; Elicit-style extraction tables; shared/org KBs (cross-user RBAC); three-pane workspace; document versioning re-index policy beyond DEC-33; upload resume/recovery beyond DEC-34.
 
+- **ITEM-43**: Promote previously-hardcoded retrieval/limit constants to admin settings on `file_rag_admin_settings` (migration 137): `kb_max_documents` (was KB_MAX_DOCUMENTS), `search_max_hit_chars` (was MAX_HIT_CHARS), `search_snippet_chars` (was 160), `search_max_top_k` (was the top_k clamp ceiling 50). Defaults preserve prior behaviour; `search_knowledge` + the KB attach handler read the settings; a `RetrievalLimitsSection` card on the Document RAG admin page exposes them. (The PDF-geometry line-merge tolerance stays a named const — a rendering heuristic, not a deployment policy.)
+
 ## Files to touch
 
 Backend R: `ai-providers/src/{models/chat.rs,traits.rs,provider.rs,providers/openai.rs}`; `modules/llm_model/{models.rs,handlers/models.rs,types.rs}`; `modules/hub/handlers.rs` (capability map); `modules/memory/engine/{capability.rs,dispatch.rs}`; `modules/llm_local_runtime/{deployment/local.rs,auto_start.rs,proxy_router.rs,proxy_handlers.rs}`; `migrations/…135…`; `modules/file_rag/{models.rs,repository.rs,handlers.rs,retrieval.rs}`.

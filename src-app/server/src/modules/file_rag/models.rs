@@ -44,6 +44,11 @@ pub struct FileRagAdminSettings {
     pub reranker_model_id: Option<Uuid>,
     pub rerank_enabled: bool,
     pub rerank_candidate_k: i32,
+    // Retrieval / knowledge-base limits (formerly compiled-in constants).
+    pub kb_max_documents: i32,
+    pub search_max_hit_chars: i32,
+    pub search_snippet_chars: i32,
+    pub search_max_top_k: i16,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -73,6 +78,10 @@ pub struct UpdateFileRagAdminSettingsRequest {
     pub reranker_model_id: Option<Option<Uuid>>,
     pub rerank_enabled: Option<bool>,
     pub rerank_candidate_k: Option<i32>,
+    pub kb_max_documents: Option<i32>,
+    pub search_max_hit_chars: Option<i32>,
+    pub search_snippet_chars: Option<i32>,
+    pub search_max_top_k: Option<i16>,
 }
 
 /// One chunk produced by the chunker, before persistence. `chunk_index` is a

@@ -211,7 +211,11 @@
     "fts_min_rank": 0,
     "updated_at": "2026-07-05T15:43:20.874625Z",
     "rerank_enabled": false,
-    "rerank_candidate_k": 30
+    "rerank_candidate_k": 30,
+    "kb_max_documents": 2000,
+    "search_max_hit_chars": 2000,
+    "search_snippet_chars": 160,
+    "search_max_top_k": 50
   },
   "Hardware.info": {
     "hardware": {

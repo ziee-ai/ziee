@@ -814,3 +814,37 @@ async fn test_30_tool_capable_model_fires_search_knowledge_and_answers_from_the_
     // …and grounded its answer in the retrieved synthetic fact.
     assert!(reply.contains("91745"), "answer must carry the retrieved fact (91745): {reply}");
 }
+
+// The admin-configurable search_max_top_k ceiling actually clamps search_knowledge
+// (proves the promoted setting drives retrieval behaviour, not just persistence).
+#[tokio::test]
+async fn test_search_respects_admin_max_top_k() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_max_topk").await;
+
+    // Lower the ceiling to 2.
+    let put = reqwest::Client::new()
+        .put(server.api_url("/file-rag/admin-settings"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "search_max_top_k": 2 }))
+        .send().await.unwrap();
+    assert!(put.status().is_success(), "set max_top_k: {}", put.text().await.unwrap_or_default());
+
+    let kb = create_kb(&server, &user, "TopK KB").await;
+    for i in 0..5 {
+        // Unique body per doc (else identical checksums dedup — see TEST-21).
+        let f = upload_text(&server, &user, &format!("d{i}.txt"),
+            &format!("shared beacon retrieval token here, document number {i}")).await;
+        wait_for_chunks(&pool, &f, 1).await;
+        assert_eq!(attach_docs(&server, &user, &kb, &[&f]).await.status(), 200);
+    }
+
+    // Ask for top_k=50 → clamped to the admin ceiling (2).
+    let resp = kb_jsonrpc(&server, &user.token, "tools/call",
+        json!({ "name": "search_knowledge", "arguments": { "query": "beacon retrieval token", "knowledge_base_ids": [kb], "top_k": 50 } }))
+        .send().await.unwrap();
+    let sc = resp.json::<Value>().await.unwrap()["result"]["structuredContent"].clone();
+    let hits = sc["hits"].as_array().cloned().unwrap_or_default();
+    assert_eq!(hits.len(), 2, "results clamped to admin search_max_top_k=2: {sc}");
+}

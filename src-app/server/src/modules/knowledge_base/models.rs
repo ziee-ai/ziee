@@ -85,18 +85,21 @@ pub struct KnowledgeSearchHit {
     pub content: String,
 }
 
-/// Max documents per knowledge base (DEC-14). Well above the 500-doc bar.
-pub const KB_MAX_DOCUMENTS: i64 = 2000;
+/// Compiled DEFAULT for the per-KB document cap (DEC-14). The LIVE cap is
+/// admin-configurable — `file_rag_admin_settings.kb_max_documents`, whose DB
+/// DEFAULT (migration 137) mirrors this value; the attach handler reads the
+/// setting, never this const. Well above the 500-doc bar.
+pub const KB_MAX_DOCUMENTS_DEFAULT: i64 = 2000;
 
 #[cfg(test)]
 mod cap_tests {
-    use super::KB_MAX_DOCUMENTS;
+    use super::KB_MAX_DOCUMENTS_DEFAULT;
 
-    // TEST-15 (ITEM-18): the per-KB document cap is 2000. (document_count is a
-    // live COUNT(*) projection, not a stored column — see repository::list; a
-    // stored counter would drift on an external cascade delete.)
+    // TEST-15 (ITEM-18): the per-KB document cap default is 2000 (the live cap is
+    // the admin setting kb_max_documents, whose DB default mirrors this).
+    // document_count is a live COUNT(*) projection, not a stored column.
     #[test]
-    fn kb_max_documents_is_2000() {
-        assert_eq!(KB_MAX_DOCUMENTS, 2000);
+    fn kb_max_documents_default_is_2000() {
+        assert_eq!(KB_MAX_DOCUMENTS_DEFAULT, 2000);
     }
 }

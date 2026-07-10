@@ -177,3 +177,7 @@ Every decision is resolved. Headline user calls: DEC-5/6/7/8/23 (earlier) + DEC-
 (by DEC-32/DEC-31); DEC-9/14/15/26 revised per the audit. No open question remains
 for implementation; the roadmap (OCR, versioning UX, upload resume, structure-aware
 ingest) is explicitly deferred.
+
+### DEC-43: Where do the promoted retrieval-limit constants live, and which are exposed?
+**Resolution:** all four (`kb_max_documents`, `search_max_hit_chars`, `search_snippet_chars`, `search_max_top_k`) become columns on the existing `file_rag_admin_settings` singleton (the shared Document-RAG admin surface the KB module already reuses), exposed via a `RetrievalLimitsSection` card. The PDF-geometry line-merge tolerance (`0.012`) stays a named const — it is an internal rendering heuristic, not a deployment policy.
+**Basis:** convention — mirrors the reranker columns added to the same row (migration 135); KB reuses file_rag retrieval + its admin settings rather than a separate settings surface.

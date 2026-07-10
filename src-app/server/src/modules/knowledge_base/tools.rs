@@ -22,7 +22,7 @@ pub fn tool_list() -> Value {
                             "items": { "type": "string", "format": "uuid" },
                             "description": "Optional: restrict to these knowledge bases. When omitted, searches all knowledge bases attached to this conversation."
                         },
-                        "top_k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Max passages to return (default from admin settings)." }
+                        "top_k": { "type": "integer", "minimum": 1, "maximum": 500, "description": "Max passages to return (default + hard ceiling from admin settings)." }
                     },
                     "required": ["query"]
                 }

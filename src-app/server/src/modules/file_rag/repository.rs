@@ -54,6 +54,10 @@ impl FileRagRepository {
                 reranker_model_id,
                 rerank_enabled,
                 rerank_candidate_k,
+                kb_max_documents,
+                search_max_hit_chars,
+                search_snippet_chars,
+                search_max_top_k,
                 updated_at as "updated_at: _"
             FROM file_rag_admin_settings
             WHERE id = 1
@@ -87,6 +91,10 @@ impl FileRagRepository {
         reranker_model_id: Option<Option<Uuid>>,
         rerank_enabled: Option<bool>,
         rerank_candidate_k: Option<i32>,
+        kb_max_documents: Option<i32>,
+        search_max_hit_chars: Option<i32>,
+        search_snippet_chars: Option<i32>,
+        search_max_top_k: Option<i16>,
     ) -> Result<FileRagAdminSettings, AppError> {
         let embedding_set = embedding_model_id.is_some();
         let embedding_val = embedding_model_id.flatten();
@@ -113,6 +121,10 @@ impl FileRagRepository {
                 reranker_model_id        = CASE WHEN $15::bool THEN $16 ELSE reranker_model_id END,
                 rerank_enabled           = COALESCE($17, rerank_enabled),
                 rerank_candidate_k       = COALESCE($18, rerank_candidate_k),
+                kb_max_documents         = COALESCE($19, kb_max_documents),
+                search_max_hit_chars     = COALESCE($20, search_max_hit_chars),
+                search_snippet_chars     = COALESCE($21, search_snippet_chars),
+                search_max_top_k         = COALESCE($22, search_max_top_k),
                 updated_at               = NOW()
             WHERE id = 1
             RETURNING
@@ -134,6 +146,10 @@ impl FileRagRepository {
                 reranker_model_id,
                 rerank_enabled,
                 rerank_candidate_k,
+                kb_max_documents,
+                search_max_hit_chars,
+                search_snippet_chars,
+                search_max_top_k,
                 updated_at as "updated_at: _"
             "#,
             enabled,
@@ -154,6 +170,10 @@ impl FileRagRepository {
             reranker_val,
             rerank_enabled,
             rerank_candidate_k,
+            kb_max_documents,
+            search_max_hit_chars,
+            search_snippet_chars,
+            search_max_top_k,
         )
         .fetch_one(&self.pool)
         .await

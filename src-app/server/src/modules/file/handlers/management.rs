@@ -176,6 +176,11 @@ struct PageGeometry {
     boxes: Vec<[f32; 4]>,
 }
 
+/// Fraction-of-page vertical-center tolerance for grouping per-char boxes into
+/// one line rect. A pure PDF-geometry rendering heuristic (not a deployment
+/// policy), so it stays a named const rather than an admin setting.
+const LINE_MERGE_Y_TOLERANCE: f32 = 0.012;
+
 /// Relocate a chunk's cleaned span within the raw page text (whitespace-
 /// insensitive) and return the merged line-level highlight rects. Empty when the
 /// span can't be located (the UI falls back to a page-level open).
@@ -219,7 +224,7 @@ fn align_span_to_boxes(cleaned_substr: &str, geom: &PageGeometry) -> Vec<Highlig
         if let Some(last) = lines.last_mut() {
             let last_cy = (last[1] + last[3]) / 2.0;
             let b_cy = (by + bb) / 2.0;
-            if (last_cy - b_cy).abs() < 0.012 {
+            if (last_cy - b_cy).abs() < LINE_MERGE_Y_TOLERANCE {
                 last[0] = last[0].min(bx);
                 last[1] = last[1].min(by);
                 last[2] = last[2].max(br);

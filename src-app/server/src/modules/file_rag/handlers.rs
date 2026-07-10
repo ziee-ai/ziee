@@ -101,6 +101,27 @@ pub async fn update_admin_settings(
             return Err(bad("rerank_candidate_k out of range (1..=200)").into());
         }
     }
+    // Retrieval / KB limits (mirror the DB CHECK constraints — clean 400 not 500).
+    if let Some(n) = body.kb_max_documents {
+        if !(1..=100_000).contains(&n) {
+            return Err(bad("kb_max_documents out of range (1..=100000)").into());
+        }
+    }
+    if let Some(n) = body.search_max_hit_chars {
+        if !(100..=100_000).contains(&n) {
+            return Err(bad("search_max_hit_chars out of range (100..=100000)").into());
+        }
+    }
+    if let Some(n) = body.search_snippet_chars {
+        if !(20..=4000).contains(&n) {
+            return Err(bad("search_snippet_chars out of range (20..=4000)").into());
+        }
+    }
+    if let Some(n) = body.search_max_top_k {
+        if !(1..=500).contains(&n) {
+            return Err(bad("search_max_top_k out of range (1..=500)").into());
+        }
+    }
     // Probe: a model set as the reranker MUST carry the `rerank` capability.
     if let Some(Some(model_id)) = body.reranker_model_id {
         let model = Repos
@@ -177,6 +198,10 @@ pub async fn update_admin_settings(
             body.reranker_model_id,
             body.rerank_enabled,
             body.rerank_candidate_k,
+            body.kb_max_documents,
+            body.search_max_hit_chars,
+            body.search_snippet_chars,
+            body.search_max_top_k,
         )
         .await?;
 

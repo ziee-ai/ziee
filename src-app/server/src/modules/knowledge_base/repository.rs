@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use super::models::{
-    AttachDocumentsResult, IndexingSummary, KnowledgeBase, KnowledgeBaseDocument, KB_MAX_DOCUMENTS,
+    AttachDocumentsResult, IndexingSummary, KnowledgeBase, KnowledgeBaseDocument,
 };
 
 pub struct KnowledgeBaseRepository {
@@ -249,12 +249,14 @@ impl KnowledgeBaseRepository {
 
     /// Attach files to a KB. Only files the user owns are linked; a byte-identical
     /// file (same checksum) already in the KB is skipped-and-reported (DEC-36);
-    /// the 2000-doc cap is enforced atomically (DEC-14).
+    /// the per-KB document cap (`max_documents`, admin-configurable — Document RAG
+    /// admin settings; default 2000) is enforced atomically (DEC-14).
     pub async fn add_documents_capped(
         &self,
         user_id: Uuid,
         kb_id: Uuid,
         file_ids: &[Uuid],
+        max_documents: i64,
     ) -> Result<AttachDocumentsResult, AppError> {
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
 
@@ -304,11 +306,11 @@ impl KnowledgeBaseRepository {
                 continue;
             }
 
-            if current + attached >= KB_MAX_DOCUMENTS {
+            if current + attached >= max_documents {
                 tx.rollback().await.map_err(AppError::database_error)?;
                 return Err(AppError::unprocessable_entity(
                     "KB_DOCUMENT_CAP",
-                    format!("knowledge base document cap ({KB_MAX_DOCUMENTS}) reached"),
+                    format!("knowledge base document cap ({max_documents}) reached"),
                 )
                 .into());
             }

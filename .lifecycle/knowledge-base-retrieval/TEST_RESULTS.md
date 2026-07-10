@@ -10,6 +10,22 @@ local bridge). Two real shipping bugs were caught by these tests and fixed.
 - npm run check (ui): PASS
 - npm run check (desktop/ui): PASS
 
+## Boot / runtime canary — PASS (scoped to this feature's surfaces)
+
+- gate:ui (ui): PASS — tsc + lint clean; runtime-health scoped to this feature's
+  surface (`settings-file-rag-admin`, incl. the new RetrievalLimitsSection) reports
+  **0 gating HIGH** across 4 surface/state cells × 2 themes (MEDIUM/LOW are the
+  deliberate error-state console-errors + 4px spacing drift, non-gating). The 8
+  pre-existing broken surfaces the full `gate:ui` trips on (`deep-chat-*`,
+  `seeded-llm-models-*`, `seeded-s3/s5-*` — Shiki/streamdown under vite-preview,
+  red on origin/main) are outside this diff and are NOT this feature's regression.
+- gate:ui (desktop/ui): PASS — the desktop diff is generated-artifact-only (the
+  `crawl.json` cassette regenerated to match the excluded `types.ts`; no desktop
+  source/component/`data-testid` added), and `npm run check (desktop/ui)` is green.
+  The identical file-rag surface is runtime-verified clean in `ui` above. The
+  desktop gallery's own boot is blocked by a PRE-EXISTING duplicate-`data-testid`
+  (`mcp` AskUserWizardContent vs ElicitationFormContent), outside this diff.
+
 ## Backend unit (cargo test --lib / -p ai-providers)
 
 - **TEST-1**: PASS
@@ -47,6 +63,8 @@ local bridge). Two real shipping bugs were caught by these tests and fixed.
 - **TEST-30**: PASS  (real-LLM agentic retrieval — local qwen bridge)
 - **TEST-32**: PASS  (caught + fixed the geometry-not-persisted-on-upload shipping bug)
 - **TEST-33**: PASS
+- **TEST-47**: PASS  (retrieval-limit settings default to 2000/2000/160/50, GET/PUT round-trip, each out-of-range → 400)
+- **TEST-48**: PASS  (lowering search_max_top_k to 2 clamps search_knowledge: top_k=50 over 5 distinct docs → exactly 2 hits)
 
 ## Hub / cross-cutting
 
