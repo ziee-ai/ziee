@@ -123,6 +123,21 @@ const integratorSeeded: SeededSurfaceEntry[] = [
     ),
   },
   {
+    slug: 'seeded-artifact-canvas-image',
+    title: 'Artifact canvas — markdown editor with an embedded image',
+    note: 'the WYSIWYG editor rendering a pasted image node (ITEM-21) — a data-URL src so the cell needs no network',
+    path: '/gallery/artifact-image',
+    initialPath: '/gallery/artifact-image',
+    component: lazyProps(
+      () => import('@/components/kit/editor/KitMarkdownEditor'),
+      'KitMarkdownEditor',
+      {
+        initialMarkdown:
+          '# Figure 1\n\nThe assay result:\n\n![result](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==)\n\nCaption below.\n',
+      },
+    ),
+  },
+  {
     slug: 'seeded-artifact-canvas-csv',
     title: 'Artifact canvas — CSV grid editor',
     note: 'editable spreadsheet grid for a csv deliverable (edit cells / add / delete rows)',

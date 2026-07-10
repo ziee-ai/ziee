@@ -9,6 +9,7 @@
 import { deserializeMd, MarkdownPlugin, serializeMd } from '@platejs/markdown'
 import { BaseBasicBlocksPlugin, BaseBasicMarksPlugin } from '@platejs/basic-nodes'
 import { BaseListPlugin } from '@platejs/list'
+import { BaseImagePlugin } from '@platejs/media'
 import { createSlateEditor, type Value } from 'platejs'
 
 /**
@@ -22,6 +23,9 @@ const roundtripPlugins = [
   BaseBasicBlocksPlugin,
   BaseBasicMarksPlugin,
   BaseListPlugin,
+  // So a markdown `![](url)` image round-trips as an `img` node (ITEM-21) rather
+  // than being dropped on open/normalize.
+  BaseImagePlugin,
   MarkdownPlugin,
 ]
 

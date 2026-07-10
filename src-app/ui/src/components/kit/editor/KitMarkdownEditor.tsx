@@ -3,10 +3,35 @@ import { serializeMd } from '@platejs/markdown'
 import { MarkdownPlugin } from '@platejs/markdown'
 import { BasicBlocksPlugin, BasicMarksPlugin } from '@platejs/basic-nodes/react'
 import { ListPlugin } from '@platejs/list/react'
+import { ImagePlugin } from '@platejs/media/react'
 import { Plate, PlateContent, usePlateEditor } from 'platejs/react'
+import { ApiClient } from '@/api-client'
 import { markdownToEditor } from '@/modules/file/utils/markdownRoundtrip'
 import type { CanvasEditorHandle } from './types'
 import { MarkdownToolbar } from './MarkdownToolbar'
+import { CanvasImageElement } from './CanvasImageElement'
+
+/**
+ * Upload a pasted/dropped image to the file store and return its raw-bytes URL.
+ * Plate's ImagePlugin calls this on paste/drop (a data-URL or ArrayBuffer), then
+ * inserts an `img` node with the returned URL — which serializes to markdown
+ * `![](/api/files/{id}/raw)` on Save (ITEM-21). The upload rides the app's
+ * JWT-authed ApiClient (same path as the file drop-zone).
+ */
+async function uploadCanvasImage(dataUrl: ArrayBuffer | string): Promise<string> {
+  const blob =
+    typeof dataUrl === 'string'
+      ? await (await fetch(dataUrl)).blob()
+      : new Blob([dataUrl], { type: 'image/png' })
+  const ext = (blob.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '')
+  const file = new File([blob], `pasted-image-${Date.now()}.${ext}`, {
+    type: blob.type || 'image/png',
+  })
+  const fd = new FormData()
+  fd.append('file', file)
+  const uploaded = await ApiClient.File.upload(fd, {})
+  return `/api/files/${(uploaded as { id: string }).id}/raw`
+}
 
 interface KitMarkdownEditorProps {
   /** Initial markdown source (the file's head content). */
@@ -27,7 +52,18 @@ export const KitMarkdownEditor = forwardRef<
   KitMarkdownEditorProps
 >(function KitMarkdownEditor({ initialMarkdown, onDirty }, ref) {
   const editor = usePlateEditor({
-    plugins: [BasicBlocksPlugin, BasicMarksPlugin, ListPlugin, MarkdownPlugin],
+    plugins: [
+      BasicBlocksPlugin,
+      BasicMarksPlugin,
+      ListPlugin,
+      // Paste/drop an image → uploadCanvasImage → an `img` node that serializes
+      // to a markdown `![](…)` link (ITEM-21). Rendered by CanvasImageElement.
+      ImagePlugin.configure({
+        options: { uploadImage: uploadCanvasImage },
+        render: { node: CanvasImageElement },
+      }),
+      MarkdownPlugin,
+    ],
     value: markdownToEditor(initialMarkdown),
   })
 

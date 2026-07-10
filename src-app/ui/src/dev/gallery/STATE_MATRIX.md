@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **334** surfaces carry at least one renderable-state signal.
-- **1947** signals total: 1538 branch, 116 empty, 100 error, 103 loading, 88 overlay, 2 panel.
+- **338** surfaces carry at least one renderable-state signal.
+- **1965** signals total: 1553 branch, 117 empty, 101 error, 103 loading, 89 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,9 +17,9 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 90 |
-| `empty` | 93 |
-| `error` | 79 |
-| `open` | 74 |
+| `empty` | 94 |
+| `error` | 80 |
+| `open` | 75 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -1154,10 +1154,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation` | 35 |
-| branch | `!conversation` | 70 |
-| branch | `!conversation` | 99 |
-| empty | `messages.length === 0` | 159 |
+| branch | `!conversation` | 36 |
+| branch | `!conversation` | 78 |
+| empty | `messages.length === 0` | 165 |
 
 ### `modules/chat/extensions/keyboard/extension`
 
@@ -1566,6 +1565,26 @@ Required states: `empty`, `panel-open`
 | empty | `stubs.length === 0` | 279 |
 | branch | `!fileStore` | 283 |
 
+### `modules/file/components/CanvasSelectionPopover`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `!s \|\| s.rangeCount === 0 \|\| !text \|\| !container` | 42 |
+| branch | `!container.contains(range.commonAncestorContainer)` | 48 |
+| branch | `!sel` | 64 |
+| branch | `instruction == null \|\| !instruction.trim()` | 81 |
+
+### `modules/file/components/DeliverablePinButton`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!convId` | 16 |
+| branch | `isDeliverable` | 44 |
+
 ### `modules/file/components/FileCard`
 
 Required states: `error`, `open`
@@ -1594,20 +1613,38 @@ Required states: `error`, `open`
 | branch | `(canDelete \|\| canRemove) && onRemove` | 374 |
 | overlay | `<Confirm open>` | 386 |
 
+### `modules/file/components/FileEditBody`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `cancelled` | 63 |
+| branch | `!dirty` | 89 |
+| error | `loadError` | 113 |
+| branch | `text === null` | 143 |
+| branch | `kind === null \|\| kind === 'markdown'` | 156 |
+| branch | `changedUnderneath` | 163 |
+| branch | `kind === 'csv'` | 196 |
+| branch | `kind === 'code'` | 203 |
+
 ### `modules/file/components/FilePanel`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 75 |
-| branch | `showFullPage` | 78 |
-| branch | `!hideHeader` | 122 |
-| branch | `tooLarge` | 136 |
-| branch | `isViewingOld` | 152 |
-| branch | `oldVersionText === null` | 154 |
-| branch | `tooLarge` | 169 |
-| branch | `Body` | 193 |
+| branch | `HeaderActions` | 79 |
+| branch | `editableKind(file) === 'markdown'` | 82 |
+| branch | `showFullPage` | 87 |
+| branch | `!hideHeader` | 142 |
+| branch | `canEdit && !editing && !isViewingOld` | 156 |
+| branch | `tooLarge` | 167 |
+| branch | `editing` | 183 |
+| branch | `isViewingOld` | 185 |
+| branch | `oldVersionText === null` | 187 |
+| branch | `tooLarge` | 202 |
+| branch | `Body` | 226 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1622,12 +1659,21 @@ Required states: `open`
 
 ### `modules/file/components/FileVersionBar`
 
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `versions.length <= 1` | 44 |
+| branch | `isViewingOld` | 90 |
+| overlay | `<Dialog open>` | 119 |
+
+### `modules/file/components/FileVersionDiff`
+
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `versions.length <= 1` | 42 |
-| branch | `isViewingOld` | 88 |
+| branch | `a == null \|\| b == null` | 31 |
 
 ### `modules/file/components/FileViewPage`
 

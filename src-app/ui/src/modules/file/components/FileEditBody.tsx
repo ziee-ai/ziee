@@ -7,6 +7,7 @@ import { Stores } from '@/core/stores'
 import { LazyMarkdownEditor } from '@/components/kit/editor/LazyMarkdownEditor'
 import { LazyCodeEditor } from '@/components/kit/editor/LazyCodeEditor'
 import { CsvGridEditor } from '@/modules/file/components/CsvGridEditor'
+import { CanvasSelectionPopover } from '@/modules/file/components/CanvasSelectionPopover'
 import type { CanvasEditorHandle } from '@/components/kit/editor/types'
 import { editableKind } from '@/modules/file/utils/editableTypes'
 
@@ -35,6 +36,7 @@ export function FileEditBody({
   const [dismissedChange, setDismissedChange] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const editorRef = useRef<CanvasEditorHandle>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   // Head version the currently-loaded text was fetched from.
   const loadedHeadRef = useRef<number | null>(null)
   const kind = editableKind(file)
@@ -147,7 +149,17 @@ export function FileEditBody({
   }
 
   return (
-    <div className="flex h-full flex-col" data-testid="canvas-edit-body">
+    <div ref={bodyRef} className="flex h-full flex-col" data-testid="canvas-edit-body">
+      {/* Selection → LLM popover (markdown canvas only): "Ask about this" quotes
+          the excerpt into the composer (ITEM-15); "Edit this section" sends a
+          scoped edit (ITEM-16). */}
+      {kind === null || kind === 'markdown' ? (
+        <CanvasSelectionPopover
+          containerRef={bodyRef}
+          fileName={file.filename}
+          getDocText={() => editorRef.current?.getContent() ?? ''}
+        />
+      ) : null}
       {changedUnderneath && (
         <div
           className="flex flex-wrap items-center gap-2 border-warning/40 border-b bg-warning/10 px-3 py-2 text-sm text-warning"

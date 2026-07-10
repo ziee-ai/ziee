@@ -75,6 +75,11 @@ export const STATE_COVERAGE = {
     reason:
       "canvas load-failure guard: when the head-text fetch fails, an error panel with Retry renders and Save is unreachable (data-loss guard — no blank clobber). Transient fetch-failure state, not deterministically snapshottable in the seeded gallery (the edit-body cell mocks a successful /text); the guard is verified by the FileEditBody logic + the happy edit path by seeded-artifact-canvas-edit-body and the 14-artifacts e2e suite",
   },
+  'modules/file/components/CanvasSelectionPopover:empty': {
+    skip: true,
+    reason:
+      "the selection popover renders null until the user selects text in the canvas (its `:empty`/default state); the visible/open state is interaction-driven (a real text selection), verified by the selection-ask e2e spec — not a deterministic mount snapshot",
+  },
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
   },
