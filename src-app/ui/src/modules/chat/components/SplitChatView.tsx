@@ -1,4 +1,4 @@
-import { Fragment, useRef } from 'react'
+import { Fragment, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
@@ -69,26 +69,63 @@ export function SplitChatView() {
 function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const drag = useRef<{ x: number; w: number } | null>(null)
+  // Live index in a ref so the stable window handlers always resize the CURRENT
+  // divider even after a pane reorder changed this divider's leftPaneIndex.
+  const idxRef = useRef(leftPaneIndex)
+  idxRef.current = leftPaneIndex
+  const width = Stores.SplitView.dividerWidths[leftPaneIndex]
 
-  const onMove = (e: PointerEvent) => {
-    if (!drag.current) return
-    Stores.SplitView.setDividerWidth(
-      leftPaneIndex,
-      drag.current.w + (e.clientX - drag.current.x),
+  // Stable (created-once) window handlers so add/removeEventListener always
+  // match AND unmount cleanup can remove them — fixes the listener leak when the
+  // divider unmounts mid-drag (a pane is closed/reordered during a resize).
+  const handlers = useRef({
+    move: (e: PointerEvent) => {
+      if (!drag.current) return
+      Stores.SplitView.setDividerWidth(
+        idxRef.current,
+        drag.current.w + (e.clientX - drag.current.x),
+      )
+    },
+    up: () => {
+      drag.current = null
+      window.removeEventListener('pointermove', handlers.current.move)
+      window.removeEventListener('pointerup', handlers.current.up)
+    },
+  })
+
+  useEffect(() => {
+    const h = handlers.current
+    return () => {
+      window.removeEventListener('pointermove', h.move)
+      window.removeEventListener('pointerup', h.up)
+    }
+  }, [])
+
+  const currentLeftWidth = (): number => {
+    const leftEl = ref.current?.previousElementSibling as HTMLElement | null
+    return (
+      leftEl?.getBoundingClientRect().width ??
+      width ??
+      SPLIT_LIMITS.MIN_PANE_WIDTH
     )
   }
-  const onUp = () => {
-    drag.current = null
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
-  }
+
   const onDown = (e: React.PointerEvent) => {
-    const leftEl = ref.current?.previousElementSibling as HTMLElement | null
-    const w =
-      leftEl?.getBoundingClientRect().width ?? SPLIT_LIMITS.MIN_PANE_WIDTH
-    drag.current = { x: e.clientX, w }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    drag.current = { x: e.clientX, w: currentLeftWidth() }
+    window.addEventListener('pointermove', handlers.current.move)
+    window.addEventListener('pointerup', handlers.current.up)
+  }
+
+  // Keyboard resize (WCAG 2.1.1): arrows nudge the left pane's width.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const STEP = 24
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      Stores.SplitView.setDividerWidth(leftPaneIndex, currentLeftWidth() - STEP)
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      Stores.SplitView.setDividerWidth(leftPaneIndex, currentLeftWidth() + STEP)
+    }
   }
 
   return (
@@ -97,9 +134,14 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panes"
+      aria-valuenow={width ? Math.round(width) : undefined}
+      aria-valuemin={SPLIT_LIMITS.MIN_PANE_WIDTH}
+      aria-valuemax={SPLIT_LIMITS.MAX_PANE_WIDTH}
+      tabIndex={0}
       data-testid={`split-divider-${leftPaneIndex}`}
       onPointerDown={onDown}
-      className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50"
+      onKeyDown={onKeyDown}
+      className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none"
     />
   )
 }

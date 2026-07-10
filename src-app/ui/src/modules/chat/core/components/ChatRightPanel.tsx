@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, Empty, Tabs, Text } from '@/components/ui'
 import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
@@ -134,6 +134,18 @@ export function ChatRightPanel({
     rightPanel.tabs.length > 0 &&
     rightPanel.activeId !== null
 
+  // In-pane slide-over: Escape closes it (the Drawer path gets this for free;
+  // this hand-rolled overlay must wire it). Document-level so it works wherever
+  // focus is within the pane. No-op unless the in-pane slide-over is open.
+  useEffect(() => {
+    if (!inPane || !showDrawer) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') Stores.Chat.closeMobileDrawer()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [inPane, showDrawer])
+
   // Split pane (ITEM-18): an in-pane slide-over anchored to THIS pane's relative
   // main area — NOT a body-portaled Drawer (which would cover the whole window
   // and the sibling pane) and NOT a second inline column (which would over-cram
@@ -142,6 +154,8 @@ export function ChatRightPanel({
     if (!showDrawer) return null
     return (
       <div
+        role="region"
+        aria-label="Conversation side panel"
         className="absolute inset-y-0 end-0 z-50 flex flex-col border-s border-border bg-background shadow-xl animate-in fade-in"
         style={{ width: Math.min(panelWidth, 440), maxWidth: '85%' }}
         data-testid="chat-right-panel"

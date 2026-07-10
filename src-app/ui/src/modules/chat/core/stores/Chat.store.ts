@@ -1295,6 +1295,19 @@ const chatStoreConfig = {
     applyStreamFrame: async (conversationId: string, event: any) => {
       const type = event?.type
 
+      // SPLIT-VIEW ISOLATION (audit HIGH — both correctness + security angles):
+      // every pane's store subscribes to the shared `chat:token` bus, so pane B
+      // receives pane A's frames too. Only `started`/`content` guarded on the
+      // conversation id; `complete` (unconditional streaming-state reset),
+      // `error` (mismatch path cleared streaming + cache), and the raw-extension
+      // tail (`titleUpdated`/`mcp*` → this store's extensions) did NOT — so a
+      // sibling pane finishing / erroring / renaming corrupted THIS pane. One
+      // guard up front makes a frame for a conversation this store does not have
+      // open a true no-op. Single-pane: the client is subscription-scoped to the
+      // open conversation, so this never trips (the per-branch re-checks below
+      // still handle a switch that happens mid-await).
+      if (get().conversation?.id !== conversationId) return
+
       // Mark the OPEN conversation as streaming on started/content. Critical for
       // a RECEIVING device (one watching a generation another device started) —
       // it never went through `sendMessage`, so without this its "generating"

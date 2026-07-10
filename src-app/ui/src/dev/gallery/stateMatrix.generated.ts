@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 328 surfaces carry renderable-state signals; 1910 signals total.
+// 328 surfaces carry renderable-state signals; 1911 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -939,7 +939,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "i > 0", line: 32 },
-      { kind: "branch", condition: "!drag.current", line: 74 },
+      { kind: "branch", condition: "!drag.current", line: 83 },
     ],
   },
   "modules/chat/components/TextContent": {
@@ -964,11 +964,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!activeTab", line: 14 },
       { kind: "branch", condition: "!resolved", line: 17 },
       { kind: "empty", condition: "tabs.length === 0", line: 50 },
-      { kind: "branch", condition: "inPane", line: 141 },
-      { kind: "branch", condition: "!showDrawer", line: 142 },
-      { kind: "branch", condition: "isMobile", line: 164 },
-      { kind: "overlay", condition: "<Drawer open>", line: 166 },
-      { kind: "branch", condition: "isOpen", line: 206 },
+      { kind: "branch", condition: "!inPane || !showDrawer", line: 141 },
+      { kind: "branch", condition: "inPane", line: 153 },
+      { kind: "branch", condition: "!showDrawer", line: 154 },
+      { kind: "branch", condition: "isMobile", line: 178 },
+      { kind: "overlay", condition: "<Drawer open>", line: 180 },
+      { kind: "branch", condition: "isOpen", line: 220 },
     ],
   },
   "modules/chat/core/extensions/registry": {

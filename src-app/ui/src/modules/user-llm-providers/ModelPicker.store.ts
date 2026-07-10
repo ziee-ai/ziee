@@ -166,6 +166,15 @@ export const ModelPicker = defineStore('ModelPicker', {
     const reload = () => void actions.loadProviders()
     on('sync:user_llm_provider', reload)
     on('sync:reconnect', reload)
+    // Prune a deleted conversation's per-conversation model selection so the
+    // `selectedByConversation` map doesn't grow unbounded / retain stale keys.
+    on('sync:conversation', event => {
+      if (event.data.action === 'delete') {
+        set(state => {
+          delete state.selectedByConversation[event.data.id]
+        })
+      }
+    })
     void actions.loadProviders()
   },
 })

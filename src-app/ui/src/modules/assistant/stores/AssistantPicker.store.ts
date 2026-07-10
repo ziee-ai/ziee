@@ -71,7 +71,7 @@ export const AssistantPicker = defineStore('AssistantPicker', {
         get().selectedByConversation[key] ?? null,
     }
   },
-  init: ({ on, actions }) => {
+  init: ({ on, set, actions }) => {
     // Keep the cached picker list fresh on remote assistant create/edit/delete
     // (or reconnect). Self-gated on assistants::read (no-403 reconnect rule).
     const reload = () => {
@@ -80,6 +80,15 @@ export const AssistantPicker = defineStore('AssistantPicker', {
     }
     on('sync:assistant', reload)
     on('sync:reconnect', reload)
+    // Prune a deleted conversation's per-conversation assistant selection so the
+    // `selectedByConversation` map doesn't grow unbounded / retain stale keys.
+    on('sync:conversation', event => {
+      if (event.data.action === 'delete') {
+        set(state => {
+          delete state.selectedByConversation[event.data.id]
+        })
+      }
+    })
     void actions.loadAssistants()
   },
 })

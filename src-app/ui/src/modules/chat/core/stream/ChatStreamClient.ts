@@ -77,7 +77,7 @@ export function createChatStreamClient(): ChatStreamClient {
     if (!token) return
     const baseUrl = await getBaseUrl()
     try {
-      await fetch(`${baseUrl}/api/chat/stream/subscription`, {
+      const resp = await fetch(`${baseUrl}/api/chat/stream/subscription`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -86,6 +86,18 @@ export function createChatStreamClient(): ChatStreamClient {
         },
         body: JSON.stringify({ conversation_id: desiredConversationId }),
       })
+      if (!resp.ok) {
+        // A non-2xx PUT (stale connection id, 401, or 429 under the per-user
+        // cap) means this connection is not subscribed. Don't swallow it: drop
+        // the connection id and abort the live stream so the connect loop
+        // reconnects with a fresh handshake and re-PUTs the desired
+        // subscription — otherwise the pane would sit token-less silently.
+        console.warn(
+          `[chat-stream] subscription PUT failed: ${resp.status}; forcing reconnect`,
+        )
+        connectionId = null
+        activeAbort?.abort()
+      }
     } catch (error) {
       console.warn('[chat-stream] subscription update failed', error)
     }
