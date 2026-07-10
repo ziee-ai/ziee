@@ -141,3 +141,16 @@ assertion — never `#[ignore]`.
 **Basis:** codebase + [[feedback_no_ignore_unless_platform]] — the merged voice suite
 already established exactly this soft-skip discipline for its real external
 dependency; the gold-smoke reuses it rather than hiding behind an ignore attribute.
+
+### DEC-15: Is custom / additional whisper-model download in scope?
+**Resolution:** **No — out of scope for this feature.** Streaming reuses the existing
+closed 4-model allow-list (`tiny/base/base.en/small`) exactly as the merged voice
+module ships it; interim and final decodes both use the single admin-configured
+`settings.model`. Letting admins download models beyond that set (a code change to
+the pinned allow-list, or arbitrary/HF-by-name custom download with its own SSRF +
+integrity threat model) is tracked as a **separate `feat/voice-custom-models`
+lifecycle**, planned independently. This branch does not touch `model.rs`'s allow-list
+or the download path.
+**Basis:** user — decided at plan review to keep streaming lean and split custom-model
+management into its own security-audited feature. Documents the scope boundary so the
+streaming diff/audit stays focused.
