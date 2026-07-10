@@ -325,7 +325,15 @@ async fn finalize_success(
     if let Some(cid) = raw.conversation_id {
         n = n.conversation(cid);
     }
-    let notification_id = create_and_emit(pool, n).await.ok().map(|row| row.id);
+    // ITEM-11: log (don't silently swallow) a notification-creation failure —
+    // a broken task that also fails to notify was previously undiagnosable.
+    let notification_id = match create_and_emit(pool, n).await {
+        Ok(row) => Some(row.id),
+        Err(e) => {
+            tracing::warn!("scheduler: failed to create task notification for '{}': {e:?}", task.name);
+            None
+        }
+    };
 
     DispatchOutcome {
         success: true,
@@ -360,7 +368,15 @@ async fn finalize_failure(
     )
     .body(truncate(&msg, NOTIF_BODY_CAP))
     .task(task.id);
-    let notification_id = create_and_emit(pool, n).await.ok().map(|row| row.id);
+    // ITEM-11: log (don't silently swallow) a notification-creation failure —
+    // a broken task that also fails to notify was previously undiagnosable.
+    let notification_id = match create_and_emit(pool, n).await {
+        Ok(row) => Some(row.id),
+        Err(e) => {
+            tracing::warn!("scheduler: failed to create task notification for '{}': {e:?}", task.name);
+            None
+        }
+    };
 
     DispatchOutcome {
         success: false,

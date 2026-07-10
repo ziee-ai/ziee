@@ -326,7 +326,14 @@ pub async fn mark_fired(
                                 WHEN $2::timestamptz IS NULL THEN FALSE
                                 ELSE enabled
                             END,
-            paused_reason = COALESCE($4, paused_reason),
+            -- ITEM-10: a spent task (no further occurrence → next_run_at NULL)
+            -- with no explicit pause reason is marked 'completed' so the UI can
+            -- show "Completed" rather than an ambiguous disabled/paused state.
+            paused_reason = CASE
+                                WHEN $4::text IS NOT NULL THEN $4
+                                WHEN $2::timestamptz IS NULL THEN 'completed'
+                                ELSE paused_reason
+                            END,
             updated_at    = NOW()
         WHERE id = $1
         "#,
