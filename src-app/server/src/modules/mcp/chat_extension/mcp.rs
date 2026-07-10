@@ -233,6 +233,40 @@ fn recover_server_id_for_bare_name(
     map.get(bare).copied().flatten()
 }
 
+/// Resolve `(server_id, tool_name)` from a finalized tool-call wire name.
+///
+/// A well-formed name is `<server_uuid>__<tool>` — split on the FIRST `__` into a
+/// valid UUID + the (possibly `__`-containing) tool name. Some models (e.g.
+/// gpt-oss/harmony) strip the server prefix, yielding a prefix-less name:
+/// bare (`execute_command`), empty-prefix (`__query_rag`), or a bare name that
+/// itself contains `__` (`get__weather`). For those, recover the server from
+/// `map` (the tools advertised this turn) by trying the whole name, and — ONLY
+/// for an empty-prefix `__tool` — the remainder after the leading `__`. A `__`
+/// in the MIDDLE of a name is part of the tool name and is never stripped (so a
+/// non-advertised `get__weather` can't be mis-dispatched to some other server's
+/// `weather` tool). Returns `(None, full_name)` when unresolvable — the caller
+/// surfaces a clear error rather than guessing.
+fn resolve_server_and_tool(
+    full_name: &str,
+    map: &HashMap<String, Option<Uuid>>,
+) -> (Option<Uuid>, String) {
+    if let Some((id, name)) = full_name.split_once("__")
+        && let Ok(sid) = Uuid::parse_str(id)
+    {
+        return (Some(sid), name.to_string());
+    }
+    let candidates: Vec<&str> = match full_name.strip_prefix("__") {
+        Some(rest) if !rest.is_empty() => vec![rest, full_name],
+        _ => vec![full_name],
+    };
+    for cand in candidates {
+        if let Some(sid) = recover_server_id_for_bare_name(cand, map) {
+            return (Some(sid), cand.to_string());
+        }
+    }
+    (None, full_name.to_string())
+}
+
 /// Pick the tool_use id to persist for a finalized tool call, guaranteeing it is
 /// non-empty and unique within its assistant message. `provider_id` is the id the
 /// provider streamed (may be empty, or a non-unique constant like gpt-oss/harmony's
@@ -1620,6 +1654,21 @@ impl ChatExtension for McpChatExtension {
                 }
             }
             if let Ok(mut guard) = self.tool_name_server_map.lock() {
+                // Normally the matching `get_accumulated_content` removes this
+                // entry at finalize; a stream that errors/aborts before finalize
+                // would orphan it. Bound the map so those leaks can't grow without
+                // limit — it's a best-effort per-turn recovery cache, so clearing
+                // stale entries at most degrades a concurrent bare-name call to the
+                // clear "could not resolve" error, which self-heals next turn.
+                const MAX_PENDING_TOOL_MAPS: usize = 1024;
+                if guard.len() >= MAX_PENDING_TOOL_MAPS && !guard.contains_key(&message_id) {
+                    tracing::warn!(
+                        "tool_name_server_map exceeded {} entries; clearing stale recovery cache \
+                         (streams that aborted before finalize)",
+                        MAX_PENDING_TOOL_MAPS
+                    );
+                    guard.clear();
+                }
                 guard.insert(message_id, bare_map);
             }
         }
@@ -2905,12 +2954,22 @@ impl ChatExtension for McpChatExtension {
 
         // Seed the used-id set from tool_use ids already persisted on this message
         // (prior loop iterations) so a fresh call with the same provider id gets a
-        // distinct id (cross-iteration collision). Degrade to empty on DB error.
+        // distinct id (cross-iteration collision). Targeted query on the indexed
+        // `content_type` column so we only load the small tool_use rows — never the
+        // (potentially large, per-iteration-accumulating) tool_result blobs.
+        // Degrade to empty on DB error.
         let mut used_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-        match Repos.chat.core.get_message_with_content(message_id).await {
-            Ok(Some(existing)) => {
-                for content in &existing.contents {
-                    if let Ok(data) = content.parse_content()
+        match sqlx::query_scalar::<_, serde_json::Value>(
+            "SELECT content FROM message_contents \
+             WHERE message_id = $1 AND content_type = 'tool_use'",
+        )
+        .bind(message_id)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rows) => {
+                for raw in rows {
+                    if let Ok(data) = serde_json::from_value::<MessageContentData>(raw)
                         && let Ok(McpContentData::ToolUse { id, .. }) =
                             McpContentData::from_message_content(&data)
                         && !id.is_empty()
@@ -2919,11 +2978,10 @@ impl ChatExtension for McpChatExtension {
                     }
                 }
             }
-            Ok(None) => {}
             Err(e) => {
                 tracing::warn!(
-                    "get_accumulated_content: could not load existing content for message {} to \
-                     dedup tool_use ids ({}); proceeding with within-batch dedup only",
+                    "get_accumulated_content: could not load existing tool_use ids for message {} \
+                     ({}); proceeding with within-batch dedup only",
                     message_id,
                     e
                 );
@@ -2944,39 +3002,34 @@ impl ChatExtension for McpChatExtension {
                 serde_json::json!({}) // Fallback to empty object
             });
 
-            // Parse server_id and tool name from the accumulated name (format
-            // `<server_id>__<tool_name>`). Some models (e.g. gpt-oss/harmony) strip
-            // the server prefix, yielding either a bare name (`execute_command`, no
-            // separator) or an empty prefix (`__query_rag`). In BOTH cases the
-            // parsed prefix is not a valid server UUID, so recover the server from
-            // the tools advertised this turn; an ambiguous/unknown name stays empty
-            // and later surfaces a clear error rather than mis-dispatching a
-            // side-effecting tool.
+            // Resolve (server_id, tool_name) from the accumulated wire name — a
+            // well-formed `<uuid>__tool`, or a prefix-less name recovered from the
+            // tools advertised this turn (see `resolve_server_and_tool`).
             let full_name = accumulated.name.unwrap_or_default();
-            let (raw_server_id, tool_name) = match full_name.split_once("__") {
-                Some((id, name)) => (id.to_string(), name.to_string()),
-                None => (String::new(), full_name.clone()),
-            };
-            let server_id = if Uuid::parse_str(&raw_server_id).is_ok() {
-                raw_server_id
-            } else {
-                match recover_server_id_for_bare_name(&tool_name, &bare_name_map) {
-                    Some(sid) => {
+            let was_well_formed = full_name
+                .split_once("__")
+                .is_some_and(|(id, _)| Uuid::parse_str(id).is_ok());
+            let (recovered_sid, tool_name) =
+                resolve_server_and_tool(&full_name, &bare_name_map);
+            let server_id = match recovered_sid {
+                Some(sid) => {
+                    if !was_well_formed {
                         tracing::info!(
-                            "[mcp] Recovered server_id for prefix-less tool name '{}': {}",
+                            "[mcp] Recovered server_id for prefix-less tool name '{}' -> '{}': {}",
                             full_name,
+                            tool_name,
                             sid
                         );
-                        sid.to_string()
                     }
-                    None => {
-                        tracing::warn!(
-                            "[mcp] Tool name has no valid server_id prefix and is not uniquely \
-                             recoverable: {}",
-                            full_name
-                        );
-                        String::new()
-                    }
+                    sid.to_string()
+                }
+                None => {
+                    tracing::warn!(
+                        "[mcp] Tool name has no valid server_id prefix and is not uniquely \
+                         recoverable: {}",
+                        full_name
+                    );
+                    String::new()
                 }
             };
 
@@ -3425,9 +3478,83 @@ mod builtin_tests {
 // server_id recovery (ITEM-3) + message-unique tool_use ids (ITEM-2).
 #[cfg(test)]
 mod approval_loop_tests {
-    use super::{recover_server_id_for_bare_name, resolve_unique_tool_use_id};
+    use super::{
+        recover_server_id_for_bare_name, resolve_server_and_tool, resolve_unique_tool_use_id,
+    };
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
+
+    // resolve_server_and_tool — the wire-name → (server_id, tool_name) resolver.
+    #[test]
+    fn resolve_well_formed_uuid_prefix() {
+        let sid = Uuid::new_v4();
+        let map = HashMap::new();
+        let (got_sid, tool) = resolve_server_and_tool(&format!("{sid}__echo"), &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "echo");
+    }
+
+    #[test]
+    fn resolve_well_formed_keeps_double_underscore_in_tool_name() {
+        // `<uuid>__get__weather` splits on the FIRST `__` → tool name `get__weather`.
+        let sid = Uuid::new_v4();
+        let map = HashMap::new();
+        let (got_sid, tool) = resolve_server_and_tool(&format!("{sid}__get__weather"), &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "get__weather");
+    }
+
+    #[test]
+    fn resolve_bare_name_recovers() {
+        let sid = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("execute_command".to_string(), Some(sid));
+        let (got_sid, tool) = resolve_server_and_tool("execute_command", &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "execute_command");
+    }
+
+    #[test]
+    fn resolve_empty_prefix_recovers_remainder() {
+        // gpt-oss/harmony `__query_rag`: advertised bare name is `query_rag`.
+        let sid = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("query_rag".to_string(), Some(sid));
+        let (got_sid, tool) = resolve_server_and_tool("__query_rag", &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "query_rag");
+    }
+
+    #[test]
+    fn resolve_middle_double_underscore_is_not_stripped() {
+        // `get__weather` (NOT advertised) must NOT be mis-dispatched to a different
+        // server's `weather` tool — the middle `__` is part of the name.
+        let other = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("weather".to_string(), Some(other)); // a DIFFERENT tool/server
+        let (got_sid, tool) = resolve_server_and_tool("get__weather", &map);
+        assert_eq!(got_sid, None, "must not recover to the unrelated `weather` server");
+        assert_eq!(tool, "get__weather");
+    }
+
+    #[test]
+    fn resolve_middle_double_underscore_recovers_when_advertised() {
+        // A genuine `get__weather` tool IS advertised → recovered as the whole name.
+        let sid = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("get__weather".to_string(), Some(sid));
+        let (got_sid, tool) = resolve_server_and_tool("get__weather", &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "get__weather");
+    }
+
+    #[test]
+    fn resolve_unknown_bare_name_is_unresolved() {
+        let map = HashMap::new();
+        let (got_sid, tool) = resolve_server_and_tool("ghost_tool", &map);
+        assert_eq!(got_sid, None);
+        assert_eq!(tool, "ghost_tool");
+    }
 
     // TEST-1 — an unambiguous bare name resolves to its single advertising server.
     #[test]

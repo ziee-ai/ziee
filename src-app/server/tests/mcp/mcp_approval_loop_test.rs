@@ -224,6 +224,28 @@ async fn mcp_approval_loop_bare_name_recovers_and_executes() {
         .count();
     assert!(calls >= 1, "approved tool should have executed (tools/call on the mock)");
 
+    // Fix B, end-to-end: the resume re-emitted a call with the SAME provider id
+    // (`tool_use`); the `used_ids` DB-seed (which now finds the first, persisted
+    // `tool_use` id) must mint a FRESH unique id for it, so the new pending
+    // approval carries a minted `call_` id distinct from the first — and the bare
+    // name is still recovered to the server.
+    let (new_tuid, new_sid, _new_status) = latest_approval(&pool, branch_id)
+        .await
+        .expect("a new pending approval after resume");
+    assert_ne!(
+        new_tuid, tool_use_id,
+        "the re-emitted duplicate provider id must be minted to a fresh unique id"
+    );
+    assert!(
+        new_tuid.starts_with("call_"),
+        "the minted id should be call_<uuid>, got {new_tuid}"
+    );
+    assert_eq!(
+        new_sid,
+        Some(mcp_id),
+        "the re-emitted bare name is still recovered to the advertising server"
+    );
+
     // Anti-loop: the buggy path re-called the LLM ~10× (one per wasted
     // iteration). The fixed path calls it ~twice (send 1 + resume).
     assert!(
