@@ -8,7 +8,7 @@
 ## Summary
 
 - **18** surfaces carry at least one renderable-state signal.
-- **99** signals total: 86 branch, 4 empty, 4 error, 3 loading, 1 overlay, 1 panel.
+- **102** signals total: 89 branch, 4 empty, 4 error, 3 loading, 1 overlay, 1 panel.
 - **1** right-panel renderers registered (each a right-panel-open state).
 - **5** slot registrations (sidebar / settings / chat mount points).
 
@@ -171,11 +171,12 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error && documents.length === 0` | 31 |
-| loading | `loading && documents.length === 0` | 46 |
-| empty | `documents.length === 0` | 57 |
-| branch | `doc.path` | 96 |
-| branch | `doc.active` | 105 |
+| branch | `!hasPermissionNow(Permissions.OfficeBridgeUse)` | 32 |
+| error | `error && documents.length === 0` | 38 |
+| loading | `loading && documents.length === 0` | 53 |
+| empty | `documents.length === 0` | 64 |
+| branch | `doc.path` | 103 |
+| branch | `doc.active` | 112 |
 
 ### `modules/office-bridge/components/OpenDocumentsToolResultCard`
 
@@ -183,8 +184,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `content.content_type !== 'tool_result'` | 22 |
-| branch | `documents.length > 0` | 64 |
+| branch | `content.content_type !== 'tool_result'` | 24 |
+| branch | `!hasPermissionNow(Permissions.OfficeBridgeUse)` | 42 |
+| branch | `documents.length > 0` | 71 |
+| branch | `!hasPermissionNow(Permissions.OfficeBridgeUse)` | 93 |
 
 ### `modules/remote-access/pages/RemoteAccessPage`
 

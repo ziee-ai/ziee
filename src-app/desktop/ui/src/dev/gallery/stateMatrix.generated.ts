@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 18 surfaces carry renderable-state signals; 99 signals total.
+// 18 surfaces carry renderable-state signals; 102 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -151,19 +151,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/office-bridge/components/OpenDocumentsPanel",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "error", condition: "error && documents.length === 0", line: 31 },
-      { kind: "loading", condition: "loading && documents.length === 0", line: 46 },
-      { kind: "empty", condition: "documents.length === 0", line: 57 },
-      { kind: "branch", condition: "doc.path", line: 96 },
-      { kind: "branch", condition: "doc.active", line: 105 },
+      { kind: "branch", condition: "!hasPermissionNow(Permissions.OfficeBridgeUse)", line: 32 },
+      { kind: "error", condition: "error && documents.length === 0", line: 38 },
+      { kind: "loading", condition: "loading && documents.length === 0", line: 53 },
+      { kind: "empty", condition: "documents.length === 0", line: 64 },
+      { kind: "branch", condition: "doc.path", line: 103 },
+      { kind: "branch", condition: "doc.active", line: 112 },
     ],
   },
   "modules/office-bridge/components/OpenDocumentsToolResultCard": {
     surface: "modules/office-bridge/components/OpenDocumentsToolResultCard",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "content.content_type !== 'tool_result'", line: 22 },
-      { kind: "branch", condition: "documents.length > 0", line: 64 },
+      { kind: "branch", condition: "content.content_type !== 'tool_result'", line: 24 },
+      { kind: "branch", condition: "!hasPermissionNow(Permissions.OfficeBridgeUse)", line: 42 },
+      { kind: "branch", condition: "documents.length > 0", line: 71 },
+      { kind: "branch", condition: "!hasPermissionNow(Permissions.OfficeBridgeUse)", line: 93 },
     ],
   },
   "modules/remote-access/pages/RemoteAccessPage": {

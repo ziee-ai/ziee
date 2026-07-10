@@ -1,6 +1,7 @@
 import { FileText } from 'lucide-react'
 import { Alert, Card, Empty, ScrollArea, Spinner, Tag, Text, Title } from '@/components/ui'
-import type { OfficeApp, OpenDoc } from '@/api-client/types'
+import { type OfficeApp, type OpenDoc, Permissions } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 /**
@@ -22,7 +23,13 @@ const APP_LABELS: Record<OfficeApp, string> = {
 const APP_ORDER: OfficeApp[] = ['word', 'excel', 'power_point']
 
 export function OpenDocumentsPanel({ documents: snapshot = [] }: { documents?: OpenDoc[] }) {
+  // Read the store FIRST (unconditionally — it's a reactive hook), then gate.
   const { documents: live, loading, error } = Stores.OfficeBridge
+  // Frontend-hidden gate: without `office_bridge::use` the panel renders nothing
+  // (defense-in-depth alongside the tool-result-card gate + the store's fetch
+  // self-gate + the backend perm). `hasPermissionNow` is hook-free, so this
+  // post-hook early return is rules-of-hooks-safe.
+  if (!hasPermissionNow(Permissions.OfficeBridgeUse)) return null
   const documents = live.length > 0 ? live : snapshot
 
   // A refetch that failed with nothing to fall back on → surface the error

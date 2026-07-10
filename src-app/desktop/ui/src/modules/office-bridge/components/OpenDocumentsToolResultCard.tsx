@@ -1,10 +1,12 @@
 import { FileText } from 'lucide-react'
 import { Button, Card, Text } from '@/components/ui'
-import type {
-  MessageContent,
-  MessageContentDataToolResult,
-  OpenDoc,
+import {
+  type MessageContent,
+  type MessageContentDataToolResult,
+  type OpenDoc,
+  Permissions,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { OFFICE_DOCS_PANEL_ID } from '../stores/officeBridgeSync'
@@ -33,6 +35,11 @@ function toolResultBlock(content: MessageContent): MessageContentDataToolResult 
  * through to the file / literature renderers unchanged.
  */
 export function OpenDocumentsToolResultCard(props: ContentRendererProps) {
+  // Frontend-hidden gate (mirrors the store's data self-gate + the backend
+  // `office_bridge::use` perm): a user without the perm never sees the office
+  // UI — even for a seeded/leaked tool_result. Backstop to the `contentMatch`
+  // gate below (which lets the block fall through to the default renderer).
+  if (!hasPermissionNow(Permissions.OfficeBridgeUse)) return null
   const block = toolResultBlock(props.content)
   const sc = (block?.structured_content ?? null) as ListOpenDocumentsResult | null
   const documents = Array.isArray(sc?.documents) ? sc.documents : []
@@ -79,8 +86,11 @@ export function OpenDocumentsToolResultCard(props: ContentRendererProps) {
   )
 }
 
-/** Claim only `list_open_documents` tool results; everything else falls through. */
+/** Claim only `list_open_documents` tool results — and only for a user holding
+ *  `office_bridge::use`, so a restricted user's block falls through to the
+ *  default tool_result renderer (the office card is never claimed/shown). */
 OpenDocumentsToolResultCard.contentMatch = (content: MessageContent): boolean => {
+  if (!hasPermissionNow(Permissions.OfficeBridgeUse)) return false
   const block = toolResultBlock(content)
   return block?.name === LIST_OPEN_DOCUMENTS
 }
