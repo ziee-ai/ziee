@@ -36,7 +36,7 @@ approve-once/approve-conversation/deny, so **no frontend change** → no e2e gat
 - `src-app/desktop/tauri/tests/office_bridge/pane_rpc_test.rs` — ITEM-7
 - `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — ITEM-5, ITEM-6 (call the extracted fn)
 - `src-app/server/src/modules/mcp/chat_extension/office_approval.rs` (NEW) — ITEM-5, ITEM-6 (`compute_needs_approval` + office classifier + `office_bridge_mcp_server_id` + unit tests)
-- `src-app/server/tests/mcp/mcp_approval_workflow_test.rs` (EXISTING, regression) — ITEM-5/7 (proves the `compute_needs_approval` extraction is behaviour-preserving through the real loop; office is desktop-only so no new server-harness test — see DRIFT-1)
+- (extraction behaviour-preservation is proven deterministically by TEST-12 + the phase-6 blind equivalence audit; the EXISTING `mcp_approval_workflow_test.rs` LLM-driven suite is env-gated — no LLM key here — and office is desktop-only, so it is not run as the proof; see DRIFT-1 + TEST_RESULTS.md)
 - `src-app/desktop/tauri/src/modules/office_bridge/mod.rs` — ITEM-6 (a drift test asserting the desktop `office_bridge` row id equals the server's `office_bridge_mcp_server_id()`)
 - `WINDOWS_PANE_VERIFICATION.md`, `OFFICE_TOOL_SURFACE_DESIGN.md` — ITEM-8
 
