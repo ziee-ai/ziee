@@ -48,7 +48,7 @@ src-app/server/tests/voice/capability_test.rs	1	66	tests-quality,correctness,sec
 src-app/server/tests/voice/config_gate_test.rs	1	71	tests-quality,correctness,security,patterns-conformance
 src-app/server/tests/voice/lifecycle_test.rs	1	185	tests-quality,correctness,security,patterns-conformance
 src-app/server/tests/voice/mock_release.rs	1	242	tests-quality,correctness,security,patterns-conformance
-src-app/server/tests/voice/mod.rs	1	247	tests-quality,correctness,security,patterns-conformance
+src-app/server/tests/voice/mod.rs	1	248	tests-quality,correctness,security,patterns-conformance
 src-app/server/tests/voice/model_test.rs	1	104	tests-quality,correctness,security,patterns-conformance
 src-app/server/tests/voice/permissions_test.rs	1	68	tests-quality,correctness,security,patterns-conformance
 src-app/server/tests/voice/settings_test.rs	1	191	tests-quality,correctness,security,patterns-conformance
@@ -120,3 +120,4 @@ src-app/ui/tests/e2e/14-voice/voice-runtime-admin.spec.ts	1	89	tests-quality,cor
 src-app/ui/tests/e2e/14-voice/voice-settings-admin.spec.ts	1	81	tests-quality,correctness,patterns-conformance
 src-app/desktop/ui/plugins/vite-plugin-testid-unique.js	48	122	correctness,security,patterns-conformance
 src-app/ui/src/components/ui/testIds.generated.ts	559	559	correctness,patterns-conformance,tests-quality
+src-app/server/tests/voice/real_repo_test.rs	1	117	tests-quality,correctness,security

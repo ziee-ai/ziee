@@ -30,6 +30,7 @@ mod config_gate_test;
 mod lifecycle_test;
 mod model_test;
 mod permissions_test;
+mod real_repo_test;
 mod settings_test;
 mod transcribe_test;
 mod version_download_test;
