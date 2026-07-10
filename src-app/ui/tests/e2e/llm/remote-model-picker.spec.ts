@@ -74,6 +74,48 @@ test.describe('LLM Models - remote model picker', () => {
     })
   })
 
+  // Regression: selecting a model by POINTER-CLICKING the floating option (not
+  // just keyboard). The Base UI Combobox popup portals to <body>; inside the
+  // modal Radix Drawer, `body` has `pointer-events: none`, so without
+  // `pointer-events-auto` on the popup the option is unhoverable/unclickable and
+  // the field looks disabled. This locks the click path the keyboard-only tests
+  // above deliberately worked around ("a bare/forced click … is unstable").
+  test('picker option is selectable by pointer click inside the drawer', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+
+    const providerName = `picker-click-${Date.now()}`
+    const providerId = await createProviderViaAPI(apiURL, adminToken, providerName, 'openai')
+    await assignProviderToAdministratorsGroup(apiURL, adminToken, providerId)
+
+    await goToProviderDetail(page, baseURL, providerId)
+    await byTestId(page, 'llm-models-section-card').waitFor({ state: 'visible', timeout: 15000 })
+
+    const [discoverResp] = await Promise.all([
+      page.waitForResponse(r => /\/discover-models/.test(r.url()), { timeout: 20000 }),
+      byTestId(page, 'llm-models-add-remote-btn').click(),
+    ])
+    expect(discoverResp.ok()).toBeTruthy()
+    await byTestId(page, 'llm-add-remote-model-form').waitFor({ state: 'visible', timeout: 10000 })
+
+    const picker = byTestId(page, 'llm-remote-model-picker')
+    await picker.click()
+    const option = byTestId(page, 'llm-remote-model-picker-opt-gpt-4o')
+    await expect(option).toBeVisible({ timeout: 15000 })
+
+    // Pointer-click the floating option. Playwright's actionability requires the
+    // element to receive pointer events, so this fails if the popup inherits
+    // `pointer-events: none` from the modal drawer (the bug this fixes).
+    await option.click()
+
+    // The selection committed: gpt-4o was chosen → display name auto-filled.
+    await expect(byTestId(page, 'llm-param-display_name')).not.toHaveValue('')
+  })
+
   // Regression guard for the Anthropic discovery 400: even when live discovery
   // legitimately fails (here forced with an invalid key), the picker must stay
   // ENABLED and populated with the catalog fallback, with the failure surfaced

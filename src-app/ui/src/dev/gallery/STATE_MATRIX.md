@@ -594,7 +594,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `showTrigger` | 80 |
 | branch | `showClear` | 91 |
-| branch | `showRemove` | 263 |
+| branch | `showRemove` | 268 |
 
 ### `components/ui/shadcn/dialog`
 
