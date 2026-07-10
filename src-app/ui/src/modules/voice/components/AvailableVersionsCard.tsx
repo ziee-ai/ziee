@@ -40,7 +40,7 @@ export function AvailableVersionsCard() {
   const { activeByKey } = Stores.VoiceDownloadProgress
 
   const progressKey = (v: AvailableVersion2) => {
-    const backend = v.recommended_backend ?? v.available_backends[0] ?? 'cpu'
+    const backend = v.recommended_backend ?? v.available_backends?.[0] ?? 'cpu'
     return `whisper@${v.version}@${backend}`
   }
 
@@ -54,10 +54,10 @@ export function AvailableVersionsCard() {
   const platform = updateCheck?.platform
   const arch = updateCheck?.arch
   const readyUpstream = (updateCheck?.versions ?? []).filter(v => v.binary_ready)
-  const latestVersion = readyUpstream[0]?.version ?? updateCheck?.versions[0]?.version
+  const latestVersion = readyUpstream[0]?.version ?? updateCheck?.versions?.[0]?.version
 
   const handleDownload = async (v: AvailableVersion2) => {
-    const backend = v.recommended_backend ?? v.available_backends[0] ?? 'cpu'
+    const backend = v.recommended_backend ?? v.available_backends?.[0] ?? 'cpu'
     try {
       await Stores.VoiceDownloadProgress.startDownload({
         version: v.version,

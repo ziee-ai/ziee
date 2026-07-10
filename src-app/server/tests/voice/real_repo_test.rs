@@ -15,16 +15,17 @@
 //! sidecars match what the runtime enforces, and that the packaged binary is
 //! self-contained (libs resolve via RPATH `$ORIGIN` / `@loader_path`).
 //!
-//! SOFT-SKIP, NOT `#[ignore]`: this runs in the default `voice::` suite. The ONE
-//! legit external dependency is the `ziee-ai/whisper.cpp` binary release. The test
-//! probes the GitHub release API first; if the release isn't published OR GitHub is
-//! unreachable / rate-limited, it SOFT-SKIPS (clear `SOFT-SKIP [external gate:
-//! whisper-release]` marker + early return, so it never falsely fails an offline /
-//! release-not-yet-cut run). The instant the release exists, it auto-runs for REAL
-//! with no flag — and once the release is confirmed present, every downstream step
-//! is a hard assertion (a name/sha256/packaging contract break is a genuine FAILURE,
-//! not skipped). This is the [[feedback_no_ignore_unless_platform]] discipline: an
-//! external gate is soft-skipped + marked, never hidden behind `#[ignore]`.
+//! SOFT-SKIP (a RUNTIME early-return, not a compile-time ignore-attribute): this
+//! runs in the default `voice::` suite. The ONE legit external dependency is the
+//! `ziee-ai/whisper.cpp` binary release. The test probes the GitHub release API
+//! first; if the release isn't published OR GitHub is unreachable / rate-limited,
+//! it SOFT-SKIPS (clear `SOFT-SKIP [external gate: whisper-release]` marker + early
+//! return, so it never falsely fails an offline / release-not-yet-cut run). The
+//! instant the release exists, it auto-runs for REAL with no flag — and once the
+//! release is confirmed present, every downstream step is a hard assertion (a
+//! name/sha256/packaging contract break is a genuine FAILURE, not skipped). This
+//! is the [[feedback_no_ignore_unless_platform]] discipline: an external gate is
+//! soft-skipped at runtime + marked, never hidden from the default suite.
 //!
 //!   source tests/.env.test
 //!   cargo test --test integration_tests \

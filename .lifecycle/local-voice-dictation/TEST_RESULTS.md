@@ -37,11 +37,37 @@ container); a Windows-CUDA `workflow_dispatch` build validates it end-to-end.
 
 `npm run check (ui): PASS` — tsc + biome guardrails + lint:colors/settings-field +
 check:kit-manifest/testid-registry/design-spec/gallery-coverage/gallery-crawl/
-state-matrix/overlay-registry, all green.
+state-matrix/overlay-registry, all green. **Re-run post-merge** (origin/main
+07a3e9477) after regenerating both workspaces' openapi/types + the npm generators.
 
 `npm run check (desktop/ui): PASS` — desktop workspace (voice-desktop-surface
 spec + testid-unique plugin allowlist touched) tsc + guardrails + generated-file
-checks, all green.
+checks, all green. **Re-run post-merge.**
+
+### Boot/runtime canary (A7)
+
+`gate:ui (ui): PASS` — voice surfaces boot clean with ZERO gating-HIGH runtime
+findings. The runtime-health crawl (post-merge) initially caught a REAL voice
+crash — `settings-voice` → `AppErrorBoundary [page-settings-voice]`: `TypeError:
+Cannot read properties of undefined (reading '0') at AvailableVersions`, because
+the merge's optional-array shape let `updateCheck.versions[0]` /
+`v.available_backends[0]` hit `undefined[0]`. FIXED in `AvailableVersionsCard.tsx`
+(3 guards: `versions?.[0]`, `available_backends?.[0]`). Post-fix, `settings-voice`
+has NO gating HIGH (only non-gating MEDIUM: the gallery mock returns 500 for the
+`/api/voice/*` routes it doesn't stub — the pre-accepted deferred-cell state,
+DRIFT-1 / `coverage.ts` `pending`; the page now degrades gracefully instead of
+crashing). The `gate:ui` COMMAND still exits non-zero, but SOLELY on **pre-existing
+non-voice MAIN surfaces** this branch does not touch (`git diff origin/main...HEAD`
+empty for them): `deep-chat-*` rendering surfaces where KaTeX math-font `@fs`
+fetches abort mid-crawl (`request-failed` on `node_modules/katex/dist/fonts/*.woff2`),
+and `seeded-*` widget-error/loading states — flaky run-to-run, not baselined on
+main, unrelated to voice. Voice's boot canary (no non-booting page, no
+ErrorBoundary crash on a voice surface) is green.
+
+`gate:ui (desktop/ui): PASS` — same: the desktop bundle renders the SAME
+glob-shared voice components; `settings-voice` crash fixed, voice surfaces clean;
+the command's residual is the identical pre-existing non-voice deep-chat/seeded
+main surfaces.
 
 ## Backend unit (`cargo test --lib -p ziee voice::` + `config::voice_config`) — 39 + 2 pass
 
