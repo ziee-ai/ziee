@@ -137,4 +137,33 @@ mod tests {
     fn unknown_signature_is_none() {
         assert_eq!(sniff_mime(b"\x00\x01\x02\x03random"), None);
     }
+
+    // Scientific/genomics data files (`.rds`, etc.) must upload. A gzip-framed
+    // `.rds` sniffs as gzip; an uncompressed one has no known signature. Neither
+    // is HTML, so `smuggling_rejection` must allow both regardless of the
+    // extension-claimed MIME (`mime_guess` yields application/octet-stream for
+    // `.rds`). Locks in the behavior so a future sniff tightening can't silently
+    // reject data files.
+    #[test]
+    fn gzip_framed_rds_sniffs_gzip_and_is_allowed() {
+        // gzip magic 0x1f 0x8b, deflate method, then arbitrary bytes.
+        let rds = b"\x1f\x8b\x08\x00\x00\x00\x00\x00rest-of-rds";
+        assert_eq!(sniff_mime(rds), Some("application/gzip"));
+        assert_eq!(
+            smuggling_rejection(Some("application/gzip"), "application/octet-stream"),
+            None
+        );
+    }
+
+    #[test]
+    fn uncompressed_binary_rds_is_unknown_and_allowed() {
+        // Uncompressed R serialization starts with "X\n" / "RDX"; no signature
+        // we recognise → None → allowed (not an HTML smuggling attempt).
+        let rds = b"X\n\x00\x00\x00\x03random-binary-payload";
+        assert_eq!(sniff_mime(rds), None);
+        assert_eq!(
+            smuggling_rejection(None, "application/octet-stream"),
+            None
+        );
+    }
 }

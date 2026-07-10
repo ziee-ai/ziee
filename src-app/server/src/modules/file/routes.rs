@@ -5,21 +5,21 @@ use aide::axum::ApiRouter;
 use axum::extract::DefaultBodyLimit;
 
 use super::handlers::*;
-
-/// (see main.rs); this route opts into a higher ceiling. Set to 200 MB
-/// (approved policy) so the request is rejected before buffering huge bodies
-/// into RAM — paired with the 50 MB per-file cap enforced in upload.rs (the
-/// extra headroom covers multipart framing + multiple fields).
-const FILE_UPLOAD_BODY_LIMIT: usize = 200 * 1024 * 1024;
+use crate::core::app_state::file_upload_body_limit_bytes;
 
 /// File management routes
 pub fn file_router() -> ApiRouter {
     ApiRouter::new()
-        // Upload — explicit higher body limit per 14-core-infrastructure F-01
+        // Upload — explicit higher body limit than the app-wide default (see
+        // main.rs). Derived from the configurable per-file cap (`cap + slack`,
+        // set at boot in `app_state`) so the request is rejected before
+        // buffering an over-cap body into RAM; the slack covers multipart
+        // framing + extra fields, keeping the raw body limit above the handler
+        // cap so an over-cap file gets a clear FILE_TOO_LARGE (400), not a 413.
         .api_route(
             "/files/upload",
             post_with(upload_file, upload_file_docs)
-                .layer(DefaultBodyLimit::max(FILE_UPLOAD_BODY_LIMIT)),
+                .layer(DefaultBodyLimit::max(file_upload_body_limit_bytes())),
         )
         // List files
         .api_route("/files", get_with(list_files, list_files_docs))

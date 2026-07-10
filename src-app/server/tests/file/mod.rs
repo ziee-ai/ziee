@@ -593,8 +593,76 @@ async fn test_upload_no_auth() {
     assert_eq!(response.status(), 401, "Should require authentication");
 }
 
+// Boundary against the CONFIGURABLE per-file cap. Spawns a server with a tiny
+// 1 MiB cap so the accept/reject boundary is exercised with KB-to-low-MB bodies
+// (no 128 MiB allocation). Proves config.server.max_file_upload_mb flows to the
+// boot global → both the route body-limit layer and the handler check.
 #[tokio::test]
-async fn test_upload_file_too_large() {
+async fn test_upload_size_boundary_respects_configured_cap() {
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        max_file_upload_mb: Some(1),
+        ..Default::default()
+    })
+    .await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "file_user",
+        &["files::upload"],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let url = server.api_url("/files/upload");
+
+    // Just under the 1 MiB cap → 201 (a file that the old 50 MB / new-default
+    // path would also accept, but here proves the tiny configured cap admits it).
+    let under = vec![0u8; 900 * 1024];
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(under)
+            .file_name("under.bin")
+            .mime_str("application/octet-stream")
+            .unwrap(),
+    );
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(resp.status(), 201, "a file under the configured cap must upload");
+
+    // ~1.5 MiB, over the 1 MiB cap but under the derived body limit (cap + 16 MiB),
+    // so the HANDLER rejects it with FILE_TOO_LARGE (400) — not an opaque 413.
+    let over = vec![0u8; 1024 * 1024 + 512 * 1024];
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(over)
+            .file_name("over.bin")
+            .mime_str("application/octet-stream")
+            .unwrap(),
+    );
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(resp.status(), 400, "a file over the configured cap must be rejected");
+    let body: serde_json::Value = resp.json().await.expect("json error body");
+    assert_eq!(body["error_code"], "FILE_TOO_LARGE", "body: {body}");
+    assert!(
+        body["error"].as_str().unwrap_or_default().contains("MiB"),
+        "error message must state the real limit in MiB; body: {body}"
+    );
+}
+
+// Scientific/genomics binaries must upload. A gzip-framed `.rds` sniffs as
+// application/gzip (not HTML), so it must pass the MIME smuggling check and be
+// stored with the sniffed gzip MIME — never rejected as MIME_MISMATCH.
+#[tokio::test]
+async fn test_upload_gzip_rds_binary_accepted() {
     let server = crate::common::TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
         &server,
@@ -603,27 +671,31 @@ async fn test_upload_file_too_large() {
     )
     .await;
 
-    // Create a file larger than 100MB limit
-    let large_file = vec![0u8; 101 * 1024 * 1024];
-    let form = multipart::Form::new()
-        .part(
-            "file",
-            multipart::Part::bytes(large_file)
-                .file_name("large.bin")
-                .mime_str("application/octet-stream")
-                .unwrap(),
-        );
+    // gzip magic (0x1f 0x8b) + deflate method + header, then payload.
+    let mut rds = vec![0x1f_u8, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
+    rds.extend_from_slice(&[0u8; 4096]);
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(rds)
+            .file_name("GSE77343.rds")
+            .mime_str("application/octet-stream")
+            .unwrap(),
+    );
 
     let url = server.api_url("/files/upload");
-    let response = reqwest::Client::new()
+    let resp = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
         .await
         .expect("Request failed");
-
-    assert_eq!(response.status(), 400, "Should reject files over 100MB");
+    assert_eq!(resp.status(), 201, "gzip-framed .rds must upload (no MIME_MISMATCH)");
+    let body: serde_json::Value = resp.json().await.expect("json body");
+    assert_eq!(
+        body["mime_type"], "application/gzip",
+        "sniffed gzip MIME should be stored; body: {body}"
+    );
 }
 
 // ============================================================================

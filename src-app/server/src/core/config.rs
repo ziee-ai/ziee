@@ -477,6 +477,26 @@ pub struct ServerConfig {
     /// the OAuth `code` to evil.com. F-07 attack class.
     #[serde(default)]
     pub trust_forwarded_headers: bool,
+    /// Per-file upload size cap, in MiB (binary — `N * 1024 * 1024`).
+    ///
+    /// **Default 128.** Enforced by `upload_file_inner` for every upload
+    /// entry point (`/files/upload` + `/projects/{id}/files/upload`); the
+    /// per-route body limit is derived as `cap + 16 MiB` so the request is
+    /// rejected before buffering an over-cap body into RAM. Keep the layers
+    /// consistent: `nginx client_max_body_size ≥ body limit ≥ this cap`
+    /// (nginx defaults to 1 GiB, so any cap up to ~1000 fits). Raise this
+    /// for deployments handling large scientific/genomics files
+    /// (`.rds`/`.csv` commonly 80–200 MB+); via the docker image, set
+    /// `ZIEE_MAX_FILE_UPLOAD_MB`.
+    #[serde(default = "default_max_file_upload_mb")]
+    pub max_file_upload_mb: u64,
+}
+
+/// Default per-file upload cap in MiB. 128 MiB comfortably covers the
+/// common 80–200 MB genomics-file range while staying well under nginx's
+/// 1 GiB body limit.
+fn default_max_file_upload_mb() -> u64 {
+    128
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -837,5 +857,29 @@ mod packaging_config_tests {
                  package install boots from it): {e}"
             )
         });
+    }
+}
+
+#[cfg(test)]
+mod max_file_upload_tests {
+    use super::{default_max_file_upload_mb, ServerConfig};
+
+    #[test]
+    fn default_is_128() {
+        assert_eq!(default_max_file_upload_mb(), 128);
+    }
+
+    #[test]
+    fn omitted_key_deserializes_to_default() {
+        let yaml = "host: 127.0.0.1\nport: 3000\napi_prefix: /api\n";
+        let cfg: ServerConfig = serde_norway::from_str(yaml).expect("parse ServerConfig");
+        assert_eq!(cfg.max_file_upload_mb, 128);
+    }
+
+    #[test]
+    fn explicit_key_overrides_default() {
+        let yaml = "host: 127.0.0.1\nport: 3000\napi_prefix: /api\nmax_file_upload_mb: 256\n";
+        let cfg: ServerConfig = serde_norway::from_str(yaml).expect("parse ServerConfig");
+        assert_eq!(cfg.max_file_upload_mb, 256);
     }
 }
