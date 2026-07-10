@@ -658,10 +658,17 @@ async fn test_upload_size_boundary_respects_configured_cap() {
     );
 
     // ~18 MiB — above the DERIVED route body limit (cap 1 MiB + 16 MiB slack =
-    // 17 MiB), so the DefaultBodyLimit layer rejects it with 413 BEFORE the
-    // handler. This distinguishes the derived-from-cap body limit from the old
-    // hardcoded 200 MB const (under which 18 MiB would have reached the handler
-    // and returned 400), proving the route layer reads the configured cap.
+    // 17 MiB), so the DefaultBodyLimit layer rejects it BEFORE the handler. This
+    // distinguishes the derived-from-cap body limit from the old hardcoded 200 MB
+    // const (under which 18 MiB would have reached the handler and returned 400
+    // FILE_TOO_LARGE), proving the route layer reads the configured cap.
+    //
+    // axum answers 413 from the Content-Length check; because it responds before
+    // consuming the still-uploading body, the client may instead observe a
+    // mid-stream connection reset — BOTH prove the body-limit layer engaged. Only
+    // a handler response (201, or 400 FILE_TOO_LARGE) would mean the body limit
+    // was NOT derived from the cap, so we reject those and accept a non-timeout
+    // transport error.
     let over_body_limit = vec![0u8; 18 * 1024 * 1024];
     let form = multipart::Form::new().part(
         "file",
@@ -670,18 +677,23 @@ async fn test_upload_size_boundary_respects_configured_cap() {
             .mime_str("application/octet-stream")
             .unwrap(),
     );
-    let resp = client
+    match client
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
         .await
-        .expect("Request failed");
-    assert_eq!(
-        resp.status(),
-        413,
-        "a body over the derived route body limit must be rejected by the body-limit layer (413)"
-    );
+    {
+        Ok(resp) => assert_eq!(
+            resp.status(),
+            413,
+            "a body over the derived route body limit must be rejected by the body-limit layer (413), not reach the handler"
+        ),
+        Err(e) => assert!(
+            !e.is_timeout(),
+            "expected 413 or a mid-stream rejection from the body-limit layer, got a timeout: {e}"
+        ),
+    }
 }
 
 // Scientific/genomics binaries must upload. A gzip-framed `.rds` sniffs as
