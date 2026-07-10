@@ -313,3 +313,50 @@ the per-pane design is feasible — but these must-fix constraints are folded in
 - **ITEM-21** — verdict: CONCERN — `MessageViewState` is real and was missed (tree-fix), but the fix is light: reset-scoping (re-key by convId), not a full per-pane store — its keys are globally unique. Also folds the run_js chat surface (SSE `runJsApprovalRequired` + `run_js_approval` content-type) into ITEM-19's mcp migration.
 - **ITEM-22** — verdict: CONCERN — a genuine store-kit primitive gap: `defineLocalStore.use()` doesn't expose the raw `StoreApi` that `ctx.chatStore` needs. Small store-kit extension (Option A), but it gates the whole extension-migration contract → must land first.
 - **ITEM-23** — verdict: CONCERN — the gallery cassette + fixtures are SHARED harness (B3). The multi-pane support (SSE cassette keyed by conversation; fixtures off `useChatStore`) is a real capability gap, not a workaround — lands as a reviewed infra change alongside ITEM-15, not silently.
+
+## v2 redesign audit (ITEM-24..31) — against current merged main
+
+**Note on ITEM-1..23 + P1..P4 above:** these are IMPLEMENTED + verified (v1, 8/8)
+and REUSED unchanged; their verdicts stand. The v2 items REVISE five of them —
+ITEM-1 (→24/26: drop `?pane=` URL, per-user store), ITEM-8 (→24/29/30:
+workspace-driven view), ITEM-11 (→28: picker not new-chat), ITEM-12 (→30: build
+mobile tabs), ITEM-16 (→31: build dnd) — captured in the v2 verdicts, not by
+re-opening the shipped engine.
+
+### Breakage risk (v2)
+- `Stores.SplitView` has exactly **5 consumers** (SplitChatView, module.tsx,
+  types.ts, ConversationPage, chatBridge) — **all in-module and all v2 edit
+  targets**, so evolving the store breaks no out-of-module caller. LOW.
+- The two real risk spots: (a) the **URL↔focus loop** (ITEM-25) — navigating,
+  reconciling, and focus-driven URL updates can cycle; and (b) covering **every**
+  conversation-click site (ITEM-28: `ConversationCard` × 4 render sites +
+  `RecentConversationsWidget`'s own rows). Both are mitigated in-plan (loop guard;
+  centralized reroute).
+- No `Stores.Chat` engine surface is reopened — the per-pane store/streaming/
+  right-panel/composer stay as-shipped.
+
+### Pattern conformance (v2)
+- Reuse-first everywhere: `ConversationList` (picker), `chatDrafts.makeDraftKey`
+  (per-user persist), kit `Tabs` (tab strip), `SplitDivider` pointer-drag (dnd),
+  `SplitView.store.test` reducer tests (reconciliation). **One justified
+  deviation:** per-user persistence can't use the store-kit `persist:{name}`
+  config (a single global key that can't see the async auth user id) → a custom
+  `splitWorkspace.persist.ts` load/save. Recorded as a DEC in phase 4.
+
+### Migration collisions (v2)
+- **NONE.** Frontend-only; adds no migration (ceiling 145 untouched).
+
+### OpenAPI regen (v2)
+- **NONE.** The workspace layout is client-side localStorage, not a server
+  resource — no route/type/schema change, no regen, `types_ts_parity` unaffected.
+  (A future server-backed-sync flip would add a settings row + regen — DEC-flagged.)
+
+### Per-item verdicts (v2)
+- **ITEM-24** — verdict: PASS — SplitView store already exists; all 5 consumers are in-module v2 edit targets, so evolving it (stable ids, one-conv-per-pane guard, drop `?pane=`) breaks no external caller. Additive.
+- **ITEM-25** — verdict: CONCERN — the pure reconciliation reducer is unit-testable in isolation, but the URL↔focus binding risks a navigate↔focus loop; mitigation = `replace` (not push) + skip reconcile when the URL already equals the focused pane's conversation. Verified by the back/forward + deep-link e2e.
+- **ITEM-26** — verdict: CONCERN — the current persist is a store-kit GLOBAL key (`ziee-split-view-v1`); per-user namespacing + prune needs a CUSTOM `splitWorkspace.persist.ts` (the built-in `persist` config can't key by the async-loaded `Stores.Auth.user.id`). Hydrate after auth resolves / re-hydrate on auth change; v1→v2 key migration once. Mirrors `chatDrafts` keying.
+- **ITEM-27** — verdict: CONCERN — reuse `ConversationList` (it exists + is searchable) but its rows navigate; add an injected `onSelect` (→ `setPaneConversation(thisPane)`) rather than forking the list. Do not rebuild the list.
+- **ITEM-28** — verdict: CONCERN — `ConversationCard` renders in 4 sites (ConversationList, registry.tsx, projects extension, ProjectConversationsList) AND `RecentConversationsWidget` has its OWN rows; the reroute must cover ALL of them via one central call to ITEM-25's reducer, and must preserve project-conversation semantics (project binding via ITEM-13). Centralize so no click site is missed.
+- **ITEM-29** — verdict: PASS — reuses shipped primitives: pop-out util (ITEM-P1), per-pane sync + self-gate (auto-close on delete), `SPLIT_LIMITS.MAX_PANES` (ITEM-14). Pop-out-moves-out = openConversationWindow + closePane; delete→auto-close = a `sync:conversation` handler → closePane. Additive.
+- **ITEM-30** — verdict: PASS — the `mode` field + `useWindowMinSize` gating + kit `Tabs` all exist; building the deferred tab-strip mode is additive to SplitChatView, no new primitive.
+- **ITEM-31** — verdict: CONCERN — heaviest v2 item; no dnd library in-repo, so reuse `SplitDivider`'s pointer-drag + shadcn-discovery over a bespoke lib. a11y-sensitive (drag needs a keyboard/click equivalent — the Split button + ⋯-menu + modifier-click already provide it, so this affordance is redundant-optional and can land LAST / be de-scoped if it blocks the gate). Must not regress existing sidebar interactions.

@@ -1,0 +1,13 @@
+# HUMAN_FEEDBACK — split-chat-multipane
+
+Living ledger of human review feedback on the running feature. Verbatim, one
+`FB-N` per item, `[status: open|resolved|wontfix]`. Any `open` fails phase 9.
+
+- **FB-1** [status: resolved] — "pane should not be gated, it's not like we need to force everything to be gated" → Did NOT add any gate. Verified per-pane permission gating is *preserved* (every `usePermission`/`hasPermissionNow` reads global `Stores.Auth`, never pane state; my diff changed 0 permission lines); the pre-existing ungated `FileAttachMenuItem` is on main and backend-enforced, left untouched. [generalizable: yes — a refactor preserves existing gates; do not invent new gating the change doesn't require, and never force-gate a surface main deliberately leaves UI-open but backend-enforced.]
+- **FB-2** [status: open] — "the implementation is utterly flaw, we need to go back to phase1, think about what user want to do. Like can we open existing conversation next to it. How should we do that? Drag and drop? Also, how should we store the state of opening panes? What happen if user click on the left sider for conversation that is already in the panes? What if user click on the left sider for conversation that is not in the pane? What if user go to completely different pages then go back to a conversation that was attached in a pane, etc. You need to cover every single thing." → Restarting at Phase 1 with a full Workspace interaction model + a single reconciliation rule covering every entry point / navigation / persistence case (this PLAN). Resolves when built + re-reviewed. [generalizable: yes — for a multi-view/workspace UI feature, design the ENTIRE interaction model (every open/navigate/persist/edge case) up front before implementing; the happy path alone is a design hole, not a v1.]
+- **FB-3** [status: open] — "are you sure? split plan always ask to create new conversation" → Confirmed: v1's split could only produce `[current | new-chat]` — it never wired opening an EXISTING conversation into a pane. The redesign adds the empty-pane picker + sidebar-reroute + menu item + drag-drop so any existing conversation can go into a pane. Resolves when built. [generalizable: yes — a "split / side-by-side" feature must place EXISTING items next to each other, not only newly-created ones.]
+
+## Generalizable candidates harvested here (for the orchestrator at merge)
+- Design the full interaction model up front for workspace/multi-view UI (FB-2).
+- Side-by-side features must support existing items, not just new (FB-3).
+- Don't invent gating a refactor doesn't require (FB-1).

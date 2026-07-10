@@ -386,3 +386,100 @@ page). Panes from different projects are allowed (each carries its own pane
 projectId per DEC-13).
 **Basis:** codebase — the projects chat route is literally the conversation page
 re-imported; unifying on `SplitChatView` keeps them consistent.
+
+## v2 redesign decisions (workspace interaction layer)
+
+### DEC-40: What IS a split — the foundational mental model?
+**Resolution:** A **Workspace** — a persistent set of 1..N open conversations, one
+per pane (IDE editor-groups). You add/remove conversations; it survives navigation
++ reload; the URL is a *view into* it, not its source of truth.
+**Basis:** user — chosen explicitly over "current + peek" and "tabbed panes".
+
+### DEC-41: Plain sidebar-click on a conversation NOT already in a pane, while a split is open?
+**Resolution:** **Replace the focused pane** (IDE "open in the active editor
+group"). Modifier/middle-click opens a new pane instead.
+**Basis:** user — chosen over "always new pane" and "exit split to single view".
+
+### DEC-42: How is the pane layout stored — fixed client state, or an admin-configurable/server row?
+**Resolution:** **localStorage, per-user** (client-side UI state). NOT server-backed
+and NOT an admin settings row for v1. Server-backed cross-device sync is a noted
+future upgrade (would then become a `session`-style settings row + a sync entity +
+regen — see DEC-52).
+**Basis:** user — chose localStorage-per-user over server-sync and session-only.
+
+### DEC-43: Which "open an existing conversation beside" affordances ship in v1?
+**Resolution:** **All four** — empty-pane picker, ⋯-menu "Open in split pane",
+drag-and-drop, and modifier/middle-click. (Drag-drop is the lowest-priority of the
+four — see DEC-50.)
+**Basis:** user — multi-selected all four.
+
+### DEC-44: `MAX_PANES` — fixed constant, or admin-configurable settings row?
+**Resolution:** **Fixed frontend constant** in `SPLIT_LIMITS` (`MAX_PANES = 3`, `4`
+at ≥1600px viewport). NOT an admin settings row: it is a per-user UI *layout* limit
+bounded by screen real estate + readability, analogous to the existing
+`SPLIT_LIMITS`/`MIN_PANE_WIDTH` constants — not a deployment operational tunable.
+Over-cap → toast + a replace-focused offer.
+**Basis:** convention — the configurable-settings rule targets *deployment* tunables
+(resource/retention/quota caps); a client UI layout cap is a fixed const with
+rationale.
+
+### DEC-45: Pop-out (⤢) on a pane while in a split — keep it in the split, or move it out?
+**Resolution:** **Move it out** — pop-out opens the conversation in its own window
+AND removes that pane from the workspace, so there are never two live copies of one
+conversation competing (double SSE stream / double send target).
+**Basis:** user — confirmed the recommended option.
+
+### DEC-46: May the same conversation be open in two panes at once?
+**Resolution:** **No** (v1) — adding a conversation already in a pane focuses that
+pane instead. Two live panes on one conversation would double-stream + compete on
+send. Revisit later for a deliberate "compare two branches of one conversation".
+**Basis:** convention — matches the one-live-connection-per-conversation engine
+invariant; avoids the double-send/stream hazard.
+
+### DEC-47: "New Chat" (sidebar) while a split is open?
+**Resolution:** **Adds a new-chat pane** to the workspace (consistent with the
+workspace = "you add things" model), not replace-focused and not exit-split.
+**Basis:** convention — coherent with DEC-40's workspace model.
+
+### DEC-48: URL model + history behavior for the workspace?
+**Resolution:** URL = the **focused pane's conversation** (`/chat/<focused>`); focus
+changes update it with **`replace` (not push)** so focusing panes doesn't spam
+browser history; a **loop-guard** skips reconciliation when the URL already equals
+the focused pane's conversation (prevents the navigate↔focus cycle flagged in
+PLAN_AUDIT ITEM-25).
+**Basis:** codebase — react-router `navigate(..., {replace:true})`; the guard is the
+standard fix for URL-mirrors-state loops.
+
+### DEC-49: Mobile / narrow-viewport behavior?
+**Resolution:** **Build the tab strip** — below the `useWindowMinSize` breakpoint,
+`mode:'tabs'` renders ONE visible pane + a tab per open conversation (no columns);
+"open beside" becomes "add a tab". (The v1-deferred DRIFT-1.11 piece; now in scope.)
+**Basis:** user (workspace model implies it) + convention (`useWindowMinSize`
+gating mirrors `ConversationPage`/`ChatRightPanel`).
+
+### DEC-50: Drag-and-drop (ITEM-31) sequencing — required, or optional-last?
+**Resolution:** **Optional-last.** The menu item + modifier/middle-click + empty-pane
+picker already deliver "open existing beside" with a keyboard/click path; drag-drop
+is a redundant power affordance. It lands LAST and may be de-scoped to a follow-up
+if it threatens the gate (no dnd lib in-repo; a11y-sensitive). Its e2e (TEST-28)
+still ships if built.
+**Basis:** codebase — a11y + no dnd primitive; the affordance is redundant with
+three already-locked paths.
+
+### DEC-51: Persistence mechanism — store-kit `persist` config, or custom load/save?
+**Resolution:** **Custom `splitWorkspace.persist.ts`** load/save. The store-kit
+`persist:{name}` writes a single GLOBAL key and cannot namespace by the
+async-loaded `Stores.Auth.user.id`; the custom module keys per-user (mirroring
+`chatDrafts.makeDraftKey`), hydrates AFTER auth resolves (re-hydrates on auth
+change), prunes deleted/inaccessible + empty panes on hydrate, and runs the
+one-time v1→v2 key migration.
+**Basis:** codebase — the store-kit persist limitation is real (PLAN_AUDIT ITEM-26).
+
+### DEC-52: Configurable-settings-rule check — any deployment operational tunable introduced?
+**Resolution:** **None.** The redesign is frontend-only; its two "tunables"
+(`MAX_PANES` and the localStorage layout) are **client UI state**, fixed with
+rationale (DEC-44/DEC-42), not deployment operational tunables — so no settings
+table, migration, `<feature>::settings` permission, sync entity, or admin card is
+owed. (A future server-backed-sync flip is the only path that would introduce one.)
+**Basis:** convention — the mandatory configurable-settings DEC, answered:
+fixed/client, not admin-configurable, with rationale.

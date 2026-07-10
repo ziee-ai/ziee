@@ -8,6 +8,81 @@ right-panel / the whole chat-extension system are keyed to that one active
 conversation). This refactor makes the per-conversation chat runtime
 **multi-instance** (per-pane) while keeping the genuinely-global state global.
 
+## v2 REDESIGN — the workspace interaction model (supersedes v1's open/navigate/persist layer)
+
+**Why.** v1 shipped the per-pane *engine* (ITEM-2..10, 16-23 — 8/8, verified,
+**reused unchanged**) but its *interaction layer* was a design hole: the Split
+button only ever produced `[current | new-chat]`, panes were derived ad-hoc from
+the URL, and **there was no way to place two EXISTING conversations side by
+side** — the feature's own headline. Human review (see HUMAN_FEEDBACK FB-2/FB-3)
+sent this back to Phase 1. v2 rebuilds the open/navigate/persist layer as a
+first-class **workspace**, on top of the reused engine.
+
+**Locked model (user decisions, DEC-40..43 below):** a **Workspace** = a
+persistent set of 1..N open conversations (one per pane), IDE-editor-groups
+style; **plain sidebar-click = replace the focused pane**, modifier/middle-click
+= new pane; **localStorage per-user** persistence; affordances = **all four**
+(empty-pane picker + ⋯-menu item + drag-drop + modifier-click). The URL is a
+*view into* the workspace (the focused pane's conversation), never its source of
+truth.
+
+**The v2 items (build ON the reused engine):**
+
+- **ITEM-24**: **Workspace store** — evolve the `SplitView` store into the
+  persistent workspace source of truth: stable `paneId`s,
+  `panes:[{paneId,conversationId|null}]`, `focusedPaneId`, `dividerWidths`,
+  `mode:'columns'|'tabs'`; **enforce one conversation per pane** (adding a conv
+  already open focuses its pane, never duplicates). *Revises ITEM-1* — DROP the
+  `?pane=<id>` URL mirroring; the layout lives in the store + localStorage only.
+- **ITEM-25**: **The reconciliation reducer** — one pure
+  `openConversationInWorkspace(convId, intent ∈ 'auto'|'newPane'|'replaceFocused')`
+  that EVERY entry point routes through: already-in-a-pane → **focus that pane**;
+  `newPane` (modifier) → **add a pane** (MAX_PANES-guarded); `replaceFocused`/
+  `auto` while a split is open → **replace the focused pane**; no split open →
+  normal single-pane navigate. Pure + unit-testable. *Supersedes v1's flawed open
+  path* (`openPane(current)+openPane(null)`), which is the root cause.
+- **ITEM-26**: **Persistence + hydrate/prune** — persist the workspace to
+  `ziee-split-workspace-v2`, namespaced by `Stores.Auth.user.id` (mirroring
+  `chatDrafts` keying); hydrate on boot; on hydrate AND on `sync:conversation`
+  delete, **prune** panes whose conversation is deleted / not-accessible, and
+  prune empty panes (fall back to single-pane if it empties); include a v1→v2 key
+  migration. *Revises ITEM-1's* localStorage shape. Answers "store the pane state"
+  + "leave to another page then return" (rehydrate + ITEM-25 reconcile the URL).
+- **ITEM-27**: **Empty-pane picker** — a `conversationId:null` pane renders a
+  searchable "Open a conversation" list + a "Start a new chat" action; picking →
+  `setPaneConversation`, new → the existing new-chat adopt path. Replaces the bare
+  new-chat second pane so the second slot can hold an EXISTING conversation. New
+  component `ConversationPickerPane.tsx`.
+- **ITEM-28**: **Sidebar/list reroute + affordances** — `RecentConversationsWidget`
+  + `ConversationCard` clicks call ITEM-25 (`intent:'auto'`) instead of raw
+  `navigate`; **Cmd/Ctrl/middle-click → `intent:'newPane'`**; add an **"Open in
+  split pane"** ⋯-menu item (→ `newPane`); the **Split button** opens
+  `[current | empty-picker pane]`. *Supersedes ITEM-11's* "defaulting to a new
+  chat". Answers the two sidebar-click questions (in-pane → focus; not-in-pane →
+  replace focused / modifier→new).
+- **ITEM-29**: **Edge-case semantics** — **pop-out MOVES** the pane out of the
+  workspace (no two live copies competing); **delete/no-access** on a paned conv
+  auto-closes that pane (+ toast, reusing per-pane sync + self-gate); **close-to-1**
+  exits split to the survivor's single-pane view (workspace persists, re-expandable);
+  focus reassigns to a neighbor on close; **MAX_PANES** over-cap → toast + offer
+  replace-focused. *Revises ITEM-11/13/14* (pop-out/close/limits) for the
+  workspace model.
+- **ITEM-30**: **Mobile tab strip (build the deferred piece)** — below the
+  `useWindowMinSize` breakpoint, `mode:'tabs'` renders ONE visible pane + a tab per
+  open conversation (no columns, divider hidden); "open beside" becomes "add a
+  tab"; focus = the visible tab. *Implements the v1-deferred ITEM-12/DRIFT-1.11.*
+- **ITEM-31**: **Drag-and-drop (full model)** — drag a sidebar conversation onto a
+  pane (drop = replace that pane) or the inter-pane seam / edge (drop = new pane at
+  that index); drag a pane header to `reorderPanes`. *Implements the v1-deferred
+  ITEM-16/DRIFT-1.10*; pointer-based, tokens for ghost/drop highlights.
+
+*Reused unchanged (the audit must treat these as the foundation, not re-review):*
+the per-pane `ChatPaneStore`/`ChatPaneProvider`, per-pane streaming/scroll/
+right-panel isolation (ITEM-2..10, 18, 19, 21), the `Stores.Chat` context-aware
+bridge (ITEM-9), the pop-out util (ITEM-P1..P4), the divider, and the composer
+nested-store binding fix. v2 touches these only where the reconciliation/persist
+layer plugs in.
+
 ## Delivery phases
 
 **Both pop-out AND in-window split are committed deliverables of this feature.**
@@ -142,6 +217,11 @@ New files (frontend, `src-app/ui/src` unless noted):
 - `src-app/ui/src/modules/chat/core/split/limits.ts` — ITEM-14.
 - Gallery seed additions under `src-app/ui/src/dev/gallery/` (+ desktop mirror) — ITEM-15.
 
+New files (v2 redesign):
+- `src-app/ui/src/modules/chat/core/split/reconcile.ts` — ITEM-25 (the pure `openConversationInWorkspace(convId, intent)` reconciliation reducer; the single rule every entry point routes through).
+- `src-app/ui/src/modules/chat/core/stores/splitWorkspace.persist.ts` — ITEM-26 (per-user localStorage load/save + hydrate/prune + v1→v2 migration).
+- `src-app/ui/src/modules/chat/components/ConversationPickerPane.tsx` — ITEM-27 (empty-pane searchable picker + "start a new chat").
+
 Edited files:
 - `src-app/ui/src/modules/chat/core/stores/Chat.store.ts` — ITEM-2 (defineStore → defineLocalStore def; relocate the auth-driven stream wiring to ITEM-6).
 - `src-app/ui/src/modules/chat/core/stream/ChatStreamClient.ts` — ITEM-6 (singleton → factory).
@@ -156,6 +236,14 @@ Edited files:
 - `src-app/ui/src/modules/mcp/stores/McpComposer.store.ts` + `src-app/ui/src/modules/mcp/chat-extension/**` — ITEM-19 (per-pane MCP composer + progress-keying + approval-routing fixes).
 - `src-app/server/src/modules/chat/stream/registry.rs` + the deployment config plumbing — ITEM-20 (configurable connection cap). This is the ONLY backend touch; it makes the diff back-end+front-end, so phase-8 runs the backend integration chain too (a `registry.rs` unit/integration test), no migration/OpenAPI.
 - Desktop mirror: `src-app/desktop/ui/src/modules/host-mount/conversation-extension/components/ConversationMountsControl.tsx` — becomes pane-scoped via `useChatPane()` (renders in the per-pane header slot), NOT the bridge; verified via desktop `npm run check`. Desktop reuses the SAME chat sources (vite `@/` alias → `ui/src`), so there are no separate desktop extension copies — the refactor lands once in `ui/src`.
+
+Edited files (v2 redesign):
+- `src-app/ui/src/modules/chat/core/stores/SplitView.store.ts` — ITEM-24/25/26 (workspace store: stable ids, one-conv-per-pane, `openConversationInWorkspace`, persistence hookup; DROP `?pane=` URL mirroring).
+- `src-app/ui/src/modules/chat/components/SplitChatView.tsx` — ITEM-24/29/30 (workspace-driven pane list; columns vs tab-strip `mode`; close/pop-out/max-pane semantics).
+- `src-app/ui/src/modules/chat/pages/ConversationPage.tsx` — ITEM-25 (route the URL `:conversationId` through the reconciliation reducer against the hydrated workspace; URL = focused pane).
+- `src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx` + `src-app/ui/src/modules/chat/components/ConversationCard.tsx` — ITEM-28 (clicks → reconciliation not raw `navigate`; modifier/middle-click → new pane; add "Open in split pane" ⋯-menu item; drag source for ITEM-31).
+- `src-app/ui/src/modules/chat/core/pane/paneDnd.ts` + `PaneDropZones.tsx` — ITEM-31 (implement the deferred drag-drop; drop-on-pane=replace, drop-on-seam=new pane, header-drag=reorder).
+- `src-app/ui/src/modules/chat/components/PaneTabStrip.tsx` — ITEM-30 (build the deferred mobile tab-strip mode).
 
 ## Patterns to follow
 
@@ -176,3 +264,9 @@ Edited files:
 - **Bridge proxy (ITEM-9):** mirror `core/stores.ts` `createStoreProxy` / the `Stores` proxy (snapshot via `.$`, actions returned directly, reactive reads via `useStore`).
 - **Mobile gating (ITEM-12):** mirror `ConversationPage.tsx` / `ChatRightPanel.tsx` use of `useWindowMinSize` + `useNativeScroll` / `Stores.AppLayout.nativeScroll`.
 - **Gallery (ITEM-15):** mirror the existing chat gallery seeds and `dev/gallery/seeded/shard3.tsx` (the one gallery `defineLocalStore` usage) + the state-matrix conventions in `DESIGN_SYSTEM.md` / the UI Build Gate.
+- **Reconciliation reducer (ITEM-25):** keep it a PURE function `(workspaceState, convId, intent) → newState` (unit-testable in isolation, mirroring `SplitView.store.test.ts`'s reducer tests), invoked by the store action + the router effect — not scattered `navigate()` calls.
+- **Per-user localStorage persistence (ITEM-26):** mirror `modules/chat/extensions/text/chatDrafts.ts` (`makeDraftKey(userId, …)` namespacing) + the existing `ziee-split-view-v1` load/save in `SplitView.store` for the read/write/versioning shape.
+- **Empty-pane picker (ITEM-27):** mirror the existing searchable conversation list — `modules/chat/components/ConversationList.tsx` / the `RecentConversationsWidget` row rendering + the kit search input — reuse its row component, don't rebuild.
+- **Sidebar reroute + ⋯-menu item (ITEM-28):** mirror the existing `RecentConversationsWidget` row-menu (the Delete item + `keepMenuOpen`) for the new "Open in split pane" entry; mirror `ConversationCard`'s `navigate(href)` site for the reroute-through-reconciliation swap.
+- **Tab strip (ITEM-30):** mirror the kit `Tabs` (`@/components/ui`, `data-slot="tabs-*"`) already used by `ChatRightPanel`'s tab list — same trigger/close-button shape.
+- **Drag-and-drop (ITEM-31):** mirror the existing pointer-drag in `SplitChatView`'s `SplitDivider` (pointer capture + move/up handlers) for the low-level drag; for reorder/drop-index, follow the closest in-repo list-reorder pattern (`shadcn-component-discovery` first — reuse a kit primitive over a bespoke dnd lib).
