@@ -40,6 +40,39 @@ export const RUNTIME_BASELINE = [
     match: 'oklch(0.556 0 0)',
     note: 'Muted-foreground token (--muted-foreground) as 12px text on the light muted surface (bg ~rgb(245,245,245)) computes to 4.35:1, marginally under AA 4.5:1. Raising --muted-foreground contrast is an app-wide token decision (owner: design); appears across onboarding loaded/empty/error (same token, same surface).',
   },
+  // --- Pre-existing on origin/main, NOT introduced by feat/split-chat-multipane ---
+  // Proven apples-to-apples: a full runtime-health run on a clean `origin/main`
+  // worktree (no split feature) reports the SAME 8 gating HIGH on the SAME 2
+  // surfaces (`seeded-llm-models-loading` 6 + `deep-chat-right-panel-file` 2) as
+  // this branch. The split diff touches ZERO files in either surface's render
+  // subtree (no `llm-provider/` file, no shared kit source; `ChatRightPanel`'s
+  // change is inert with inPane=false and adds only an unconditional useEffect).
+  // Baselined so the gate reflects that this feature adds no new gating finding;
+  // the underlying defects are tracked for their owning modules below.
+  {
+    category: 'console-error',
+    surface: 'seeded-llm-models-loading',
+    match: 'order of Hooks',
+    note: 'Pre-existing (identical on clean origin/main). `LlmModelsSection` (modules/llm-provider/) trips React "change in the order of Hooks" on the seeded admin models surface — a conditional-hook bug in that admin component, unrelated to split-chat. Owner: llm-provider module. Not in this diff (zero llm-provider files touched).',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-llm-models-loading',
+    match: 'Rendered more hooks',
+    note: 'Pre-existing (identical on clean origin/main). Same `LlmModelsSection` conditional-hook defect — "Rendered more hooks than during the previous render". Owner: llm-provider module. Not in this diff.',
+  },
+  {
+    category: 'crash',
+    surface: 'seeded-llm-models-loading',
+    match: 'Rendered more hooks',
+    note: 'Pre-existing (identical on clean origin/main). The `LlmModelsSection` hook-order defect escalates to an AppErrorBoundary render crash on the seeded admin models surface. Owner: llm-provider module (real bug to fix there). Not in this diff — the split feature touches no llm-provider file.',
+  },
+  {
+    category: 'contrast',
+    surface: 'deep-chat-right-panel-file',
+    match: 'rgba(0, 0, 0, 0)',
+    note: 'Pre-existing (identical on clean origin/main). A transparent foreground (fg rgba(0,0,0,0), alpha 0 — an element mid fade-in / placeholder) computes a degenerate 1.00:1 on the file right-panel surface. Owner: file right-panel component. Not in this diff — `ChatRightPanel`\'s change is inert on this surface (inPane=false) and the file-load path (FileStore) is unchanged.',
+  },
 ]
 
 /** True when a finding is a documented, baselined pre-existing item. */
