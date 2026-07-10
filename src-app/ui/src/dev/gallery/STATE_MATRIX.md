@@ -8,7 +8,7 @@
 ## Summary
 
 - **329** surfaces carry at least one renderable-state signal.
-- **1909** signals total: 1512 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
+- **1911** signals total: 1514 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -1094,9 +1094,11 @@ Required states: `empty`, `open`
 | branch | `!activeTab` | 14 |
 | branch | `!resolved` | 17 |
 | empty | `tabs.length === 0` | 50 |
-| branch | `isMobile` | 135 |
-| overlay | `<Drawer open>` | 137 |
-| branch | `isOpen` | 177 |
+| branch | `inPane` | 141 |
+| branch | `!showDrawer` | 142 |
+| branch | `isMobile` | 164 |
+| overlay | `<Drawer open>` | 166 |
+| branch | `isOpen` | 206 |
 
 ### `modules/chat/core/extensions/registry`
 

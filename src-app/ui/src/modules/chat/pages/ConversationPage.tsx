@@ -573,7 +573,7 @@ export function ConversationPane() {
       )}
 
       {/* Main area: chat column + right panel */}
-      <div ref={mainAreaRef} className={cn('flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
+      <div ref={mainAreaRef} className={cn('relative flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Chat column. `relative` anchors the floating find bar (ITEM-1) and
             jump-to-latest button (ITEM-2). */}
         <div className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
@@ -733,10 +733,10 @@ export function ConversationPane() {
           </div>
         </div>
 
-        {/* Right sidebar panel. Inside a split pane it's always an in-pane
-            slide-over (a second inline column would over-cram the half-width
-            pane), so force `narrow`. */}
-        <ChatRightPanel narrow={pane ? true : rightPanelNarrow} />
+        {/* Right sidebar panel. Inside a split pane it renders as an in-pane
+            slide-over anchored to this pane's main area (ITEM-18); on the full
+            page it's the inline side panel / narrow Drawer as before. */}
+        <ChatRightPanel narrow={rightPanelNarrow} inPane={!!pane} />
       </div>
     </div>
   )

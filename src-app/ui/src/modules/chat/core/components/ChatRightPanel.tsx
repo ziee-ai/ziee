@@ -114,7 +114,13 @@ function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; a
   )
 }
 
-export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
+export function ChatRightPanel({
+  narrow = false,
+  inPane = false,
+}: {
+  narrow?: boolean
+  inPane?: boolean
+}) {
   const panelRef = useRef<HTMLDivElement>(null)
   const { rightPanel } = Stores.Chat
   // `narrow` = the conversation PAGE is small (element-width, sidebar-aware),
@@ -127,6 +133,29 @@ export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
     rightPanel.mobileDrawerOpen &&
     rightPanel.tabs.length > 0 &&
     rightPanel.activeId !== null
+
+  // Split pane (ITEM-18): an in-pane slide-over anchored to THIS pane's relative
+  // main area — NOT a body-portaled Drawer (which would cover the whole window
+  // and the sibling pane) and NOT a second inline column (which would over-cram
+  // a half-width pane). Same open/close semantics + content as the narrow Drawer.
+  if (inPane) {
+    if (!showDrawer) return null
+    return (
+      <div
+        className="absolute inset-y-0 end-0 z-50 flex flex-col border-s border-border bg-background shadow-xl animate-in fade-in"
+        style={{ width: Math.min(panelWidth, 440), maxWidth: '85%' }}
+        data-testid="chat-right-panel"
+        data-panel-open="true"
+      >
+        {/* PanelTabs carries the accessible close-all (X) button; the slide-over
+            separates from the pane content via border + shadow (no backdrop). */}
+        <PanelTabs onCloseAll={Stores.Chat.closeAllRightPanelTabs} />
+        <div className="flex-1 overflow-hidden min-h-0">
+          <ActivePanelContent />
+        </div>
+      </div>
+    )
+  }
 
   // Narrow page: the panel is an actual Drawer (full-width) — it handles the
   // backdrop, focus-trap, Escape, and swipe-to-close, and carries the
