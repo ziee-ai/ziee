@@ -452,10 +452,14 @@ interface ChatState {
   chatStreamClient: ChatStreamClient | null
   /** This pane's extension runtime (ITEM-34); null on the single-pane primary. */
   extensionRuntime: import('../extensions/types').ExtensionLifecycle | null
+  /** This pane's stable id (ITEM-32/37); null on the single-pane primary. */
+  paneId: string | null
   /** Attach a per-pane extension runtime (called by ChatPaneProvider on mount). */
   attachExtensionRuntime: (
     runtime: import('../extensions/types').ExtensionLifecycle | null,
   ) => void
+  /** Set this pane's stable id (called by ChatPaneProvider on mount). */
+  setPaneId: (paneId: string | null) => void
   stopStreaming: () => void
 
   // ── Right panel ───────────────────────────────────────────────────────────
@@ -523,6 +527,11 @@ const chatInitialState = {
     extensionRuntime: null as import(
       '../extensions/types'
     ).ExtensionLifecycle | null,
+    // This pane's stable id (ITEM-32/37), attached by ChatPaneProvider. Scopes
+    // the composer buffer (per-pane files) + the new-chat sentinel keys (model /
+    // assistant / MCP) so two new-chat panes don't share one selection. Null on
+    // the single-pane primary → the shared/global key (byte-identical).
+    paneId: null as string | null,
     conversationStateCache: new Map<string, ChatStateSnapshot>(),
     cacheClearTimers: new Map<string, NodeJS.Timeout>(),
     // Branch initial state
@@ -562,6 +571,11 @@ const chatStoreConfig = {
       runtime: import('../extensions/types').ExtensionLifecycle | null,
     ) => {
       set({ extensionRuntime: runtime })
+    },
+
+    /** Set this pane's stable id (ChatPaneProvider, on mount). */
+    setPaneId: (paneId: string | null) => {
+      set({ paneId })
     },
 
     // ── Conversation state management ──────────────────────────────────────
@@ -1693,6 +1707,7 @@ const chatStoreConfig = {
       // resolve to the sending pane (ITEM-5); null = a new-chat pane.
       const allRequestFields = await chatExtensionRegistry.composeRequestFields({
         conversationId: get().conversation?.id ?? null,
+        paneId: get().paneId,
       })
 
       // Inject branching fields directly (moved from branching extension)
@@ -1743,6 +1758,7 @@ const chatStoreConfig = {
       const userContents = await chatExtensionRegistry.provideUserContent(
         (allRequestFields.content as string) || '',
         allRequestFields,
+        get().paneId,
       )
 
       const tempUserMessage: MessageWithContent = {

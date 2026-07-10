@@ -448,6 +448,9 @@ export interface ChatExtensionContext {
  */
 export interface ChatHookCtx {
   conversationId: string | null
+  /** The SENDING pane's stable id (ITEM-32/37), or null single-pane. Scopes the
+   *  per-pane composer buffer + the new-chat sentinel keys to the right pane. */
+  paneId: string | null
 }
 
 /**
@@ -795,6 +798,8 @@ export interface ChatExtension {
   provideUserContent?: (
     text: string,
     composedRequest: any,
+    /** The SENDING pane's id (ITEM-32) — read THAT pane's composer buffer. */
+    composerPaneId?: string | null,
   ) => MessageContent[] | Promise<MessageContent[]>
 
   /**

@@ -78,8 +78,9 @@ export function ChatPaneProvider({
       store.__api__.getState() as unknown as Record<string, unknown>,
     )
     store.attachExtensionRuntime(runtime)
+    store.setPaneId(paneId)
     return null
-  }, [store])
+  }, [store, paneId])
 
   useEffect(() => {
     registerPane({

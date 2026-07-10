@@ -1106,6 +1106,9 @@ export class ChatExtensionRegistry {
   async provideUserContent(
     text: string,
     composedRequest: any,
+    // The SENDING pane's id (ITEM-32) so an extension reads THAT pane's composer
+    // buffer (e.g. the file extension's per-pane attachments). Null single-pane.
+    composerPaneId?: string | null,
   ): Promise<import('@/api-client/types').MessageContent[]> {
     const extensions = this.getExtensions().filter(ext =>
       ext.provideUserContent !== undefined,
@@ -1116,7 +1119,11 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.provideUserContent) {
-          const content = await extension.provideUserContent(text, composedRequest)
+          const content = await extension.provideUserContent(
+            text,
+            composedRequest,
+            composerPaneId ?? null,
+          )
           if (content && content.length > 0) {
             allContent.push(...content)
             console.log(
