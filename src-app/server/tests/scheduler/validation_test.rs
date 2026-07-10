@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::common::TestServer;
 use crate::common::test_helpers::create_user_with_permissions;
+use crate::mcp::fixtures::mock_mcp_server::MockMcpServer;
 
 fn client() -> reqwest::Client {
     reqwest::Client::new()
@@ -264,8 +265,15 @@ async fn reenable_quota_count_excludes_the_disabled_row() {
 
 // ── TEST-28 — unattended allow-list narrows, never widens, access ───────────
 
-/// Create an enabled, user-owned MCP server the caller can access; returns its id.
-async fn create_user_mcp_server(server: &TestServer, token: &str) -> String {
+/// Create an enabled, user-owned MCP server the caller can access; returns
+/// `(mock, id)`. The server's URL points at a live [`MockMcpServer`] so the
+/// create-time health probe (`enforce_on_create`) succeeds and the row stays
+/// `enabled = true` — a disabled row is filtered out of `get_all_accessible_config`
+/// and would (correctly) be rejected by the allow-list gate, so an unreachable
+/// URL is NOT a valid fixture here. The returned `mock` must be kept in scope
+/// for the duration of the probe.
+async fn create_user_mcp_server(server: &TestServer, token: &str) -> (MockMcpServer, String) {
+    let mock = MockMcpServer::start().await;
     let resp = client()
         .post(server.api_url("/mcp/servers"))
         .header("Authorization", format!("Bearer {token}"))
@@ -274,7 +282,7 @@ async fn create_user_mcp_server(server: &TestServer, token: &str) -> String {
             "display_name": "Allow-list server",
             "enabled": true,
             "transport_type": "http",
-            "url": "http://127.0.0.1:9/mcp",
+            "url": mock.base_url(),
             "timeout_seconds": 10
         }))
         .send()
@@ -286,7 +294,13 @@ async fn create_user_mcp_server(server: &TestServer, token: &str) -> String {
         "user MCP server create should 201"
     );
     let srv: Value = resp.json().await.unwrap();
-    srv["id"].as_str().unwrap().to_string()
+    // The create-time probe must have kept it enabled, or the allow-list gate
+    // will (correctly) reject it as inaccessible.
+    assert_eq!(
+        srv["enabled"], true,
+        "mock-backed server must survive the health probe and stay enabled"
+    );
+    (mock, srv["id"].as_str().unwrap().to_string())
 }
 
 #[tokio::test]
@@ -300,7 +314,7 @@ async fn allow_list_accepts_accessible_and_rejects_inaccessible_entries() {
     .await;
     let (_stub, model) = crate::chat::helpers::create_stub_model(&server, &user.user_id).await;
     let model_id = model["id"].as_str().unwrap();
-    let accessible_server = create_user_mcp_server(&server, &user.token).await;
+    let (_mock, accessible_server) = create_user_mcp_server(&server, &user.token).await;
 
     // Create with an allow-list ⊆ the user's accessible servers → 201, persisted.
     let mut body = prompt_body(model_id, "allowlisted");

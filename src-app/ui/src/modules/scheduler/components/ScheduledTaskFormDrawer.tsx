@@ -20,8 +20,8 @@ import {
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { parseWorkflowIr } from '@/modules/workflow/components/workflowIr'
 
+import { chooseInputMode, selectDeclaredInputs } from './inputMode'
 import { type ScheduleValue, ScheduleBuilder } from './ScheduleBuilder'
 import {
   type AllowedUnattendedTool,
@@ -93,11 +93,11 @@ export function ScheduledTaskFormDrawer() {
 
   // The selected workflow's declared inputs (ITEM-4). When it declares inputs we
   // render a typed field per input; otherwise fall back to a raw JSON textarea.
-  const declaredInputs = useMemo(() => {
-    const wf = workflows.find(w => w.id === workflowId)
-    return wf ? parseWorkflowIr(wf).inputs : []
-  }, [workflows, workflowId])
-  const hasDeclaredInputs = declaredInputs.length > 0
+  const declaredInputs = useMemo(
+    () => selectDeclaredInputs(workflows, workflowId),
+    [workflows, workflowId],
+  )
+  const hasDeclaredInputs = chooseInputMode(declaredInputs) === 'typed'
 
   // Populate the picker lists on open (each store self-gates + loads once).
   useEffect(() => {

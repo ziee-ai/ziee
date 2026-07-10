@@ -79,3 +79,84 @@ test('paused task shows its reason and lists run history', async ({ page, testIn
     page.getByText(/failed \(provider_error\)/),
   ).toBeVisible({ timeout: 10000 })
 })
+
+// A spent `once` task: enabled=false with paused_reason='completed' (set by the
+// tick when a once-task fires). This is DONE, not failed.
+const completedTask = {
+  ...pausedTask,
+  id: '99999999-9999-9999-9999-999999999999',
+  name: 'Once-off report',
+  paused_reason: 'completed',
+  schedule_kind: 'once',
+  run_at: '2026-07-09T09:00:00Z',
+  cron_expr: null,
+  last_status: 'completed',
+  consecutive_failures: 0,
+}
+
+test('TEST-4: a completed once-task shows a distinct "Completed" badge (not paused)', async ({
+  page,
+  testInfra,
+}) => {
+  const { baseURL } = testInfra
+  await page.route(/\/api\/scheduled-tasks$/, async route =>
+    route.fulfill({ status: 200, json: [completedTask] }),
+  )
+
+  await loginAsAdmin(page, baseURL)
+  await page.goto(`${baseURL}/scheduled-tasks`)
+
+  // A distinct "Completed" badge — never the error-toned "Paused" surface.
+  await expect(byTestId(page, `task-completed-${completedTask.id}`)).toContainText(
+    'Completed',
+    { timeout: 10000 },
+  )
+  await expect(page.getByTestId(`task-paused-${completedTask.id}`)).toHaveCount(0)
+})
+
+test('TEST-32: a run with skipped_tools surfaces "N tools skipped"', async ({
+  page,
+  testInfra,
+}) => {
+  const { baseURL } = testInfra
+  const runId = 'b2b2b2b2-0000-0000-0000-000000000001'
+
+  await page.route(/\/api\/scheduled-tasks$/, async route =>
+    route.fulfill({ status: 200, json: [pausedTask] }),
+  )
+  await page.route(/\/api\/scheduled-tasks\/[^/]+\/runs$/, async route =>
+    route.fulfill({
+      status: 200,
+      json: [
+        {
+          id: runId,
+          scheduled_task_id: TASK_ID,
+          user_id: pausedTask.user_id,
+          trigger: 'schedule',
+          status: 'completed',
+          error_class: null,
+          error_message: null,
+          notification_id: null,
+          workflow_run_id: null,
+          conversation_id: null,
+          // Two tools were skipped because they weren't allow-listed unattended.
+          skipped_tools: [
+            { server_id: 's1', tool_name: 'write' },
+            { server_id: 's2', tool_name: 'delete' },
+          ],
+          fired_at: '2026-07-09T09:00:00Z',
+          finished_at: '2026-07-09T09:00:05Z',
+        },
+      ],
+    }),
+  )
+
+  await loginAsAdmin(page, baseURL)
+  await page.goto(`${baseURL}/scheduled-tasks`)
+
+  await byTestId(page, `task-runs-toggle-${TASK_ID}`).click()
+  await expect(byTestId(page, `run-skipped-${runId}`)).toContainText(
+    '2 tools skipped',
+    { timeout: 10000 },
+  )
+})

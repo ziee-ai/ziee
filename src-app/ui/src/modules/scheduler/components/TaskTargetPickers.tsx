@@ -1,13 +1,14 @@
 import { forwardRef } from 'react'
 
-import type { ProviderWithModels } from '@/api-client/types'
-import {
-  Combobox,
-  MultiSelect,
-  Select,
-  type SelectOptionGroup,
-} from '@/components/ui'
+import { Combobox, MultiSelect, Select } from '@/components/ui'
 import { Stores } from '@/core/stores'
+
+import { buildModelOptions } from './taskTargetOptions'
+
+// Re-exported so existing importers keep resolving `buildModelOptions` from the
+// component module; the pure implementation lives in `taskTargetOptions.ts` so
+// it's importable under `node --test` (a `.tsx` module can't be, JSX-parse).
+export { buildModelOptions }
 
 /**
  * Human-readable pickers for a scheduled task's target (ITEM-1 / FB-2). Each
@@ -19,21 +20,6 @@ import { Stores } from '@/core/stores'
  * injects (value/onChange/onBlur/id/name/invalid/aria-*), so they drop straight
  * into a `<FormField>` and bind automatically.
  */
-
-/** Grouped model options from the user's accessible providers. Pure + exported
- *  so it's unit-testable independent of the store. Mirrors WorkflowRunDialog. */
-export function buildModelOptions(
-  providers: ProviderWithModels[] | undefined,
-): SelectOptionGroup[] {
-  return (providers || [])
-    .map(p => ({
-      label: p.name,
-      options: (p.llm_models || [])
-        .filter(m => m.enabled)
-        .map(m => ({ label: m.display_name || m.name, value: m.id })),
-    }))
-    .filter(g => g.options.length > 0)
-}
 
 interface StringControlProps {
   value?: string

@@ -11,6 +11,8 @@ import {
 } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
+import { buildWeeklyDow, isDowList } from './scheduleCron'
+
 export interface ScheduleValue {
   schedule_kind: 'once' | 'recurring'
   run_at?: string // ISO (UTC), for 'once'
@@ -35,9 +37,6 @@ const WEEK = [
   { label: 'Sat', full: 'Saturday', value: '6' },
   { label: 'Sun', full: 'Sunday', value: '0' },
 ]
-
-/** A cron day-of-week field that is a single day OR a comma list (e.g. `1,3,5`). */
-const isDowList = (s: string) => /^\d(,\d)*$/.test(s)
 
 /** Classify a cron into a preset (best-effort; falls back to 'custom'). */
 function presetOf(cron: string | undefined): Preset {
@@ -107,11 +106,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
     } else {
       days.add(dayVal)
     }
-    const sorted = [...days]
-      .map(Number)
-      .sort((a, b) => a - b)
-      .join(',')
-    emitCron('weekly', hour, min, sorted, dom)
+    emitCron('weekly', hour, min, buildWeeklyDow(days), dom)
   }
   const timeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 
