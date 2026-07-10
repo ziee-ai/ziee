@@ -300,6 +300,7 @@ impl ImageGenerator for TextImageGenerator {
 
         Ok(ProcessingResult {
             text_pages: vec![], // Text extraction is handled by TextProcessor
+            geometry_pages: vec![],
             metadata: Default::default(),
             thumbnails, // Single element array
             images,     // Multiple elements (one per page)

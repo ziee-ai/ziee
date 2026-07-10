@@ -56,6 +56,71 @@ impl PdfProcessor {
 
         result.replace("\n\n", "\n").trim().to_string()
     }
+
+    /// Capture per-page citation geometry: for each page, the raw character
+    /// stream + each character's bounding box, fraction-normalized to the page
+    /// (origin top-left). Serialized per page as JSON `{"text": "...",
+    /// "boxes": [[x,y,w,h], ...]}` (one box per char in `text`). The `text-rects`
+    /// endpoint aligns a chunk's cleaned span to `text` (whitespace-insensitive)
+    /// and returns the matching boxes. Best-effort: a page that errors yields an
+    /// empty `{}` entry (page-level fallback).
+    pub async fn extract_geometry_pages(&self, data: &[u8]) -> Result<Vec<String>, AppError> {
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            with_pdfium(move |pdfium| {
+                let document = pdfium
+                    .load_pdf_from_byte_slice(&data, None)
+                    .map_err(|e| AppError::internal_with_id(e))?;
+
+                let mut pages_json = Vec::new();
+                for page_index in 0..document.pages().len() {
+                    let page = match document.pages().get(page_index) {
+                        Ok(p) => p,
+                        Err(_) => {
+                            pages_json.push("{}".to_string());
+                            continue;
+                        }
+                    };
+                    let pw = page.width().value.max(1.0);
+                    let ph = page.height().value.max(1.0);
+                    let text = match page.text() {
+                        Ok(t) => t,
+                        Err(_) => {
+                            pages_json.push("{}".to_string());
+                            continue;
+                        }
+                    };
+
+                    let mut raw = String::new();
+                    let mut boxes: Vec<[f32; 4]> = Vec::new();
+                    for ch in text.chars().iter() {
+                        let c = ch.unicode_char().unwrap_or('\u{FFFD}');
+                        raw.push(c);
+                        // tight_bounds returns a rect in PDF points (origin
+                        // bottom-left). Normalize to top-left fractions.
+                        let b = ch.tight_bounds().ok();
+                        let rect = match b {
+                            Some(r) => {
+                                let x = (r.left().value / pw).clamp(0.0, 1.0);
+                                let w = ((r.right().value - r.left().value) / pw).clamp(0.0, 1.0);
+                                let y = ((ph - r.top().value) / ph).clamp(0.0, 1.0);
+                                let h = ((r.top().value - r.bottom().value) / ph).clamp(0.0, 1.0);
+                                [x, y, w, h]
+                            }
+                            None => [0.0, 0.0, 0.0, 0.0],
+                        };
+                        boxes.push(rect);
+                    }
+
+                    let val = serde_json::json!({ "text": raw, "boxes": boxes });
+                    pages_json.push(val.to_string());
+                }
+                Ok(pages_json)
+            })
+        })
+        .await
+        .map_err(|e| AppError::internal_with_id(e))?
+    }
 }
 
 #[async_trait]
@@ -186,6 +251,7 @@ impl ImageGenerator for PdfProcessor {
 
         Ok(ProcessingResult {
             text_pages: vec![], // Text is extracted separately via ContentProcessor
+            geometry_pages: vec![],
             metadata,
             thumbnails, // Single element array
             images,     // Multiple elements (one per page)

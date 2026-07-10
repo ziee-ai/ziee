@@ -580,6 +580,7 @@ pub fn github_fetch_server_options(
         access_token_expiry_seconds: None,
         refresh_token_expiry_days: None,
         max_file_upload_mb: None,
+        voice_enabled: None,
     })
 }
 

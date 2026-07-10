@@ -96,6 +96,47 @@ pub async fn update_admin_settings(
             return Err(bad("fts_min_rank out of range (0.0..=1.0)").into());
         }
     }
+    if let Some(k) = body.rerank_candidate_k {
+        if !(1..=200).contains(&k) {
+            return Err(bad("rerank_candidate_k out of range (1..=200)").into());
+        }
+    }
+    // Retrieval / KB limits (mirror the DB CHECK constraints — clean 400 not 500).
+    if let Some(n) = body.kb_max_documents {
+        if !(1..=100_000).contains(&n) {
+            return Err(bad("kb_max_documents out of range (1..=100000)").into());
+        }
+    }
+    if let Some(n) = body.search_max_hit_chars {
+        if !(100..=100_000).contains(&n) {
+            return Err(bad("search_max_hit_chars out of range (100..=100000)").into());
+        }
+    }
+    if let Some(n) = body.search_snippet_chars {
+        if !(20..=4000).contains(&n) {
+            return Err(bad("search_snippet_chars out of range (20..=4000)").into());
+        }
+    }
+    if let Some(n) = body.search_max_top_k {
+        if !(1..=500).contains(&n) {
+            return Err(bad("search_max_top_k out of range (1..=500)").into());
+        }
+    }
+    // Probe: a model set as the reranker MUST carry the `rerank` capability.
+    if let Some(Some(model_id)) = body.reranker_model_id {
+        let model = Repos
+            .llm_model
+            .get_by_id(model_id)
+            .await
+            .map_err(AppError::database_error)?
+            .ok_or_else(|| bad("reranker model not found"))?;
+        if let Some(reason) = crate::modules::memory::engine::capability::rerank_unsupported_reason(
+            &model.name,
+            &model.capabilities,
+        ) {
+            return Err(bad(&format!("INVALID_RERANK_MODEL: {reason}")).into());
+        }
+    }
 
     // Cross-field: overlap must stay below the (possibly new) chunk size.
     let current = Repos.file_rag.get_admin_settings().await?;
@@ -154,6 +195,13 @@ pub async fn update_admin_settings(
             body.fts_rrf_k,
             body.fts_candidate_multiplier,
             body.fts_min_rank,
+            body.reranker_model_id,
+            body.rerank_enabled,
+            body.rerank_candidate_k,
+            body.kb_max_documents,
+            body.search_max_hit_chars,
+            body.search_snippet_chars,
+            body.search_max_top_k,
         )
         .await?;
 

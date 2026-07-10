@@ -5,6 +5,7 @@ use aide::axum::{
     routing::{delete_with, get_with, post_with, put_with},
 };
 
+use super::export::{export_conversation, export_conversation_docs};
 use super::handlers::*;
 
 /// Chat conversation management routes
@@ -35,6 +36,10 @@ pub fn chat_router() -> ApiRouter {
         .api_route(
             "/conversations/{id}/messages",
             get_with(get_conversation_history, get_conversation_history_docs),
+        )
+        .api_route(
+            "/conversations/{id}/export",
+            get_with(export_conversation, export_conversation_docs),
         )
         .api_route(
             "/conversations/{id}/messages/search",

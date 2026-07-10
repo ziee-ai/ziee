@@ -26,6 +26,7 @@ const SOURCE_TONE: Record<string, TagTone> = {
   approval: 'warning',
   sampling: 'info',
   workflow: 'error',
+  script: 'info',
 }
 
 /**

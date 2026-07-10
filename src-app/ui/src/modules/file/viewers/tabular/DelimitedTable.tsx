@@ -16,7 +16,7 @@ import { DELIMITED_MAX_ROWS, parseDelimitedText } from './parse'
  *  included). Covers every inline preview and the vast majority of files. */
 const VIRTUALIZE_ROW_THRESHOLD = 200
 
-export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: string; delimiter: string; fileName?: string; fileId?: string }) {
+export function DelimitedTable({ text, delimiter, fileName, fileId, fill = false }: { text: string; delimiter: string; fileName?: string; fileId?: string; fill?: boolean }) {
   // Parse + column/dataSource construction is the entire cost of this
   // component. Memoize on (text, delimiter) so panel re-renders for
   // unrelated reasons (resize, drawer, sibling state) don't re-parse the
@@ -91,6 +91,9 @@ export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: st
     return { columns, dataSource, truncated, exportColumns }
   }, [text, delimiter])
 
+  // Virtualize ONLY large grids. Small tables stay on the plain path so their
+  // columns keep content-auto widths (table-auto); `fillHeight` (below) still
+  // lets the plain grid fill the panel height + scroll via its own container.
   const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
 
   // View state surfaced from the kit Table for the body-local toolbar.
@@ -174,7 +177,11 @@ export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: st
     <div
       className={cn(
         'flex flex-col w-full px-3 pt-3',
-        virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
+        fill
+          ? 'h-full min-h-0'
+          : virtualized
+            ? 'h-[min(360px,55vh)]'
+            : 'max-h-[min(360px,55vh)]',
       )}
     >
       {truncated && (
@@ -193,6 +200,7 @@ export function DelimitedTable({ text, delimiter, fileName, fileId }: { text: st
           toolbar (toolbarExtra) so they share ONE row with filter + columns. */}
       <Table
         virtualized={virtualized}
+        fillHeight={fill}
         columns={columns}
         dataSource={dataSource}
         rowKey="key"

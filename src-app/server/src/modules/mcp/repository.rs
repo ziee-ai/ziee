@@ -1669,7 +1669,7 @@ pub async fn list_system_mcp_servers(
           -- Excluding them in SQL (not client-side) also keeps the pagination
           -- total/label honest. The other built-ins
           -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
-          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12, $13)
+          AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           AND ($3::text IS NULL
                OR name ILIKE '%' || $3 || '%'
                OR display_name ILIKE '%' || $3 || '%'
@@ -1691,6 +1691,9 @@ pub async fn list_system_mcp_servers(
         crate::modules::citations::citations_server_id(),
         crate::modules::skill_mcp::skill_mcp_server_id(),
         crate::modules::workflow_mcp::workflow_mcp_server_id(),
+        // run_js is a zero-config loopback built-in executed inline (never over
+        // the loopback), so it has no editable surface here — hide it.
+        crate::modules::js_tool::run_js_mcp_server_id(),
     )
     .fetch_all(pool)
     .await?;
@@ -1740,7 +1743,7 @@ pub async fn list_system_mcp_servers(
           -- (files, memory, elicitation, web_search, tool_result, lit_search,
           -- citations, skill_mcp, workflow_mcp) so the pagination total stays in
           -- sync with the page.
-          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9, $10, $11)
+          AND id NOT IN ($3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           AND ($1::text IS NULL
                OR name ILIKE '%' || $1 || '%'
                OR display_name ILIKE '%' || $1 || '%'
@@ -1758,6 +1761,7 @@ pub async fn list_system_mcp_servers(
         crate::modules::citations::citations_server_id(),
         crate::modules::skill_mcp::skill_mcp_server_id(),
         crate::modules::workflow_mcp::workflow_mcp_server_id(),
+        crate::modules::js_tool::run_js_mcp_server_id(),
     )
     .fetch_one(pool)
     .await?
@@ -1807,7 +1811,11 @@ pub async fn update_system_mcp_server(
         // '{}', no editable surface); an admin PUT must not be able to change
         // their url/transport and break load_skill / workflow tool dispatch.
         || existing.id == crate::modules::skill_mcp::skill_mcp_server_id()
-        || existing.id == crate::modules::workflow_mcp::workflow_mcp_server_id();
+        || existing.id == crate::modules::workflow_mcp::workflow_mcp_server_id()
+        // run_js is a zero-config loopback built-in executed inline; its url must
+        // stay the live loopback (assembly connects to it to list the descriptor),
+        // so it is immutable here.
+        || existing.id == crate::modules::js_tool::run_js_mcp_server_id();
     // NOTE: control is intentionally NOT in this immutable set (like bio_mcp) —
     // it is shown on the System MCP page so admins can toggle `enabled` (and the
     // runtime auto-attach honors that column immediately). The boot upsert

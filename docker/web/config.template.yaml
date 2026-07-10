@@ -77,6 +77,11 @@ jwt:
 # environments" page fetches + mounts a rootfs from GitHub on first use.
 code_sandbox:
   enabled: ${ZIEE_CODE_SANDBOX_ENABLED}
+  # Origin used for get_resource_link + tool-to-tool file download URLs handed to
+  # OTHER MCP servers (which run in separate containers). Empty → 127.0.0.1
+  # loopback, which a remote server cannot fetch. Set to an address those servers
+  # can reach ziee at (the host gateway + published web port).
+  public_base_url: "${ZIEE_PUBLIC_FILE_ORIGIN}"
 
 # At-rest encryption for stored credentials. Set a stable ZIEE_STORAGE_KEY
 # (>=32 chars) per deployment; losing it makes encrypted secrets unrecoverable.

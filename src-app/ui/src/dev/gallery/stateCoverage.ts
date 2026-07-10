@@ -53,6 +53,23 @@ export const STATE_COVERAGE = {
   // running/failed, attachments, elicitation) that have no single named key.
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
+  // Voice surfaces: gallery cells deferred (DRIFT-1). The required states are
+  // derived from the components' real render branches. The HAPPY-PATH + loading
+  // (delayed) + populated/empty flows ARE exercised by committed 14-voice specs
+  // (referenced below). The ERROR branches (a failed voice GET) are NOT yet
+  // driven by any spec (routeVoice serves 200s) — those are an honest, tracked
+  // coverage gap (DRIFT-1), not a claim of coverage.
+  'modules/chat/extensions/voice/components/MicButton:open': { skip: true, reason: 'privacy-hint popover; deferred gallery cell — rendered/dismissed by 14-voice/dictation-inserts-not-sends.spec.ts' },
+  'modules/voice/components/AvailableVersionsCard:empty': { skip: true, reason: 'deferred gallery cell; no-published-binaries empty branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/AvailableVersionsCard:error': { skip: true, reason: 'deferred gallery cell; check-updates error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/InstalledVersionsCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/voice-runtime-admin.spec.ts' },
+  'modules/voice/components/InstalledVersionsCard:empty': { skip: true, reason: 'deferred gallery cell — no-installed-versions empty state exercised by 14-voice/admin-empty-state.spec.ts' },
+  'modules/voice/components/InstalledVersionsCard:error': { skip: true, reason: 'deferred gallery cell; versions-list error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/ModelCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/voice-settings-admin.spec.ts' },
+  'modules/voice/components/ModelCard:error': { skip: true, reason: 'deferred gallery cell; model-status error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/VoiceConfigCard:error': { skip: true, reason: 'deferred gallery cell; settings-load error branch not yet exercised by a spec (DRIFT-1)' },
+  'modules/voice/components/VoiceInstanceCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/admin-empty-state.spec.ts' },
+  'modules/voice/components/VoiceInstanceCard:error': { skip: true, reason: 'deferred gallery cell; instance-load error branch not yet exercised by a spec (DRIFT-1)' },
   // The find bar's `loading` state is a transient in-flight search fetch (the
   // results-list spinner while a page of matches loads). It can't be captured
   // as a deterministic gallery snapshot; it's exercised end-to-end by the
@@ -69,6 +86,16 @@ export const STATE_COVERAGE = {
     skip: true,
     reason:
       "full-page file view (/files/:id) — static/e2e-verified surface; ':delayed' is the route lazy-load fallback, exercised by the full-page-view e2e spec",
+  },
+  'modules/file/components/FileEditBody:error': {
+    skip: true,
+    reason:
+      "canvas load-failure guard: when the head-text fetch fails, an error panel with Retry renders and Save is unreachable (data-loss guard — no blank clobber). Transient fetch-failure state, not deterministically snapshottable in the seeded gallery (the edit-body cell mocks a successful /text); the guard is verified by the FileEditBody logic + the happy edit path by seeded-artifact-canvas-edit-body and the 14-artifacts e2e suite",
+  },
+  'modules/file/components/CanvasSelectionPopover:empty': {
+    skip: true,
+    reason:
+      "the selection popover renders null until the user selects text in the canvas (its `:empty`/default state); the visible/open state is interaction-driven (a real text selection), verified by the selection-ask e2e spec — not a deterministic mount snapshot",
   },
   'modules/literature/chat-extension/extension:panel-open': {
     via: 'deep:deep-chat-right-panel-literature',
@@ -149,9 +176,13 @@ export const STATE_COVERAGE = {
   "modules/code-sandbox/components/DownloadedRootfsCard:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxResourceLimitsSection:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxResourceLimitsSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
+  "modules/js-tool/components/JsToolSettingsSection:delayed": { skip: true, reason: "via surface — rendered within the js-tool settings page; 'delayed' branch covered by the e2e settings spec" },
+  "modules/js-tool/components/JsToolSettingsSection:error": { skip: true, reason: "via surface — rendered within the js-tool settings page; 'error' branch covered by the e2e settings spec" },
   "modules/code-sandbox/components/SandboxRootfsVersionsSection:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/code-sandbox/components/SandboxRootfsVersionsSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/ChunkingSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
+  "modules/file-rag/components/sections/RerankSection:empty": { skip: true, reason: "via surface — rendered within its page; loading/empty branch proven by Part 2 runtime coverage" },
+  "modules/file-rag/components/sections/RetrievalLimitsSection:error": { skip: true, reason: "via surface — rendered within its page; loading/error branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/EmbeddingSection:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/EmbeddingSection:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/file-rag/components/sections/EmbeddingSection:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
@@ -291,6 +322,11 @@ export const STATE_COVERAGE = {
   "modules/memory/components/sections/SemanticSearchSection:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/memory/pages/MemoryAdminPage:delayed": { via: 'page-state-mode' },
   "modules/memory/pages/MemoryAdminPage:error": { via: 'page-state-mode' },
+  "modules/notification/components/NotificationBellWidget:empty": { skip: true, reason: "via surface — slot-widget rendered within its page; 'empty' popover branch proven by Part 2 runtime coverage" },
+  "modules/notification/components/NotificationBellWidget:open": { skip: true, reason: "via surface — popover open-state (click) proven by Part 2 runtime coverage" },
+  "modules/notification/pages/NotificationsPage:delayed": { via: 'page-state-mode' },
+  "modules/notification/pages/NotificationsPage:empty": { via: 'page-state-mode' },
+  "modules/notification/pages/NotificationsPage:error": { via: 'page-state-mode' },
   "modules/onboarding/OnboardingRedirect:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
@@ -304,6 +340,21 @@ export const STATE_COVERAGE = {
   "modules/projects/chat-extension/extension:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/projects/components/AddToProjectModal:error": { skip: true, reason: "static surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },
   "modules/projects/components/AddToProjectModal:open": { skip: true, reason: "static surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed": { via: 'page-state-mode' },
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:error": { via: 'page-state-mode' },
+  "modules/knowledge-base/pages/KnowledgeBasesListPage:open": { via: 'page-state-mode' },
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed": { via: 'page-state-mode' },
+  "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open": { via: 'page-state-mode' },
+  "modules/knowledge-base/chat-extension/components/KbMenuItem:empty": { skip: true, reason: "via surface — composer '+' item; hidden-when-no-KBs branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/chat-extension/components/KbStatusRow:empty": { skip: true, reason: "via surface — composer chips; empty (no attachments) branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard:empty": { skip: true, reason: "via surface — tool_result card; no-hits branch proven by Part 2 runtime coverage + the KB e2e" },
+  "modules/knowledge-base/chat-extension/extension:panel-open": { skip: true, reason: "via surface — the kb_source right-panel opens from a search_knowledge hit; open branch exercised by the KB chat e2e" },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview:empty": { skip: true, reason: "via surface — project knowledge card; no-KB branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:delayed": { skip: true, reason: "via surface — project knowledge drawer; loading branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel:empty": { skip: true, reason: "via surface — project knowledge drawer; empty branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/components/KnowledgeBaseCard:open": { skip: true, reason: "via surface — rendered within its list page; 'open' branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open": { skip: true, reason: "via surface — the create/edit drawer opens from the list/detail page; 'open' branch proven by Part 2 runtime coverage" },
+  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty": { skip: true, reason: "via surface — rendered within the detail page's Documents card; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/projects/components/ProjectCard:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/projects/components/ProjectFormDrawer:delayed": { skip: true, reason: "static surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/projects/components/ProjectFormDrawer:open": { skip: true, reason: "static surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
@@ -313,6 +364,12 @@ export const STATE_COVERAGE = {
   "modules/projects/pages/ProjectDetailPage:delayed": { via: 'page-state-mode' },
   "modules/projects/pages/ProjectDetailPage:empty": { via: 'page-state-mode' },
   "modules/projects/pages/ProjectsListPage:delayed": { via: 'page-state-mode' },
+  "modules/scheduler/components/ScheduledTaskFormDrawer:open": { skip: true, reason: "scheduled-task create/edit drawer — open-state needs the SchedulerDrawer store + a live open-trigger; verified via the scheduler e2e interaction spec" },
+  "modules/scheduler/pages/ScheduledTasksPage:delayed": { via: 'page-state-mode' },
+  "modules/scheduler/pages/ScheduledTasksPage:empty": { via: 'page-state-mode' },
+  "modules/scheduler/pages/ScheduledTasksPage:error": { via: 'page-state-mode' },
+  "modules/scheduler/pages/SchedulerAdminPage:delayed": { via: 'page-state-mode' },
+  "modules/scheduler/pages/SchedulerAdminPage:error": { via: 'page-state-mode' },
   "modules/server-update/AboutSettings:error": { via: 'page-state-mode' },
   "modules/skill/components/ConversationSkillsPanel:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/skill/components/ConversationSkillsPanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
@@ -392,6 +449,7 @@ export const STATE_COVERAGE = {
   "modules/chat/components/ConversationFindBar:empty": { skip: true, reason: "via surface — the find bar renders null when closed; its open/match states are proven by the conversation-find e2e + Part 2 runtime coverage" },
   "modules/file/chat-extension/components/FilePasteHandler:empty": { skip: true, reason: "via surface — an invisible composer-attached paste-image sentinel (renders only a hidden span); behavior proven by the composer-paste-image e2e" },
   "modules/file/viewers/shared/RawCodeView:empty": { skip: true, reason: "unreachable — the flagged chunks.length===0 is an IntersectionObserver effect guard, not a render branch, and chunkLineArray always yields ≥1 chunk (even empty text → one empty-line chunk); the viewer's real render (windowed chunks + highlight) is covered by the seeded-rawcode-large gallery surface + the large-text-viewer e2e" },
+  "modules/file/components/FileVersionBar:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

@@ -65,24 +65,49 @@ pub fn setup_hub_seed(
         .into());
     }
 
-    // Atomic-ish replace: clear the dest then copy. The crate's
-    // `include_dir!` re-evaluates at compile time from this dir,
-    // so a half-written state is only visible to a build that
-    // races us — which the workspace doesn't do for build helpers.
-    if dest_dir.exists() {
-        fs::remove_dir_all(&dest_dir)?;
-    }
-    fs::create_dir_all(&dest_dir)?;
-    copy_dir_recursive(&source_dir, &dest_dir)?;
+    // Idempotent staging (freshness gate). `dest_dir` is baked into the binary
+    // by `hub_manager.rs`'s `include_dir!`, whose file list rustc records as
+    // compile dependencies. Re-running remove+copy+pack on EVERY build gives
+    // those baked files fresh mtimes → rustc believes the crate's sources
+    // changed → the whole lib recompiles + relinks each build. Under repeated
+    // `cargo run` (e.g. every E2E per-test backend spawn, or a warmup that
+    // races a concurrent build) that is a self-perpetuating multi-minute tax:
+    // each build re-stages, which invalidates the next build, forever.
+    //
+    // Gate the re-stage on a content signature of the tracked source. When the
+    // source is unchanged (the common case — the seed is a committed snapshot)
+    // the destination is left byte-for-byte (and mtime-for-mtime) alone, so the
+    // baked tree is stable and the crate stays genuinely fresh. A maintainer
+    // edit to `resources/hub-seed/` changes the signature and re-stages.
+    let sig = source_signature(&source_dir);
+    let stamp_path = Path::new(out_dir).join("hub_seed_source.sig");
+    let dest_ready = dest_dir.join("index.json").exists();
+    let stamp_matches =
+        fs::read_to_string(&stamp_path).ok().as_deref() == Some(sig.as_str());
 
-    // Pack any SOURCE-FORM bundle into the `.tar.gz` its manifest references.
-    // A source-form bundle is a dir whose manifest's `bundle.entry_point` file
-    // is present loose (the editable `workflow.yaml` we commit to git instead of
-    // an opaque tarball). We tar the loose source, write the archive, refresh the
-    // manifest's sha256/size/file_count, and drop the loose files from the baked
-    // dir so the result is a normal manifest+tarball bundle. Bundles that ship a
-    // prebuilt tarball and NO loose source (the mirrored hub entries) are skipped.
-    pack_source_bundles(&dest_dir)?;
+    if !(dest_ready && stamp_matches) {
+        // Atomic-ish replace: clear the dest then copy. The crate's
+        // `include_dir!` re-evaluates at compile time from this dir,
+        // so a half-written state is only visible to a build that
+        // races us — which the workspace doesn't do for build helpers.
+        if dest_dir.exists() {
+            fs::remove_dir_all(&dest_dir)?;
+        }
+        fs::create_dir_all(&dest_dir)?;
+        copy_dir_recursive(&source_dir, &dest_dir)?;
+
+        // Pack any SOURCE-FORM bundle into the `.tar.gz` its manifest references.
+        // A source-form bundle is a dir whose manifest's `bundle.entry_point` file
+        // is present loose (the editable `workflow.yaml` we commit to git instead of
+        // an opaque tarball). We tar the loose source, write the archive, refresh the
+        // manifest's sha256/size/file_count, and drop the loose files from the baked
+        // dir so the result is a normal manifest+tarball bundle. Bundles that ship a
+        // prebuilt tarball and NO loose source (the mirrored hub entries) are skipped.
+        pack_source_bundles(&dest_dir)?;
+
+        // Record the signature LAST so a crash mid-stage re-stages next build.
+        let _ = fs::write(&stamp_path, &sig);
+    }
 
     // Resolve the seed version: read `resources/hub-seed/index.json`
     // and look for the catalog's `hub_version` field. The catalog
@@ -279,6 +304,57 @@ fn remove_empty_subdirs(dir: &Path) {
     }
 }
 
+/// A deterministic content signature of the tracked seed tree, used to skip
+/// re-staging when nothing changed (see the freshness gate in
+/// `setup_hub_seed`). Hashes the sorted `(relpath, len, mtime_nanos)` of every
+/// file under `root`. mtime is stable within a checkout (the build never writes
+/// the SOURCE tree), so an unchanged source yields a stable signature; a
+/// maintainer edit changes a size/mtime and invalidates it.
+fn source_signature(root: &Path) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut entries: Vec<(String, u64, u128)> = Vec::new();
+    collect_signature_entries(root, root, &mut entries);
+    entries.sort();
+    let mut hasher = DefaultHasher::new();
+    for (rel, len, mtime) in &entries {
+        rel.hash(&mut hasher);
+        len.hash(&mut hasher);
+        mtime.hash(&mut hasher);
+    }
+    format!("{:016x}-{}", hasher.finish(), entries.len())
+}
+
+fn collect_signature_entries(
+    base: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, u64, u128)>,
+) {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_signature_entries(base, &path, out);
+        } else if let Ok(meta) = entry.metadata() {
+            let rel = path
+                .strip_prefix(base)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            out.push((rel, meta.len(), mtime));
+        }
+    }
+}
+
 /// Emit `cargo:rerun-if-changed=<path>` for every file under `root`
 /// recursively. Cargo's directory-mtime watch misses in-place edits;
 /// per-file watches are the safe option.
@@ -286,8 +362,16 @@ fn emit_per_file_rerun(root: &Path) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
+    // `fs::read_dir` yields entries in filesystem (inode) order, which is NOT
+    // stable across builds. Cargo's `RerunIfChangedOutputPathsChanged` check is
+    // order-sensitive, so an unsorted walk makes cargo believe the build
+    // script's rerun-set changed on *every* build → build.rs re-runs → the crate
+    // recompiles + relinks each time (a ~2-minute no-op tax on every `cargo run`,
+    // including each E2E per-test backend spawn). Sort the entries so the emitted
+    // path list is deterministic and the build stays genuinely fresh.
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for path in paths {
         if path.is_dir() {
             emit_per_file_rerun(&path);
         } else {

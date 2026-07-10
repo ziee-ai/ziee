@@ -202,6 +202,15 @@ pub(crate) async fn resolve_model_inputs(
     if is_embedder {
         config["embeddings"] = serde_json::json!(true);
     }
+    let is_reranker = model
+        .capabilities
+        .as_ref()
+        .and_then(|c| c.get("rerank"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if is_reranker {
+        config["reranking"] = serde_json::json!(true);
+    }
 
     Ok((model.engine_type, model_path, config))
 }

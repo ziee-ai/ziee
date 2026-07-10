@@ -52,7 +52,36 @@ pub struct SendMessageRequestFields {
     /// Tool approval decisions for resuming after approval workflow
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_approvals: Option<Vec<crate::modules::mcp::chat_extension::ToolApprovalDecision>>,
+
+    /// UNATTENDED run (ITEM-13/DEC-17): set by the scheduler for a headless
+    /// firing (no user to approve). When true, a tool that would require
+    /// per-call approval AND is not in `unattended_allowed_tools` is DENIED
+    /// (synthesized denial tool_result) instead of creating an orphaned pending
+    /// approval + truncating the turn. Never set by an interactive client.
+    #[serde(default)]
+    pub unattended: bool,
+
+    /// Per-task allow-list for an unattended run: servers/tools the task's
+    /// creator pre-authorized to run without the approval speed-bump.
+    /// Fully-qualified path so the `compose_chat_extensions` macro resolves the
+    /// type at its (external) expansion site — mirrors how `mcp_config` above
+    /// uses a full `crate::…` path.
+    #[serde(default)]
+    pub unattended_allowed_tools:
+        Vec<crate::modules::mcp::chat_extension::extension::UnattendedToolGrant>,
 }
+
+/// One pre-authorized (server, tool?) grant for an unattended run. `tool_name`
+/// `None` allow-lists the whole server. Structurally identical to the
+/// scheduler's `AllowedTool` (deserialized from the same JSON), kept here so
+/// mcp has no scheduler dependency.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+pub struct UnattendedToolGrant {
+    pub server_id: uuid::Uuid,
+    #[serde(default)]
+    pub tool_name: Option<String>,
+}
+
 
 /// Factory function to create the extension instance
 /// Called by the auto-registration system
@@ -171,6 +200,27 @@ pub struct SSEChatStreamMcpApprovalRequiredData {
     pub input: serde_json::Value,
 }
 
+/// Event data for a `run_js` script's per-call tool approval.
+///
+/// Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's
+/// decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a
+/// turn-boundary flow resumed by re-sending the message), this is resolved by a
+/// SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same
+/// in-process oneshot mechanism `ask_user` uses — because a live QuickJS call
+/// stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;
+/// `decline`/`cancel` → the host fn throws a catchable error into the script.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamRunJsApprovalRequiredData {
+    /// Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond
+    pub elicitation_id: String,
+    /// Name of the sub-tool the script wants to call
+    pub tool_name: String,
+    /// MCP server that owns the sub-tool (display name)
+    pub server: String,
+    /// Sub-tool input parameters
+    pub input: serde_json::Value,
+}
+
 // ============================================================================
 // SSE Event Variants
 // ============================================================================
@@ -194,6 +244,8 @@ pub enum SSEChatStreamEventVariants {
     McpToolProgress(SSEChatStreamMcpToolProgressData),
     /// A tool created an artifact file (via MCP resource_link) that should be shown as a file card
     ArtifactCreated(SSEChatStreamArtifactCreatedData),
+    /// A `run_js` script is suspended awaiting approval of a gated sub-tool call
+    RunJsApprovalRequired(SSEChatStreamRunJsApprovalRequiredData),
 }
 
 // ============================================================================

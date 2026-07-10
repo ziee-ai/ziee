@@ -4,11 +4,18 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  containerClassName,
+  ...props
+}: React.ComponentProps<"table"> & { containerClassName?: string }) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      // Default: horizontal-scroll only, content-height. A caller can pass
+      // containerClassName to make the container fill + scroll both axes (e.g.
+      // `flex-1 min-h-0 overflow-auto` for a full-height panel grid).
+      className={cn("relative w-full", containerClassName ?? "overflow-x-auto")}
     >
       <table
         data-slot="table"

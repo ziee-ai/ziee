@@ -9,9 +9,11 @@ use std::path::PathBuf;
 // `crate::chat::helpers::*` for model fixtures + SSE parsing
 // (`pub(crate)` so cross-module reuse works; same pattern used by
 // `tests/project/injection_test.rs`).
+mod artifacts_test;
 mod file_attachments_test;
 mod file_attachments_real_providers_test;
 mod pdf_raw_test;
+mod text_rects_test;
 mod provider_routing_integration_test;
 
 // Get the path to test data

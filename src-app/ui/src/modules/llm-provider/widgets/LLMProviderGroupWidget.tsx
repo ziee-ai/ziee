@@ -2,6 +2,8 @@ import { Database, Pencil } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { LlmProviderGroupWidgetStore } from './LLMProviderGroupWidget.store'
 
@@ -15,6 +17,9 @@ import { LlmProviderGroupWidgetStore } from './LLMProviderGroupWidget.store'
 export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   const s = LlmProviderGroupWidgetStore.use({ groupId: group.id })
   const { providers, loading, error } = s
+  // Editing group→provider assignments requires llm_providers::assign_groups.
+  // Match the sibling GroupSystemMcpServersWidget which gates its Edit button.
+  const canManage = usePermission(Permissions.LlmProvidersAssignGroups)
 
   // Defensive re-point if this widget instance is reused for a different group
   // (no-op on mount since the initial groupId already matches).
@@ -40,16 +45,18 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
               <Text type="secondary">({providers.length})</Text>
             )}
           </Space>
-          <Button
-            size="default"
-            variant="ghost"
-            icon={<Pencil aria-hidden="true" />}
-            onClick={handleEdit}
-            aria-label={`Edit LLM Providers for ${group.name}`}
-            data-testid={`llm-provider-group-widget-edit-btn-${group.id}`}
-          >
-            Edit
-          </Button>
+          {canManage && (
+            <Button
+              size="default"
+              variant="ghost"
+              icon={<Pencil aria-hidden="true" />}
+              onClick={handleEdit}
+              aria-label={`Edit LLM Providers for ${group.name}`}
+              data-testid={`llm-provider-group-widget-edit-btn-${group.id}`}
+            >
+              Edit
+            </Button>
+          )}
         </div>
 
         {/* Content */}

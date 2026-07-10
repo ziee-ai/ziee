@@ -37,6 +37,66 @@ pub fn find_pandoc() -> Result<PathBuf, AppError> {
     }
 }
 
+/// Convert a document to `output_path`, inferring the pandoc writer from the
+/// output file extension. PDF routes through the bundled typst engine (see
+/// `convert_to_pdf`); `docx`/`odt`/`rtf`/`html` are native pandoc writers that
+/// need no engine. Same 60s wall-clock timeout hardening as `convert_to_pdf`.
+pub async fn convert_to(input_path: &PathBuf, output_path: &PathBuf) -> Result<(), AppError> {
+    // PDF needs the bundled typst engine — delegate to the hardened PDF path.
+    let is_pdf = output_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if is_pdf {
+        return convert_to_pdf(input_path, output_path).await;
+    }
+
+    let pandoc_path = find_pandoc()?;
+
+    // Use tokio::process (not spawn_blocking) so the wall-clock timeout actually
+    // KILLS the child on expiry (`kill_on_drop`) — a spawn_blocking task can't be
+    // cancelled, which would leak a hung pandoc process + its blocking-pool slot.
+    //
+    // `--sandbox`: pandoc runs sandboxed, limiting reader/writer IO to the files
+    // named on the command line. This is a SECURITY boundary, not a nicety —
+    // without it, untrusted markdown (a user/LLM chat message or file content) of
+    // the form `![x](file:///etc/passwd)` or `![x](http://169.254.169.254/…)`
+    // would make pandoc fetch that resource SERVER-SIDE and embed its bytes into
+    // the docx/odt/rtf/html the user downloads (SSRF + local-file-read). The
+    // sandbox still reads the cmdline input file, so legitimate conversions work.
+    let mut cmd = tokio::process::Command::new(&pandoc_path);
+    cmd.arg("--sandbox")
+        .arg(input_path)
+        .arg("-o")
+        .arg(output_path)
+        .env("openout_any", "p")
+        .env("openin_any", "p")
+        .kill_on_drop(true);
+
+    let output = match tokio::time::timeout(PANDOC_TIMEOUT, cmd.output()).await {
+        Err(_) => {
+            return Err(AppError::internal_error(
+                "Pandoc conversion timed out after 60 seconds",
+            ));
+        }
+        Ok(Err(e)) => {
+            return Err(AppError::internal_error(format!("Failed to run Pandoc: {}", e)));
+        }
+        Ok(Ok(output)) => output,
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::internal_error(format!(
+            "Pandoc conversion failed: {}",
+            stderr
+        )));
+    }
+
+    Ok(())
+}
+
 /// Convert document to PDF using Pandoc
 pub async fn convert_to_pdf(
     input_path: &PathBuf,
@@ -79,6 +139,10 @@ pub async fn convert_to_pdf(
         PANDOC_TIMEOUT,
         tokio::task::spawn_blocking(move || {
             Command::new(&pandoc_path)
+                // --sandbox: block server-side fetch of file://-/http-embedded
+                // resources in untrusted content (SSRF / local-file-read). Still
+                // reads the cmdline input + writes the output. See `convert_to`.
+                .arg("--sandbox")
                 .arg(&input_path)
                 .arg("-o")
                 .arg(&output_path)

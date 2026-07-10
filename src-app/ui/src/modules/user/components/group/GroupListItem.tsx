@@ -11,7 +11,7 @@ import {
 } from '@/components/ui'
 import { Permissions, type Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-import { usePermission } from '@/core/permissions'
+import { usePermission, evaluatePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '@/modules/user/types/GroupWidget'
 
@@ -33,14 +33,18 @@ export function GroupListItem({
   const { slots } = Stores.ModuleSystem
   const userGroupWidgets = (slots.get('userGroup') || []) as GroupWidget[]
 
+  const { user, permissions } = Stores.Auth
   const canReadMembers = usePermission(Permissions.GroupsRead)
   const canEdit = usePermission(Permissions.GroupsEdit)
   const canDelete = usePermission(Permissions.GroupsDelete)
 
-  // Sort items by order
-  const registeredWidgets = [...userGroupWidgets].sort(
-    (a, b) => a.order - b.order,
-  )
+  // Sort items by order and drop widgets the user isn't permitted to see —
+  // each resource widget carries the read/assign perm its data endpoint
+  // requires, so a groups::read-only admin never gets an empty shell that
+  // 403s on load. (Reactive via user/permissions.)
+  const registeredWidgets = [...userGroupWidgets]
+    .filter(w => !w.permission || evaluatePermission(user, permissions, w.permission))
+    .sort((a, b) => a.order - b.order)
 
   const getGroupActions = () => {
     const actions: React.ReactNode[] = []

@@ -4,6 +4,10 @@ use aide::axum::routing::{delete_with, get_with, post_with};
 use aide::axum::ApiRouter;
 use axum::extract::DefaultBodyLimit;
 
+use super::deliverables::{
+    list_deliverables, list_deliverables_docs, pin_deliverable, pin_deliverable_docs,
+    unpin_deliverable, unpin_deliverable_docs,
+};
 use super::handlers::*;
 use crate::core::app_state::file_upload_body_limit_bytes;
 
@@ -28,10 +32,16 @@ pub fn file_router() -> ApiRouter {
         .api_route("/files/{file_id}/raw", get_with(get_raw, get_raw_docs))
         .api_route("/files/{file_id}/thumbnail", get_with(get_thumbnail, get_thumbnail_docs))
         .api_route("/files/{file_id}/text", get_with(get_text_content, get_text_content_docs))
+        .api_route("/files/{file_id}/text-rects", get_with(get_text_rects, get_text_rects_docs))
         .api_route("/files/{file_id}/download", get_with(download_file, download_file_docs))
+        .api_route("/files/{file_id}/export", get_with(export_file, export_file_docs))
         .api_route("/files/{file_id}/download-with-token", get_with(download_with_token, download_with_token_docs))
         // Version endpoints (also before /files/{file_id})
-        .api_route("/files/{file_id}/versions", get_with(list_versions, list_versions_docs))
+        .api_route(
+            "/files/{file_id}/versions",
+            get_with(list_versions, list_versions_docs)
+                .post_with(append_version, append_version_docs),
+        )
         .api_route("/files/{file_id}/head", get_with(get_head_version, get_head_version_docs))
         .api_route("/files/{file_id}/versions/{version}", get_with(get_version, get_version_docs))
         .api_route("/files/{file_id}/versions/{version}/download", get_with(download_version, download_version_docs))
@@ -49,6 +59,16 @@ pub fn file_router() -> ApiRouter {
         .api_route(
             "/files/{file_id}",
             delete_with(delete_file, delete_file_docs),
+        )
+        // Conversation deliverables (derived model-authored files ∪ pinned − hidden)
+        .api_route(
+            "/conversations/{id}/deliverables",
+            get_with(list_deliverables, list_deliverables_docs),
+        )
+        .api_route(
+            "/conversations/{id}/deliverables/{file_id}",
+            post_with(pin_deliverable, pin_deliverable_docs)
+                .delete_with(unpin_deliverable, unpin_deliverable_docs),
         )
 }
 
