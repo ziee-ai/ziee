@@ -2,6 +2,7 @@ import type { StoreProxy } from '@/core/stores'
 import type { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import type { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import type { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
+import type { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
 import type { SidebarWidgetItem } from '@/modules/layouts/app-layout/types'
 
 /**
@@ -22,6 +23,7 @@ declare module '@/core/stores' {
     MessageViewState: StoreProxy<
       ReturnType<typeof useMessageViewStateStore.getState>
     >
+    SplitView: StoreProxy<ReturnType<typeof useSplitViewStore.getState>>
   }
 }
 

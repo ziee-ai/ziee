@@ -37,7 +37,7 @@ conversation page.
 
 | slot | module surface |
 |---|---|
-| `chatConversationHeaderTrailing` | `modules/chat/module`:99 |
+| `chatConversationHeaderTrailing` | `modules/chat/module`:104 |
 | `settingsAdminPages` | `modules/assistant/module`:79 |
 | `settingsAdminPages` | `modules/auth-providers/module`:43 |
 | `settingsAdminPages` | `modules/auth/module`:80 |
@@ -68,7 +68,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:36 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:90 |
+| `sidebarContent` | `modules/chat/module`:95 |
 
 ## Per-surface required states
 

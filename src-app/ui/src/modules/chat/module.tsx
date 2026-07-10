@@ -6,6 +6,7 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
+import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
 import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
 import { OpenInNewWindowAction } from '@/modules/chat/components/OpenInNewWindowAction'
 import '@/modules/chat/types'
@@ -39,6 +40,10 @@ export default createModule({
     {
       name: 'MessageViewState',
       store: useMessageViewStateStore,
+    },
+    {
+      name: 'SplitView',
+      store: useSplitViewStore,
     },
   ],
   routes: [
