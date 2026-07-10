@@ -87,3 +87,16 @@ without closing the (pre-existing, sibling-shared) proxy exposure; a private/loo
 also the case least likely to involve an outbound proxy. Left consistent with the sibling paths.
 LEDGER status: rejected (consistent-with-siblings, pre-existing).
 **Basis:** codebase — the public/global paths' existing behavior; not a regression introduced here.
+
+### DEC-10: Must built-in/system MCP servers contribute to the trusted-host set?
+**Resolution:** No — `trusted_hosts_from_servers` EXCLUDES `is_system` servers (which include every
+deterministic built-in). A blind perms-authz audit found that the chat `accessible_servers` list is
+AUGMENTED with auto-attached built-in servers via `get_any_server` (which does NOT redact `url`,
+unlike `list_accessible`), and built-in servers carry a loopback `url`
+(`http://127.0.0.1:<port>/api/…`). Including that host let an external server's `resource_link` at
+`http://127.0.0.1:<port>` gain `PrivateScoped` → `MCP_USER` (allow_localhost) → a loopback SSRF the
+default `PUBLIC_HTTP_OR_HTTPS` blocks. Only the user's OWN registered (non-system) servers vouch for
+a host. The exclusion is centralized in `trusted_hosts_from_servers` (single source of truth), used
+by all three call sites, and covered by TEST-11.
+**Basis:** codebase — the built-in augmentation (`chat_extension/mcp.rs` auto_attach loop) +
+loopback built-in urls (e.g. `web_search/repository.rs` `http://127.0.0.1:.../api/web-search/mcp`).

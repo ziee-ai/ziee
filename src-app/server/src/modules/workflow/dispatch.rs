@@ -1302,8 +1302,12 @@ impl StepDispatcher for ToolDispatcher {
                         .list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)
                         .await
                         .map(|resp| {
-                            crate::modules::mcp::resource_link::trusted_hosts_from_urls(
-                                resp.servers.iter().map(|s| s.url.as_deref()),
+                            // Exclude system/built-in servers from the trust set (their loopback
+                            // url must never grant same-host trust). `list_accessible` already
+                            // redacts is_system urls; `trusted_hosts_from_servers` makes the
+                            // exclusion the single source of truth + robust if that ever changes.
+                            crate::modules::mcp::resource_link::trusted_hosts_from_servers(
+                                resp.servers.iter().map(|s| (s.is_system, s.url.as_deref())),
                             )
                         })
                         .unwrap_or_default()

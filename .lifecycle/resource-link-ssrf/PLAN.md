@@ -40,11 +40,13 @@ external→external container chaining keeps working).
   policy. Preserve the existing debug `MCP_RESOURCE_LINK_ALLOW_LOOPBACK` seam.
 - **ITEM-3**: Add a `trusted_hosts: &[String]` parameter to `persist_links` and thread it into the
   policy decision. Update the two chat call sites (`chat_extension/mcp.rs` approval + auto-exec) to
-  build `trusted_hosts` from the in-scope `accessible_servers` via
-  `trusted_hosts_from_urls(accessible_servers.iter().map(|s| s.url.as_deref()))`.
-- **ITEM-4**: Update the workflow call site (`workflow/dispatch.rs`) to fetch the user's enabled
-  accessible servers (`Repos.mcp.list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)`) and
-  build `trusted_hosts` via the same `trusted_hosts_from_urls` helper, passing it into `persist_links`.
+  build `trusted_hosts` via `trusted_hosts_from_servers(accessible_servers.iter().map(|s|
+  (s.is_system, s.url.as_deref())))` — the helper EXCLUDES `is_system`/built-in servers so their
+  loopback `url` never grants same-host trust (loopback-SSRF guard).
+- **ITEM-4**: Update the workflow call site (`workflow/dispatch.rs`) to build `trusted_hosts` via the
+  same `trusted_hosts_from_servers` helper — but ONLY for non-built-in emitters (skip the
+  `Repos.mcp.list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)` query entirely when the
+  emitter is built-in, since built-in links never consult `trusted_hosts`).
 - **ITEM-5**: Update the 7 existing `persist_links` call sites in
   `tests/mcp/resource_link_test.rs` for the new `trusted_hosts` parameter, and update the
   module/function doc comments in `resource_link.rs` to describe the trusted-host allowance, the

@@ -245,6 +245,25 @@ pub(crate) fn trusted_hosts_from_urls<'a>(
     hosts
 }
 
+/// Build the same-host trust set from MCP server rows, EXCLUDING system/built-in servers.
+///
+/// This is the single source of truth for the trust set at every call site. `is_system` servers
+/// (which include every deterministic built-in) carry a **loopback** `url`
+/// (`http://127.0.0.1:<port>/…`) and must NEVER contribute their host — otherwise an external
+/// server's `resource_link` at `http://127.0.0.1:<port>` would gain same-host trust and bypass the
+/// default loopback block. Only the user's OWN registered (non-system) servers vouch for a host.
+/// Takes `(is_system, url)` pairs so it stays decoupled from the `McpServer` type.
+pub(crate) fn trusted_hosts_from_servers<'a>(
+    servers: impl IntoIterator<Item = (bool, Option<&'a str>)>,
+) -> Vec<String> {
+    trusted_hosts_from_urls(
+        servers
+            .into_iter()
+            .filter(|(is_system, _)| !is_system)
+            .map(|(_, url)| url),
+    )
+}
+
 /// Which SSRF policy the external-server HTTP fetch of a `resource_link` uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FetchPolicyKind {
@@ -716,6 +735,25 @@ mod tests {
         ];
         let hosts = trusted_hosts_from_urls(urls);
         assert_eq!(hosts, vec!["10.0.0.5", "172.21.0.1", "rcpa.local"]);
+    }
+
+    // TEST-11: trusted_hosts_from_servers EXCLUDES is_system (built-in) servers — their loopback
+    // url must never enter the trust set (else an external resource_link at 127.0.0.1 would bypass
+    // the default loopback block). Only the user's own non-system servers vouch for a host.
+    #[test]
+    fn trusted_hosts_excludes_system_builtin_loopback() {
+        let servers = vec![
+            (false, Some("http://172.21.0.1:9004/mcp")), // user-owned external → included
+            (true, Some("http://127.0.0.1:41111/api/web-search/mcp")), // built-in (is_system) → excluded
+            (true, Some("http://127.0.0.1:8080/api/memory/mcp")),      // system → excluded
+            (false, None),                                             // user stdio server → skipped
+        ];
+        let hosts = trusted_hosts_from_servers(servers);
+        assert_eq!(hosts, vec!["172.21.0.1"], "only the user-owned external host is trusted");
+        assert!(
+            !hosts.iter().any(|h| h == "127.0.0.1"),
+            "a built-in/system loopback host must NEVER be trusted (loopback-SSRF guard)"
+        );
     }
 
     // TEST-2: choose_fetch_policy precedence — debug > env > host-match > public.
