@@ -1334,7 +1334,7 @@ const chatStoreConfig = {
         }
 
         const sseEvent: SSEEvent = { event_type: 'started', data: event }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
         if (handled) return
 
         const state = get()
@@ -1379,7 +1379,7 @@ const chatStoreConfig = {
 
         const data = event
         const sseEvent: SSEEvent = { event_type: 'content', data }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
         if (handled) return
 
         const state = get()
@@ -1516,7 +1516,7 @@ const chatStoreConfig = {
 
       if (type === 'complete') {
         const sseEvent: SSEEvent = { event_type: 'complete', data: event }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
         if (handled) return
 
         const { streamingMessage } = get()
@@ -1573,7 +1573,7 @@ const chatStoreConfig = {
         const streamError = new Error(event.message || 'Stream error')
         await chatExtensionRegistry.onStreamError(streamError)
         const sseEvent: SSEEvent = { event_type: 'error', data: event }
-        await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
 
         if (get().conversation?.id !== conversationId) {
           set({
@@ -1622,7 +1622,7 @@ const chatStoreConfig = {
       // `default` SSE handler did. The backend forwards these onto the
       // chat-token stream alongside content frames.
       const sseEvent: SSEEvent = { event_type: type, data: event }
-      await chatExtensionRegistry.handleSSEEvent(sseEvent)
+      await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
     },
 
     sendMessage: async () => {
@@ -2033,6 +2033,13 @@ const chatStoreConfig = {
     let lastChatResyncAt = 0
     const streamClient = createChatStreamClient()
     set({ chatStreamClient: streamClient })
+
+    // Give THIS instance its own extension-store instances (e.g. the composer
+    // `TextStore`) so split panes don't share one. Idempotent — the primary's
+    // register-time seed is left in place, so single-pane is unchanged (ITEM-4/5).
+    chatExtensionRegistry.injectExtensionStores(
+      get() as unknown as Record<string, unknown>,
+    )
 
     void (async () => {
         // Cross-device sync: when the currently-OPEN conversation changed on

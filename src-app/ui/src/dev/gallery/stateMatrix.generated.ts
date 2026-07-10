@@ -973,10 +973,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/extensions/registry",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "this.initialized", line: 324 },
-      { kind: "empty", condition: "extensions.length === 0", line: 472 },
-      { kind: "empty", condition: "extensions.length === 0", line: 505 },
-      { kind: "empty", condition: "!registered || registered.length === 0", line: 793 },
+      { kind: "branch", condition: "this.initialized", line: 351 },
+      { kind: "empty", condition: "extensions.length === 0", line: 499 },
+      { kind: "empty", condition: "extensions.length === 0", line: 532 },
+      { kind: "empty", condition: "!registered || registered.length === 0", line: 822 },
     ],
   },
   "modules/chat/core/extensions/slots": {

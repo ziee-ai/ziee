@@ -98,21 +98,26 @@ export class ChatExtensionRegistry {
     this.extensions.set(extension.name, extension)
     this.extensionOptions.set(extension.name, options)
 
-    // Create independent extension store if provided
+    // Seed the PRIMARY pane's chat store with this extension's store instance
+    // (split panes seed their OWN via `injectExtensionStores` in each store's
+    // init — see that method). Idempotent so it can't race/overwrite the
+    // init-time injection: whichever runs first wins, the other skips.
     if (extension.store) {
-      const storeInstance = extension.store.createStore()
-
       // Lazy import useChatStore to avoid circular dependency
       // Import happens at runtime when register() is called, not at module load time
       import('../stores/Chat.store').then(({ useChatStore }) => {
         // Inject store at root level of Chat store for reactive access via Stores.Chat.{storeName}
         // Direct mutation is safe now that Immer middleware has been removed
-        const stateObject = useChatStore.getState()
-        ;(stateObject as any)[extension.store!.name] = storeInstance
-
-        console.log(
-          `[ChatExtensions] Injected store "${extension.store!.name}" for extension: ${extension.name}`,
-        )
+        const stateObject = useChatStore.getState() as unknown as Record<
+          string,
+          unknown
+        >
+        if (!stateObject[extension.store!.name]) {
+          stateObject[extension.store!.name] = extension.store!.createStore()
+          console.log(
+            `[ChatExtensions] Injected store "${extension.store!.name}" for extension: ${extension.name}`,
+          )
+        }
       })
     }
 
@@ -313,6 +318,28 @@ export class ChatExtensionRegistry {
    */
   getExtension(name: string): ChatExtension | undefined {
     return this.extensions.get(name)
+  }
+
+  /**
+   * Inject a FRESH instance of every registered extension store into the given
+   * chat store state, if not already present (ITEM-4/5). Each Chat store INSTANCE
+   * calls this in its `init`, so every split pane gets its OWN extension-store
+   * instances (e.g. its own composer `TextStore`) rather than sharing one — the
+   * register-time injection only seeds the PRIMARY pane's store. Idempotent:
+   * a store already present (the primary's register-time seed) is left as-is, so
+   * single-pane behaviour is unchanged.
+   *
+   * Direct mutation (not `set`) mirrors the register-time injection: the nested
+   * store carries its own reactivity (read as `Stores.Chat.<Name>`), so adding
+   * the field to the parent state object needs no subscriber notification.
+   */
+  injectExtensionStores(chatState: Record<string, unknown>): void {
+    for (const extension of this.extensions.values()) {
+      const store = extension.store
+      if (store && !chatState[store.name]) {
+        chatState[store.name] = store.createStore()
+      }
+    }
   }
 
   /**
@@ -707,17 +734,19 @@ export class ChatExtensionRegistry {
    */
   async handleSSEEvent(
     event: SSEEvent | import('./types').GenericSSEEvent,
+    // The get/set of the store INSTANCE processing this frame (ITEM-4/5). In
+    // split view a frame belongs to a specific pane's store; passing that pane's
+    // get/set here is what routes SSE-driven extension state (tool_use blocks,
+    // title) to the STREAMING pane instead of the (hardcoded, former) primary.
+    // Single-pane passes the primary's get/set, so behaviour is unchanged.
+    chatGet: () => any,
+    chatSet: (partial: any | ((state: any) => any)) => void,
   ): Promise<boolean> {
     const eventType = event.event_type as keyof SSEEventTypeRegistry
     const handlers = this.sseEventHandlerRegistry.get(eventType)
 
     // Try new registry-based handlers first (O(1) lookup)
     if (handlers && handlers.length > 0) {
-      // Get Chat store's get and set functions
-      const { useChatStore } = await import('../stores/Chat.store')
-      const chatGet = useChatStore.getState
-      const chatSet = useChatStore.setState
-
       // Filter enabled extensions and sort by priority
       const enabledHandlers = handlers
         .filter(({ extension }) => {

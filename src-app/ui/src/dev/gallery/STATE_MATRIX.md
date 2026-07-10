@@ -1104,10 +1104,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `this.initialized` | 324 |
-| empty | `extensions.length === 0` | 472 |
-| empty | `extensions.length === 0` | 505 |
-| empty | `!registered \|\| registered.length === 0` | 793 |
+| branch | `this.initialized` | 351 |
+| empty | `extensions.length === 0` | 499 |
+| empty | `extensions.length === 0` | 532 |
+| empty | `!registered \|\| registered.length === 0` | 822 |
 
 ### `modules/chat/core/extensions/slots`
 
