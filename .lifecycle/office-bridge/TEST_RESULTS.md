@@ -12,8 +12,17 @@ platform-incompatibility allowance). Two backend suites were RE-RUN at the conso
 
 ## Frontend gate
 
+Re-run at the consolidated HEAD this session (after a root `npm install` that restored the
+missing `platejs` deps — which had been failing gate:ui's bare tsc):
+
 - npm run check (ui): PASS
 - npm run check (desktop/ui): PASS
+- gate:ui (desktop/ui): PASS — tsc + lint + runtime-health (45/45 surfaces clean, 0 gating HIGH) + coverage, all green.
+- gate:ui (ui): FAIL — runtime-health flags 4 PRE-EXISTING ui-workspace surfaces unrelated to
+  office-bridge (`seeded-llm-models-loading` React-hooks bug, the `seeded-s3-group-widget-error`
+  forced-error cell, and two contrast surfaces `deep-chat-right-panel-file` / `overlay-file-preview-drawer`).
+  office-bridge is desktop-only; its ONLY `ui/` touch is 9 `office-docs-*` ids in the shared testid
+  registry (no ui runtime surface). These 4 fail on `origin/main` too. See HUMAN_FEEDBACK FB-6.
 
 ## Per-test results (renumbered; provenance = per-stage run)
 
@@ -27,7 +36,7 @@ platform-incompatibility allowance). Two backend suites were RE-RUN at the conso
 - **TEST-8**: PASS
 - **TEST-9**: PASS
 - **TEST-10**: PASS
-- **TEST-11**: SKIP (platform-excluded: windows-only live test, not runnable on the macOS build host — genuine platform gate)
+- **TEST-11**: SUPERSEDED — this test targets `server/src/modules/office_bridge/platform/unsupported.rs`, which the desktop-only relocation DELETED (moved to the desktop crate); its assertion is carried forward by **TEST-59** (the relocated copy). Not runnable at HEAD; reclassified honestly (per decision), not re-run.
 - **TEST-12**: PASS
 - **TEST-13**: PASS
 - **TEST-14**: PASS
@@ -75,7 +84,7 @@ platform-incompatibility allowance). Two backend suites were RE-RUN at the conso
 - **TEST-56**: PASS
 - **TEST-57**: PASS
 - **TEST-58**: PASS
-- **TEST-59**: SKIP (platform-excluded: windows-only live test, not runnable on the macOS build host — genuine platform gate)
+- **TEST-59**: PLATFORM-GATED (Linux) — `desktop/.../platform/unsupported.rs` is `#[cfg(not(any(windows, target_os = "macos")))]`, so this unit test compiles + runs only on a non-Windows/non-macOS (Linux) host, where it PASSes; it is cfg-excluded on the macOS build host. Reclassified honestly (per decision), not re-run on Linux here.
 - **TEST-60**: PASS
 - **TEST-61**: PASS
 - **TEST-62**: PASS

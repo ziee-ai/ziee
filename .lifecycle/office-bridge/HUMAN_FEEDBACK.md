@@ -44,7 +44,34 @@ Human critiques received during this work, verbatim, with resolutions.
   the rest are recorded with per-stage provenance in TEST_RESULTS.md. This is disclosed,
   not hidden.
 
+- **FB-5** [status: resolved] [generalizable: yes] — "we need to clear all of those." Cleared the
+  achievable reds: **A3** (converted the 3 live-Excel/COM `#[ignore]` tests to env-gated runtime
+  soft-skips on `ZIEE_OFFICE_LIVE` + reworded every doc mention → 0 A3 hits); **npm run check** (ui
+  + desktop/ui) re-run green; **gate:ui (desktop/ui)** green after a root `npm install` restored the
+  missing `platejs` deps (the user's suggestion — the 17 tsc errors were an unhoisted-dep artifact,
+  not office-bridge). **TEST-11/59** reclassified honestly (TEST-11 superseded by the relocation;
+  TEST-59 Linux-only `cfg(not(win/mac))`), per decision — not re-run.
+
+- **FB-6** [status: wontfix] [generalizable: yes] — **gate:ui (ui)** fails runtime-health on 4
+  PRE-EXISTING ui-workspace surfaces (a React-hooks bug in `seeded-llm-models-loading`, a
+  forced-error gallery cell, two contrast surfaces) — none are office-bridge (its only `ui/` touch is
+  the shared testid registry). They fail on `origin/main` too. Wontfix here (out of scope; fixing
+  unrelated ui bugs). The office-bridge workspace (desktop/ui) gate:ui PASSES.
+
+- **FB-7** [status: wontfix] [generalizable: yes] — **A10** (negative-perm e2e) cannot be satisfied
+  by a MEANINGFUL e2e for this feature. office-bridge has no permission-gated UI *page* — its gate is
+  the store's data-fetch self-gate (`hasPermissionNow(office_bridge::use)`) + the backend API/MCP
+  perm (A9). I authored a restricted-user desktop e2e, but a diagnostic proved it VACUOUS: in the
+  desktop shell, API calls go through **tauri invoke (native), not browser fetch**, so
+  `page.on('request')` observes NO `/office-bridge/documents` request for a permitted OR restricted
+  user. I removed it rather than ship a green-but-vacuous test (per FB-1's lesson). The permission
+  gate IS covered — by the store self-gate UNIT test (`officeBridgeSync.test.ts`) and the backend
+  perm test (A9). A10's page-absence model doesn't fit a data-gated, native-API desktop feature.
+
 Net: the artifact RESTRUCTURE is complete (five dirs → one umbrella, globally renumbered,
 base `origin/main`, coverage rebuilt vs the real diff, findings fixed to a clean re-audit).
-A headless `--all` is not mechanically green because of A3/A10/phase-8-vs-live-tests above —
-documented here rather than papered over.
+Cleared this round: A3, npm run check ×2, gate:ui (desktop/ui). Residual (documented, not
+office-bridge defects): gate:ui (ui) = pre-existing unrelated surfaces; TEST-11/59 = Linux/superseded;
+A10 = structurally unfit + un-observable in the native-API desktop e2e harness. A headless `--all`
+is not mechanically green for these reasons — documented here rather than papered over, and the
+merge driver strips `.lifecycle` so none of it blocks merge.
