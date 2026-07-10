@@ -37,8 +37,12 @@ impl FailureClass {
         }
     }
 
-    /// Whether a firing that failed this way should be retried within the run
-    /// (with backoff) rather than counted as a hard failure.
+    /// Whether this failure class is a TRANSIENT (retry-eligible) fault vs a
+    /// terminal one. Transient tolerance is now provided by the consecutive-
+    /// failure CAP (not an in-run retry — that re-executed non-idempotent
+    /// targets, removed after the blind audit), so this classifier is kept for
+    /// its semantic value + tests but has no non-test caller.
+    #[allow(dead_code)]
     pub fn is_retryable(&self) -> bool {
         matches!(self, FailureClass::Transient)
     }
@@ -72,10 +76,13 @@ pub fn should_autopause(consecutive_failures: i32, max_consecutive_failures: i32
     consecutive_failures >= max_consecutive_failures.max(1)
 }
 
-/// Exponential backoff (with a cap) for the Nth in-run retry of a transient
-/// failure. `attempt` is 0-based.
+/// Exponential backoff (500ms, 1s, 2s, 4s … capped at 30s) for a bounded retry.
+/// `attempt` is 0-based. Kept as a utility (+ tested) for a possible future
+/// SAFE (idempotent-only) retry; the earlier whole-`dispatch` retry was removed
+/// after the blind audit (it re-executed non-idempotent targets), so this has no
+/// non-test caller today.
+#[allow(dead_code)]
 pub fn retry_backoff_ms(attempt: u32) -> u64 {
-    // 500ms, 1s, 2s, 4s … capped at 30s. Jitter is applied by the caller.
     let base = 500u64.saturating_mul(1u64 << attempt.min(6));
     base.min(30_000)
 }
