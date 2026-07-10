@@ -24,7 +24,7 @@ Audit of PLAN.md against the actual codebase (read pre-implementation).
 - **ITEM-12** — multi-day toggle uses the kit multi-select toggle-group primitive over Sun–Sat; cron dow becomes a sorted comma list. No exact existing multi-day picker to mirror, but the toggle-group primitive is standard kit usage.
 
 ## Migration collisions
-One migration added: `146` (`scheduled_task_unattended_tools`), next free vs main's `145` — no
+One migration added: `153` (`scheduled_task_unattended_tools`), next free vs main current max 152 — no
 collision at cut time; merge-gate C2 re-checks if main advances. The bug-fix/FB items add no
 schema (new `paused_reason` values are free TEXT; run-prune reuses `notification_retention_days`).
 
@@ -50,7 +50,7 @@ minimal and avoid making a backend-internal flag part of the client contract.
 - **ITEM-12** — verdict: CONCERN — multi-day cron must round-trip: emit a SORTED comma dow (`1,3,5`), and `humanizeCron` (currently only matches `/^\d$/`) must be extended to parse a comma list AND still fall back to `Cron: <expr>` for arbitrary expressions. The min-interval floor in `schedule.rs` already samples a 24-occurrence window so multi-day crons are validated server-side (no backend change). Pin the encoding + parse-back in DECISIONS + a unit test both directions.
 - **ITEM-13** — verdict: CONCERN — threading an `unattended` flag through `SendMessageRequest`→`StreamContext.metadata`→`mcp.rs after_llm_call` touches the SHARED chat pipeline. Must be ADDITIVE + default-false so interactive chat is byte-for-byte unchanged (B3: never route the shared harness around this feature). The deny-not-pause branch must still persist approval-exempt built-in results (mirror the existing pause block) so the turn stays protocol-valid. High blast radius → needs the fresh-agent audit (phase 6) to focus here + a test proving interactive approval is unchanged.
 - **ITEM-14** — verdict: PASS — reuses `is_builtin_server_id`/`is_side_effect_tool`/`mcp_config` (all existing); constrains, never widens, the attach set. The empty allow-list default (read-only-only) is the safe floor.
-- **ITEM-15** — verdict: CONCERN — migration 146 + new request fields → OpenAPI regen (both workspaces). Allow-list validation must resolve the user's accessible servers at create/update (reuse `get_all_accessible_config`) and reject entries the user can't access — else the field could be a privilege-escalation vector. Default `'[]'` keeps existing rows valid.
+- **ITEM-15** — verdict: CONCERN — migration 153 + new request fields → OpenAPI regen (both workspaces). Allow-list validation must resolve the user's accessible servers at create/update (reuse `get_all_accessible_config`) and reject entries the user can't access — else the field could be a privilege-escalation vector. Default `'[]'` keeps existing rows valid.
 - **ITEM-16** — verdict: CONCERN — reuse the existing MCP server/tool selection surface rather than inventing a picker (FB-1). Needs a read of how MCP server selection is presented elsewhere (conversation mcp settings / project mcp defaults) to mirror it. e2e budgeted.
 - **ITEM-17** — verdict: PASS — additive run column + notification text; mirrors existing run-status reporting. Backward-compatible (`'[]'`).
 - **ITEM-18** — verdict: PASS — reuses `parseWorkflowIr` (ITEM-4) to detect `elicit` steps at create; disabled-servers pass-through mirrors the existing conversation-scoped filter, just sourced from the user's defaults for scheduled runs.

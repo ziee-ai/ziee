@@ -26,9 +26,9 @@ existing columns/types; `paused_reason` is free TEXT).
 ### Unattended tool-call + approval policy (human decision DEC-17: "safe default + per-task allow-list")
 - **ITEM-13**: Thread an `unattended` signal (source=`scheduled`) from `dispatch_prompt` through `SendMessageRequest` → `StreamContext.metadata` → the MCP `after_llm_call` approval decision. In unattended mode, a tool that would require approval and is NOT allow-listed gets a synthetic denial `tool_result` (turn continues to a coherent answer) instead of writing orphaned `pending` approval rows + truncating. No pending-approval rows created for unattended runs. (DEC-17.1/2 — fixes the silent-skip-reports-success gap)
 - **ITEM-14**: Constrain the unattended run's tool surface: attach only built-in read-only servers (`is_builtin_server_id`) + the task's allow-listed servers via `mcp_config`; deny any side-effecting tool (`is_side_effect_tool`) not in the allow-list, incl. Always-mode pre-execution. (DEC-17.3 — closes the unattended-side-effects risk)
-- **ITEM-15**: Per-task allow-list (migration 146): `scheduled_tasks.allowed_unattended_tools JSONB`; add to `CreateScheduledTask`/`UpdateScheduledTask` with validation that every entry ⊆ the user's currently-accessible servers; at fire time populate the run's approval-bypass set from it. (DEC-17.4, DEC-19)
+- **ITEM-15**: Per-task allow-list (migration 153): `scheduled_tasks.allowed_unattended_tools JSONB`; add to `CreateScheduledTask`/`UpdateScheduledTask` with validation that every entry ⊆ the user's currently-accessible servers; at fire time populate the run's approval-bypass set from it. (DEC-17.4, DEC-19)
 - **ITEM-16**: Drawer UI — a "Tools this task may use unattended" multi-select picker (reuse the MCP server/tool selection surface), in the `FormField` layout; empty = read-only-only (safe default), with a one-line explainer. (DEC-17.4 frontend)
-- **ITEM-17**: Honest reporting — record `scheduled_task_runs.skipped_tools` (migration 146) and surface it in the completion notification ("Ran — N tools skipped (not permitted unattended)") + the Runs UI, so a truncated result is never reported as a clean success. (DEC-17.5)
+- **ITEM-17**: Honest reporting — record `scheduled_task_runs.skipped_tools` (migration 153) and surface it in the completion notification ("Ran — N tools skipped (not permitted unattended)") + the Runs UI, so a truncated result is never reported as a clean success. (DEC-17.5)
 - **ITEM-18**: Workflow target under the policy — reject at create/update a workflow whose IR contains an `elicit` step ("needs interactive input; can't be scheduled") instead of the 15-min-timeout false-fail; and apply the user's default `disabled_servers` to scheduled workflow tool-steps (today skipped because the filter is conversation-scoped). (DEC-18)
 
 ### Deferred (surveyed, intentionally out of scope this iteration — see PLAN_AUDIT)
@@ -52,7 +52,7 @@ Bug 10 (server-side `inputs_json` schema validation — partially mitigated by I
 - `src-app/server/src/modules/scheduler/tick.rs` — pre-emptive referent-missing pause at claim (ITEM-7)
 - `src-app/server/src/modules/scheduler/failure.rs` — expose/adjust retry knobs if needed (ITEM-9)
 - `src-app/server/src/modules/scheduler/mod.rs` — spawn/extend the boot prune loop for run history (ITEM-8)
-- `src-app/server/migrations/00000000000146_scheduled_task_unattended_tools.sql` — NEW: `allowed_unattended_tools` + `skipped_tools` columns (ITEM-15/17)
+- `src-app/server/migrations/00000000000153_scheduled_task_unattended_tools.sql` — NEW: `allowed_unattended_tools` + `skipped_tools` columns (ITEM-15/17)
 - `src-app/server/src/modules/scheduler/models.rs` + `handlers.rs` + `repository.rs` — allow-list field, validation, persistence, run skipped-tools (ITEM-15/17)
 - `src-app/server/src/modules/chat/**` (`SendMessageRequest`, `StreamContext`/metadata) — carry the `unattended` signal (ITEM-13) — MINIMAL, additive optional field
 - `src-app/server/src/modules/mcp/chat_extension/mcp.rs` (+ `approval/`) — branch the approval decision on `unattended` + allow-list; deny-not-pause; constrain servers (ITEM-13/14)
