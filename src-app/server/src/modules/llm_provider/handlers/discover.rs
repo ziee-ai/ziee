@@ -254,7 +254,13 @@ pub(crate) async fn fetch_live_models(
         .build()
         .map_err(|e| format!("reqwest build: {e}"))?;
     let req = match provider_type {
-        "anthropic" => client.get(&url).header("x-api-key", api_key),
+        // Anthropic requires the `anthropic-version` header on EVERY request;
+        // without it `GET /v1/models` returns 400. Reuse the same version the
+        // main Anthropic client sends (single source of truth in ai-providers).
+        "anthropic" => client
+            .get(&url)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", ai_providers::ANTHROPIC_VERSION),
         _ => {
             // OpenAI-compatible default: bearer auth.
             client.get(&url).bearer_auth(api_key)
@@ -303,11 +309,14 @@ pub(crate) fn parse_live_models(provider_type: &str, body: &serde_json::Value) -
 }
 
 fn parse_one_live_model(id: String, item: &serde_json::Value) -> LiveModel {
-    // `name` is only useful as a display name when it differs from the id
-    // (OpenRouter sets a human label; OpenAI omits it).
+    // A human label when it differs from the id: OpenRouter sets `name`; Anthropic
+    // sets `display_name` (its /v1/models has no `name`); OpenAI omits both. Fall
+    // back to `display_name` whenever `name` is not a usable string (absent, null,
+    // or non-string) — not just when the key is missing.
     let display_name = item
         .get("name")
         .and_then(|v| v.as_str())
+        .or_else(|| item.get("display_name").and_then(|v| v.as_str()))
         .filter(|n| !n.is_empty() && *n != id)
         .map(|s| s.to_string());
 
@@ -420,6 +429,56 @@ mod tests {
         assert!(out[0].context_length.is_none());
         assert!(out[0].supports_vision.is_none());
         assert!(out[0].supports_tool_use.is_none());
+    }
+
+    #[test]
+    fn anthropic_models_shape_reads_display_name() {
+        // Anthropic's GET /v1/models: `{ "data": [{ "type":"model", "id":...,
+        // "display_name":..., "created_at":... }] }` — no `name` field. The id
+        // must populate and the human label must come from `display_name`.
+        let body = json!({
+            "data": [{
+                "type": "model",
+                "id": "claude-opus-4-8",
+                "display_name": "Claude Opus 4",
+                "created_at": "2026-01-01T00:00:00Z"
+            }]
+        });
+        let out = parse_live_models("anthropic", &body);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "claude-opus-4-8");
+        assert_eq!(out[0].display_name.as_deref(), Some("Claude Opus 4"));
+    }
+
+    #[test]
+    fn id_only_item_has_no_display_name() {
+        // An item with neither `name` nor `display_name` yields display_name None.
+        let body = json!({ "data": [{ "type": "model", "id": "claude-haiku-4-5" }] });
+        let out = parse_live_models("anthropic", &body);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "claude-haiku-4-5");
+        assert!(out[0].display_name.is_none());
+    }
+
+    #[test]
+    fn display_name_equal_to_id_or_empty_is_dropped() {
+        // The dedup/empty filter applies to the `display_name` branch too: a label
+        // identical to the id (or empty) is not a useful display name → None.
+        let same = json!({ "data": [{ "id": "claude-x", "display_name": "claude-x" }] });
+        assert!(parse_live_models("anthropic", &same)[0].display_name.is_none());
+        let empty = json!({ "data": [{ "id": "claude-y", "display_name": "" }] });
+        assert!(parse_live_models("anthropic", &empty)[0].display_name.is_none());
+    }
+
+    #[test]
+    fn null_name_falls_back_to_display_name() {
+        // A non-string/null `name` must not short-circuit the `display_name`
+        // fallback (regression guard for the absence-vs-usable-string fix).
+        let body = json!({
+            "data": [{ "id": "claude-z", "name": null, "display_name": "Claude Z" }]
+        });
+        let out = parse_live_models("anthropic", &body);
+        assert_eq!(out[0].display_name.as_deref(), Some("Claude Z"));
     }
 
     #[test]
