@@ -3822,6 +3822,7 @@ export interface ModelCapabilities {
    *  provider model-family policy. Drives whether thinking is enabled.
    */
   supports_thinking?: boolean
+  /**
    * Reranker (cross-encoder) capability - scores query/document relevance for
    *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
    *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
