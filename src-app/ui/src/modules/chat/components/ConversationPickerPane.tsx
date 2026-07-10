@@ -141,7 +141,7 @@ export function ConversationPickerPane({ paneId }: { paneId: string }) {
                       Stores.SplitView.setPaneConversation(paneId, c.id)
                     }
                   >
-                    <span className="min-w-0 flex-1 truncate text-left text-sm">
+                    <span className="min-w-0 flex-1 truncate text-start text-sm">
                       {c.title || 'Untitled Conversation'}
                     </span>
                     <span className="shrink-0 text-xs text-muted-foreground">

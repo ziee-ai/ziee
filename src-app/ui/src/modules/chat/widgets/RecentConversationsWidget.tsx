@@ -9,8 +9,8 @@ import {
   dialog,
 } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
-import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Columns2, MessageSquare, Trash2, MoreVertical } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
@@ -20,6 +20,9 @@ import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
+import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
+
+const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 
 /**
  * Sidebar list of the user's recent conversations, backed by
@@ -33,8 +36,28 @@ import {
  */
 export function RecentConversationsWidget() {
   const location = useLocation()
-  const navigate = useNavigate()
+  const openConversation = useOpenConversationInWorkspace()
   const { recentConversations, loading, isInitialized } = Stores.ChatHistory
+
+  // Cmd/Ctrl/middle-click a row → open it in a NEW pane (ITEM-28) instead of the
+  // plain navigate the Menu's onSelect does. Handled in the capture phase so a
+  // modified click never reaches the row button's onSelect (which would navigate);
+  // the row button carries `${prefix}<id>` as its testid, an ancestor of any
+  // click target inside the row, so it resolves reliably.
+  const openInNewPaneIfModified = (
+    e: React.MouseEvent<HTMLDivElement>,
+  ): void => {
+    if (!(e.metaKey || e.ctrlKey || e.button === 1)) return
+    const row = (e.target as HTMLElement).closest<HTMLElement>(
+      `[data-testid^="${RECENT_ITEM_TESTID_PREFIX}"]`,
+    )
+    const id = row?.getAttribute('data-testid')?.slice(RECENT_ITEM_TESTID_PREFIX.length)
+    const c = id && recentConversations.find((x) => x.id === id)
+    if (!c) return
+    e.preventDefault()
+    e.stopPropagation()
+    openConversation(c.id, { intent: 'newPane', href: hrefFor(c) })
+  }
 
   useEffect(() => {
     if (!isInitialized) {
@@ -120,7 +143,11 @@ export function RecentConversationsWidget() {
   ]
 
   return (
-    <div className="flex flex-col h-full min-h-0 text-foreground">
+    <div
+      className="flex flex-col h-full min-h-0 text-foreground"
+      onClickCapture={openInNewPaneIfModified}
+      onAuxClickCapture={openInNewPaneIfModified}
+    >
       <DivScrollY className="flex-col flex-1 min-h-0">
         <Menu
           data-testid="chat-recent-conversations-menu"
@@ -137,7 +164,9 @@ export function RecentConversationsWidget() {
             // ever changes.
             const active = document.activeElement as HTMLElement | null
             if (active?.closest('[role="menu"]')) return
-            navigate(hrefFor(c))
+            // Route through the workspace reducer (ITEM-28): plain click replaces
+            // the focused pane while split, else a normal single-pane navigate.
+            openConversation(c.id, { intent: 'auto', href: hrefFor(c) })
           }}
         />
       </DivScrollY>
@@ -164,6 +193,7 @@ function ConversationRowActions({
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
   const [menuOpen, setMenuOpen] = useState(false)
+  const openConversation = useOpenConversationInWorkspace()
 
   const { items: extensionItems, overlays, keepMenuOpen } =
     useConversationMenuContributions(conversation)
@@ -189,10 +219,20 @@ function ConversationRowActions({
   }
 
   const menuItems: DropdownItem[] = [
+    {
+      key: 'open-in-split',
+      icon: <Columns2 />,
+      label: 'Open in split pane',
+      onClick: () =>
+        openConversation(conversation.id, {
+          intent: 'newPane',
+          href:
+            chatExtensionRegistry.conversationHref(conversation) ??
+            `/chat/${conversation.id}`,
+        }),
+    },
     ...(extensionItems ?? []),
-    ...(extensionItems && extensionItems.length > 0
-      ? [{ type: 'divider' as const, key: 'div-delete' }]
-      : []),
+    { type: 'divider' as const, key: 'div-delete' },
     {
       key: 'delete',
       danger: true,

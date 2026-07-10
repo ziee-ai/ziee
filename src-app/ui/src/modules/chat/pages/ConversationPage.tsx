@@ -37,7 +37,25 @@ import { SplitChatView } from '@/modules/chat/components/SplitChatView'
  * stable; each branch is its own component boundary.
  */
 export default function ConversationPage() {
+  const { conversationId } = useParams<{ conversationId: string }>()
   const { panes } = Stores.SplitView
+
+  // URL → workspace reconcile (ITEM-25). The URL is a *view into* the workspace
+  // (the focused pane). When it changes to a conversation NOT already shown by
+  // the focused pane while a split is open — a deep link, a browser back/forward,
+  // a "New chat in project" redirect — reconcile it in (focus its pane if open,
+  // else replace the focused pane). Loop-guarded on the focused pane's current
+  // conversation so the navigate that FOLLOWS a sidebar-click reconcile (which
+  // already set the focused pane) does not re-trigger a second reconcile.
+  useEffect(() => {
+    if (!conversationId) return
+    const sv = Stores.SplitView.$
+    if (sv.panes.length < 2) return // single-pane: the URL drives ConversationPane
+    const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
+    if (focused?.conversationId === conversationId) return // already shown → no-op
+    Stores.SplitView.openConversationInWorkspace(conversationId, 'auto')
+  }, [conversationId])
+
   if (panes.length >= 2) return <SplitChatView />
   return <ConversationPane />
 }
