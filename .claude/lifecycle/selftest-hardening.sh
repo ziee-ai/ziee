@@ -61,6 +61,58 @@ EOF
   echo "$R"
 }
 
+# ---------------------------------------------------------------------------
+# build_perm — a feature that INTRODUCES a user-facing permission (foo::use) in
+# a modules/*/permissions.rs AND ships a UI surface gated by it. A9 (backend
+# deny) is satisfied by TEST-2's 403; the A10 (frontend-hidden) test is left OFF
+# so the caller can add it. Echoes the repo root; branch = feat/perm.
+# ---------------------------------------------------------------------------
+build_perm() {
+  local R; R="$(new_repo)"; CLEANUP+=("$R")
+  git -C "$R" checkout -q -b feat/perm
+  mkdir -p "$R/src-app/server/src/modules/foo" "$R/src-app/ui/src/modules/foo" "$R/.lifecycle/foo"
+  cat > "$R/src-app/server/src/modules/foo/permissions.rs" <<'EOF'
+pub struct FooUse;
+impl PermissionCheck for FooUse {
+    const PERMISSION: &'static str = "foo::use";
+}
+EOF
+  cat > "$R/src-app/ui/src/modules/foo/FooPage.tsx" <<'EOF'
+export function FooPage() {
+  return <div><h1>Foo</h1><button>Save</button></div>;
+}
+EOF
+  local D="$R/.lifecycle/foo"
+  cat > "$D/PLAN.md" <<'EOF'
+# PLAN — foo
+## Items
+- **ITEM-1**: Define the foo::use permission (backend).
+- **ITEM-2**: Add the FooPage UI, gated by foo::use.
+## Files to touch
+- `src-app/server/src/modules/foo/permissions.rs` — new perm (ITEM-1).
+- `src-app/ui/src/modules/foo/FooPage.tsx` — new gated page (ITEM-2).
+## Patterns to follow
+- Mirror an existing permissions.rs and a settings page.
+EOF
+  write_common "$D" "src-app/server/src/modules/foo/permissions.rs" 5
+  cat > "$D/TESTS.md" <<'EOF'
+# TESTS — foo
+- **TEST-1** (tier: unit) [covers: ITEM-1] file: `src-app/server/src/modules/foo/permissions.rs` — asserts: PERMISSION is foo::use.
+- **TEST-2** (tier: integration) [covers: ITEM-1] file: `src-app/server/tests/foo/foo.rs` — asserts: a user lacking foo::use gets 403 forbidden.
+- **TEST-3** (tier: e2e) [covers: ITEM-2] file: `src-app/ui/tests/e2e/foo/foo.spec.ts` — asserts: a permitted user opens Foo and clicks Save.
+EOF
+  cat > "$D/TEST_RESULTS.md" <<'EOF'
+# TEST_RESULTS — foo
+- **TEST-1**: PASS
+- **TEST-2**: PASS
+- **TEST-3**: PASS
+npm run check (ui): PASS
+gate:ui (ui): PASS
+EOF
+  git -C "$R" add -A && git -C "$R" commit -qm feat-perm
+  echo "$R"
+}
+
 echo "== lifecycle-hardening self-test =="
 echo "-- Part A: lifecycle-check.mjs A1-A9 --"
 
@@ -132,6 +184,92 @@ cat >> "$D/TEST_RESULTS.md" <<'EOF'
 EOF
 git -C "$R" commit -qam add-deny-test
 lc 0 "A9: new permission WITH a 403 deny test passes" --phase 8 --repo "$R" --dir "$D" --base main
+
+# --- A10: a new user-facing permission (::use/::read/::manage) needs a
+#     RESTRICTED-USER e2e (frontend-hidden), not only the A9 backend deny.
+
+# A10-1: perm introduced in permissions.rs, NO [negative-perm] e2e -> phase 3 + 8 FAIL
+R="$(build_perm)"; D="$R/.lifecycle/foo"
+lc 1 "A10: new ::use perm without a restricted-user e2e is REFUSED (phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
+lc 1 "A10: new ::use perm without a restricted-user e2e is REFUSED (phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
+
+# A10-2: a [negative-perm] tag on a NON-e2e (integration) test does NOT satisfy
+#        A10 — a 403/deny test is A9; the frontend proof MUST be tier: e2e.
+R="$(build_perm)"; D="$R/.lifecycle/foo"
+cat >> "$D/TESTS.md" <<'EOF'
+- **TEST-4** (tier: integration) [negative-perm] [covers: ITEM-1] file: `src-app/server/tests/foo/foo.rs` — asserts: 403 without foo::use.
+EOF
+cat >> "$D/TEST_RESULTS.md" <<'EOF'
+- **TEST-4**: PASS
+EOF
+git -C "$R" commit -qam mistagged-integration
+lc 1 "A10: a [negative-perm] tag on a NON-e2e test does NOT satisfy A10" --phase 8 --repo "$R" --dir "$D" --base main
+
+# A10-3: add the restricted-user e2e -> phase 3 + 8 PASS (A9 backend + A10 frontend both present)
+R="$(build_perm)"; D="$R/.lifecycle/foo"
+cat >> "$D/TESTS.md" <<'EOF'
+- **TEST-4** (tier: e2e) [negative-perm] [covers: ITEM-2] file: `src-app/ui/tests/e2e/foo/perm-gating.spec.ts` — asserts: a user LACKING foo::use sees NO Foo nav entry, page, or Save button.
+EOF
+cat >> "$D/TEST_RESULTS.md" <<'EOF'
+- **TEST-4**: PASS
+EOF
+git -C "$R" commit -qam add-negperm-e2e
+lc 0 "A10: new ::use perm WITH a restricted-user e2e passes (phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
+lc 0 "A10: new ::use perm WITH a restricted-user e2e passes (phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
+
+# A10-4: the restricted-user e2e is enumerated but its RESULT is FAIL -> phase 8 FAIL
+R="$(build_perm)"; D="$R/.lifecycle/foo"
+cat >> "$D/TESTS.md" <<'EOF'
+- **TEST-4** (tier: e2e) [negative-perm] [covers: ITEM-2] file: `src-app/ui/tests/e2e/foo/perm-gating.spec.ts` — asserts: a user LACKING foo::use sees no Foo UI.
+EOF
+cat >> "$D/TEST_RESULTS.md" <<'EOF'
+- **TEST-4**: FAIL
+EOF
+git -C "$R" commit -qam negperm-e2e-fails
+lc 1 "A10: an enumerated-but-FAILING restricted-user e2e is REFUSED (phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
+
+# A10-5: a permission GRANTED IN A MIGRATION (no permissions.rs const, so A9
+#        does NOT fire) still requires a restricted-user e2e — A10 catches what
+#        A9 misses.
+R="$(new_repo)"; CLEANUP+=("$R")
+mkdir -p "$R/src-app/server/migrations"
+echo "CREATE TABLE a();" > "$R/src-app/server/migrations/00000000000010_a.sql"
+git -C "$R" add -A && git -C "$R" commit -qm mig-10
+git -C "$R" checkout -q -b feat/permmig
+mkdir -p "$R/.lifecycle/foo"
+cat > "$R/src-app/server/migrations/00000000000011_grant_foo.sql" <<'EOF'
+-- grant foo::use to the default Users group (mirrors migration 98)
+UPDATE groups SET permissions = array_append(permissions, 'foo::use') WHERE name = 'Users';
+EOF
+D="$R/.lifecycle/foo"
+cat > "$D/PLAN.md" <<'EOF'
+# PLAN — foo
+## Items
+- **ITEM-1**: Grant foo::use to the default Users group (migration).
+## Files to touch
+- `src-app/server/migrations/00000000000011_grant_foo.sql` — grant (ITEM-1).
+## Patterns to follow
+- Mirror migration 98 (idempotent grant).
+EOF
+write_common "$D" "src-app/server/migrations/00000000000011_grant_foo.sql" 2
+cat > "$D/TESTS.md" <<'EOF'
+# TESTS — foo
+- **TEST-1** (tier: integration) [covers: ITEM-1] file: `src-app/server/tests/foo/foo.rs` — asserts: the Users group gains foo::use.
+EOF
+cat > "$D/TEST_RESULTS.md" <<'EOF'
+# TEST_RESULTS — foo
+- **TEST-1**: PASS
+EOF
+git -C "$R" add -A && git -C "$R" commit -qm feat-permmig
+lc 1 "A10: a migration granting ::use without a restricted-user e2e is REFUSED (A9 alone misses it)" --phase 8 --repo "$R" --dir "$D" --base main
+cat >> "$D/TESTS.md" <<'EOF'
+- **TEST-2** (tier: e2e) [negative-perm] [covers: ITEM-1] file: `src-app/ui/tests/e2e/foo/perm-gating.spec.ts` — asserts: a user LACKING foo::use sees no Foo UI.
+EOF
+cat >> "$D/TEST_RESULTS.md" <<'EOF'
+- **TEST-2**: PASS
+EOF
+git -C "$R" commit -qam add-negperm-mig
+lc 0 "A10: the migration grant WITH a restricted-user e2e passes (phase 8)" --phase 8 --repo "$R" --dir "$D" --base main
 
 # --- A7: a UI diff whose results omit the boot/runtime canary -> phase 8 FAIL
 R="$(new_repo)"; CLEANUP+=("$R")
