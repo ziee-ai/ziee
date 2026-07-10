@@ -4,10 +4,13 @@ Branch cut from `origin/main` @ `e253510f9` (fresh worktree, pulled today).
 
 ## Highest existing migration
 `ls src-app/server/migrations | tail -1` → `00000000000145_create_conversation_deliverables.sql`.
-**This branch adds NO migration** — all fixes reuse existing columns (`paused_reason` is
-free TEXT, so new reason values `completed`/`conversation_deleted` need no schema change;
-run-history prune reuses the existing `scheduler_admin_settings.notification_retention_days`).
-→ No migration-number collision possible.
+**This branch adds migration `146`** (`00000000000146_scheduled_task_unattended_tools.sql`):
+`scheduled_tasks.allowed_unattended_tools JSONB DEFAULT '[]'` +
+`scheduled_task_runs.skipped_tools JSONB DEFAULT '[]'` (per DEC-19, for the unattended
+tool-policy work ITEM-15/17). The bug-fix items (5-11) + FB items (1-4,12) still add no
+schema (new `paused_reason` values are free TEXT; run-prune reuses the existing
+`notification_retention_days`). 146 is the next free number vs main's 145 → the merge-gate
+C2 re-checks for a collision if main advances before merge.
 
 ## Files this branch edits that main may also touch
 - `src-app/server/src/modules/scheduler/**` — the scheduler module. It was merged as
@@ -19,11 +22,14 @@ run-history prune reuses the existing `scheduler_admin_settings.notification_ret
   imported/mirrored, not modified.
 
 ## OpenAPI regen implied?
-**No.** No request/response type changes: the three picker fields
-(`assistant_id`/`workflow_id`/`model_id`) already exist on `CreateScheduledTask`; the
-"completed" signal reuses the existing `paused_reason: Option<String>` field; retry/prune/
-validation are internal. `openapi.json` + `api-client/types.ts` are untouched → the phase-3/8
-frontend gates still fire on the real UI diff, and the merge-gate's C3 regen-parity is a no-op.
+**Yes — for the unattended tool-policy work only.** The FB/picker items + bug fixes (1-12)
+need no type change (the three picker fields already exist on `CreateScheduledTask`;
+`completed` reuses `paused_reason`). But ITEM-15/17 add `allowed_unattended_tools` to
+`Create/UpdateScheduledTask` and `skipped_tools` to `ScheduledTaskRun` → `just openapi-regen`
+(BOTH `ui/` + `desktop/ui/`) is required; the merge-gate C3 re-checks regen parity for both
+workspaces. The unattended `unattended`/`invocation_source` chat-request flag is threaded
+in-process (not necessarily on the public request type) — keep it off the OpenAPI surface if
+possible to minimize the regen delta.
 
 ## Notes
 - Config tunables introduced: run-history retention (reuses existing `notification_retention_days`
