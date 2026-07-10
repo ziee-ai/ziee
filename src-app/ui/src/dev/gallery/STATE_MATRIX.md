@@ -463,27 +463,27 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 120 |
-| branch | `!active` | 152 |
-| branch | `view.sort!.dir === 'asc'` | 153 |
-| branch | `meta.sortable` | 156 |
-| branch | `props.filterable` | 230 |
-| branch | `props.columnChooser && hideable.length > 0` | 246 |
-| branch | `props.toolbarExtra` | 274 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 327 |
-| branch | `!tsv` | 329 |
-| branch | `showVirtual` | 340 |
-| branch | `hasToolbar` | 351 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 382 |
-| branch | `caption != null` | 392 |
-| branch | `resizableTable` | 393 |
-| branch | `meta.resizable` | 413 |
-| branch | `busy` | 420 |
-| empty | `rows.length === 0` | 428 |
-| branch | `meta.resizable` | 539 |
-| branch | `mode === 'none'` | 589 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 594 |
-| branch | `!selectionActive(props, col)` | 601 |
+| branch | `v == null \|\| typeof v === 'boolean'` | 126 |
+| branch | `!active` | 158 |
+| branch | `view.sort!.dir === 'asc'` | 159 |
+| branch | `meta.sortable` | 162 |
+| branch | `props.filterable` | 236 |
+| branch | `props.columnChooser && hideable.length > 0` | 252 |
+| branch | `props.toolbarExtra` | 280 |
+| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 333 |
+| branch | `!tsv` | 335 |
+| branch | `showVirtual` | 346 |
+| branch | `hasToolbar` | 357 |
+| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 388 |
+| branch | `caption != null` | 398 |
+| branch | `resizableTable` | 399 |
+| branch | `meta.resizable` | 419 |
+| branch | `busy` | 426 |
+| empty | `rows.length === 0` | 434 |
+| branch | `meta.resizable` | 550 |
+| branch | `mode === 'none'` | 600 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 605 |
+| branch | `!selectionActive(props, col)` | 612 |
 
 ### `components/ui/kit/tabs`
 
@@ -1810,8 +1810,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 118 |
-| branch | `truncated` | 161 |
+| branch | `idx < 0` | 121 |
+| branch | `truncated` | 168 |
 
 ### `modules/file/viewers/tabular/ExpandableCell`
 
@@ -1827,14 +1827,14 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `idx < 0` | 124 |
-| branch | `sheet.truncated` | 164 |
-| branch | `!fileBinaryContent` | 225 |
-| branch | `!file` | 276 |
-| error | `loadError` | 278 |
-| loading | `!fileBinaryContent \|\| loading` | 287 |
-| empty | `sheets.length === 0` | 291 |
-| branch | `sheets.length === 1` | 295 |
+| branch | `idx < 0` | 132 |
+| branch | `sheet.truncated` | 176 |
+| branch | `!fileBinaryContent` | 238 |
+| branch | `!file` | 289 |
+| error | `loadError` | 291 |
+| loading | `!fileBinaryContent \|\| loading` | 300 |
+| empty | `sheets.length === 0` | 304 |
+| branch | `sheets.length === 1` | 308 |
 
 ### `modules/file/viewers/tabular/body`
 

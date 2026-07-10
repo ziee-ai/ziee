@@ -21,7 +21,7 @@ import { DELIMITED_MAX_ROWS, parseDelimitedText } from './parse'
  *  included). Covers every inline preview and the vast majority of files. */
 const VIRTUALIZE_ROW_THRESHOLD = 200
 
-export function DelimitedTable({ text, delimiter, fileName }: { text: string; delimiter: string; fileName?: string }) {
+export function DelimitedTable({ text, delimiter, fileName, fill = false }: { text: string; delimiter: string; fileName?: string; fill?: boolean }) {
   // Parse + column/dataSource construction is the entire cost of this
   // component. Memoize on (text, delimiter) so panel re-renders for
   // unrelated reasons (resize, drawer, sibling state) don't re-parse the
@@ -96,7 +96,10 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
     return { columns, dataSource, truncated, exportColumns }
   }, [text, delimiter])
 
-  const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
+  // Panel context (`fill`) always virtualizes so the grid gets the kit's
+  // fixed-toolbar + scrolling body and can fill the panel height; inline
+  // previews keep the content-hugging plain table below the threshold.
+  const virtualized = fill || dataSource.length > VIRTUALIZE_ROW_THRESHOLD
 
   // View state surfaced from the kit Table for the body-local toolbar.
   const viewRef = useRef<TabularRecord[]>(dataSource)
@@ -155,7 +158,11 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
     <div
       className={cn(
         'flex flex-col w-full px-3 pt-3',
-        virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
+        fill
+          ? 'h-full min-h-0'
+          : virtualized
+            ? 'h-[min(360px,55vh)]'
+            : 'max-h-[min(360px,55vh)]',
       )}
     >
       {truncated && (
@@ -174,6 +181,7 @@ export function DelimitedTable({ text, delimiter, fileName }: { text: string; de
           toolbar (toolbarExtra) so they share ONE row with filter + columns. */}
       <Table
         virtualized={virtualized}
+        fillHeight={fill}
         columns={columns}
         dataSource={dataSource}
         rowKey="key"

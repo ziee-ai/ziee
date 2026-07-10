@@ -1248,7 +1248,7 @@ _No always-required props._
 | `dataSource` | `T[]` |  |
 | `rowKey` | `(keyof T & string) | ((record: T, index: number) => string)` | Row key: a record field name (legacy string form) or a function. |
 
-<details><summary>Optional props (22)</summary>
+<details><summary>Optional props (23)</summary>
 
 | prop | type | notes |
 |---|---|---|
@@ -1259,6 +1259,7 @@ _No always-required props._
 | `detectNumericColumns` | `boolean | undefined` | Auto-detect all-numeric columns → right-align + tabular-nums. |
 | `empty` | `ReactNode` |  |
 | `estimateRowHeight` | `number | undefined` | Estimated row height (px) for the virtualizer; real heights are measured. |
+| `fillHeight` | `boolean | undefined` | Fill the parent's height instead of hugging content: the root grows to `h-full` and the virtualized scroll box flexes to fill it (droppin… |
 | `filterable` | `boolean | undefined` | Render a toolbar search input; rows are filtered by case-insensitive substring across visible columns. |
 | `filterPlaceholder` | `string | undefined` | Placeholder for the filter input. |
 | `loading` | `boolean | undefined` | Own loading → in-place skeleton rows. Region loading (surface) → skeleton too. |
