@@ -3,6 +3,36 @@
 Real test execution, scoped to the diff (backend + frontend). Commands + counts
 below each tier.
 
+## External-dependency gate: whisper-server binary release — CLEARED
+
+The ONE legit external gate for this feature is the `ziee-ai/whisper.cpp` fork
+publishing a `whisper-server` binary release (the runtime downloads it — you
+genuinely cannot run the real download path until it exists; like a real-LLM key).
+
+**Status: CLEARED.** `v1.9.1` is published (18 assets: 9 platform archives + 9
+mandatory `.sha256` sidecars) by the fork's `release.yml` CI (full 9-job matrix
+green on real runners). So there is **NO** remaining blocked-on-whisper-publish
+work:
+
+- **DONE (was gated, now run):** TEST-37 — the real download e2e ran GREEN against
+  the live `v1.9.1` release (resolve→download→sha256-verify→extract→binary-runs).
+  See its entry under Backend integration below.
+- **DONE (never gated):** all unit / integration (mock-release) / UI e2e tiers —
+  they mock the external boundary, so they never needed the published binary.
+- **BLOCKED-ON-WHISPER-PUBLISH: none.**
+
+Not attempted by design (not a gate): a real-model real-audio transcription
+assertion. A real whisper model on synthetic audio yields nondeterministic text,
+so the transcription path is covered deterministically by TEST-11 (real spawn →
+health → forward → parse via `stub-whisper-server`); TEST-37 covers the real
+binary acquisition. Splitting them is the correct test design, not a gap.
+
+CI hardening (fork side, PR #2, on `master`): step-level retries for the
+`choco install unzip` + NVIDIA-redist-curl flake points, plus a job-level
+`auto-rerun-release` self-heal workflow (auto `gh run rerun --failed`, capped at
+2 reruns). pwsh retry syntax validated locally (AST parse in a `powershell`
+container); a Windows-CUDA `workflow_dispatch` build validates it end-to-end.
+
 ## Frontend gate (required — UI workspace touched)
 
 `npm run check (ui): PASS` — tsc + biome guardrails + lint:colors/settings-field +
