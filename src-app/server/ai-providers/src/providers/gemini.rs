@@ -634,12 +634,8 @@ impl GeminiProvider {
 
         Some(StreamChatChunk {
             content: content_deltas,
-            finish_reason: candidate.finish_reason.as_deref().map(|r| {
-                crate::models::FinishReason::canonicalize(
-                    crate::param_policy::ProviderFamily::Gemini,
-                    r,
-                )
-            }),
+            // Raw provider finish_reason; canonicalized at the chat SSE boundary.
+            finish_reason: candidate.finish_reason.clone(),
             usage: None,
             refusal: None,
             safety_ratings,
@@ -792,13 +788,11 @@ impl super::sse::SseAdapter for GeminiSse {
 
         let mut items: Vec<Result<StreamChatChunk, ProviderError>> = Vec::new();
 
-        // Prompt feedback (prompt blocking) — terminal.
+        // Prompt feedback (prompt blocking) — terminal. The block_reason is
+        // untrusted provider output → sanitized/bounded like every other string.
         if let Some(prompt_feedback) = response.prompt_feedback {
             if let Some(block_reason) = prompt_feedback.block_reason {
-                items.push(Err(ProviderError::provider(format!(
-                    "Prompt blocked: {}",
-                    block_reason
-                ))));
+                items.push(Err(ProviderError::gemini_prompt_blocked(&block_reason)));
                 return super::sse::EventOutcome::emit_then_break(items);
             }
         }
@@ -1227,8 +1221,9 @@ mod tests {
         );
         let chunk = chunk.unwrap();
         assert!(chunk.content.is_empty());
-        // Finish reason is canonicalized: Gemini "STOP" -> unified "stop".
-        assert_eq!(chunk.finish_reason.as_deref(), Some("stop"));
+        // The adapter emits the RAW Gemini finish_reason; canonicalization to the
+        // unified vocabulary happens at the chat SSE boundary.
+        assert_eq!(chunk.finish_reason.as_deref(), Some("STOP"));
     }
 
     /// A chunk with neither content nor finish_reason returns `None` (nothing

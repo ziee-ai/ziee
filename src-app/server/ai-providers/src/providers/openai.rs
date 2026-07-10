@@ -368,12 +368,8 @@ impl OpenAIProvider {
                 if !content_deltas.is_empty() || message.refusal.is_some() {
                     yield Ok(StreamChatChunk {
                         content: content_deltas,
-                        finish_reason: choice.finish_reason.clone().map(|r| {
-                            crate::models::FinishReason::canonicalize(
-                                crate::param_policy::ProviderFamily::OpenAiCompat,
-                                &r,
-                            )
-                        }),
+                        // Raw finish_reason; canonicalized at the chat SSE boundary.
+                        finish_reason: choice.finish_reason.clone(),
                         usage: None,
                         refusal: message.refusal.clone(),
                         safety_ratings: Vec::new(),
@@ -778,8 +774,7 @@ impl super::sse::SseAdapter for OpenAiSse {
     }
 
     fn map_event(&self, event: &str, state: &mut Self::State) -> super::sse::EventOutcome {
-        use crate::models::{ContentBlockDelta, FinishReason, StreamChatChunk, StreamUsage};
-        use crate::param_policy::ProviderFamily;
+        use crate::models::{ContentBlockDelta, StreamChatChunk, StreamUsage};
 
         let Some(data) = super::sse::single_data_line(event) else {
             return super::sse::EventOutcome::empty();
@@ -869,10 +864,9 @@ impl super::sse::SseAdapter for OpenAiSse {
                 {
                     items.push(Ok(StreamChatChunk {
                         content: content_deltas,
-                        finish_reason: choice
-                            .finish_reason
-                            .clone()
-                            .map(|r| FinishReason::canonicalize(ProviderFamily::OpenAiCompat, &r)),
+                        // Raw provider finish_reason; canonicalized at the chat
+                        // SSE boundary (MCP sampling keeps provider fidelity).
+                        finish_reason: choice.finish_reason.clone(),
                         usage: None,
                         refusal: delta.refusal.clone(),
                         safety_ratings: Vec::new(),

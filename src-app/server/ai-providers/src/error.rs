@@ -133,59 +133,55 @@ impl ProviderError {
         }
     }
 
-    /// Build a clean, typed error from an Anthropic HTTP error body. Prefers the
-    /// parsed `{"error":{type,message}}` envelope; falls back to the status-code
-    /// mapping. The response side of the adapter maps each provider's error wire
-    /// shape into the common `ProviderError` — no reactive self-heal.
-    pub fn from_anthropic_http(status: u16, body: &str) -> Self {
-        match parse_anthropic_error(body) {
-            Some((ty, msg)) => Self::from_anthropic_error(&ty, &msg),
-            None => Self::from_status_code(status, body.to_string()),
+    /// Classify by HTTP status (reliable across providers) using an
+    /// already-sanitized `message` as the text. The status is the authoritative
+    /// signal (401/403→auth, 429→rate-limit, 400/404→invalid, 408/504→timeout).
+    fn from_status_with_message(status: u16, message: String) -> Self {
+        match status {
+            401 | 403 => Self::auth(message),
+            429 => Self::rate_limit(message),
+            400 | 404 => Self::invalid_request(message),
+            408 | 504 => Self::timeout(message),
+            _ => Self::provider(message),
         }
+    }
+
+    /// Build a clean, typed error from an Anthropic HTTP error body. The HTTP
+    /// status drives the variant (so a 404 stays invalid-request, a 429 stays
+    /// rate-limit); the parsed `{"error":{type,message}}` message is the text.
+    /// The response side of the adapter maps each provider's error wire shape
+    /// into the common `ProviderError` — no reactive self-heal.
+    pub fn from_anthropic_http(status: u16, body: &str) -> Self {
+        let message = parse_anthropic_error(body)
+            .map(|(_, m)| m)
+            .unwrap_or_else(|| body.to_string());
+        Self::from_status_with_message(status, sanitize_error_body(&message))
     }
 
     /// Build a clean, typed error from an OpenAI HTTP error body
-    /// (`{"error":{"message","type","param","code"}}`). Falls back to the
-    /// status-code mapping when the body isn't the expected shape.
+    /// (`{"error":{"message","type","param","code"}}`). Status-driven variant +
+    /// the parsed message.
     pub fn from_openai_http(status: u16, body: &str) -> Self {
-        match parse_openai_error(body) {
-            Some(err) => {
-                let message = sanitize_error_body(&err.message);
-                match status {
-                    401 | 403 => Self::auth(message),
-                    429 => Self::rate_limit(message),
-                    400 | 404 => Self::invalid_request(message),
-                    408 | 504 => Self::timeout(message),
-                    _ => Self::provider(format!("OpenAI: {}", message)),
-                }
-            }
-            None => Self::from_status_code(status, body.to_string()),
-        }
+        let message = parse_openai_error(body)
+            .map(|e| e.message)
+            .unwrap_or_else(|| body.to_string());
+        Self::from_status_with_message(status, sanitize_error_body(&message))
     }
 
     /// Build a clean, typed error from a Gemini HTTP error body
-    /// (`{"error":{"status","message"}}`), mapping the RPC `status` string to a
-    /// variant. Falls back to the status-code mapping when unparseable.
+    /// (`{"error":{"status","message"}}`). Status-driven variant + the parsed
+    /// message (the RPC `status` string is informational only).
     pub fn from_gemini_http(status: u16, body: &str) -> Self {
-        match parse_gemini_error(body) {
-            Some((rpc_status, message)) => {
-                let message = sanitize_error_body(&message);
-                match rpc_status.as_str() {
-                    "UNAUTHENTICATED" | "PERMISSION_DENIED" => Self::auth(message),
-                    "RESOURCE_EXHAUSTED" => Self::rate_limit(message),
-                    "INVALID_ARGUMENT" | "NOT_FOUND" | "FAILED_PRECONDITION" => {
-                        Self::invalid_request(message)
-                    }
-                    "DEADLINE_EXCEEDED" => Self::timeout(message),
-                    other => Self::provider(format!(
-                        "Gemini {}: {}",
-                        sanitize_error_body(other),
-                        message
-                    )),
-                }
-            }
-            None => Self::from_status_code(status, body.to_string()),
-        }
+        let message = parse_gemini_error(body)
+            .map(|(_, m)| m)
+            .unwrap_or_else(|| body.to_string());
+        Self::from_status_with_message(status, sanitize_error_body(&message))
+    }
+
+    /// A Gemini in-stream `promptFeedback.blockReason` (untrusted, free-string)
+    /// as a typed error, sanitized/bounded like every other provider string.
+    pub fn gemini_prompt_blocked(block_reason: &str) -> Self {
+        Self::provider(format!("Prompt blocked: {}", sanitize_error_body(block_reason)))
     }
 }
 
@@ -272,21 +268,27 @@ mod tests {
     }
 
     // TEST-11: typed per-provider error parsers → the common ProviderError.
+    // The HTTP status drives the variant; the parsed message is preserved (and a
+    // clean message — not the raw JSON blob — proves the typed parse ran).
     #[test]
     fn openai_error_maps_to_typed_variant() {
         let body = r#"{"error":{"message":"Unsupported parameter: 'temperature'","type":"invalid_request_error","param":"temperature","code":"unsupported_parameter"}}"#;
         let parsed = parse_openai_error(body).expect("parses");
         assert_eq!(parsed.param.as_deref(), Some("temperature"));
         assert_eq!(parsed.code.as_deref(), Some("unsupported_parameter"));
-        assert!(matches!(
-            ProviderError::from_openai_http(400, body),
-            ProviderError::InvalidRequest(_)
-        ));
+        match ProviderError::from_openai_http(400, body) {
+            ProviderError::InvalidRequest(m) => {
+                assert!(m.contains("Unsupported parameter"), "clean message preserved");
+                assert!(!m.contains('{'), "raw JSON blob must not leak");
+            }
+            other => panic!("expected InvalidRequest, got {other:?}"),
+        }
+        // Status is authoritative regardless of the envelope contents.
         assert!(matches!(
             ProviderError::from_openai_http(429, body),
             ProviderError::RateLimit(_)
         ));
-        // Unparseable body falls back to the status-code mapping.
+        // Unparseable body still classifies by status (raw body as text).
         assert!(matches!(
             ProviderError::from_openai_http(401, "not json"),
             ProviderError::Authentication(_)
@@ -295,14 +297,16 @@ mod tests {
 
     #[test]
     fn anthropic_error_maps_to_typed_variant() {
-        let body = r#"{"error":{"type":"invalid_request_error","message":"temperature not supported"}}"#;
+        let body = r#"{"error":{"type":"not_found_error","message":"model not found"}}"#;
         let (ty, msg) = parse_anthropic_error(body).expect("parses");
-        assert_eq!(ty, "invalid_request_error");
-        assert_eq!(msg, "temperature not supported");
-        assert!(matches!(
-            ProviderError::from_anthropic_http(400, body),
-            ProviderError::InvalidRequest(_)
-        ));
+        assert_eq!(ty, "not_found_error");
+        assert_eq!(msg, "model not found");
+        // A 404 with a non-400 `type` still classifies by HTTP status (was a
+        // regression when it routed everything through the type mapping).
+        match ProviderError::from_anthropic_http(404, body) {
+            ProviderError::InvalidRequest(m) => assert!(m.contains("model not found")),
+            other => panic!("expected InvalidRequest for 404, got {other:?}"),
+        }
     }
 
     #[test]
@@ -311,14 +315,30 @@ mod tests {
         let (status, msg) = parse_gemini_error(body).expect("parses");
         assert_eq!(status, "INVALID_ARGUMENT");
         assert_eq!(msg, "bad top_k");
+        match ProviderError::from_gemini_http(400, body) {
+            ProviderError::InvalidRequest(m) => assert!(m.contains("bad top_k")),
+            other => panic!("expected InvalidRequest, got {other:?}"),
+        }
+        // A 429 whose envelope `status` is empty/non-standard still maps to
+        // RateLimit by HTTP status (was downgraded to generic provider before).
+        let empty_status = r#"{"error":{"message":"quota"}}"#;
         assert!(matches!(
-            ProviderError::from_gemini_http(400, body),
-            ProviderError::InvalidRequest(_)
+            ProviderError::from_gemini_http(429, empty_status),
+            ProviderError::RateLimit(_)
         ));
         let perm = r#"{"error":{"status":"PERMISSION_DENIED","message":"no"}}"#;
         assert!(matches!(
             ProviderError::from_gemini_http(403, perm),
             ProviderError::Authentication(_)
         ));
+    }
+
+    #[test]
+    fn gemini_prompt_blocked_is_sanitized() {
+        // CR/LF-laden untrusted block reason must be collapsed (anti log-forging).
+        let e = ProviderError::gemini_prompt_blocked("SAFETY\n injected: line");
+        let s = e.to_string();
+        assert!(!s.contains('\n') && !s.contains('\r'));
+        assert!(s.contains("Prompt blocked"));
     }
 }

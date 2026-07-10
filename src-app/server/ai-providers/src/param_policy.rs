@@ -70,6 +70,18 @@ pub enum ProviderFamily {
 }
 
 impl ProviderFamily {
+    /// Map a `provider_type` string (as stored on the provider row / passed to
+    /// `Provider::new`) to the builder family. Single source of truth so callers
+    /// don't re-hardcode the openai-compatible list.
+    pub fn from_provider_type(provider_type: &str) -> Self {
+        match provider_type {
+            "anthropic" => ProviderFamily::Anthropic,
+            "gemini" => ProviderFamily::Gemini,
+            // openai/groq/deepseek/mistral/huggingface/local/custom/openrouter.
+            _ => ProviderFamily::OpenAiCompat,
+        }
+    }
+
     /// The `known_models.json` provider key used for the catalog layer. The
     /// OpenAI-compatible family looks up under `"openai"`; non-OpenAI-proper ids
     /// (groq/deepseek/…) simply miss and fall through to the family policy.
@@ -346,6 +358,17 @@ pub fn resolve(
 ) -> ResolvedParams {
     let mut rp = base_spec(family);
 
+    // The family's native sampling params (temperature/top_p/top_k it can ever
+    // accept) — used to honor an explicit row override at the end.
+    let base_sampling: Vec<UnifiedParam> = [
+        UnifiedParam::Temperature,
+        UnifiedParam::TopP,
+        UnifiedParam::TopK,
+    ]
+    .into_iter()
+    .filter(|p| rp.eligible.contains(p))
+    .collect();
+
     // Capability: sampling support (row → catalog → family → default).
     if sampling_restricted(family, model_id, contract) {
         drop_sampling(&mut rp);
@@ -392,6 +415,17 @@ pub fn resolve(
         }
         // Gemini accepts sampling alongside thinkingConfig; nothing to drop.
         ProviderFamily::Gemini => {}
+    }
+
+    // Row override wins: an EXPLICIT `supports_sampling_params: true` guarantees
+    // the family's sampling params stay eligible, overriding a family-pattern /
+    // reasoning / thinking strip (the escape hatch for a model whose name matches
+    // a reasoning family but that actually accepts sampling). If the user is
+    // wrong, the provider returns a clean error — there is no silent self-heal.
+    if contract.supports_sampling_params == Some(true) {
+        for p in base_sampling {
+            rp.eligible.insert(p);
+        }
     }
 
     rp
@@ -512,6 +546,12 @@ mod tests {
         };
         let rp = resolve(ProviderFamily::Anthropic, "claude-opus-4-9", &req_with_thinking("claude-opus-4-9", None), &allow);
         assert!(rp.allows(UnifiedParam::Temperature), "row override should re-enable sampling");
+        // Row override ALSO beats the OpenAI reasoning-family sampling strip (the
+        // escape hatch for a model whose name matches a reasoning family but that
+        // actually accepts sampling); the reasoning field selection still applies.
+        let rp = resolve(ProviderFamily::OpenAiCompat, "o3-mini", &req_with_thinking("o3-mini", None), &allow);
+        assert!(rp.allows(UnifiedParam::Temperature), "row override beats reasoning-family strip");
+        assert_eq!(rp.max_tokens_field, MaxTokensField::MaxCompletionTokens);
         // Row override beats catalog: force sampling OFF for a normally-allowed model.
         let deny = ModelParamContract {
             supports_sampling_params: Some(false),

@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { Card, Flex, FormField, Select, Switch, Alert, useWatch } from '@/components/ui'
 
 export function LlmModelCapabilitiesSection() {
@@ -60,19 +61,26 @@ export function LlmModelCapabilitiesSection() {
   )
 }
 
-/** A tri-state (Auto / Yes / No) bound to an `Option<bool>` capability field. */
-function TriStateSelect({
-  value,
-  onChange,
-  testid,
-}: {
-  value?: boolean
-  onChange?: (v: boolean | undefined) => void
-  testid: string
-}) {
+/** A tri-state (Auto / Yes / No) bound to an `Option<bool>` capability field.
+ * `forwardRef` gives RHF a ref to focus on error; an explicit `aria-label` (the
+ * field label) gives the control a distinct accessible name; `onBlur` is
+ * forwarded so the field is marked touched. */
+const TriStateSelect = forwardRef<
+  HTMLButtonElement,
+  {
+    value?: boolean
+    onChange?: (v: boolean | undefined) => void
+    testid: string
+    ariaLabel: string
+    onBlur?: () => void
+  }
+>(({ value, onChange, testid, ariaLabel, onBlur }, ref) => {
   const str = value === undefined || value === null ? '' : value ? 'true' : 'false'
   return (
     <Select
+      ref={ref}
+      aria-label={ariaLabel}
+      onBlur={onBlur}
       value={str}
       onChange={v => onChange?.(v === '' ? undefined : v === 'true')}
       options={[
@@ -84,20 +92,25 @@ function TriStateSelect({
       data-testid={testid}
     />
   )
-}
+})
+TriStateSelect.displayName = 'TriStateSelect'
 
 /** Auto / Adaptive / Budget bound to an `Option<string>` field. */
-function ThinkingStyleSelect({
-  value,
-  onChange,
-  testid,
-}: {
-  value?: string
-  onChange?: (v: string | undefined) => void
-  testid: string
-}) {
+const ThinkingStyleSelect = forwardRef<
+  HTMLButtonElement,
+  {
+    value?: string
+    onChange?: (v: string | undefined) => void
+    testid: string
+    ariaLabel: string
+    onBlur?: () => void
+  }
+>(({ value, onChange, testid, ariaLabel, onBlur }, ref) => {
   return (
     <Select
+      ref={ref}
+      aria-label={ariaLabel}
+      onBlur={onBlur}
       value={value ?? ''}
       onChange={v => onChange?.(v === '' ? undefined : v)}
       options={[
@@ -109,7 +122,8 @@ function ThinkingStyleSelect({
       data-testid={testid}
     />
   )
-}
+})
+ThinkingStyleSelect.displayName = 'ThinkingStyleSelect'
 
 function TriStateRow({
   label,
@@ -131,7 +145,7 @@ function TriStateRow({
         )}
       </span>
       <FormField name={`capabilities.${name}`} aria-label={label} className="mb-0">
-        <TriStateSelect testid={`llm-capability-select-${name}`} />
+        <TriStateSelect testid={`llm-capability-select-${name}`} ariaLabel={label} />
       </FormField>
     </div>
   )
@@ -142,7 +156,7 @@ function StyleRow({ label, name }: { label: string; name: string }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <span>{label}</span>
       <FormField name={`capabilities.${name}`} aria-label={label} className="mb-0">
-        <ThinkingStyleSelect testid={`llm-capability-select-${name}`} />
+        <ThinkingStyleSelect testid={`llm-capability-select-${name}`} ariaLabel={label} />
       </FormField>
     </div>
   )

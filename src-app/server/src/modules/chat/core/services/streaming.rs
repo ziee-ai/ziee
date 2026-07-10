@@ -691,9 +691,20 @@ impl StreamingService {
                             (acc.finish_reason.clone(), acc.usage.clone())
                         };
 
-                        // Use finish_reason from provider, or default to "stop" if not provided
-                        let mut final_finish_reason =
-                            finish_reason.unwrap_or_else(|| "stop".to_string());
+                        // Canonicalize the provider's raw finish_reason into the
+                        // unified vocabulary (stop/length/tool_calls/…) for the
+                        // client, or default to "stop" if not provided. MCP
+                        // sampling reads the raw provider value on its own path.
+                        let mut final_finish_reason = finish_reason
+                            .map(|r| {
+                                ai_providers::FinishReason::canonicalize(
+                                    ai_providers::ProviderFamily::from_provider_type(
+                                        provider_for_task.provider_type(),
+                                    ),
+                                    &r,
+                                )
+                            })
+                            .unwrap_or_else(|| "stop".to_string());
 
                         // Empty-completion guard: the turn terminated (no tool call to
                         // run) but produced NO user-visible answer across ANY iteration
@@ -1093,16 +1104,6 @@ impl StreamingService {
 
 }
 
-/// Map a DB provider-type string to the ai-providers builder family.
-fn provider_family_for(provider_type: &str) -> ai_providers::ProviderFamily {
-    match provider_type {
-        "anthropic" => ai_providers::ProviderFamily::Anthropic,
-        "gemini" => ai_providers::ProviderFamily::Gemini,
-        // openai/groq/deepseek/mistral/custom/huggingface/local → OpenAI-compatible.
-        _ => ai_providers::ProviderFamily::OpenAiCompat,
-    }
-}
-
 /// Build a thinking config, or `None` when the model doesn't support thinking.
 /// The thinking style is resolved dynamically: the editable DB model row →
 /// curated catalog → provider model-family policy (so a user can enable thinking
@@ -1113,7 +1114,7 @@ fn thinking_config_for(
     caps: &crate::modules::llm_model::models::ModelCapabilities,
 ) -> Option<ai_providers::ThinkingConfig> {
     use ai_providers::{ThinkingConfig, ThinkingEffort, ThinkingMode};
-    let family = provider_family_for(provider_type);
+    let family = ai_providers::ProviderFamily::from_provider_type(provider_type);
     let contract = caps.to_param_contract();
     let style = ai_providers::resolved_thinking_style(family, model_id, &contract)?;
     let cfg = if style == "budget" {

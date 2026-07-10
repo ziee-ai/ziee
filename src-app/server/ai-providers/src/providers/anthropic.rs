@@ -685,8 +685,7 @@ impl super::sse::SseAdapter for AnthropicSse {
     }
 
     fn map_event(&self, event_block: &str, state: &mut Self::State) -> super::sse::EventOutcome {
-        use crate::models::{ContentBlockDelta, FinishReason, StreamChatChunk, StreamUsage};
-        use crate::param_policy::ProviderFamily;
+        use crate::models::{ContentBlockDelta, StreamChatChunk, StreamUsage};
 
         let mut items: Vec<Result<StreamChatChunk, ProviderError>> = Vec::new();
 
@@ -737,9 +736,10 @@ impl super::sse::SseAdapter for AnthropicSse {
                     let mut usage = None;
 
                     if let Some(message_delta) = chunk_data.message {
-                        finish_reason = message_delta
-                            .stop_reason
-                            .map(|r| FinishReason::canonicalize(ProviderFamily::Anthropic, &r));
+                        // Raw provider stop_reason — consumers that want a unified
+                        // vocabulary canonicalize via `FinishReason` (the chat SSE
+                        // boundary does; MCP sampling keeps provider fidelity).
+                        finish_reason = message_delta.stop_reason;
                     }
 
                     if let Some(stream_usage) = chunk_data.usage {

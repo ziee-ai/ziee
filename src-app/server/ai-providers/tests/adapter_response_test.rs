@@ -47,7 +47,9 @@ data: {\"id\":\"c\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"s
 data: {\"id\":\"c\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n\
 data: [DONE]\n\n";
 
-const OPENAI_ERR_400: &str = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 118\r\n\r\n\
+// No Content-Length: the one-shot server closes the connection after writing, so
+// reqwest reads the full body to EOF (a wrong Content-Length would truncate it).
+const OPENAI_ERR_400: &str = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n\
 {\"error\":{\"message\":\"Unsupported parameter: temperature\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":\"x\"}}";
 
 const ANTHROPIC_SSE_200: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n\
@@ -85,6 +87,8 @@ async fn openai_200_yields_unified_deltas_and_canonical_finish() {
         .collect();
     assert_eq!(text, "Hello");
 
+    // The adapter emits the RAW provider finish_reason ("stop"); canonicalization
+    // to the unified vocabulary happens at the chat SSE boundary, not here.
     let finish = chunks.iter().find_map(|c| c.finish_reason.clone());
     assert_eq!(finish.as_deref(), Some("stop"));
 
@@ -98,10 +102,16 @@ async fn openai_400_maps_to_typed_error() {
     let err = collect(&ai_providers::OpenAIProvider, &base, user_req("gpt-4o"))
         .await
         .expect_err("must be an error");
-    assert!(
-        matches!(err, ProviderError::InvalidRequest(_)),
-        "expected typed InvalidRequest, got {err:?}"
-    );
+    // Status-driven variant AND the parsed provider message — the latter only
+    // appears if the typed `parse_openai_error` path actually ran (a bare
+    // status-code fallback would embed the raw JSON blob, not this clean text).
+    match err {
+        ProviderError::InvalidRequest(msg) => assert!(
+            msg.contains("Unsupported parameter: temperature") && !msg.contains('{'),
+            "expected the clean parsed message, got: {msg}"
+        ),
+        other => panic!("expected InvalidRequest, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -121,7 +131,8 @@ async fn anthropic_200_yields_deltas_and_canonical_finish() {
         .collect();
     assert_eq!(text, "Hi");
 
-    // Anthropic "end_turn" is canonicalized to "stop".
+    // The adapter emits the RAW Anthropic stop_reason ("end_turn"); the chat SSE
+    // boundary canonicalizes it to "stop" for the client (see FinishReason tests).
     let finish = chunks.iter().find_map(|c| c.finish_reason.clone());
-    assert_eq!(finish.as_deref(), Some("stop"));
+    assert_eq!(finish.as_deref(), Some("end_turn"));
 }
