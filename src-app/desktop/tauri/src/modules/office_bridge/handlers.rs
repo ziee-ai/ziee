@@ -239,9 +239,10 @@ pub async fn dispatch_tool(
             Ok(tool_result(text, structured))
         }
 
-        // Pane-mediated (Office.js over the WSS bridge): route to the connected
-        // task pane via the broker and await the correlated reply. These three are
-        // host-agnostic (Word + Excel + PowerPoint), so no capability pre-gate.
+        // Pane-mediated (Office.js over the WSS bridge): route to the connected task
+        // pane via the broker and await the correlated reply. `read_document` +
+        // `get_selection` are host-agnostic (Word + Excel + PowerPoint), so no
+        // capability pre-gate (`run_office_js`, also host-agnostic, is the next arm).
         "read_document" | "get_selection" => {
             let doc_full_name = require_doc_full_name(args)?;
             let result = broker::call_pane(&doc_full_name, name, args.clone()).await?;
@@ -254,6 +255,15 @@ pub async fn dispatch_tool(
         // the pane returns the script's value or a structured error (`OFFICE_PANE_ERROR`).
         // Per-call user approval is enforced upstream (office_bridge is absent from the
         // approval-bypass set), so arbitrary-code risk is user-consented per call.
+        //
+        // Routing/targeting: same `broker::call_pane` path (and the same pane-side
+        // `sameDoc` mis-routing guard) as the other pane tools — a request whose
+        // `doc_full_name` doesn't match a connected pane's own document is rejected
+        // pane-side; the sole-pane fallback for an unsaved (keyless) doc is the
+        // deliberate pane-rpc routing model, unchanged here. Runaway scripts: a
+        // synchronously non-terminating script wedges the pane's own JS thread (an
+        // inherent limit of arbitrary code in a single-threaded WebView), but the
+        // broker's `CALL_TIMEOUT` bounds THIS call — the caller gets `OFFICE_PANE_TIMEOUT`.
         "run_office_js" => {
             let doc_full_name = require_doc_full_name(args)?;
             let script_ok = args

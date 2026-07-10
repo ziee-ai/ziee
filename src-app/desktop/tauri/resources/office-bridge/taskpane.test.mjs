@@ -82,8 +82,19 @@ const de = t.describeError('run_office_js', {
   debugInfo: { errorLocation: 'Range.getRange' },
 });
 assert.ok(de.includes('run_office_js failed'), 'prefixed');
+assert.ok(de.includes('RichApi.Error'), 'surfaces the error name');
 assert.ok(de.includes('The range does not exist.'), 'carries the message');
 assert.ok(de.includes('ItemNotFound'), 'carries the Office.js error code');
 assert.ok(de.includes('debugInfo'), 'carries debugInfo');
+// name-already-in-message dedup branch: no doubled 'Error: Error:' prefix.
+const deDup = t.describeError('run_office_js', { name: 'Error', message: 'Error: boom' });
+assert.ok(!deDup.includes('Error: Error:'), 'no double-prefix when message starts with the name');
+// Hostile thrown value (non-string message + a name) must NOT throw and must coerce.
+const deHostile = t.describeError('run_office_js', { name: 'X', message: 42 });
+assert.equal(typeof deHostile, 'string', 'describeError never throws on a non-string message');
+assert.ok(deHostile.includes('42'), 'coerces a non-string message to a string');
+// Hostile throwing getter on the thrown value must NOT escape describeError.
+const deGetter = t.describeError('run_office_js', { get message() { throw new Error('boom'); } });
+assert.equal(typeof deGetter, 'string', 'describeError never throws even on a throwing getter');
 
 console.log('taskpane.test.mjs: all pure-helper assertions passed');

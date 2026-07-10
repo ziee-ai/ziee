@@ -564,13 +564,16 @@ async fn run_office_js_dispatch_round_trip() {
         Some("return 42;"),
         "the pane received the run_office_js script param"
     );
-    // Readable content channel present.
-    assert!(
+    // The pane reply's `text` is surfaced into the readable content channel via the
+    // shared `pane_tool_result` mapping (the same path that carries the real
+    // `{result,truncated,text}` reply — here the mock's `text` is "MOCK BODY").
+    assert_eq!(
         out.get("content")
             .and_then(|c| c.get(0))
             .and_then(|c| c.get("text"))
-            .is_some(),
-        "readable content channel present"
+            .and_then(|t| t.as_str()),
+        Some("MOCK BODY"),
+        "pane text surfaced in the readable content channel"
     );
 
     handle.shutdown();
@@ -582,6 +585,11 @@ async fn run_office_js_dispatch_round_trip() {
 /// selected cell, and wait for a real task pane to register (the one manual step —
 /// clicking the ribbon button — an Office add-in pane can't be opened by automation).
 /// Returns the bridge handle + the connected pane's target key.
+///
+/// Run these live tests ONE AT A TIME (they + `test13_live_mac_pane_ops` all bind the
+/// fixed port 44300 and each needs a manual ribbon click, so they cannot run
+/// concurrently): name a single test on the `--ignored` cargo invocation, and quit the
+/// desktop app first so nothing else holds 44300.
 #[cfg(target_os = "macos")]
 async fn open_excel_and_wait_for_pane() -> (server::BridgeHandle, String) {
     let _ = tracing_subscriber::fmt()
@@ -750,9 +758,30 @@ async fn run_office_js_real_llm_live() {
     .await
     .expect("the model's run_office_js script executes in the live pane");
     eprintln!(">>> run_office_js returned: {out}");
+
+    // Verify the model's script actually had an EFFECT (not just that a reply came
+    // back): read A1 back with a deterministic (non-LLM) script and assert it is
+    // non-empty — the model was asked to set A1 to 'hello'.
+    let verify = broker::call_pane_with_timeout(
+        &target,
+        "run_office_js",
+        json!({
+            "doc_full_name": target,
+            "script": "const r = context.workbook.worksheets.getActiveWorksheet().getRange('A1'); r.load('values'); await context.sync(); return r.values[0][0];",
+        }),
+        Duration::from_secs(20),
+    )
+    .await
+    .expect("A1 read-back executes");
+    eprintln!(">>> A1 read-back: {verify}");
+    let a1 = verify.get("result").map(|r| r.to_string()).unwrap_or_default();
+    // Assert A1 holds the requested value ('hello'), not merely non-empty — the helper
+    // reuses an existing workbook and never clears A1, so a stale value from another
+    // live test could mask a silently-failed model write. Case-insensitive for model
+    // phrasing variance.
     assert!(
-        out.get("result").is_some() || out.get("text").is_some(),
-        "a result came back from the model's script: {out}"
+        a1.to_lowercase().contains("hello"),
+        "the model's script set A1 to the requested 'hello' (got {a1}): {verify}"
     );
     handle.shutdown();
 }

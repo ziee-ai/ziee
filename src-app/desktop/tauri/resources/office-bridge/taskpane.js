@@ -8,11 +8,11 @@
 //      per-session token injected into taskpane.html (ITEM-5),
 //   3. send a `register` hello carrying {host, doc_key} so the daemon broker can
 //      route this pane's document (bridge/broker.rs, DEC-1),
-//   4. SERVICE daemon->pane JSON-RPC requests (read_document / get_selection /
-//      add_comment / set_track_changes / get_tracked_changes, plus the open-ended
-//      run_office_js — the model writes an Office.js body we run inside the host's
-//      {Word,Excel,PowerPoint}.run) via Office.js and reply with the correlated
-//      {id, result} | {id, error} (ITEM-9 / run_office_js), and
+//   4. SERVICE daemon->pane JSON-RPC requests via Office.js — read_document,
+//      get_selection, add_comment, set_track_changes, get_tracked_changes, and the
+//      open-ended run_office_js (the model writes an Office.js body we run inside the
+//      host's {Word,Excel,PowerPoint}.run) — and reply with the correlated
+//      {id, result} | {id, error}, and
 //   5. forward DocumentSelectionChanged + a ping so the link is observably live.
 
 var BRIDGE_URL = 'wss://localhost:44300/bridge';
@@ -88,43 +88,56 @@ function capText(s) {
   };
 }
 
+// String(v) that can't throw even if v.toString/valueOf throws (v is a
+// model-supplied return value or thrown object, so treat it as hostile).
+function safeString(v) {
+  try { return String(v); } catch (_s) { return '[unstringifiable value]'; }
+}
+
 // Serialize a run_office_js return value into a model-safe, capped payload
 // (DEC-7): returns { result, truncated, text } where `text` is the capped string
 // form (surfaced in the readable tool-result channel) and `result` is the native
-// JSON value when it round-trips and fits, else the capped string. `undefined`
-// (no `return`) → null. A circular / non-serializable value degrades to
-// String(value); this NEVER throws.
+// JSON value when it serializes and fits (reply() re-serializes it identically, so
+// we skip a redundant re-parse), else the capped string. `undefined` (no `return`)
+// → null. A circular / non-serializable value degrades to a string. NEVER throws.
 function serializeResult(value) {
   if (typeof value === 'undefined') { return { result: null, truncated: false, text: '' }; }
-  var text;
-  try {
-    text = JSON.stringify(value);
-    if (typeof text === 'undefined') { text = String(value); } // e.g. a function
-  } catch (e) {
-    text = String(value); // circular / non-serializable
+  var json;
+  try { json = JSON.stringify(value); } catch (e) { json = undefined; }
+  if (typeof json === 'undefined') {
+    // Non-serializable (function / circular / BigInt / Symbol): degrade to a string.
+    var cs = capText(safeString(value));
+    return { result: cs.text, truncated: cs.truncated, text: cs.text };
   }
-  var c = capText(text);
-  var result = c.text;
-  if (!c.truncated) {
-    try { result = JSON.parse(c.text); } catch (e2) { result = c.text; } // non-JSON string
-  }
-  return { result: result, truncated: c.truncated, text: c.text };
+  var c = capText(json);
+  // Non-truncated: hand back the native `value` (reply() serializes it identically);
+  // truncated: keep the capped (partial, no longer valid-JSON) string.
+  return { result: c.truncated ? c.text : value, truncated: c.truncated, text: c.text };
 }
 
 // Build a STRUCTURED error string from a thrown Office.js error (DEC-9): the name +
 // message, plus the OfficeExtension.Error `.code` and `.debugInfo` when present, so
 // the daemon's OFFICE_PANE_ERROR carries enough for the model to self-correct in one
-// retry. Pure + node-testable.
+// retry. Pure + node-testable. The whole body is wrapped so it NEVER throws — `e` is
+// a fully model-controlled thrown value, so even a bare property read (`e.message`)
+// can trip a hostile throwing getter (`throw { get message(){ throw 0 } }`); a throw
+// here would escape the caller's `.catch` and swallow the reply.
 function describeError(prefix, e) {
-  var msg = (e && (e.message || String(e))) || 'unknown error';
-  var out = (e && e.name && msg.indexOf(e.name) !== 0)
-    ? prefix + ' failed: ' + e.name + ': ' + msg
-    : prefix + ' failed: ' + msg;
-  if (e && e.code) { out += ' [code=' + e.code + ']'; }
-  if (e && e.debugInfo) {
-    try { out += ' debugInfo=' + JSON.stringify(e.debugInfo); } catch (_e) { /* ignore */ }
+  try {
+    var raw = (e && e.message != null) ? e.message : e;
+    var msg = (raw == null || raw === '') ? 'unknown error' : safeString(raw);
+    var name = e && e.name != null ? safeString(e.name) : '';
+    var out = (name && msg.indexOf(name) !== 0)
+      ? prefix + ' failed: ' + name + ': ' + msg
+      : prefix + ' failed: ' + msg;
+    if (e && e.code) { out += ' [code=' + safeString(e.code) + ']'; }
+    if (e && e.debugInfo) {
+      try { out += ' debugInfo=' + JSON.stringify(e.debugInfo); } catch (_e) { /* ignore */ }
+    }
+    return out;
+  } catch (_d) {
+    return prefix + ' failed: (unreadable error value)';
   }
-  return out;
 }
 
 // Open the same-origin WSS bridge. The token rides the WebSocket subprotocol
