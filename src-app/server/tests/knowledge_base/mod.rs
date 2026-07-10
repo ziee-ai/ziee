@@ -635,3 +635,95 @@ async fn test_7_reranker_promotes_a_doc_from_outside_top_k() {
     assert!(!arr.is_empty() && arr[0]["content"].as_str().unwrap().contains("PROMOTE_ME"),
         "the reranker pulled the marked doc from the wide pool into the top-k #1 slot: {sc}");
 }
+
+// ─────────────────────────── TEST-10: doc index_status derivation ───────────────────────────
+
+#[tokio::test]
+async fn test_10_document_index_status_derivation_and_rollup() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_status").await;
+    let client = reqwest::Client::new();
+
+    // one text file → indexed; one image → no_text.
+    let txt = upload_text(&server, &user, "t.txt", "indexable body").await;
+    wait_for_chunks(&pool, &txt, 1).await;
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    let img = {
+        use reqwest::multipart;
+        let form = multipart::Form::new().part("file",
+            multipart::Part::bytes(PNG.to_vec()).file_name("p.png").mime_str("image/png").unwrap());
+        let r = client.post(server.api_url("/files/upload"))
+            .header("Authorization", format!("Bearer {}", user.token)).multipart(form)
+            .send().await.unwrap();
+        r.json::<Value>().await.unwrap()["id"].as_str().unwrap().to_string()
+    };
+    // let the image reach its terminal no_text state
+    for _ in 0..40 {
+        let st: Option<String> = sqlx::query_scalar("SELECT status FROM file_index_state WHERE file_id=$1")
+            .bind(Uuid::parse_str(&img).unwrap()).fetch_optional(&pool).await.unwrap();
+        if st.as_deref() == Some("no_text") { break; }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    let kb = create_kb(&server, &user, "Status KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&txt, &img]).await.status(), 200);
+
+    // list_documents derives each doc's index_status from file_index_state.
+    let docs: Value = client.get(server.api_url(&format!("/knowledge-bases/{kb}/documents")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    let arr = docs.as_array().cloned().unwrap_or_default();
+    let status_of = |fid: &str| arr.iter()
+        .find(|d| d["file_id"].as_str() == Some(fid)).map(|d| d["index_status"].as_str().unwrap().to_string());
+    assert_eq!(status_of(&txt).as_deref(), Some("indexed"), "text doc → indexed: {docs}");
+    assert_eq!(status_of(&img).as_deref(), Some("no_text"), "image doc → no_text: {docs}");
+
+    // the KB rollup (indexing_summary) counts them.
+    let kb_row: Value = client.get(server.api_url(&format!("/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(kb_row["indexing_summary"]["indexed"], 1);
+    assert_eq!(kb_row["indexing_summary"]["no_text"], 1);
+    assert_eq!(kb_row["indexing_summary"]["total"], 2);
+}
+
+// ─────────────────────────── TEST-12: reindex recovers a failed doc ───────────────────────────
+
+#[tokio::test]
+async fn test_12_reindex_recovers_a_failed_document() {
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_reidx12").await;
+
+    let fid = upload_text(&server, &user, "f.txt", "recoverable indexed body token").await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let kb = create_kb(&server, &user, "Reindex12 KB").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&fid]).await.status(), 200);
+
+    // Force the doc into a `failed` terminal state (e.g. a transient embed error).
+    let fuid = Uuid::parse_str(&fid).unwrap();
+    sqlx::query("UPDATE file_index_state SET status='failed', error='forced' WHERE file_id=$1")
+        .bind(fuid).execute(&pool).await.unwrap();
+
+    // Reindex via the KB endpoint → the file (which has text) reaches `indexed`.
+    let re = reqwest::Client::new()
+        .post(server.api_url(&format!("/knowledge-bases/{kb}/documents/{fid}/reindex")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap();
+    assert!(re.status().is_success(), "reindex: {}", re.status());
+
+    for _ in 0..40 {
+        let st: Option<String> = sqlx::query_scalar("SELECT status FROM file_index_state WHERE file_id=$1")
+            .bind(fuid).fetch_optional(&pool).await.unwrap();
+        if st.as_deref() == Some("indexed") { return; }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    panic!("reindex did not recover the failed doc to indexed");
+}
