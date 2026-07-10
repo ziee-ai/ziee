@@ -37,25 +37,32 @@ index 62a36fd0..c70aa28e 100644
  1. **Trusted-emitter only** — `is_trusted_resource_emitter(server_id)` (all deterministic
     built-in ids; a SUPERSET of the approval-bypass `is_builtin_server_id`, adding
 diff --git a/src-app/server/src/modules/mcp/chat_extension/mcp.rs b/src-app/server/src/modules/mcp/chat_extension/mcp.rs
-index c254d041..c9d0e226 100644
+index c254d041..b9817eed 100644
 --- a/src-app/server/src/modules/mcp/chat_extension/mcp.rs
 +++ b/src-app/server/src/modules/mcp/chat_extension/mcp.rs
-@@ -906,6 +906,14 @@ impl McpChatExtension {
+@@ -906,6 +906,21 @@ impl McpChatExtension {
                          .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                          .unwrap_or_default();
  
-+                // Same-host trust set: hosts of the enabled, accessible MCP servers, so an external
-+                // server's artifact URL on its own (private/RFC1918) host can be ingested. is_system
-+                // servers have their `url` redacted in this list — those are covered by the
-+                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
-+                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_urls(
-+                    accessible_servers.iter().map(|s| s.url.as_deref()),
++                // Same-host trust set: hosts of the user's OWN registered (non-system) MCP servers,
++                // so an external server's artifact URL on its own (private/RFC1918) host can be
++                // ingested. EXCLUDE `is_system` servers: that covers the auto-attached BUILT-IN
++                // servers pushed above via `get_any_server` (which does NOT redact `url`) — those
++                // carry a loopback `url` (`http://127.0.0.1:<port>/…`), and including it would let an
++                // external server's `resource_link` at `http://127.0.0.1:<port>` bypass the default
++                // loopback block. Admin-registered *system* external servers (url redacted in the
++                // base list anyway) are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in
++                // instead (see resource_link.rs).
++                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_servers(
++                    accessible_servers
++                        .iter()
++                        .map(|s| (s.is_system, s.url.as_deref())),
 +                );
 +
                  let outcome = crate::modules::mcp::resource_link::persist_links(
                      links,
                      context.user_id,
-@@ -916,6 +924,7 @@ impl McpChatExtension {
+@@ -916,6 +931,7 @@ impl McpChatExtension {
                      server.id,
                      server.is_built_in,
                      &server.headers,
@@ -63,22 +70,29 @@ index c254d041..c9d0e226 100644
                      &allowed_roots,
                      Some(self.config.jwt.secret.as_str()),
                      Some(self.config.jwt.issuer.as_str()),
-@@ -2852,6 +2861,14 @@ impl ChatExtension for McpChatExtension {
+@@ -2852,6 +2868,21 @@ impl ChatExtension for McpChatExtension {
                          .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                          .unwrap_or_default();
  
-+                // Same-host trust set: hosts of the enabled, accessible MCP servers, so an external
-+                // server's artifact URL on its own (private/RFC1918) host can be ingested. is_system
-+                // servers have their `url` redacted in this list — those are covered by the
-+                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead (see resource_link.rs).
-+                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_urls(
-+                    accessible_servers.iter().map(|s| s.url.as_deref()),
++                // Same-host trust set: hosts of the user's OWN registered (non-system) MCP servers,
++                // so an external server's artifact URL on its own (private/RFC1918) host can be
++                // ingested. EXCLUDE `is_system` servers: that covers the auto-attached BUILT-IN
++                // servers pushed above via `get_any_server` (which does NOT redact `url`) — those
++                // carry a loopback `url` (`http://127.0.0.1:<port>/…`), and including it would let an
++                // external server's `resource_link` at `http://127.0.0.1:<port>` bypass the default
++                // loopback block. Admin-registered *system* external servers (url redacted in the
++                // base list anyway) are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in
++                // instead (see resource_link.rs).
++                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_servers(
++                    accessible_servers
++                        .iter()
++                        .map(|s| (s.is_system, s.url.as_deref())),
 +                );
 +
                  let outcome = crate::modules::mcp::resource_link::persist_links(
                      links,
                      context.user_id,
-@@ -2862,6 +2879,7 @@ impl ChatExtension for McpChatExtension {
+@@ -2862,6 +2893,7 @@ impl ChatExtension for McpChatExtension {
                      server.id,
                      server.is_built_in,
                      &server.headers,
@@ -87,7 +101,7 @@ index c254d041..c9d0e226 100644
                      Some(self.config.jwt.secret.as_str()),
                      Some(self.config.jwt.issuer.as_str()),
 diff --git a/src-app/server/src/modules/mcp/resource_link.rs b/src-app/server/src/modules/mcp/resource_link.rs
-index 401ee5af..238a73f3 100644
+index 401ee5af..7f6d1343 100644
 --- a/src-app/server/src/modules/mcp/resource_link.rs
 +++ b/src-app/server/src/modules/mcp/resource_link.rs
 @@ -16,7 +16,12 @@
@@ -104,7 +118,7 @@ index 401ee5af..238a73f3 100644
  //!
  //! ### The three `ziee://` guards (security-critical — do not remove)
  //! 1. **Trusted-emitter only** — a `ziee://` host path is honored ONLY when the producing
-@@ -214,6 +219,103 @@ async fn save_bytes_as_artifact(
+@@ -214,6 +219,122 @@ async fn save_bytes_as_artifact(
      ))
  }
  
@@ -132,6 +146,25 @@ index 401ee5af..238a73f3 100644
 +    hosts.sort();
 +    hosts.dedup();
 +    hosts
++}
++
++/// Build the same-host trust set from MCP server rows, EXCLUDING system/built-in servers.
++///
++/// This is the single source of truth for the trust set at every call site. `is_system` servers
++/// (which include every deterministic built-in) carry a **loopback** `url`
++/// (`http://127.0.0.1:<port>/…`) and must NEVER contribute their host — otherwise an external
++/// server's `resource_link` at `http://127.0.0.1:<port>` would gain same-host trust and bypass the
++/// default loopback block. Only the user's OWN registered (non-system) servers vouch for a host.
++/// Takes `(is_system, url)` pairs so it stays decoupled from the `McpServer` type.
++pub(crate) fn trusted_hosts_from_servers<'a>(
++    servers: impl IntoIterator<Item = (bool, Option<&'a str>)>,
++) -> Vec<String> {
++    trusted_hosts_from_urls(
++        servers
++            .into_iter()
++            .filter(|(is_system, _)| !is_system)
++            .map(|(_, url)| url),
++    )
 +}
 +
 +/// Which SSRF policy the external-server HTTP fetch of a `resource_link` uses.
@@ -208,7 +241,7 @@ index 401ee5af..238a73f3 100644
  /// Ingest every persistable `resource_link` in `links` into the file store.
  ///
  /// See the module docs for the per-link dispatch + the three `ziee://` guards. The save
-@@ -221,6 +323,15 @@ async fn save_bytes_as_artifact(
+@@ -221,6 +342,15 @@ async fn save_bytes_as_artifact(
  /// `file_id`/`version`/`version_id` are stamped back onto each saved link, and `ziee://`
  /// URIs are rewritten to `/api/files/{id}` (guard #3) before this returns.
  ///
@@ -224,7 +257,7 @@ index 401ee5af..238a73f3 100644
  /// When `workflow_run_id` is `Some`, each newly-ingested (run-created) file is linked to
  /// that run via `Repos.file.set_workflow_run_id` after the save loop, so the A5 cascade
  /// deletes only files the run CREATED (never `is_saved:true` files it referenced). The chat
-@@ -236,6 +347,7 @@ pub async fn persist_links(
+@@ -236,6 +366,7 @@ pub async fn persist_links(
      server_id: Uuid,
      server_is_built_in: bool,
      server_headers: &serde_json::Value,
@@ -232,7 +265,7 @@ index 401ee5af..238a73f3 100644
      allowed_roots: &[PathBuf],
      jwt_secret: Option<&str>,
      jwt_issuer: Option<&str>,
-@@ -396,17 +508,26 @@ pub async fn persist_links(
+@@ -396,17 +527,26 @@ pub async fn persist_links(
                  }
              }
          } else {
@@ -270,7 +303,7 @@ index 401ee5af..238a73f3 100644
              if let Err(e) = crate::utils::url_validator::validate_outbound_url(&link.uri, &policy) {
                  tracing::error!(
                      "resource_link external fetch rejected by SSRF policy for '{}': {e}",
-@@ -414,7 +535,17 @@ pub async fn persist_links(
+@@ -414,7 +554,17 @@ pub async fn persist_links(
                  );
                  continue;
              }
@@ -289,7 +322,7 @@ index 401ee5af..238a73f3 100644
                  Ok(c) => c,
                  Err(e) => {
                      tracing::error!("Failed to build HTTP client for resource_link fetch: {e}");
-@@ -557,6 +688,149 @@ pub async fn persist_links(
+@@ -557,6 +707,168 @@ pub async fn persist_links(
  #[cfg(test)]
  mod tests {
      use super::*;
@@ -321,6 +354,25 @@ index 401ee5af..238a73f3 100644
 +        ];
 +        let hosts = trusted_hosts_from_urls(urls);
 +        assert_eq!(hosts, vec!["10.0.0.5", "172.21.0.1", "rcpa.local"]);
++    }
++
++    // TEST-11: trusted_hosts_from_servers EXCLUDES is_system (built-in) servers — their loopback
++    // url must never enter the trust set (else an external resource_link at 127.0.0.1 would bypass
++    // the default loopback block). Only the user's own non-system servers vouch for a host.
++    #[test]
++    fn trusted_hosts_excludes_system_builtin_loopback() {
++        let servers = vec![
++            (false, Some("http://172.21.0.1:9004/mcp")), // user-owned external → included
++            (true, Some("http://127.0.0.1:41111/api/web-search/mcp")), // built-in (is_system) → excluded
++            (true, Some("http://127.0.0.1:8080/api/memory/mcp")),      // system → excluded
++            (false, None),                                             // user stdio server → skipped
++        ];
++        let hosts = trusted_hosts_from_servers(servers);
++        assert_eq!(hosts, vec!["172.21.0.1"], "only the user-owned external host is trusted");
++        assert!(
++            !hosts.iter().any(|h| h == "127.0.0.1"),
++            "a built-in/system loopback host must NEVER be trusted (loopback-SSRF guard)"
++        );
 +    }
 +
 +    // TEST-2: choose_fetch_policy precedence — debug > env > host-match > public.
@@ -440,10 +492,10 @@ index 401ee5af..238a73f3 100644
      #[test]
      fn trusted_emitter_gate_accepts_builtins_rejects_others() {
 diff --git a/src-app/server/src/modules/workflow/dispatch.rs b/src-app/server/src/modules/workflow/dispatch.rs
-index a131c957..d640b55b 100644
+index a131c957..14a48a30 100644
 --- a/src-app/server/src/modules/workflow/dispatch.rs
 +++ b/src-app/server/src/modules/workflow/dispatch.rs
-@@ -1287,6 +1287,27 @@ impl StepDispatcher for ToolDispatcher {
+@@ -1287,6 +1287,31 @@ impl StepDispatcher for ToolDispatcher {
                          Ok(Some(s)) => (s.is_built_in, s.headers),
                          _ => (false, serde_json::json!({})),
                      };
@@ -462,8 +514,12 @@ index a131c957..d640b55b 100644
 +                        .list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)
 +                        .await
 +                        .map(|resp| {
-+                            crate::modules::mcp::resource_link::trusted_hosts_from_urls(
-+                                resp.servers.iter().map(|s| s.url.as_deref()),
++                            // Exclude system/built-in servers from the trust set (their loopback
++                            // url must never grant same-host trust). `list_accessible` already
++                            // redacts is_system urls; `trusted_hosts_from_servers` makes the
++                            // exclusion the single source of truth + robust if that ever changes.
++                            crate::modules::mcp::resource_link::trusted_hosts_from_servers(
++                                resp.servers.iter().map(|s| (s.is_system, s.url.as_deref())),
 +                            )
 +                        })
 +                        .unwrap_or_default()
@@ -471,7 +527,7 @@ index a131c957..d640b55b 100644
                  let outcome = crate::modules::mcp::resource_link::persist_links(
                      &mut links,
                      ctx.user_id,
-@@ -1297,6 +1318,7 @@ impl StepDispatcher for ToolDispatcher {
+@@ -1297,6 +1322,7 @@ impl StepDispatcher for ToolDispatcher {
                      server_id,
                      is_built_in,
                      &headers,

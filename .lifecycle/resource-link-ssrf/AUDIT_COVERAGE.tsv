@@ -1,0 +1,6 @@
+file	start	end	angles
+src-app/server/src/modules/mcp/resource_link.rs	1	100000	security,correctness,error-handling,concurrency,perms-authz,api-contract,patterns-conformance,tests-quality,perf,input-validation,observability,maintainability
+src-app/server/src/modules/mcp/chat_extension/mcp.rs	1	100000	security,correctness,perms-authz,api-contract,concurrency,perf,maintainability,input-validation
+src-app/server/src/modules/workflow/dispatch.rs	1	100000	security,correctness,perms-authz,api-contract,perf,error-handling,maintainability
+src-app/server/tests/mcp/resource_link_test.rs	1	100000	tests-quality,concurrency,correctness,maintainability,api-contract
+CLAUDE.md	1	100000	security,patterns-conformance,observability,maintainability
