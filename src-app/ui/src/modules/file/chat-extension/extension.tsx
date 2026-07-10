@@ -17,9 +17,11 @@ import { ImageContent } from '@/modules/file/chat-extension/components/ImageCont
 import { useFileStore } from '@/modules/file/stores/File.store'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment, MessageContentDataImage } from '@/api-client/types'
 
-// Module-level vars so cleanup can tear down subscriptions created in initialize.
-let unsubConversation: (() => void) | null = null
-let unsubEditingMessage: (() => void) | null = null
+// Per-pane subscription teardown (ITEM-34/5): keyed by the pane's chat store api
+// (ctx.chatStore) so cleanup tears down the RIGHT pane's subscriptions — a
+// module-level var would be overwritten by the second pane's initialize and leak
+// the first. WeakMap so a destroyed pane store's entry is GC'd.
+const paneFileSubs = new WeakMap<object, Array<() => void>>()
 
 /**
  * Build a composer stub FileEntity from a message's attachment content block.
@@ -137,7 +139,7 @@ const fileExtension: ChatExtension = createExtension({
    * file selection so they appear in the input area prefix (FilePreviewList).
    * When edit ends (null): clear the file selection.
    */
-  initialize: async () => {
+  initialize: async (ctx) => {
     // Register the file panel renderer so file tabs can be rendered AND
     // restored from localStorage after reload. The renderer receives the
     // serialized `data` ({ fileId }) and looks the actual File entity up
@@ -158,8 +160,13 @@ const fileExtension: ChatExtension = createExtension({
       },
     })
 
-    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@/core/stores')
+    // Bind to the OWNING pane's chat store (ITEM-34/5) — not the global
+    // singleton — so these subscriptions watch THIS pane's conversation/edit
+    // state. Unsubs are stored per-pane (keyed by ctx.chatStore) for cleanup.
+    const chatStore = ctx.chatStore
+    const subs: Array<() => void> = []
+    paneFileSubs.set(chatStore, subs)
 
     // Conversation-change → clear the per-composer upload buffer.
     // Replaces the implicit chat-extension-framework scoping that
@@ -167,25 +174,28 @@ const fileExtension: ChatExtension = createExtension({
     // it explicitly because the store lives in the file module.
     // messageFilesCache and thumbnailUrls survive (they're keyed by
     // message/file id and used across conversations).
-    unsubConversation = useChatStore.subscribe(
-      state => state.conversation?.id,
-      () => {
-        Stores.File.clearFiles()
-      },
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.conversation?.id,
+        () => {
+          Stores.File.clearFiles()
+        },
+      ),
     )
 
-    unsubEditingMessage = useChatStore.subscribe(
-      state => state.editingMessage,
-      async (editingMessage) => {
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        async (editingMessage: any) => {
         const fileStore = Stores.File
         if (!fileStore) return
 
         if (editingMessage) {
           // Restore attachment content blocks (file_attachment AND user-attached
           // image blocks) from the edited message into the composer.
-          const stubs: FileEntity[] = editingMessage.contents
+          const stubs: FileEntity[] = (editingMessage.contents as MessageContent[])
             .map(attachmentStubFromBlock)
-            .filter((f): f is FileEntity => f !== null)
+            .filter((f: FileEntity | null): f is FileEntity => f !== null)
           if (stubs.length > 0) {
             // Phase 1 — Synchronous: stubs from block data, so selectedFiles is
             // populated before the user can click Send.
@@ -209,19 +219,21 @@ const fileExtension: ChatExtension = createExtension({
           // Edit ended (cancel or send) — clear the file selection
           fileStore.clearFiles()
         }
-      }
+      },
+      ),
     )
   },
 
   /**
-   * Tear down subscriptions created in initialize to avoid leaking
-   * zustand store listeners when the extension is unregistered.
+   * Tear down THIS pane's subscriptions (ITEM-34/5) so a pane unmount never
+   * leaks the pane store's listeners or tears down another pane's.
    */
-  cleanup: async () => {
-    unsubConversation?.()
-    unsubConversation = null
-    unsubEditingMessage?.()
-    unsubEditingMessage = null
+  cleanup: async (ctx) => {
+    const subs = paneFileSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneFileSubs.delete(ctx.chatStore)
+    }
   },
 
   /**
