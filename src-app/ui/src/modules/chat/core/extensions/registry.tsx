@@ -347,7 +347,21 @@ export class ChatExtensionRegistry {
    * Call this once when chat is mounted
    * Extensions access Stores.Chat directly for conversation data
    */
-  async initialize(): Promise<void> {
+  /**
+   * Initialize all extensions against a chat store (ITEM-5/34). Each extension's
+   * `initialize(ctx)` receives the OWNING store's api + its own per-pane store
+   * instance, so its subscriptions/reads bind to that store rather than the
+   * global singleton. Called with no args → single-pane backward-compat: binds to
+   * the primary `useChatStore` singleton + its injected extension stores. The
+   * per-pane `PaneExtensionRuntime` passes the pane's api + a per-pane store
+   * resolver instead.
+   */
+  async initialize(
+    chatStore?: import('./types').ChatExtStoreApi,
+    resolveStore?: (
+      name: string,
+    ) => import('@/core/stores').StoreProxy<any> | null,
+  ): Promise<void> {
     if (this.initialized) {
       console.warn('[ChatExtensions] Already initialized')
       return
@@ -358,10 +372,24 @@ export class ChatExtensionRegistry {
       `[ChatExtensions] Initializing ${extensions.length} extensions...`,
     )
 
+    let api = chatStore
+    let resolve = resolveStore
+    if (!api || !resolve) {
+      const { useChatStore } = await import('../stores/Chat.store')
+      const state = useChatStore.getState() as unknown as Record<string, unknown>
+      api =
+        api ?? (useChatStore as unknown as import('./types').ChatExtStoreApi)
+      resolve =
+        resolve ??
+        ((name) =>
+          (state[name] as import('@/core/stores').StoreProxy<any>) ?? null)
+    }
+
     for (const extension of extensions) {
       try {
         if (extension.initialize) {
-          await extension.initialize()
+          const store = extension.store ? resolve(extension.store.name) : null
+          await extension.initialize({ chatStore: api, store })
           console.log(`[ChatExtensions] Initialized: ${extension.name}`)
         }
       } catch (error) {

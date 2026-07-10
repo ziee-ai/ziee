@@ -402,10 +402,37 @@ export type StreamingContentProviders = {
 }
 
 /**
- * Context passed to send-path extension hooks identifying the SENDING pane's
- * conversation (ITEM-5). Lets a per-conversation composer selection resolve to
- * the correct split pane. `conversationId` is null for a not-yet-created
- * new-chat pane.
+ * The raw chat StoreApi an extension binds to — the SUBSCRIBE/GETSTATE/SETSTATE
+ * surface (with the `subscribeWithSelector` 3-arg overload) of the OWNING pane's
+ * chat store, replacing the module-global `useChatStore` singleton (ITEM-5/34,
+ * DEC-30). In single-pane it is the primary store; in a split pane it is that
+ * pane's own instance, so an extension's subscriptions/reads/writes land in the
+ * right pane.
+ */
+export type ChatExtStoreApi = import('zustand').Mutate<
+  import('zustand').StoreApi<any>,
+  [['zustand/subscribeWithSelector', never]]
+>
+
+/**
+ * Context handed to an extension's lifecycle + store-reaching hooks so it binds
+ * to a specific pane (ITEM-5/34) instead of the global singleton. `store` is this
+ * extension's OWN per-pane store instance (its `store.createStore()` result for
+ * this pane), or null for a store-less extension.
+ */
+export interface ChatExtensionContext {
+  chatStore: ChatExtStoreApi
+  store: import('@/core/stores').StoreProxy<any> | null
+}
+
+/**
+ * Context passed to the multi-extension send-path hooks
+ * (`composeRequestFields` / `beforeSendMessage`) identifying the SENDING pane's
+ * conversation (ITEM-5), so a per-conversation composer selection (model /
+ * assistant / MCP) resolves to the correct split pane. `conversationId` is null
+ * for a not-yet-created new-chat pane. (It carries no per-extension `store` —
+ * these hooks iterate ALL extensions; each reads its own pane-keyed composer
+ * store via `conversationId`.)
  */
 export interface ChatHookCtx {
   conversationId: string | null
@@ -455,11 +482,13 @@ export interface ChatExtension {
   }
 
   /**
-   * Initialize extension
-   * Called once when extension is registered
-   * Extensions should access Stores.Chat for conversation data
+   * Initialize extension. Called once per PANE runtime mount (not once globally)
+   * — the `ctx` binds subscriptions/reads to THAT pane's chat store + this
+   * extension's own per-pane store instance (ITEM-5/34), replacing the global
+   * `useChatStore` singleton. A zero-arg impl (legacy) still type-checks and
+   * simply ignores the ctx during migration.
    */
-  initialize?: () => void | Promise<void>
+  initialize?: (ctx: ChatExtensionContext) => void | Promise<void>
 
   /**
    * Called when a conversation is loaded or switched
