@@ -163,6 +163,7 @@ pub async fn fire_task(
         notification_id: outcome.notification_id,
         workflow_run_id: outcome.workflow_run_id,
         conversation_id: outcome.conversation_id,
+        skipped_tools: outcome.skipped_tools.clone(),
         fired_at: now,
     };
     if let Err(e) = repository::insert_run(pool, run).await {

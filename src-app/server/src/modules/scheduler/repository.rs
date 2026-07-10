@@ -47,9 +47,10 @@ pub async fn insert(
         INSERT INTO scheduled_tasks (
             user_id, name, target_kind, workflow_id, inputs_json,
             assistant_id, prompt, model_id, schedule_kind, run_at,
-            cron_expr, timezone, next_run_at, notify_mode, notify_on
+            cron_expr, timezone, next_run_at, notify_mode, notify_on,
+            allowed_unattended_tools
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         RETURNING
             id, user_id, name, enabled, paused_reason, target_kind, workflow_id,
             inputs_json as "inputs_json: _", assistant_id, prompt, model_id,
@@ -58,7 +59,9 @@ pub async fn insert(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         "#,
         user_id,
@@ -76,6 +79,8 @@ pub async fn insert(
         to_offset_opt(next_run_at),
         req.notify_mode,
         req.notify_on,
+        serde_json::to_value(&req.allowed_unattended_tools)
+            .unwrap_or_else(|_| serde_json::json!([])),
     )
     .fetch_one(pool)
     .await
@@ -100,7 +105,9 @@ pub async fn get_for_user(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM scheduled_tasks
         WHERE id = $1 AND user_id = $2
@@ -130,7 +137,9 @@ pub async fn list_for_user(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM scheduled_tasks
         WHERE user_id = $1
@@ -189,6 +198,7 @@ pub async fn update(
             notify_mode   = COALESCE($13, notify_mode),
             notify_on     = COALESCE($14, notify_on),
             next_run_at   = CASE WHEN $15 THEN $16 ELSE next_run_at END,
+            allowed_unattended_tools = COALESCE($17, allowed_unattended_tools),
             updated_at    = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING
@@ -199,7 +209,9 @@ pub async fn update(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         "#,
         id,
@@ -218,6 +230,9 @@ pub async fn update(
         upd.notify_on,
         set_next,
         to_offset_opt(next_val),
+        upd.allowed_unattended_tools
+            .as_ref()
+            .map(|v| serde_json::to_value(v).unwrap_or_else(|_| serde_json::json!([]))),
     )
     .fetch_optional(pool)
     .await
@@ -263,7 +278,9 @@ pub async fn claim_due_tasks(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM scheduled_tasks
         WHERE enabled
@@ -368,9 +385,9 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
         INSERT INTO scheduled_task_runs (
             scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
-            fired_at, finished_at
+            skipped_tools, fired_at, finished_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
         RETURNING id
         "#,
         run.scheduled_task_id,
@@ -382,6 +399,7 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
         run.notification_id,
         run.workflow_run_id,
         run.conversation_id,
+        serde_json::to_value(&run.skipped_tools).unwrap_or_else(|_| serde_json::json!([])),
         to_offset(run.fired_at),
     )
     .fetch_one(pool)
@@ -403,6 +421,7 @@ pub async fn list_runs_for_task(
         SELECT
             id, scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
+            skipped_tools as "skipped_tools: _",
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE scheduled_task_id = $1 AND user_id = $2
@@ -432,6 +451,7 @@ pub async fn get_run_for_user(
         SELECT
             id, scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
+            skipped_tools as "skipped_tools: _",
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE id = $1 AND user_id = $2

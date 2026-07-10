@@ -51,6 +51,9 @@ pub struct DispatchOutcome {
     pub conversation_id: Option<Uuid>,
     pub fingerprint: Option<String>,
     pub signature: Option<serde_json::Value>,
+    /// Tools skipped this firing because they weren't permitted unattended
+    /// (ITEM-17 / DEC-17.5). Empty for workflow runs + un-gated paths.
+    pub skipped_tools: Vec<super::models::SkippedTool>,
 }
 
 /// A successful target run, before change-detection/notification.
@@ -58,6 +61,8 @@ struct RawResult {
     text: String,
     workflow_run_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
+    /// Tools skipped during a headless prompt run (ITEM-17); empty for workflow.
+    skipped_tools: Vec<super::models::SkippedTool>,
 }
 
 /// Run a task's target, apply change-detection, and notify. Total function.
@@ -127,6 +132,7 @@ async fn dispatch_workflow(pool: &PgPool, task: &ScheduledTask) -> Result<RawRes
                     text: summarize_workflow_output(run.final_output_json.as_ref()),
                     workflow_run_id: Some(run_id),
                     conversation_id: None,
+                    skipped_tools: Vec::new(),
                 });
             }
             "failed" | "cancelled" => {
@@ -259,6 +265,9 @@ async fn dispatch_prompt(
         text,
         workflow_run_id: None,
         conversation_id: Some(conversation_id),
+        // Populated by the unattended-approval gate (ITEM-13/17); empty until
+        // the MCP pipeline reports skipped tools for this headless run.
+        skipped_tools: Vec::new(),
     })
 }
 
@@ -291,6 +300,7 @@ async fn finalize_success(
             conversation_id: raw.conversation_id,
             fingerprint,
             signature: sig_json,
+            skipped_tools: raw.skipped_tools.clone(),
         };
     }
 
@@ -327,6 +337,7 @@ async fn finalize_success(
         conversation_id: raw.conversation_id,
         fingerprint,
         signature: sig_json,
+        skipped_tools: raw.skipped_tools.clone(),
     }
 }
 
@@ -361,6 +372,7 @@ async fn finalize_failure(
         conversation_id: None,
         fingerprint: None,
         signature: None,
+        skipped_tools: Vec::new(),
     }
 }
 
