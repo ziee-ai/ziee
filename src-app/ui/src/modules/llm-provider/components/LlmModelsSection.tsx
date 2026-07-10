@@ -27,16 +27,17 @@ export function LlmModelsSection() {
     Record<string, boolean>
   >({})
 
-  // Store data
-  const { llmModelsLoading } = Stores.LlmProvider
+  // Store data — read ALL reactive slices ONCE at the top (unconditionally).
+  // Reading a store slice during render (e.g. inside a render helper, after an
+  // early return) is a conditional hook → "Rendered more hooks than during the
+  // previous render" when `currentProvider` transitions undefined→defined.
+  const { llmModelsLoading, providers, refreshingModels } = Stores.LlmProvider
   const canEditModels = usePermission(Permissions.LlmModelsEdit)
   const canDeleteModels = usePermission(Permissions.LlmModelsDelete)
   const canCreateModels = usePermission(Permissions.LlmModelsCreate)
 
   // Get current provider and its models
-  const currentProvider = Stores.LlmProvider.providers.find(
-    p => p.id === providerId,
-  )
+  const currentProvider = providers.find(p => p.id === providerId)
   const llmModels = currentProvider?.llm_models || []
   const loading = llmModelsLoading?.[providerId!] || false
 
@@ -318,7 +319,7 @@ export function LlmModelsSection() {
     // Refresh mutates is_deprecated → gate on edit (matches the backend's
     // llm_models::edit on POST /refresh-models), not create.
     if (!canEditModels) return null
-    const refreshing = Boolean(Stores.LlmProvider.refreshingModels[currentProvider.id])
+    const refreshing = Boolean(refreshingModels[currentProvider.id])
     return (
       <Tooltip content="Refresh models from provider">
         <span className="inline-flex">

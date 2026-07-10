@@ -52,11 +52,17 @@ Human critiques received during this work, verbatim, with resolutions.
   not office-bridge). **TEST-11/59** reclassified honestly (TEST-11 superseded by the relocation;
   TEST-59 Linux-only `cfg(not(win/mac))`), per decision — not re-run.
 
-- **FB-6** [status: wontfix] [generalizable: yes] — **gate:ui (ui)** fails runtime-health on 4
-  PRE-EXISTING ui-workspace surfaces (a React-hooks bug in `seeded-llm-models-loading`, a
-  forced-error gallery cell, two contrast surfaces) — none are office-bridge (its only `ui/` touch is
-  the shared testid registry). They fail on `origin/main` too. Wontfix here (out of scope; fixing
-  unrelated ui bugs). The office-bridge workspace (desktop/ui) gate:ui PASSES.
+- **FB-6** [status: resolved] [generalizable: yes] — **gate:ui (ui)** was failing on 4 PRE-EXISTING
+  ui-workspace surfaces (main's CI wasn't running gate:ui, per the user). **User: "let's fix it."**
+  Fixed all four: (1) a REAL React hooks-order bug in `LlmModelsSection` — a `Stores.LlmProvider`
+  slice read inside a render helper (after early returns) is a CONDITIONAL hook, crashing with
+  "Rendered more hooks" when `currentProvider` goes undefined→defined; hoisted all store reads to the
+  top. (2) a `gate-ui.mjs` bug — it excluded `baselined` findings from the per-surface HIGH count but
+  IGNORED the `harness` flag `runtime-health.mjs` sets on documented noise ("Gallery forced error"
+  sentinels), so a forced-error test cell still failed; now excludes `harness` too (matches
+  runtime-health's own gating math). (3) the contrast auditor flagged PDF.js `.textLayer` spans, which
+  are `color: transparent` BY DESIGN (the selectable overlay over the canvas-painted glyphs); excluded
+  the PDF text layer. gate:ui (ui) now PASSES 168/168; `npm run check (ui)` stays green.
 
 - **FB-7** [status: wontfix] [generalizable: yes] — **A10** (restricted-user negative-perm e2e) is
   **N/A for office_bridge**: it is a **desktop-only** feature, and the desktop app is single-user with

@@ -18,11 +18,13 @@ missing `platejs` deps — which had been failing gate:ui's bare tsc):
 - npm run check (ui): PASS
 - npm run check (desktop/ui): PASS
 - gate:ui (desktop/ui): PASS — tsc + lint + runtime-health (45/45 surfaces clean, 0 gating HIGH) + coverage, all green.
-- gate:ui (ui): FAIL — runtime-health flags 4 PRE-EXISTING ui-workspace surfaces unrelated to
-  office-bridge (`seeded-llm-models-loading` React-hooks bug, the `seeded-s3-group-widget-error`
-  forced-error cell, and two contrast surfaces `deep-chat-right-panel-file` / `overlay-file-preview-drawer`).
-  office-bridge is desktop-only; its ONLY `ui/` touch is 9 `office-docs-*` ids in the shared testid
-  registry (no ui runtime surface). These 4 fail on `origin/main` too. See HUMAN_FEEDBACK FB-6.
+- gate:ui (ui): PASS — 168/168 surfaces clean, GATE PASSED. Fixed the 4 pre-existing failures main's
+  CI wasn't running (see FB-6): (1) a REAL React hooks-order bug in `LlmModelsSection` (a store slice
+  read inside a render helper = conditional hook → "Rendered more hooks" crash on the loading surface);
+  (2) gate-ui.mjs ignored the `harness` flag runtime-health sets (so documented "Gallery forced error"
+  noise still failed a surface — now excluded like `baselined`); (3) the contrast auditor flagged
+  PDF.js `.textLayer` spans (transparent BY DESIGN — the selectable overlay over the canvas) — now
+  excluded. `npm run check (ui)` remains green.
 
 ## Per-test results (renumbered; provenance = per-stage run)
 

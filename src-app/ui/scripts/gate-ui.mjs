@@ -193,9 +193,13 @@ function readRuntimeSurfaceVerdicts() {
     } catch {
       continue
     }
-    const s = (surfaces[f.surface] ??= { high: 0, medium: 0, low: 0, baselined: 0 })
-    // A documented-baselined HIGH (runtime-baseline.js) does not fail a surface.
+    const s = (surfaces[f.surface] ??= { high: 0, medium: 0, low: 0, baselined: 0, harness: 0 })
+    // Documented harness-noise (runtime-health `isHarnessNoise`: "Gallery forced
+    // error" sentinels, vite dev-asset aborts, mock-fixture shape gaps) and
+    // baselined HIGHs do NOT fail a surface — they are auditable, not defects.
+    // Mirrors runtime-health.mjs's own gating math (which subtracts both).
     if (f.baselined) s.baselined++
+    else if (f.harness) s.harness++
     else s[f.severity.toLowerCase()]++
   }
   return Object.entries(surfaces)

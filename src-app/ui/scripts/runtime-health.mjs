@@ -271,6 +271,12 @@ function inPageAudit() {
   const seenContrast = new Set()
   const textEls = Array.from(document.querySelectorAll('body *')).filter(el => {
     if (isChrome(el) || !visible(el)) return false
+    // PDF.js renders a SELECTABLE text layer of `color: transparent` spans placed
+    // over the canvas-painted text (the visible glyphs are on the <canvas>; the
+    // overlay is for selection/copy). These are transparent BY DESIGN — not a
+    // contrast defect — so exclude the PDF text layer (pdfjs `.textLayer`,
+    // react-pdf `.react-pdf__Page__textContent`).
+    if (el.closest('.textLayer, .react-pdf__Page__textContent')) return false
     // element must hold a direct, non-empty text node
     return Array.from(el.childNodes).some(
       n => n.nodeType === 3 && n.textContent.trim().length > 1,

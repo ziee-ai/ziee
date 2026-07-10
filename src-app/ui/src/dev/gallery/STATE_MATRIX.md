@@ -2636,32 +2636,32 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!currentProvider` | 44 |
-| branch | `!currentProvider` | 102 |
-| branch | `!currentProvider \|\| currentProvider.provider_type !== 'local'` | 116 |
-| branch | `!currentProvider` | 140 |
-| branch | `!currentProvider` | 155 |
-| branch | `!currentProvider` | 162 |
-| branch | `!currentProvider` | 251 |
-| branch | `!canCreateModels` | 252 |
-| branch | `currentProvider.provider_type === 'local'` | 254 |
-| branch | `!currentProvider \|\| currentProvider.provider_type === 'local'` | 317 |
-| branch | `!canEditModels` | 320 |
-| branch | `!currentProvider` | 348 |
-| loading | `loading` | 354 |
-| empty | `llmModels.length === 0` | 356 |
-| branch | `llmModel.is_deprecated` | 372 |
-| branch | `llmModel.is_active && llmModel.port` | 393 |
-| branch | `llmModel.description` | 405 |
-| branch | `llmModel.capabilities` | 410 |
-| branch | `llmModel.capabilities.vision` | 412 |
-| branch | `llmModel.capabilities.audio` | 417 |
-| branch | `llmModel.capabilities.tools` | 422 |
-| branch | `llmModel.capabilities.code_interpreter` | 427 |
-| branch | `llmModel.capabilities.chat` | 432 |
-| branch | `llmModel.capabilities.text_embedding` | 437 |
-| branch | `llmModel.capabilities.image_generator` | 442 |
-| branch | `index < llmModels.length - 1` | 452 |
+| branch | `!currentProvider` | 45 |
+| branch | `!currentProvider` | 103 |
+| branch | `!currentProvider \|\| currentProvider.provider_type !== 'local'` | 117 |
+| branch | `!currentProvider` | 141 |
+| branch | `!currentProvider` | 156 |
+| branch | `!currentProvider` | 163 |
+| branch | `!currentProvider` | 252 |
+| branch | `!canCreateModels` | 253 |
+| branch | `currentProvider.provider_type === 'local'` | 255 |
+| branch | `!currentProvider \|\| currentProvider.provider_type === 'local'` | 318 |
+| branch | `!canEditModels` | 321 |
+| branch | `!currentProvider` | 349 |
+| loading | `loading` | 355 |
+| empty | `llmModels.length === 0` | 357 |
+| branch | `llmModel.is_deprecated` | 373 |
+| branch | `llmModel.is_active && llmModel.port` | 394 |
+| branch | `llmModel.description` | 406 |
+| branch | `llmModel.capabilities` | 411 |
+| branch | `llmModel.capabilities.vision` | 413 |
+| branch | `llmModel.capabilities.audio` | 418 |
+| branch | `llmModel.capabilities.tools` | 423 |
+| branch | `llmModel.capabilities.code_interpreter` | 428 |
+| branch | `llmModel.capabilities.chat` | 433 |
+| branch | `llmModel.capabilities.text_embedding` | 438 |
+| branch | `llmModel.capabilities.image_generator` | 443 |
+| branch | `index < llmModels.length - 1` | 453 |
 
 ### `modules/llm-provider/components/LlmProviderDrawer`
 
