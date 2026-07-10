@@ -14,13 +14,7 @@ import {
  * `Stores.Chat` bridge + keyboard handling are pane-scoped by focus. Real send via
  * the local bridge; skips cleanly with no bridge configured.
  */
-const HAS_BRIDGE = Boolean(
-  process.env.OPENAI_BASE_URL || process.env.ZIEE_TEST_LLM_BASE_URL,
-)
-
 test.describe('Split chat — focused-pane keyboard', () => {
-  test.skip(!HAS_BRIDGE, 'OPENAI_BASE_URL/ZIEE_TEST_LLM_BASE_URL not set — skipping real-send E2E')
-
   test('Enter sends in the FOCUSED pane (pane B), leaving the first pane (A) idle', async ({
     page,
     testInfra,

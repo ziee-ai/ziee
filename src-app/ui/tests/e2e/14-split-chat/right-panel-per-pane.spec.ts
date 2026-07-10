@@ -14,6 +14,10 @@ import {
 } from '../chat/helpers/chat-helpers'
 import { FILE_ASSETS, openFileInPanel } from '../chat/helpers/file-panel-helpers'
 
+const HAS_BRIDGE = Boolean(
+  process.env.OPENAI_BASE_URL || process.env.ZIEE_TEST_LLM_BASE_URL,
+)
+
 /**
  * Attach a file robustly: open the + dropdown so the FileAttachMenuItem's
  * <Upload> input mounts, then set the file directly on the hidden
@@ -37,10 +41,6 @@ async function attachFileRobust(page: Page, absoluteFilePath: string) {
  * recipe (attach a file, then open it) then splits. Real send via the bridge;
  * skips cleanly with no bridge.
  */
-const HAS_BRIDGE = Boolean(
-  process.env.OPENAI_BASE_URL || process.env.ZIEE_TEST_LLM_BASE_URL,
-)
-
 async function attachAndSend(page: Page, filePath: string, message: string) {
   const sendButton = byTestId(page, 'chat-input-send-btn')
   await expect(sendButton).toBeEnabled({ timeout: 30000 })

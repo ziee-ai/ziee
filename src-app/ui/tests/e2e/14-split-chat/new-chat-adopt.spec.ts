@@ -15,15 +15,9 @@ import {
  * TEST-37); (b) the pane opens a fresh working stream for the new conversation
  * (TEST-38); (c) the other pane is left completely undisturbed — the in-pane
  * conversation change is scoped to one pane (TEST-45 / DEC-14 in-pane switch).
- * Real send via the local bridge; skips cleanly with no bridge.
+ * Real send via the local OpenAI-compatible bridge.
  */
-const HAS_BRIDGE = Boolean(
-  process.env.OPENAI_BASE_URL || process.env.ZIEE_TEST_LLM_BASE_URL,
-)
-
 test.describe('Split chat — new-chat pane adopt (no window hijack)', () => {
-  test.skip(!HAS_BRIDGE, 'OPENAI_BASE_URL/ZIEE_TEST_LLM_BASE_URL not set — skipping real-send E2E')
-
   test('sending in the new-chat pane adopts the conversation in-place; the window + other pane are untouched', async ({
     page,
     testInfra,

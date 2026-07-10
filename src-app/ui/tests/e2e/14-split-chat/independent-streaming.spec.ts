@@ -16,18 +16,9 @@ import {
  * — proving the per-pane stream client + the applyStreamFrame conversation guard
  * keep the two live generations from cross-contaminating.
  *
- * Skips cleanly when no bridge/base-url is configured.
+ * Real send via the local OpenAI-compatible bridge.
  */
-const HAS_BRIDGE = Boolean(
-  process.env.OPENAI_BASE_URL || process.env.ZIEE_TEST_LLM_BASE_URL,
-)
-
 test.describe('Split chat — streaming isolation', () => {
-  test.skip(
-    !HAS_BRIDGE,
-    'OPENAI_BASE_URL/ZIEE_TEST_LLM_BASE_URL not set — skipping real-LLM streaming E2E',
-  )
-
   test('sending in pane A streams the reply into pane A only; pane B stays idle', async ({
     page,
     testInfra,
