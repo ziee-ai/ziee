@@ -14,10 +14,6 @@ import {
 } from '../chat/helpers/chat-helpers'
 import { FILE_ASSETS, openFileInPanel } from '../chat/helpers/file-panel-helpers'
 
-const HAS_BRIDGE = Boolean(
-  process.env.OPENAI_BASE_URL || process.env.ZIEE_TEST_LLM_BASE_URL,
-)
-
 /**
  * Attach a file robustly: open the + dropdown so the FileAttachMenuItem's
  * <Upload> input mounts, then set the file directly on the hidden
@@ -53,7 +49,6 @@ async function attachAndSend(page: Page, filePath: string, message: string) {
 }
 
 test.describe('Split chat — per-pane right panel', () => {
-  test.skip(!HAS_BRIDGE, 'OPENAI_BASE_URL/ZIEE_TEST_LLM_BASE_URL not set — skipping real-send E2E')
   test.describe.configure({ retries: 1 })
 
   test('opening a file in pane A shows the slide-over inside pane A only; pane B is untouched', async ({
