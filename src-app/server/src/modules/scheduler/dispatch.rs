@@ -65,6 +65,46 @@ struct RawResult {
     skipped_tools: Vec<super::models::SkippedTool>,
 }
 
+/// ITEM-14/DEC-17: build the unattended run's `mcp_config.mcp_servers` attach set
+/// from the task's allow-list grants — one entry per distinct server; a
+/// whole-server grant (`tool_name: None`) yields `tools: []` (= all tools), and
+/// per-tool grants for a server are grouped into its `tools`. An EMPTY grant list
+/// yields an EMPTY set ⇒ no third-party servers attach (the read-only safe floor;
+/// built-ins auto-attach separately). Pure + unit-tested (TEST-26/27/34).
+pub(super) fn build_unattended_mcp_servers(
+    grants: &[super::models::AllowedTool],
+) -> Vec<serde_json::Value> {
+    let mut by_server: HashMap<Uuid, (bool, Vec<String>)> = HashMap::new();
+    for g in grants {
+        let entry = by_server.entry(g.server_id).or_insert((false, Vec::new()));
+        match &g.tool_name {
+            Some(t) => entry.1.push(t.clone()),
+            None => entry.0 = true, // whole-server grant
+        }
+    }
+    by_server
+        .into_iter()
+        .map(|(sid, (whole, tools))| {
+            serde_json::json!({ "server_id": sid, "tools": if whole { Vec::<String>::new() } else { tools } })
+        })
+        .collect()
+}
+
+/// ITEM-17/DEC-17.5: the notification line for tools skipped this firing (or
+/// `None` when none were). Proper singular/plural, no emoji. Pure + unit-tested.
+pub(super) fn skipped_tools_note(skipped: &[super::models::SkippedTool]) -> Option<String> {
+    if skipped.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = skipped.iter().map(|s| s.tool_name.as_str()).collect();
+    let n = skipped.len();
+    let noun = if n == 1 { "tool was" } else { "tools were" };
+    Some(format!(
+        "\n\nNote: {n} {noun} skipped (not permitted unattended): {}. Pre-authorize on the task to allow.",
+        names.join(", ")
+    ))
+}
+
 /// ITEM-9/DEC-8: transient-failure tolerance is provided by the consecutive-
 /// failure CAP (`max_consecutive_failures`, admin-configurable), NOT by an
 /// in-run retry. An earlier design re-ran the whole `dispatch` on a transient
@@ -251,20 +291,7 @@ async fn dispatch_prompt(
     // with an explicit server list means "ONLY these third-party servers"
     // (empty ⇒ none); built-in read-only servers still auto-attach regardless.
     let grants = super::models::parse_allowed_tools(&task.allowed_unattended_tools);
-    let mut by_server: HashMap<Uuid, (bool, Vec<String>)> = HashMap::new();
-    for g in &grants {
-        let entry = by_server.entry(g.server_id).or_insert((false, Vec::new()));
-        match &g.tool_name {
-            Some(t) => entry.1.push(t.clone()),
-            None => entry.0 = true, // whole-server grant
-        }
-    }
-    let mcp_servers: Vec<serde_json::Value> = by_server
-        .into_iter()
-        .map(|(sid, (whole, tools))| {
-            serde_json::json!({ "server_id": sid, "tools": if whole { Vec::<String>::new() } else { tools } })
-        })
-        .collect();
+    let mcp_servers = build_unattended_mcp_servers(&grants);
 
     // Build the send request via JSON (extension fields default). Enable MCP so
     // agentic tasks ("check PubMed…") can use the built-in tools; mark the run
@@ -397,14 +424,8 @@ async fn finalize_success(
     }
     body.push_str(truncate(&raw.text, NOTIF_BODY_CAP));
     // ITEM-17: be honest — a truncated result must not read as a clean success.
-    if !raw.skipped_tools.is_empty() {
-        let names: Vec<&str> = raw.skipped_tools.iter().map(|s| s.tool_name.as_str()).collect();
-        let n = raw.skipped_tools.len();
-        let noun = if n == 1 { "tool was" } else { "tools were" };
-        body.push_str(&format!(
-            "\n\nNote: {n} {noun} skipped (not permitted unattended): {}. Pre-authorize on the task to allow.",
-            names.join(", ")
-        ));
+    if let Some(note) = skipped_tools_note(&raw.skipped_tools) {
+        body.push_str(&note);
     }
     let title = format!("Scheduled task '{}' ran", task.name);
 
@@ -492,5 +513,73 @@ fn truncate(s: &str, max: usize) -> &str {
     match s.char_indices().nth(max) {
         Some((idx, _)) => &s[..idx],
         None => s,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::models::{AllowedTool, SkippedTool};
+    use super::{build_unattended_mcp_servers, skipped_tools_note};
+    use uuid::Uuid;
+
+    // TEST-27/TEST-26: the unattended mcp_config attach set = allow-listed servers.
+    #[test]
+    fn build_unattended_mcp_servers_constrains_to_allow_list() {
+        // Empty allow-list → empty set (read-only safe floor: no third-party attaches).
+        assert!(build_unattended_mcp_servers(&[]).is_empty());
+
+        let s1 = Uuid::new_v4();
+        let s2 = Uuid::new_v4();
+        // Whole-server grant → tools:[] (= all tools); per-tool grants grouped.
+        let grants = vec![
+            AllowedTool { server_id: s1, tool_name: None },
+            AllowedTool { server_id: s2, tool_name: Some("search".into()) },
+            AllowedTool { server_id: s2, tool_name: Some("fetch".into()) },
+        ];
+        let out = build_unattended_mcp_servers(&grants);
+        assert_eq!(out.len(), 2, "one entry per distinct server");
+        let e1 = out.iter().find(|e| e["server_id"] == serde_json::json!(s1)).unwrap();
+        assert_eq!(e1["tools"], serde_json::json!([]), "whole-server grant → all tools");
+        let e2 = out.iter().find(|e| e["server_id"] == serde_json::json!(s2)).unwrap();
+        let tools = e2["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2, "per-tool grants grouped under the server");
+        assert!(tools.contains(&serde_json::json!("search")) && tools.contains(&serde_json::json!("fetch")));
+        // A non-allow-listed server is NEVER in the attach set.
+        let s3 = Uuid::new_v4();
+        assert!(!out.iter().any(|e| e["server_id"] == serde_json::json!(s3)));
+    }
+
+    // TEST-31: the skipped-tools notification line (round-trip into the body).
+    #[test]
+    fn skipped_tools_note_is_honest_and_pluralized() {
+        assert_eq!(skipped_tools_note(&[]), None, "no skips → no note");
+        let one = vec![SkippedTool { tool_name: "post_message".into(), reason: "x".into() }];
+        let n1 = skipped_tools_note(&one).unwrap();
+        assert!(n1.contains("1 tool was skipped"), "singular: {n1}");
+        assert!(n1.contains("post_message"));
+        assert!(!n1.contains('⚠'), "no emoji");
+        let two = vec![
+            SkippedTool { tool_name: "a".into(), reason: "x".into() },
+            SkippedTool { tool_name: "b".into(), reason: "x".into() },
+        ];
+        let n2 = skipped_tools_note(&two).unwrap();
+        assert!(n2.contains("2 tools were skipped"), "plural: {n2}");
+        assert!(n2.contains("a, b"));
+    }
+
+    // TEST-34: the DisabledServer predicate the scheduled-workflow disabled-servers
+    // gate (ITEM-18b) relies on — a whole-server disable blocks all its tools; a
+    // tool-scoped disable blocks only that tool.
+    #[test]
+    fn disabled_server_predicate_blocks_correctly() {
+        use crate::modules::mcp::chat_extension::approval::models::DisabledServer;
+        let sid = Uuid::new_v4();
+        let whole = DisabledServer { server_id: sid, tools: vec![] };
+        assert!(whole.is_server_disabled(), "empty tools = whole server disabled");
+        assert!(whole.is_tool_disabled("anything"));
+        let scoped = DisabledServer { server_id: sid, tools: vec!["send".into()] };
+        assert!(!scoped.is_server_disabled(), "tool-scoped ≠ whole-server");
+        assert!(scoped.is_tool_disabled("send"));
+        assert!(!scoped.is_tool_disabled("read"));
     }
 }
