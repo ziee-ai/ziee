@@ -60,12 +60,34 @@ remain, so this phase is **not complete** (no PASS line is faked).
 3. HIGH composer selection leak into a new chat; MEDIUM silent attach/detach
    failure; LOW unclamped highlight page (phase-6 audit fixes).
 
-## Not yet run (phase 8 remaining)
+## e2e tests — PASS (Playwright + docker-postgres, self-isolating per-session)
 
-- **Backend integration**: TEST-5 (local-engine rerank proxy — needs a stub-engine
-  `/rerank` route), TEST-9 (**gated on the ziee-ai/hub release** — the reranker
-  model lives in the hub clone, not yet in the fetched/vendored seed), TEST-12
-  (reindex from a forced `failed` — needs embed-failure injection).
-- **Frontend unit** (store/component tests needing runtime mocking): TEST-34, TEST-35, TEST-36.
-- **e2e** (Playwright + docker-postgres): TEST-37–TEST-43.
+- **TEST-37**: PASS (kb-list — nav → empty → create → rename → delete; a11y) — 3 cases
+- **TEST-38**: PASS (documents panel — upload a .txt → live `Indexed` badge → remove)
+- **TEST-39**: PASS (chat composer — "+" picker attach → status-row chip → detach; also exercises the composer-reset fix)
+- **TEST-41**: PASS (project "Knowledge bases" knowledge-kind — bind a KB → manage panel + inline preview)
+- **TEST-42**: PASS (reranker admin — section + Hub nudge render; candidate-k persists across reload) — 2 cases
+
+## Not yet run (phase 8 remaining — 11 of 46; each infra-heavy or externally gated)
+
+- **TEST-40** (e2e citation flow) — needs a real `search_knowledge` tool_result in a
+  chat transcript; this requires a real LLM firing the tool (the box's `.env.test`
+  keys are placeholders, so real-LLM specs soft-skip) or injecting a synthetic
+  tool_result message. Genuinely gated.
+- **TEST-43** (e2e/visual states) — gallery pixel-regression needs blessed baselines
+  that don't exist yet for the new surfaces (baseline generation is circular for a
+  first run; the runtime-health pass already proved the surfaces render clean).
+- **TEST-34/35/36** (frontend store/component unit) — need node:test module-mock
+  scaffolding for ApiClient/EventBus/permissions.
+- **TEST-5** (local-engine rerank proxy) — needs a `/rerank` route added to the
+  stub-engine + a local rerank model (the provider-path rerank is proven by TEST-26).
+- **TEST-9** — **gated on the ziee-ai/hub release** (the reranker model lives in the
+  hub clone, not yet in the fetched/vendored seed).
+- **TEST-10** (KB status derivation) / **TEST-12** (reindex from a forced `failed`) —
+  need embed-failure injection.
 - **TEST-8** (hub `validate.py` in the cloned hub repo).
+
+**Score: 35 of 46 test-IDs green** (11 unit + 16 integration + 5 e2e specs + 3
+cross-cutting), including the entire backend feature surface, the rerank end-to-end
+path, the composer/documents/project/reranker UI flows, and 2 real shipping bugs the
+tests caught + fixed.

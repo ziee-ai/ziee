@@ -218,3 +218,8 @@ src-app/ui/src/modules/knowledge-base/stores/KnowledgeBaseDetail.store.ts	1	117	
 src-app/ui/src/modules/knowledge-base/stores/KnowledgeBases.store.ts	1	103	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
 src-app/ui/src/modules/knowledge-base/stores/index.ts	1	9	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
 src-app/ui/src/modules/knowledge-base/types.ts	1	20	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
+src-app/ui/tests/e2e/14-knowledge-base/kb-attach-chat.spec.ts	1	34	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
+src-app/ui/tests/e2e/14-knowledge-base/kb-documents.spec.ts	1	45	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
+src-app/ui/tests/e2e/14-knowledge-base/kb-list.spec.ts	1	54	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
+src-app/ui/tests/e2e/14-knowledge-base/kb-project-extension.spec.ts	1	51	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
+src-app/ui/tests/e2e/14-knowledge-base/reranker-admin.spec.ts	1	35	correctness,error-handling,concurrency,security,perms/authz,api-contract,state-management,a11y,patterns-conformance,perf,tests-quality,i18n/copy
