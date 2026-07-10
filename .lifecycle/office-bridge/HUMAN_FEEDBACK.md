@@ -58,20 +58,24 @@ Human critiques received during this work, verbatim, with resolutions.
   the shared testid registry). They fail on `origin/main` too. Wontfix here (out of scope; fixing
   unrelated ui bugs). The office-bridge workspace (desktop/ui) gate:ui PASSES.
 
-- **FB-7** [status: wontfix] [generalizable: yes] — **A10** (negative-perm e2e) cannot be satisfied
-  by a MEANINGFUL e2e for this feature. office-bridge has no permission-gated UI *page* — its gate is
-  the store's data-fetch self-gate (`hasPermissionNow(office_bridge::use)`) + the backend API/MCP
-  perm (A9). I authored a restricted-user desktop e2e, but a diagnostic proved it VACUOUS: in the
-  desktop shell, API calls go through **tauri invoke (native), not browser fetch**, so
-  `page.on('request')` observes NO `/office-bridge/documents` request for a permitted OR restricted
-  user. I removed it rather than ship a green-but-vacuous test (per FB-1's lesson). The permission
-  gate IS covered — by the store self-gate UNIT test (`officeBridgeSync.test.ts`) and the backend
-  perm test (A9). A10's page-absence model doesn't fit a data-gated, native-API desktop feature.
+- **FB-7** [status: wontfix] [generalizable: yes] — **A10** (restricted-user negative-perm e2e) is
+  **N/A for office_bridge**: it is a **desktop-only** feature, and the desktop app is single-user with
+  that user **always an administrator** (holds `*`, hence `office_bridge::use`). There is no
+  restricted-user runtime scenario to hide the UI from — the `office_bridge::use` grant exists only for
+  the backend module's server-side generality (A9's backend-deny is a no-op in the always-admin desktop
+  runtime). **User's correction:** "Desktop functionality actually does not need a permission gate
+  because it will always be admin to use it." I had over-engineered a frontend-hidden UI gate + a
+  restricted-user e2e to satisfy A10; per this correction I **reverted** the gate (commit
+  `Revert "feat(office-bridge/ui): frontend-hidden gate…"`) and did not ship the e2e. Generalizable:
+  the A10 check should exempt desktop-only (single-admin) features — the permission is a server-side
+  artifact there, not a user-facing frontend gate. A10 stays red on the deterministic gate, correctly
+  documented as N/A rather than papered over.
 
 Net: the artifact RESTRUCTURE is complete (five dirs → one umbrella, globally renumbered,
 base `origin/main`, coverage rebuilt vs the real diff, findings fixed to a clean re-audit).
-Cleared this round: A3, npm run check ×2, gate:ui (desktop/ui). Residual (documented, not
-office-bridge defects): gate:ui (ui) = pre-existing unrelated surfaces; TEST-11/59 = Linux/superseded;
-A10 = structurally unfit + un-observable in the native-API desktop e2e harness. A headless `--all`
-is not mechanically green for these reasons — documented here rather than papered over, and the
-merge driver strips `.lifecycle` so none of it blocks merge.
+Cleared: A3 (0 hits), npm run check ×2, gate:ui (desktop/ui). Residual (documented, not
+office-bridge defects): gate:ui (ui) = 4 pre-existing unrelated ui surfaces; TEST-11/59 =
+Linux-only / superseded (reclassified); A10 = **N/A** (desktop-only single-admin feature — no
+restricted-user scenario; the over-engineered UI gate was reverted per the user's correction).
+A headless `--all` is not mechanically green for these reasons — documented here rather than
+papered over, and the merge driver strips `.lifecycle` so none of it blocks merge.
