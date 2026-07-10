@@ -219,6 +219,38 @@ fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
         && matches!(tool_name, "remember" | "forget")
 }
 
+/// Recover the server that advertised a BARE tool name (one the model returned
+/// without the `<server_id>__` prefix ziee prepends). `map` is the per-message
+/// `bare_name -> Option<server_id>` built in `before_llm_call`; a `None` value
+/// marks an ambiguous name advertised by ≥2 servers. Returns `Some(server_id)`
+/// ONLY for an unambiguous single-server hit — never guesses, so an ambiguous or
+/// unknown name yields `None` and falls through to a clear error instead of
+/// mis-dispatching a side-effecting tool.
+fn recover_server_id_for_bare_name(
+    bare: &str,
+    map: &HashMap<String, Option<Uuid>>,
+) -> Option<Uuid> {
+    map.get(bare).copied().flatten()
+}
+
+/// Pick the tool_use id to persist for a finalized tool call, guaranteeing it is
+/// non-empty and unique within its assistant message. `provider_id` is the id the
+/// provider streamed (may be empty, or a non-unique constant like gpt-oss/harmony's
+/// `"tool_use"`); `used` is the set of ids already taken by this message (persisted
+/// tool_uses from prior loop iterations + ids assigned earlier in this finalize
+/// batch). Mints a fresh `call_<uuid>` iff `provider_id` is empty OR already taken;
+/// otherwise keeps `provider_id` so well-behaved providers (Anthropic `toolu_…`,
+/// real OpenAI `call_…`) round-trip unchanged. ziee owns both sides of the
+/// round-trip (the id it sends back as `tool_call_id` and the tool_result that
+/// references it), so replacing a bad id is safe.
+fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSet<String>) -> String {
+    if provider_id.is_empty() || used.contains(provider_id) {
+        format!("call_{}", Uuid::new_v4())
+    } else {
+        provider_id.to_string()
+    }
+}
+
 /// Privileged built-in servers (files, memory, elicitation, bio, web_search,
 /// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
 /// read-only / save-only / user-prompting and auto-attached, so a
@@ -263,6 +295,13 @@ pub struct McpChatExtension {
     /// Storage for accumulating tool use deltas during streaming
     /// Key: (message_id, content_index)
     tool_use_accumulator: Arc<Mutex<HashMap<(Uuid, usize), AccumulatedToolUse>>>,
+    /// Per-message map from a BARE tool name (`execute_command`) to the server that
+    /// advertised it, populated when the tool list is shipped in `before_llm_call`.
+    /// Lets `get_accumulated_content` recover the server_id when a model (e.g.
+    /// gpt-oss/harmony) drops the `<server_id>__` prefix ziee prepends. `None`
+    /// marks an AMBIGUOUS bare name (≥2 servers) — never auto-resolved.
+    /// Key: message_id → (bare_tool_name → Option<server_id>).
+    tool_name_server_map: Arc<Mutex<HashMap<Uuid, HashMap<String, Option<Uuid>>>>>,
 }
 
 impl McpChatExtension {
@@ -274,6 +313,7 @@ impl McpChatExtension {
             config,
             session_manager,
             tool_use_accumulator: Arc::new(Mutex::new(HashMap::new())),
+            tool_name_server_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -343,7 +383,44 @@ impl McpChatExtension {
             let server_id = match approval.server_id {
                 Some(id) => id,
                 None => {
+                    // The tool_use never resolved to a server (e.g. the model
+                    // returned a bare tool name with no `<server_id>__` prefix and
+                    // it could not be matched to an advertised tool). Surface a
+                    // clear error AND delete the approval row so the loop can't
+                    // spin here to `max_iteration` (the reported bug).
                     tracing::error!("No server_id in approval record for tool: {}", tool_name);
+                    let error_result = McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.clone()),
+                        server_id: None,
+                        content: format!(
+                            "Could not resolve an MCP server for tool '{}'. The model returned \
+                             a tool name without a server prefix and it could not be matched to \
+                             an advertised tool, so the call was not executed. Retry, or select \
+                             the tool explicitly.",
+                            tool_name
+                        ),
+                        is_error: Some(true),
+                        attachment: None,
+                        images: None,
+                        resource_links: None,
+                        hidden_content: None,
+                        structured_content: None,
+                    };
+                    tool_results.push(error_result.to_message_content());
+                    executed_tool_use_ids.push(tool_use_id.clone());
+                    if let Err(e) = Repos
+                        .chat
+                        .mcp
+                        .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to delete unresolved approval record for tool_use_id={}: {}",
+                            tool_use_id,
+                            e
+                        );
+                    }
                     continue;
                 }
             };
@@ -366,6 +443,20 @@ impl McpChatExtension {
                     structured_content: None,
                 };
                 tool_results.push(error_result.to_message_content());
+                executed_tool_use_ids.push(tool_use_id.clone());
+                // Delete the approval row so this branch can't re-loop to max_iteration.
+                if let Err(e) = Repos
+                    .chat
+                    .mcp
+                    .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to delete server-not-found approval record for tool_use_id={}: {}",
+                        tool_use_id,
+                        e
+                    );
+                }
                 continue;
             }
 
@@ -449,6 +540,20 @@ impl McpChatExtension {
                         structured_content: None,
                     };
                     tool_results.push(error_result.to_message_content());
+                    executed_tool_use_ids.push(tool_use_id.clone());
+                    // Delete the approval row so this branch can't re-loop to max_iteration.
+                    if let Err(e) = Repos
+                        .chat
+                        .mcp
+                        .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to delete sampling-no-session approval record for tool_use_id={}: {}",
+                            tool_use_id,
+                            e
+                        );
+                    }
                     continue;
                 }
                 let arc = match self.session_manager
@@ -482,6 +587,20 @@ impl McpChatExtension {
                             structured_content: None,
                         };
                         tool_results.push(err_result.to_message_content());
+                        executed_tool_use_ids.push(tool_use_id.clone());
+                        // Delete the approval row so this branch can't re-loop to max_iteration.
+                        if let Err(e) = Repos
+                            .chat
+                            .mcp
+                            .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to delete connect-fail approval record for tool_use_id={}: {}",
+                                tool_use_id,
+                                e
+                            );
+                        }
                         continue;
                     }
                 };
@@ -1472,6 +1591,37 @@ impl ChatExtension for McpChatExtension {
                 "Injected {} always-mode context blocks into the user turn",
                 always_mode_context.len()
             );
+        }
+
+        // Stash a per-message `bare_tool_name -> Option<server_id>` map from the
+        // tools we actually advertised this turn, so `get_accumulated_content` can
+        // recover the server when a model (e.g. gpt-oss/harmony) returns a tool
+        // call WITHOUT the `<server_id>__` prefix. A bare name advertised by ≥2
+        // servers is marked `None` (ambiguous) and never auto-resolved. Built from
+        // `all_tools` (the exact composed names shipped) so it matches what the
+        // model saw and never resolves a tool that was dropped from the list.
+        if let Some(message_id) = context.message_id {
+            let mut bare_map: HashMap<String, Option<Uuid>> = HashMap::new();
+            for tool in &all_tools {
+                let composed = &tool.function.name;
+                if let Some((id_str, bare)) = composed.split_once("__")
+                    && let Ok(sid) = Uuid::parse_str(id_str)
+                {
+                    match bare_map.get(bare) {
+                        // Same bare name from a different server → ambiguous.
+                        Some(Some(existing)) if *existing != sid => {
+                            bare_map.insert(bare.to_string(), None);
+                        }
+                        Some(_) => { /* already Some(same) or already None (ambiguous) */ }
+                        None => {
+                            bare_map.insert(bare.to_string(), Some(sid));
+                        }
+                    }
+                }
+            }
+            if let Ok(mut guard) = self.tool_name_server_map.lock() {
+                guard.insert(message_id, bare_map);
+            }
         }
 
         tracing::info!(
@@ -2724,64 +2874,136 @@ impl ChatExtension for McpChatExtension {
             .message_id
             .ok_or_else(|| AppError::internal_error("No message_id in context"))?;
 
-        // Lock accumulator and extract all entries for this message
-        let mut accumulator = self
-            .tool_use_accumulator
+        // Drain this message's accumulated entries (sorted by index for
+        // deterministic id assignment), then drop the accumulator lock BEFORE any
+        // `.await` — never hold a std Mutex across await.
+        let mut drained: Vec<(usize, AccumulatedToolUse)> = {
+            let mut accumulator = self
+                .tool_use_accumulator
+                .lock()
+                .map_err(|e| AppError::internal_error(format!("Failed to lock accumulator: {}", e)))?;
+            let keys: Vec<(Uuid, usize)> = accumulator
+                .keys()
+                .filter(|(msg_id, _)| *msg_id == message_id)
+                .copied()
+                .collect();
+            keys.into_iter()
+                .filter_map(|key| accumulator.remove(&key).map(|acc| (key.1, acc)))
+                .collect()
+        };
+        drained.sort_by_key(|(index, _)| *index);
+
+        // Snapshot + clear the per-message bare-name→server_id recovery map that
+        // `before_llm_call` populated for this turn (symmetric with the accumulator
+        // drain above). Used to recover server_id when the model dropped the prefix.
+        let bare_name_map: HashMap<String, Option<Uuid>> = self
+            .tool_name_server_map
             .lock()
-            .map_err(|e| AppError::internal_error(format!("Failed to lock accumulator: {}", e)))?;
+            .ok()
+            .and_then(|mut g| g.remove(&message_id))
+            .unwrap_or_default();
+
+        // Seed the used-id set from tool_use ids already persisted on this message
+        // (prior loop iterations) so a fresh call with the same provider id gets a
+        // distinct id (cross-iteration collision). Degrade to empty on DB error.
+        let mut used_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        match Repos.chat.core.get_message_with_content(message_id).await {
+            Ok(Some(existing)) => {
+                for content in &existing.contents {
+                    if let Ok(data) = content.parse_content()
+                        && let Ok(McpContentData::ToolUse { id, .. }) =
+                            McpContentData::from_message_content(&data)
+                        && !id.is_empty()
+                    {
+                        used_ids.insert(id);
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "get_accumulated_content: could not load existing content for message {} to \
+                     dedup tool_use ids ({}); proceeding with within-batch dedup only",
+                    message_id,
+                    e
+                );
+            }
+        }
 
         let mut content_blocks = Vec::new();
 
-        // Collect keys to remove (entries for this message)
-        let keys_to_remove: Vec<_> = accumulator
-            .keys()
-            .filter(|(msg_id, _)| *msg_id == message_id)
-            .copied()
-            .collect();
-
-        // Extract and convert each accumulated tool use
-        for key in keys_to_remove {
-            let (_, index) = key;
-            if let Some(accumulated) = accumulator.remove(&key) {
-                // Parse accumulated JSON input
-                let input = serde_json::from_str(&accumulated.input_json).unwrap_or_else(|e| {
-                    tracing::error!(
-                        "Failed to parse accumulated tool use input JSON: {}. Input: {}",
-                        e,
-                        accumulated.input_json
-                    );
-                    serde_json::json!({}) // Fallback to empty object
-                });
-
-                // Parse server_id and tool name from accumulated name (format: server_id__tool_name)
-                let full_name = accumulated.name.unwrap_or_default();
-                let mut parts = full_name.splitn(2, "__");
-                let (server_id, tool_name) = match (parts.next(), parts.next()) {
-                    (Some(id), Some(name)) => (id.to_string(), name.to_string()),
-                    _ => {
-                        tracing::warn!("[mcp] Tool name missing server_id prefix: {}", full_name);
-                        (String::new(), full_name)
-                    }
-                };
-
-                // Create McpContentData::ToolUse with separate server_id and name
-                let tool_use = McpContentData::ToolUse {
-                    id: accumulated.id.unwrap_or_default(),
-                    name: tool_name.clone(),
-                    server_id: server_id.clone(),
-                    input,
-                };
-
-                tracing::info!(
-                    "MCP: Finalized tool use at index {}: id={}, name={}, server_id={}",
-                    index,
-                    tool_use.to_message_content().content_type(),
-                    tool_name,
-                    server_id,
+        // Convert each accumulated tool use
+        for (index, accumulated) in drained {
+            // Parse accumulated JSON input
+            let input = serde_json::from_str(&accumulated.input_json).unwrap_or_else(|e| {
+                tracing::error!(
+                    "Failed to parse accumulated tool use input JSON: {}. Input: {}",
+                    e,
+                    accumulated.input_json
                 );
+                serde_json::json!({}) // Fallback to empty object
+            });
 
-                content_blocks.push((index, tool_use.to_message_content()));
-            }
+            // Parse server_id and tool name from the accumulated name (format
+            // `<server_id>__<tool_name>`). Some models (e.g. gpt-oss/harmony) strip
+            // the server prefix, yielding either a bare name (`execute_command`, no
+            // separator) or an empty prefix (`__query_rag`). In BOTH cases the
+            // parsed prefix is not a valid server UUID, so recover the server from
+            // the tools advertised this turn; an ambiguous/unknown name stays empty
+            // and later surfaces a clear error rather than mis-dispatching a
+            // side-effecting tool.
+            let full_name = accumulated.name.unwrap_or_default();
+            let (raw_server_id, tool_name) = match full_name.split_once("__") {
+                Some((id, name)) => (id.to_string(), name.to_string()),
+                None => (String::new(), full_name.clone()),
+            };
+            let server_id = if Uuid::parse_str(&raw_server_id).is_ok() {
+                raw_server_id
+            } else {
+                match recover_server_id_for_bare_name(&tool_name, &bare_name_map) {
+                    Some(sid) => {
+                        tracing::info!(
+                            "[mcp] Recovered server_id for prefix-less tool name '{}': {}",
+                            full_name,
+                            sid
+                        );
+                        sid.to_string()
+                    }
+                    None => {
+                        tracing::warn!(
+                            "[mcp] Tool name has no valid server_id prefix and is not uniquely \
+                             recoverable: {}",
+                            full_name
+                        );
+                        String::new()
+                    }
+                }
+            };
+
+            // Ensure the tool_use id is non-empty and unique within this message,
+            // even when the provider streams an empty or duplicate id. Track
+            // assigned ids so two calls in one batch also stay distinct.
+            let provider_id = accumulated.id.unwrap_or_default();
+            let tool_use_id = resolve_unique_tool_use_id(&provider_id, &used_ids);
+            used_ids.insert(tool_use_id.clone());
+
+            tracing::info!(
+                "MCP: Finalized tool use at index {}: id={}, name={}, server_id={}",
+                index,
+                tool_use_id,
+                tool_name,
+                server_id,
+            );
+
+            // Create McpContentData::ToolUse with separate server_id and name
+            let tool_use = McpContentData::ToolUse {
+                id: tool_use_id,
+                name: tool_name.clone(),
+                server_id: server_id.clone(),
+                input,
+            };
+
+            content_blocks.push((index, tool_use.to_message_content()));
         }
 
         Ok(content_blocks)
@@ -3196,5 +3418,77 @@ mod builtin_tests {
         all.extend_from_slice(&needs_approval);
         let unique: std::collections::HashSet<_> = all.iter().collect();
         assert_eq!(unique.len(), all.len(), "built-in server ids must be unique");
+    }
+}
+
+// Regression tests for the gpt-oss/harmony approval-loop fix: bare tool-name
+// server_id recovery (ITEM-3) + message-unique tool_use ids (ITEM-2).
+#[cfg(test)]
+mod approval_loop_tests {
+    use super::{recover_server_id_for_bare_name, resolve_unique_tool_use_id};
+    use std::collections::{HashMap, HashSet};
+    use uuid::Uuid;
+
+    // TEST-1 — an unambiguous bare name resolves to its single advertising server.
+    #[test]
+    fn recover_server_id_unambiguous_happy_path() {
+        let sid = Uuid::new_v4();
+        let mut map: HashMap<String, Option<Uuid>> = HashMap::new();
+        map.insert("execute_command".to_string(), Some(sid));
+        assert_eq!(
+            recover_server_id_for_bare_name("execute_command", &map),
+            Some(sid)
+        );
+    }
+
+    // TEST-2 — a bare name advertised by ≥2 servers is marked ambiguous (`None`)
+    // and is NOT auto-resolved (never guess a side-effecting tool's server).
+    #[test]
+    fn recover_server_id_ambiguous_returns_none() {
+        let mut map: HashMap<String, Option<Uuid>> = HashMap::new();
+        map.insert("execute_command".to_string(), None); // ambiguous sentinel
+        assert_eq!(recover_server_id_for_bare_name("execute_command", &map), None);
+    }
+
+    // TEST-3 — an unknown bare name (absent from the advertised map) → None.
+    #[test]
+    fn recover_server_id_not_found_returns_none() {
+        let map: HashMap<String, Option<Uuid>> = HashMap::new();
+        assert_eq!(recover_server_id_for_bare_name("execute_command", &map), None);
+    }
+
+    // TEST-4 — an empty provider id mints a fresh, non-empty `call_<uuid>` id.
+    #[test]
+    fn resolve_id_mints_when_empty() {
+        let used = HashSet::new();
+        let id = resolve_unique_tool_use_id("", &used);
+        assert!(!id.is_empty());
+        assert!(id.starts_with("call_"), "{id}");
+        // The suffix must be a valid UUID.
+        assert!(Uuid::parse_str(id.trim_start_matches("call_")).is_ok(), "{id}");
+    }
+
+    // TEST-5 — a provider id already in `used` (within-batch OR cross-iteration
+    // collision — both flow through `used`-membership) mints a fresh distinct id.
+    #[test]
+    fn resolve_id_mints_on_collision() {
+        let mut used = HashSet::new();
+        used.insert("tool_use".to_string());
+        let id = resolve_unique_tool_use_id("tool_use", &used);
+        assert_ne!(id, "tool_use");
+        assert!(id.starts_with("call_"), "{id}");
+        assert!(!used.contains(&id), "minted id must not already be taken");
+    }
+
+    // TEST-6 — a unique provider id not in `used` is preserved unchanged, so
+    // well-behaved providers (Anthropic `toolu_…`, real OpenAI `call_…`) round-trip.
+    #[test]
+    fn resolve_id_preserves_good_provider_id() {
+        let used = HashSet::new();
+        assert_eq!(resolve_unique_tool_use_id("toolu_abc123", &used), "toolu_abc123");
+        assert_eq!(
+            resolve_unique_tool_use_id("chatcmpl-tool-90d1ec58ce2478f5", &used),
+            "chatcmpl-tool-90d1ec58ce2478f5"
+        );
     }
 }
