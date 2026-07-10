@@ -8,7 +8,7 @@
 ## Summary
 
 - **340** surfaces carry at least one renderable-state signal.
-- **1973** signals total: 1561 branch, 117 empty, 101 error, 103 loading, 89 overlay, 2 panel.
+- **1977** signals total: 1565 branch, 117 empty, 101 error, 103 loading, 89 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -3666,12 +3666,13 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `value.schedule_kind === 'once'` | 127 |
-| branch | `!raw` | 136 |
-| branch | `preset !== 'custom'` | 163 |
-| branch | `preset === 'weekly'` | 179 |
-| branch | `preset === 'monthly'` | 190 |
-| branch | `preset === 'custom'` | 203 |
+| branch | `days.size === 1` | 105 |
+| branch | `value.schedule_kind === 'once'` | 161 |
+| branch | `!raw` | 170 |
+| branch | `preset !== 'custom'` | 197 |
+| branch | `preset === 'weekly'` | 213 |
+| branch | `preset === 'monthly'` | 241 |
+| branch | `preset === 'custom'` | 254 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3679,14 +3680,17 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 69 |
-| branch | `err` | 145 |
-| branch | `err` | 168 |
-| overlay | `<Drawer open>` | 198 |
-| branch | `canUse` | 223 |
-| branch | `f.target_kind === 'prompt'` | 259 |
-| branch | `testing` | 339 |
-| branch | `testResult` | 344 |
+| branch | `!open` | 104 |
+| branch | `!open` | 112 |
+| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 159 |
+| branch | `err` | 238 |
+| branch | `err` | 262 |
+| overlay | `<Drawer open>` | 296 |
+| branch | `canUse` | 321 |
+| branch | `targetKind === 'prompt'` | 360 |
+| branch | `hasDeclaredInputs` | 382 |
+| branch | `testing` | 448 |
+| branch | `testResult` | 453 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
@@ -3694,13 +3698,13 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `task.paused_reason` | 66 |
-| branch | `expanded` | 89 |
-| branch | `!runs` | 91 |
-| empty | `runs.length === 0` | 93 |
-| loading | `loading && tasks.length === 0` | 193 |
-| error | `error && tasks.length === 0` | 197 |
-| empty | `tasks.length === 0` | 205 |
+| branch | `task.paused_reason` | 76 |
+| branch | `expanded` | 99 |
+| branch | `!runs` | 101 |
+| empty | `runs.length === 0` | 103 |
+| loading | `loading && tasks.length === 0` | 203 |
+| error | `error && tasks.length === 0` | 207 |
+| empty | `tasks.length === 0` | 215 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 

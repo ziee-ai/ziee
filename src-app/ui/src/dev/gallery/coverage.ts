@@ -447,6 +447,7 @@ export const GALLERY_COVERAGE = {
   "modules/server-update/AboutSettings": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/server-update/ServerUpdateBanner": { kind: 'via', reason: 'rendered within the server-update module page' },
   "modules/scheduler/components/ScheduleBuilder": { kind: 'via', reason: 'rendered inside ScheduledTaskFormDrawer' },
+  "modules/scheduler/components/TaskTargetPickers": { kind: 'via', reason: 'controlled Assistant/Workflow/Model/allow-list pickers rendered inside ScheduledTaskFormDrawer; verified via the e2e interaction suite' },
   "modules/scheduler/components/ScheduledTaskFormDrawer": { kind: 'static', reason: 'scheduled-task create/edit drawer — open-state needs the SchedulerDrawer store seeded + a live open-trigger; verified via the e2e interaction suite' },
   "modules/scheduler/pages/ScheduledTasksPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/scheduler/pages/SchedulerAdminPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
