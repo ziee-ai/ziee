@@ -67,8 +67,9 @@ pub struct VoiceCapability {
     pub max_clip_seconds: i32,
     /// True when enabled && runtime_ready && model_ready — the mic is usable.
     pub can_transcribe: bool,
-    /// Live streaming captions available (deployment `streaming_enabled` AND
-    /// `enabled`). The composer runs the interim loop only when this is true.
+    /// Live streaming captions available: the mic is usable (`can_transcribe`)
+    /// AND the deployment `streaming_enabled` toggle is on. The composer runs the
+    /// interim loop only when this is true.
     pub streaming_enabled: bool,
     /// Interim decode cadence (ms) the composer paces its live-caption loop at.
     pub stream_interval_ms: i32,

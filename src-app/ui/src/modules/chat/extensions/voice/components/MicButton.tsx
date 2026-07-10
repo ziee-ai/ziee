@@ -87,7 +87,7 @@ export function MicButton() {
   // recording (the interim loop is armed at record start).
   const streamingAvailable = !!capability.streaming_enabled
   const liveToggle = streamingAvailable ? (
-    <Tooltip content={liveCaptions ? 'Live captions on' : 'Live captions off'}>
+    <Tooltip content={liveCaptions ? 'Turn live captions off' : 'Turn live captions on'}>
       <Button
         data-testid="voice-live-toggle"
         data-tooltip-wrapped=""
@@ -168,14 +168,18 @@ export function MicButton() {
       >
         {/* Live-caption preview (transient, visual-only — the persistent live
             region carries discrete announcements; a growing transcript must not
-            be re-announced every tick). Never written to the composer. */}
+            be re-announced every tick). Never written to the composer. `dir="rtl"`
+            on the clipping box keeps the END (newest words) visible when the full
+            stitched transcript overflows the strip, while the inner `<bdi dir="ltr">`
+            renders the text itself left-to-right. */}
         {liveCaptions && interimText && (
           <span
+            dir="rtl"
+            className="max-w-48 overflow-hidden whitespace-nowrap text-xs text-muted-foreground"
             data-testid="voice-live-caption"
             aria-hidden="true"
-            className="text-xs text-muted-foreground truncate max-w-48"
           >
-            {interimText}
+            <bdi dir="ltr">{interimText}</bdi>
           </span>
         )}
         <span

@@ -28,6 +28,25 @@ and dictation clips are short + capped, so the O(n²) tail cost is acceptable. K
 tradeoff: whisper may revise earlier words between ticks (mild caption flicker); an
 LCP/commit-prefix stability filter is a future enhancement if the reviewer flags it.
 
+**Graceful-degradation (from the Phase 6 blind audit).** The full re-decode's cost
+has real failure modes that are now handled so the feature degrades gracefully rather
+than faulting: (a) an interim decode that exceeds the bounded interim timeout (or
+otherwise fails) returns a **transient 503 `VOICE_INTERIM_UNAVAILABLE`** (not a 500) —
+the client single-flights and simply skips that caption, recording + the authoritative
+final decode are unaffected; (b) the live-caption strip shows the **tail** (newest
+words) of the stitched transcript via a `dir="rtl"` overflow box, so a long transcript
+stays live instead of freezing on its opening words; (c) `capability.streaming_enabled`
+is gated on `can_transcribe`, so the interim loop never starts against an unprovisioned
+runtime. **Accepted residual:** repeated full-buffer decodes on the single shared
+whisper-server are an authenticated-compute amplification vector (several concurrent
+live-caption users can load the instance and slow batch dictation). This is inherent to
+the user's full-stitch choice; it is byte-bounded per request and clip-length-bounded by
+`max_clip_seconds`, mitigated by client single-flight + whisper's internal
+serialization, and an operator can lower `max_clip_seconds` / raise `stream_interval_ms`
+/ turn `streaming_enabled` off. A stronger bound (a trailing-decode-window cap or a
+per-user interim concurrency guard) is offered to the reviewer in HUMAN_FEEDBACK
+(FB-1) — it would walk back full-stitch on long clips, so it is the user's call.
+
 ### DEC-3: Interim vs final semantics — does the composer ever receive interim text?
 **Resolution:** **No.** Interim results render only in a transient live-caption
 **preview strip** (the full stitched running transcript); the composer receives ONLY

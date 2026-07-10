@@ -6825,8 +6825,9 @@ export interface VoiceCapability {
   /** Interim decode cadence (ms) the composer paces its live-caption loop at. */
   stream_interval_ms: number
   /**
-   * Live streaming captions available (deployment `streaming_enabled` AND
-   *  `enabled`). The composer runs the interim loop only when this is true.
+   * Live streaming captions available: the mic is usable (`can_transcribe`)
+   *  AND the deployment `streaming_enabled` toggle is on. The composer runs the
+   *  interim loop only when this is true.
    */
   streaming_enabled: boolean
 }

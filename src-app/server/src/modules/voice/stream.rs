@@ -80,7 +80,23 @@ pub async fn transcribe_stream(
     };
 
     let started = Instant::now();
-    let text = forward_to_whisper(&handle.base_url, audio, &lang, INTERIM_WHISPER_TIMEOUT).await?;
+    // Interim decode is best-effort. A slow/failed tick — e.g. a long buffer whose
+    // full-clip decode exceeds INTERIM_WHISPER_TIMEOUT — is TRANSIENT: the client
+    // single-flights and simply skips this caption, so surface a transient 503
+    // (`VOICE_INTERIM_UNAVAILABLE`) rather than a 500 that reads as a real fault.
+    let text = match forward_to_whisper(&handle.base_url, audio, &lang, INTERIM_WHISPER_TIMEOUT).await
+    {
+        Ok(text) => text,
+        Err(e) => {
+            tracing::debug!("voice interim decode transient failure: {e}");
+            return Err(AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "VOICE_INTERIM_UNAVAILABLE",
+                "interim transcription is temporarily unavailable",
+            )
+            .into());
+        }
+    };
     let duration_ms = started.elapsed().as_millis() as i64;
 
     Ok((

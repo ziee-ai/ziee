@@ -106,8 +106,10 @@ pub fn validate_settings_patch(body: &UpdateVoiceSettingsRequest) -> Result<(), 
     if let Some(n) = body.stream_interval_ms
         && !(300..=10_000).contains(&n)
     {
-        // Matches the DB CHECK on stream_interval_ms. Sub-300ms would flood the
-        // whisper instance; >10s stops feeling live.
+        // Matches the DB CHECK on stream_interval_ms. This is the client's interim
+        // decode cadence hint (the client single-flights interim decodes, so it
+        // paces — not gates — load); a floor keeps a misconfigured cadence sane and
+        // >10s stops feeling live.
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
             "stream_interval_ms out of range (300..=10000)",
@@ -166,15 +168,18 @@ pub async fn get_capability(
     let runtime_ready = super::binary_manager::runtime_ready().await;
     let model_ready = super::model::model_present(&settings.model);
     let enabled = settings.enabled;
+    let can_transcribe = enabled && runtime_ready && model_ready;
     let cap = VoiceCapability {
         enabled,
         runtime_ready,
         model_ready,
         model: settings.model,
         max_clip_seconds: settings.max_clip_seconds,
-        can_transcribe: enabled && runtime_ready && model_ready,
-        // Live captions need the deployment toggle AND the master enable.
-        streaming_enabled: enabled && settings.streaming_enabled,
+        can_transcribe,
+        // Live captions require the whole mic to be usable (runtime + model ready)
+        // AND the deployment streaming toggle — the interim loop must never start
+        // against an unprovisioned runtime.
+        streaming_enabled: can_transcribe && settings.streaming_enabled,
         stream_interval_ms: settings.stream_interval_ms,
     };
     Ok((StatusCode::OK, Json(cap)))
