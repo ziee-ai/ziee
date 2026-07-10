@@ -45,6 +45,10 @@ test.describe('Split chat — per-pane composer (model + draft) isolation', () =
     const pane1 = byTestId(page, 'chat-pane-1')
     await expect(pane0).toBeVisible({ timeout: 15000 })
     await expect(pane1).toBeVisible({ timeout: 15000 })
+    // pane 1 opens the conversation PICKER (ITEM-27); "Start a new chat" reaches
+    // the new-chat composer (its own model/draft selection key).
+    await pane1.getByTestId('pane-start-new-chat').click()
+    await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Both panes start at the same default model (Model Alpha, the first).
     await expect(pane0.getByTestId('model-selector')).toContainText('Alpha')

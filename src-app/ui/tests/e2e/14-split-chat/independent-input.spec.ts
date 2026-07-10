@@ -58,6 +58,10 @@ test.describe('Split chat — open-split + input isolation', () => {
     await expect(pane1).toBeVisible({ timeout: 15000 })
     // A resize divider sits between them.
     await expect(byTestId(page, 'split-divider-0')).toBeVisible()
+    // pane 1 opens the conversation PICKER (ITEM-27); "Start a new chat" reaches
+    // the new-chat composer so pane 1 has its own textarea to type into.
+    await pane1.getByTestId('pane-start-new-chat').click()
+    await expect(pane1.getByTestId('pane-new-chat-greeting')).toBeVisible()
 
     // Each pane has its own composer textarea.
     const inputA = pane0.locator('textarea[placeholder*="Type your message"]')

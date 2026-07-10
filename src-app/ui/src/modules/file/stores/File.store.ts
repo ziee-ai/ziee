@@ -58,6 +58,10 @@ interface FileExtensionStore {
   // Backup state (for error recovery)
   backupSelectedFiles: Map<string, FileEntity> | null
   backupUploadingFiles: Map<string, FileUploadProgress> | null
+  /** Owner maps backed up alongside the buffer (ITEM-32) so a restore keeps
+   *  per-pane ownership; without them restored files are unowned + invisible. */
+  backupFileOwner: Map<string, string> | null
+  backupUploadOwner: Map<string, string> | null
 
   // Cache for file entities shown in message history (fetched on demand)
   messageFilesCache: Map<string, FileEntity>
@@ -289,6 +293,8 @@ export const File = defineStore('File', {
     restoredFileIds: new Set(),
     backupSelectedFiles: null,
     backupUploadingFiles: null,
+    backupFileOwner: null,
+    backupUploadOwner: null,
     messageFilesCache: new Map(),
     messageFilesLoadingSet: new Set(),
     thumbnailUrls: new Map(),
@@ -317,6 +323,8 @@ export const File = defineStore('File', {
     | 'restoredFileIds'
     | 'backupSelectedFiles'
     | 'backupUploadingFiles'
+    | 'backupFileOwner'
+    | 'backupUploadOwner'
     | 'messageFilesCache'
     | 'messageFilesLoadingSet'
     | 'thumbnailUrls'
@@ -813,10 +821,12 @@ export const File = defineStore('File', {
 
     // Backup current files (before clearing)
     setBackupFiles: () => {
-      const { selectedFiles, uploadingFiles } = get()
+      const { selectedFiles, uploadingFiles, fileOwner, uploadOwner } = get()
       set((state) => {
         state.backupSelectedFiles = new Map(selectedFiles)
         state.backupUploadingFiles = new Map(uploadingFiles)
+        state.backupFileOwner = new Map(fileOwner)
+        state.backupUploadOwner = new Map(uploadOwner)
       })
       console.log('[FileStore] Backed up files')
     },
@@ -837,9 +847,12 @@ export const File = defineStore('File', {
     restoreFromBackup: () => {
       const backup = get().getBackupFiles()
       if (backup) {
+        const { backupFileOwner, backupUploadOwner } = get()
         set((state) => {
           state.selectedFiles = new Map(backup.selectedFiles)
           state.uploadingFiles = new Map(backup.uploadingFiles)
+          if (backupFileOwner) state.fileOwner = new Map(backupFileOwner)
+          if (backupUploadOwner) state.uploadOwner = new Map(backupUploadOwner)
         })
         console.log('[FileStore] Restored files from backup')
       }

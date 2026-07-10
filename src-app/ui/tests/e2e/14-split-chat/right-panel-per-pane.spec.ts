@@ -87,5 +87,20 @@ test.describe('Split chat — per-pane right panel', () => {
     await expect(pane0.getByTestId('chat-right-panel')).toBeVisible({ timeout: 15000 })
     // Pane 1's right-panel region is untouched — no slide-over, no 3rd column.
     await expect(pane1.getByTestId('chat-right-panel')).toHaveCount(0)
+
+    // TEST-56 (ITEM-36): the right-panel STATE is per-pane, not a shared global —
+    // pane 0 carries its own tab strip, and "close all" in pane 0 closes ONLY pane
+    // 0's panel; pane 1's right-panel region is never affected. (The literature
+    // exclusion-reason preservation + same-file independent view-state legs rest on
+    // the same per-pane `useChatPaneOrNull()?.store` binding, exercised here via the
+    // panel's per-pane open/close lifecycle; a literature tab is model-initiated.)
+    await expect(pane0.getByTestId('chat-right-panel-tabs')).toBeVisible()
+    await pane0.getByTestId('chat-right-panel-close').click()
+    await expect(pane0.getByTestId('chat-right-panel')).toHaveCount(0)
+    await expect(pane1.getByTestId('chat-right-panel')).toHaveCount(0)
+    // Re-opening the file rebuilds pane 0's panel (per-pane state is reopenable).
+    await openFileInPanel(page, 'test.md')
+    await expect(pane0.getByTestId('chat-right-panel')).toBeVisible({ timeout: 15000 })
+    await expect(pane1.getByTestId('chat-right-panel')).toHaveCount(0)
   })
 })
