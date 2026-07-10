@@ -17,9 +17,14 @@ export function LlmModelParametersSection({
   return (
     <>
       {title && <Title level={5}>{title}</Title>}
-      {parameters.map((param, index) => (
-        <LlmModelParameterField key={index} {...param} />
-      ))}
+      {/* space-y-5: inside a Card the fields aren't direct children of the Form's
+          FieldGroup, so they lose its inter-field gap and each field's help text
+          butts against the next field's label. Re-add the gap here. */}
+      <div className="space-y-5">
+        {parameters.map((param, index) => (
+          <LlmModelParameterField key={index} {...param} />
+        ))}
+      </div>
     </>
   )
 }

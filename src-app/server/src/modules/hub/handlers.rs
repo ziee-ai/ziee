@@ -1617,6 +1617,7 @@ pub async fn create_model_from_hub(
             code_interpreter: Some(hub_caps.code_interpreter),
             chat: Some(hub_caps.chat),
             text_embedding: Some(hub_caps.text_embedding),
+            rerank: Some(hub_caps.rerank),
             image_generator: Some(hub_caps.image_generator),
             context_length: source.context_length.and_then(|n| u32::try_from(n).ok()),
         }

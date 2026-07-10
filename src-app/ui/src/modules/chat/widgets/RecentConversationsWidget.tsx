@@ -207,14 +207,20 @@ function ConversationRowActions({
   return (
     <div
       className={
-        'row-actions flex-shrink-0 opacity-0 group-hover/menu-row:opacity-100 group-focus-within/menu-row:opacity-100 hover-none:opacity-100 ' +
+        // pointer-events mirror the opacity reveal: the parent Menu mask is
+        // pointer-events-none, so the kebab must re-enable its own events when
+        // shown (and stay inert while hidden so row clicks pass through it).
+        'row-actions flex-shrink-0 opacity-0 pointer-events-none group-hover/menu-row:opacity-100 group-hover/menu-row:pointer-events-auto group-focus-within/menu-row:opacity-100 group-focus-within/menu-row:pointer-events-auto hover-none:opacity-100 hover-none:pointer-events-auto ' +
         'transition-opacity duration-150'
       }
-      // Keep the button visible while its dropdown is open OR while
-      // a delete is in flight — `opacity-0` would otherwise hide it
-      // mid-interaction. Inline style wins over the Tailwind class
-      // because it sets the same property.
-      style={menuOpen || keepMenuOpen || deleting ? { opacity: 1 } : undefined}
+      // Keep the button visible + interactive while its dropdown is open OR while
+      // a delete is in flight — `opacity-0` / pointer-events-none would otherwise
+      // hide it mid-interaction. Inline style wins over the Tailwind classes.
+      style={
+        menuOpen || keepMenuOpen || deleting
+          ? { opacity: 1, pointerEvents: 'auto' }
+          : undefined
+      }
       onClick={e => e.stopPropagation()}
     >
       {/* One styled tooltip only: put the kit Tooltip on the span (not the

@@ -51,6 +51,13 @@ impl FileRagRepository {
                 fts_rrf_k,
                 fts_candidate_multiplier,
                 fts_min_rank,
+                reranker_model_id,
+                rerank_enabled,
+                rerank_candidate_k,
+                kb_max_documents,
+                search_max_hit_chars,
+                search_snippet_chars,
+                search_max_top_k,
                 updated_at as "updated_at: _"
             FROM file_rag_admin_settings
             WHERE id = 1
@@ -81,9 +88,18 @@ impl FileRagRepository {
         fts_rrf_k: Option<i32>,
         fts_candidate_multiplier: Option<i32>,
         fts_min_rank: Option<f32>,
+        reranker_model_id: Option<Option<Uuid>>,
+        rerank_enabled: Option<bool>,
+        rerank_candidate_k: Option<i32>,
+        kb_max_documents: Option<i32>,
+        search_max_hit_chars: Option<i32>,
+        search_snippet_chars: Option<i32>,
+        search_max_top_k: Option<i16>,
     ) -> Result<FileRagAdminSettings, AppError> {
         let embedding_set = embedding_model_id.is_some();
         let embedding_val = embedding_model_id.flatten();
+        let reranker_set = reranker_model_id.is_some();
+        let reranker_val = reranker_model_id.flatten();
 
         let row = sqlx::query_as!(
             FileRagAdminSettings,
@@ -102,6 +118,13 @@ impl FileRagRepository {
                 fts_rrf_k                = COALESCE($12, fts_rrf_k),
                 fts_candidate_multiplier = COALESCE($13, fts_candidate_multiplier),
                 fts_min_rank             = COALESCE($14, fts_min_rank),
+                reranker_model_id        = CASE WHEN $15::bool THEN $16 ELSE reranker_model_id END,
+                rerank_enabled           = COALESCE($17, rerank_enabled),
+                rerank_candidate_k       = COALESCE($18, rerank_candidate_k),
+                kb_max_documents         = COALESCE($19, kb_max_documents),
+                search_max_hit_chars     = COALESCE($20, search_max_hit_chars),
+                search_snippet_chars     = COALESCE($21, search_snippet_chars),
+                search_max_top_k         = COALESCE($22, search_max_top_k),
                 updated_at               = NOW()
             WHERE id = 1
             RETURNING
@@ -120,6 +143,13 @@ impl FileRagRepository {
                 fts_rrf_k,
                 fts_candidate_multiplier,
                 fts_min_rank,
+                reranker_model_id,
+                rerank_enabled,
+                rerank_candidate_k,
+                kb_max_documents,
+                search_max_hit_chars,
+                search_snippet_chars,
+                search_max_top_k,
                 updated_at as "updated_at: _"
             "#,
             enabled,
@@ -136,11 +166,53 @@ impl FileRagRepository {
             fts_rrf_k,
             fts_candidate_multiplier,
             fts_min_rank,
+            reranker_set,
+            reranker_val,
+            rerank_enabled,
+            rerank_candidate_k,
+            kb_max_documents,
+            search_max_hit_chars,
+            search_snippet_chars,
+            search_max_top_k,
         )
         .fetch_one(&self.pool)
         .await
         .map_err(AppError::database_error)?;
         Ok(row)
+    }
+
+    // ── file_index_state (Part I: per-file indexing lifecycle) ──────────
+
+    /// Upsert a file's RAG index lifecycle state. The knowledge-base UI reads
+    /// this for per-document status; the caller emits `sync:file_index_state`.
+    pub async fn set_index_state(
+        &self,
+        file_id: Uuid,
+        user_id: Uuid,
+        status: &str,
+        error: Option<&str>,
+        chunk_count: i32,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO file_index_state (file_id, user_id, status, error, chunk_count, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (file_id) DO UPDATE
+            SET status      = EXCLUDED.status,
+                error       = EXCLUDED.error,
+                chunk_count = EXCLUDED.chunk_count,
+                updated_at  = NOW()
+            "#,
+            file_id,
+            user_id,
+            status,
+            error,
+            chunk_count,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
     }
 
     // ── file_chunks ─────────────────────────────────────────────────────

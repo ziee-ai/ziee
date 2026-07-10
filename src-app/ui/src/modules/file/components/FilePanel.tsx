@@ -142,18 +142,17 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
     : null
 
   return (
-    <div className="flex flex-col h-full w-full bg-background">
+    <div className="flex flex-col h-full w-full bg-card">
       {/* Title bar — panel-owned. Viewer fills the right-side actions area
           when there's a registered viewer; otherwise we surface Download.
           Hosts that render their own header (FilePreviewDrawer) pass
           hideHeader to skip this and avoid duplication. */}
       {!hideHeader && (
         <div
-          // bg-muted/50: a subtle muted header band (matches the drawer footer /
-          // find-bar convention). Without it the header fell through to the
-          // panel's bg-background — the DARKEST token — reading as a heavy black
-          // bar above the lighter bg-card body.
-          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b bg-muted/50"
+          // bg-muted: a muted header band distinct from the bg-card panel body
+          // (which matches the app shell / tab strip). matches the drawer footer /
+          // find-bar convention.
+          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b bg-muted"
         >
           <Title level={5} className="!m-0 flex-1 truncate" title={file.filename}>
             {file.filename}

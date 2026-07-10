@@ -232,6 +232,11 @@ pub struct ModelCapabilities {
     /// Text embedding capability - can generate text embeddings for semantic search
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_embedding: Option<bool>,
+    /// Reranker (cross-encoder) capability - scores query/document relevance for
+    /// retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
+    /// mutually exclusive with `chat` in the admin UI. Delivered via the hub.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rerank: Option<bool>,
     /// Image generation capability - can generate images from text descriptions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_generator: Option<bool>,

@@ -12,6 +12,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { Button, Input, Separator, Spin, Text, Tooltip } from '@/components/ui'
+import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import type { PdfController, ScaleValue } from './pdfjs'
 import { usePdfDocument } from './usePdfDocument'
@@ -30,6 +31,11 @@ export function PdfJsBody(props: FileViewerSlotProps) {
   if (!('file' in props)) return null
   const { file } = props
   const { status, doc, api, error } = usePdfDocument(file.id)
+
+  // Citation-highlight target for THIS file (set by a caller that opens the doc
+  // at an exact passage, e.g. the KB kb_source panel). Read reactively so a
+  // re-target re-applies. See PdfHighlight.store + types/viewer.ts convention.
+  const highlightTarget = Stores.PdfHighlight.targets.get(file.id) ?? null
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
@@ -79,6 +85,17 @@ export function PdfJsBody(props: FileViewerSlotProps) {
       controllerRef.current = null
     }
   }, [status, doc, api])
+
+  // Apply the citation highlight once the controller exists (and re-apply when
+  // the target changes). Runs after the creation effect above (same deps →
+  // declaration order), so controllerRef is populated. Empty rects clear it.
+  useEffect(() => {
+    if (status !== 'ready') return
+    const c = controllerRef.current
+    if (!c) return
+    if (highlightTarget) c.setHighlights(highlightTarget.page, highlightTarget.rects)
+    else c.clearHighlights()
+  }, [status, doc, api, highlightTarget])
 
   const goToPage = (p: number) => controllerRef.current?.setPage(clampPage(p, numPages))
   // Step from the controller's LIVE page, not React state (which only updates

@@ -1,0 +1,64 @@
+//! Permission keys for the voice dictation module.
+//!
+//! A clean `transcribe` + `admin::{read,manage}` split (web_search style) rather
+//! than the llm_local_runtime 9-perm split. Admins hold `voice::admin::*` via the
+//! `*` wildcard on the Administrators group; only the user-facing
+//! `voice::transcribe` is granted to the Users group (migration 152).
+
+use crate::modules::permissions::types::PermissionCheck;
+
+/// Use voice dictation (record + transcribe into the composer). Granted to the
+/// default Users group by migration 152.
+pub struct VoiceTranscribe;
+impl PermissionCheck for VoiceTranscribe {
+    const NAME: &'static str = "VoiceTranscribe";
+    const PERMISSION: &'static str = "voice::transcribe";
+    const DESCRIPTION: &'static str = "Record audio and transcribe it into the chat composer.";
+    const MODULE: &'static str = "voice";
+}
+
+/// Read deployment-wide voice settings, runtime versions, model + instance state.
+pub struct VoiceAdminRead;
+impl PermissionCheck for VoiceAdminRead {
+    const NAME: &'static str = "VoiceAdminRead";
+    const PERMISSION: &'static str = "voice::admin::read";
+    const DESCRIPTION: &'static str =
+        "Read voice dictation settings, runtime versions, model and instance state.";
+    const MODULE: &'static str = "voice";
+}
+
+/// Manage voice settings, install/delete/set-default runtime versions, download
+/// models, and control the whisper-server instance.
+pub struct VoiceAdminManage;
+impl PermissionCheck for VoiceAdminManage {
+    const NAME: &'static str = "VoiceAdminManage";
+    const PERMISSION: &'static str = "voice::admin::manage";
+    const DESCRIPTION: &'static str =
+        "Update voice settings, manage whisper runtime versions and models, and control the instance.";
+    const MODULE: &'static str = "voice";
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The exact permission strings are load-bearing: they must match the
+    // Users-group grant (migration 152), the `*`-wildcard admin match, the sync
+    // audiences, and the generated frontend `Permissions` enum. A silent typo
+    // here would 403 every transcribe user (or silently un-gate an admin route),
+    // so pin the three constants byte-for-byte.
+    #[test]
+    fn permission_constants_are_exact() {
+        assert_eq!(VoiceTranscribe::PERMISSION, "voice::transcribe");
+        assert_eq!(VoiceTranscribe::NAME, "VoiceTranscribe");
+        assert_eq!(VoiceTranscribe::MODULE, "voice");
+
+        assert_eq!(VoiceAdminRead::PERMISSION, "voice::admin::read");
+        assert_eq!(VoiceAdminRead::NAME, "VoiceAdminRead");
+        assert_eq!(VoiceAdminRead::MODULE, "voice");
+
+        assert_eq!(VoiceAdminManage::PERMISSION, "voice::admin::manage");
+        assert_eq!(VoiceAdminManage::NAME, "VoiceAdminManage");
+        assert_eq!(VoiceAdminManage::MODULE, "voice");
+    }
+}

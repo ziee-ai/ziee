@@ -15,25 +15,36 @@ import type {
 } from '@/modules/layouts/app-layout/types'
 
 /**
- * Pick the most-specific item whose `path` is a prefix of the current
- * pathname. Returns the item's id (the Menu's `key`) or undefined when
- * nothing in this group is active. Matches the original sidebar's
- * "startsWith" semantics so submenu pages keep their parent
- * highlighted (e.g. `/settings/profile` highlights "Settings").
+ * Split a group's active state into the EXACT current page vs. a broader
+ * ANCESTOR section. `exact` is the item whose `path` equals the pathname (the
+ * strong selected pill); `ancestor` is the most-specific item whose `path` is a
+ * proper prefix (a subtle "you're in this section" treatment, e.g.
+ * `/settings/profile` softly marks "Settings", and a project conversation softly
+ * marks "Projects" while the Recent-chats list owns the strong current mark).
+ * Never returns both — an exact match wins outright.
  */
-function selectedKeyForGroup(
+function selectionForGroup(
   pathname: string,
   items: { id: string; path: string }[],
-): string | undefined {
-  let best: { id: string; pathLen: number } | undefined
+): { exact?: string; ancestor?: string } {
+  let exact: string | undefined
+  let ancestor: { id: string; pathLen: number } | undefined
   for (const it of items) {
-    if (pathname === it.path || pathname.startsWith(it.path + '/')) {
-      if (!best || it.path.length > best.pathLen) {
-        best = { id: it.id, pathLen: it.path.length }
+    if (pathname === it.path) {
+      exact = it.id
+    } else if (pathname.startsWith(it.path + '/')) {
+      // A broader section you're within (e.g. "Projects" while viewing a project
+      // conversation at /projects/:id/chat/:id). Keep the most-specific one.
+      if (!ancestor || it.path.length > ancestor.pathLen) {
+        ancestor = { id: it.id, pathLen: it.path.length }
       }
     }
   }
-  return best?.id
+  // Only the EXACT current page gets the strong selected pill. When the page is a
+  // sub-route (a conversation the Recent-chats list already marks current, a
+  // settings subpage, …) the section item is a subtle ancestor, not a second
+  // "current". Exact wins outright — no ancestor is surfaced alongside it.
+  return { exact, ancestor: exact ? undefined : ancestor?.id }
 }
 
 /**
@@ -120,17 +131,18 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
     label: isIconOnly ? null : t.label,
   }))
 
-  const navSelectedKey = selectedKeyForGroup(location.pathname, sortedNavigation)
-  const toolsSelectedKey = selectedKeyForGroup(location.pathname, sortedTools)
+  const navSel = selectionForGroup(location.pathname, sortedNavigation)
+  const toolsSel = selectionForGroup(location.pathname, sortedTools)
   // Primary actions surface paths only when present (otherwise the
   // action is a pure `onClick` like "New Chat" which never has a
   // selected state). Build the list with non-null paths only.
-  const primarySelectedKey = selectedKeyForGroup(
+  const primarySel = selectionForGroup(
     location.pathname,
     sortedPrimaryActions
       .filter((a): a is SidebarActionItem & { to: string } => Boolean(a.to))
       .map(a => ({ id: a.id, path: a.to })),
   )
+  const ancestorList = (id?: string) => (id ? [id] : undefined)
 
   // On mobile the sidebar is a full-screen Sheet and AppLayout remounts on each
   // route change — so navigating away while the Sheet is open unmounts it mid-
@@ -180,7 +192,8 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
           mode="vertical"
           aria-label="Primary actions"
           data-testid="layout-sidebar-primary-actions-menu"
-          selectedKey={primarySelectedKey}
+          selectedKey={primarySel.exact}
+          ancestorKeys={ancestorList(primarySel.ancestor)}
           items={primaryItems}
           onSelect={handlePrimaryMenuClick}
           className="px-2"
@@ -195,7 +208,8 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
             mode="vertical"
             aria-label="Primary navigation"
             data-testid="layout-sidebar-nav-menu"
-            selectedKey={navSelectedKey}
+            selectedKey={navSel.exact}
+            ancestorKeys={ancestorList(navSel.ancestor)}
             items={[
               {
                 type: 'group',
@@ -232,7 +246,8 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
             mode="vertical"
             aria-label="Tools navigation"
             data-testid="layout-sidebar-tools-menu"
-            selectedKey={toolsSelectedKey}
+            selectedKey={toolsSel.exact}
+            ancestorKeys={ancestorList(toolsSel.ancestor)}
             items={[
               {
                 type: 'group',
