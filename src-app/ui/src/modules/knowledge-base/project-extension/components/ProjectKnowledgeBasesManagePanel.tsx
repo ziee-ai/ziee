@@ -23,7 +23,7 @@ export function ProjectKnowledgeBasesManagePanel() {
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    if (!projectId) return
+    if (!projectId || !canUse) return
     setLoading(true)
     try {
       setAttached(await ApiClient.KnowledgeBase.listProject({ pid: projectId }))
@@ -32,7 +32,7 @@ export function ProjectKnowledgeBasesManagePanel() {
     } finally {
       setLoading(false)
     }
-  }, [projectId])
+  }, [projectId, canUse])
 
   useEffect(() => {
     void reload()
@@ -71,6 +71,12 @@ export function ProjectKnowledgeBasesManagePanel() {
       setBusyId(null)
     }
   }
+
+  // Permission gate (layer 3): hide the whole KB manage panel — header, count,
+  // list, and picker — for users lacking knowledge_base::use. The `canUse`
+  // guards on the buttons below stay as defense-in-depth for the use-vs-manage
+  // split, but the panel must not render (or fetch) at all without `use`.
+  if (!canUse) return null
 
   if (!projectId)
     return (

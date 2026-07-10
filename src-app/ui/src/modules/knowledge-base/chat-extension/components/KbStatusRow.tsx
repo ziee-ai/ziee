@@ -1,5 +1,7 @@
 import { Tag, message } from '@/components/ui'
 import { BookOpen } from 'lucide-react'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 /**
@@ -8,11 +10,13 @@ import { Stores } from '@/core/stores'
  * conversation, buffers otherwise). Mirrors McpStatusRow.
  */
 export function KbStatusRow() {
+  // Explicit permission gate (layer 4) — see KbMenuItem.
+  const canUse = usePermission(Permissions.KnowledgeBaseUse)
   const { items } = Stores.KnowledgeBases
   const { selectedKbIds } = Stores.KnowledgeBaseComposer
 
   const visibleIds = Array.from(selectedKbIds).filter(id => items.has(id))
-  if (visibleIds.length === 0) return null
+  if (!canUse || visibleIds.length === 0) return null
 
   return (
     <>

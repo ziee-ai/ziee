@@ -1,5 +1,7 @@
 import { Popover, message } from '@/components/ui'
 import { BookOpen, Check, ChevronRight } from 'lucide-react'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 /**
@@ -12,11 +14,15 @@ import { Stores } from '@/core/stores'
  * single-select. Hidden entirely when the user owns no KBs (nothing to attach).
  */
 export function KbMenuItem() {
+  // Explicit permission gate (layer 4): no knowledge_base::use → no composer
+  // affordance. Defense-in-depth over the store's own load gate (which keeps
+  // `items` empty for unpermitted users) so this never depends on load timing.
+  const canUse = usePermission(Permissions.KnowledgeBaseUse)
   const { items } = Stores.KnowledgeBases
   const { selectedKbIds } = Stores.KnowledgeBaseComposer
 
   const kbs = Array.from(items.values())
-  if (kbs.length === 0) return null
+  if (!canUse || kbs.length === 0) return null
 
   const toggle = (id: string) => {
     const p = selectedKbIds.has(id)

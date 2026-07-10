@@ -248,3 +248,8 @@ src-app/desktop/ui/src/dev/gallery/fixtures/recorded/crawl.json	300	3000	tests-q
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1320	4520	tests-quality,patterns-conformance,api-contract
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1485	1790	tests-quality,patterns-conformance,api-contract
 src-app/ui/tests/e2e/14-knowledge-base/kb-citation-flow.spec.ts	1	60	tests-quality,correctness,patterns-conformance,error-handling
+src-app/ui/src/modules/knowledge-base/chat-extension/components/KbMenuItem.tsx	1	100000	perms/authz,security,correctness,state-management,patterns-conformance
+src-app/ui/src/modules/knowledge-base/chat-extension/components/KbStatusRow.tsx	1	100000	perms/authz,security,correctness,state-management,patterns-conformance
+src-app/ui/src/modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview.tsx	1	100000	perms/authz,security,correctness,state-management,patterns-conformance
+src-app/ui/src/modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel.tsx	1	100000	perms/authz,security,correctness,state-management,patterns-conformance
+src-app/ui/tests/e2e/14-knowledge-base/kb-permission-gating.spec.ts	1	100000	tests-quality,perms/authz,security,correctness

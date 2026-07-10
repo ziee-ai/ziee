@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { BookOpen } from 'lucide-react'
 import { Button, Text } from '@/components/ui'
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
 
@@ -9,6 +11,11 @@ import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
  *  knowledge card). Mirrors ProjectBibliographyInlinePreview; refetches on
  *  `sync:knowledge_base` so the count stays current after an attach/detach. */
 export function ProjectKnowledgeBasesInlinePreview() {
+  // Permission gate (layer 3): a user without knowledge_base::use must see NO
+  // trace of the KB knowledge kind in a project — not the header, not the count,
+  // and no 403-triggering fetch. The knowledge_kinds slot has no permission
+  // field, so each kind gates itself.
+  const canUse = usePermission(Permissions.KnowledgeBaseUse)
   const project = Stores.ProjectDetail.project
   const projectId = project?.id
   const openManageDrawer = useOpenManageDrawer()
@@ -16,7 +23,7 @@ export function ProjectKnowledgeBasesInlinePreview() {
   const [count, setCount] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!projectId) return
+    if (!projectId || !canUse) return
     let cancelled = false
     const reload = () => {
       ApiClient.KnowledgeBase.listProject({ pid: projectId })
@@ -37,7 +44,10 @@ export function ProjectKnowledgeBasesInlinePreview() {
       cancelled = true
       unsub()
     }
-  }, [projectId])
+  }, [projectId, canUse])
+
+  // Hide the KB knowledge kind entirely for users lacking knowledge_base::use.
+  if (!canUse) return null
 
   return (
     <div>

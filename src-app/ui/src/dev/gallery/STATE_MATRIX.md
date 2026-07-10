@@ -8,7 +8,7 @@
 ## Summary
 
 - **339** surfaces carry at least one renderable-state signal.
-- **1943** signals total: 1528 branch, 122 empty, 98 error, 102 loading, 90 overlay, 3 panel.
+- **1945** signals total: 1530 branch, 122 empty, 98 error, 102 loading, 90 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -2302,7 +2302,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `kbs.length === 0` | 19 |
+| empty | `!canUse \|\| kbs.length === 0` | 25 |
 
 ### `modules/knowledge-base/chat-extension/components/KbSourcePanel`
 
@@ -2319,7 +2319,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `visibleIds.length === 0` | 15 |
+| empty | `!canUse \|\| visibleIds.length === 0` | 19 |
 
 ### `modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard`
 
@@ -2400,8 +2400,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!projectId` | 19 |
-| empty | `count === 0` | 52 |
+| branch | `!projectId \|\| !canUse` | 26 |
+| branch | `!canUse` | 50 |
+| empty | `count === 0` | 62 |
 
 ### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel`
 
@@ -2409,15 +2410,16 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!projectId` | 26 |
+| branch | `!projectId \|\| !canUse` | 26 |
 | branch | `!projectId` | 51 |
 | branch | `!projectId` | 63 |
-| branch | `!projectId` | 75 |
-| empty | `attachable.length === 0` | 85 |
-| branch | `canUse` | 125 |
-| loading | `loading && attached.length === 0` | 134 |
-| empty | `attached.length === 0` | 138 |
-| branch | `canUse` | 161 |
+| branch | `!canUse` | 79 |
+| branch | `!projectId` | 81 |
+| empty | `attachable.length === 0` | 91 |
+| branch | `canUse` | 131 |
+| loading | `loading && attached.length === 0` | 140 |
+| empty | `attached.length === 0` | 144 |
+| branch | `canUse` | 167 |
 
 ### `modules/layouts/app-layout/AppLayout`
 
