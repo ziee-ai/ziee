@@ -140,9 +140,12 @@ test('TEST-32: a run with skipped_tools surfaces "N tools skipped"', async ({
           workflow_run_id: null,
           conversation_id: null,
           // Two tools were skipped because they weren't allow-listed unattended.
+          // Shape MUST match the backend `SkippedTool { tool_name, reason }`
+          // (scheduler/models.rs) so the fixture stays faithful if the FE ever
+          // reads a field beyond array length.
           skipped_tools: [
-            { server_id: 's1', tool_name: 'write' },
-            { server_id: 's2', tool_name: 'delete' },
+            { tool_name: 'write', reason: 'not permitted unattended' },
+            { tool_name: 'delete', reason: 'not permitted unattended' },
           ],
           fired_at: '2026-07-09T09:00:00Z',
           finished_at: '2026-07-09T09:00:05Z',
