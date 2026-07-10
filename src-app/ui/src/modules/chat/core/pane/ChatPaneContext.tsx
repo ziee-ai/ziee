@@ -11,12 +11,15 @@ import {
   ChatPaneStore,
 } from '@/modules/chat/core/stores/Chat.store'
 import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBridge'
+import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 
 /** The store instance a pane subtree resolves via `useChatPane()`. */
 type PaneStore = ReturnType<typeof ChatPaneStore.use>
 
 export interface ChatPaneHandle {
   paneId: string
+  /** The conversation this pane is pointed at (null = a new/empty pane). */
+  conversationId: string | null
   /** This pane's own chat store instance (reactive reads + actions + `.$` + `.__api__`). */
   store: PaneStore
 }
@@ -65,13 +68,20 @@ export function ChatPaneProvider({
   }, [conversationId, store])
 
   const handle = useMemo<ChatPaneHandle>(
-    () => ({ paneId, store }),
-    [paneId, store],
+    () => ({ paneId, conversationId, store }),
+    [paneId, conversationId, store],
   )
 
   return (
     <ChatPaneContext.Provider value={handle}>
-      {children}
+      {/* Expose this pane's raw StoreApi to the `Stores.Chat` bridge so every
+          reactive `Stores.Chat.<field>` read inside this subtree resolves to
+          THIS pane (see paneApiContext / chatBridge). */}
+      <PaneApiContext.Provider
+        value={store.__api__ as StoreApi<ReturnType<typeof Chat.store.getState>>}
+      >
+        {children}
+      </PaneApiContext.Provider>
     </ChatPaneContext.Provider>
   )
 }

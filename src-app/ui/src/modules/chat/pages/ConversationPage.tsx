@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useParams } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
-import { Search as SearchIcon } from 'lucide-react'
+import { Columns2, Search as SearchIcon, X } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import {
   MessageList,
@@ -23,25 +23,75 @@ import { ConversationFindBar } from '@/modules/chat/components/ConversationFindB
 import { ConversationFindContext } from '@/modules/chat/components/ConversationFindContext'
 import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton'
 import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { SplitChatView } from '@/modules/chat/components/SplitChatView'
 
+/**
+ * Chat route element for `/chat/:conversationId`.
+ *
+ * Single-pane (0–1 split panes) → the normal `ConversationPane` bound to the URL
+ * conversation via `Stores.Chat` (the primary pane). Once ≥2 split panes exist it
+ * renders `SplitChatView`, which mounts one `ConversationPane` per pane inside a
+ * `ChatPaneProvider`. Branching here on a single reactive read keeps hook order
+ * stable; each branch is its own component boundary.
+ */
 export default function ConversationPage() {
-  const { conversationId } = useParams<{ conversationId: string }>()
+  const { panes } = Stores.SplitView
+  if (panes.length >= 2) return <SplitChatView />
+  return <ConversationPane />
+}
+
+/**
+ * One conversation surface — message history + composer + right panel.
+ *
+ * Rendered in TWO contexts: as the single-pane route (no `ChatPaneProvider` →
+ * `pane` is null → drives the primary `Stores.Chat`), and as a pane inside
+ * `SplitChatView` (wrapped in a provider → `pane` set → drives that pane's own
+ * store). All store access goes through `chat`, so single-pane stays
+ * byte-identical to before the split existed.
+ */
+export function ConversationPane() {
+  const { conversationId: routeConversationId } = useParams<{
+    conversationId: string
+  }>()
+  const pane = useChatPaneOrNull()
+  // In a pane the provider owns the target conversation id (the URL param is the
+  // route's, not this pane's); on the single-pane route it's the URL param.
+  const conversationId = pane
+    ? pane.conversationId ?? undefined
+    : routeConversationId
+  // Uniform store handle: the pane's own store in split, else the focused-pane
+  // bridge (= primary) on the single-pane route. Both proxies expose the same
+  // reactive-read / `.$` snapshot / action surface.
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
 
   const { conversation, messages, loading, error, hasMoreBefore, hasMoreAfter } =
-    Stores.Chat
+    chat
   // Native document-scroll on mobile: the message history scrolls the WINDOW
   // (iOS toolbar collapses as you scroll up) while the composer stays pinned via
-  // position:sticky. Desktop keeps the fixed inner-scroll shell. The right panel
-  // is a fixed overlay on mobile, so the chat column is effectively full-width.
-  useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
+  // position:sticky. Desktop keeps the fixed inner-scroll shell. A split pane
+  // always uses the inner-scroll shell (no window native-scroll).
+  useNativeScroll(!pane)
+  const nativeScroll = pane ? false : Stores.AppLayout.nativeScroll
 
-  // Load conversation and messages on mount or when ID changes.
-  useEffect(() => {
-    if (conversationId) {
-      Stores.Chat.loadConversation(conversationId)
+  // Split affordance: open the current conversation beside a fresh pane. On the
+  // single-pane route this seeds pane 0 with the current conversation first.
+  const onSplit = () => {
+    if (Stores.SplitView.$.panes.length === 0 && conversationId) {
+      Stores.SplitView.openPane({ conversationId })
     }
-  }, [conversationId])
+    Stores.SplitView.openPane({ conversationId: null })
+  }
+
+  // Load conversation and messages on mount or when ID changes — single-pane
+  // route only; in a pane `ChatPaneProvider` owns loading into the pane's own
+  // store, so ConversationPane must not re-load via the (focused-pane) bridge.
+  useEffect(() => {
+    if (!pane && conversationId) {
+      chat.loadConversation(conversationId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pane, conversationId])
 
   // Auto-scroll to bottom on new messages, but ONLY if the user is
   // already near the bottom. Previously this scrolled unconditionally
@@ -214,7 +264,7 @@ export default function ConversationPage() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
-        if (!Stores.Chat.$.conversation) return
+        if (!chat.$.conversation) return
         e.preventDefault()
         setFindOpen(true)
       }
@@ -230,9 +280,9 @@ export default function ConversationPage() {
     // real latest message isn't loaded — `messagesEndRef` is only the bottom of
     // the loaded slice. Snap to the tail first so "Jump to latest" reaches the
     // actual latest, then scroll instantly (content just changed).
-    const cid = Stores.Chat.$.conversation?.id
-    if (cid && Stores.Chat.$.hasMoreAfter) {
-      await Stores.Chat.loadMessages(cid)
+    const cid = chat.$.conversation?.id
+    if (cid && chat.$.hasMoreAfter) {
+      await chat.loadMessages(cid)
       requestAnimationFrame(() =>
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }),
       )
@@ -311,15 +361,15 @@ export default function ConversationPage() {
         if (!entries[0]?.isIntersecting) return
         // Fresh store reads — the closure's `hasMoreBefore`/`loadingOlder` could
         // be stale between re-renders.
-        if (!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder) return
+        if (!chat.$.hasMoreBefore || chat.$.loadingOlder) return
         // Capture the top-visible message as an index anchor via the virtualizer
         // so the prepend doesn't teleport the view (restored below).
-        const prevFirstId = firstMessageId(Stores.Chat.$.messages)
+        const prevFirstId = firstMessageId(chat.$.messages)
         const anchor = messageListRef.current?.captureAnchor() ?? null
         if (anchor && prevFirstId) {
           pendingAnchorRef.current = { anchor, prevFirstId }
         }
-        await Stores.Chat.loadOlderMessages()
+        await chat.loadOlderMessages()
         // If NO older page landed (guard early-return, empty/duplicate page, or
         // a conversation switch), the restore layout-effect never fires — clear
         // the pending anchor so it can't stick truthy and permanently suppress
@@ -327,7 +377,7 @@ export default function ConversationPage() {
         const pending = pendingAnchorRef.current
         if (
           pending &&
-          firstMessageId(Stores.Chat.$.messages) === pending.prevFirstId
+          firstMessageId(chat.$.messages) === pending.prevFirstId
         ) {
           pendingAnchorRef.current = null
         }
@@ -351,8 +401,8 @@ export default function ConversationPage() {
     const observer = new IntersectionObserver(
       entries => {
         if (!entries[0]?.isIntersecting) return
-        if (!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming) return
-        void Stores.Chat.loadNewerMessages()
+        if (!chat.$.hasMoreAfter || chat.$.isStreaming) return
+        void chat.loadNewerMessages()
       },
       { root: view?.root ?? null, rootMargin: '0px 0px 800px 0px', threshold: 0 },
     )
@@ -384,8 +434,8 @@ export default function ConversationPage() {
       const m = window.location.hash.match(/^#message-(.+)$/)
       if (!m) return
       const messageId = m[1]
-      const found = await Stores.Chat.jumpToMessage(messageId)
-      if (!found || Stores.Chat.$.conversation?.id !== conversation.id) return
+      const found = await chat.jumpToMessage(messageId)
+      if (!found || chat.$.conversation?.id !== conversation.id) return
       // Wait for the centered window to render, then scroll the (possibly
       // virtualized-out) target into view via the virtualizer + highlight.
       requestAnimationFrame(() => {
@@ -423,7 +473,7 @@ export default function ConversationPage() {
             description="This conversation couldn't be loaded. Check your connection and try again."
             details={error}
             onRetry={() =>
-              conversationId && Stores.Chat.loadConversation(conversationId)
+              conversationId && chat.loadConversation(conversationId)
             }
             className="max-w-md"
             data-testid="chat-conversation-error"
@@ -440,43 +490,85 @@ export default function ConversationPage() {
     )
   }
 
+  // Shared header controls (find toggle + split affordance + the decoupled
+  // trailing slot). Reused by both the full app header (single-pane) and the
+  // compact per-pane header (split).
+  const headerControls = (
+    <>
+      {/* Find-in-conversation toggle (ITEM-1). Also openable via Cmd/Ctrl-F. */}
+      <Tooltip content="Find in conversation">
+        <Button
+          ref={findToggleRef}
+          data-testid="conversation-find-toggle-btn"
+          variant={findOpen ? 'default' : 'ghost'}
+          size="icon"
+          icon={<SearchIcon />}
+          aria-label="Find in conversation"
+          aria-pressed={findOpen}
+          onClick={() => (findOpen ? closeFind() : setFindOpen(true))}
+        />
+      </Tooltip>
+      {/* Split affordance — open this conversation beside another pane. Visually
+          distinct (columns icon) from the pop-out "new window" action, which the
+          trailing slot injects. */}
+      <Tooltip content="Open in split view">
+        <Button
+          data-testid="chat-split-btn"
+          variant="ghost"
+          size="icon"
+          icon={<Columns2 />}
+          aria-label="Open in split view"
+          onClick={onSplit}
+        />
+      </Tooltip>
+      {/* Decoupled chip injection point — other modules register header
+          decorations into `chatConversationHeaderTrailing` without chat
+          compiling against them. */}
+      <ConversationHeaderTrailingSlot />
+    </>
+  )
+
   return (
     <div className={cn('flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full')}>
-      {/* Header — full width, matches the rest of the app's header bars
-          (project page, settings, etc.). TitleEditor at the left,
-          slot consumers at the right. */}
-      <HeaderBarContainer>
-        <div className="h-full flex items-center justify-between w-full gap-2">
-          <div className="flex items-center min-w-0 gap-2">
+      {/* Header — full width app header on the single-pane route; a compact
+          in-column header (title + controls + close-pane) inside a split pane. */}
+      {pane ? (
+        <div
+          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3"
+          data-testid="chat-pane-header"
+        >
+          <div className="flex min-w-0 items-center gap-2">
             <TitleEditor />
           </div>
           <div className="flex items-center gap-1">
-            {/* Find-in-conversation toggle (ITEM-1). Also openable via
-                Cmd/Ctrl-F. */}
-            <Tooltip content="Find in conversation">
+            {headerControls}
+            <Tooltip content="Close pane">
               <Button
-                ref={findToggleRef}
-                data-testid="conversation-find-toggle-btn"
-                variant={findOpen ? 'default' : 'ghost'}
+                data-testid="chat-pane-close"
+                variant="ghost"
                 size="icon"
-                icon={<SearchIcon />}
-                aria-label="Find in conversation"
-                aria-pressed={findOpen}
-                onClick={() => (findOpen ? closeFind() : setFindOpen(true))}
+                icon={<X />}
+                aria-label="Close pane"
+                onClick={() => Stores.SplitView.closePane(pane.paneId)}
               />
             </Tooltip>
-            {/* Decoupled chip injection point — other modules register
-                header decorations into `chatConversationHeaderTrailing`
-                without chat compiling against them. */}
-            <ConversationHeaderTrailingSlot />
           </div>
         </div>
-      </HeaderBarContainer>
+      ) : (
+        <HeaderBarContainer>
+          <div className="h-full flex items-center justify-between w-full gap-2">
+            <div className="flex items-center min-w-0 gap-2">
+              <TitleEditor />
+            </div>
+            <div className="flex items-center gap-1">{headerControls}</div>
+          </div>
+        </HeaderBarContainer>
+      )}
 
       {/* Error banner */}
       {error && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-4">
-          <Alert data-testid="chat-conversation-error-alert" tone="error" title={error} onClose={Stores.Chat.clearError} closeLabel="Close" />
+          <Alert data-testid="chat-conversation-error-alert" tone="error" title={error} onClose={chat.clearError} closeLabel="Close" />
         </div>
       )}
 
@@ -641,8 +733,10 @@ export default function ConversationPage() {
           </div>
         </div>
 
-        {/* Right sidebar panel */}
-        <ChatRightPanel narrow={rightPanelNarrow} />
+        {/* Right sidebar panel. Inside a split pane it's always an in-pane
+            slide-over (a second inline column would over-cram the half-width
+            pane), so force `narrow`. */}
+        <ChatRightPanel narrow={pane ? true : rightPanelNarrow} />
       </div>
     </div>
   )

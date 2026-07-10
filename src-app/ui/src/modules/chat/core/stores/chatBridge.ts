@@ -1,6 +1,8 @@
+import { useContext } from 'react'
 import { type StoreApi, useStore } from 'zustand'
 import { Chat } from '@/modules/chat/core/stores/Chat.store'
 import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
+import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 
 /**
  * `Stores.Chat` focused-pane bridge (ITEM-9 / DEC-5).
@@ -49,8 +51,19 @@ function focusedApi(): StoreApi<ReturnType<typeof Chat.store.getState>> {
 
 // A UseBoundStore-shaped facade: callable as a hook (reactive read via the
 // module proxy's path 4) with getState/setState/subscribe forwarding.
-const bridge = ((selector: (s: unknown) => unknown) =>
-  useStore(focusedApi() as StoreApi<unknown>, selector)) as unknown as typeof Chat.store
+//
+// The hook body runs during a component render (createStoreProxy path 4), so it
+// reads `PaneApiContext`: inside a pane subtree it forwards the reactive read to
+// THAT pane's store; outside any pane it falls back to the focused/primary pane.
+// This is what lets ~40 existing `Stores.Chat.<field>` reactive consumers stay
+// pane-correct in split mode without being rewritten.
+const bridge = ((selector: (s: unknown) => unknown) => {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const paneApi = useContext(PaneApiContext)
+  const api = (paneApi ?? focusedApi()) as StoreApi<unknown>
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return useStore(api, selector)
+}) as unknown as typeof Chat.store
 
 bridge.getState = () => focusedApi().getState()
 bridge.getInitialState = () => focusedApi().getInitialState()

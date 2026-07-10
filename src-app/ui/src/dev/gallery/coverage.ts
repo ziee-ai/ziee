@@ -509,6 +509,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/ChatHistorySortControl": { kind: 'via', reason: 'rendered in the chat-history page header (sort selector)' },
   "modules/chat/components/OpenInNewWindowAction": { kind: 'via', reason: 'rendered in the conversation header trailing slot (open in new window/tab)' },
   "modules/chat/core/pane/ChatPaneContext": { kind: 'via', reason: 'context provider — wraps a pane subtree, no standalone visual surface' },
+  "modules/chat/components/SplitChatView": { kind: 'via', reason: 'split container — composes N live ConversationPane panes; needs multi-pane runtime state, exercised via the chat gallery surface + e2e, not a standalone story' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 

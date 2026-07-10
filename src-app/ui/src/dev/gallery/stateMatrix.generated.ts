@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 328 surfaces carry renderable-state signals; 1905 signals total.
+// 329 surfaces carry renderable-state signals; 1909 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -934,6 +934,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "trailing != null", line: 53 },
     ],
   },
+  "modules/chat/components/SplitChatView": {
+    surface: "modules/chat/components/SplitChatView",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "i > 0", line: 32 },
+      { kind: "branch", condition: "!drag.current", line: 74 },
+    ],
+  },
   "modules/chat/components/TextContent": {
     surface: "modules/chat/components/TextContent",
     requiredStates: [],
@@ -1096,30 +1104,32 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 143 },
-      { kind: "branch", condition: "!el", line: 163 },
-      { kind: "branch", condition: "!nativeScroll", line: 178 },
-      { kind: "branch", condition: "y < 0 || y > maxY", line: 187 },
-      { kind: "branch", condition: "maxY - y <= 8", line: 191 },
-      { kind: "branch", condition: "Math.abs(dy) < 6", line: 197 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 217 },
-      { kind: "branch", condition: "!conversationId", line: 259 },
-      { kind: "branch", condition: "!sentinel", line: 307 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 311 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 314 },
-      { kind: "branch", condition: "!sentinel", line: 349 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 353 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 354 },
-      { kind: "loading", condition: "!pending", line: 369 },
-      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 372 },
-      { kind: "branch", condition: "!conversation?.id", line: 381 },
-      { kind: "branch", condition: "!m", line: 385 },
-      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 388 },
-      { kind: "loading", condition: "loading && !conversation", line: 408 },
-      { kind: "loading", condition: "!loading && !conversation", line: 417 },
-      { kind: "error", condition: "error", line: 420 },
-      { kind: "error", condition: "error", line: 477 },
-      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 576 },
+      { kind: "branch", condition: "panes.length >= 2", line: 40 },
+      { kind: "branch", condition: "!sentinel", line: 193 },
+      { kind: "branch", condition: "!el", line: 213 },
+      { kind: "branch", condition: "!nativeScroll", line: 228 },
+      { kind: "branch", condition: "y < 0 || y > maxY", line: 237 },
+      { kind: "branch", condition: "maxY - y <= 8", line: 241 },
+      { kind: "branch", condition: "Math.abs(dy) < 6", line: 247 },
+      { kind: "branch", condition: "!chat.$.conversation", line: 267 },
+      { kind: "branch", condition: "!conversationId", line: 309 },
+      { kind: "branch", condition: "!sentinel", line: 357 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 361 },
+      { kind: "branch", condition: "!chat.$.hasMoreBefore || chat.$.loadingOlder", line: 364 },
+      { kind: "branch", condition: "!sentinel", line: 399 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 403 },
+      { kind: "branch", condition: "!chat.$.hasMoreAfter || chat.$.isStreaming", line: 404 },
+      { kind: "loading", condition: "!pending", line: 419 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 422 },
+      { kind: "branch", condition: "!conversation?.id", line: 431 },
+      { kind: "branch", condition: "!m", line: 435 },
+      { kind: "branch", condition: "!found || chat.$.conversation?.id !== conversation.id", line: 438 },
+      { kind: "loading", condition: "loading && !conversation", line: 458 },
+      { kind: "loading", condition: "!loading && !conversation", line: 467 },
+      { kind: "error", condition: "error", line: 470 },
+      { kind: "branch", condition: "pane", line: 535 },
+      { kind: "error", condition: "error", line: 569 },
+      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 668 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {

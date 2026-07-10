@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **328** surfaces carry at least one renderable-state signal.
-- **1905** signals total: 1508 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
+- **329** surfaces carry at least one renderable-state signal.
+- **1909** signals total: 1512 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -1059,6 +1059,15 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `trailing != null` | 53 |
 
+### `modules/chat/components/SplitChatView`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `i > 0` | 32 |
+| branch | `!drag.current` | 74 |
+
 ### `modules/chat/components/TextContent`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -1241,30 +1250,32 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 143 |
-| branch | `!el` | 163 |
-| branch | `!nativeScroll` | 178 |
-| branch | `y < 0 \|\| y > maxY` | 187 |
-| branch | `maxY - y <= 8` | 191 |
-| branch | `Math.abs(dy) < 6` | 197 |
-| branch | `!Stores.Chat.$.conversation` | 217 |
-| branch | `!conversationId` | 259 |
-| branch | `!sentinel` | 307 |
-| branch | `!entries[0]?.isIntersecting` | 311 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
-| branch | `!sentinel` | 349 |
-| branch | `!entries[0]?.isIntersecting` | 353 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
-| loading | `!pending` | 369 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
-| branch | `!conversation?.id` | 381 |
-| branch | `!m` | 385 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
-| loading | `loading && !conversation` | 408 |
-| loading | `!loading && !conversation` | 417 |
-| error | `error` | 420 |
-| error | `error` | 477 |
-| branch | `nativeScroll && !composerHidden` | 576 |
+| branch | `panes.length >= 2` | 40 |
+| branch | `!sentinel` | 193 |
+| branch | `!el` | 213 |
+| branch | `!nativeScroll` | 228 |
+| branch | `y < 0 \|\| y > maxY` | 237 |
+| branch | `maxY - y <= 8` | 241 |
+| branch | `Math.abs(dy) < 6` | 247 |
+| branch | `!chat.$.conversation` | 267 |
+| branch | `!conversationId` | 309 |
+| branch | `!sentinel` | 357 |
+| branch | `!entries[0]?.isIntersecting` | 361 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 364 |
+| branch | `!sentinel` | 399 |
+| branch | `!entries[0]?.isIntersecting` | 403 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 404 |
+| loading | `!pending` | 419 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 422 |
+| branch | `!conversation?.id` | 431 |
+| branch | `!m` | 435 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 438 |
+| loading | `loading && !conversation` | 458 |
+| loading | `!loading && !conversation` | 467 |
+| error | `error` | 470 |
+| branch | `pane` | 535 |
+| error | `error` | 569 |
+| branch | `nativeScroll && !composerHidden` | 668 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
