@@ -1081,9 +1081,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!isRecordingSupported()", line: 68 },
       { kind: "branch", condition: "streamingAvailable", line: 89 },
       { kind: "branch", condition: "liveCaptions", line: 95 },
-      { kind: "branch", condition: "liveCaptions && interimText", line: 172 },
-      { kind: "branch", condition: "isRequesting", line: 225 },
-      { kind: "overlay", condition: "<Popover open>", line: 243 },
+      { kind: "branch", condition: "liveCaptions && interimText", line: 175 },
+      { kind: "branch", condition: "isRequesting", line: 229 },
+      { kind: "overlay", condition: "<Popover open>", line: 247 },
     ],
   },
   "modules/chat/pages/ChatHistoryPage": {

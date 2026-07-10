@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::VOICE_ADMIN_PERMS;
+use super::{insert_version_row, stage_model, stub_whisper_binary, VOICE_ADMIN_PERMS};
 use crate::common::TestServer;
 use crate::common::sync_probe::SyncProbe;
 use crate::common::test_helpers::create_user_with_permissions;
@@ -131,7 +131,8 @@ async fn test_streaming_settings_roundtrip_and_validation() {
 }
 
 /// TEST-7 — the non-admin capability snapshot reflects the streaming settings, and
-/// `streaming_enabled` is gated by BOTH the deployment toggle and the master enable.
+/// `streaming_enabled` is gated by the deployment toggle AND full mic-usability
+/// (`can_transcribe` = master enable + runtime + model).
 #[tokio::test]
 async fn test_capability_reflects_streaming_settings() {
     let server = TestServer::start().await;
@@ -139,6 +140,12 @@ async fn test_capability_reflects_streaming_settings() {
     // A plain Users member holds voice::transcribe → can read capability.
     let user = create_user_with_permissions(&server, "voice_cap_stream_user", &[]).await;
     let client = reqwest::Client::new();
+
+    // Provision a runtime + model so can_transcribe=true — otherwise capability
+    // streaming_enabled is (correctly) false regardless of the toggle.
+    let stub = stub_whisper_binary();
+    insert_version_row(&server, "v0.0.0-stub", "cpu", stub.to_string_lossy().as_ref(), true).await;
+    stage_model(&server, "base");
 
     let cap = |token: String| {
         let client = client.clone();

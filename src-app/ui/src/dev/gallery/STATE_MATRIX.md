@@ -1226,9 +1226,9 @@ Required states: `open`
 | branch | `!isRecordingSupported()` | 68 |
 | branch | `streamingAvailable` | 89 |
 | branch | `liveCaptions` | 95 |
-| branch | `liveCaptions && interimText` | 172 |
-| branch | `isRequesting` | 225 |
-| overlay | `<Popover open>` | 243 |
+| branch | `liveCaptions && interimText` | 175 |
+| branch | `isRequesting` | 229 |
+| overlay | `<Popover open>` | 247 |
 
 ### `modules/chat/pages/ChatHistoryPage`
 
