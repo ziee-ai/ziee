@@ -24,9 +24,10 @@ external→external container chaining keeps working).
 ## Items
 
 - **ITEM-1**: Add pure, testable helpers to `resource_link.rs`: `host_of(url) -> Option<String>`
-  (lowercased URL host) and `choose_fetch_policy(link_uri, trusted_hosts, debug_loopback,
-  env_private) -> FetchPolicyKind` where `FetchPolicyKind ∈ { Public, PrivateScoped, PrivateGlobal,
-  DevLocal }`, plus a mapping `kind -> (OutboundUrlPolicy, follow_redirects: bool)`:
+  (lowercased URL host), `trusted_hosts_from_urls(urls) -> Vec<String>` (the shared dedup/lowercase
+  derivation used by all three call sites), and `choose_fetch_policy(link_uri, trusted_hosts,
+  debug_loopback, env_private) -> FetchPolicyKind` where `FetchPolicyKind ∈ { Public, PrivateScoped,
+  PrivateGlobal, DevLocal }`, plus a mapping `kind -> (OutboundUrlPolicy, follow_redirects: bool)`:
   `Public→(PUBLIC_HTTP_OR_HTTPS,true)`, `PrivateScoped→(MCP_USER,false)`,
   `PrivateGlobal→(MCP_USER,true)`, `DevLocal→(DEV_LOCAL,true)`. Precedence inside
   `choose_fetch_policy`: debug_loopback → env_private → host-match → public.
@@ -38,12 +39,12 @@ external→external container chaining keeps working).
   `build_validated_client(policy)`. Keep `validate_outbound_url` on the initial URL with the chosen
   policy. Preserve the existing debug `MCP_RESOURCE_LINK_ALLOW_LOOPBACK` seam.
 - **ITEM-3**: Add a `trusted_hosts: &[String]` parameter to `persist_links` and thread it into the
-  policy decision. Update the two chat call sites (`chat_extension/mcp.rs` approval site ~L711 and
-  auto-exec site ~L2560) to build `trusted_hosts` from the in-scope `accessible_servers`
-  (`accessible_servers.iter().filter_map(|s| s.url.as_deref()).filter_map(host_of).collect()`).
-- **ITEM-4**: Update the workflow call site (`workflow/dispatch.rs` ~L1256) to fetch the user's
-  enabled accessible servers (`Repos.mcp.list_accessible(ctx.user_id, 1, 1000, None, Some(true),
-  None)`) and build `trusted_hosts` the same way, passing it into `persist_links`.
+  policy decision. Update the two chat call sites (`chat_extension/mcp.rs` approval + auto-exec) to
+  build `trusted_hosts` from the in-scope `accessible_servers` via
+  `trusted_hosts_from_urls(accessible_servers.iter().map(|s| s.url.as_deref()))`.
+- **ITEM-4**: Update the workflow call site (`workflow/dispatch.rs`) to fetch the user's enabled
+  accessible servers (`Repos.mcp.list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)`) and
+  build `trusted_hosts` via the same `trusted_hosts_from_urls` helper, passing it into `persist_links`.
 - **ITEM-5**: Update the 7 existing `persist_links` call sites in
   `tests/mcp/resource_link_test.rs` for the new `trusted_hosts` parameter, and update the
   module/function doc comments in `resource_link.rs` to describe the trusted-host allowance, the
