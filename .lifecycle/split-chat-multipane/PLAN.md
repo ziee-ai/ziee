@@ -106,13 +106,82 @@ truth.
   The bridge is retained ONLY for genuinely out-of-subtree consumers (DEC-5).
   *This is the v1 ITEM-5/ITEM-10 work made real + verified.*
 
-*Reused unchanged (the audit treats these as the foundation):* the per-pane
-`ChatPaneStore`/`ChatPaneProvider`, per-pane streaming/scroll/right-panel
-isolation (ITEM-2..7 view + ITEM-6 stream + ITEM-18 right-panel), the pop-out
-util (ITEM-P1..P4), and the divider. **NOT reused unchanged — corrected by
-ITEM-32:** the composer/extension per-pane binding (ITEM-5/10/19) was only
-partially done in v1 (bridge-reliant); ITEM-32 completes it. The `Stores.Chat`
-bridge (ITEM-9) stays but narrows to out-of-subtree use only.
+**ITEM-32 was only the visible tip. The converged multi-agent audit (see
+`ISOLATION_AUDIT.md` — 79 findings → 34 issues in 10 groups) proved the WHOLE
+chat surface shares state across panes via three mechanical root causes: (a)
+process-global singleton stores, (b) `chatBridge` resolving actions/snapshots to
+the FOCUSED pane, (c) module/DOM/EventBus side-channels. Each group below is a
+targeted per-pane refactor (NOT a rewrite — the pane infrastructure exists):**
+
+- **ITEM-33**: **`McpComposer` per-pane (G3, HIGH).** `selectedServers`,
+  `currentConversationId/ProjectId`, `approvalDecisions`, `toolCalls`,
+  `configModalVisible` are single-global → two panes collapse to the last-loaded
+  conversation's MCP config, an approval in pane B is submitted by pane A's send,
+  and the config modal / Skill drawer opens in BOTH panes. Pane-key the state;
+  per-pane modal-open flags; scope `composeRequestFields`/`onConversationLoad`/
+  `onMessageSent` to the sending pane.
+- **ITEM-34**: **Extension-registry runtime + hook pane-threading (G4, HIGH).**
+  The registry is a process singleton with one `initialized` flag + one global
+  `cleanup()` that ANY pane's `loadConversation`/`reset`/pane-close fires —
+  tearing down every surviving pane's keyboard + file/edit subscriptions (and the
+  close path leaves `initialized=false` with no re-init → Ctrl+Enter/K/Esc dead).
+  Edit-restore `editingMessage` subscribers bind to the PRIMARY pane only + stack
+  duplicates. Make the registry per-pane (or paneId-keyed); thread the originating
+  pane's store into every lifecycle hook; per-pane subs with captured unsubscribes.
+- **ITEM-35**: **Streaming frame routing + scroll anchor (G5, HIGH — the flagship
+  bug).** Each pane has its own `ChatStreamClient` but re-emits onto the ONE
+  global `EventBus`; `applyStreamFrame` filters only by `conversation.id`. Two
+  panes on the SAME `conversation.id` (compare-two-branches — branches share a
+  conversation id) **double-process every frame → live text is doubled/garbled in
+  both panes** until `complete`. `chat:stream-reconnect` carries no pane id (one
+  pane's reconnect refetches all); `inPlaceAnchorSignal` is a module singleton
+  (~1300px scroll teleport leaks across panes). Tag frames by client/pane +
+  own-frame filter; pane-id the reconnect; per-pane anchor.
+- **ITEM-36**: **Right panel: state/actions/persistence/viewer (G6, HIGH — data
+  loss).** Literature `persist()` reads `Stores.Chat.$.rightPanel` (focused pane)
+  → blurring pane B's exclusion-reason input by clicking pane A **drops the typed
+  reason** (findIndex no-op on A). `setActiveRightPanelTab`/`closeRightPanelTab`/
+  `closeAllRightPanelTabs`/`displayInRightPanel`/`closeMobileDrawer` route to the
+  focused pane (close-all destructive on the OTHER pane). Panel persistence is one
+  localStorage slot per conversation, not pane; file-viewer view-state is file-id
+  keyed with no pane dimension. Rebind renderers/actions to `useChatPane().store`;
+  pane-scope persistence + viewer state.
+- **ITEM-37**: **Header/chrome + new-chat sentinel keys (G7, HIGH).**
+  `ConversationSummarization` is a single-entry global (`current`) both panes'
+  status pills overwrite; find-bar Cmd-F + `#message-<id>` deep-link + title-edit
+  Save + editing-banner Cancel resolve to the focused pane / single URL; and
+  `NEW_CHAT_MODEL_KEY`/`NEW_CHAT_ASSISTANT_KEY`/`PENDING_CONVERSATION_KEY` are
+  shared sentinels so two new-chat panes share one model/assistant/MCP selection.
+  Per-pane summarization read-model; scope find/deep-link/title/banner to the
+  owning pane; namespace the new-chat keys per pane.
+- **ITEM-38**: **Message-render actions + tool-result renderers + view-state (G8/G10,
+  HIGH).** `WorkflowWorkspaceRunCard` reads `Stores.Chat.$.conversation?.id` at
+  render → "Save to my workflows"/"Download .tar.gz" export the OTHER pane's
+  workspace; `MessageActions` edit/regenerate + `BranchNavigator` prev/next are
+  focused-pane actions → on same-conversation splits regenerate auto-sends on the
+  wrong pane and `activateBranch` corrupts the other pane's window; the MCP-approval
+  card re-reads `$.error` after an await. Also `resetViewState` at `Chat.store.ts:746`
+  is a no-op (passes `[]` after `messages` was already cleared) → stale collapse
+  state leaks. Rebind these to `useChatPane().store`, capture the store before any
+  await, fix the reset ordering. (Subsumes + completes the v1 ITEM-10/ITEM-21.)
+- **ITEM-39**: **Module singletons / global-DOM handlers (G9, HIGH).** The keyboard
+  extension registers ONE `document` keydown listener resolving the composer via
+  `document.querySelector('button[aria-label="Send message"]')` → **Ctrl+Enter
+  always sends the LEFTMOST pane**, Ctrl+K focuses A, Esc clears A, regardless of
+  which pane you type in. Markdown footnote/heading anchors scroll via
+  `document.getElementById` (document-order); `projects.afterCreateConversation`
+  derives the project from `window.location.pathname` → sending in a plain pane B
+  while the URL sits on project A **files B's new conversation into project A**.
+  Per-pane-scope the keyboard/markdown/project resolution off document-order + URL.
+
+*Reused unchanged — ONLY the pane INFRASTRUCTURE:* `ChatPaneStore` instancing,
+`ChatPaneProvider`/`useChatPane()`, per-pane `ChatStreamClient` (ITEM-6),
+`SplitChatView` focus, the pop-out util (ITEM-P1..P4), the divider. **NOT reused
+unchanged — rebuilt by ITEM-32..39:** the composer stores, the extension registry
++ hooks, the stream frame routing, the right panel, the header/chrome, the
+message-render actions, and the module/DOM side-channels. DRIFT-1.1/1.7's
+"context-aware bridge obviates migration" is **rejected** (DEC-54) — the bridge
+covers reactive reads only; actions/snapshots/side-channels all leak.
 
 ## Delivery phases
 

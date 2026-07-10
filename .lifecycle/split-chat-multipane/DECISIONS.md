@@ -497,3 +497,23 @@ new-chat-key-shared) and **DRIFT-1.7** (bridge ≠ isolation for actions). The
 (DEC-5), not for anything inside a pane subtree.
 **Basis:** user — FB-4 ("two chat inputs … still share state"); the partial v1
 isolation is a confirmed defect, so full per-pane is required, not follow-focus.
+
+### DEC-54: Can v2 "reuse the v1 engine unchanged", or must the whole chat surface be migrated? (FB-5 + ISOLATION_AUDIT)
+**Resolution:** **NO — the "reuse unchanged" assumption is REJECTED.** The
+converged multi-agent audit (`ISOLATION_AUDIT.md`, 79 findings → 34 issues in 10
+groups) proved the entire chat surface shares state across panes via three root
+causes: (a) process-global singleton stores (`File`/`McpComposer`/`Summarization`/
+`MessageViewState`/right-panel persistence/new-chat sentinel keys), (b)
+`chatBridge` resolving ACTIONS + `.$` snapshots to the FOCUSED pane, (c)
+module/DOM/EventBus side-channels (`capturedDraftKey`, `inPlaceAnchorSignal`, the
+one keyboard `document` listener, `document.querySelector` first-match,
+`window.location`, the single global `EventBus`). ITEM-32..39 migrate all of it.
+Only the pane INFRASTRUCTURE (`ChatPaneStore`/`ChatPaneProvider`/per-pane
+`ChatStreamClient`/`SplitChatView`/pop-out/divider) is reused. DRIFT-1.1's
+"skip the catalog/runtime registry split" and DRIFT-1.7's "the bridge obviates
+migrating ~40 consumers" were both **wrong** — the bridge covers reactive reads
+only. "Reuse unchanged" would ship a demonstrably corrupting UI (garbled
+same-conversation streaming, wrong-pane exports/sends, dropped right-panel input,
+Ctrl+Enter always hitting the leftmost pane).
+**Basis:** user (FB-5 "you need to check everything … basically everything") +
+codebase (the converged audit's concrete per-file findings).
