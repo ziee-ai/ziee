@@ -298,6 +298,8 @@ interface ChatState {
   sending: boolean
   isStreaming: boolean
   error: string | null
+  /** HTTP status of the last failed conversation load (404/403) — see initial state. */
+  lastLoadErrorStatus: number | null
 
   // ── Lazy-load window state ──────────────────────────────────────────────
   // The `messages` Map holds a contiguous slice of the active branch path.
@@ -493,6 +495,10 @@ const chatInitialState = {
     sending: false,
     isStreaming: false,
     error: null as string | null,
+    // HTTP status of the last failed conversation load (404 gone / 403 no-access),
+    // so a split pane can move itself out of the workspace when its conversation
+    // is deleted or access is revoked (ITEM-29). Null on success / transient error.
+    lastLoadErrorStatus: null as number | null,
     hasMoreBefore: false,
     hasMoreAfter: false,
     loadingOlder: false,
@@ -780,7 +786,7 @@ const chatStoreConfig = {
       }
 
       console.log(`[Chat.store] Cache miss for conversation: ${id}`)
-      set({ loading: true, loadingConversationId: id, error: null })
+      set({ loading: true, loadingConversationId: id, error: null, lastLoadErrorStatus: null })
       try {
         const conversation = await ApiClient.Conversation.get({ id })
         // Stale-result guard: if the user navigated away during the
@@ -824,6 +830,8 @@ const chatStoreConfig = {
             error: error.message || 'Failed to load conversation',
             loading: false,
             loadingConversationId: null,
+            lastLoadErrorStatus:
+              typeof error?.status === 'number' ? error.status : null,
           })
         }
       }

@@ -13,6 +13,8 @@ import {
 import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBridge'
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import { Stores } from '@/core'
+import { message } from '@/components/ui'
 
 /** The store instance a pane subtree resolves via `useChatPane()`. */
 type PaneStore = ReturnType<typeof ChatPaneStore.use>
@@ -79,11 +81,24 @@ export function ChatPaneProvider({
     // pane that just CREATED it and adopted it into its SplitView slot (avoid a
     // reload that would interrupt the in-flight first stream). Otherwise load.
     if (conversationId && store.$.conversation?.id !== conversationId) {
-      void store.loadConversation(conversationId)
+      void store.loadConversation(conversationId).then(() => {
+        // No-access auto-close (ITEM-29): the pane's conversation was deleted
+        // (404) or access was revoked (403) → move the pane out of the workspace
+        // rather than stranding it on an error state. Other failures (network,
+        // transient) leave the pane's inline error/retry in place.
+        const status = store.$.lastLoadErrorStatus
+        if (
+          (status === 404 || status === 403) &&
+          store.$.conversation?.id !== conversationId
+        ) {
+          message.warning('That conversation is no longer available.')
+          Stores.SplitView.closePane(paneId)
+        }
+      })
     }
     // ref-frozen instance: re-run the imperative load when the pane's
     // conversation changes (DEC-14 in-pane switch).
-  }, [conversationId, store])
+  }, [conversationId, store, paneId])
 
   const handle = useMemo<ChatPaneHandle>(
     () => ({ paneId, conversationId, store }),

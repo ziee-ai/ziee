@@ -13,6 +13,7 @@ import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { ConversationPickerPane } from '@/modules/chat/components/ConversationPickerPane'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
+import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
@@ -74,6 +75,7 @@ export function ConversationPane() {
     conversationId: string
   }>()
   const pane = useChatPaneOrNull()
+  const closePane = useClosePane()
   // In a pane the provider owns the target conversation id (the URL param is the
   // route's, not this pane's); on the single-pane route it's the URL param.
   const conversationId = pane
@@ -589,7 +591,7 @@ export function ConversationPane() {
                 size="icon"
                 icon={<X />}
                 aria-label="Close pane"
-                onClick={() => Stores.SplitView.closePane(pane.paneId)}
+                onClick={() => closePane(pane.paneId)}
               />
             </Tooltip>
           </div>

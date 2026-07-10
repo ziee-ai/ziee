@@ -5,6 +5,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { Button, Empty, Input, Title, Tooltip } from '@/components/ui'
 import { Stores } from '@/core'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
+import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
 
 dayjs.extend(relativeTime)
 
@@ -23,6 +24,7 @@ dayjs.extend(relativeTime)
 export function ConversationPickerPane({ paneId }: { paneId: string }) {
   const [mode, setMode] = useState<'pick' | 'new'>('pick')
   const [query, setQuery] = useState('')
+  const closePane = useClosePane()
   const { conversations, isInitialized } = Stores.ChatHistory
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export function ConversationPickerPane({ paneId }: { paneId: string }) {
           size="icon"
           icon={<X />}
           aria-label="Close pane"
-          onClick={() => Stores.SplitView.closePane(paneId)}
+          onClick={() => closePane(paneId)}
         />
       </Tooltip>
     </div>

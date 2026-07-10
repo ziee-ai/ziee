@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { message } from '@/components/ui'
+import { dialog } from '@/components/ui'
 import { Stores } from '@/core'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import type { ReconcileIntent } from '@/modules/chat/core/split/reconcile'
@@ -31,7 +31,7 @@ function conversationIdFromPath(pathname: string): string | null {
 export function useOpenConversationInWorkspace() {
   const navigate = useNavigate()
   return useCallback(
-    (
+    async (
       conversationId: string,
       opts?: {
         intent?: ReconcileIntent
@@ -56,12 +56,51 @@ export function useOpenConversationInWorkspace() {
       )
 
       if (outcome.kind === 'capReached') {
-        message.warning(
-          `You can open at most ${SPLIT_LIMITS.MAX_PANES} conversations side by side. Close a pane first.`,
+        // MAX_PANES reached (ITEM-29): offer to REPLACE the focused pane instead
+        // of silently no-op-ing, so the click still does something useful.
+        const replace = await dialog.confirm({
+          title: `You already have ${SPLIT_LIMITS.MAX_PANES} conversations open`,
+          description:
+            'Replace the focused pane with this conversation instead?',
+          okText: 'Replace focused pane',
+          cancelText: 'Cancel',
+        })
+        if (!replace) return
+        const replaced = Stores.SplitView.openConversationInWorkspace(
+          conversationId,
+          'replaceFocused',
+          { currentConversationId, projectId: opts?.projectId ?? null },
         )
+        if (replaced.kind === 'capReached') return
+        navigate(opts?.href ?? `/chat/${conversationId}`)
         return
       }
       navigate(opts?.href ?? `/chat/${conversationId}`)
+    },
+    [navigate],
+  )
+}
+
+/**
+ * Close a split pane, exiting to single-pane view when only one pane remains
+ * (ITEM-29 "close-to-1"). The workspace stays the layout source of truth while
+ * ≥2 panes are open; dropping to one collapses the workspace (single-pane is
+ * URL-driven) and navigates to the survivor so the URL and the shown
+ * conversation stay in lockstep.
+ */
+export function useClosePane() {
+  const navigate = useNavigate()
+  return useCallback(
+    (paneId: string) => {
+      const survivors = Stores.SplitView.$.panes.filter(
+        (p) => p.paneId !== paneId,
+      )
+      Stores.SplitView.closePane(paneId)
+      if (survivors.length === 1) {
+        const only = survivors[0]
+        Stores.SplitView.reset() // collapse to single-pane (URL-driven)
+        navigate(only.conversationId ? `/chat/${only.conversationId}` : '/chat')
+      }
     },
     [navigate],
   )
