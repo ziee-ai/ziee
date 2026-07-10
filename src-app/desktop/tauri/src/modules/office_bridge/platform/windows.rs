@@ -726,13 +726,13 @@ impl OfficePlatform for WindowsOfficePlatform {
         // Stage the DER as a temp `.cer`, then `certutil -addstore -f Root` it
         // via an elevated ShellExecute (one UAC). Wait for completion so the
         // caller can report success/failure, then remove the temp file.
-        let mut cert_path = std::env::temp_dir();
-        cert_path.push(format!("ziee-bridge-cert-{}.cer", std::process::id()));
-        std::fs::write(&cert_path, cert_der)
-            .map_err(|e| AppError::internal_error(format!("write temp cert: {e}")))?;
+        // Stage the DER in a private, exclusively-created temp dir (create_dir fails
+        // if the path exists; the cert file is opened create_new) so a same-user
+        // process cannot swap the bytes at a predictable path before the elevated
+        // `certutil -addstore Root` reads it (CWE-377). The guard removes the dir.
+        let staged = super::stage_cert_der(cert_der)?;
 
-        let outcome = run_elevated_certutil(&cert_path);
-        let _ = std::fs::remove_file(&cert_path);
+        let outcome = run_elevated_certutil(&staged.path);
         outcome.map_err(|msg| {
             AppError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,

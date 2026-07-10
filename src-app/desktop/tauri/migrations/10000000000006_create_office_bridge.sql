@@ -41,4 +41,4 @@ ON CONFLICT (id) DO NOTHING;
 -- Admin perms (office_bridge::admin::read / office_bridge::admin::manage) are
 -- held by the Administrators group's `*` wildcard (migration 1) — no grant
 -- needed. The user-facing office_bridge::use perm is granted to the Users
--- group in migration 133.
+-- group in the sibling migration 10000000000007 (this desktop crate).

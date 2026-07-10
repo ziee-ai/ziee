@@ -86,15 +86,8 @@ mod tests {
         );
     }
 
-    /// DEC-9: the macOS transport was empirically verified by the 2026-07-08 Mac
-    /// spike (Keychain trust + WKWebView same-origin WSS round-trip), so the gate
-    /// is now `true`. Compiled only on macOS (where `platform::macos` exists).
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn test11_mac_transport_verified() {
-        assert!(
-            super::super::macos::MAC_TRANSPORT_VERIFIED,
-            "macOS transport verified by the DEC-9 Mac spike"
-        );
-    }
+    // NOTE: the macOS-transport-verified assertion lives in `macos.rs::tests::
+    // mac_transport_verified` (compiled + run on macOS). A copy here was dead code —
+    // this `unsupported` module is `cfg(not(any(windows, target_os = "macos")))`, so
+    // a `cfg(target_os = "macos")` test inside it can never compile — and was removed.
 }

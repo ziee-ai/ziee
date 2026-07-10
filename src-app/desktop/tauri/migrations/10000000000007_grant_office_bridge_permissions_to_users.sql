@@ -19,7 +19,7 @@ BEGIN
       AND is_default = TRUE;
 
     IF target_rows = 0 THEN
-        RAISE WARNING 'migration 133: no group matches (name=Users, is_system=true, is_default=true); office_bridge permission will NOT be granted. Check that the initial Users group was created by migration 1.';
+        RAISE WARNING 'migration 10000000000007: no group matches (name=Users, is_system=true, is_default=true); office_bridge permission will NOT be granted. Check that the initial Users group was created by migration 1.';
     END IF;
 
     FOREACH perm IN ARRAY ARRAY[

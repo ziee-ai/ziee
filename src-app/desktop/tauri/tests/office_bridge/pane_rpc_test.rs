@@ -694,6 +694,11 @@ async fn run_office_js_real_llm_live() {
 /// mutating task. That self-classification is exactly what the server approval loop
 /// gates on (read → auto-run, write → prompt). Soft-skips when `ZIEE_OFFICE_REAL_LLM_URL`
 /// is unset. No Excel pane needed — this exercises only the model + the tool schema.
+///
+/// Gated by a runtime SOFT-SKIP (not `#[ignore]`): when `ZIEE_OFFICE_REAL_LLM_URL` is
+/// unset it returns immediately, so a default `cargo test` never fires a live call. This
+/// is the lifecycle-preferred gate (A3 forbids `#[ignore]`); it's why this test — unlike
+/// the live-*Excel-pane* tests, which physically need a `#[ignore]` opt-in — stays live.
 #[tokio::test]
 async fn run_office_js_real_llm_declares_mode() {
     let url = match std::env::var("ZIEE_OFFICE_REAL_LLM_URL") {

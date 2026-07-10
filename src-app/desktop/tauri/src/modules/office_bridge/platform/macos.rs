@@ -285,10 +285,12 @@ impl OfficePlatform for MacOfficePlatform {
         // (see MAC_OFFICE_BRIDGE_VERIFICATION.md). NOTE: `-d` targets the admin trust
         // domain and typically raises ONE GUI admin-auth prompt (the macOS analog of
         // Windows' single UAC on cert install) — acceptable, one-time.
-        let mut cert_path = std::env::temp_dir();
-        cert_path.push(format!("ziee-bridge-cert-{}.cer", std::process::id()));
-        std::fs::write(&cert_path, cert_der)
-            .map_err(|e| AppError::internal_error(format!("write temp cert: {e}")))?;
+        // Stage the DER in a private, exclusively-created temp dir (0700/0600) so a
+        // local attacker cannot pre-place a symlink or swap the bytes at a
+        // predictable path before the privileged `security add-trusted-cert` reads
+        // it (CWE-377). The staging guard removes the dir when this fn returns.
+        let staged = super::stage_cert_der(cert_der)?;
+        let cert_path = &staged.path;
 
         let home = std::env::var("HOME").unwrap_or_default();
         let keychain = format!("{home}/Library/Keychains/login.keychain-db");
@@ -300,11 +302,10 @@ impl OfficePlatform for MacOfficePlatform {
             .arg("trustRoot")
             .arg("-k")
             .arg(&keychain)
-            .arg(&cert_path)
+            .arg(cert_path)
             .status();
 
-        // Best-effort cleanup regardless of outcome.
-        let _ = std::fs::remove_file(&cert_path);
+        // `staged` (dropped at fn return) removes the private temp dir + cert file.
 
         match outcome {
             Ok(status) if status.success() => Ok(()),

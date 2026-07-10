@@ -32,6 +32,73 @@ use serde::{Deserialize, Serialize};
 
 use ziee::AppError;
 
+/// A DER cert staged for a privileged trust-store install, in a freshly-created,
+/// private temp directory. Removed on drop.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) struct StagedCert {
+    pub path: std::path::PathBuf,
+    dir: std::path::PathBuf,
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+impl Drop for StagedCert {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Stage `cert_der` in a private, exclusively-created temp directory and return
+/// its path. The directory name is unique per invocation and created with
+/// `create_dir` (which FAILS if the path already exists — so an attacker cannot
+/// pre-place a symlink), and on unix the dir is `0700` and the file `0600`. The
+/// cert file itself is opened `create_new` (O_EXCL). Together this closes the
+/// predictable-path TOCTOU (CWE-377) on the privileged `security add-trusted-cert`
+/// (macOS) / `certutil -addstore Root` (Windows) that reads the staged file.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) fn stage_cert_der(cert_der: &[u8]) -> Result<StagedCert, AppError> {
+    use std::io::Write;
+    // A high-res nonce (nanos) + a per-process counter + pid make the dir name
+    // unique even across a crash+restart with a reused pid, so `create` never
+    // trips EEXIST on a stale dir (which would be a fail-safe DoS on cert install).
+    static CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut dir = std::env::temp_dir();
+    dir.push(format!("ziee-bridge-cert-{}-{}-{}", std::process::id(), nonce, n));
+
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+        .create(&dir)
+        .map_err(|e| AppError::internal_error(format!("stage cert dir: {e}")))?;
+
+    // Own the dir via the RAII guard IMMEDIATELY after creation, so a failure in
+    // the open/write below still removes it (no orphaned temp dir on the error path).
+    let staged = StagedCert { path: dir.join("bridge.cer"), dir };
+
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut file = opts
+        .open(&staged.path)
+        .map_err(|e| AppError::internal_error(format!("stage cert file: {e}")))?;
+    file.write_all(cert_der)
+        .map_err(|e| AppError::internal_error(format!("write temp cert: {e}")))?;
+
+    Ok(staged)
+}
+
 #[cfg(windows)]
 pub mod windows;
 #[cfg(target_os = "macos")]
