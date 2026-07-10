@@ -75,6 +75,15 @@ truth.
   pane (drop = replace that pane) or the inter-pane seam / edge (drop = new pane at
   that index); drag a pane header to `reorderPanes`. *Implements the v1-deferred
   ITEM-16/DRIFT-1.10*; pointer-based, tokens for ghost/drop highlights.
+  **Disambiguation from OS FILE drops (raised in review):** each pane's
+  composer/message area ALREADY accepts OS file drops (→ THAT pane's attachments,
+  per ITEM-32's per-pane `Stores.File`). The workspace drop-zones must therefore
+  (a) accept ONLY the conversation-drag payload (a custom drag type set on
+  `dragstart`, e.g. `application/x-ziee-conversation`) and ignore `DataTransfer`
+  with `types` containing `Files`, and (b) live on the pane **header / inter-pane
+  seam**, NOT over the composer — so an OS file drop never triggers a pane
+  replace/reorder and a conversation drop never uploads a file. The e2e (TEST-28)
+  asserts both directions don't cross-fire.
 
 - **ITEM-32**: **Complete the per-pane composer migration (the FB-4 fix).** v1
   migrated ONLY `TextInput` (the textarea draft) to `useChatPane()`; **~16 other
