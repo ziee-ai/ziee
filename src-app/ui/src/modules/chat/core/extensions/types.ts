@@ -901,7 +901,7 @@ export interface ChatExtension {
    * Called when extension is unregistered or chat is unmounted
    * Extensions should access Stores.Chat for conversation data
    */
-  cleanup?: () => void | Promise<void>
+  cleanup?: (ctx: ChatExtensionContext) => void | Promise<void>
 }
 
 /**

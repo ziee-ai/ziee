@@ -366,7 +366,25 @@ export class ChatExtensionRegistry {
       console.warn('[ChatExtensions] Already initialized')
       return
     }
+    await this.initializeExtensions(chatStore, resolveStore)
+    this.initialized = true
+  }
 
+  /**
+   * Run every extension's `initialize(ctx)` against a chat store — WITHOUT the
+   * `this.initialized` gate. The per-pane `PaneExtensionRuntime` drives this with
+   * its OWN flag + the pane's api, so a second pane's extensions actually
+   * initialize (the shared-flag bug: the global gate made the 2nd pane's
+   * `initialize()` early-return, silently skipping its subscriptions +
+   * keyboard/file/edit wiring — GAP-1). `initialize()` above is the single-pane
+   * gated wrapper; both share this body.
+   */
+  async initializeExtensions(
+    chatStore?: import('./types').ChatExtStoreApi,
+    resolveStore?: (
+      name: string,
+    ) => import('@/core/stores').StoreProxy<any> | null,
+  ): Promise<void> {
     const extensions = this.getExtensions()
     console.log(
       `[ChatExtensions] Initializing ${extensions.length} extensions...`,
@@ -399,8 +417,6 @@ export class ChatExtensionRegistry {
         )
       }
     }
-
-    this.initialized = true
   }
 
   /**
@@ -588,15 +604,45 @@ export class ChatExtensionRegistry {
    * Extensions access Stores.Chat directly for conversation data
    */
   async cleanup(): Promise<void> {
+    await this.cleanupExtensions()
+    this.initialized = false
+  }
+
+  /**
+   * Run every extension's `cleanup()` — WITHOUT flipping `this.initialized`. The
+   * per-pane `PaneExtensionRuntime` drives this with its OWN flag, so ONE pane
+   * unmounting no longer flips the shared global flag (which left surviving panes
+   * marked uninitialized with no re-init → dead keyboard/file/edit — GAP-1).
+   */
+  async cleanupExtensions(
+    chatStore?: import('./types').ChatExtStoreApi,
+    resolveStore?: (
+      name: string,
+    ) => import('@/core/stores').StoreProxy<any> | null,
+  ): Promise<void> {
     const extensions = this.getExtensions()
     console.log(
       `[ChatExtensions] Cleaning up ${extensions.length} extensions...`,
     )
 
+    let api = chatStore
+    let resolve = resolveStore
+    if (!api || !resolve) {
+      const { useChatStore } = await import('../stores/Chat.store')
+      const state = useChatStore.getState() as unknown as Record<string, unknown>
+      api =
+        api ?? (useChatStore as unknown as import('./types').ChatExtStoreApi)
+      resolve =
+        resolve ??
+        ((name) =>
+          (state[name] as import('@/core/stores').StoreProxy<any>) ?? null)
+    }
+
     for (const extension of extensions) {
       try {
         if (extension.cleanup) {
-          await extension.cleanup()
+          const store = extension.store ? resolve(extension.store.name) : null
+          await extension.cleanup({ chatStore: api, store })
           console.log(`[ChatExtensions] Cleaned up: ${extension.name}`)
         }
       } catch (error) {
@@ -606,8 +652,6 @@ export class ChatExtensionRegistry {
         )
       }
     }
-
-    this.initialized = false
   }
 
   /**
