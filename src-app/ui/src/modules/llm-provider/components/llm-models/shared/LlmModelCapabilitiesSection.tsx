@@ -75,16 +75,19 @@ const TriStateSelect = forwardRef<
     onBlur?: () => void
   }
 >(({ value, onChange, testid, ariaLabel, onBlur }, ref) => {
-  const str = value === undefined || value === null ? '' : value ? 'true' : 'false'
+  // shadcn/Radix Select reserves the empty string for "no selection", so an
+  // empty-value item renders as a blank placeholder. Use a non-empty `auto`
+  // sentinel and map it back to `undefined` on change.
+  const str = value === undefined || value === null ? 'auto' : value ? 'true' : 'false'
   return (
     <Select
       ref={ref}
       aria-label={ariaLabel}
       onBlur={onBlur}
       value={str}
-      onChange={v => onChange?.(v === '' ? undefined : v === 'true')}
+      onChange={v => onChange?.(v === 'auto' ? undefined : v === 'true')}
       options={[
-        { value: '', label: 'Auto' },
+        { value: 'auto', label: 'Auto' },
         { value: 'true', label: 'Yes' },
         { value: 'false', label: 'No' },
       ]}
@@ -111,10 +114,10 @@ const ThinkingStyleSelect = forwardRef<
       ref={ref}
       aria-label={ariaLabel}
       onBlur={onBlur}
-      value={value ?? ''}
-      onChange={v => onChange?.(v === '' ? undefined : v)}
+      value={value ?? 'auto'}
+      onChange={v => onChange?.(v === 'auto' ? undefined : v)}
       options={[
-        { value: '', label: 'Auto' },
+        { value: 'auto', label: 'Auto' },
         { value: 'adaptive', label: 'Adaptive' },
         { value: 'budget', label: 'Budget' },
       ]}
@@ -135,16 +138,21 @@ function TriStateRow({
   help?: string
 }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span>
-        {label}
+    // Mirror CapabilityRow: label (+ help as a description line beneath) in a
+    // min-w-0 column so the long help wraps within its own column instead of
+    // pushing the whole title onto a second line; select stays right-aligned.
+    <div className="flex items-center justify-between gap-3 min-h-9">
+      <div className="min-w-0">
+        <span className="text-sm">{label}</span>
         {help && (
-          <span className="text-muted-foreground" style={{ fontSize: 12, marginLeft: 8 }}>
-            {help}
-          </span>
+          <span className="text-muted-foreground text-xs block">{help}</span>
         )}
-      </span>
-      <FormField name={`capabilities.${name}`} aria-label={label} className="mb-0">
+      </div>
+      <FormField
+        name={`capabilities.${name}`}
+        aria-label={label}
+        className="mb-0 w-auto shrink-0"
+      >
         <TriStateSelect testid={`llm-capability-select-${name}`} ariaLabel={label} />
       </FormField>
     </div>
@@ -153,9 +161,15 @@ function TriStateRow({
 
 function StyleRow({ label, name }: { label: string; name: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span>{label}</span>
-      <FormField name={`capabilities.${name}`} aria-label={label} className="mb-0">
+    <div className="flex items-center justify-between gap-3 min-h-9">
+      <div className="min-w-0">
+        <span className="text-sm">{label}</span>
+      </div>
+      <FormField
+        name={`capabilities.${name}`}
+        aria-label={label}
+        className="mb-0 w-auto shrink-0"
+      >
         <ThinkingStyleSelect testid={`llm-capability-select-${name}`} ariaLabel={label} />
       </FormField>
     </div>
