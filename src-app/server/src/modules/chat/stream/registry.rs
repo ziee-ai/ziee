@@ -20,10 +20,28 @@ use crate::common::AppError;
 use super::buffers::GenerationBuffer;
 use super::event::ChatStreamFrame;
 
-/// Global cap on concurrent chat-token SSE connections across all users.
-const GLOBAL_MAX_CONNECTIONS: usize = 512;
-/// Per-user cap (multiple tabs/devices).
-const PER_USER_MAX_CONNECTIONS: usize = 12;
+/// Chat-token SSE connection caps (DEC-34). Formerly two hardcoded consts
+/// (`GLOBAL_MAX_CONNECTIONS`/`PER_USER_MAX_CONNECTIONS = 12`); now a Limits struct
+/// so the caps are deployment-config-driven (`chat.*` in `Config`) and unit-test
+/// injectable. The per-user default is raised (24) because split-chat opens one
+/// dedicated SSE connection per open pane.
+#[derive(Debug, Clone, Copy)]
+pub struct ChatStreamLimits {
+    /// Max concurrent connections for a single user (all tabs/devices/panes).
+    pub per_user_max_connections: usize,
+    /// Max concurrent connections across all users.
+    pub global_max_connections: usize,
+}
+
+impl Default for ChatStreamLimits {
+    fn default() -> Self {
+        Self {
+            per_user_max_connections: 24,
+            global_max_connections: 512,
+        }
+    }
+}
+
 /// Per-connection queue depth. Sized to comfortably hold a full catch-up replay
 /// (the byte-capped buffer is well under this many frames) plus live headroom.
 /// A reader that falls this far behind is dropped (client reconnects + replays).
@@ -46,6 +64,9 @@ struct RegistryInner {
     /// In-flight generations keyed by conversation id (one turn per
     /// conversation at a time). Created on `started`, dropped on terminal.
     generations: HashMap<Uuid, GenerationBuffer>,
+    /// Connection caps (DEC-34). Defaults applied at construction; overridden at
+    /// server boot from deployment config via `set_limits`.
+    limits: ChatStreamLimits,
 }
 
 pub struct ChatStreamRegistry {
@@ -58,6 +79,7 @@ lazy_static! {
             clients: HashMap::new(),
             by_user: HashMap::new(),
             generations: HashMap::new(),
+            limits: ChatStreamLimits::default(),
         }),
     };
 }
@@ -72,7 +94,7 @@ impl ChatStreamRegistry {
     pub fn register(&self, conn_id: ConnId, conn: ChatConn) -> Result<(), AppError> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
-        if inner.clients.len() >= GLOBAL_MAX_CONNECTIONS {
+        if inner.clients.len() >= inner.limits.global_max_connections {
             return Err(AppError::new(
                 StatusCode::TOO_MANY_REQUESTS,
                 "CHAT_STREAM_GLOBAL_LIMIT",
@@ -80,7 +102,7 @@ impl ChatStreamRegistry {
             ));
         }
         let user_count = inner.by_user.get(&conn.user_id).map_or(0, |s| s.len());
-        if user_count >= PER_USER_MAX_CONNECTIONS {
+        if user_count >= inner.limits.per_user_max_connections {
             return Err(AppError::new(
                 StatusCode::TOO_MANY_REQUESTS,
                 "CHAT_STREAM_USER_LIMIT",
@@ -97,6 +119,13 @@ impl ChatStreamRegistry {
     pub fn unregister(&self, conn_id: ConnId) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         remove_conn(&mut inner, conn_id);
+    }
+
+    /// Override the connection caps (called once at server boot from deployment
+    /// config — DEC-34). Affects only subsequent `register` calls.
+    pub fn set_limits(&self, limits: ChatStreamLimits) {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.limits = limits;
     }
 
     /// Claim the single in-flight generation slot for a conversation. Returns
@@ -263,6 +292,15 @@ pub fn end_generation(conversation_id: Uuid) {
     registry().end_generation(conversation_id);
 }
 
+/// Apply the deployment-config chat-stream connection caps to the process-wide
+/// registry. Call once at server boot (before serving) — DEC-34.
+pub fn apply_config_limits(chat: &crate::core::config::ChatConfig) {
+    registry().set_limits(ChatStreamLimits {
+        per_user_max_connections: chat.per_user_max_connections,
+        global_max_connections: chat.global_max_connections,
+    });
+}
+
 /// Remove a connection from both indexes (shared by unregister + pruning).
 fn remove_conn(inner: &mut RegistryInner, conn_id: ConnId) {
     if let Some(conn) = inner.clients.remove(&conn_id) {
@@ -292,6 +330,7 @@ mod tests {
                 clients: HashMap::new(),
                 by_user: HashMap::new(),
                 generations: HashMap::new(),
+                limits: ChatStreamLimits::default(),
             }),
         }
     }
@@ -444,8 +483,9 @@ mod tests {
     #[test]
     fn per_user_cap_rejects_excess_connections() {
         let reg = empty_registry();
+        let cap = ChatStreamLimits::default().per_user_max_connections;
         let uid = Uuid::new_v4();
-        for _ in 0..PER_USER_MAX_CONNECTIONS {
+        for _ in 0..cap {
             let (c, _rx) = conn(uid, None);
             reg.register(Uuid::new_v4(), c).unwrap();
         }
@@ -453,6 +493,39 @@ mod tests {
         assert!(
             reg.register(Uuid::new_v4(), overflow).is_err(),
             "the (cap+1)th connection for one user must be refused (429)"
+        );
+    }
+
+    /// TEST-36: the per-user cap reads the CONFIGURED value (via `set_limits`),
+    /// not the legacy hardcoded 12, and the (cap+1)th connection 429s at the
+    /// configured bound (DEC-34 / ITEM-20).
+    #[test]
+    fn per_user_cap_honors_the_configured_limit() {
+        let reg = empty_registry();
+        // A configured cap distinct from both the legacy 12 and the new default 24.
+        reg.set_limits(ChatStreamLimits {
+            per_user_max_connections: 3,
+            global_max_connections: 512,
+        });
+        let uid = Uuid::new_v4();
+        for _ in 0..3 {
+            let (c, _rx) = conn(uid, None);
+            reg.register(Uuid::new_v4(), c).unwrap();
+        }
+        let (overflow, _rx) = conn(uid, None);
+        assert!(
+            reg.register(Uuid::new_v4(), overflow).is_err(),
+            "the 4th connection must 429 at the CONFIGURED cap of 3"
+        );
+    }
+
+    /// The default per-user cap was raised above the legacy 12 (DEC-34) so
+    /// one-SSE-connection-per-pane doesn't 429 a legitimate pane under churn.
+    #[test]
+    fn default_per_user_cap_is_raised_above_legacy_twelve() {
+        assert!(
+            ChatStreamLimits::default().per_user_max_connections > 12,
+            "the default per-user cap must exceed the legacy 12"
         );
     }
 

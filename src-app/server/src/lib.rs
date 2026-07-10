@@ -408,6 +408,8 @@ fn init_data_dir(config: &Config) {
     // Publish the resolved caches config into global state so handlers
     // can read paths without threading Config through every signature.
     core::set_caches_config(config.caches.clone());
+    // Apply the deployment-config chat-token SSE connection caps (DEC-34).
+    crate::modules::chat::stream::registry::apply_config_limits(&config.chat);
 }
 
 /// Common server setup - initializes all components and returns the router
