@@ -511,7 +511,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "showTrigger", line: 80 },
       { kind: "branch", condition: "showClear", line: 91 },
-      { kind: "branch", condition: "showRemove", line: 263 },
+      { kind: "branch", condition: "showRemove", line: 268 },
     ],
   },
   "components/ui/shadcn/dialog": {
