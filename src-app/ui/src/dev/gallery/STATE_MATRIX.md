@@ -8,7 +8,7 @@
 ## Summary
 
 - **328** surfaces carry at least one renderable-state signal.
-- **1911** signals total: 1514 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
+- **1912** signals total: 1515 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **32** slot registrations (sidebar / settings / chat mount points).
 
@@ -1273,12 +1273,13 @@ Required states: `delayed`, `error`
 | branch | `!conversation?.id` | 431 |
 | branch | `!m` | 435 |
 | branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 438 |
-| loading | `loading && !conversation` | 458 |
-| loading | `!loading && !conversation` | 467 |
-| error | `error` | 470 |
-| branch | `pane` | 535 |
-| error | `error` | 569 |
-| branch | `nativeScroll && !composerHidden` | 668 |
+| loading | `loading && !conversation` | 469 |
+| branch | `pane && !conversationId && !conversation` | 479 |
+| loading | `!loading && !conversation` | 529 |
+| error | `error` | 532 |
+| branch | `pane` | 597 |
+| error | `error` | 631 |
+| branch | `nativeScroll && !composerHidden` | 730 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

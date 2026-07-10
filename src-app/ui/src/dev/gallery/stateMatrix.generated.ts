@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 328 surfaces carry renderable-state signals; 1911 signals total.
+// 328 surfaces carry renderable-state signals; 1912 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1127,12 +1127,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!conversation?.id", line: 431 },
       { kind: "branch", condition: "!m", line: 435 },
       { kind: "branch", condition: "!found || chat.$.conversation?.id !== conversation.id", line: 438 },
-      { kind: "loading", condition: "loading && !conversation", line: 458 },
-      { kind: "loading", condition: "!loading && !conversation", line: 467 },
-      { kind: "error", condition: "error", line: 470 },
-      { kind: "branch", condition: "pane", line: 535 },
-      { kind: "error", condition: "error", line: 569 },
-      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 668 },
+      { kind: "loading", condition: "loading && !conversation", line: 469 },
+      { kind: "branch", condition: "pane && !conversationId && !conversation", line: 479 },
+      { kind: "loading", condition: "!loading && !conversation", line: 529 },
+      { kind: "error", condition: "error", line: 532 },
+      { kind: "branch", condition: "pane", line: 597 },
+      { kind: "error", condition: "error", line: 631 },
+      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 730 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {

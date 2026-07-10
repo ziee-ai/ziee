@@ -62,7 +62,12 @@ export function ChatPaneProvider({
   }, [paneId, store])
 
   useEffect(() => {
-    if (conversationId) void store.loadConversation(conversationId)
+    // Skip when the instance already holds this conversation — e.g. a new-chat
+    // pane that just CREATED it and adopted it into its SplitView slot (avoid a
+    // reload that would interrupt the in-flight first stream). Otherwise load.
+    if (conversationId && store.$.conversation?.id !== conversationId) {
+      void store.loadConversation(conversationId)
+    }
     // ref-frozen instance: re-run the imperative load when the pane's
     // conversation changes (DEC-14 in-pane switch).
   }, [conversationId, store])
