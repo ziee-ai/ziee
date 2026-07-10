@@ -9,17 +9,26 @@
 //! "always allow"). The model is trusted to declare `mode` honestly — there is NO
 //! read-only enforcement (see the office-mode-gated-approval lifecycle decisions).
 
+use std::sync::LazyLock;
+
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::modules::mcp::chat_extension::ApprovalMode;
 
+/// Cached so the v5 (SHA-1) derivation isn't recomputed on every tool call (the
+/// approval loop consults `run_office_js_read_bypass` for every non-control/non-builtin
+/// call).
+static OFFICE_BRIDGE_ID: LazyLock<Uuid> =
+    LazyLock::new(|| Uuid::new_v5(&Uuid::NAMESPACE_URL, b"office_bridge.ziee.internal"));
+
 /// The deterministic id of the built-in `office_bridge` MCP server row. Recomputed
 /// here (the server lib cannot depend on the desktop crate) from the SAME string the
-/// desktop `office_bridge::mod.rs` uses; a desktop-crate test asserts the two match so
-/// they can never drift.
+/// desktop `office_bridge::mod.rs` uses in `office_bridge_server_id()`; the desktop-crate
+/// test `office_bridge_id_matches_server_recomputation` asserts the two match so they can
+/// never drift. (The `_mcp_` infix mirrors the sibling `control_mcp_server_id`.)
 pub fn office_bridge_mcp_server_id() -> Uuid {
-    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"office_bridge.ziee.internal")
+    *OFFICE_BRIDGE_ID
 }
 
 /// True IFF this is an `office_bridge` `run_office_js` call the model declared as a
@@ -28,9 +37,11 @@ pub fn office_bridge_mcp_server_id() -> Uuid {
 /// any-other-string `mode`, a different tool, or a non-office server that merely names
 /// a tool `run_office_js` — is NOT a read bypass (fail-safe + spoof-safe).
 pub fn run_office_js_read_bypass(server_id: Option<Uuid>, tool_name: &str, input: &Value) -> bool {
-    server_id == Some(office_bridge_mcp_server_id())
-        && tool_name == "run_office_js"
+    // Cheap string/JSON checks first; the server-id compare last (short-circuits so the
+    // common non-run_office_js call never even reaches the id).
+    tool_name == "run_office_js"
         && input.get("mode").and_then(Value::as_str) == Some("read")
+        && server_id == Some(office_bridge_mcp_server_id())
 }
 
 /// Pure per-call approval decision — returns whether the tool call must be routed
@@ -157,16 +168,41 @@ mod tests {
 
     #[test]
     fn control_delegates_to_control_classifier() {
-        // A read-only control tool → auto-run; delegation is via is_control=true.
+        let control = Some(crate::modules::control_mcp::control_mcp_server_id());
+        // A read-only control tool → auto-run (delegation, is_control=true).
         assert!(!compute_needs_approval(
-            Some(crate::modules::control_mcp::control_mcp_server_id()),
-            "list_capabilities",
-            &json!({}),
-            ApprovalMode::ManualApprove,
-            false,
-            true,
-            false,
+            control, "list_capabilities", &json!({}),
+            ApprovalMode::ManualApprove, false, true, false
         ));
+        // A control WRITE (invoke_capability of an unknown/mutating op) → ALWAYS approve,
+        // even under AutoApprove (the control security posture, preserved by delegation).
+        assert!(compute_needs_approval(
+            control, "invoke_capability", &json!({ "operation_id": "unknown.mutating.op" }),
+            ApprovalMode::AutoApprove, false, true, false
+        ));
+    }
+
+    #[test]
+    fn disabled_arm_never_auto_runs() {
+        // The caller denies Disabled+non-builtin upstream, but the total-function
+        // fail-safe reaching the match arm must be needs-approval (true), never a silent
+        // auto-run. (A plain non-office tool reaches the `Disabled => true` arm.)
+        assert!(compute_needs_approval(
+            normal(), "some_tool", &json!({}), ApprovalMode::Disabled, false, false, false
+        ));
+    }
+
+    /// The load-bearing invariant: office_bridge must NOT be in the approval-bypass set.
+    /// If it were, `compute_needs_approval` would short-circuit to `false` (is_builtin)
+    /// and EVERY write would auto-run with no approval — this test locks that door.
+    #[test]
+    fn office_bridge_is_not_approval_bypassed() {
+        assert!(
+            !crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(
+                office_bridge_mcp_server_id()
+            ),
+            "office_bridge must NOT be in is_builtin_server_id — else writes would auto-run"
+        );
     }
 
     #[test]

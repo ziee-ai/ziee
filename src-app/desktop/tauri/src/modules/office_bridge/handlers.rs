@@ -515,10 +515,10 @@ mod tests {
     use crate::modules::office_bridge::bridge::broker;
     use crate::modules::office_bridge::platform::{MockOfficePlatform, OfficeApp, OpenDoc};
 
-    /// A mock seeded with a couple of open docs INCLUDING a PowerPoint one, so
-    /// the capability-matrix branch (`add_comment`/`set_track_changes` on PPT)
-    /// is exercisable. Mirrors the `MockOfficePlatform::new()` shape but adds
-    /// the PowerPoint deck the default seed lacks.
+    /// A mock seeded with a couple of open docs (Word + a PowerPoint deck) so
+    /// `list_open_documents` returns a mixed set. Mirrors the
+    /// `MockOfficePlatform::new()` shape but adds the PowerPoint deck the default
+    /// seed lacks.
     fn seeded_mock() -> MockOfficePlatform {
         MockOfficePlatform::with_docs(vec![
             OpenDoc {

@@ -329,7 +329,7 @@ async fn test8_junk_frames_are_ignored() {
 /// TEST-9 — the full `dispatch_tool` path maps the pane's result into the MCP
 /// `tool_result` shape (`content` + `structuredContent`).
 #[tokio::test]
-async fn test9_dispatch_tool_read_document_round_trip() {
+async fn test9_dispatch_tool_run_office_js_round_trip() {
     let doc = "/Users/x/RptNine.docx".to_string();
     let (handle, ws) = bring_up().await;
     let pane = tokio::spawn(run_mock_pane(ws, "word", doc.clone(), Mode::Ok, false));

@@ -2117,10 +2117,13 @@ impl ChatExtension for McpChatExtension {
                 .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
                 .unwrap_or(false);
 
+            // Parse the server id once; reused for the auto-approved check and the decision.
+            let server_uuid = uuid::Uuid::parse_str(&server_id).ok();
+
             // "Always allow" (per-conversation + per-user) memory: is this tool already
             // auto-approved for this server? Precomputed here (DB-derived) and handed to
             // the pure decision.
-            let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
+            let is_auto_approved = if let Some(sid) = server_uuid {
                 auto_approved_servers
                     .iter()
                     .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
@@ -2136,7 +2139,7 @@ impl ChatExtension for McpChatExtension {
             // normal servers follow ManualApprove (prompt unless always-allowed).
             let needs_approval =
                 crate::modules::mcp::chat_extension::office_approval::compute_needs_approval(
-                    uuid::Uuid::parse_str(&server_id).ok(),
+                    server_uuid,
                     &tool_name,
                     &input,
                     approval_mode,
