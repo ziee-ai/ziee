@@ -479,15 +479,15 @@ Required states: `empty`
 | branch | `showVirtual` | 346 |
 | branch | `hasToolbar` | 357 |
 | branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 388 |
-| branch | `caption != null` | 398 |
-| branch | `resizableTable` | 399 |
-| branch | `meta.resizable` | 419 |
-| branch | `busy` | 426 |
-| empty | `rows.length === 0` | 434 |
-| branch | `meta.resizable` | 550 |
-| branch | `mode === 'none'` | 600 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 605 |
-| branch | `!selectionActive(props, col)` | 612 |
+| branch | `caption != null` | 407 |
+| branch | `resizableTable` | 408 |
+| branch | `meta.resizable` | 428 |
+| branch | `busy` | 435 |
+| empty | `rows.length === 0` | 443 |
+| branch | `meta.resizable` | 559 |
+| branch | `mode === 'none'` | 609 |
+| branch | `(props.selectionMode ?? 'none') === 'none'` | 614 |
+| branch | `!selectionActive(props, col)` | 621 |
 
 ### `components/ui/kit/tabs`
 

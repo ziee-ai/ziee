@@ -91,10 +91,10 @@ export function DelimitedTable({ text, delimiter, fileName, fileId, fill = false
     return { columns, dataSource, truncated, exportColumns }
   }, [text, delimiter])
 
-  // Panel context (`fill`) always virtualizes so the grid gets the kit's
-  // fixed-toolbar + scrolling body and can fill the panel height; inline
-  // previews keep the content-hugging plain table below the threshold.
-  const virtualized = fill || dataSource.length > VIRTUALIZE_ROW_THRESHOLD
+  // Virtualize ONLY large grids. Small tables stay on the plain path so their
+  // columns keep content-auto widths (table-auto); `fillHeight` (below) still
+  // lets the plain grid fill the panel height + scroll via its own container.
+  const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
 
   // View state surfaced from the kit Table for the body-local toolbar.
   const viewRef = useRef<TabularRecord[]>(dataSource)

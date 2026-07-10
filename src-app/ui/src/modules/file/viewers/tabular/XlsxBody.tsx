@@ -111,10 +111,10 @@ export function XlsxSheet({
     return { columns, dataSource, exportColumns }
   }, [sheet])
 
-  // Panel context (`fill`) always virtualizes so the grid gets the fixed-toolbar
-  // + scrolling body and fills the panel height; the standalone demo keeps the
-  // content-hugging plain table below the threshold.
-  const virtualized = fill || dataSource.length > VIRTUALIZE_ROW_THRESHOLD
+  // Virtualize ONLY large sheets. Small sheets stay on the plain path so their
+  // columns keep content-auto widths (table-auto); `fillHeight` (below) still
+  // lets the plain grid fill the panel height + scroll via its own container.
+  const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
   const viewRef = useRef<TabularRecord[]>(dataSource)
   const [viewCount, setViewCount] = useState(dataSource.length)
   const selectionRef = useRef('')

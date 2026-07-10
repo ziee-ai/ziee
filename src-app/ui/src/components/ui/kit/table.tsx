@@ -371,7 +371,7 @@ function cellPresentation<T>(col: TableColumn<T>, meta: ColMeta, record: T): { c
 }
 
 function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolean }) {
-  const { rowKey, caption, empty, className, onRowClick, busy, view, 'data-testid': testid } = props
+  const { rowKey, caption, empty, className, onRowClick, busy, fillHeight, view, 'data-testid': testid } = props
   const cols = view.visibleColumns as TableColumn<T>[]
   const rows = view.viewData
   const resizableTable = !!props.resizable
@@ -394,7 +394,16 @@ function PlainTable<T>(props: TableProps<T> & { view: TableView<T>; busy: boolea
   }, [props.scrollToIndex])
 
   return (
-    <Base ref={rootRef} className={cn(resizableTable && 'table-fixed', className)} data-testid={testid}>
+    <Base
+      ref={rootRef}
+      className={cn(resizableTable && 'table-fixed', className)}
+      // fillHeight: the table's own container flexes to fill the panel and
+      // scrolls BOTH axes, so a small plain table keeps its content-auto column
+      // widths (table-auto) instead of being forced onto the virtualized grid's
+      // fixed widths.
+      containerClassName={fillHeight ? 'flex-1 min-h-0 overflow-auto' : undefined}
+      data-testid={testid}
+    >
       {caption != null && <TableCaption>{caption}</TableCaption>}
       {resizableTable && (
         <colgroup>
