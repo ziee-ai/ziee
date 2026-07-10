@@ -184,6 +184,14 @@ impl StreamingService {
             const SAFETY_MAX_ITERATIONS: u32 = 1000;
             let mut iteration = 1u32;
 
+            // Whether ANY iteration of this turn persisted a user-visible answer.
+            // The per-iteration `DeltaAccumulator` is recreated each loop, so its
+            // own `produced_visible_content` reflects only the latest LLM response;
+            // this OR-accumulates across iterations so the terminal
+            // "empty completion" signal matches the WHOLE assistant message (which
+            // is what the frontend inspects), not just the final iteration.
+            let mut turn_produced_visible_content = false;
+
             // OPTIMIZATION: Fetch history ONCE before loop, cache in memory
             // On Continue action, we append new content to cache instead of re-fetching
             let mut history = match Repos.chat.core.get_conversation_history(branch_id).await {
@@ -486,6 +494,7 @@ impl StreamingService {
                     reasoning_tokens: None,
                     extension_tx: Some(ext_tx.clone()),
                     finalized: false,
+                    produced_visible_content: false,
                 }));
 
                 // Stream chunks through accumulator
@@ -553,6 +562,11 @@ impl StreamingService {
                     if let Err(e) = acc.finalize().await {
                         let _ = tx.send(Err(e));
                         return;
+                    }
+                    // Carry this iteration's visibility into the turn-level flag
+                    // (the accumulator is dropped/recreated next iteration).
+                    if acc.produced_visible_content {
+                        turn_produced_visible_content = true;
                     }
                 }
 
@@ -671,7 +685,28 @@ impl StreamingService {
                         };
 
                         // Use finish_reason from provider, or default to "stop" if not provided
-                        let final_finish_reason = finish_reason.unwrap_or_else(|| "stop".to_string());
+                        let mut final_finish_reason =
+                            finish_reason.unwrap_or_else(|| "stop".to_string());
+
+                        // Empty-completion guard: the turn terminated (no tool call to
+                        // run) but produced NO user-visible answer across ANY iteration
+                        // — only reasoning, or nothing. Without this the client just
+                        // sees a bare `stop` and the chat appears to hang. Override the
+                        // terminal finish_reason to "empty" (an authoritative signal for
+                        // telemetry + the client) and log it. The frontend renders an
+                        // inline notice for such a turn; it does NOT branch on
+                        // finish_reason, so this is non-breaking. We deliberately do NOT
+                        // emit an Err here (that would render as a hard
+                        // conversation-level error banner).
+                        if !turn_produced_visible_content {
+                            tracing::warn!(
+                                conversation_id = %conversation_id,
+                                message_id = %assistant_message_id,
+                                provider_finish_reason = %final_finish_reason,
+                                "chat turn completed with no user-visible content and no tool call (empty completion)"
+                            );
+                            final_finish_reason = "empty".to_string();
+                        }
 
                         // Send Complete event now that we're actually done
                         let complete_chunk = ChatStreamChunk {
@@ -1134,6 +1169,23 @@ fn accumulated_to_content_block(
     }
 }
 
+/// Does a persisted content block count as a **user-visible answer** for this turn?
+///
+/// Used to distinguish a turn that produced something for the user (text / tool
+/// call / attachment) from a reasoning-only or empty turn. `thinking` blocks and
+/// empty/whitespace `text` do NOT count — they are what make a turn *appear* to
+/// hang with nothing shown. Any non-reasoning content type counts; the `text`
+/// param is only consulted for the `"text"` type (extension blocks pass "").
+fn is_visible_answer(content_type: &str, text: &str) -> bool {
+    match content_type {
+        "thinking" => false,
+        "text" => !text.trim().is_empty(),
+        // tool_use / tool_result / image / file_attachment / elicitation_request /
+        // any other extension-owned content type is a user-visible answer.
+        _ => true,
+    }
+}
+
 /// Delta accumulator - Manages delta accumulation in memory
 /// Writes to database ONLY when streaming finishes (memory accumulation strategy)
 struct DeltaAccumulator {
@@ -1156,6 +1208,11 @@ struct DeltaAccumulator {
     extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     /// Flag to track if finalize() has been called (prevents double-finalization)
     finalized: bool,
+    /// Set true during `finalize` when this turn persisted at least one
+    /// user-visible answer block (text with content, tool_use, attachment, …).
+    /// Stays false for a reasoning-only or empty turn — the terminal arm uses it
+    /// to surface an "empty completion" notice instead of a silent `stop`.
+    produced_visible_content: bool,
 }
 
 impl DeltaAccumulator {
@@ -1402,6 +1459,10 @@ impl DeltaAccumulator {
             .await
             .map_err(AppError::database_error)?;
             next_seq += 1;
+
+            if is_visible_answer(&accumulated.content_type, &accumulated.accumulated_text) {
+                self.produced_visible_content = true;
+            }
         }
 
         // Get accumulated content from extensions and persist to database
@@ -1441,6 +1502,18 @@ impl DeltaAccumulator {
                 .await
                 .map_err(AppError::database_error)?;
                 next_seq += 1;
+
+                // Extension content (tool_use / tool_result / attachments / …) is a
+                // user-visible answer. Extract any `text` field so an extension that
+                // emits a text-typed block (the text extension declares text/thinking)
+                // is classified on its actual content, not assumed non-empty.
+                let text = content_json
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if is_visible_answer(&content_type, text) {
+                    self.produced_visible_content = true;
+                }
             }
         }
 
@@ -1805,6 +1878,23 @@ mod tests {
             signature: sig.map(str::to_string),
             redacted_data: redacted.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn is_visible_answer_classifies_blocks() {
+        // Reasoning-only / empty text do NOT count as a user-visible answer.
+        assert!(!is_visible_answer("thinking", "some reasoning"));
+        assert!(!is_visible_answer("text", ""));
+        assert!(!is_visible_answer("text", "   \n\t "));
+
+        // Real answers DO count.
+        assert!(is_visible_answer("text", "hi"));
+        assert!(is_visible_answer("text", "  padded  "));
+        assert!(is_visible_answer("tool_use", ""));
+        assert!(is_visible_answer("tool_result", ""));
+        assert!(is_visible_answer("image", ""));
+        assert!(is_visible_answer("file_attachment", ""));
+        assert!(is_visible_answer("elicitation_request", ""));
     }
 
     #[test]

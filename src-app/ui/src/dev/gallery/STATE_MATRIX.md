@@ -8,7 +8,7 @@
 ## Summary
 
 - **325** surfaces carry at least one renderable-state signal.
-- **1894** signals total: 1499 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
+- **1895** signals total: 1500 branch, 112 empty, 96 error, 99 loading, 86 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
 - **30** slot registrations (sidebar / settings / chat mount points).
 
@@ -906,12 +906,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 46 |
-| empty | `!message.contents \|\| message.contents.length === 0` | 54 |
-| branch | `attachmentBlocks.length > 0` | 136 |
-| branch | `bubbleBlocks.length > 0` | 165 |
-| branch | `offerCollapse` | 191 |
-| branch | `isUser` | 216 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 54 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 76 |
+| branch | `attachmentBlocks.length > 0` | 158 |
+| branch | `bubbleBlocks.length > 0` | 187 |
+| branch | `offerCollapse` | 213 |
+| branch | `showEmptyCompletionNotice` | 233 |
+| branch | `isUser` | 252 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1009,28 +1010,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 116 |
-| branch | `w <= 0` | 118 |
-| branch | `!el` | 129 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
-| branch | `!import.meta.env.DEV` | 295 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
-| branch | `!el` | 378 |
-| empty | `count === 0` | 385 |
-| branch | `!el` | 403 |
-| branch | `!item` | 406 |
-| branch | `!msg` | 408 |
-| branch | `!c` | 414 |
-| branch | `virtualize` | 419 |
-| branch | `idx < 0` | 421 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
-| branch | `!c` | 439 |
-| branch | `newTop == null` | 441 |
-| loading | `!loading && count === 0` | 450 |
-| branch | `loadingOlder` | 476 |
-| branch | `virtualize` | 486 |
-| branch | `!msg` | 501 |
-| loading | `(loading \|\| isStreaming)` | 545 |
+| branch | `!vw \|\| vw <= 0` | 117 |
+| branch | `w <= 0` | 119 |
+| branch | `!el` | 130 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 264 |
+| branch | `!import.meta.env.DEV` | 296 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 370 |
+| branch | `!el` | 379 |
+| empty | `count === 0` | 386 |
+| branch | `!el` | 404 |
+| branch | `!item` | 407 |
+| branch | `!msg` | 409 |
+| branch | `!c` | 415 |
+| branch | `virtualize` | 420 |
+| branch | `idx < 0` | 422 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 434 |
+| branch | `!c` | 440 |
+| branch | `newTop == null` | 442 |
+| loading | `!loading && count === 0` | 451 |
+| branch | `loadingOlder` | 477 |
+| branch | `virtualize` | 487 |
+| branch | `!msg` | 502 |
+| loading | `(loading \|\| isStreaming)` | 554 |
 
 ### `modules/chat/components/ModelSelector`
 
