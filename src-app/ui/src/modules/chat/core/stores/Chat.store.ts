@@ -748,6 +748,10 @@ const chatStoreConfig = {
         }))
 
         await extLifecycle().cleanup()
+        // Capture the OUTGOING message ids BEFORE clearing `messages` (ITEM-38):
+        // reading them after the `set({ messages: new Map() })` below yielded []
+        // — a no-op that leaked the outgoing conversation's collapse state.
+        const outgoingMessageIds = Array.from(get().messages.keys())
         // Clear messages on switch so consumers never momentarily see the
         // OUTGOING conversation's messages under the new conversation id.
         // (Outgoing state was already saved via saveConversationState above;
@@ -770,11 +774,11 @@ const chatStoreConfig = {
         })
         // Drop the outgoing conversation's ephemeral per-row view state
         // (show-more collapse) so the incoming conversation starts clean. Scoped
-        // to THIS store's own message ids so a split pane switching conversation
-        // never clears another pane's entries (ITEM-21).
+        // to THIS store's own (now-captured) message ids so a split pane switching
+        // conversation never clears another pane's entries (ITEM-21/38).
         useMessageViewStateStore
           .getState()
-          .resetViewState(Array.from(get().messages.keys()))
+          .resetViewState(outgoingMessageIds)
       }
 
       get().cancelCacheClear(id)
@@ -2232,7 +2236,10 @@ const chatStoreConfig = {
       if (state.conversation) {
         get().saveConversationState(state.conversation.id)
 
-        chatExtensionRegistry
+        // Route through THIS pane's runtime (ITEM-34) so a pane's teardown cleans
+        // up its OWN extension subscriptions, not the singleton's; single-pane
+        // falls back to the global registry.
+        ;(state.extensionRuntime ?? chatExtensionRegistry)
           .cleanup()
           .catch(error =>
             console.error('[Chat.store] Extension cleanup failed:', error),
