@@ -146,6 +146,65 @@ pub async fn restore_version(
     Ok((StatusCode::OK, Json(updated)))
 }
 
+/// Body for `POST /files/{id}/versions`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AppendVersionRequest {
+    /// New full text content for the file. A new head version is appended;
+    /// byte-identical content is a no-op.
+    pub content: String,
+}
+
+/// Append a new head version from user-supplied text content — the user side of
+/// co-editing a deliverable. A byte-identical body is a no-op (returns the
+/// current head unchanged).
+///
+/// Gated on `FilesUpload` (a WRITE, like `restore_version`). Ownership-scoped:
+/// another user's file id resolves to 404.
+pub async fn append_version(
+    auth: RequirePermissions<(FilesUpload,)>,
+    Path(file_id): Path<Uuid>,
+    Json(req): Json<AppendVersionRequest>,
+) -> ApiResult<Json<File>> {
+    let user_id = auth.user.id;
+    let file = Repos
+        .file
+        .get_by_id_and_user(file_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
+
+    // Append-only: `commit_new_version` returns None when the bytes match the
+    // current head (content-addressed no-op), so a "save" with no change never
+    // creates an empty version. It ALSO emits the `SyncEntity::File` change +
+    // spawns the RAG reindex internally on a successful commit — so we must NOT
+    // do either again here (that would double the sync events + reindex work).
+    crate::modules::file::versioning::commit_new_version(
+        user_id,
+        &file,
+        req.content.into_bytes(),
+        "user",
+        None,
+    )
+    .await?;
+
+    let updated = Repos
+        .file
+        .get_by_id_and_user(file_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
+    Ok((StatusCode::OK, Json(updated)))
+}
+
+pub fn append_version_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(FilesUpload,)>(op)
+        .id("File.appendVersion")
+        .tag("Files")
+        .summary("Append a file version")
+        .description(
+            "Append a new head version from user-supplied text content (the user side of \
+             co-editing a deliverable). Byte-identical content is a no-op.",
+        )
+}
+
 /// Helper: resolve (file head/filename, target version) and load that version's
 /// original bytes for the pinned download/preview/text endpoints.
 async fn version_and_file(

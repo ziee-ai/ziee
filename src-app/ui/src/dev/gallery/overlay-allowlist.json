@@ -14,11 +14,16 @@
     "modules/projects/components/ProjectKnowledgeSection": "Knowledge-file Drawer opens on a knowledge-row action inside the project-detail section. Project detail is rendered in the gallery (seeded deep-state); interaction-gated. Tracked for a recipe.",
     "modules/chat/components/ConversationCard": "Inline controlled delete-Confirm on a conversation row (local open-state, opened by the row's delete button). Reached via the conversation list (rendered in the gallery). Inline confirm — covered by a future list-row interaction recipe.",
     "modules/file/components/FileCard": "Inline controlled delete-Confirm on a file card (local open-state). Reached via any file grid (rendered in the gallery). Inline confirm — future interaction recipe.",
+    "modules/file/components/FileVersionBar": "Version-compare Dialog (canvas): opens on the 'Compare with current' button, which is itself only shown when a file has >1 version AND a non-head version is selected. Deeply interaction-gated inside the file panel; needs a multi-version file + version selection to reach. Tracked for a version-history interaction recipe.",
     "modules/projects/components/ProjectCard": "Inline controlled delete-Confirm on a project card (local open-state). Reached via the projects list (rendered in the gallery). Inline confirm — future interaction recipe.",
     "modules/projects/chat-extension/components/ProjectConversationsList": "Inline controlled remove-Confirm on a project-conversation row (local open-state). Reached via the project detail conversations list. Inline confirm — future interaction recipe.",
     "modules/projects/chat-extension/extension": "Inline controlled remove-from-project Confirm in the conversation-menu extension (local open-state, opened from the conversation kebab menu). Inline confirm — future menu-interaction recipe.",
     "modules/user/components/user/UsersSettings": "Inline controlled activate/deactivate Confirm shared by a user row's Switch + button (local open-state). Reached via the users table (rendered in the gallery). Inline confirm — future row interaction recipe.",
-    "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked."
+    "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked.",
+    "modules/notification/components/NotificationBellWidget": "Notification bell Popover — local open-state, opens on a click on the sidebar bell; the recent-list + empty states are exercised via the notifications e2e spec. Tracked for an interaction recipe.",
+    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec.",
+    "modules/knowledge-base/components/KnowledgeBaseCard": "Inline controlled delete-Confirm on a knowledge-base card (local open-state). Reached via the knowledge list (rendered in the gallery). Inline confirm — future interaction recipe.",
+    "modules/knowledge-base/components/KnowledgeBaseFormDrawer": "Create/edit knowledge-base Drawer — opens from a list/detail action (prop open-state). List/detail are rendered in the gallery; a standalone open needs a trigger context. Tracked for an interaction recipe."
   },
   "triggers": {
     "modules/assistant/chat-extension/components/AssistantMenuItem": "Composer assistant-picker Popover — opens on a click in the chat composer '+' menu. Reached via the chat surface; tracked for an interaction recipe.",
@@ -27,6 +32,7 @@
     "modules/auth-providers/components/AuthProvidersListSection": "Inline delete-Confirm on an auth-provider row. Section rendered on the auth-providers page; reached via a row action. Tracked.",
     "modules/chat/components/ConversationList": "Inline delete-Confirm on a conversation list row. List rendered in the gallery; reached via a row action. Tracked.",
     "modules/chat/extensions/export/extension": "Composer export-format Popover — opens on a click on the 'Export conversation' row in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
+    "modules/file/components/FileExportMenu": "File 'Export as…' format Popover — opens on the canvas header export button (same pattern as the chat export extension's format Popover). Reached via the file canvas header; tracked for an interaction recipe.",
     "modules/citations/components/CitationCard": "Inline remove-Confirm on a citation card. Card rendered on the citations page; reached via a card action. Tracked.",
     "modules/code-sandbox/components/RootfsVersionGroup": "Inline evict-Confirm on a cached rootfs version row. Rendered on the sandbox settings page; reached via a row action. Tracked.",
     "modules/file/project-extension/components/ProjectFilesManagePanel": "Inline detach-Confirm on a project-file row. Panel rendered on the project detail page; reached via a row action. Tracked.",
@@ -39,6 +45,8 @@
     "modules/mcp/components/common/McpServerCard": "Inline delete-Confirm on an MCP server card. Card rendered on the MCP settings page; reached via a card action. Tracked.",
     "modules/projects/pages/ProjectDetailPage": "Inline delete-project Confirm in the project-detail header. Page rendered in the gallery (seeded deep-state); reached via the delete button. Tracked.",
     "modules/user/components/group/GroupListItem": "Inline delete-Confirm on a user-group row. List rendered on the groups page; reached via a row action. Tracked.",
-    "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked."
+    "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked.",
+    "modules/knowledge-base/chat-extension/components/KbMenuItem": "Composer knowledge-base picker Popover — opens on a click in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
+    "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": "Attach-KB picker Popover on the project knowledge drawer — opens on the 'Attach' button click. Panel rendered inside the project knowledge drawer; reached via a button interaction. Tracked."
   }
 }

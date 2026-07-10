@@ -2,6 +2,8 @@ import { Card } from '@/components/ui'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
 import { emitLlmProviderGroupsChanged } from '@/modules/llm-provider/events'
@@ -15,6 +17,10 @@ export function ProviderGroupAssignmentCard() {
   const { providerId } = useParams<{ providerId?: string }>()
   const { providerGroups } = Stores.ProviderGroupAssignmentCard
   const providerData = providerId ? providerGroups.get(providerId) : undefined
+  // Assigning providers to groups requires llm_providers::assign_groups (the
+  // assign/remove/update endpoints enforce it). Hoisted ABOVE the early return
+  // below so the hook count stays stable across providerId toggles.
+  const canAssign = usePermission(Permissions.LlmProvidersAssignGroups)
 
   useEffect(() => {
     if (providerId) {
@@ -31,7 +37,9 @@ export function ProviderGroupAssignmentCard() {
         data-testid="llm-provider-groups"
         assignedGroups={(providerData?.groups ?? []).map(g => ({ id: g.id, name: g.name }))}
         loading={providerData?.loading}
-        canAssign
+        // A viewer with only llm_providers::read must not see the Assign
+        // affordance (it 403s). Mirrors McpServerGroupsAssignmentCard.
+        canAssign={canAssign}
         emptyText="No groups assigned"
         editor={{
           loadAllGroups: async () => {

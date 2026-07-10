@@ -67,12 +67,28 @@ pub enum SyncEntity {
     /// `McpSession::call_tool`, so the per-server "Calls" tab refreshes live.
     /// Notify-only; the client refetches via `GET /api/mcp/tool-calls`.
     McpToolCall,
+    /// A user-owned file's RAG index lifecycle state changed
+    /// (`file_index_state`: pending/indexing/indexed/failed/no_text). Emitted
+    /// owner-scoped from the `file_rag` ingest path on each transition so the
+    /// knowledge-base documents UI reflects per-doc indexing status live. `id`
+    /// is the file_id; the client refetches the KB's document status.
+    FileIndexState,
+    /// A user-owned knowledge base changed (create/rename/delete or its document
+    /// set). Owner-scoped; the client refetches the KB list / detail.
+    KnowledgeBase,
+    /// A document within a knowledge base changed (attach/detach/status). Owner-
+    /// scoped; `id` is the knowledge_base id; the client refetches its documents.
+    KnowledgeBaseDocument,
     /// The caller's own default MCP settings for new conversations changed
     /// (approval mode / auto-approved tools / disabled servers / loop
     /// settings). Owner-scoped; notify-only — the client refetches
     /// `GET /api/mcp/defaults` (gated `conversations::read`). `id` is
     /// `Uuid::nil()` (a per-user singleton addressed by owner, not a uuid).
     McpDefaults,
+    /// A conversation's deliverables curation changed (a file pinned/hidden as a
+    /// deliverable). Owner-scoped; notify-only — the client refetches
+    /// `GET /api/conversations/{id}/deliverables`. `id` is the conversation id.
+    Deliverable,
 
     // --- Admin-permission-scoped (delivered to holders of the read perm) ---
     /// Admin view of an LLM provider (full admin provider table).
@@ -102,6 +118,8 @@ pub enum SyncEntity {
     AssistantCoreMemory,
     /// Code-sandbox resource-limit settings (singleton).
     CodeSandboxSettings,
+    /// run_js (js_tool) resource-limit settings (singleton, admin-scoped).
+    JsToolSettings,
     /// Code-sandbox rootfs version list changed (install/evict/delete).
     CodeSandboxRootfsVersion,
     /// Hub catalog settings (singleton).
@@ -137,10 +155,25 @@ pub enum SyncEntity {
     /// (the read-perm gating `GET /api/mcp/user-policy`); notify-only — each
     /// recipient refetches the sanitized policy. `id` is `Uuid::nil()`.
     McpUserPolicy,
+    /// Deployment-wide scheduler admin settings (singleton): per-user task
+    /// quota, cadence floor, failure cap, notification retention. Delivered to
+    /// holders of `scheduler::admin::read`; notify-only — the admin UI refetches
+    /// `GET /api/scheduler/admin-settings`. `id` is `Uuid::nil()`.
+    SchedulerAdminSettings,
 
     /// A user's bibliography library entry changed (add/import/verify/delete).
     /// Owner-scoped; notify-only — the client refetches `/api/citations`.
     BibliographyEntry,
+
+    /// A user's scheduled task changed (create/update/enable/pause/delete) or a
+    /// firing advanced its run history. Owner-scoped; notify-only — the client
+    /// refetches `/api/scheduled-tasks` (and, if open, the task's runs).
+    ScheduledTask,
+    /// A new (or updated/read) notification for the user. Owner-scoped;
+    /// emitted with origin=None from the background firing so every device
+    /// refetches `/api/notifications` (+ the unread count). `id` is the
+    /// notification id (or `Uuid::nil()` for a bulk read-all/prune).
+    Notification,
 
     // --- Group-scoped user view (delivered to holders of the user read
     // perm; safe because we only NOTIFY — each recipient refetches its own
@@ -359,9 +392,27 @@ mod tests {
             (SyncEntity::UserLlmProvider, "user_llm_provider"),
             (SyncEntity::MemorySettings, "memory_settings"),
             (SyncEntity::Session, "session"),
+            (SyncEntity::ScheduledTask, "scheduled_task"),
+            (SyncEntity::Notification, "notification"),
+            (SyncEntity::SchedulerAdminSettings, "scheduler_admin_settings"),
         ];
         for (e, name) in cases {
             assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{name}\""));
         }
+    }
+}
+
+#[cfg(test)]
+mod kb_wire_tests {
+    use super::SyncEntity;
+
+    // TEST-19 (ITEM-21): the KB sync entities serialize to the exact snake_case
+    // wire strings the generated TS `sync:<entity>` keys depend on.
+    #[test]
+    fn kb_entities_serialize_snake_case() {
+        let s = |e: SyncEntity| serde_json::to_value(e).unwrap().as_str().unwrap().to_string();
+        assert_eq!(s(SyncEntity::KnowledgeBase), "knowledge_base");
+        assert_eq!(s(SyncEntity::KnowledgeBaseDocument), "knowledge_base_document");
+        assert_eq!(s(SyncEntity::FileIndexState), "file_index_state");
     }
 }

@@ -40,6 +40,15 @@ pub struct FileRagAdminSettings {
     pub fts_rrf_k: i32,
     pub fts_candidate_multiplier: i32,
     pub fts_min_rank: f32,
+    // Cross-encoder reranker (retrieve-wide -> rerank -> top-k). OFF by default.
+    pub reranker_model_id: Option<Uuid>,
+    pub rerank_enabled: bool,
+    pub rerank_candidate_k: i32,
+    // Retrieval / knowledge-base limits (formerly compiled-in constants).
+    pub kb_max_documents: i32,
+    pub search_max_hit_chars: i32,
+    pub search_snippet_chars: i32,
+    pub search_max_top_k: i16,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -65,6 +74,14 @@ pub struct UpdateFileRagAdminSettingsRequest {
     pub fts_rrf_k: Option<i32>,
     pub fts_candidate_multiplier: Option<i32>,
     pub fts_min_rank: Option<f32>,
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
+    pub reranker_model_id: Option<Option<Uuid>>,
+    pub rerank_enabled: Option<bool>,
+    pub rerank_candidate_k: Option<i32>,
+    pub kb_max_documents: Option<i32>,
+    pub search_max_hit_chars: Option<i32>,
+    pub search_snippet_chars: Option<i32>,
+    pub search_max_top_k: Option<i16>,
 }
 
 /// One chunk produced by the chunker, before persistence. `chunk_index` is a

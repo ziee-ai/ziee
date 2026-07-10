@@ -8,7 +8,7 @@ use axum::Json;
 
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
-use crate::modules::file::handlers::download::FILE_CONTENT_CACHE_CONTROL;
+use crate::modules::file::handlers::download::FILE_HEAD_CACHE_CONTROL;
 use crate::modules::file::models::File;
 use crate::modules::file::permissions::{FilesDelete, FilesDownload, FilesPreview, FilesRead};
 use crate::modules::file::storage::manager::get_file_storage;
@@ -82,7 +82,7 @@ pub async fn get_preview(
     let headers = [
         (header::CONTENT_TYPE, "image/jpeg".to_string()),
         (header::CONTENT_LENGTH, image_data.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, image_data).into_response()))
@@ -138,10 +138,229 @@ pub async fn get_raw(
         ),
         (header::CONTENT_DISPOSITION, "inline".to_string()),
         (header::CONTENT_LENGTH, file_data.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, file_data).into_response()))
+}
+
+/// Query for the citation text-rects endpoint: a byte range into the page's
+/// cleaned text (a chunk's char_start/char_end).
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct TextRectsQuery {
+    pub page: u32,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub struct HighlightRect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+#[derive(serde::Serialize, schemars::JsonSchema)]
+pub struct TextRectsResponse {
+    /// Rects are fraction-normalized to the page (0..1), origin top-left, so the
+    /// UI overlays them on the page image without knowing the render scale.
+    pub page_w: f32,
+    pub page_h: f32,
+    pub rects: Vec<HighlightRect>,
+}
+
+#[derive(serde::Deserialize)]
+struct PageGeometry {
+    text: String,
+    boxes: Vec<[f32; 4]>,
+}
+
+/// Fraction-of-page vertical-center tolerance for grouping per-char boxes into
+/// one line rect. A pure PDF-geometry rendering heuristic (not a deployment
+/// policy), so it stays a named const rather than an admin setting.
+const LINE_MERGE_Y_TOLERANCE: f32 = 0.012;
+
+/// Relocate a chunk's cleaned span within the raw page text (whitespace-
+/// insensitive) and return the merged line-level highlight rects. Empty when the
+/// span can't be located (the UI falls back to a page-level open).
+fn align_span_to_boxes(cleaned_substr: &str, geom: &PageGeometry) -> Vec<HighlightRect> {
+    let raw_chars: Vec<char> = geom.text.chars().collect();
+    // Indices (into raw_chars / boxes) of the non-whitespace chars.
+    let raw_nows: Vec<usize> = raw_chars
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !c.is_whitespace())
+        .map(|(i, _)| i)
+        .collect();
+    let raw_nows_chars: Vec<char> = raw_nows.iter().map(|&i| raw_chars[i]).collect();
+    let needle: Vec<char> = cleaned_substr.chars().filter(|c| !c.is_whitespace()).collect();
+    if needle.is_empty() || needle.len() > raw_nows_chars.len() {
+        return Vec::new();
+    }
+    let mut matched: Option<usize> = None;
+    for start in 0..=(raw_nows_chars.len() - needle.len()) {
+        if raw_nows_chars[start..start + needle.len()] == needle[..] {
+            matched = Some(start);
+            break;
+        }
+    }
+    let Some(mp) = matched else { return Vec::new() };
+
+    // Boxes for the matched raw chars (skip degenerate zero boxes).
+    let mut sel: Vec<[f32; 4]> = raw_nows[mp..mp + needle.len()]
+        .iter()
+        .filter_map(|&i| geom.boxes.get(i).copied())
+        .filter(|b| b[2] > 0.0 && b[3] > 0.0)
+        .collect();
+    if sel.is_empty() {
+        return Vec::new();
+    }
+    // Merge into line-level rects: group boxes whose vertical center is close.
+    sel.sort_by(|a, b| a[1].partial_cmp(&b[1]).unwrap_or(std::cmp::Ordering::Equal));
+    let mut lines: Vec<[f32; 4]> = Vec::new(); // [minx, miny, maxx, maxy]
+    for b in sel {
+        let (bx, by, br, bb) = (b[0], b[1], b[0] + b[2], b[1] + b[3]);
+        if let Some(last) = lines.last_mut() {
+            let last_cy = (last[1] + last[3]) / 2.0;
+            let b_cy = (by + bb) / 2.0;
+            if (last_cy - b_cy).abs() < LINE_MERGE_Y_TOLERANCE {
+                last[0] = last[0].min(bx);
+                last[1] = last[1].min(by);
+                last[2] = last[2].max(br);
+                last[3] = last[3].max(bb);
+                continue;
+            }
+        }
+        lines.push([bx, by, br, bb]);
+    }
+    lines
+        .into_iter()
+        .map(|l| HighlightRect {
+            x: l[0],
+            y: l[1],
+            w: (l[2] - l[0]).max(0.0),
+            h: (l[3] - l[1]).max(0.0),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod align_tests {
+    use super::{align_span_to_boxes, PageGeometry};
+
+    // Build per-char boxes on a given line-y; each char is `w` wide stepping in x.
+    fn line(chars: &str, y: f32, x0: f32, w: f32) -> Vec<[f32; 4]> {
+        chars
+            .chars()
+            .enumerate()
+            .map(|(i, _)| [x0 + i as f32 * w, y, w, 0.02])
+            .collect()
+    }
+
+    // TEST-31 (ITEM-22): a cleaned span relocates onto the RAW page geometry
+    // whitespace-insensitively (raw text may have collapsed multi-spaces), and
+    // the matched char boxes merge into line-level rects bounding the CORRECT
+    // passage — not merely a non-empty result.
+    #[test]
+    fn divergent_whitespace_span_bounds_correct_chars() {
+        // Raw page text has a DOUBLE space that cleaning collapsed to one.
+        let text = "Hello  world".to_string(); // 12 chars incl. 2 spaces
+        let boxes = line("Hello  world", 0.10, 0.10, 0.05);
+        let geom = PageGeometry { text, boxes };
+
+        // The cleaned span uses a single space — must still match.
+        let rects = align_span_to_boxes("Hello world", &geom);
+        assert_eq!(rects.len(), 1, "one line → one merged rect");
+        let r = &rects[0];
+        // Bounds the 'H' (index 0, x=0.10) through 'd' (index 11, x=0.10+11*0.05).
+        assert!((r.x - 0.10).abs() < 1e-4, "left edge at 'H': {}", r.x);
+        let right = r.x + r.w;
+        assert!((right - (0.10 + 12.0 * 0.05)).abs() < 1e-4, "right edge at 'd': {right}");
+        assert!((r.y - 0.10).abs() < 1e-4);
+    }
+
+    #[test]
+    fn multiline_span_yields_one_rect_per_line() {
+        // "foo" on line 1 (y=0.10), "bar" on line 2 (y=0.50).
+        let mut boxes = line("foo", 0.10, 0.10, 0.05);
+        boxes.extend(line("bar", 0.50, 0.10, 0.05));
+        let geom = PageGeometry { text: "foobar".to_string(), boxes };
+        let rects = align_span_to_boxes("foobar", &geom);
+        assert_eq!(rects.len(), 2, "two visually-separated lines → two rects");
+        assert!(rects[0].y < rects[1].y);
+    }
+
+    #[test]
+    fn unlocatable_span_returns_empty() {
+        let geom = PageGeometry { text: "abc".to_string(), boxes: line("abc", 0.1, 0.1, 0.05) };
+        assert!(align_span_to_boxes("xyz", &geom).is_empty());
+        assert!(align_span_to_boxes("", &geom).is_empty());
+    }
+}
+
+/// Citation highlight geometry: the fraction-normalized rectangles bounding a
+/// chunk's cleaned `[start, end)` span on a page, for the exact-passage overlay.
+/// Owner-scoped (foreign file → 404); non-PDF / no-geometry → `200 {rects:[]}`.
+pub async fn get_text_rects(
+    auth: RequirePermissions<(FilesRead,)>,
+    Path(file_id): Path<Uuid>,
+    Query(q): Query<TextRectsQuery>,
+) -> ApiResult<Json<TextRectsResponse>> {
+    let user_id = auth.user.id;
+    let file = Repos
+        .file
+        .get_by_id_and_user(file_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("File"))?;
+
+    let empty = TextRectsResponse {
+        page_w: 1.0,
+        page_h: 1.0,
+        rects: Vec::new(),
+    };
+
+    let storage = get_file_storage();
+    let geom_json = match storage
+        .load_geometry_page(user_id, file.blob_version_id, q.page)
+        .await
+    {
+        Ok(s) => s,
+        Err(_) => return Ok((StatusCode::OK, Json(empty))), // non-PDF / not-yet-backfilled
+    };
+    let geom: PageGeometry = match serde_json::from_str(&geom_json) {
+        Ok(g) => g,
+        Err(_) => return Ok((StatusCode::OK, Json(empty))),
+    };
+
+    let page_text = storage
+        .load_text_page(user_id, file.blob_version_id, q.page)
+        .await
+        .unwrap_or_default();
+    let start = q.start.min(page_text.len());
+    let end = q.end.min(page_text.len()).max(start);
+    // Slice on a char boundary defensively.
+    let cleaned_substr = page_text
+        .get(start..end)
+        .unwrap_or("")
+        .to_string();
+
+    let rects = align_span_to_boxes(&cleaned_substr, &geom);
+    Ok((
+        StatusCode::OK,
+        Json(TextRectsResponse {
+            page_w: 1.0,
+            page_h: 1.0,
+            rects,
+        }),
+    ))
+}
+
+pub fn get_text_rects_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(FilesRead,)>(op)
+        .id("File.getTextRects")
+        .summary("Citation highlight rectangles for a chunk's span on a page.")
+        .response::<200, Json<TextRectsResponse>>()
 }
 
 /// Get file thumbnail (300px, single thumbnail from first page)
@@ -169,7 +388,7 @@ pub async fn get_thumbnail(
     let headers = [
         (header::CONTENT_TYPE, "image/jpeg".to_string()),
         (header::CONTENT_LENGTH, thumbnail_data.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, thumbnail_data).into_response()))
@@ -228,7 +447,7 @@ pub async fn get_text_content(
     let headers = [
         (header::CONTENT_TYPE, "text/plain; charset=utf-8".to_string()),
         (header::CONTENT_LENGTH, text_content.len().to_string()),
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (header::CACHE_CONTROL, FILE_HEAD_CACHE_CONTROL.to_string()),
     ];
 
     Ok((StatusCode::OK, (headers, text_content).into_response()))

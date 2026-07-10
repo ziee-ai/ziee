@@ -47,6 +47,12 @@ Match these line formats precisely or the gate will not pass.
 - **Test** — `- **TEST-2** (tier: integration) [covers: ITEM-1, ITEM-3] file: \`path/to/test.rs\` — asserts: <what it proves>`
   (tier ∈ `unit | integration | e2e`). **UI work must enumerate ≥1 `tier: e2e`
   test** — the gate refuses an all-unit plan for a frontend-touching diff.
+- **Restricted-user e2e** (`[negative-perm]` tag) — `- **TEST-7** (tier: e2e) [negative-perm] [covers: ITEM-3] file: \`.../foo.spec.ts\` — asserts: a user LACKING foo::use sees NO Foo UI (nav entry, page, composer, buttons all absent)`.
+  REQUIRED whenever the diff introduces a user-facing permission
+  (`X::use`/`X::read`/`X::manage` defined in a `modules/*/permissions.rs` or
+  granted in a migration). This is the FRONTEND half of the authz gate (A10),
+  paired with the backend deny test (A9). It must be `tier: e2e` — a 403/deny
+  integration test does NOT satisfy it (that's A9).
 - **Decision** — `### DEC-1: <question>` then a `**Resolution:** <answer>` line
   and a `**Basis:** <convention|user|codebase>` line
 - **Drift entry** — `- **DRIFT-1.2** — verdict: plan-wins — <text>`
@@ -61,10 +67,25 @@ Match these line formats precisely or the gate will not pass.
 - **Frontend gate line** (`TEST_RESULTS.md`, REQUIRED once the diff touches a UI
   workspace) — `npm run check (ui): PASS` — one line per touched workspace; the
   label is `ui` (→ `src-app/ui`) or `desktop/ui` (→ `src-app/desktop/ui`)
+- **Human-feedback entry** (`HUMAN_FEEDBACK.md`) —
+  `- **FB-1** [status: resolved] — <verbatim feedback> → <resolution> [generalizable: yes — <rule>]`
+  (`status` ∈ `open | resolved | wontfix`; any `open` fails phase 9)
 
 ---
 
 ## Phase 1 — PLAN.md
+
+**Preflight FIRST** — before writing a line of the plan, run the environment
+gate so a setup problem surfaces now, not three phases deep into a red build:
+
+```bash
+bash .claude/lifecycle/preflight.sh --repo <worktree-root>
+# exit 0 → env ready. non-zero → fix the printed problem (hub-seed, build-DB
+# isolation, node_modules, pgvector submodule, stale Vite) before proceeding.
+```
+
+(This is the same gate on Linux, macOS, and Windows git-bash — it avoids
+GNU-only tool flags and guards Unix-only tools.)
 
 Write `.lifecycle/<feature>/PLAN.md` with three required sections:
 
@@ -74,6 +95,15 @@ Write `.lifecycle/<feature>/PLAN.md` with three required sections:
 - `## Patterns to follow` — for each area, name the **closest existing module**
   to mirror (file structure, naming, idioms). This is a hard project rule
   ([[feedback_match_existing_patterns]]).
+
+**P3 — conflict-surface scoping (BASE.md).** Also write a short
+`.lifecycle/<feature>/BASE.md` recording what CURRENT main touches that this
+branch will also touch: the highest existing migration number
+(`ls src-app/server/migrations | tail -1`), any files/modules you expect to
+edit that main is actively changing, and whether an `openapi.json` regen is
+implied. This makes a migration-number or file collision visible at plan time
+rather than as a build.rs failure after a long merge — and it is exactly what
+the merge-gate re-checks against real main at merge time.
 
 Gate: `--phase 1`.
 
@@ -119,7 +149,31 @@ PLAN.md's *Files to touch*). If a **frontend** path (`src-app/ui/**` or
 enumerated, the gate fails** — an all-unit plan for UI work is refused. Budget
 the e2e specs here; phase 8 runs them.
 
-Gate: `--phase 3` (fails loudly if any ITEM is unmapped, or a UI diff has no e2e test).
+**Permission-gating rule (A10) — MANDATORY when your feature adds a
+permission.** If the feature introduces a user-facing permission (a
+`X::use`/`X::read`/`X::manage` defined in a `modules/*/permissions.rs` OR
+granted in a migration), you MUST verify + test that **unpermitted users see
+NOTHING** at every layer, and enumerate the **restricted-user e2e** that proves
+the UI is ABSENT — not just 403-on-use. Walk all four gating layers from
+`.claude/PERMISSION_GATING.md` — **slot → route → `<Can>` → `usePermission`** —
+and assert, in a spec that logs in as a user LACKING the permission, that every
+surface (sidebar/nav entry, route/page, composer, action buttons, menu items)
+is absent. Tag it `[negative-perm]` at `tier: e2e`. The happy-path e2e (which
+runs WITH the permission) can never catch an ungated surface; this spec is the
+only thing that forces the negative case. The gate fails phase 3 if a permission
+is introduced but no `(tier: e2e) [negative-perm]` spec is enumerated. This is
+the FRONTEND half of the authz proof — paired with the backend deny test
+(A9, phase 8).
+
+> **Honest limit of the gate.** A10 enforces only that ONE restricted-user e2e
+> *exists and passes* — it CANNOT verify that spec covers EVERY gated surface (a
+> test could assert the nav entry is hidden yet miss an ungated composer). That
+> is why the rule above is to walk ALL FOUR layers inside the spec; the gate is
+> a floor, not a ceiling. Under-covering here is exactly how live2/live3/live4
+> shipped ungated surfaces past a green 8/8 lifecycle.
+
+Gate: `--phase 3` (fails loudly if any ITEM is unmapped, a UI diff has no e2e
+test, or a new permission has no restricted-user `[negative-perm]` e2e).
 
 ## Phase 4 — DECISIONS.md
 
@@ -134,6 +188,24 @@ ambiguous into ONE `AskUserQuestion` at plan time. **Zero** `TBD`/`TODO`/`ASK`/
 **Resolution:** case-insensitive substring (ILIKE '%q%')
 **Basis:** convention — matches conversations title filter in chat/repository.rs
 ```
+
+**Configurable-settings rule (mandatory DEC).** Any operational tunable the
+feature introduces — resource limits (memory/CPU/timeout/size caps), retention
+periods, rate/quota limits, concurrency caps, feature enable/disable toggles,
+model/provider selection, thresholds — MUST get an explicit DEC answering
+**"fixed constant, or admin-configurable settings row?"** Default to
+**admin-configurable** following the existing singleton-settings pattern
+(`code_sandbox_settings` / `session_settings` / `memory_admin_settings`: a
+settings table + migration with sane defaults, read-at-use with cache
+invalidation, REST GET/PUT gated by a `<feature>::settings::{read,manage}`
+permission, a sync entity, an admin settings card mirroring the closest
+existing one, and bounds validation so an admin can't footgun the server).
+Choose a fixed constant ONLY with an explicit rationale (e.g. a security
+boundary that must not be operator-weakened) — and even then, structure it as a
+`Limits`-style struct (not inline magic numbers) so it can be promoted to
+configurable later without a rewrite. Never ship an operational tunable as a
+bare hardcoded constant by omission. Enumerate the settings CRUD + gate + sync +
+validation in TESTS.md when configurable.
 
 Gate: `--phase 4`.
 
@@ -238,6 +310,9 @@ workspace:
    ```bash
    cd src-app/ui && npx playwright test tests/e2e/<file> --workers=1
    ```
+   This includes any `[negative-perm]` **restricted-user** spec (A10): run it
+   and record its TEST-ID as PASS — the gate requires the negative-permission
+   e2e to pass, not just the happy-path one.
 
 Write `TEST_RESULTS.md` with a `- **TEST-N**: PASS` line for **every** TEST-ID
 from Phase 3 (plus the `npm run check (<ws>): PASS` line(s) above for a UI diff).
@@ -246,7 +321,128 @@ no passing `npm run check` line, or if any enumerated `tier: e2e` spec is not
 PASS. Never `#[ignore]` (or `.skip`) to go green — only genuine
 platform-incompatibility is a legit skip ([[feedback_no_ignore_unless_platform]]).
 
+**Phase 8 also enforces these deterministically** (from the diff + `TEST_RESULTS.md`),
+so budget for them — they are not optional polish:
+
+- **A2** clean working tree — every load-bearing file committed on the branch
+  (no uncommitted change the gate can't see).
+- **A3** no diff-added `#[ignore]`/`.skip`/`.only`; **A4** no cosmetic/always-true
+  assertion (`assert!(true)`, `expect(x).toBe(x)`).
+- **A5** TESTS.md may not shrink — a previously-enumerated TEST-ID cannot vanish.
+- **A7** a UI diff must record a boot/runtime canary line
+  (`gate:ui (<ws>): PASS`) — a green e2e can still ship a non-booting app or a
+  root ErrorBoundary crash on an un-exercised path. **A6:** the gallery +
+  `gate:ui` + `runtime-health` IS the browser-verify harness — "I can't verify
+  in a browser" is not a valid gap.
+- **A8** a new built-in MCP server must include BOTH `mcp.rs` edits
+  (`auto_attach_builtin_ids` + `is_builtin_server_id`) — else it registers but
+  the model never sees the tools.
+- **A9** a new permission must have a BACKEND DENY-path test (403/forbidden),
+  not only the allow path.
+- **A10** a new user-facing permission (`X::use`/`X::read`/`X::manage` in a
+  `modules/*/permissions.rs` or a migration grant) must ALSO have a
+  **restricted-user e2e** — `(tier: e2e) [negative-perm]` — that logs in as a
+  user LACKING the permission and asserts the feature UI is ABSENT, and it must
+  be enumerated (phase 3) and PASS (phase 8). A9 proves the API refuses; A10
+  proves the UI is hidden. Both are required — a 403 backend test alone leaves
+  an ungated menu item / composer / nav entry invisible to the gate.
+- **R2-5** every `/api/` e2e route-mock the diff adds must match a live route in
+  `openapi.json` — a renamed route makes the mock a silent no-op that
+  false-greens the spec.
+
+**P4 — full-output capture.** Save the FULL test log as an artifact
+(`| tee /data/pbya/ziee/tmp/lifecycle-logs/<feature>-{int,e2e}.log`), never just
+an inline tail — the failing test's assertion/panic is in the body, and a
+re-run to recover it wastes minutes ([[feedback_periodic_check_stuck]]).
+
 Gate: `--phase 8`.
+
+## Phase 9 — HUMAN_FEEDBACK.md (the human-review gate; last before merge)
+
+Maintain `.lifecycle/<feature>/HUMAN_FEEDBACK.md` as a **living ledger** from the
+moment the feature is testable. When the human reviews the running feature and
+gives feedback — a UX critique, a missed convention, a "no user would do this" —
+record it **VERBATIM** immediately, then resolve it and log how. Never
+paraphrase-away or silently drop a human critique.
+
+One entry per feedback item, in this exact shape (the gate parses it):
+
+```
+- **FB-1** [status: resolved] — <verbatim human feedback> → <how you addressed it> [generalizable: yes — <candidate lifecycle rule the whole fleet should follow>]
+- **FB-2** [status: open] — <verbatim feedback not yet fixed>
+- **FB-3** [status: wontfix] — <feedback> → <rationale for not doing it>
+```
+
+- `[status: …]` ∈ `open | resolved | wontfix`. **Any `open` item FAILS the gate**
+  — the feature is not merge-ready with unaddressed human feedback.
+- `[generalizable: yes — <rule>]` flags feedback that isn't specific to this
+  feature but is a **convention the whole fleet should follow** (e.g. "select an
+  entity with a picker, never a raw ID text input"; "reuse existing page/drawer
+  layouts, don't build bespoke"). The orchestrator HARVESTS every
+  `generalizable: yes` item at merge and folds it into this skill / a lint — so
+  one human's feedback improves every future feature.
+- If the human gave **no** feedback, the file must exist and state
+  **"no human feedback received"** explicitly — absence is a deliberate claim.
+
+This gate is **PENDING** (informational, does not block the build) while the file
+is absent — a feature can be 8/8 and still awaiting human review. It reaches
+**9/9 (truly merge-ready)** only once the file exists and every item is resolved.
+The merge does not happen until the orchestrator has read this ledger.
+
+Gate: `--phase 9` (fails on any `[status: open]`; pending while the file is absent).
+
+---
+
+## Phase discipline (binding behavioral rules)
+
+These are the human-judgment rules the deterministic gate cannot encode. They
+are binding, not advisory — each traces to a specific failure that reached main
+or wasted many sessions.
+
+- **B1 — box load is NOT a deferral reason.** "The machine is busy, I'll do it
+  later" is not a valid stop. Check actual CPU headroom (`%idle`/`%iowait` via
+  `top`/`iostat`/Activity Monitor/`Get-Counter` on Windows), not the load
+  average — a high load average with idle CPU is fine. "Blocked" requires a
+  SPECIFIC error (a port bind failure, a docker daemon down, a compile error),
+  never a resource metric.
+- **B3 — never edit the SHARED test harness to route around YOUR feature's
+  problem.** `tests/common/*`, the gallery cassette, `playwright.*.config`, the
+  build DB helper are shared infrastructure. If your test needs them changed,
+  that's a signal your feature is wrong or the change belongs in its own
+  reviewed commit — not a silent workaround that breaks everyone else.
+- **B4 — a warm build is NOT a clean build.** New SSE/content-block variants,
+  proc-macro registrations, and codegen inputs can compile against a STALE
+  expansion in an incremental tree yet fail from clean. Validate them with
+  `cargo clean -p <crate> && cargo check` before believing them. (The
+  authoritative catch is the merge-gate's C1; this is the cheap local mitigation.)
+- **B5 — don't stop to ask permission mid-task.** Continue authorized work to
+  completion; surface genuinely ambiguous PRODUCT decisions once, up front, in
+  Phase 4 — not as a mid-implementation halt ([[feedback_autonomous_loop]]).
+- **P1 — independently re-verify the load-bearing gate yourself.** Trust the
+  ARTIFACT you re-ran, not a sub-agent's "it passes" self-report. Before
+  declaring a phase done, re-run its gate in the actual worktree and read the
+  output. This is the single biggest clean-vs-red differentiator.
+- **P5 — native-verify a cfg-gated arm on ITS OWN platform.** A
+  `#[cfg(target_os = "windows")]` / `#[cfg(target_os = "macos")]` block is
+  invisible to a Linux `cargo check` — it is never compiled. Before pushing
+  platform-specific code you MUST `cargo check` it on that OS (the Mac / Windows
+  build hosts — [[project_crossplatform_build_test_hosts]]) and give it a
+  cfg-gated unit test that runs there. A Linux-only green is not coverage of a
+  Windows/macOS arm.
+- **R2-3 — diff-review desktop `ui/` overrides against the server `ui/`
+  equivalent (SECURITY).** `src-app/desktop/ui/` carries HAND-WRITTEN overrides
+  (not just codegen). When you change logic in `src-app/ui/`, diff the desktop
+  counterpart and confirm no security-relevant logic was dropped — a dropped
+  `evaluatePermission` filter once reached desktop prod. Codegen'd files
+  (`openapi.json`/`api-client/types.ts`) are regenerated for both by
+  `just openapi-regen`; the hand-written surfaces are the risk.
+
+**Cross-platform reality.** This infra runs on Linux, macOS, and Windows.
+`lifecycle-check.mjs`, `merge-gate.mjs` are pure Node (portable); `preflight.sh`,
+`selftest*.sh`, and the git hook run under bash — present on all three via
+git-bash on Windows (git runs its hooks through that same bash). Keep any new
+shell in this dir POSIX-portable (no GNU-only flags; guard Unix-only tools with
+`command -v`).
 
 ---
 
@@ -274,3 +470,24 @@ and pre-push hook can gate it. They are process records, not product code —
 **strip them when merging to main**: the merge driver (or the final commit
 before merge) runs `git rm -r .lifecycle` so main never accumulates lifecycle
 artifacts. The branch history preserves them for audit.
+
+## Merge-gate (required before ANY push to main)
+
+The per-branch `--all` gate CANNOT catch a collision with *current* main: the
+pre-push hook EXEMPTS pushes to main by design, so a migration-number clash, a
+stale branch, a dropped desktop regen, or a proc-macro variant that only fails
+from a clean tree are all invisible to it. **Before merging/pushing to main, run
+the merge-gate** — it stages the merge onto fresh `origin/main` and re-checks
+against reality:
+
+```bash
+node .claude/lifecycle/merge-gate.mjs <feature-branch>
+# C4 stale-branch · C2 migration-collision · staging-merge + P2 completeness ·
+# C5 .lifecycle strip · C3 regen-parity (BOTH ui/ + desktop/ui/) · C1 clean build
+# exit 0 → the merge onto current main is clean. non-zero → fix the reported gate.
+```
+
+Add `--keep-staging` to push the validated merge straight from the staging
+worktree; `--skip-heavy` to run only the fast deterministic gates (C2/C4/P2/C5)
+when iterating. This codifies — and replaces — the by-hand
+staging-merge/`cargo clean`/regen-both-workspaces discipline.

@@ -115,6 +115,8 @@ export default createModule({
       {
         order: 40,
         component: GroupSystemWorkflowsWidget,
+        // Widget loads group system-workflows (workflows::assign_to_groups).
+        permission: Permissions.WorkflowsAssignToGroups,
       },
     ],
   },

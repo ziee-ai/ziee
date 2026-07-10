@@ -5,6 +5,7 @@
 // auto-discovery glob and a direct import from citations/module.tsx.
 
 import { Book } from 'lucide-react'
+import { Permissions } from '@/api-client/types'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions'
 import { ProjectBibliographyInlinePreview } from './components/ProjectBibliographyInlinePreview'
 import { ProjectBibliographyManagePanel } from './components/ProjectBibliographyManagePanel'
@@ -18,6 +19,13 @@ projectExtensionRegistry.register({
       inlinePreview: ProjectBibliographyInlinePreview,
       managePanel: ProjectBibliographyManagePanel,
       order: 20,
+      // Gate: the "References" project section is backed by
+      // `citations::use` (its list/verify endpoints require it — see
+      // citations/rest.rs). Without this, a user who has projects but NOT
+      // citations::use saw an empty References section that 403s on load
+      // (the live leak this audit fixes). `citations::use` is the read gate
+      // matching the settings page + route in citations/module.tsx.
+      permission: Permissions.CitationsUse,
     },
   },
 })

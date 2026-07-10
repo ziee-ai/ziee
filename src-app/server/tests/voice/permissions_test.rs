@@ -1,7 +1,7 @@
 //! TEST-13 — permission gating on the voice surface.
 //!
 //! transcribe: 401 without a token, 403 for a user lacking `voice::transcribe`,
-//! reachable (NOT 401/403) for a default Users member (migration 134 grants the
+//! reachable (NOT 401/403) for a default Users member (migration 152 grants the
 //! perm). Admin endpoints: 403 for a non-admin.
 
 use super::make_wav;
@@ -43,7 +43,7 @@ async fn test_transcribe_forbidden_without_permission() {
 #[tokio::test]
 async fn test_transcribe_reachable_for_default_users_member() {
     let server = TestServer::start().await;
-    // A default Users member inherits `voice::transcribe` (migration 134).
+    // A default Users member inherits `voice::transcribe` (migration 152).
     let user = create_user_with_permissions(&server, "voice_member", &[]).await;
     let resp = post_transcribe(&server, Some(&user.token), make_wav(0.5)).await;
     let st = resp.status();

@@ -61,6 +61,11 @@ export default createModule({
       path: '/settings/mcp-servers',
       element: McpServersSettings,
       requiresAuth: true,
+      // The page's data is backed by `mcp_servers::read`; gate route + slot
+      // to match (every sibling user settings page does). A custom group
+      // without the grant otherwise saw the menu item + page shell (backend
+      // 403s on load).
+      permission: Permissions.McpServersRead,
       layout: SettingsLayoutDef,
     },
     {
@@ -136,6 +141,7 @@ export default createModule({
         label: 'MCP Servers',
         path: 'mcp-servers',
         order: 25,
+        permission: Permissions.McpServersRead,
       },
     ],
     settingsAdminPages: [
@@ -152,6 +158,8 @@ export default createModule({
       {
         order: 20,
         component: GroupSystemMcpServersWidget,
+        // Widget loads system MCP servers + their groups (mcp_servers_admin::read).
+        permission: Permissions.McpServersAdminRead,
       },
     ],
   },

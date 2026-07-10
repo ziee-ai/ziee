@@ -1,4 +1,5 @@
 import { Plug } from 'lucide-react'
+import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -29,6 +30,9 @@ export default createModule({
       path: '/settings/user-llm-providers',
       element: UserLlmProvidersPage,
       requiresAuth: true,
+      // Backed by `user_llm_providers::read` (server user.rs handler); gate
+      // route + slot to match every other user settings page.
+      permission: Permissions.UserLlmProvidersRead,
       layout: SettingsLayoutDef,
     },
   ],
@@ -40,6 +44,7 @@ export default createModule({
         label: 'LLM Providers',
         path: 'user-llm-providers',
         order: 15,
+        permission: Permissions.UserLlmProvidersRead,
       },
     ],
   },

@@ -120,6 +120,7 @@ async fn main() {
         .route("/v1/models", get(models))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/embeddings", post(embeddings))
+        .route("/v1/rerank", post(rerank))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
@@ -190,6 +191,27 @@ async fn embeddings(
         "usage": {"prompt_tokens": 1, "total_tokens": 1}
     }))
     .into_response()
+}
+
+async fn rerank(
+    axum::extract::State(s): axum::extract::State<StubState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if !check_auth(&s, &headers) {
+        return unauthorized();
+    }
+    // Echo a deterministic reranking of the supplied documents: a doc containing
+    // "PROMOTE_ME" scores highest, else by descending input order.
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+    let docs = v["documents"].as_array().cloned().unwrap_or_default();
+    println!("stub-engine: POST /v1/rerank docs={}", docs.len());
+    let mut results: Vec<serde_json::Value> = docs.iter().enumerate().map(|(i, d)| {
+        let score = if d.as_str().unwrap_or("").contains("PROMOTE_ME") { 1.0 } else { 0.5 - (i as f64) * 0.01 };
+        serde_json::json!({ "index": i, "relevance_score": score })
+    }).collect();
+    results.sort_by(|a, b| b["relevance_score"].as_f64().unwrap().partial_cmp(&a["relevance_score"].as_f64().unwrap()).unwrap());
+    Json(serde_json::json!({ "results": results })).into_response()
 }
 
 async fn chat_completions(

@@ -1,0 +1,101 @@
+{
+ "$schema": "/schemas/2026-06-12/model.schema.json",
+ "_hub_curation": {
+  "title": "BGE Reranker v2 m3",
+  "category": "model",
+  "tags": [
+   "reranker",
+   "rerank",
+   "retrieval",
+   "rag",
+   "cross-encoder",
+   "multilingual",
+   "gguf",
+   "rag-recommended"
+  ],
+  "verified": true,
+  "added_at": "2026-07-09",
+  "contributor": "ziee-ai",
+  "min_ziee_version": null,
+  "summary": "Cross-encoder reranker (BGE-reranker-v2-m3) packaged as GGUF for llama.cpp. Improves retrieval quality by re-scoring the top candidate passages against the query. Recommended default for the Knowledge Base module."
+ },
+ "name": "io.github.ziee-ai/bge-reranker-v2-m3-gguf",
+ "version": "1.0.0",
+ "display_name": "BGE Reranker v2 m3",
+ "description": "Cross-encoder reranker (BAAI/bge-reranker-v2-m3) packaged as GGUF for llama.cpp `--reranking`. Re-scores the top candidate passages from hybrid retrieval so the most relevant chunks land in the model's context. Recommended default for the Knowledge Base + Document RAG reranker slot.",
+ "repository": {
+  "url": "https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF",
+  "source": "huggingface",
+  "id": "gpustack/bge-reranker-v2-m3-GGUF"
+ },
+ "sources": [
+  {
+   "registryType": "huggingface",
+   "identifier": "gpustack/bge-reranker-v2-m3-GGUF",
+   "version": "main",
+   "fileFormat": "gguf",
+   "runtimeHint": "llamacpp",
+   "contextLength": 8192,
+   "environmentVariables": [
+    {
+     "name": "HUGGINGFACE_API_KEY",
+     "description": "Hugging Face access token with download access to this model.",
+     "isSecret": true,
+     "isRequired": false
+    }
+   ],
+   "quantizations": [
+    {
+     "name": "q4_k_m",
+     "mainFile": "bge-reranker-v2-m3-Q4_K_M.gguf",
+     "sizeGb": 0.4,
+     "isDefault": true
+    },
+    {
+     "name": "q8_0",
+     "mainFile": "bge-reranker-v2-m3-Q8_0.gguf",
+     "isDefault": false
+    },
+    {
+     "name": "f16",
+     "mainFile": "bge-reranker-v2-m3-FP16.gguf",
+     "isDefault": false
+    }
+   ]
+  }
+ ],
+ "dependencies": [],
+ "capabilities": {
+  "chat": false,
+  "tools": false,
+  "vision": false,
+  "audio": false,
+  "text_embedding": false,
+  "rerank": true,
+  "image_generator": false,
+  "code_interpreter": false
+ },
+ "tags": [
+  "reranker",
+  "rerank",
+  "retrieval",
+  "rag",
+  "cross-encoder",
+  "multilingual",
+  "gguf",
+  "rag-recommended"
+ ],
+ "recommended_parameters": {
+  "temperature": null,
+  "top_p": null,
+  "top_k": null,
+  "repeat_penalty": null,
+  "context_size": 8192
+ },
+ "language_support": [
+  "en",
+  "zh",
+  "multilingual"
+ ],
+ "license": "Apache-2.0"
+}

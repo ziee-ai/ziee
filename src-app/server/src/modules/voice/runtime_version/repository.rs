@@ -2,7 +2,7 @@
 //!
 //! Single-engine analog of `llm_local_runtime::runtime_version::repository`
 //! (no `engine` column). Plain async fns over the pool; queries are
-//! compile-time-checked against the build DB (migration 133 creates the table).
+//! compile-time-checked against the build DB (migration 151 creates the table).
 
 use crate::modules::voice::runtime_version::models::RuntimeVersion;
 use chrono::DateTime;

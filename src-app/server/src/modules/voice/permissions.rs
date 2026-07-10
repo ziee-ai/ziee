@@ -3,12 +3,12 @@
 //! A clean `transcribe` + `admin::{read,manage}` split (web_search style) rather
 //! than the llm_local_runtime 9-perm split. Admins hold `voice::admin::*` via the
 //! `*` wildcard on the Administrators group; only the user-facing
-//! `voice::transcribe` is granted to the Users group (migration 134).
+//! `voice::transcribe` is granted to the Users group (migration 152).
 
 use crate::modules::permissions::types::PermissionCheck;
 
 /// Use voice dictation (record + transcribe into the composer). Granted to the
-/// default Users group by migration 134.
+/// default Users group by migration 152.
 pub struct VoiceTranscribe;
 impl PermissionCheck for VoiceTranscribe {
     const NAME: &'static str = "VoiceTranscribe";
@@ -43,7 +43,7 @@ mod tests {
     use super::*;
 
     // The exact permission strings are load-bearing: they must match the
-    // Users-group grant (migration 134), the `*`-wildcard admin match, the sync
+    // Users-group grant (migration 152), the `*`-wildcard admin match, the sync
     // audiences, and the generated frontend `Permissions` enum. A silent typo
     // here would 403 every transcribe user (or silently un-gate an admin route),
     // so pin the three constants byte-for-byte.

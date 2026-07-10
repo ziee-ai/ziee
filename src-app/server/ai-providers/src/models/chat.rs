@@ -576,6 +576,48 @@ pub struct EmbeddingsResponse {
     pub usage: Option<Usage>,
 }
 
+/// A rerank request: score each document's relevance to `query` with a
+/// cross-encoder. Mirrors the embeddings request shape; served by llama.cpp
+/// (`--reranking`) via the OpenAI-compatible `/rerank` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankRequest {
+    /// The reranker model to use
+    pub model: String,
+
+    /// The query the documents are scored against
+    pub query: String,
+
+    /// The candidate documents (chunk texts) to rerank
+    pub documents: Vec<String>,
+
+    /// Optionally return only the top-N results (the caller usually truncates)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_n: Option<usize>,
+}
+
+/// One reranked result: the index into the ORIGINAL `documents` array and its
+/// relevance score (higher = more relevant).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankResult {
+    /// Index into the request's `documents` array
+    pub index: usize,
+
+    /// Relevance score (higher is more relevant)
+    pub score: f32,
+}
+
+/// A rerank response: results ordered by relevance (implementation-defined
+/// order; callers sort by `score` to be safe).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankResponse {
+    /// One result per input document
+    pub results: Vec<RerankResult>,
+
+    /// Token usage statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
+}
+
 /// Which thinking mode to request.
 /// - `Adaptive`: model decides when/how much to think (Anthropic `{type:"adaptive"}`,
 ///   the only on-mode for Opus 4.7/4.8; Gemini dynamic). Depth tuned by `effort`.

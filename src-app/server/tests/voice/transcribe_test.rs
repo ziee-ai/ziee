@@ -52,7 +52,7 @@ async fn test_transcribe_real_stub_whisper_returns_transcript() {
     .await;
     stage_model(&server, "base");
 
-    // A plain default-Users member holds `voice::transcribe` (migration 134).
+    // A plain default-Users member holds `voice::transcribe` (migration 152).
     let user = create_user_with_permissions(&server, "voice_user", &[]).await;
 
     let resp = post_transcribe(&server, &user.token, make_wav(1.0)).await;

@@ -52,7 +52,7 @@ ships v1), per-recording language override, global hotkey.
 ### D. Transcription endpoint + config + permissions + module wiring
 
 - **ITEM-12**: `modules/voice/permissions.rs` — `VoiceTranscribe` (`voice::transcribe`, user), `VoiceAdminRead` (`voice::admin::read`), `VoiceAdminManage` (`voice::admin::manage`). (Cleaner web_search-style read/manage split rather than the llm runtime's 9-perm split — DEC.)
-- **ITEM-13**: Migrations `00000000000133_create_voice.sql` (the three tables above + seeds) and `00000000000134_grant_voice_permissions_to_users.sql` (idempotent `array_append` of `voice::transcribe` to the default `Users` group; admin covered by the `*` wildcard).
+- **ITEM-13**: Migrations `00000000000151_create_voice.sql` (the three tables above + seeds) and `00000000000152_grant_voice_permissions_to_users.sql` (idempotent `array_append` of `voice::transcribe` to the default `Users` group; admin covered by the `*` wildcard).
 - **ITEM-14**: `core/config.rs` — `#[serde(default)] pub voice: Option<VoiceConfig>` + `VoiceConfig { enabled: bool = true }` deploy kill switch; read in `voice::init()` (also gate on binary/model availability).
 - **ITEM-15**: `POST /api/voice/transcribe` handler — `RequirePermissions<(VoiceTranscribe,)>`; multipart WAV (`field "file"`), per-route `DefaultBodyLimit::max(max_upload_bytes ceiling)`; enforce `max_upload_bytes` + `max_clip_seconds` (reject over-cap, no truncation); WAV magic-sniff; `auto_start::ensure_running` (returns a clear "model/binary not ready" error if the instance can't come up); forward the WAV to the loopback whisper-server `/inference` (`response_format=json`, `language`), parse the transcript; return `{ text, language, duration_ms }`; `proxy::touch_last_used`.
 - **ITEM-16**: `modules/voice/{mod,routes}.rs` — `#[distributed_slice(MODULE_ENTRIES)]` registration (order near 32), `AppModule` + `init()` (config + availability gate; spawn `reaper`), `register_routes()` merging `voice_router()`; declare `pub mod voice;` in `modules/mod.rs`.
@@ -87,8 +87,8 @@ Backend (server):
 - `src-app/server/src/modules/mod.rs` (edit — `pub mod voice;`)
 - `src-app/server/src/core/config.rs` (edit — `VoiceConfig`)
 - `src-app/server/src/modules/sync/...` (edit — `VoiceSettings` + `VoiceRuntimeVersion` entities)
-- `src-app/server/migrations/00000000000133_create_voice.sql` (new)
-- `src-app/server/migrations/00000000000134_grant_voice_permissions_to_users.sql` (new)
+- `src-app/server/migrations/00000000000151_create_voice.sql` (new)
+- `src-app/server/migrations/00000000000152_grant_voice_permissions_to_users.sql` (new)
 - `src-app/server/tests/voice/*.rs` + `src-app/server/tests/voice/mock_release.rs` + `src-app/stub-whisper-server/` (new test fixtures; `stub-engine` is the template)
 - **External repo (not this monorepo):** `ziee-ai/whisper.cpp` fork + `.github/workflows/release.yml`
 

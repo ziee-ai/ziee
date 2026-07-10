@@ -213,6 +213,7 @@ declare_repositories! {
     session_settings: SessionSettingsRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,
     file_rag: FileRagRepository => crate::modules::file_rag,
+    knowledge_base: KnowledgeBaseRepository => crate::modules::knowledge_base,
     project_files: ProjectFilesRepository => crate::modules::file::project_extension,
     chat: ChatRepository => crate::modules::chat::core,
     local_runtime: LocalRuntimeRepository => crate::modules::llm_local_runtime,
@@ -226,5 +227,6 @@ declare_repositories! {
     workflow: WorkflowRepository => crate::modules::workflow,
     web_search: WebSearchRepository => crate::modules::web_search,
     lit_search: LitSearchRepository => crate::modules::lit_search,
+    js_tool: JsToolRepository => crate::modules::js_tool,
     voice: VoiceRepository => crate::modules::voice,
 }
