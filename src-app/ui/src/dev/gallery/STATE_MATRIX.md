@@ -7,19 +7,19 @@
 
 ## Summary
 
-- **327** surfaces carry at least one renderable-state signal.
-- **1904** signals total: 1507 branch, 112 empty, 97 error, 100 loading, 86 overlay, 2 panel.
+- **334** surfaces carry at least one renderable-state signal.
+- **1947** signals total: 1538 branch, 116 empty, 100 error, 103 loading, 88 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
-- **31** slot registrations (sidebar / settings / chat mount points).
+- **32** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 87 |
-| `empty` | 90 |
-| `error` | 76 |
-| `open` | 72 |
+| `delayed` | 90 |
+| `empty` | 93 |
+| `error` | 79 |
+| `open` | 74 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -50,6 +50,7 @@ conversation page.
 | `settingsAdminPages` | `modules/llm-repository/module`:56 |
 | `settingsAdminPages` | `modules/mcp/module`:141 |
 | `settingsAdminPages` | `modules/memory/module`:71 |
+| `settingsAdminPages` | `modules/scheduler/module`:78 |
 | `settingsAdminPages` | `modules/server-update/module`:35 |
 | `settingsAdminPages` | `modules/skill/module`:105 |
 | `settingsAdminPages` | `modules/summarization/module`:41 |
@@ -3326,6 +3327,43 @@ Required states: `delayed`, `error`
 | error | `error && !settings` | 38 |
 | loading | `loading && !settings` | 47 |
 
+### `modules/notification/components/NotificationBellWidget`
+
+Required states: `empty`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `unread > 0` | 32 |
+| empty | `recent.length === 0` | 42 |
+| branch | `!n.read_at` | 58 |
+| branch | `n.body` | 63 |
+| overlay | `<Popover open>` | 91 |
+
+### `modules/notification/components/NotificationToastListener`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `event.data.action !== 'create'` | 22 |
+| branch | `!hasPermissionNow(Permissions.NotificationsRead)` | 23 |
+| branch | `!id \|\| id === '00000000-0000-0000-0000-000000000000'` | 26 |
+| branch | `!n.interrupt` | 29 |
+
+### `modules/notification/pages/NotificationsPage`
+
+Required states: `delayed`, `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && items.length === 0` | 66 |
+| error | `error && items.length === 0` | 70 |
+| empty | `items.length === 0` | 78 |
+| branch | `!n.read_at` | 88 |
+| branch | `n.body` | 98 |
+| branch | `!n.read_at` | 108 |
+| branch | `total > perPage` | 133 |
+
 ### `modules/onboarding/OnboardingPage`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -3555,6 +3593,61 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!layoutDef` | 111 |
 | branch | `guards.length > 0` | 177 |
 | branch | `protectedRoutes.length > 0` | 191 |
+
+### `modules/scheduler/components/ScheduleBuilder`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `value.schedule_kind === 'once'` | 127 |
+| branch | `!raw` | 136 |
+| branch | `preset !== 'custom'` | 163 |
+| branch | `preset === 'weekly'` | 179 |
+| branch | `preset === 'monthly'` | 190 |
+| branch | `preset === 'custom'` | 203 |
+
+### `modules/scheduler/components/ScheduledTaskFormDrawer`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!open` | 69 |
+| branch | `err` | 145 |
+| branch | `err` | 168 |
+| overlay | `<Drawer open>` | 198 |
+| branch | `canUse` | 223 |
+| branch | `f.target_kind === 'prompt'` | 259 |
+| branch | `testing` | 339 |
+| branch | `testResult` | 344 |
+
+### `modules/scheduler/pages/ScheduledTasksPage`
+
+Required states: `delayed`, `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `task.paused_reason` | 66 |
+| branch | `expanded` | 89 |
+| branch | `!runs` | 91 |
+| empty | `runs.length === 0` | 93 |
+| loading | `loading && tasks.length === 0` | 177 |
+| error | `error && tasks.length === 0` | 181 |
+| empty | `tasks.length === 0` | 189 |
+
+### `modules/scheduler/pages/SchedulerAdminPage`
+
+Required states: `delayed`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!f` | 49 |
+| loading | `loading && !settings` | 58 |
+| branch | `!canManage` | 78 |
+| error | `error` | 87 |
+| branch | `f` | 96 |
+| branch | `canManage` | 168 |
 
 ### `modules/server-update/AboutSettings`
 

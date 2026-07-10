@@ -939,6 +939,23 @@ export interface CreateProjectRequest {
   name?: string
 }
 
+/** Create-task request body. */
+export interface CreateScheduledTask {
+  assistant_id?: string
+  cron_expr?: string
+  inputs_json?: unknown
+  model_id: string
+  name: string
+  notify_mode?: string
+  notify_on?: string
+  prompt?: string
+  run_at?: string
+  schedule_kind: string
+  target_kind: string
+  timezone?: string
+  workflow_id?: string
+}
+
 /**
  * `POST /api/skills/install-from-hub` body. Mirrors
  *  `CreateAssistantFromHubRequest` — just the hub identity, server
@@ -2399,6 +2416,13 @@ export interface ListModelsQuery {
   providerId?: string
 }
 
+export interface ListNotificationsQuery {
+  page?: number
+  per_page?: number
+  /** Return only unread notifications. */
+  unread_only?: boolean
+}
+
 export interface ListPromptsResponse {
   prompts: Prompt[]
 }
@@ -3643,6 +3667,31 @@ export interface MutationResponse {
   ok: boolean
 }
 
+/** A row of `notifications`. */
+export interface Notification {
+  title: string
+  body: string
+  conversation_id?: string
+  created_at: string
+  id: string
+  /** TRUE => client may toast on arrival; FALSE => durable inbox row only. */
+  interrupt: boolean
+  kind: string
+  read_at?: string
+  scheduled_task_id?: string
+  user_id: string
+  workflow_run_id?: string
+}
+
+/** Paged list response. */
+export interface NotificationPage {
+  items: Notification[]
+  page: number
+  per_page: number
+  total: number
+  unread: number
+}
+
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -4814,6 +4863,65 @@ export interface SaveUserProviderKeyRequest {
   api_key: string
 }
 
+/** A row of `scheduled_tasks`. */
+export interface ScheduledTask {
+  assistant_id?: string
+  bound_conversation_id?: string
+  consecutive_failures: number
+  created_at: string
+  cron_expr?: string
+  enabled: boolean
+  id: string
+  inputs_json: unknown
+  last_result_fingerprint?: string
+  last_result_signature_json?: unknown
+  last_run_at?: string
+  last_status?: string
+  model_id?: string
+  name: string
+  next_run_at?: string
+  notify_mode: string
+  notify_on: string
+  /**
+   * Set when AUTO-paused (`max_failures` / `conversation_deleted` /
+   *  `target_missing`); NULL for a user enable/disable.
+   */
+  paused_reason?: string
+  prompt?: string
+  run_at?: string
+  schedule_kind: string
+  target_kind: string
+  timezone: string
+  updated_at: string
+  user_id: string
+  workflow_id?: string
+}
+
+/** A row of `scheduled_task_runs` — one per firing (the "Runs" history). */
+export interface ScheduledTaskRun {
+  conversation_id?: string
+  error_class?: string
+  error_message?: string
+  finished_at?: string
+  fired_at: string
+  id: string
+  notification_id?: string
+  scheduled_task_id: string
+  status: string
+  trigger: string
+  user_id: string
+  workflow_run_id?: string
+}
+
+/** The singleton settings row. */
+export interface SchedulerAdminSettings {
+  max_active_tasks_per_user: number
+  max_consecutive_failures: number
+  min_interval_seconds: number
+  notification_retention_days: number
+  updated_at: string
+}
+
 /**
  * Request to send a message in a conversation
  *
@@ -5126,7 +5234,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5147,6 +5255,23 @@ export interface TestExtractRequest {
   assistant_message: string
   user_id: string
   user_message: string
+}
+
+/** The target config to test (an unsaved drawer config or a saved task's fields). */
+export interface TestFireRequest {
+  assistant_id?: string
+  inputs_json?: unknown
+  model_id: string
+  prompt?: string
+  target_kind: string
+  workflow_id?: string
+}
+
+/** The inline result of a test-fire. */
+export interface TestFireResult {
+  error?: string
+  ok: boolean
+  text: string
 }
 
 /**
@@ -5313,6 +5438,11 @@ export type TransportType = 'stdio' | 'http' | 'sse'
 /** Response for the fire-and-forget admin triggers. */
 export interface TriggerResponse {
   status: string
+}
+
+/** Unread-count response. */
+export interface UnreadCount {
+  unread: number
 }
 
 /** Request structure for updating an existing assistant */
@@ -5640,6 +5770,30 @@ export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
   idle_unload_secs?: number
+}
+
+/** Update-task request body (all fields optional; only present ones change). */
+export interface UpdateScheduledTask {
+  assistant_id?: string
+  cron_expr?: string
+  enabled?: boolean
+  inputs_json?: unknown
+  model_id?: string
+  name?: string
+  notify_mode?: string
+  notify_on?: string
+  prompt?: string
+  run_at?: string
+  schedule_kind?: string
+  timezone?: string
+}
+
+/** Admin update body (all fields required — the form always sends the full set). */
+export interface UpdateSchedulerAdminSettings {
+  max_active_tasks_per_user: number
+  max_consecutive_failures: number
+  min_interval_seconds: number
+  notification_retention_days: number
 }
 
 /** PUT body for the session settings. Every field optional → absent = leave. */
@@ -6354,6 +6508,7 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
+  NotificationsRead = 'notifications::read',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
   ProjectsCreate = 'projects::create',
@@ -6366,6 +6521,9 @@ export enum Permissions {
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  SchedulerAdminManage = 'scheduler::admin::manage',
+  SchedulerAdminRead = 'scheduler::admin::read',
+  SchedulerUse = 'scheduler::use',
   ServerUpdateRead = 'server_update::read',
   SessionSettingsManage = 'auth::session_settings::manage',
   SessionSettingsRead = 'auth::session_settings::read',
@@ -6487,6 +6645,7 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
+  NotificationsRead: 'Read and manage your own notifications.',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
   ProjectsCreate: 'Create chat projects',
@@ -6499,6 +6658,9 @@ export const PermissionDescriptions: Record<string, string> = {
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  SchedulerAdminManage: 'Change deployment-wide scheduler settings.',
+  SchedulerAdminRead: 'View deployment-wide scheduler settings.',
+  SchedulerUse: 'Create, run, test, and manage your own scheduled/recurring tasks.',
   ServerUpdateRead: 'View the cached server update-availability status.',
   SessionSettingsManage: 'Update session settings (access-token TTL + max session length).',
   SessionSettingsRead: 'Read session settings (access-token TTL + max session length).',
@@ -6780,6 +6942,12 @@ export const ApiEndpoints = {
   'Message.searchInConversation': 'GET /api/conversations/{id}/messages/search',
   'Message.send': 'POST /api/conversations/{id}/messages',
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
+  'Notification.delete': 'DELETE /api/notifications/{id}',
+  'Notification.get': 'GET /api/notifications/{id}',
+  'Notification.list': 'GET /api/notifications',
+  'Notification.markAllRead': 'POST /api/notifications/read-all',
+  'Notification.markRead': 'POST /api/notifications/{id}/read',
+  'Notification.unreadCount': 'GET /api/notifications/unread-count',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -6810,6 +6978,16 @@ export const ApiEndpoints = {
   'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'ScheduledTask.create': 'POST /api/scheduled-tasks',
+  'ScheduledTask.delete': 'DELETE /api/scheduled-tasks/{id}',
+  'ScheduledTask.get': 'GET /api/scheduled-tasks/{id}',
+  'ScheduledTask.list': 'GET /api/scheduled-tasks',
+  'ScheduledTask.listRuns': 'GET /api/scheduled-tasks/{id}/runs',
+  'ScheduledTask.runNow': 'POST /api/scheduled-tasks/{id}/run-now',
+  'ScheduledTask.testFire': 'POST /api/scheduled-tasks/test-fire',
+  'ScheduledTask.update': 'PUT /api/scheduled-tasks/{id}',
+  'SchedulerAdminSettings.get': 'GET /api/scheduler/admin-settings',
+  'SchedulerAdminSettings.update': 'PUT /api/scheduler/admin-settings',
   'ServerUpdate.getStatus': 'GET /api/server-update/status',
   'Skill.delete': 'DELETE /api/skills/{id}',
   'Skill.get': 'GET /api/skills/{id}',
@@ -7135,6 +7313,12 @@ export type ApiEndpointParameters = {
   'Message.searchInConversation': { id: string; page?: number; per_page?: number; q?: string }
   'Message.send': { id: string } & SendMessageRequest
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
+  'Notification.delete': { id: string }
+  'Notification.get': { id: string }
+  'Notification.list': { page?: number; per_page?: number; unread_only?: boolean }
+  'Notification.markAllRead': void
+  'Notification.markRead': { id: string }
+  'Notification.unreadCount': void
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -7165,6 +7349,16 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.subscribeDownloadEvents': { key: string }
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
+  'ScheduledTask.create': CreateScheduledTask
+  'ScheduledTask.delete': { id: string }
+  'ScheduledTask.get': { id: string }
+  'ScheduledTask.list': void
+  'ScheduledTask.listRuns': { id: string }
+  'ScheduledTask.runNow': { id: string }
+  'ScheduledTask.testFire': TestFireRequest
+  'ScheduledTask.update': { id: string } & UpdateScheduledTask
+  'SchedulerAdminSettings.get': void
+  'SchedulerAdminSettings.update': UpdateSchedulerAdminSettings
   'ServerUpdate.getStatus': void
   'Skill.delete': { id: string }
   'Skill.get': { id: string }
@@ -7490,6 +7684,12 @@ export type ApiEndpointResponses = {
   'Message.searchInConversation': MessageSearchResults
   'Message.send': SendMessageResponse
   'Message.stopGeneration': void
+  'Notification.delete': void
+  'Notification.get': Notification
+  'Notification.list': NotificationPage
+  'Notification.markAllRead': UnreadCount
+  'Notification.markRead': UnreadCount
+  'Notification.unreadCount': UnreadCount
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress
@@ -7520,6 +7720,16 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.subscribeDownloadEvents': SSEEngineDownloadEvent
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
+  'ScheduledTask.create': ScheduledTask
+  'ScheduledTask.delete': void
+  'ScheduledTask.get': ScheduledTask
+  'ScheduledTask.list': ScheduledTask[]
+  'ScheduledTask.listRuns': ScheduledTaskRun[]
+  'ScheduledTask.runNow': ScheduledTask
+  'ScheduledTask.testFire': TestFireResult
+  'ScheduledTask.update': ScheduledTask
+  'SchedulerAdminSettings.get': SchedulerAdminSettings
+  'SchedulerAdminSettings.update': SchedulerAdminSettings
   'ServerUpdate.getStatus': UpdateStatusResponse
   'Skill.delete': void
   'Skill.get': Skill
