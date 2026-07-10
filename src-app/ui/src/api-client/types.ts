@@ -2270,6 +2270,30 @@ export interface ItemProgress {
 }
 
 /**
+ * One row of `js_tool_settings`. Field names match the SQL columns (snake_case)
+ *  so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up
+ *  to 4 GiB exceeds i32); the rest are `i32`.
+ */
+export interface JsToolSettings {
+  /** Per-call approval wait before resolving as cancel (seconds). */
+  approval_timeout_secs: number
+  created_at: string
+  /** Per-run parallel sub-tool dispatch cap. */
+  max_concurrent_dispatch: number
+  /** Process-global concurrent-interpreter admission cap. */
+  max_concurrent_runs: number
+  /** `rquickjs` `set_max_stack_size` (bytes). */
+  max_stack_bytes: number
+  /** Per-run recorded sub-call trace cap. */
+  max_trace_entries: number
+  /** `rquickjs` `set_memory_limit` (bytes). */
+  memory_bytes: number
+  updated_at: string
+  /** Active-execution wall-clock backstop (seconds; excludes approval waits). */
+  wall_secs: number
+}
+
+/**
  * The optional/required API key field for a connector — drives the write-only
  *  key input + "Get a key" link in the admin UI.
  */
@@ -4357,6 +4381,7 @@ export type SSEChatStreamEvent = {
   mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
   mcpToolProgress: SSEChatStreamMcpToolProgressData
   artifactCreated: SSEChatStreamArtifactCreatedData
+  runJsApprovalRequired: SSEChatStreamRunJsApprovalRequiredData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -4434,6 +4459,28 @@ export interface SSEChatStreamMcpToolStartData {
   tool_name: string
   /** Unique identifier for this tool use */
   tool_use_id: string
+}
+
+/**
+ * Event data for a `run_js` script's per-call tool approval.
+ *
+ *  Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's
+ *  decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a
+ *  turn-boundary flow resumed by re-sending the message), this is resolved by a
+ *  SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same
+ *  in-process oneshot mechanism `ask_user` uses — because a live QuickJS call
+ *  stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;
+ *  `decline`/`cancel` → the host fn throws a catchable error into the script.
+ */
+export interface SSEChatStreamRunJsApprovalRequiredData {
+  /** Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond */
+  elicitation_id: string
+  /** Sub-tool input parameters */
+  input: unknown
+  /** MCP server that owns the sub-tool (display name) */
+  server: string
+  /** Name of the sub-tool the script wants to call */
+  tool_name: string
 }
 
 /**
@@ -5079,7 +5126,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'office_document' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5405,6 +5452,20 @@ export interface UpdateGroupSystemSkillsRequest {
  */
 export interface UpdateGroupSystemWorkflowsRequest {
   workflow_ids: string[]
+}
+
+/**
+ * Admin PUT payload. All fields optional; absent fields preserve their existing
+ *  value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.
+ */
+export interface UpdateJsToolSettings {
+  approval_timeout_secs?: number
+  max_concurrent_dispatch?: number
+  max_concurrent_runs?: number
+  max_stack_bytes?: number
+  max_trace_entries?: number
+  memory_bytes?: number
+  wall_secs?: number
 }
 
 /**
@@ -6253,6 +6314,8 @@ export enum Permissions {
   HubModelsRead = 'hub::models::read',
   HubModelsRefresh = 'hub::models::refresh',
   HubModelsVersionRead = 'hub::models::read_version',
+  JsToolSettingsManage = 'js_tool::settings::manage',
+  JsToolSettingsRead = 'js_tool::settings::read',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
   LitSearchUse = 'lit_search::use',
@@ -6384,6 +6447,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsRead: 'View hub models',
   HubModelsRefresh: 'Refresh hub models from GitHub',
   HubModelsVersionRead: 'View hub models version information',
+  JsToolSettingsManage: 'Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.',
+  JsToolSettingsRead: 'Read the run_js (js_tool) resource-limits configuration.',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LitSearchUse: 'Use the literature search + screening tools.',
@@ -6593,6 +6658,8 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'JsTool.getSettings': 'GET /api/js-tool/settings',
+  'JsTool.updateSettings': 'PUT /api/js-tool/settings',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -6946,6 +7013,8 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'JsTool.getSettings': void
+  'JsTool.updateSettings': UpdateJsToolSettings
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7299,6 +7368,8 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'JsTool.getSettings': JsToolSettings
+  'JsTool.updateSettings': JsToolSettings
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings

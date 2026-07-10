@@ -231,6 +231,16 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::skill::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::skill_mcp::skill_mcp_server_id());
     }
+    // `run_js` (programmatic tool calling) attaches behind the flag set by the
+    // js_tool chat extension (`attach_run_js_mcp`), gated on the deploy kill
+    // switch + tool-capable. The model's `run_js` call is approval-bypassed (see
+    // `is_builtin_server_id` — the script START auto-runs), while gated sub-tools
+    // called INSIDE the script go through per-call approval in the js_tool
+    // executor. Execution is intercepted inline (like `ask_user`), not dispatched
+    // over the loopback.
+    if flag(crate::modules::js_tool::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::js_tool::run_js_mcp_server_id());
+    }
     // `ask_user` is always-on — the assistant may need to ask the user for input
     // in any conversation — but ONLY for tool-capable models: a model that can't
     // call tools can't call `ask_user`, and attaching it would run the full
@@ -279,7 +289,7 @@ fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
 /// `ask_user` call must execute immediately rather than stall behind a
 /// manual-approval prompt the user never opted into (for `ask_user`, the user
 /// answering the form IS the approval).
-fn is_builtin_server_id(id: Uuid) -> bool {
+pub(crate) fn is_builtin_server_id(id: Uuid) -> bool {
     id == crate::modules::files_mcp::files_mcp_server_id()
         || id == crate::modules::memory_mcp::memory_mcp_server_id()
         || id == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
@@ -305,6 +315,12 @@ fn is_builtin_server_id(id: Uuid) -> bool {
         // read-only reads of skills already installed + available to the caller,
         // auto-attached for tool-capable chats with ≥1 available skill.
         || id == crate::modules::skill_mcp::skill_mcp_server_id()
+        // run_js is approval-bypassed for the script START only — the model's
+        // `run_js` call auto-runs (like the read-only built-ins), while gated
+        // sub-tools called INSIDE the script are individually approved by the
+        // js_tool executor. Execution is intercepted inline (see the run_js
+        // branch in the execute loop), never dispatched over the loopback.
+        || id == crate::modules::js_tool::run_js_mcp_server_id()
 }
 
 ///
@@ -328,6 +344,160 @@ impl McpChatExtension {
             session_manager,
             tool_use_accumulator: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Execute a `run_js` tool call inline via the js_tool executor. Gathers the
+    /// conversation's accessible tool set (the SAME tools the model sees) into
+    /// `ziee.tools.*` host functions, runs the script in the embedded runtime,
+    /// and returns the final `McpContentData::ToolResult`. Sub-tool calls
+    /// re-enter the dispatcher with `source=Script`; gated ones suspend the
+    /// script in-process for per-call approval.
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_run_js_call(
+        &self,
+        input: serde_json::Value,
+        accessible_servers: &[crate::modules::mcp::models::McpServer],
+        tool_use_id: &str,
+        context: &StreamContext,
+        tx: Option<
+            &tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
+        approval_mode: &crate::modules::mcp::chat_extension::ApprovalMode,
+        auto_approved_servers: &[super::approval::models::AutoApprovedServer],
+        user_auto_approved: &[super::approval::models::AutoApprovedServer],
+    ) -> McpContentData {
+        use crate::modules::js_tool::{
+            executor, host_bridge::RawTool, limits::JsCaps, run_js_mcp_server_id,
+        };
+
+        let run_js_id = run_js_mcp_server_id();
+
+        // Deploy-level kill switch enforced at EXECUTION, not just attachment:
+        // the attach flag is already suppressed when disabled, but a
+        // hallucinated or history-replayed `run_js` tool_use could still reach
+        // here — refuse to execute (audit: perms).
+        if !crate::modules::js_tool::is_enabled(&self.config) {
+            return McpContentData::ToolResult {
+                tool_use_id: tool_use_id.to_string(),
+                name: Some("run_js".to_string()),
+                server_id: Some(run_js_id.to_string()),
+                content: "run_js is disabled on this deployment".to_string(),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: None,
+            };
+        }
+
+        let script = input
+            .get("script")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if script.trim().is_empty() {
+            return McpContentData::ToolResult {
+                tool_use_id: tool_use_id.to_string(),
+                name: Some("run_js".to_string()),
+                server_id: Some(run_js_id.to_string()),
+                content: "run_js error: missing required 'script' argument".to_string(),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: None,
+            };
+        }
+
+        // Gather the accessible tool set (excluding run_js itself) as host fns,
+        // mirroring the before_llm_call assembly. A server that fails to list is
+        // skipped (its tools simply aren't offered to the script).
+        let mut tools: Vec<RawTool> = Vec::new();
+        let mut auto_approved: std::collections::HashSet<(Uuid, String)> =
+            std::collections::HashSet::new();
+        for server in accessible_servers.iter().filter(|s| s.id != run_js_id) {
+            let session_arc = match self
+                .session_manager
+                .get_or_create_with_context(
+                    server.id,
+                    context.user_id,
+                    Some(context.conversation_id),
+                    Some(context.branch_id),
+                    context.message_id,
+                    None,
+                    McpToolCallSource::Always,
+                )
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("run_js: skipping server '{}' (session failed): {e}", server.name);
+                    continue;
+                }
+            };
+            let listed = {
+                let mut session = session_arc.write().await;
+                session.list_tools().await
+            };
+            let mcp_tools = match listed {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!("run_js: list_tools '{}' failed: {e}", server.name);
+                    continue;
+                }
+            };
+            for t in mcp_tools {
+                let is_auto = auto_approved_servers
+                    .iter()
+                    .any(|s| s.server_id == server.id && s.contains_tool(&t.name))
+                    || user_auto_approved
+                        .iter()
+                        .any(|s| s.server_id == server.id && s.contains_tool(&t.name));
+                if is_auto {
+                    auto_approved.insert((server.id, t.name.clone()));
+                }
+                tools.push(RawTool {
+                    server_id: server.id,
+                    server_name: server.name.clone(),
+                    tool_name: t.name,
+                    description: t.description.unwrap_or_default(),
+                    input_schema: t.input_schema,
+                });
+            }
+        }
+
+        // Approvals need the live sse_tx; with no stream, a gated call resolves
+        // as "stream closed" → denied (a non-interactive turn can't approve).
+        let sse_tx = tx
+            .cloned()
+            .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0);
+
+        // Read the admin-configurable caps from the DB-backed cache (falling back
+        // to defaults if the cache/DB is momentarily unavailable) so an admin
+        // change to js_tool_settings applies to the very next run_js invocation.
+        let caps = match crate::modules::js_tool::settings_cache::get().await {
+            Ok(s) => JsCaps::from_settings(&s),
+            Err(_) => JsCaps::default(),
+        };
+
+        let run = executor::JsToolRun {
+            session_manager: self.session_manager.clone(),
+            user_id: context.user_id,
+            conversation_id: context.conversation_id,
+            branch_id: context.branch_id,
+            message_id: context.message_id,
+            tool_use_id: tool_use_id.to_string(),
+            tools,
+            approval_mode: approval_mode.clone(),
+            auto_approved,
+            sse_tx,
+            caps,
+        };
+        executor::run(run, &script).await
     }
 
     /// Execute approved tools and return (MessageContentData results, executed tool_use_ids)
@@ -2201,6 +2371,28 @@ impl ChatExtension for McpChatExtension {
             helpers::send_tool_start_event(tx, &tool_use_id, &tool_name, &server.name, &input).await;
 
             let (mut result, is_final) = if server.id
+                == crate::modules::js_tool::run_js_mcp_server_id()
+            {
+                // `run_js` is executed INLINE — it needs the live chat context
+                // (session manager, the accessible tool set, sse_tx, and the
+                // approval channel), so intercept here before any loopback
+                // dispatch, exactly like `ask_user` below. `false` = the model
+                // still reasons about the returned final value.
+                (
+                    self.execute_run_js_call(
+                        input,
+                        &accessible_servers,
+                        &tool_use_id,
+                        context,
+                        tx,
+                        &approval_mode,
+                        &auto_approved_servers,
+                        &user_auto_approved,
+                    )
+                    .await,
+                    false,
+                )
+            } else if server.id
                 == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
                 && tool_name == "ask_user"
             {
@@ -3209,6 +3401,22 @@ mod builtin_tests {
         assert!(is_builtin_server_id(
             crate::modules::elicitation_mcp::elicitation_mcp_server_id()
         ));
+    }
+
+    // TEST-21: the two run_js mcp.rs edits — the model SEES run_js (auto_attach)
+    // and the script START auto-approves (is_builtin_server_id).
+    #[test]
+    fn run_js_auto_attach_and_builtin_seam() {
+        let run_js_id = crate::modules::js_tool::run_js_mcp_server_id();
+        // Approval-bypassed (script START runs without a prompt).
+        assert!(is_builtin_server_id(run_js_id));
+        // Attached when the flag is set (the model sees run_js).
+        let mut md = std::collections::HashMap::new();
+        md.insert("attach_run_js_mcp".to_string(), serde_json::json!("true"));
+        assert!(auto_attach_builtin_ids(&md).contains(&run_js_id));
+        // NOT attached without the flag.
+        let empty = std::collections::HashMap::new();
+        assert!(!auto_attach_builtin_ids(&empty).contains(&run_js_id));
     }
 
     #[test]

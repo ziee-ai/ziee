@@ -171,6 +171,27 @@ pub struct SSEChatStreamMcpApprovalRequiredData {
     pub input: serde_json::Value,
 }
 
+/// Event data for a `run_js` script's per-call tool approval.
+///
+/// Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's
+/// decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a
+/// turn-boundary flow resumed by re-sending the message), this is resolved by a
+/// SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same
+/// in-process oneshot mechanism `ask_user` uses — because a live QuickJS call
+/// stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;
+/// `decline`/`cancel` → the host fn throws a catchable error into the script.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamRunJsApprovalRequiredData {
+    /// Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond
+    pub elicitation_id: String,
+    /// Name of the sub-tool the script wants to call
+    pub tool_name: String,
+    /// MCP server that owns the sub-tool (display name)
+    pub server: String,
+    /// Sub-tool input parameters
+    pub input: serde_json::Value,
+}
+
 // ============================================================================
 // SSE Event Variants
 // ============================================================================
@@ -194,6 +215,8 @@ pub enum SSEChatStreamEventVariants {
     McpToolProgress(SSEChatStreamMcpToolProgressData),
     /// A tool created an artifact file (via MCP resource_link) that should be shown as a file card
     ArtifactCreated(SSEChatStreamArtifactCreatedData),
+    /// A `run_js` script is suspended awaiting approval of a gated sub-tool call
+    RunJsApprovalRequired(SSEChatStreamRunJsApprovalRequiredData),
 }
 
 // ============================================================================

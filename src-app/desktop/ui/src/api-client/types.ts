@@ -518,46 +518,6 @@ export interface ConfigFieldInfo {
 }
 
 /**
- * Readiness report returned by the admin `[Connect]` installer flow (ITEM-13).
- *
- *  The `[Connect]` action runs the one-shot install steps (trust the bridge CA,
- *  register the add-in manifest for sideloading) and reports where the host
- *  ended up. Every step is best-effort: a failed step sets its boolean `false`
- *  and appends a human-readable note to `message` rather than failing the whole
- *  request, so the admin sees a partial-success report instead of a 500.
- *
- *  Like [`OfficeBridgeSettings`], this DTO must NEVER carry the bridge's
- *  per-session token or any secret — it is display/diagnostic state only.
- */
-export interface ConnectReadiness {
-  /** The TCP port the bridge HTTPS+WSS listener uses (echoed for the UI). */
-  bridge_port: number
-  /**
-   * Whether the bridge CA was successfully installed into the OS trust store
-   *  (one UAC prompt on Windows). False ⇒ see `message`.
-   */
-  cert_trusted: boolean
-  /**
-   * Human-readable summary of the outcome — a success line when every step
-   *  landed, else the concatenated per-step failure/warning notes.
-   */
-  message: string
-  /**
-   * True ⇒ warn the user: Office is running elevated (as administrator), so
-   *  the add-in platform is disabled and the bridge cannot attach. Office must
-   *  be restarted without administrator rights.
-   */
-  office_elevated_warning: boolean
-  /** Whether a Microsoft Office installation was detected on the host. */
-  office_present: boolean
-  /**
-   * Whether the add-in manifest was registered for sideloading. False ⇒ see
-   *  `message`.
-   */
-  sideloaded: boolean
-}
-
-/**
  * One catalog entry returned by `GET /api/lit-search/connectors`: the code-owned
  *  descriptor joined with the stored row's configured/api_key state. The key
  *  value is NEVER returned — only `api_key_set`.
@@ -2364,6 +2324,30 @@ export interface ItemProgress {
 }
 
 /**
+ * One row of `js_tool_settings`. Field names match the SQL columns (snake_case)
+ *  so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up
+ *  to 4 GiB exceeds i32); the rest are `i32`.
+ */
+export interface JsToolSettings {
+  /** Per-call approval wait before resolving as cancel (seconds). */
+  approval_timeout_secs: number
+  created_at: string
+  /** Per-run parallel sub-tool dispatch cap. */
+  max_concurrent_dispatch: number
+  /** Process-global concurrent-interpreter admission cap. */
+  max_concurrent_runs: number
+  /** `rquickjs` `set_max_stack_size` (bytes). */
+  max_stack_bytes: number
+  /** Per-run recorded sub-call trace cap. */
+  max_trace_entries: number
+  /** `rquickjs` `set_memory_limit` (bytes). */
+  memory_bytes: number
+  updated_at: string
+  /** Active-execution wall-clock backstop (seconds; excludes approval waits). */
+  wall_secs: number
+}
+
+/**
  * The optional/required API key field for a connector — drives the write-only
  *  key input + "Get a key" link in the admin UI.
  */
@@ -3741,21 +3725,6 @@ export interface MutationResponse {
   ok: boolean
 }
 
-/** Which Office application a document belongs to. */
-export type OfficeApp = 'word' | 'excel' | 'power_point'
-
-/** Deployment-wide office-bridge settings (singleton row). Returned by GET. */
-export interface OfficeBridgeSettings {
-  /** Public fingerprint of the locally-trusted bridge cert (not a secret). */
-  cert_fingerprint?: string
-  /** Runtime admin toggle (distinct from the deploy-level config kill switch). */
-  enabled: boolean
-  /** Last time a task pane successfully connected, or null if never. */
-  last_connected_at?: string
-  /** Fixed TCP port the bridge HTTPS+WSS listener binds (default 44300). */
-  port: number
-}
-
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -3764,34 +3733,6 @@ export interface OfficeBridgeSettings {
 export interface OnboardingProgress {
   completed_guide_ids: string[]
   completed_step_ids: string[]
-}
-
-/**
- * One currently-open Office document, as enumerated by the platform.
- *
- *  `full_name` is the app's own fully-qualified document identifier (path +
- *  name for a saved doc, or just the name for an unsaved one) — it is the
- *  stable handle callers pass back to [`OfficePlatform::act_on_document`].
- */
-export interface OpenDoc {
-  /** Whether this is the app's currently-active document. */
-  active: boolean
-  /** The owning application (Word/Excel/PowerPoint). */
-  app: OfficeApp
-  /**
-   * How the platform attached to this doc (e.g. `"com_get_active_object"`,
-   *  `"accessible_object_from_window"`, `"enum_windows_presence"`). Purely
-   *  diagnostic; opaque to callers.
-   */
-  attach_method: string
-  /** App-qualified full name — the handle for `act_on_document`. */
-  full_name: string
-  /** Short document name (e.g. `Report.docx`). */
-  name: string
-  /** Filesystem path of the containing folder, if the doc has been saved. */
-  path?: string
-  /** Whether the document has no unsaved changes (`Document.Saved`). */
-  saved: boolean
 }
 
 export interface OperatingSystemInfo {
@@ -4563,6 +4504,7 @@ export type SSEChatStreamEvent = {
   mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
   mcpToolProgress: SSEChatStreamMcpToolProgressData
   artifactCreated: SSEChatStreamArtifactCreatedData
+  runJsApprovalRequired: SSEChatStreamRunJsApprovalRequiredData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -4640,6 +4582,28 @@ export interface SSEChatStreamMcpToolStartData {
   tool_name: string
   /** Unique identifier for this tool use */
   tool_use_id: string
+}
+
+/**
+ * Event data for a `run_js` script's per-call tool approval.
+ *
+ *  Emitted while a `run_js` script is SUSPENDED in-process awaiting the user's
+ *  decision on a gated sub-tool call. Unlike `McpApprovalRequired` (a
+ *  turn-boundary flow resumed by re-sending the message), this is resolved by a
+ *  SIDE-CHANNEL `POST /api/mcp/elicitation/{elicitation_id}/respond` — the same
+ *  in-process oneshot mechanism `ask_user` uses — because a live QuickJS call
+ *  stack cannot survive an HTTP-request boundary. `accept` → the sub-tool runs;
+ *  `decline`/`cancel` → the host fn throws a catchable error into the script.
+ */
+export interface SSEChatStreamRunJsApprovalRequiredData {
+  /** Per-approval random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond */
+  elicitation_id: string
+  /** Sub-tool input parameters */
+  input: unknown
+  /** MCP server that owns the sub-tool (display name) */
+  server: string
+  /** Name of the sub-tool the script wants to call */
+  tool_name: string
 }
 
 /**
@@ -5324,7 +5288,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'office_document' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'mcp_defaults' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'mcp_user_policy' | 'bibliography_entry' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5674,6 +5638,20 @@ export interface UpdateHostMountPolicyRequest {
 }
 
 /**
+ * Admin PUT payload. All fields optional; absent fields preserve their existing
+ *  value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.
+ */
+export interface UpdateJsToolSettings {
+  approval_timeout_secs?: number
+  max_concurrent_dispatch?: number
+  max_concurrent_runs?: number
+  max_stack_bytes?: number
+  max_trace_entries?: number
+  memory_bytes?: number
+  wall_secs?: number
+}
+
+/**
  * Partial update for `PUT /api/lit-search/settings`. Every field optional →
  *  absent = leave (matches the web_search peer's DTO shape).
  */
@@ -5803,12 +5781,6 @@ export interface UpdateMemoryRequest {
   importance?: number
   kind?: string
   metadata?: unknown
-}
-
-/** PUT body for the global settings. Every field optional → absent = leave. */
-export interface UpdateOfficeBridgeSettingsRequest {
-  enabled?: boolean
-  port?: number
 }
 
 /**
@@ -6561,6 +6533,8 @@ export enum Permissions {
   HubModelsRead = 'hub::models::read',
   HubModelsRefresh = 'hub::models::refresh',
   HubModelsVersionRead = 'hub::models::read_version',
+  JsToolSettingsManage = 'js_tool::settings::manage',
+  JsToolSettingsRead = 'js_tool::settings::read',
   LitSearchAdminManage = 'lit_search::admin::manage',
   LitSearchAdminRead = 'lit_search::admin::read',
   LitSearchUse = 'lit_search::use',
@@ -6599,9 +6573,6 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
-  OfficeBridgeAdminRead = 'office_bridge::admin::read',
-  OfficeBridgeManage = 'office_bridge::admin::manage',
-  OfficeBridgeUse = 'office_bridge::use',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
   ProjectsCreate = 'projects::create',
@@ -6699,6 +6670,8 @@ export const PermissionDescriptions: Record<string, string> = {
   HubModelsRead: 'View hub models',
   HubModelsRefresh: 'Refresh hub models from GitHub',
   HubModelsVersionRead: 'View hub models version information',
+  JsToolSettingsManage: 'Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.',
+  JsToolSettingsRead: 'Read the run_js (js_tool) resource-limits configuration.',
   LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
   LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
   LitSearchUse: 'Use the literature search + screening tools.',
@@ -6737,9 +6710,6 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
-  OfficeBridgeAdminRead: 'Read office-bridge settings (enable, port, connection state).',
-  OfficeBridgeManage: 'Update office-bridge settings (enable, port).',
-  OfficeBridgeUse: 'Use the office-bridge tools for open Office documents.',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
   ProjectsCreate: 'Create chat projects',
@@ -6928,6 +6898,8 @@ export const ApiEndpoints = {
   'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'JsTool.getSettings': 'GET /api/js-tool/settings',
+  'JsTool.updateSettings': 'PUT /api/js-tool/settings',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -7048,10 +7020,6 @@ export const ApiEndpoints = {
   'Message.searchInConversation': 'GET /api/conversations/{id}/messages/search',
   'Message.send': 'POST /api/conversations/{id}/messages',
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
-  'OfficeBridge.connect': 'POST /api/office-bridge/connect',
-  'OfficeBridge.getSettings': 'GET /api/office-bridge/settings',
-  'OfficeBridge.listDocuments': 'GET /api/office-bridge/documents',
-  'OfficeBridge.updateSettings': 'PUT /api/office-bridge/settings',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'Onboarding.getProgress': 'GET /api/onboarding/progress',
@@ -7311,6 +7279,8 @@ export type ApiEndpointParameters = {
   'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
+  'JsTool.getSettings': void
+  'JsTool.updateSettings': UpdateJsToolSettings
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7431,10 +7401,6 @@ export type ApiEndpointParameters = {
   'Message.searchInConversation': { id: string; page?: number; per_page?: number; q?: string }
   'Message.send': { id: string } & SendMessageRequest
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
-  'OfficeBridge.connect': void
-  'OfficeBridge.getSettings': void
-  'OfficeBridge.listDocuments': void
-  'OfficeBridge.updateSettings': UpdateOfficeBridgeSettingsRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
   'Onboarding.getProgress': void
@@ -7694,6 +7660,8 @@ export type ApiEndpointResponses = {
   'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
+  'JsTool.getSettings': JsToolSettings
+  'JsTool.updateSettings': JsToolSettings
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
@@ -7814,10 +7782,6 @@ export type ApiEndpointResponses = {
   'Message.searchInConversation': MessageSearchResults
   'Message.send': SendMessageResponse
   'Message.stopGeneration': void
-  'OfficeBridge.connect': ConnectReadiness
-  'OfficeBridge.getSettings': OfficeBridgeSettings
-  'OfficeBridge.listDocuments': OpenDoc[]
-  'OfficeBridge.updateSettings': OfficeBridgeSettings
   'Onboarding.complete': OnboardingProgress
   'Onboarding.completeStep': OnboardingProgress
   'Onboarding.getProgress': OnboardingProgress

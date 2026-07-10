@@ -169,6 +169,26 @@ rcgen = "0.13"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-pemfile = "2"
 
+# Embedded JavaScript runtime (js_tool / run_js programmatic tool calling).
+# QuickJS-NG via rquickjs, run IN-PROCESS in the server. `futures` gives async
+# host functions (Rust future <-> JS Promise) so a script can `await` a real
+# MCP tool dispatch (incl. a user-approval suspend). Keep the DEFAULT allocator
+# (do NOT add `rust-alloc`/`allocator`) or `set_memory_limit` is a silent no-op.
+#
+# `parallel` is enabled ONLY for the `Send`/`Sync` marker impls it gates on
+# `AsyncRuntime`/`AsyncContext` (see rquickjs `context/async.rs` — the Send impls
+# are `#[cfg(feature = "parallel")]`). Without it the runtime is `!Send`, and
+# awaiting the evaluation inside the `tokio::spawn`ed chat-turn task (which must
+# be `Send` on the multi-thread runtime) would not compile. We still drive ONE
+# runtime from a SINGLE task and never touch it concurrently from multiple
+# threads, so the experimental concurrent-access caveat does not apply — we only
+# need the `Send` marker so the future may migrate between worker threads between
+# awaits. (Drift from the original DEC-1; see DRIFT-1.md.)
+#
+# Bundled QuickJS-NG source ships pre-generated Linux/macOS/Windows bindings
+# (needs only a C compiler, already required for pgvector).
+rquickjs = { version = "0.12", default-features = false, features = ["macro", "futures", "parallel"] }
+
 # Remote access tunnel — embedded ngrok client (Remote Access feature).
 # `ngrok` provides the agent that connects to ngrok's edge from inside
 # the desktop process and forwards traffic to the local backend; we

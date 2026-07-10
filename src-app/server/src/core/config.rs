@@ -23,6 +23,8 @@ pub struct Config {
     #[serde(default)]
     pub control_mcp: Option<ControlMcpConfig>,
     #[serde(default)]
+    pub js_tool: Option<JsToolConfig>,
+    #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
     /// fills each unset field with a subdir of `app.data_dir`. Operators
@@ -237,6 +239,32 @@ impl Default for LitSearchConfig {
     fn default() -> Self {
         Self {
             enabled: default_lit_search_enabled(),
+        }
+    }
+}
+
+/// Configuration for the `js_tool` built-in (`run_js` programmatic tool calling).
+/// The embedded QuickJS interpreter runs IN-PROCESS with zero ambient capability
+/// and only exposes tools the conversation already has (mutating sub-tools still
+/// require per-call approval), so it is on by default. A deploy-level operator
+/// turns it off with `js_tool: { enabled: false }` — a kill switch an admin
+/// cannot re-enable. When false, the chat extension never sets the attach flag,
+/// so `run_js` is never offered to any model.
+#[derive(Debug, Deserialize, Clone)]
+pub struct JsToolConfig {
+    /// Master switch. When false, `run_js` is never attached. Defaults to true.
+    #[serde(default = "default_js_tool_enabled")]
+    pub enabled: bool,
+}
+
+fn default_js_tool_enabled() -> bool {
+    true
+}
+
+impl Default for JsToolConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_js_tool_enabled(),
         }
     }
 }
