@@ -18,7 +18,9 @@
     "modules/projects/chat-extension/components/ProjectConversationsList": "Inline controlled remove-Confirm on a project-conversation row (local open-state). Reached via the project detail conversations list. Inline confirm — future interaction recipe.",
     "modules/projects/chat-extension/extension": "Inline controlled remove-from-project Confirm in the conversation-menu extension (local open-state, opened from the conversation kebab menu). Inline confirm — future menu-interaction recipe.",
     "modules/user/components/user/UsersSettings": "Inline controlled activate/deactivate Confirm shared by a user row's Switch + button (local open-state). Reached via the users table (rendered in the gallery). Inline confirm — future row interaction recipe.",
-    "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked."
+    "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked.",
+    "modules/notification/components/NotificationBellWidget": "Notification bell Popover — local open-state, opens on a click on the sidebar bell; the recent-list + empty states are exercised via the notifications e2e spec. Tracked for an interaction recipe.",
+    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec."
   },
   "triggers": {
     "modules/assistant/chat-extension/components/AssistantMenuItem": "Composer assistant-picker Popover — opens on a click in the chat composer '+' menu. Reached via the chat surface; tracked for an interaction recipe.",

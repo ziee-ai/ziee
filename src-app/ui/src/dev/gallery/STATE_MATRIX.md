@@ -7,19 +7,19 @@
 
 ## Summary
 
-- **330** surfaces carry at least one renderable-state signal.
-- **1917** signals total: 1518 branch, 112 empty, 98 error, 100 loading, 87 overlay, 2 panel.
+- **334** surfaces carry at least one renderable-state signal.
+- **1947** signals total: 1538 branch, 116 empty, 100 error, 103 loading, 88 overlay, 2 panel.
 - **2** right-panel renderers registered (each a right-panel-open state).
-- **31** slot registrations (sidebar / settings / chat mount points).
+- **32** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 87 |
-| `empty` | 90 |
-| `error` | 77 |
-| `open` | 73 |
+| `delayed` | 90 |
+| `empty` | 93 |
+| `error` | 79 |
+| `open` | 74 |
 | `panel-open` | 2 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -50,6 +50,7 @@ conversation page.
 | `settingsAdminPages` | `modules/llm-repository/module`:56 |
 | `settingsAdminPages` | `modules/mcp/module`:141 |
 | `settingsAdminPages` | `modules/memory/module`:71 |
+| `settingsAdminPages` | `modules/scheduler/module`:78 |
 | `settingsAdminPages` | `modules/server-update/module`:35 |
 | `settingsAdminPages` | `modules/skill/module`:105 |
 | `settingsAdminPages` | `modules/summarization/module`:41 |
@@ -1153,9 +1154,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation` | 36 |
-| branch | `!conversation` | 78 |
-| empty | `messages.length === 0` | 165 |
+| branch | `!conversation` | 35 |
+| branch | `!conversation` | 70 |
+| branch | `!conversation` | 99 |
+| empty | `messages.length === 0` | 159 |
 
 ### `modules/chat/extensions/keyboard/extension`
 
@@ -1564,15 +1566,6 @@ Required states: `empty`, `panel-open`
 | empty | `stubs.length === 0` | 279 |
 | branch | `!fileStore` | 283 |
 
-### `modules/file/components/DeliverablePinButton`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!convId` | 16 |
-| branch | `isDeliverable` | 44 |
-
 ### `modules/file/components/FileCard`
 
 Required states: `error`, `open`
@@ -1601,37 +1594,20 @@ Required states: `error`, `open`
 | branch | `(canDelete \|\| canRemove) && onRemove` | 374 |
 | overlay | `<Confirm open>` | 386 |
 
-### `modules/file/components/FileEditBody`
-
-Required states: `error`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `cancelled` | 61 |
-| branch | `!dirty` | 87 |
-| error | `loadError` | 111 |
-| branch | `text === null` | 141 |
-| branch | `changedUnderneath` | 151 |
-| branch | `kind === 'csv'` | 184 |
-| branch | `kind === 'code'` | 191 |
-
 ### `modules/file/components/FilePanel`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `HeaderActions` | 79 |
-| branch | `editableKind(file) === 'markdown'` | 82 |
-| branch | `showFullPage` | 87 |
-| branch | `!hideHeader` | 142 |
-| branch | `canEdit && !editing && !isViewingOld` | 156 |
-| branch | `tooLarge` | 167 |
-| branch | `editing` | 183 |
-| branch | `isViewingOld` | 185 |
-| branch | `oldVersionText === null` | 187 |
-| branch | `tooLarge` | 202 |
-| branch | `Body` | 226 |
+| branch | `HeaderActions` | 75 |
+| branch | `showFullPage` | 78 |
+| branch | `!hideHeader` | 122 |
+| branch | `tooLarge` | 136 |
+| branch | `isViewingOld` | 152 |
+| branch | `oldVersionText === null` | 154 |
+| branch | `tooLarge` | 169 |
+| branch | `Body` | 193 |
 
 ### `modules/file/components/FilePreviewDrawer`
 
@@ -1646,21 +1622,12 @@ Required states: `open`
 
 ### `modules/file/components/FileVersionBar`
 
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `versions.length <= 1` | 44 |
-| branch | `isViewingOld` | 90 |
-| overlay | `<Dialog open>` | 119 |
-
-### `modules/file/components/FileVersionDiff`
-
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `a == null \|\| b == null` | 31 |
+| branch | `versions.length <= 1` | 42 |
+| branch | `isViewingOld` | 88 |
 
 ### `modules/file/components/FileViewPage`
 
@@ -3360,6 +3327,43 @@ Required states: `delayed`, `error`
 | error | `error && !settings` | 38 |
 | loading | `loading && !settings` | 47 |
 
+### `modules/notification/components/NotificationBellWidget`
+
+Required states: `empty`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `unread > 0` | 32 |
+| empty | `recent.length === 0` | 42 |
+| branch | `!n.read_at` | 58 |
+| branch | `n.body` | 63 |
+| overlay | `<Popover open>` | 91 |
+
+### `modules/notification/components/NotificationToastListener`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `event.data.action !== 'create'` | 22 |
+| branch | `!hasPermissionNow(Permissions.NotificationsRead)` | 23 |
+| branch | `!id \|\| id === '00000000-0000-0000-0000-000000000000'` | 26 |
+| branch | `!n.interrupt` | 29 |
+
+### `modules/notification/pages/NotificationsPage`
+
+Required states: `delayed`, `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| loading | `loading && list.length === 0` | 68 |
+| error | `error && list.length === 0` | 72 |
+| empty | `list.length === 0` | 80 |
+| branch | `!n.read_at` | 90 |
+| branch | `n.body` | 100 |
+| branch | `!n.read_at` | 110 |
+| branch | `total > perPage` | 135 |
+
 ### `modules/onboarding/OnboardingPage`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -3589,6 +3593,61 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!layoutDef` | 111 |
 | branch | `guards.length > 0` | 177 |
 | branch | `protectedRoutes.length > 0` | 191 |
+
+### `modules/scheduler/components/ScheduleBuilder`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `value.schedule_kind === 'once'` | 127 |
+| branch | `!raw` | 136 |
+| branch | `preset !== 'custom'` | 163 |
+| branch | `preset === 'weekly'` | 179 |
+| branch | `preset === 'monthly'` | 190 |
+| branch | `preset === 'custom'` | 203 |
+
+### `modules/scheduler/components/ScheduledTaskFormDrawer`
+
+Required states: `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!open` | 69 |
+| branch | `err` | 145 |
+| branch | `err` | 168 |
+| overlay | `<Drawer open>` | 198 |
+| branch | `canUse` | 223 |
+| branch | `f.target_kind === 'prompt'` | 259 |
+| branch | `testing` | 339 |
+| branch | `testResult` | 344 |
+
+### `modules/scheduler/pages/ScheduledTasksPage`
+
+Required states: `delayed`, `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `task.paused_reason` | 66 |
+| branch | `expanded` | 89 |
+| branch | `!runs` | 91 |
+| empty | `runs.length === 0` | 93 |
+| loading | `loading && tasks.length === 0` | 193 |
+| error | `error && tasks.length === 0` | 197 |
+| empty | `tasks.length === 0` | 205 |
+
+### `modules/scheduler/pages/SchedulerAdminPage`
+
+Required states: `delayed`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!f` | 49 |
+| loading | `loading && !settings` | 58 |
+| branch | `!canManage` | 78 |
+| error | `error` | 87 |
+| branch | `f` | 96 |
+| branch | `canManage` | 168 |
 
 ### `modules/server-update/AboutSettings`
 

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 330 surfaces carry renderable-state signals; 1917 signals total.
+// 334 surfaces carry renderable-state signals; 1947 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1018,9 +1018,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/export/extension",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!conversation", line: 36 },
-      { kind: "branch", condition: "!conversation", line: 78 },
-      { kind: "empty", condition: "messages.length === 0", line: 165 },
+      { kind: "branch", condition: "!conversation", line: 35 },
+      { kind: "branch", condition: "!conversation", line: 70 },
+      { kind: "branch", condition: "!conversation", line: 99 },
+      { kind: "empty", condition: "messages.length === 0", line: 159 },
     ],
   },
   "modules/chat/extensions/keyboard/extension": {
@@ -1396,14 +1397,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!fileStore", line: 283 },
     ],
   },
-  "modules/file/components/DeliverablePinButton": {
-    surface: "modules/file/components/DeliverablePinButton",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "!convId", line: 16 },
-      { kind: "branch", condition: "isDeliverable", line: 44 },
-    ],
-  },
   "modules/file/components/FileCard": {
     surface: "modules/file/components/FileCard",
     requiredStates: ["error","open"],
@@ -1431,34 +1424,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "overlay", condition: "<Confirm open>", line: 386 },
     ],
   },
-  "modules/file/components/FileEditBody": {
-    surface: "modules/file/components/FileEditBody",
-    requiredStates: ["error"],
-    signals: [
-      { kind: "branch", condition: "cancelled", line: 61 },
-      { kind: "branch", condition: "!dirty", line: 87 },
-      { kind: "error", condition: "loadError", line: 111 },
-      { kind: "branch", condition: "text === null", line: 141 },
-      { kind: "branch", condition: "changedUnderneath", line: 151 },
-      { kind: "branch", condition: "kind === 'csv'", line: 184 },
-      { kind: "branch", condition: "kind === 'code'", line: 191 },
-    ],
-  },
   "modules/file/components/FilePanel": {
     surface: "modules/file/components/FilePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "HeaderActions", line: 79 },
-      { kind: "branch", condition: "editableKind(file) === 'markdown'", line: 82 },
-      { kind: "branch", condition: "showFullPage", line: 87 },
-      { kind: "branch", condition: "!hideHeader", line: 142 },
-      { kind: "branch", condition: "canEdit && !editing && !isViewingOld", line: 156 },
-      { kind: "branch", condition: "tooLarge", line: 167 },
-      { kind: "branch", condition: "editing", line: 183 },
-      { kind: "branch", condition: "isViewingOld", line: 185 },
-      { kind: "branch", condition: "oldVersionText === null", line: 187 },
-      { kind: "branch", condition: "tooLarge", line: 202 },
-      { kind: "branch", condition: "Body", line: 226 },
+      { kind: "branch", condition: "HeaderActions", line: 75 },
+      { kind: "branch", condition: "showFullPage", line: 78 },
+      { kind: "branch", condition: "!hideHeader", line: 122 },
+      { kind: "branch", condition: "tooLarge", line: 136 },
+      { kind: "branch", condition: "isViewingOld", line: 152 },
+      { kind: "branch", condition: "oldVersionText === null", line: 154 },
+      { kind: "branch", condition: "tooLarge", line: 169 },
+      { kind: "branch", condition: "Body", line: 193 },
     ],
   },
   "modules/file/components/FilePreviewDrawer": {
@@ -1473,18 +1450,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/file/components/FileVersionBar": {
     surface: "modules/file/components/FileVersionBar",
-    requiredStates: ["open"],
-    signals: [
-      { kind: "branch", condition: "versions.length <= 1", line: 44 },
-      { kind: "branch", condition: "isViewingOld", line: 90 },
-      { kind: "overlay", condition: "<Dialog open>", line: 119 },
-    ],
-  },
-  "modules/file/components/FileVersionDiff": {
-    surface: "modules/file/components/FileVersionDiff",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "a == null || b == null", line: 31 },
+      { kind: "branch", condition: "versions.length <= 1", line: 42 },
+      { kind: "branch", condition: "isViewingOld", line: 88 },
     ],
   },
   "modules/file/components/FileViewPage": {
@@ -3069,6 +3038,40 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "loading", condition: "loading && !settings", line: 47 },
     ],
   },
+  "modules/notification/components/NotificationBellWidget": {
+    surface: "modules/notification/components/NotificationBellWidget",
+    requiredStates: ["empty","open"],
+    signals: [
+      { kind: "branch", condition: "unread > 0", line: 32 },
+      { kind: "empty", condition: "recent.length === 0", line: 42 },
+      { kind: "branch", condition: "!n.read_at", line: 58 },
+      { kind: "branch", condition: "n.body", line: 63 },
+      { kind: "overlay", condition: "<Popover open>", line: 91 },
+    ],
+  },
+  "modules/notification/components/NotificationToastListener": {
+    surface: "modules/notification/components/NotificationToastListener",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "event.data.action !== 'create'", line: 22 },
+      { kind: "branch", condition: "!hasPermissionNow(Permissions.NotificationsRead)", line: 23 },
+      { kind: "branch", condition: "!id || id === '00000000-0000-0000-0000-000000000000'", line: 26 },
+      { kind: "branch", condition: "!n.interrupt", line: 29 },
+    ],
+  },
+  "modules/notification/pages/NotificationsPage": {
+    surface: "modules/notification/pages/NotificationsPage",
+    requiredStates: ["delayed","empty","error"],
+    signals: [
+      { kind: "loading", condition: "loading && list.length === 0", line: 68 },
+      { kind: "error", condition: "error && list.length === 0", line: 72 },
+      { kind: "empty", condition: "list.length === 0", line: 80 },
+      { kind: "branch", condition: "!n.read_at", line: 90 },
+      { kind: "branch", condition: "n.body", line: 100 },
+      { kind: "branch", condition: "!n.read_at", line: 110 },
+      { kind: "branch", condition: "total > perPage", line: 135 },
+    ],
+  },
   "modules/onboarding/OnboardingPage": {
     surface: "modules/onboarding/OnboardingPage",
     requiredStates: [],
@@ -3279,6 +3282,57 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!layoutDef", line: 111 },
       { kind: "branch", condition: "guards.length > 0", line: 177 },
       { kind: "branch", condition: "protectedRoutes.length > 0", line: 191 },
+    ],
+  },
+  "modules/scheduler/components/ScheduleBuilder": {
+    surface: "modules/scheduler/components/ScheduleBuilder",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 127 },
+      { kind: "branch", condition: "!raw", line: 136 },
+      { kind: "branch", condition: "preset !== 'custom'", line: 163 },
+      { kind: "branch", condition: "preset === 'weekly'", line: 179 },
+      { kind: "branch", condition: "preset === 'monthly'", line: 190 },
+      { kind: "branch", condition: "preset === 'custom'", line: 203 },
+    ],
+  },
+  "modules/scheduler/components/ScheduledTaskFormDrawer": {
+    surface: "modules/scheduler/components/ScheduledTaskFormDrawer",
+    requiredStates: ["open"],
+    signals: [
+      { kind: "branch", condition: "!open", line: 69 },
+      { kind: "branch", condition: "err", line: 145 },
+      { kind: "branch", condition: "err", line: 168 },
+      { kind: "overlay", condition: "<Drawer open>", line: 198 },
+      { kind: "branch", condition: "canUse", line: 223 },
+      { kind: "branch", condition: "f.target_kind === 'prompt'", line: 259 },
+      { kind: "branch", condition: "testing", line: 339 },
+      { kind: "branch", condition: "testResult", line: 344 },
+    ],
+  },
+  "modules/scheduler/pages/ScheduledTasksPage": {
+    surface: "modules/scheduler/pages/ScheduledTasksPage",
+    requiredStates: ["delayed","empty","error"],
+    signals: [
+      { kind: "branch", condition: "task.paused_reason", line: 66 },
+      { kind: "branch", condition: "expanded", line: 89 },
+      { kind: "branch", condition: "!runs", line: 91 },
+      { kind: "empty", condition: "runs.length === 0", line: 93 },
+      { kind: "loading", condition: "loading && tasks.length === 0", line: 193 },
+      { kind: "error", condition: "error && tasks.length === 0", line: 197 },
+      { kind: "empty", condition: "tasks.length === 0", line: 205 },
+    ],
+  },
+  "modules/scheduler/pages/SchedulerAdminPage": {
+    surface: "modules/scheduler/pages/SchedulerAdminPage",
+    requiredStates: ["delayed","error"],
+    signals: [
+      { kind: "branch", condition: "!f", line: 49 },
+      { kind: "loading", condition: "loading && !settings", line: 58 },
+      { kind: "branch", condition: "!canManage", line: 78 },
+      { kind: "error", condition: "error", line: 87 },
+      { kind: "branch", condition: "f", line: 96 },
+      { kind: "branch", condition: "canManage", line: 168 },
     ],
   },
   "modules/server-update/AboutSettings": {
@@ -3956,6 +4010,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/llm-repository/module", line: 56 },
   { slot: "settingsAdminPages", surface: "modules/mcp/module", line: 141 },
   { slot: "settingsAdminPages", surface: "modules/memory/module", line: 71 },
+  { slot: "settingsAdminPages", surface: "modules/scheduler/module", line: 78 },
   { slot: "settingsAdminPages", surface: "modules/server-update/module", line: 35 },
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
@@ -3984,7 +4039,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 329 keys.
+ * 338 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4087,9 +4142,7 @@ export type RequiredState =
   | "modules/file/chat-extension/extension:panel-open"
   | "modules/file/components/FileCard:error"
   | "modules/file/components/FileCard:open"
-  | "modules/file/components/FileEditBody:error"
   | "modules/file/components/FilePreviewDrawer:open"
-  | "modules/file/components/FileVersionBar:open"
   | "modules/file/components/FileViewPage:delayed"
   | "modules/file/project-extension/components/ProjectFilesInlinePreview:empty"
   | "modules/file/project-extension/components/ProjectFilesManagePanel:empty"
@@ -4222,6 +4275,11 @@ export type RequiredState =
   | "modules/memory/components/sections/SemanticSearchSection:open"
   | "modules/memory/pages/MemoryAdminPage:delayed"
   | "modules/memory/pages/MemoryAdminPage:error"
+  | "modules/notification/components/NotificationBellWidget:empty"
+  | "modules/notification/components/NotificationBellWidget:open"
+  | "modules/notification/pages/NotificationsPage:delayed"
+  | "modules/notification/pages/NotificationsPage:empty"
+  | "modules/notification/pages/NotificationsPage:error"
   | "modules/onboarding/OnboardingRedirect:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed"
   | "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty"
@@ -4245,6 +4303,12 @@ export type RequiredState =
   | "modules/projects/pages/ProjectDetailPage:empty"
   | "modules/projects/pages/ProjectsListPage:delayed"
   | "modules/projects/pages/ProjectsListPage:error"
+  | "modules/scheduler/components/ScheduledTaskFormDrawer:open"
+  | "modules/scheduler/pages/ScheduledTasksPage:delayed"
+  | "modules/scheduler/pages/ScheduledTasksPage:empty"
+  | "modules/scheduler/pages/ScheduledTasksPage:error"
+  | "modules/scheduler/pages/SchedulerAdminPage:delayed"
+  | "modules/scheduler/pages/SchedulerAdminPage:error"
   | "modules/server-update/AboutSettings:error"
   | "modules/skill/components/ConversationSkillsPanel:delayed"
   | "modules/skill/components/ConversationSkillsPanel:empty"
@@ -4419,9 +4483,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/file/chat-extension/extension:panel-open",
   "modules/file/components/FileCard:error",
   "modules/file/components/FileCard:open",
-  "modules/file/components/FileEditBody:error",
   "modules/file/components/FilePreviewDrawer:open",
-  "modules/file/components/FileVersionBar:open",
   "modules/file/components/FileViewPage:delayed",
   "modules/file/project-extension/components/ProjectFilesInlinePreview:empty",
   "modules/file/project-extension/components/ProjectFilesManagePanel:empty",
@@ -4554,6 +4616,11 @@ export const REQUIRED_STATE_KEYS = [
   "modules/memory/components/sections/SemanticSearchSection:open",
   "modules/memory/pages/MemoryAdminPage:delayed",
   "modules/memory/pages/MemoryAdminPage:error",
+  "modules/notification/components/NotificationBellWidget:empty",
+  "modules/notification/components/NotificationBellWidget:open",
+  "modules/notification/pages/NotificationsPage:delayed",
+  "modules/notification/pages/NotificationsPage:empty",
+  "modules/notification/pages/NotificationsPage:error",
   "modules/onboarding/OnboardingRedirect:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:delayed",
   "modules/onboarding/guides/getting-started/components/ApiKeysStep:empty",
@@ -4577,6 +4644,12 @@ export const REQUIRED_STATE_KEYS = [
   "modules/projects/pages/ProjectDetailPage:empty",
   "modules/projects/pages/ProjectsListPage:delayed",
   "modules/projects/pages/ProjectsListPage:error",
+  "modules/scheduler/components/ScheduledTaskFormDrawer:open",
+  "modules/scheduler/pages/ScheduledTasksPage:delayed",
+  "modules/scheduler/pages/ScheduledTasksPage:empty",
+  "modules/scheduler/pages/ScheduledTasksPage:error",
+  "modules/scheduler/pages/SchedulerAdminPage:delayed",
+  "modules/scheduler/pages/SchedulerAdminPage:error",
   "modules/server-update/AboutSettings:error",
   "modules/skill/components/ConversationSkillsPanel:delayed",
   "modules/skill/components/ConversationSkillsPanel:empty",
