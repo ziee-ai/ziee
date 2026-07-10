@@ -730,26 +730,28 @@ async fn test_12_reindex_recovers_a_failed_document() {
 
 // ─────────────────────────── TEST-30: real-LLM agentic retrieval ───────────────────────────
 
-/// The local LiteLLM bridge (qwen, tool-capable). Soft-skip if unreachable so a
-/// box without it doesn't hard-fail (the established real-LLM pattern).
-const REAL_LLM_BASE: &str = "http://127.0.0.1:4000/v1";
-const REAL_LLM_KEY: &str = "sk-local-audit";
-const REAL_LLM_MODEL: &str = "qwen3.6-35b-a3b";
-
-async fn bridge_reachable() -> bool {
-    reqwest::Client::new()
-        .get("http://127.0.0.1:4000/v1/models")
-        .header("Authorization", format!("Bearer {REAL_LLM_KEY}"))
-        .timeout(Duration::from_secs(3))
-        .send().await.map(|r| r.status().is_success()).unwrap_or(false)
+/// A tool-capable OpenAI-compatible model, configured entirely from env (mirrors
+/// the frontend `ZIEE_TEST_LLM_*` seam + `create_test_model_with_config`): base
+/// URL, api key, and model name. Nothing box-specific is hardcoded — the test
+/// soft-skips when the env isn't provided (the established real-LLM pattern).
+fn real_llm_env() -> Option<(String, String, String)> {
+    let base = std::env::var("ZIEE_TEST_LLM_BASE_URL")
+        .or_else(|_| std::env::var("OPENAI_BASE_URL"))
+        .ok()?;
+    let key = std::env::var("OPENAI_API_KEY").ok()?;
+    let model = std::env::var("ZIEE_TEST_LLM_MODEL").ok()?;
+    if base.is_empty() || key.is_empty() || model.is_empty() {
+        return None;
+    }
+    Some((base, key, model))
 }
 
 #[tokio::test]
 async fn test_30_tool_capable_model_fires_search_knowledge_and_answers_from_the_kb() {
-    if !bridge_reachable().await {
-        eprintln!("Skipping test_30 — local LLM bridge (:4000) unreachable");
+    let Some((real_llm_base, real_llm_key, real_llm_model)) = real_llm_env() else {
+        eprintln!("Skipping test_30 — ZIEE_TEST_LLM_BASE_URL / OPENAI_API_KEY / ZIEE_TEST_LLM_MODEL not set");
         return;
-    }
+    };
     let server = TestServer::start().await;
     let pool = db_pool(&server).await;
     let user = power_user(&server, "kb_real_llm").await;
@@ -760,11 +762,11 @@ async fn test_30_tool_capable_model_fires_search_knowledge_and_answers_from_the_
     let prov: Value = client.post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "name": "Bridge", "provider_type": "openai", "enabled": true,
-            "api_key": REAL_LLM_KEY, "base_url": REAL_LLM_BASE }))
+            "api_key": &real_llm_key, "base_url": &real_llm_base }))
         .send().await.unwrap().json().await.unwrap();
     let model: Value = client.post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "provider_id": prov["id"], "name": REAL_LLM_MODEL,
+        .json(&json!({ "provider_id": prov["id"], "name": &real_llm_model,
             "display_name": "Qwen", "enabled": true, "engine_type": "none",
             "file_format": "gguf",
             "capabilities": { "chat": true, "completion": true, "tools": true } }))
