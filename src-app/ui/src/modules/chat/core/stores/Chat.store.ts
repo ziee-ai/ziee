@@ -738,11 +738,12 @@ const chatStoreConfig = {
           loadingNewer: false,
         })
         // Drop the outgoing conversation's ephemeral per-row view state
-        // (show-more collapse, inline-file collapse/seen/height) so the
-        // incoming conversation starts clean — message ids are globally unique,
-        // so this is a memory-bound + correctness measure, not required for
-        // isolation (message-scroll-stability, ITEM-6 / DEC-4).
-        useMessageViewStateStore.getState().resetViewState()
+        // (show-more collapse) so the incoming conversation starts clean. Scoped
+        // to THIS store's own message ids so a split pane switching conversation
+        // never clears another pane's entries (ITEM-21).
+        useMessageViewStateStore
+          .getState()
+          .resetViewState(Array.from(get().messages.keys()))
       }
 
       get().cancelCacheClear(id)
@@ -2190,7 +2191,11 @@ const chatStoreConfig = {
 
       state.conversationStateCache.clear()
       state.cacheClearTimers.clear()
-      useMessageViewStateStore.getState().resetViewState()
+      // Scoped to this instance's own messages so tearing down one split pane
+      // doesn't wipe another pane's live view state (ITEM-21).
+      useMessageViewStateStore
+        .getState()
+        .resetViewState(Array.from(state.messages.keys()))
 
       console.log('[Chat.store] Destroyed successfully')
     })
