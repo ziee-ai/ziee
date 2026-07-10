@@ -227,4 +227,5 @@ declare_repositories! {
     workflow: WorkflowRepository => crate::modules::workflow,
     web_search: WebSearchRepository => crate::modules::web_search,
     lit_search: LitSearchRepository => crate::modules::lit_search,
+    js_tool: JsToolRepository => crate::modules::js_tool,
 }

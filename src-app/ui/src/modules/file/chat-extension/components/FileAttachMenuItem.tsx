@@ -1,6 +1,8 @@
 import { Paperclip } from 'lucide-react'
 import { Upload, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024
@@ -12,6 +14,11 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024
 export function FileAttachMenuItem() {
   const { uploadFiles } = Stores.File
   const { close } = usePlusDropdown()
+  // Gate on files::upload (mirrors FilePasteHandler / FileUploadArea). Without
+  // it, a user lacking the grant saw the "Attach files or photos" + menu item
+  // and could trigger an upload that the backend 403s.
+  const canUpload = usePermission(Permissions.FilesUpload)
+  if (!canUpload) return null
 
   const handleFiles = (incoming: File[]) => {
     close()

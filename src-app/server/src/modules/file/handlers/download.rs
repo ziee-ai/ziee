@@ -35,6 +35,17 @@ const TOKEN_EXPIRY: i64 = 3600; // 1 hour
 /// live in one user's own cache.
 pub const FILE_CONTENT_CACHE_CONTROL: &str = "private, max-age=3600";
 
+/// Cache policy for endpoints that serve a file's **head** content keyed by
+/// `file_id` (text/content/preview/thumbnail). Unlike a version-pinned URL,
+/// the head's bytes CHANGE when a new version is appended (user canvas Save,
+/// MCP `edit_file`/`rewrite_file`), so a `max-age=3600` cache would serve the
+/// PRE-EDIT content for up to an hour — a co-edited deliverable silently shows
+/// stale text after Save + reload. `no-cache` forces revalidation (the browser
+/// may store but must re-check before use), so an edit is visible immediately
+/// while the response is still `private` (never shared-cached). Closes the
+/// canvas stale-after-save bug.
+pub const FILE_HEAD_CACHE_CONTROL: &str = "private, no-cache";
+
 /// Build a `Content-Disposition: attachment; filename=...; filename*=UTF-8''...`
 /// header value that is safe regardless of what the stored filename
 /// contains. Closes 05-file F-08 (Medium): the previous implementation

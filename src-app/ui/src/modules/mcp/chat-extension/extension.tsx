@@ -12,13 +12,14 @@ import {
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
-import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent } from '@/api-client/types'
+import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
 import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
+import { JsToolApprovalContent } from '@/modules/mcp/chat-extension/components/JsToolApprovalContent'
 
 /**
  * MCP Tool Call UI Component
@@ -598,6 +599,95 @@ const mcpExtension: ChatExtension = createExtension({
       }
     },
 
+    runJsApprovalRequired: async (data, get, set) => {
+      // A run_js script is SUSPENDED awaiting approval of a gated sub-tool call.
+      // Inject a `run_js_approval` content block so JsToolApprovalContent renders
+      // approve/deny; resolution goes via the side-channel elicitation /respond
+      // endpoint (the same in-process oneshot ask_user uses), NOT the
+      // turn-boundary tool_approvals flow — a live script stack can't survive a
+      // request boundary.
+      //
+      // Register an elicitationRequests entry keyed by elicitation_id so
+      // resolveElicitation can reflect the resolved status there (and roll it
+      // back to 'pending' on a failed POST) — the component reads its status
+      // from the store, so a failed approve re-enables the buttons and the
+      // resolved state survives a component remount. Guard on !has() so a
+      // double-delivered SSE frame can't reset an already-resolved entry to
+      // 'pending' (which would re-show the buttons + allow a duplicate POST).
+      if (!Stores.McpComposer.$.elicitationRequests.has(data.elicitation_id)) {
+        Stores.McpComposer.addElicitationRequest({
+          elicitation_id: data.elicitation_id,
+          message: `run_js wants to call ${data.tool_name}`,
+          requested_schema: {},
+          server: data.server,
+          message_id: null,
+        } as unknown as SSEChatStreamMcpElicitationRequiredData)
+      }
+
+      const chatState = get()
+      const streamingMessage = chatState.streamingMessage
+      const now = new Date().toISOString()
+
+      const approvalContent = {
+        id: '',
+        message_id: '',
+        content_type: 'run_js_approval',
+        content: {
+          type: 'run_js_approval',
+          status: 'pending',
+          elicitation_id: data.elicitation_id,
+          tool_name: data.tool_name,
+          server: data.server,
+          input: data.input,
+        },
+        sequence_order: 0,
+        created_at: now,
+        updated_at: now,
+      } as unknown as MessageContent
+
+      if (streamingMessage) {
+        // Dedup by the unique per-approval elicitation_id.
+        const exists = streamingMessage.contents.some(
+          c =>
+            c.content_type === 'run_js_approval' &&
+            (c.content as unknown as { elicitation_id: string }).elicitation_id === data.elicitation_id,
+        )
+        if (!exists) {
+          approvalContent.id = `${streamingMessage.id}-runjs-${data.elicitation_id}`
+          approvalContent.message_id = streamingMessage.id
+          approvalContent.sequence_order = streamingMessage.contents.length
+
+          const updatedMessage = {
+            ...streamingMessage,
+            contents: [...streamingMessage.contents, approvalContent],
+          }
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(updatedMessage.id, updatedMessage)
+          set({ streamingMessage: updatedMessage, messages: newMessages })
+        }
+      } else {
+        // No streaming message (e.g. after reload / SSE-resume, since generation
+        // is a detached server task) — create one so the approval prompt renders
+        // and the suspended script can still be resumed. Mirrors
+        // mcpElicitationRequired's else-branch.
+        const messageId = `streaming-${Date.now()}`
+        approvalContent.id = `${messageId}-runjs-${data.elicitation_id}`
+        approvalContent.message_id = messageId
+
+        const newMessage: MessageWithContent = {
+          id: messageId,
+          role: 'assistant',
+          contents: [approvalContent],
+          originated_from_id: '',
+          edit_count: 0,
+          created_at: now,
+        }
+        const newMessages = new Map(chatState.messages)
+        newMessages.set(newMessage.id, newMessage)
+        set({ streamingMessage: newMessage, messages: newMessages })
+      }
+    },
+
     mcpElicitationRequired: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpElicitationRequiredData
       const mcpStore = Stores.McpComposer
@@ -986,6 +1076,7 @@ const mcpExtension: ChatExtension = createExtension({
   contentTypes: {
     tool_use: McpToolUseGroup,
     elicitation_request: ElicitationFormContent,
+    run_js_approval: JsToolApprovalContent,
   },
 
   // Register slot components

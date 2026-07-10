@@ -16,7 +16,7 @@ pub mod stream;
 
 // Include auto-generated extension registration code
 #[path = "extension_registration.rs"]
-mod extension_registration;
+pub mod extension_registration;
 use extension_registration::auto_register_extensions;
 
 // Re-exports

@@ -2,8 +2,8 @@
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
     "total": 77,
-    "hosts": 56,
-    "triggers": 21,
+    "hosts": 57,
+    "triggers": 20,
     "wiredOpen": 37
   },
   "hosts": [
@@ -137,6 +137,19 @@
       ]
     },
     {
+      "surface": "modules/file/components/FileVersionBar",
+      "class": "host",
+      "primitives": [
+        "Dialog"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Dialog",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
       "surface": "modules/hub/modules/assistants/components/AssistantDetailsDrawer",
       "class": "host",
       "primitives": [
@@ -190,32 +203,6 @@
     },
     {
       "surface": "modules/hub/modules/workflow/components/WorkflowDetailsDrawer",
-      "class": "host",
-      "primitives": [
-        "Drawer"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Drawer",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/knowledge-base/components/KnowledgeBaseCard",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/knowledge-base/components/KnowledgeBaseFormDrawer",
       "class": "host",
       "primitives": [
         "Drawer"
@@ -476,6 +463,19 @@
       ]
     },
     {
+      "surface": "modules/notification/components/NotificationBellWidget",
+      "class": "host",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
       "surface": "modules/projects/chat-extension/components/ProjectConversationsList",
       "class": "host",
       "primitives": [
@@ -542,6 +542,19 @@
     },
     {
       "surface": "modules/projects/components/ProjectKnowledgeSection",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/scheduler/components/ScheduledTaskFormDrawer",
       "class": "host",
       "primitives": [
         "Drawer"
@@ -903,6 +916,19 @@
       ]
     },
     {
+      "surface": "modules/file/components/FileExportMenu",
+      "class": "trigger",
+      "primitives": [
+        "Popover"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Popover",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
       "surface": "modules/file/project-extension/components/ProjectFilesManagePanel",
       "class": "trigger",
       "primitives": [
@@ -941,32 +967,6 @@
         },
         {
           "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/knowledge-base/chat-extension/components/KbMenuItem",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
           "mode": "trigger"
         }
       ]

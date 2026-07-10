@@ -72,6 +72,17 @@ export interface SidebarWidgetItem {
     | LazyExoticComponent<ComponentType<any>>
     | (() => Promise<{ default: ComponentType<any> }>)
   order: number
+  /**
+   * Optional permission expression. When set, the widget is filtered
+   * out of its slot (content / bottom / footer) for users who don't
+   * satisfy it — same semantics as `SidebarNavItem.permission`. Use it
+   * for widgets that render permission-restricted data (e.g. the recent-
+   * conversations list → `conversations::read`, the download indicator →
+   * `llm_models::downloads_read`). Widgets that render mixed content
+   * (some always-visible) should instead self-gate internally with
+   * `<Can>` / `usePermission`. See `.claude/PERMISSION_GATING.md`.
+   */
+  permission?: PermissionExpr
 }
 
 /**

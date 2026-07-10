@@ -1,4 +1,5 @@
 import type React from 'react'
+import type { PermissionExpr } from '@/core/permissions'
 
 /**
  * Available slots that project-extensions can contribute to.
@@ -60,6 +61,16 @@ export interface KnowledgeKindContribution {
   managePanel: React.ComponentType
   /** Render order across kinds (lower first). Default 100. */
   order?: number
+  /**
+   * Permission gate for this contribution. When set, the whole section
+   * (header + inline preview + manage panel) is hidden from a user who
+   * lacks the expression — the host filters it out reactively (mirrors
+   * the sidebar/settings slot `permission` field). Omit for kinds whose
+   * data is already covered by the project page's own gate
+   * (`projects::read`); set it for kinds backed by a SEPARATE permission
+   * (e.g. citations `citations::use`) so a user without that grant never
+   * sees the section (whose backend endpoints would 403). */
+  permission?: PermissionExpr
 }
 
 /**
@@ -77,6 +88,9 @@ export interface AdvancedSettingsContribution {
   panel: React.ComponentType
   /** Render order (lower first). Default 100. */
   order?: number
+  /** Permission gate for this panel — same semantics as
+   *  `KnowledgeKindContribution.permission`. */
+  permission?: PermissionExpr
 }
 
 /**

@@ -17,9 +17,12 @@ export function GroupSystemSkillsWidget({ group }: GroupWidgetProps) {
   const data = Stores.GroupSystemSkillsWidget.groupSkills.get(group.id)
   const canManage = usePermission(Permissions.SkillsAssignToGroups)
 
+  // The group-system-skills read endpoint requires skills::assign_to_groups
+  // (same as canManage). Gate the eager load so a groups::read-only admin
+  // without it doesn't 403 on mount.
   useEffect(() => {
-    Stores.GroupSystemSkillsWidget.loadSkillsForGroup(group.id)
-  }, [group.id])
+    if (canManage) Stores.GroupSystemSkillsWidget.loadSkillsForGroup(group.id)
+  }, [group.id, canManage])
 
   return (
     <GroupEntityAssignmentWidget<Skill>
