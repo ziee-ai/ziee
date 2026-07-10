@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Voice dictation: the WKWebView calls getUserMedia({audio:true}) for the
+         composer mic button. macOS requires this usage-description string or the
+         permission prompt never appears and capture fails silently. Merged into
+         the generated Info.plist during macOS bundling (Tauri v2). -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Ziee uses the microphone for local, on-device voice dictation. Audio is transcribed on your own server and is never sent to the cloud.</string>
+</dict>
+</plist>

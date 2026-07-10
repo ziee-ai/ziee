@@ -200,6 +200,7 @@ yanked = false
         control_mcp_enabled: None,
         access_token_expiry_seconds: None,
         refresh_token_expiry_days: None,
+        voice_enabled: None,
     };
     let server = TestServer::start_with_options(opts).await;
 

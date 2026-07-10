@@ -1,0 +1,265 @@
+import { useEffect } from 'react'
+import { z } from 'zod'
+import {
+  Alert,
+  Card,
+  ErrorState,
+  Form,
+  FormField,
+  InputNumber,
+  Select,
+  Separator,
+  Spin,
+  Switch,
+  Text,
+  message,
+  useForm,
+  zodResolver,
+} from '@/components/ui'
+import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { Permissions } from '@/api-client/types'
+
+const MIB = 1024 * 1024
+
+const MODEL_OPTIONS = [
+  { value: 'tiny', label: 'tiny (fastest, lowest accuracy)' },
+  { value: 'base', label: 'base (balanced)' },
+  { value: 'base.en', label: 'base.en (English-only)' },
+  { value: 'small', label: 'small (best accuracy, slower)' },
+]
+
+const LANGUAGE_OPTIONS = [
+  { value: 'auto', label: 'Auto-detect' },
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'it', label: 'Italian' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'nl', label: 'Dutch' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'ru', label: 'Russian' },
+]
+
+const schema = z.object({
+  enabled: z.boolean(),
+  model: z.string().min(1),
+  language: z.string().min(1),
+  idle_unload_secs: z.number().min(0).max(86400),
+  auto_start_timeout_secs: z.number().min(1).max(600),
+  drain_timeout_secs: z.number().min(1).max(600),
+  max_clip_seconds: z.number().min(1).max(600),
+  max_upload_mib: z.number().min(1).max(200),
+})
+type Schema = z.infer<typeof schema>
+
+/**
+ * Deployment-wide voice settings: enable toggle, model + language, engine
+ * timeouts, and the record/upload caps. Mirrors the peer settings-card layout.
+ */
+export function VoiceConfigCard() {
+  const { settings, loadingSettings, savingSettings, error } = Stores.VoiceConfig
+  const canManage = usePermission(Permissions.VoiceAdminManage)
+
+  const form = useForm<Schema>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      enabled: false,
+      model: 'base',
+      language: 'auto',
+      idle_unload_secs: 300,
+      auto_start_timeout_secs: 30,
+      drain_timeout_secs: 30,
+      max_clip_seconds: 60,
+      max_upload_mib: 25,
+    },
+  })
+
+  useEffect(() => {
+    if (settings) {
+      form.reset({
+        enabled: settings.enabled,
+        model: settings.model,
+        language: settings.language,
+        idle_unload_secs: settings.idle_unload_secs,
+        auto_start_timeout_secs: settings.auto_start_timeout_secs,
+        drain_timeout_secs: settings.drain_timeout_secs,
+        max_clip_seconds: settings.max_clip_seconds,
+        max_upload_mib: Math.max(1, Math.round(settings.max_upload_bytes / MIB)),
+      })
+    }
+  }, [settings, form])
+
+  const handleSave = async (values: Schema) => {
+    try {
+      await Stores.VoiceConfig.saveSettings({
+        enabled: values.enabled,
+        model: values.model,
+        language: values.language,
+        idle_unload_secs: values.idle_unload_secs,
+        auto_start_timeout_secs: values.auto_start_timeout_secs,
+        drain_timeout_secs: values.drain_timeout_secs,
+        max_clip_seconds: values.max_clip_seconds,
+        max_upload_bytes: values.max_upload_mib * MIB,
+      })
+      form.reset(values)
+      message.success('Voice settings saved')
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Failed to save voice settings')
+    }
+  }
+
+  if (loadingSettings && !settings) {
+    return (
+      <Card title="Voice configuration" data-testid="voice-config-card">
+        <Spin label="Loading" />
+      </Card>
+    )
+  }
+
+  if (error && !settings) {
+    return (
+      <Card title="Voice configuration" data-testid="voice-config-card">
+        <ErrorState
+          resource="voice configuration"
+          description="The voice configuration couldn't be loaded."
+          details={error}
+          onRetry={() => Stores.VoiceConfig.loadSettings()}
+          data-testid="voice-config-error"
+        />
+      </Card>
+    )
+  }
+
+  return (
+    <Card
+      title="Voice configuration"
+      data-testid="voice-config-card"
+      footer={
+        canManage ? (
+          <SettingsFormActions
+            onSave={form.handleSubmit(handleSave)}
+            onCancel={() => form.reset()}
+            saving={savingSettings}
+            saveTestid="voice-config-save-btn"
+            cancelTestid="voice-config-cancel-btn"
+          />
+        ) : undefined
+      }
+    >
+      {!canManage && (
+        <Alert
+          data-testid="voice-config-readonly-alert"
+          tone="info"
+          title="Read-only view"
+          description="You can view voice settings but not change them."
+          className="mb-3"
+        />
+      )}
+
+      <Form
+        form={form}
+        onSubmit={handleSave}
+        disabled={!canManage}
+        data-testid="voice-config-form"
+        layout="horizontal"
+      >
+        <FormField
+          name="enabled"
+          label="Enable voice dictation"
+          valuePropName="checked"
+          description="Master runtime toggle. Users only see the composer mic once a runtime and model are ready."
+        >
+          <Switch data-testid="voice-config-enabled" />
+        </FormField>
+
+        <FormField
+          name="model"
+          label="Model"
+          description="The whisper ggml model used for transcription."
+          required
+        >
+          <Select
+            data-testid="voice-config-model"
+            className="w-full"
+            options={MODEL_OPTIONS}
+          />
+        </FormField>
+
+        <FormField
+          name="language"
+          label="Language"
+          description="Transcription language. Auto-detect lets whisper infer it per clip."
+          required
+        >
+          <Select
+            data-testid="voice-config-language"
+            className="w-full"
+            options={LANGUAGE_OPTIONS}
+          />
+        </FormField>
+
+        <Separator titlePlacement="left">
+          <Text className="text-xs" type="secondary">
+            Engine
+          </Text>
+        </Separator>
+
+        <FormField
+          name="idle_unload_secs"
+          label="Idle unload timeout (seconds)"
+          description="Unload the whisper server after this idle time. 0 disables idle eviction."
+          required
+        >
+          <InputNumber min={0} max={86400} className="!w-full" data-testid="voice-config-idle-unload" />
+        </FormField>
+
+        <FormField
+          name="auto_start_timeout_secs"
+          label="Auto-start timeout (seconds)"
+          description="How long to wait for a freshly-spawned whisper server to become healthy."
+          required
+        >
+          <InputNumber min={1} max={600} className="!w-full" data-testid="voice-config-autostart-timeout" />
+        </FormField>
+
+        <FormField
+          name="drain_timeout_secs"
+          label="Drain timeout (seconds)"
+          description="When unloading, how long to wait for in-flight transcriptions before forcing a stop."
+          required
+        >
+          <InputNumber min={1} max={600} className="!w-full" data-testid="voice-config-drain-timeout" />
+        </FormField>
+
+        <Separator titlePlacement="left">
+          <Text className="text-xs" type="secondary">
+            Caps
+          </Text>
+        </Separator>
+
+        <FormField
+          name="max_clip_seconds"
+          label="Max clip length (seconds)"
+          description="Recording auto-stops at this length."
+          required
+        >
+          <InputNumber min={1} max={600} className="!w-full" data-testid="voice-config-max-clip" />
+        </FormField>
+
+        <FormField
+          name="max_upload_mib"
+          label="Max upload size"
+          description="Largest audio clip the transcription endpoint accepts."
+          required
+        >
+          <InputNumber min={1} max={200} suffix="MiB" className="!w-full" data-testid="voice-config-max-upload" />
+        </FormField>
+      </Form>
+    </Card>
+  )
+}

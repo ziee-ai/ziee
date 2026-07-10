@@ -37,6 +37,7 @@ mod skill;
 mod summarization;
 mod sync;
 mod tool_result_mcp;
+mod voice;
 mod web_search;
 mod workflow;
 mod workflow_mcp;
