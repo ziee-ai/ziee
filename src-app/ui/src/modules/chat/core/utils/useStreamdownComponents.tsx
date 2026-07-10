@@ -117,7 +117,18 @@ export function useStreamdownComponents(contentId: string) {
               className={cn(LINK_CLASS, className)}
               onClick={(e) => {
                 e.preventDefault()
-                const target = document.getElementById(scopedHref.slice(1))
+                // Scope the anchor lookup to the clicked link's OWN pane (ITEM-39):
+                // message content ids collide when two panes show the SAME
+                // conversation (compare-branches), so `document.getElementById`
+                // would scroll the leftmost pane. Fall back to document (single-pane).
+                const id = scopedHref.slice(1)
+                const root = (e.currentTarget as HTMLElement).closest(
+                  '[data-testid^="chat-pane-"]',
+                )
+                const target =
+                  (root ?? document).querySelector<HTMLElement>(
+                    `#${CSS.escape(id)}`,
+                  ) ?? null
                 if (target) {
                   // Open the outer .footnote-section <details>
                   target.closest('details')?.setAttribute('open', '')
