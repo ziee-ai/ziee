@@ -3834,6 +3834,9 @@ mod approval_loop_tests {
             resolve_unique_tool_use_id("chatcmpl-tool-90d1ec58ce2478f5", &used),
             "chatcmpl-tool-90d1ec58ce2478f5"
         );
+    }
+}
+
 #[cfg(test)]
 mod kb_builtin_tests {
     use super::is_builtin_server_id;
