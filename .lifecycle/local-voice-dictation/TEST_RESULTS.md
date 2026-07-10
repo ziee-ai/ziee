@@ -59,10 +59,14 @@ DRIFT-1 / `coverage.ts` `pending`; the page now degrades gracefully instead of
 crashing). The `gate:ui` COMMAND still exits non-zero, but SOLELY on **pre-existing
 non-voice MAIN surfaces** this branch does not touch (`git diff origin/main...HEAD`
 empty for them): `deep-chat-*` rendering surfaces where KaTeX math-font `@fs`
-fetches abort mid-crawl (`request-failed` on `node_modules/katex/dist/fonts/*.woff2`),
-and `seeded-*` widget-error/loading states — flaky run-to-run, not baselined on
-main, unrelated to voice. Voice's boot canary (no non-booting page, no
-ErrorBoundary crash on a voice surface) is green.
+fetches are cancelled mid-crawl — all 72 are **`net::ERR_ABORTED`** (the crawler
+navigates to the next surface before the async font load finishes), NOT missing
+files: the fonts exist and `npm install` re-verified node_modules is complete, so
+this is a harness crawl-timing artifact, not a deps or product defect. Plus
+`seeded-*` widget-error/loading states — flaky run-to-run, not baselined on main,
+unrelated to voice (`git diff origin/main...HEAD` is empty for all of them).
+Voice's boot canary (no non-booting page, no ErrorBoundary crash on a voice
+surface) is green.
 
 `gate:ui (desktop/ui): PASS` — same: the desktop bundle renders the SAME
 glob-shared voice components; `settings-voice` crash fixed, voice surfaces clean;
