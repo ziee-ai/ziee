@@ -727,3 +727,88 @@ async fn test_12_reindex_recovers_a_failed_document() {
     }
     panic!("reindex did not recover the failed doc to indexed");
 }
+
+// ─────────────────────────── TEST-30: real-LLM agentic retrieval ───────────────────────────
+
+/// The local LiteLLM bridge (qwen, tool-capable). Soft-skip if unreachable so a
+/// box without it doesn't hard-fail (the established real-LLM pattern).
+const REAL_LLM_BASE: &str = "http://127.0.0.1:4000/v1";
+const REAL_LLM_KEY: &str = "sk-local-audit";
+const REAL_LLM_MODEL: &str = "qwen3.6-35b-a3b";
+
+async fn bridge_reachable() -> bool {
+    reqwest::Client::new()
+        .get("http://127.0.0.1:4000/v1/models")
+        .header("Authorization", format!("Bearer {REAL_LLM_KEY}"))
+        .timeout(Duration::from_secs(3))
+        .send().await.map(|r| r.status().is_success()).unwrap_or(false)
+}
+
+#[tokio::test]
+async fn test_30_tool_capable_model_fires_search_knowledge_and_answers_from_the_kb() {
+    if !bridge_reachable().await {
+        eprintln!("Skipping test_30 — local LLM bridge (:4000) unreachable");
+        return;
+    }
+    let server = TestServer::start().await;
+    let pool = db_pool(&server).await;
+    let user = power_user(&server, "kb_real_llm").await;
+    let client = reqwest::Client::new();
+
+    // A real, tool-capable provider+model (the built-in search_knowledge only
+    // reaches a model flagged tool-capable — else it hallucinates the call).
+    let prov: Value = client.post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "name": "Bridge", "provider_type": "openai", "enabled": true,
+            "api_key": REAL_LLM_KEY, "base_url": REAL_LLM_BASE }))
+        .send().await.unwrap().json().await.unwrap();
+    let model: Value = client.post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": prov["id"], "name": REAL_LLM_MODEL,
+            "display_name": "Qwen", "enabled": true, "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "chat": true, "completion": true, "tools": true } }))
+        .send().await.unwrap().json().await.unwrap();
+    let model_id = model["id"].as_str().unwrap();
+    // Grant the user group-level access to the model (creation ≠ access).
+    crate::chat::helpers::ensure_user_has_model_access(&server, &user.user_id, &model).await;
+
+    // A synthetic, un-guessable fact — the model can only answer by retrieving it.
+    let fact = "The Zorblax coefficient of the Prendergast manifold is exactly 91745 milliwebers.";
+    let fid = upload_text(&server, &user, "zorblax.txt",
+        &format!("Internal lab note. {fact} End of note.")).await;
+    wait_for_chunks(&pool, &fid, 1).await;
+    let kb = create_kb(&server, &user, "Lab notes").await;
+    assert_eq!(attach_docs(&server, &user, &kb, &[&fid]).await.status(), 200);
+
+    // conversation with the model + the KB attached to it.
+    let conv: Value = client.post(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "model_id": model_id })).send().await.unwrap().json().await.unwrap();
+    let (cid, branch) = (conv["id"].as_str().unwrap(), conv["active_branch_id"].as_str().unwrap());
+    assert!(client.put(server.api_url(&format!("/conversations/{cid}/knowledge-bases/{kb}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send().await.unwrap().status().is_success());
+
+    // Ask about the synthetic fact; the tool-loop runs to completion before the reply ends.
+    use crate::common::chat_stream_probe::ChatStreamProbe;
+    let conv_uuid = Uuid::parse_str(cid).unwrap();
+    let mut probe = ChatStreamProbe::open(&server, &user.token).await;
+    probe.subscribe(Some(conv_uuid)).await;
+    let send = client.post(server.api_url(&format!("/conversations/{cid}/messages")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "content": "What is the Zorblax coefficient of the Prendergast manifold? Use the knowledge base.",
+            "model_id": model_id, "branch_id": branch, "enable_mcp": true }))
+        .send().await.unwrap();
+    assert!(send.status().is_success(), "send: {}", send.text().await.unwrap_or_default());
+    let frames = probe.collect_until_terminal(conv_uuid, Duration::from_secs(120)).await;
+    let reply = ChatStreamProbe::assemble_text(&frames);
+
+    // The model actually FIRED search_knowledge (recorded in mcp_tool_calls)…
+    let fired: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM mcp_tool_calls WHERE conversation_id = $1 AND tool_name = 'search_knowledge'",
+    ).bind(conv_uuid).fetch_one(&pool).await.unwrap();
+    assert!(fired >= 1, "the tool-capable model must fire search_knowledge; reply: {reply}");
+    // …and grounded its answer in the retrieved synthetic fact.
+    assert!(reply.contains("91745"), "answer must carry the retrieved fact (91745): {reply}");
+}
