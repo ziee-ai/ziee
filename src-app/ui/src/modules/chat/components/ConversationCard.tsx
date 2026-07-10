@@ -9,6 +9,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import type { ConversationResponse } from '@/api-client/types'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
+import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
 
 dayjs.extend(relativeTime)
 
@@ -110,6 +111,8 @@ export function ConversationCard({
       aria-label={conversation.title || 'Untitled Conversation'}
       onClick={handleCardClick}
       onAuxClick={handleCardClick}
+      draggable
+      onDragStart={e => setConversationDragData(e.dataTransfer, conversation.id)}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()

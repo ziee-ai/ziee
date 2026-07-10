@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
@@ -7,6 +7,10 @@ import { ChatPaneProvider } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ConversationPane } from '@/modules/chat/pages/ConversationPage'
 import { PaneTabStrip } from '@/modules/chat/components/PaneTabStrip'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
+import {
+  dragKind,
+  readConversationDragId,
+} from '@/modules/chat/core/pane/paneDnd'
 
 /**
  * In-window split chat (ITEM-8). Renders the `SplitView` store's ordered panes
@@ -103,6 +107,23 @@ export function SplitChatView() {
 function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const drag = useRef<{ x: number; w: number } | null>(null)
+  // Seam drop-zone (ITEM-31): dropping a conversation on the divider opens a NEW
+  // pane at this index (after the left pane). File drags are ignored.
+  const [seamDropActive, setSeamDropActive] = useState(false)
+  const onSeamDragOver = (e: React.DragEvent) => {
+    if (dragKind(e.dataTransfer) !== 'conversation') return
+    e.preventDefault()
+    setSeamDropActive(true)
+  }
+  const onSeamDrop = (e: React.DragEvent) => {
+    setSeamDropActive(false)
+    if (dragKind(e.dataTransfer) !== 'conversation') return
+    const cid = readConversationDragId(e.dataTransfer)
+    if (!cid) return
+    e.preventDefault()
+    const afterPaneId = Stores.SplitView.$.panes[leftPaneIndex]?.paneId
+    Stores.SplitView.openPane({ conversationId: cid, afterPaneId })
+  }
   // Live index in a ref so the stable window handlers always resize the CURRENT
   // divider even after a pane reorder changed this divider's leftPaneIndex.
   const idxRef = useRef(leftPaneIndex)
@@ -175,7 +196,13 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
       data-testid={`split-divider-${leftPaneIndex}`}
       onPointerDown={onDown}
       onKeyDown={onKeyDown}
-      className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none"
+      onDragOver={onSeamDragOver}
+      onDragLeave={() => setSeamDropActive(false)}
+      onDrop={onSeamDrop}
+      className={cn(
+        'shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none',
+        seamDropActive ? 'w-2 bg-primary' : 'w-1',
+      )}
     />
   )
 }

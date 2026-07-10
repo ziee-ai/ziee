@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useParams } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
-import { Columns2, Search as SearchIcon, X } from 'lucide-react'
+import { Columns2, GripVertical, Search as SearchIcon, X } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import {
   MessageList,
@@ -14,6 +14,14 @@ import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { ConversationPickerPane } from '@/modules/chat/components/ConversationPickerPane'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
 import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
+import {
+  dragKind,
+  isWorkspaceDrag,
+  readConversationDragId,
+  readPaneDragId,
+  reorderIndices,
+  setPaneDragData,
+} from '@/modules/chat/core/pane/paneDnd'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
@@ -76,6 +84,37 @@ export function ConversationPane() {
   }>()
   const pane = useChatPaneOrNull()
   const closePane = useClosePane()
+  // Pane header drop-zone (ITEM-31): a conversation dropped on the header replaces
+  // this pane; a pane-header drag dropped here reorders. File drags are ignored
+  // (they belong to the composer) — the header is not over the composer, so they
+  // never cross-fire. `paneDropActive` drives the drop highlight.
+  const [paneDropActive, setPaneDropActive] = useState(false)
+  const onPaneHeaderDragOver = (e: React.DragEvent) => {
+    if (!pane || !isWorkspaceDrag(e.dataTransfer)) return
+    e.preventDefault()
+    setPaneDropActive(true)
+  }
+  const onPaneHeaderDrop = (e: React.DragEvent) => {
+    if (!pane) return
+    setPaneDropActive(false)
+    const kind = dragKind(e.dataTransfer)
+    if (kind === 'conversation') {
+      const cid = readConversationDragId(e.dataTransfer)
+      if (cid) {
+        e.preventDefault()
+        Stores.SplitView.setPaneConversation(pane.paneId, cid)
+      }
+    } else if (kind === 'pane') {
+      const from = readPaneDragId(e.dataTransfer)
+      const idx = from
+        ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId)
+        : null
+      if (idx) {
+        e.preventDefault()
+        Stores.SplitView.reorderPanes(idx.from, idx.to)
+      }
+    }
+  }
   // In a pane the provider owns the target conversation id (the URL param is the
   // route's, not this pane's); on the single-pane route it's the URL param.
   const conversationId = pane
@@ -576,10 +615,28 @@ export function ConversationPane() {
           in-column header (title + controls + close-pane) inside a split pane. */}
       {pane ? (
         <div
-          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3"
+          className={cn(
+            'flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3',
+            paneDropActive && 'bg-primary/10 ring-2 ring-primary ring-inset',
+          )}
           data-testid="chat-pane-header"
+          onDragOver={onPaneHeaderDragOver}
+          onDragLeave={() => setPaneDropActive(false)}
+          onDrop={onPaneHeaderDrop}
         >
           <div className="flex min-w-0 items-center gap-2">
+            {/* Reorder handle (ITEM-31): drag this pane's header onto another
+                pane to reorder. A span (not a button) so it doesn't steal the
+                title's focus; keyboard reorder is out of scope for the handle. */}
+            <span
+              draggable
+              onDragStart={e => setPaneDragData(e.dataTransfer, pane.paneId)}
+              data-testid="chat-pane-grip"
+              aria-label="Drag to reorder pane"
+              className="shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </span>
             <TitleEditor />
           </div>
           <div className="flex items-center gap-1">

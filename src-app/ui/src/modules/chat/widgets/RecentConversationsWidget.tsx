@@ -21,6 +21,7 @@ import {
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
+import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
 
 const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 
@@ -130,7 +131,14 @@ export function RecentConversationsWidget() {
           key: c.id,
           title,
           label: (
-            <span className="truncate" title={title}>
+            // Drag source (ITEM-31): drag a conversation onto a pane header
+            // (replace) or the inter-pane seam (new pane).
+            <span
+              className="truncate"
+              title={title}
+              draggable
+              onDragStart={e => setConversationDragData(e.dataTransfer, c.id)}
+            >
               {title}
             </span>
           ),
