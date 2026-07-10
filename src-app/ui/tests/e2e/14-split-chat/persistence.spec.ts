@@ -42,12 +42,22 @@ test.describe('Split chat — layout persistence', () => {
     await expect(pane0).toBeVisible({ timeout: 15000 })
     await expect(pane1).toBeVisible({ timeout: 15000 })
 
-    // Resize the left pane via the keyboard-operable divider (WCAG path).
+    // Capture the DEFAULT pane width first, so we can prove the resize actually
+    // diverged from it — otherwise a persistence RESET-to-default would false-green
+    // the reload check below (audit MEDIUM, a20f).
+    const TOL = 24
+    const widthDefault = (await pane0.boundingBox())?.width ?? 0
+    expect(widthDefault).toBeGreaterThan(0)
+
+    // Resize the left pane via the keyboard-operable divider (WCAG path). Enough
+    // steps to move well beyond the tolerance so the divergence is unambiguous.
     const divider = byTestId(page, 'split-divider-0')
     await divider.focus()
-    for (let i = 0; i < 6; i++) await divider.press('ArrowRight')
+    for (let i = 0; i < 12; i++) await divider.press('ArrowRight')
     const widthBefore = (await pane0.boundingBox())?.width ?? 0
-    expect(widthBefore).toBeGreaterThan(0)
+    // The resize genuinely changed the width away from the default — without this
+    // the persistence assertion could pass on a silent reset-to-default.
+    expect(Math.abs(widthBefore - widthDefault)).toBeGreaterThan(TOL)
 
     // Full reload — the layout must come back from localStorage.
     await page.reload()
@@ -57,9 +67,11 @@ test.describe('Split chat — layout persistence', () => {
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 20000 })
     await expect(byTestId(page, 'split-divider-0')).toBeVisible()
 
-    // The resized width persisted (allow a few px of layout tolerance).
+    // The reloaded width matches the RESIZED width (persisted), not the default —
+    // i.e. within tolerance of widthBefore AND still diverged from widthDefault.
     const widthAfter =
       (await byTestId(page, 'chat-pane-0').boundingBox())?.width ?? 0
-    expect(Math.abs(widthAfter - widthBefore)).toBeLessThan(24)
+    expect(Math.abs(widthAfter - widthBefore)).toBeLessThan(TOL)
+    expect(Math.abs(widthAfter - widthDefault)).toBeGreaterThan(TOL)
   })
 })

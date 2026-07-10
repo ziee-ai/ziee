@@ -12,16 +12,19 @@ import { mockPaginatedMessages, mockUserMessage } from '../helpers/sse-mock-help
 const BODY = (i: number) =>
   `Message number ${i}. ` + 'Lorem ipsum dolor sit amet. '.repeat(6)
 
-async function seedConversation(apiURL: string, token: string, title: string) {
-  const res = await fetch(`${apiURL}/api/conversations`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ title }),
+async function seedConversation(
+  page: import('@playwright/test').Page,
+  apiURL: string,
+  token: string,
+  title: string,
+) {
+  // Use Playwright's request context (not node `fetch`) to match the sibling
+  // specs' seeding idiom (audit LOW, a50e/patterns).
+  const res = await page.request.post(`${apiURL}/api/conversations`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { title },
   })
-  if (!res.ok) throw new Error(`seed failed: ${res.status}`)
+  if (res.status() >= 300) throw new Error(`seed failed: ${res.status()}`)
   return (await res.json()).id as string
 }
 
@@ -33,7 +36,7 @@ test.describe('Split chat — per-pane scroll + virtualization', () => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
-    const convA = await seedConversation(apiURL, token, 'Scroll Pane A')
+    const convA = await seedConversation(page, apiURL, token, 'Scroll Pane A')
 
     // 30 messages (one page). Mocked for every /messages fetch — only pane A
     // (conv A) fetches; the new-chat pane B fetches none.

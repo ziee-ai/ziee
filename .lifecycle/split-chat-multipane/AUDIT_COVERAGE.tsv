@@ -39,3 +39,10 @@ src-app/ui/src/modules/user-llm-providers/ModelPicker.store.ts	1	999999	correctn
 src-app/ui/src/modules/user-llm-providers/chat-extension/components/ModelSelector.tsx	1	999999	correctness,concurrency,state-management,security,perms,api-contract,error-handling,perf,patterns-conformance,a11y,tests-quality,i18n
 src-app/ui/src/modules/user-llm-providers/chat-extension/extension.tsx	1	999999	correctness,concurrency,state-management,security,perms,api-contract,error-handling,perf,patterns-conformance,a11y,tests-quality,i18n
 src-app/ui/src/modules/workflow/components/WorkflowRunDialog.tsx	1	999999	correctness,concurrency,state-management,security,perms,api-contract,error-handling,perf,patterns-conformance,a11y,tests-quality,i18n
+src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx	1	999999	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	999999	correctness,tests-quality,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/independent-input.spec.ts	1	999999	correctness,error-handling,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/independent-streaming.spec.ts	1	999999	correctness,error-handling,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/independent-scroll.spec.ts	1	999999	correctness,error-handling,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/persistence.spec.ts	1	999999	correctness,error-handling,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/popout-new-tab.spec.ts	1	999999	correctness,error-handling,patterns-conformance

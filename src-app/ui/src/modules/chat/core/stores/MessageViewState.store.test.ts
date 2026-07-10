@@ -60,3 +60,27 @@ test('markFileSeen / setFileHeight seed a default entry before mutating', () => 
     heightPx: null,
   })
 })
+
+test('TEST-41: scoped resetViewState(messageIds) drops only those messages — another pane/conversation is untouched', () => {
+  // The split feature made this store hold SEVERAL conversations' view-state at
+  // once (message ids are globally unique), so switching one pane's conversation
+  // must NOT wipe another still-open pane's. resetViewState(ids) is the scoped
+  // path: it drops only the given conversation's collapse entries.
+  s().setMessageCollapsed('convA-m1', false)
+  s().setMessageCollapsed('convA-m2', false)
+  s().setMessageCollapsed('convB-m1', false)
+  s().setMessageCollapsed('convB-m2', false)
+
+  // Pane A switches away from conversation A → drop only A's message view-state.
+  s().resetViewState(['convA-m1', 'convA-m2'])
+
+  // A's entries are gone (revert to the default), B's are retained.
+  assert.equal(s().collapsed['convA-m1'], undefined, 'A message-1 view-state dropped')
+  assert.equal(s().collapsed['convA-m2'], undefined, 'A message-2 view-state dropped')
+  assert.equal(s().collapsed['convB-m1'], false, 'B message-1 view-state retained')
+  assert.equal(s().collapsed['convB-m2'], false, 'B message-2 view-state retained')
+
+  // And the no-arg reset still clears everything (single-pane / global path).
+  s().resetViewState()
+  assert.deepEqual(s().collapsed, {})
+})

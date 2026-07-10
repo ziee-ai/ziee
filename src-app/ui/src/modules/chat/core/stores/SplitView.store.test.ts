@@ -58,12 +58,15 @@ test('closePane atomically reassigns focus to a surviving neighbour', () => {
   const c = s().openPane({ conversationId: 'c' })
   s().focusPane(b!)
   s().closePane(b!)
-  // Focus must never point at a removed pane; it reassigns to the pane now at
-  // the closed index (c) — never null while panes remain.
+  // Focus deterministically reassigns to the pane now AT the closed index
+  // (panes[idx] === c) — pinned exactly (not `a || c`) so a regression that
+  // changed neighbour-selection to panes[idx-1] would fail (audit MEDIUM,
+  // fork1/a6aff). Never null while panes remain, never the removed pane.
   assert.equal(s().panes.length, 2)
-  assert.ok(
-    s().focusedPaneId === a || s().focusedPaneId === c,
-    'focus reassigned to a surviving pane',
+  assert.equal(
+    s().focusedPaneId,
+    c,
+    'focus reassigns to the pane now at the closed index (c)',
   )
   assert.notEqual(s().focusedPaneId, b, 'focus never points at the removed pane')
   assert.ok(s().panes.every((p) => p.paneId !== b))
@@ -101,11 +104,17 @@ test('reorderPanes moves a pane; out-of-bounds is a no-op', () => {
     s().panes.map((p) => p.conversationId),
     ['b', 'c', 'a'],
   )
-  s().reorderPanes(5, 0) // out of bounds
+  s().reorderPanes(5, 0) // fromIndex out of bounds
   assert.deepEqual(
     s().panes.map((p) => p.conversationId),
     ['b', 'c', 'a'],
-    'an out-of-bounds reorder leaves the order unchanged',
+    'an out-of-bounds fromIndex leaves the order unchanged',
+  )
+  s().reorderPanes(0, 9) // toIndex out of bounds (guards both ends — audit LOW)
+  assert.deepEqual(
+    s().panes.map((p) => p.conversationId),
+    ['b', 'c', 'a'],
+    'an out-of-bounds toIndex leaves the order unchanged',
   )
 })
 

@@ -97,6 +97,7 @@ test.describe('Split chat — open-split + input isolation', () => {
       headers: { Authorization: `Bearer ${token}` },
       data: { title: 'Single Pane Regression' },
     })
+    expect(res.status()).toBeLessThan(300)
     const convId = (await res.json()).id as string
 
     await page.goto(`${baseURL}/chat/${convId}`)
