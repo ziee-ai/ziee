@@ -1,15 +1,32 @@
-# Office Bridge — DRIFT round 1 (implementation vs plan)
+# DRIFT-1 — office-bridge (consolidated)
 
-Audited the implemented code (14 commits, ITEM-1..15) against PLAN.md / DECISIONS.md. Divergences and
-their resolution:
+Implementation-vs-plan reconciliation, consolidated across the five stages. Each
+stage ran its own drift loop to convergence during its build (the per-stage
+DRIFT files are preserved in branch history); the material divergences that
+shaped the shipped code are summarized here, all already reconciled.
 
-- **DRIFT-1.1** — verdict: impl-wins — Cert design changed from a single self-signed `CA:true` cert (PLAN ITEM-4) to a proper **CA + leaf chain**. The single-CA-as-leaf cert failed rustls/webpki with `CaUsedAsEndEntity` (TEST-7). The chain (trust the CA, serve leaf+CA) is correct for BOTH rustls and WebView2/Chromium. Plan intent (a trusted localhost cert) is preserved; the mechanism was wrong and is amended in code. TEST-6/TEST-7 pass.
-- **DRIFT-1.2** — verdict: impl-wins — PLAN hedged the deploy kill-switch (const fallback if non-trivial); the impl added the real `OfficeBridgeConfig { enabled }` field as a trivial mirror of `WebSearchConfig`/`ControlMcpConfig`, directly satisfying DEC-12. The plan's cautious wording is superseded by the cleaner real config.
-- **DRIFT-1.3** — verdict: impl-wins — Added a REST `GET /api/office-bridge/documents` endpoint (gated `OfficeBridgeUse`) not explicitly enumerated in PLAN. It is required by ITEM-14's sync notify-and-refetch panel (ziee sync convention needs a permission-checked refetch endpoint). The plan's ITEM-14 assumed a refetch source without naming it; the endpoint is the idiomatic realization.
-- **DRIFT-1.4** — verdict: resolved — TEST-16 was written as `#[cfg(test)]` unit tests of `run_connect` (with `MockOfficePlatform`) rather than an HTTP integration test in `settings_test.rs` (TESTS.md tier). The admin-gating (403) is enforced by the `RequirePermissions<(OfficeBridgeManage,)>` extractor + `connect_docs`; a formal HTTP-403 integration assertion is scheduled for the Phase-8 pass. TEST-16 (the id) passes.
-- **DRIFT-1.5** — verdict: none — `windows` crate resolved to 0.61 (PLAN tentatively said 0.58, which is unavailable); the plan explicitly allowed "the version resolving with the tree". No real divergence.
-- **DRIFT-1.6** — verdict: resolved — `update_settings` does not `sync_publish` (web_search's does); that would need a `SyncEntity::OfficeBridgeSettings` variant, out of scope for v1 and not required by the panel (which keys on `SyncEntity::OfficeDocument`). Deferred deliberately, not a defect.
-- **DRIFT-1.7** — verdict: none — the `gate:ui` orchestrator (`scripts/gate-ui.mjs`) is environmentally Windows-broken (`spawn('npm')` ENOENT); its criteria (tsc + lint via `npm run check`, runtime-health) were run directly and pass for the office-bridge surface. This is a pre-existing tooling limitation, not an office_bridge code drift. `npm run check` is fully green.
-- **DRIFT-1.8** — verdict: resolved — the cert cache changed from 2-file to a 4-file scheme (CA + leaf + keys) with an empty CA-key marker (the CA key is never re-used in-process). Functional; the persistence test (`load_or_mint_persists_and_reuses`) confirms byte-identical reuse.
+- **DRIFT-1.1** — verdict: impl-wins — Windows live pane verification became a
+  manual `WINDOWS_PANE_VERIFICATION.md` checklist rather than a `#[cfg(windows)]
+  #[ignore]` cargo test: a real WebView2 pane can't be driven from cargo, exactly
+  as the Mac verification is a manual doc. The cross-platform *backend* is proven
+  by the non-cfg-gated `pane_rpc_test.rs`. PLAN amended accordingly.
+- **DRIFT-1.2** — verdict: impl-wins — the WSS socket loop uses a `tokio::select!`
+  duplex instead of a split-sink + writer-task; same effect, no `futures` split
+  dependency. Frontend module discovery is glob-driven, so the server→desktop
+  relocation needed no registry edits.
+- **DRIFT-1.3** — verdict: plan-wins — the mode-gated approval decision was
+  extracted to the pure `compute_needs_approval` (server `office_approval.rs`) so
+  the office read-bypass is unit-testable AND the loop stays behaviour-preserving;
+  the plan's split was implemented as written.
+- **DRIFT-1.4** — verdict: resolved — the office approval path gained real
+  integration coverage (`office_approval_test.rs` + `mock_office_server.rs`) after
+  an initial (wrong) "not feasible in the server harness" note; a mock MCP server
+  under the deterministic office id drives the real read-bypass / write-approval
+  loop. The earlier note is superseded.
+- **DRIFT-1.5** — verdict: resolved — the consolidated-lifecycle re-audit surfaced
+  8 findings in the (relocated) code; 7 fixed (cert-staging TOCTOU on both
+  platforms, a dead test, two stale migration cross-refs, plus a leak in the fix
+  itself caught by the round-2 re-audit), 1 rejected with rationale (see LEDGER +
+  FIX_ROUND-1).
 
 **Unresolved drifts:** 0

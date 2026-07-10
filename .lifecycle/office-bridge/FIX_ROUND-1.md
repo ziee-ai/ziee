@@ -1,32 +1,27 @@
-# FIX_ROUND 1
+# FIX_ROUND-1 — office-bridge (consolidated)
 
-Fixed the confirmed + high-value suspected LEDGER findings (commit 42fa566b), then ran a blind
-re-audit of the fix diff.
+The consolidated blind audit (12 parallel angle-groups over the whole branch diff
+vs `origin/main`, `LEDGER.jsonl`) surfaced 8 findings in the relocated code. Fixes
+(commit `harden(office_bridge): fix … findings from the consolidated-lifecycle re-audit`):
 
-## Fixes applied (from the phase-6 ledger)
-- Chat-extension order 29 → **23** (was colliding with `citations`); comment corrected. (confirmed)
-- Session-token store bounded (FIFO cap 64) + `revoke()` + eviction unit test. (confirmed leak)
-- POST sinks now enforce the same **Origin allowlist** as `/bridge` (403 before token). (confirmed)
-- Watcher `diff_open_docs` no longer keyed so a title-only fallback flips COM identity. (suspected)
-- JSON-RPC `tools/call` re-checks runtime `office_bridge_settings.enabled` → typed disabled error. (suspected)
-- `connect` wraps the blocking `run_connect` platform calls in `spawn_blocking`. (suspected)
-- `edit_document` append rejects missing/blank `text` with INVALID_ARGS + test. (suspected)
-- Frontend store gains an `error` state + panel `Alert` error branch; `onError` wired. (confirmed)
-- `taskpane.html` token-replace comment corrected; decorative icons get `aria-hidden`. (confirmed/suspected)
-- Accepted (documented in code, no behavior change): token in `window.__ZIEE_BRIDGE_TOKEN__` (standard
-  add-in same-origin model); CA `BasicConstraints::Unconstrained` safeguarded by discarding the CA key.
+- **macos.rs / windows.rs cert-staging TOCTOU (MED, security)** — both staged the CA
+  at a predictable `temp_dir()/ziee-bridge-cert-<pid>.cer` via non-exclusive `fs::write`
+  before a privileged `security add-trusted-cert` / `certutil -addstore Root`. Fixed via
+  a shared `platform::stage_cert_der` that creates a private, exclusively-created temp
+  dir (`create_dir` fails-if-exists; unix `0700`/`0600`; cert file `create_new`/O_EXCL) —
+  closes CWE-377 on both platforms.
+- **unsupported.rs dead test (MED, tests-quality)** — `test11_mac_transport_verified` was
+  `cfg(target_os=macos)` inside a `cfg(not(macos))` module → never compiled anywhere.
+  Removed (real coverage lives in `macos.rs::tests::mac_transport_verified`).
+- **migrations 006/007 stale cross-refs (LOW ×2)** — corrected leftover server-crate
+  "migration 133" references to the desktop-crate numbers.
+- **pane_rpc_test real-LLM gating (LOW, tests-quality)** — REJECTED the finding's
+  `#[ignore]` recommendation (A3 forbids diff-added `#[ignore]`); the existing runtime
+  soft-skip is the lifecycle-compliant gate. Reworded the doc to state this.
+- **settings_mcp_test substring secret-scan (LOW, tests-quality)** — REJECTED: the
+  adjacent explicit field-allowlist assertion is the real no-leak guarantee; the
+  substring checks are harmless defense-in-depth. (LEDGER status: rejected.)
 
-Verification: `cargo check -p ziee` + `--tests` green; 38 lib tests pass (incl. new eviction / empty-text /
-title-only cases); TEST-7 integration passes; `npm run check` green; TEST-17 (4/4) + TEST-18 pass.
-
-## Blind re-audit of the fix diff — NEW confirmed defect (a regression introduced by fix #4)
-- **watcher.rs**: excluding `window_enum_presence` (title-only) entries from the **closed** set was an
-  over-correction. For the OPEN case the panel's own refetch still surfaces the doc, but for the CLOSE
-  case, a title-only doc that was on-screen and then genuinely closes now emits **no** sync frame, so the
-  refetch-driven panel keeps a **ghost/stale entry** until an unrelated event fires (that close WAS emitted
-  before the fix). The original "spurious close+open on COM-flip" it was fixing is actually benign for a
-  notify-and-refetch panel (a harmless extra refetch), so suppressing closes traded a benign issue for a
-  real one. Resolution in round 2: emit open/close for ALL docs (revert the exclusion), documenting that
-  the rare COM-flip merely causes an extra (harmless) refetch.
+The re-audit of the fixes (phase-7 round) then found **1 new** confirmed finding.
 
 **New confirmed findings:** 1
