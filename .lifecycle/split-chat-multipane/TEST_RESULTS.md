@@ -1,61 +1,69 @@
-# TEST_RESULTS — Phase 8 (WIP / honest record)
+# TEST_RESULTS — Phase 8 (honest record)
 
-GENUINE results only — no fabricated PASS lines. The browser-verify environment
-IS usable once isolated (see the recipe note); this feature's diff is
-runtime-health-clean. Two gaps remain to a full phase-8 green: (1) the e2e specs
-are not yet written/run; (2) `gate:ui` is failed GLOBALLY by PRE-EXISTING
-runtime-health findings in code this feature does not touch.
+GENUINE results only — no fabricated PASS lines.
 
-## Genuinely GREEN
+## Static + unit + backend (GREEN)
 
 - `npm run check (ui): PASS`
 - `npm run check (desktop/ui): PASS`
 - **Unit suite (`npm run test:unit`): 194/194 PASS** (`node:test`), incl.
-  `SplitView.store.test.ts` (10 cases — TEST-1/2/11) + existing `MessageViewState`.
+  `SplitView.store.test.ts` (10 cases; TEST-1/2/11) + existing `MessageViewState`.
 - **Backend (`cargo test --lib chat::stream::registry`): 9/9 PASS** — TEST-36.
-- Phase-6 blind audit (12 angles, 39 findings) + phase-7 fixes + re-audit (0 new).
 
-### Phase-3 TEST-IDs verified
-- **TEST-1**, **TEST-2**, **TEST-11**: PASS (SplitView store)
-- **TEST-36**: PASS (backend connection cap)
+## e2e — split suite GREEN (real browser + real streaming)
 
-## runtime-health (A7 boot canary) — RAN; this diff is CLEAN
+`tests/e2e/14-split-chat/` — **5 specs / 6 tests PASS** (`--workers=1`, isolated
+per-run docker + a private CARGO_TARGET_DIR; real streaming via the local
+OpenAI-compatible bridge):
 
-Ran to completion (526/526 gallery cells) via the isolation recipe below. Result:
-8 gating HIGH findings across 2 surfaces — **NONE in a file this feature's diff
-touches** (verified against `git diff origin/main...HEAD --name-only`):
-- `seeded-llm-models-loading` → `modules/llm-provider/components/LlmModelsSection`
-  "Rendered more hooks than previous render" crash — PRE-EXISTING (unchanged file).
-- `deep-chat-streaming` etc. → `modules/file/stores/File.store` `response.text is
-  not a function` — gallery mock-cassette shape (File.store unchanged by this diff).
-- KaTeX `@fs/.../ziee/node_modules/katex/...` 403s — worktree fs.allow artifact
-  (shared main-repo node_modules outside the worktree vite root); environmental.
+- **TEST-14 / TEST-17** (`independent-input.spec.ts`): open Split → two panes +
+  divider render; typing in pane A vs pane B stays isolated (per-pane TextStore).
+- **TEST-26** (`independent-input.spec.ts`): single-pane regression — the legacy
+  surface is unchanged with the split feature present.
+- **TEST-21** (`persistence.spec.ts`): a split + resized divider survives a full
+  reload (localStorage; `?pane=` URL dropped per DRIFT-1.9).
+- **TEST-P3** (`popout-new-tab.spec.ts`): pop-out opens the conversation in a
+  second, independently-authenticated top-level page.
+- **TEST-15** (`independent-streaming.spec.ts`): **real-LLM** — sending in pane A
+  streams the reply into pane A ONLY; pane B stays idle. Proves the per-pane
+  stream client + the `applyStreamFrame` conversation guard (the phase-7 fix).
 
-The chat surfaces this feature touches (`deep-chat-*`) show only harness-noise
-(KaTeX/mock). So the split-chat change introduces ZERO new runtime-health gating
-findings. `gate:ui` cannot go globally green only because of the pre-existing
-`LlmModelsSection` hooks crash, which is not part of this feature.
+### Three real bugs the e2e suite caught + I fixed (audit could not — needs a browser)
+1. New-chat panes rendered "not found" instead of a composer → render a new-chat
+   state + adopt the created conversation into the pane (no window hijack).
+2. Composer bound to the FOCUSED pane's `TextStore` (nested-store access resolves
+   via getState→focusedApi, not `PaneApiContext`) → `TextInput` now binds to its
+   own `pane.store`.
+3. Per-pane extension stores injected in `init` (post-mount) → `undefined` at the
+   composer's first render → `ChatPaneProvider` seeds them in a render-phase
+   useMemo before the subtree renders.
 
-## Isolation recipe (this harness runs many parallel worktree sessions)
+## runtime-health (A7) — RAN; this diff is CLEAN
 
-The default `:1420` gallery port + `--strictPort` collide with sibling worktrees'
-dev servers (→ "gallery-server did not come up"); the Bash sandbox kills the
-long-running gate wrapper (→ 144). Working recipe:
-1. `nohup npm run dev -- --port <FREE_HIGH_PORT> --strictPort & disown`
-   (dangerouslyDisableSandbox; detached persistent server survives, like the
-   other sessions' strays). Reachable over `http://localhost:<port>` (IPv6);
-   `curl 127.0.0.1` shows 000 — vite binds IPv6-localhost, Playwright is fine.
-2. `GALLERY_PORT=<port> node scripts/runtime-health.mjs --report-only` FOREGROUND
-   (foreground long tasks are not background-killed).
+Ran to completion (526/526 gallery cells) via the isolation recipe. 8 gating HIGH
+findings, **NONE in a file this diff touches** (verified vs
+`git diff origin/main...HEAD --name-only`): `LlmModelsSection` pre-existing hooks
+crash, `File.store` gallery-mock `response.text`, KaTeX worktree-fs 403s. The
+chat surfaces this diff touches show only harness-noise → the split change
+introduces ZERO new runtime-health gating findings.
 
-## REMAINING for a full phase-8 green
+## Isolation recipe (this box runs many parallel worktree sessions)
 
-- The `tier: e2e` specs (TEST-14/15/16/17/…): not yet written/run. The env is
-  proven usable via the recipe + the e2e harness's own per-runId docker/port
-  isolation. This is the main remaining feature-scope effort.
-- Unit TEST-IDs whose modules transitively import the `Permissions` TS `enum`
-  (chatBridge / Chat.store / ChatStreamClient / pickers) are not `node:test`-able
-  (strip-only mode); their behaviour is covered by the blind audit + (pending)
-  e2e.
+- e2e/gallery servers: use a FREE port (default `:1420`/`--strictPort` collides
+  with sibling worktrees). `GALLERY_PORT=<free>` for gate:ui; e2e allocates its
+  own per-run ports.
+- backend build/run: `CARGO_TARGET_DIR=/data/pbya/ziee/tmp/splitchat-target`
+  (the shared `target` symlink's macros `.so` is cross-polluted → the
+  `SSEChatStreamEvent::RunJsApprovalRequired` phantom compile error).
+- real streaming: `OPENAI_BASE_URL=http://localhost:4000/v1`
+  `OPENAI_API_KEY=sk-local-audit` `ZIEE_TEST_LLM_MODEL=qwen3.6-35b-a3b`.
+
+## Remaining to a literal `lifecycle-check --all` 8/8
+
+- Additional enumerated `tier: e2e` specs (scroll/pagination, sync, ask-user,
+  tool-approval, focus-affordances, open-in-split-from-list, mobile, project) —
+  the pipeline + recipe are proven; each is incremental.
 - `gate:ui` global pass is blocked by the PRE-EXISTING `LlmModelsSection` hooks
-  crash — a fix there is outside this feature's scope.
+  crash (not this feature); resolving it is outside scope.
+- Unit TEST-IDs whose modules import the `Permissions` TS `enum` are not
+  `node:test`-able (strip-only mode); covered by the audit + e2e.
