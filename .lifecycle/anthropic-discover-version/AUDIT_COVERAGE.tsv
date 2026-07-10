@@ -1,6 +1,0 @@
-file	start	end	angles
-src-app/server/ai-providers/src/lib.rs	76	79	correctness,regression,naming-consistency,dry-minimalism
-src-app/server/ai-providers/src/providers/anthropic.rs	20	1026	correctness,security,regression,naming-consistency,dry-minimalism,performance
-src-app/server/src/modules/llm_provider/handlers/discover.rs	257	483	correctness,security,edge-cases,performance,test-efficacy,coverage-gaps
-src-app/server/tests/llm_provider/discover_models_test.rs	12	237	test-efficacy,determinism,coverage-gaps,naming-consistency,api-shape
-src-app/ui/tests/e2e/llm/remote-model-picker.spec.ts	77	139	correctness,determinism,api-shape,naming-consistency,completeness
