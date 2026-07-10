@@ -1140,12 +1140,12 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 52 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 69 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 85 |
-| branch | `scopedHref?.startsWith('#')` | 106 |
-| empty | `verdict === 'empty'` | 161 |
-| branch | `verdict === 'allowed'` | 162 |
+| branch | `isFootnoteLabel(props.id)` | 56 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 72 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 88 |
+| branch | `scopedHref?.startsWith('#')` | 105 |
+| empty | `verdict === 'empty'` | 160 |
+| branch | `verdict === 'allowed'` | 161 |
 
 ### `modules/chat/extensions/export/extension`
 
