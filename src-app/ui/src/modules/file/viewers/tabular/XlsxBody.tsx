@@ -47,10 +47,15 @@ export function XlsxSheet({
   // toolbar needs only a little top space (tight). A single-sheet book has no
   // strip, so it keeps the fuller top inset that separates it from the header.
   tightTop = false,
+  // Fill the parent height (fixed toolbar + scrolling body) instead of capping.
+  // The panel viewer (XlsxBody) sets it; the standalone gallery demo leaves it
+  // off (its wrapper has no definite height, so h-full would collapse to 0).
+  fill = false,
 }: {
   sheet: Sheet
   fileName?: string
   tightTop?: boolean
+  fill?: boolean
 }) {
   const { columns, dataSource, exportColumns } = useMemo(() => {
     const colKeys = sheet.headers.map((_, i) => String(i))
@@ -106,6 +111,9 @@ export function XlsxSheet({
     return { columns, dataSource, exportColumns }
   }, [sheet])
 
+  // Virtualize ONLY large sheets. Small sheets stay on the plain path so their
+  // columns keep content-auto widths (table-auto); `fillHeight` (below) still
+  // lets the plain grid fill the panel height + scroll via its own container.
   const virtualized = dataSource.length > VIRTUALIZE_ROW_THRESHOLD
   const viewRef = useRef<TabularRecord[]>(dataSource)
   const [viewCount, setViewCount] = useState(dataSource.length)
@@ -158,7 +166,11 @@ export function XlsxSheet({
       className={cn(
         'flex flex-col w-full px-3',
         tightTop ? 'pt-1' : 'pt-3',
-        virtualized ? 'h-[min(360px,55vh)]' : 'max-h-[min(360px,55vh)]',
+        fill
+          ? 'h-full min-h-0'
+          : virtualized
+            ? 'h-[min(360px,55vh)]'
+            : 'max-h-[min(360px,55vh)]',
       )}
     >
       {sheet.truncated && (
@@ -173,6 +185,7 @@ export function XlsxSheet({
           they share ONE row with filter + columns, not a stacked second row. */}
       <Table
         virtualized={virtualized}
+        fillHeight={fill}
         columns={columns}
         dataSource={dataSource}
         rowKey="key"
@@ -298,19 +311,19 @@ export function XlsxBody(props: FileViewerSlotProps) {
     // locates the xlsx surface whether or not tabs are shown. (The kit Tabs
     // root already forwards this testid in the multi-sheet branch below.)
     return (
-      <div className="flex flex-col w-full" data-testid="file-xlsx-tabs">
-        <XlsxSheet sheet={sheets[0]} fileName={file.filename} />
+      <div className="flex flex-col w-full h-full min-h-0" data-testid="file-xlsx-tabs">
+        <XlsxSheet sheet={sheets[0]} fileName={file.filename} fill />
       </div>
     )
   }
 
   return (
     // Multi-sheet: the Tabs `fill` layout needs a definite height for the grid
-    // panel, so cap at the same bounded height (small multi-sheet books keep the
-    // tab chrome; the single-sheet path above hugs content).
+    // panel, so fill the panel body (h-full) — each sheet's grid then flexes to
+    // use the full height and scrolls within it.
     // pt-2: give the sheet-tab strip some breathing room below the panel header
     // (the strip sat flush against the header border).
-    <div className="flex flex-col h-[min(360px,55vh)] w-full pt-2">
+    <div className="flex flex-col h-full min-h-0 w-full pt-2">
       <Tabs
         data-testid="file-xlsx-tabs"
         fill
@@ -322,7 +335,7 @@ export function XlsxBody(props: FileViewerSlotProps) {
           label: sheet.name,
           children: (
             <div className="flex flex-col min-h-0 overflow-hidden h-full">
-              <XlsxSheet sheet={sheet} fileName={file.filename} tightTop />
+              <XlsxSheet sheet={sheet} fileName={file.filename} tightTop fill />
             </div>
           ),
         }))}

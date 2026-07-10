@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Space, Text } from '@/components/ui'
+import { Button, Card, Text } from '@/components/ui'
 import { Clock, Check, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
@@ -160,74 +160,78 @@ export function ToolCallPendingApprovalContent({
 
   return (
     <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
-      <Alert
-        tone="warning"
-        data-testid="mcp-tool-approval-alert"
-        icon={<Clock />}
-        title={
-          <div>
-            <Text strong>Tool Approval Required: {toolCall.tool_name}</Text>
-            {mcpServerParenLabel(toolCall.server) && (
-              <Text type="secondary" className="ml-2 text-xs whitespace-nowrap">
-                {mcpServerParenLabel(toolCall.server)}
-              </Text>
+      <Card
+        size="sm"
+        className="mb-2"
+        data-testid="mcp-tool-approval-card"
+        footer={
+          // Right-aligned, negative-left like the elicitation form's Decline/Submit.
+          <div className="flex w-full justify-end gap-2">
+            <Button
+              variant="outline"
+              icon={<X />}
+              onClick={handleDeny}
+              loading={isSubmitting}
+              size="default"
+              data-testid="tool-approval-deny"
+            >
+              Deny
+            </Button>
+            <Button
+              icon={<Check />}
+              onClick={handleApproveOnce}
+              loading={isSubmitting}
+              size="default"
+              data-testid="tool-approval-approve-once"
+            >
+              Approve once
+            </Button>
+            {!isControlWrite && (
+              <Button
+                icon={<Check />}
+                onClick={handleApproveForConversation}
+                loading={isSubmitting}
+                size="default"
+                data-testid="tool-approval-approve-conv"
+              >
+                Approve for this conversation
+              </Button>
             )}
           </div>
         }
-        description={
-          <div className="mt-2">
-            <Text className="text-sm">
-              This tool requires your approval before execution.
+      >
+        {/* Header row — status icon + tool name + server label, mirroring the
+            elicitation Card's header. */}
+        <div className="flex items-center gap-2 min-w-0">
+          <Clock className="size-4 shrink-0 text-warning" />
+          <Text strong className="truncate">{toolCall.tool_name}</Text>
+          {mcpServerParenLabel(toolCall.server) && (
+            <Text type="secondary" className="text-xs whitespace-nowrap">
+              {mcpServerParenLabel(toolCall.server)}
             </Text>
+          )}
+          <Text type="secondary" className="text-xs whitespace-nowrap">
+            — needs approval
+          </Text>
+        </div>
 
-            {toolCall.input !== undefined && (
-              <div className="mt-2">
-                <Text strong className="text-xs">
-                  Arguments:
-                </Text>
-                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs">
-                  {JSON.stringify(toolCall.input, null, 2)}
-                </pre>
-              </div>
-            )}
+        <div className="mt-2">
+          <Text className="text-sm">
+            This tool requires your approval before execution.
+          </Text>
 
-            <div className="mt-3">
-              <Space>
-                <Button
-                  icon={<Check />}
-                  onClick={handleApproveOnce}
-                  loading={isSubmitting}
-                  size="default"
-                  data-testid="tool-approval-approve-once"
-                >
-                  Approve once
-                </Button>
-                {!isControlWrite && (
-                  <Button
-                    icon={<Check />}
-                    onClick={handleApproveForConversation}
-                    loading={isSubmitting}
-                    size="default"
-                    data-testid="tool-approval-approve-conv"
-                  >
-                    Approve for this conversation
-                  </Button>
-                )}
-                <Button
-                  variant="destructive"
-                  icon={<X />}
-                  onClick={handleDeny}
-                  loading={isSubmitting}
-                  size="default"
-                  data-testid="tool-approval-deny"
-                >
-                  Deny
-                </Button>
-              </Space>
+          {toolCall.input !== undefined && (
+            <div className="mt-2">
+              <Text strong className="text-xs">
+                Arguments:
+              </Text>
+              <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs bg-muted">
+                {JSON.stringify(toolCall.input, null, 2)}
+              </pre>
             </div>
-          </div>
-        }
-      />
+          )}
+        </div>
+      </Card>
     </div>
   )
 }

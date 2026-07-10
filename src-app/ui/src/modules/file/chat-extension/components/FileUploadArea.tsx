@@ -6,6 +6,8 @@ import {
   MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE,
   MAX_FILE_UPLOAD_LABEL,
 } from '@/modules/file/constants'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 /**
  * FileUploadArea Component
@@ -24,6 +26,13 @@ export function FileUploadArea() {
   // Depth counter so dragenter/leave bubbling from child nodes doesn't
   // flicker the overlay (only hide once the pointer truly leaves the area).
   const depth = useRef(0)
+  // Gate drag-drop upload on files::upload (mirrors FilePasteHandler). The
+  // DOM listeners are bound once, so read the current flag via a ref rather
+  // than re-binding; the drop handler no-ops and the overlay stays hidden
+  // for a user without the grant.
+  const canUpload = usePermission(Permissions.FilesUpload)
+  const canUploadRef = useRef(canUpload)
+  canUploadRef.current = canUpload
 
   useEffect(() => {
     const el = sentinelRef.current?.closest<HTMLElement>('[data-chat-composer]')
@@ -31,6 +40,7 @@ export function FileUploadArea() {
     setHost(el)
 
     const onEnter = (e: DragEvent) => {
+      if (!canUploadRef.current) return
       e.preventDefault()
       depth.current += 1
       if (e.dataTransfer?.types?.includes('Files')) setDragging(true)
@@ -45,6 +55,7 @@ export function FileUploadArea() {
       }
     }
     const onDrop = (e: DragEvent) => {
+      if (!canUploadRef.current) return
       e.preventDefault()
       depth.current = 0
       setDragging(false)

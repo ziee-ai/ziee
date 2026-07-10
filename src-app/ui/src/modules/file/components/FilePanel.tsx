@@ -1,6 +1,6 @@
-import { FileQuestion, TriangleAlert } from 'lucide-react'
+import { FileQuestion, Pencil, TriangleAlert } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { Empty, Spin, Text, Title } from '@/components/ui'
+import { Button, Empty, Spin, Text, Title } from '@/components/ui'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import {
@@ -8,7 +8,13 @@ import {
   FullPageButton,
 } from '@/modules/file/viewers/shared/chrome'
 import { FileVersionBar } from '@/modules/file/components/FileVersionBar'
+import { FileEditBody } from '@/modules/file/components/FileEditBody'
+import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
+import { DeliverablePinButton } from '@/modules/file/components/DeliverablePinButton'
+import { editableKind } from '@/modules/file/utils/editableTypes'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 /** Hard cap on previewable file size — the SINGLE outer OOM backstop that
  *  prevents even fetching a pathological file. Files above this never trigger a
@@ -73,6 +79,11 @@ export function FilePanelHeaderActions({
       {/* Viewer-specific chrome (toggles / copy / zoom …), when the matched
           viewer declares any. */}
       {HeaderActions ? <HeaderActions file={file} /> : null}
+      {/* Export-as (format conversion) for text deliverables — distinct from the
+          plain Download of original bytes below. */}
+      {editableKind(file) === 'markdown' ? <FileExportMenu file={file} /> : null}
+      {/* Pin/unpin as a deliverable of the active conversation (no-op outside one). */}
+      <DeliverablePinButton file={file} />
       {/* Download is a shell-level affordance guaranteed for EVERY file type. */}
       <DownloadButton file={file} />
       {showFullPage ? <FullPageButton file={file} /> : null}
@@ -103,6 +114,23 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
       initialVersion && initialVersion !== file.version ? initialVersion : null,
     )
   }, [initialVersion, file.version, file.id])
+  // Canvas edit mode — only offered for editable text types (markdown in v1) at
+  // the head version. Entering edit replaces the read-only viewer body.
+  const [editing, setEditing] = useState(false)
+  // Editing appends a new file version (a `files::upload` mutation), so the Edit
+  // affordance is gated on FilesUpload — a user without it must never reach the
+  // editable canvas (FileEditBody / CsvGridEditor), not merely 403 on Save. This
+  // mirrors the module's affordance-gating convention (FileCard's canDownload,
+  // FileUploadButton's canUpload).
+  const canUpload = usePermission(Permissions.FilesUpload)
+  const canEdit = editableKind(file) !== null && !tooLarge && canUpload
+  // Exit edit mode when the panel is reused for a DIFFERENT file (the global
+  // FilePreviewDrawer swaps the `file` prop without remounting FilePanel). Without
+  // this, a stale editor could Save one file's content onto another. Belt-and-
+  // suspenders with the `key={file.id}` on FileEditBody below (fresh remount).
+  useEffect(() => {
+    setEditing(false)
+  }, [file.id])
   const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
   // Read versionTextCache REACTIVELY so the body re-renders when the async text
   // load lands. getVersionText() reads via getState() + kicks off the load but
@@ -114,18 +142,17 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
     : null
 
   return (
-    <div className="flex flex-col h-full w-full bg-background">
+    <div className="flex flex-col h-full w-full bg-card">
       {/* Title bar — panel-owned. Viewer fills the right-side actions area
           when there's a registered viewer; otherwise we surface Download.
           Hosts that render their own header (FilePreviewDrawer) pass
           hideHeader to skip this and avoid duplication. */}
       {!hideHeader && (
         <div
-          // bg-muted/50: a subtle muted header band (matches the drawer footer /
-          // find-bar convention). Without it the header fell through to the
-          // panel's bg-background — the DARKEST token — reading as a heavy black
-          // bar above the lighter bg-card body.
-          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b bg-muted/50"
+          // bg-muted: a muted header band distinct from the bg-card panel body
+          // (which matches the app shell / tab strip). matches the drawer footer /
+          // find-bar convention.
+          className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-border border-b bg-muted"
         >
           <Title level={5} className="!m-0 flex-1 truncate" title={file.filename}>
             {file.filename}
@@ -133,6 +160,17 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           {/* Too-large files always get plain Download — viewer-specific
               actions (PDF page nav, CSV controls, etc.) need the body
               loaded to be meaningful. */}
+          {canEdit && !editing && !isViewingOld && (
+            <Button
+              variant="ghost"
+              onClick={() => setEditing(true)}
+              data-testid="canvas-edit-toggle"
+              aria-label="Edit"
+            >
+              <Pencil className="size-3.5" />
+              Edit
+            </Button>
+          )}
           {tooLarge ? <DownloadButton file={file} /> : <FilePanelHeaderActions file={file} showFullPage={showFullPage} />}
         </div>
       )}
@@ -149,7 +187,9 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
           matches. When viewing a non-head version, render that version's
           text read-only instead (the viewers are head-bound). */}
       <div className="flex-1 overflow-hidden bg-card">
-        {isViewingOld
+        {editing
+          ? <FileEditBody key={file.id} file={file} onDone={() => setEditing(false)} />
+          : isViewingOld
           ? (
             oldVersionText === null
               ? (

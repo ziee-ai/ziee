@@ -36,6 +36,8 @@ schemars.workspace = true
 once_cell.workspace = true
 paste.workspace = true
 libc.workspace = true
+# Embedded JS runtime for the js_tool / run_js built-in (see workspace catalog).
+rquickjs.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -47,6 +49,8 @@ postgresql_embedded.workspace = true
 portpicker.workspace = true
 pgvector.workspace = true
 chrono.workspace = true
+chrono-tz.workspace = true
+croner.workspace = true
 uuid.workspace = true
 dirs.workspace = true
 rand.workspace = true
@@ -73,7 +77,7 @@ futures.workspace = true
 # `json` (catch-all parser for SSE/REST) and `blocking` (used by the
 # embedded-postgres startup probe) are added on top of the workspace's
 # rustls-tls + charset + http2 baseline.
-reqwest = { workspace = true, features = ["json", "blocking", "stream"] }
+reqwest = { workspace = true, features = ["json", "blocking", "stream", "multipart"] }
 # web_search page fetch: readability-style extraction + HTML→markdown.
 dom_smoothie.workspace = true
 htmd.workspace = true

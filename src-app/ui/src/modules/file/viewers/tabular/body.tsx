@@ -25,7 +25,9 @@ function delimitedBody(delimiter: string) {
       return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>
     }
     if (file && mode === 'raw') return <RawCodeView text={content} />
-    return <DelimitedTable text={content} delimiter={delimiter} fileName={file?.filename} fileId={file?.id} />
+    // `fill` in the full panel (file present) so the grid uses the panel height;
+    // inline chat previews (url) stay content-hugging + capped.
+    return <DelimitedTable text={content} delimiter={delimiter} fileName={file?.filename} fileId={file?.id} fill={!!file} />
   }
 }
 

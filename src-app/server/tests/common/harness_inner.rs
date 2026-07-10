@@ -384,6 +384,11 @@ pub struct TestServerOptions {
     /// and exercise accept/reject with KB-to-low-MB bodies instead of allocating
     /// the 128 MiB default. `None` omits the line (server default = 128).
     pub max_file_upload_mb: Option<u64>,
+    /// Deploy-level kill-switch for the `voice` dictation runtime. `None` omits
+    /// the config section (module default = enabled). `Some(false)` disables the
+    /// whole voice surface (no routes mounted, no reaper) — mirrors
+    /// `control_mcp_enabled`.
+    pub voice_enabled: Option<bool>,
 }
 
 impl TestServer {
@@ -645,6 +650,13 @@ secrets:
         // it (the kill-switch test sets Some(false)).
         if let Some(control_enabled) = opts.control_mcp_enabled {
             config.push_str(&format!("\ncontrol_mcp:\n  enabled: {control_enabled}\n"));
+        }
+
+        // voice defaults ON; only write the section when a test overrides it
+        // (the voice config-gate test sets Some(false) to prove the deploy-level
+        // kill switch unmounts the whole voice surface).
+        if let Some(voice_enabled) = opts.voice_enabled {
+            config.push_str(&format!("\nvoice:\n  enabled: {voice_enabled}\n"));
         }
 
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");

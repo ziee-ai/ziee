@@ -3,6 +3,8 @@ import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { EnableSection } from '../components/sections/EnableSection'
 import { EmbeddingSection } from '../components/sections/EmbeddingSection'
+import { RerankSection } from '../components/sections/RerankSection'
+import { RetrievalLimitsSection } from '../components/sections/RetrievalLimitsSection'
 import { ChunkingSection } from '../components/sections/ChunkingSection'
 import { FullTextSection } from '../components/sections/FullTextSection'
 import { MaintenanceSection } from '../components/sections/MaintenanceSection'
@@ -48,6 +50,8 @@ export function FileRagAdminPage() {
       )}
       <EnableSection />
       <EmbeddingSection />
+      <RerankSection />
+      <RetrievalLimitsSection />
       <ChunkingSection />
       <FullTextSection />
       <MaintenanceSection />

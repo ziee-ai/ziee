@@ -1,9 +1,10 @@
-import { History, Undo2 } from 'lucide-react'
+import { GitCompare, History, Undo2 } from 'lucide-react'
 import { useState } from 'react'
-import { Select, Button, Tag } from '@/components/ui'
+import { Select, Button, Tag, Dialog } from '@/components/ui'
 import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
+import { FileVersionDiff } from '@/modules/file/components/FileVersionDiff'
 
 interface FileVersionBarProps {
   file: FileEntity
@@ -38,6 +39,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
   const versionsByFile = Stores.FileVersions.versionsByFile
   const versions = versionsByFile.get(file.id) ?? Stores.FileVersions.getVersions(file.id)
   const [restoring, setRestoring] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
 
   if (versions.length <= 1) return null
 
@@ -101,10 +103,27 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
           <Button size="default" variant="outline" onClick={() => onSelectVersion(null)} data-testid="file-version-back-latest">
             Back to latest
           </Button>
+          <Button
+            size="default"
+            variant="ghost"
+            icon={<GitCompare />}
+            onClick={() => setCompareOpen(true)}
+            data-testid="file-version-compare"
+          >
+            Compare with current
+          </Button>
         </>
       ) : (
         <Tag variant="outline" data-testid="file-version-current-tag">v{headVersion} · {versions.length} versions</Tag>
       )}
+      <Dialog
+        open={compareOpen}
+        onOpenChange={setCompareOpen}
+        title={`Compare v${current} → v${headVersion} (current)`}
+        data-testid="file-version-compare-dialog"
+      >
+        <FileVersionDiff fileId={file.id} from={current} to={headVersion} />
+      </Dialog>
     </div>
   )
 }

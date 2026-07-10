@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, X } from 'lucide-react'
-import { Button, ScrollArea } from '@/components/ui'
+import { Button, ScrollArea, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
@@ -88,8 +88,19 @@ export const MarkdownTable = memo(function MarkdownTable({
         <span className="ml-1 font-mono lowercase">table</span>
         <div className="flex items-center gap-0.5">
           <Suspense fallback={null}>
-            <TableCopyDropdown className={CONTROL_BTN} />
-            <TableDownloadDropdown className={CONTROL_BTN} />
+            {/* Streamdown's dropdowns carry an aria-label but no visible tooltip;
+                wrap each in the kit Tooltip (span trigger forwards the ref) so they
+                match the fullscreen button beside them. */}
+            <Tooltip title="Copy table">
+              <span className="inline-flex">
+                <TableCopyDropdown className={CONTROL_BTN} />
+              </span>
+            </Tooltip>
+            <Tooltip title="Download table">
+              <span className="inline-flex">
+                <TableDownloadDropdown className={CONTROL_BTN} />
+              </span>
+            </Tooltip>
           </Suspense>
           <Button
             size="icon"

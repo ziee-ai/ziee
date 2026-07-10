@@ -63,6 +63,19 @@ pub fn embedding_unsupported_reason(name: &str, caps: &ModelCapabilities) -> Opt
     None
 }
 
+/// Returns a human reason a model can't rerank, or `None` if it can. Mirrors
+/// `embedding_unsupported_reason` — a reranker is a cross-encoder, neither a
+/// chat nor an embedding model.
+pub fn rerank_unsupported_reason(name: &str, caps: &ModelCapabilities) -> Option<String> {
+    if caps.rerank != Some(true) {
+        return Some(format!(
+            "model '{name}' is not flagged with the rerank capability and cannot \
+             rerank; configure a reranker model (e.g. bge-reranker-v2-m3 from the Hub)"
+        ));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,6 +86,22 @@ mod tests {
             chat,
             ..Default::default()
         }
+    }
+
+    // TEST-2 (ITEM-2): the reranker gate keys strictly on `capabilities.rerank`.
+    #[test]
+    fn rerank_gate_requires_rerank_capability() {
+        let with = ModelCapabilities { rerank: Some(true), ..Default::default() };
+        assert_eq!(rerank_unsupported_reason("bge-reranker", &with), None);
+        let without = ModelCapabilities { rerank: Some(false), ..Default::default() };
+        let r = rerank_unsupported_reason("gpt-chat", &without)
+            .expect("a non-rerank model must be rejected");
+        assert!(r.contains("gpt-chat"), "reason names the model: {r}");
+        // an unflagged (None) model is likewise not a reranker
+        assert!(
+            rerank_unsupported_reason("plain", &ModelCapabilities::default()).is_some(),
+            "an unflagged model is not a reranker"
+        );
     }
 
     #[test]

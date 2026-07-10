@@ -12,7 +12,7 @@
 use crate::{
     error::ProviderError,
     models::{
-        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse,
+        ChatRequest, EmbeddingsRequest, EmbeddingsResponse, RerankRequest, RerankResponse, RerankResult, FileUpload, FileUploadResponse,
         StreamChatChunk,
     },
     traits::AIProvider,
@@ -282,6 +282,30 @@ struct OpenAIEmbeddingsResponse {
 #[derive(Deserialize, Debug)]
 struct OpenAIEmbedding {
     embedding: Vec<f32>,
+}
+
+/// Rerank request (llama.cpp `/rerank` / Jina / Cohere-compatible shape)
+#[derive(Serialize, Debug)]
+struct OpenAIRerankRequest {
+    model: String,
+    query: String,
+    documents: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_n: Option<usize>,
+}
+
+/// Rerank response: `results[{index, relevance_score}]`
+#[derive(Deserialize, Debug)]
+struct OpenAIRerankResponse {
+    results: Vec<OpenAIRerankResult>,
+    #[serde(default)]
+    usage: Option<OpenAIUsage>,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenAIRerankResult {
+    index: usize,
+    relevance_score: f32,
 }
 
 impl OpenAIProvider {
@@ -990,6 +1014,57 @@ impl AIProvider for OpenAIProvider {
         })
     }
 
+    async fn rerank(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        request: RerankRequest,
+    ) -> Result<RerankResponse, ProviderError> {
+        let client = super::http_client();
+
+        let body = OpenAIRerankRequest {
+            model: request.model,
+            query: request.query,
+            documents: request.documents,
+            top_n: request.top_n,
+        };
+
+        let response = client
+            .post(format!("{}/rerank", base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        let resp: OpenAIRerankResponse = response.json().await?;
+
+        Ok(RerankResponse {
+            results: resp
+                .results
+                .into_iter()
+                .map(|r| RerankResult {
+                    index: r.index,
+                    score: r.relevance_score,
+                })
+                .collect(),
+            usage: resp.usage.map(|u| crate::models::Usage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: 0,
+                total_tokens: u.total_tokens,
+                reasoning_tokens: None,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+            }),
+        })
+    }
+
     fn supports_file_api(&self) -> bool {
         // Documents/PDFs only — the server router (provider_routing.rs) keeps
         // images base64 for OpenAI (image file_id is Responses-API-only).
@@ -1319,5 +1394,37 @@ mod tests {
             let user_parts = msgs[1]["content"].as_array().unwrap();
             assert!(user_parts.iter().any(|p| p["type"] == "image_url"));
         }
+    }
+}
+
+#[cfg(test)]
+mod rerank_wire_tests {
+    use super::{OpenAIRerankRequest, OpenAIRerankResponse};
+
+    // TEST-1 (ITEM-1): the rerank request serializes to the llama.cpp/Jina
+    // `{model,query,documents}` shape (top_n omitted when None), and the response
+    // parses `results[{index,relevance_score}]`.
+    #[test]
+    fn rerank_request_serializes_expected_shape() {
+        let req = OpenAIRerankRequest {
+            model: "bge".into(),
+            query: "q".into(),
+            documents: vec!["a".into(), "b".into()],
+            top_n: None,
+        };
+        let v: serde_json::Value = serde_json::to_value(&req).unwrap();
+        assert_eq!(v["model"], "bge");
+        assert_eq!(v["query"], "q");
+        assert_eq!(v["documents"], serde_json::json!(["a", "b"]));
+        assert!(v.get("top_n").is_none(), "top_n omitted when None");
+    }
+
+    #[test]
+    fn rerank_response_parses_index_and_score() {
+        let body = r#"{"results":[{"index":1,"relevance_score":0.9},{"index":0,"relevance_score":0.1}]}"#;
+        let resp: OpenAIRerankResponse = serde_json::from_str(body).unwrap();
+        assert_eq!(resp.results.len(), 2);
+        assert_eq!(resp.results[0].index, 1);
+        assert!((resp.results[0].relevance_score - 0.9).abs() < 1e-6);
     }
 }

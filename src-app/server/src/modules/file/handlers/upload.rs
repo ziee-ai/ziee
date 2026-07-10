@@ -186,6 +186,25 @@ pub async fn upload_file_inner(
             .await?;
     }
 
+    // Save per-page citation geometry (PDF only; aligned 1:1 with text pages) so
+    // the exact-passage highlight overlay can re-derive rects for a chunk span.
+    // Best-effort — a dropped page just means the citation UI opens the page
+    // without a highlight. (This path was previously only in ingest_bytes, so the
+    // primary /files/upload path silently dropped geometry — see TEST-32.)
+    for (n, geom) in processing_result.geometry_pages.iter().enumerate() {
+        if let Err(e) = storage
+            .save_geometry_page(user_id, file_id, (n + 1) as u32, geom)
+            .await
+        {
+            tracing::warn!(
+                "upload: failed to save geometry page {} for {}: {}",
+                n + 1,
+                file_id,
+                e
+            );
+        }
+    }
+
     // Save single thumbnail (page_num parameter ignored for thumbnails, but pass 1 for consistency)
     if let Some(thumbnail_data) = processing_result.thumbnails.first() {
         storage

@@ -1,5 +1,6 @@
 import { createElement, useMemo, type JSX, type ReactNode } from 'react'
 import { MarkdownTable } from '@/components/common/MarkdownTable'
+import { MarkdownCodeBlock } from '@/components/common/MarkdownCodeBlock'
 import {
   nodeToText,
   slugifyHeading,
@@ -47,6 +48,9 @@ export function useStreamdownComponents(contentId: string) {
       // Replace Streamdown's native-scroller + in-page-fullscreen table wrapper
       // with our OverlayScrollbars + open-in-popup-window version.
       table: MarkdownTable,
+      // Re-wrap Streamdown's code block so its copy/download controls get the
+      // app's styled kit Tooltip (default only carries a native `title`).
+      pre: MarkdownCodeBlock,
       h1: makeHeading(1),
       h3: makeHeading(3),
       h4: makeHeading(4),
