@@ -2,15 +2,14 @@ file	start	end	angles
 src-app/Cargo.lock	1	9999999	correctness,patterns-conformance,tests-quality
 src-app/Cargo.toml	1	9999999	correctness,patterns-conformance,tests-quality
 src-app/server/Cargo.toml	1	9999999	correctness,patterns-conformance,tests-quality
-src-app/server/migrations/00000000000133_create_scheduled_tasks.sql	1	9999999	correctness,security,patterns-conformance
-src-app/server/migrations/00000000000134_create_notifications.sql	1	9999999	correctness,security,patterns-conformance
-src-app/server/migrations/00000000000135_create_scheduler_admin_settings.sql	1	9999999	correctness,security,patterns-conformance
-src-app/server/migrations/00000000000136_grant_scheduler_notifications_permissions_to_users.sql	1	9999999	correctness,security,patterns-conformance
-src-app/server/migrations/00000000000137_add_scheduled_invocation_source.sql	1	9999999	correctness,security,patterns-conformance
-src-app/server/migrations/00000000000138_create_scheduled_task_runs.sql	1	9999999	correctness,security,patterns-conformance
+src-app/server/migrations/00000000000139_create_scheduled_tasks.sql	1	9999999	correctness,security,patterns-conformance
+src-app/server/migrations/00000000000140_create_notifications.sql	1	9999999	correctness,security,patterns-conformance
+src-app/server/migrations/00000000000141_create_scheduler_admin_settings.sql	1	9999999	correctness,security,patterns-conformance
+src-app/server/migrations/00000000000142_grant_scheduler_notifications_permissions_to_users.sql	1	9999999	correctness,security,patterns-conformance
+src-app/server/migrations/00000000000143_add_scheduled_invocation_source.sql	1	9999999	correctness,security,patterns-conformance
+src-app/server/migrations/00000000000144_create_scheduled_task_runs.sql	1	9999999	correctness,security,patterns-conformance
 src-app/server/src/modules/chat/mod.rs	1	9999999	correctness,security,concurrency,error-handling,perms/authz,api-contract,patterns-conformance,perf
 src-app/server/src/modules/chat/stream/registry.rs	1	9999999	correctness,security,concurrency,error-handling,perms/authz,api-contract,patterns-conformance,perf
-src-app/server/src/modules/mcp/chat_extension/extension.rs	1	9999999	correctness,security,concurrency,error-handling,perms/authz,api-contract,patterns-conformance,perf
 src-app/server/src/modules/mod.rs	1	9999999	correctness,security,concurrency,error-handling,perms/authz,api-contract,patterns-conformance,perf
 src-app/server/src/modules/notification/events.rs	1	9999999	correctness,security,concurrency,error-handling,perms/authz,api-contract,patterns-conformance,perf
 src-app/server/src/modules/notification/handlers.rs	1	9999999	correctness,security,concurrency,error-handling,perms/authz,api-contract,patterns-conformance,perf
@@ -73,4 +72,3 @@ src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts	1	9999999	tests-quality,correc
 src-app/ui/tests/e2e/14-scheduler/paused-and-runs.spec.ts	1	9999999	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts	1	9999999	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/15-notifications/inbox.spec.ts	1	9999999	tests-quality,correctness,patterns-conformance
-src-app/ui/tests/fixtures/test-context.ts	1	9999999	tests-quality,correctness,patterns-conformance
