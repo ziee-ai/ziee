@@ -10,6 +10,16 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+/**
+ * One entry in a task's `allowed_unattended_tools` allow-list (DEC-17.4): an MCP
+ *  server the creator pre-authorizes to run unattended, optionally narrowed to a
+ *  single tool. `tool_name = None` allow-lists the whole server.
+ */
+export interface AllowedTool {
+  server_id: string
+  tool_name?: string
+}
+
 /** Body for `POST /files/{id}/versions`. */
 export interface AppendVersionRequest {
   /**
@@ -1023,6 +1033,11 @@ export interface CreateProjectRequest {
 
 /** Create-task request body. */
 export interface CreateScheduledTask {
+  /**
+   * Unattended tool allow-list (DEC-17). Defaults to empty (safe floor:
+   *  built-in read-only tools only).
+   */
+  allowed_unattended_tools?: AllowedTool[]
   assistant_id?: string
   cron_expr?: string
   inputs_json?: unknown
@@ -5186,6 +5201,11 @@ export interface SaveUserProviderKeyRequest {
 
 /** A row of `scheduled_tasks`. */
 export interface ScheduledTask {
+  /**
+   * Per-task unattended tool allow-list (DEC-17). JSONB array of `AllowedTool`;
+   *  read via `parse_allowed_tools`. Empty ⇒ built-in read-only tools only.
+   */
+  allowed_unattended_tools: unknown
   assistant_id?: string
   bound_conversation_id?: string
   consecutive_failures: number
@@ -5228,6 +5248,11 @@ export interface ScheduledTaskRun {
   id: string
   notification_id?: string
   scheduled_task_id: string
+  /**
+   * Tools skipped this firing because they weren't permitted unattended
+   *  (DEC-17.5). JSONB array of `SkippedTool`; `[]` when none.
+   */
+  skipped_tools: unknown
   status: string
   trigger: string
   user_id: string
@@ -5283,6 +5308,22 @@ export interface SendMessageRequest {
   model_id: string
   /** Tool approval decisions for resuming after approval workflow */
   tool_approvals?: ToolApprovalDecision[]
+  /**
+   * UNATTENDED run (ITEM-13/DEC-17): set by the scheduler for a headless
+   *  firing (no user to approve). When true, a tool that would require
+   *  per-call approval AND is not in `unattended_allowed_tools` is DENIED
+   *  (synthesized denial tool_result) instead of creating an orphaned pending
+   *  approval + truncating the turn. Never set by an interactive client.
+   */
+  unattended?: boolean
+  /**
+   * Per-task allow-list for an unattended run: servers/tools the task's
+   *  creator pre-authorized to run without the approval speed-bump.
+   *  Fully-qualified path so the `compose_chat_extensions` macro resolves the
+   *  type at its (external) expansion site — mirrors how `mcp_config` above
+   *  uses a full `crate::…` path.
+   */
+  unattended_allowed_tools?: UnattendedToolGrant[]
 }
 
 /**
@@ -5797,6 +5838,17 @@ export interface TriggerResponse {
   status: string
 }
 
+/**
+ * One pre-authorized (server, tool?) grant for an unattended run. `tool_name`
+ *  `None` allow-lists the whole server. Structurally identical to the
+ *  scheduler's `AllowedTool` (deserialized from the same JSON), kept here so
+ *  mcp has no scheduler dependency.
+ */
+export interface UnattendedToolGrant {
+  server_id: string
+  tool_name?: string
+}
+
 /** Unread-count response. */
 export interface UnreadCount {
   unread: number
@@ -6143,6 +6195,8 @@ export interface UpdateRuntimeSettingsRequest {
 
 /** Update-task request body (all fields optional; only present ones change). */
 export interface UpdateScheduledTask {
+  /** When present, replaces the task's unattended allow-list (DEC-17). */
+  allowed_unattended_tools?: AllowedTool[]
   assistant_id?: string
   cron_expr?: string
   enabled?: boolean

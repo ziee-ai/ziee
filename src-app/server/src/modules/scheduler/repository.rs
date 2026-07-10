@@ -47,9 +47,10 @@ pub async fn insert(
         INSERT INTO scheduled_tasks (
             user_id, name, target_kind, workflow_id, inputs_json,
             assistant_id, prompt, model_id, schedule_kind, run_at,
-            cron_expr, timezone, next_run_at, notify_mode, notify_on
+            cron_expr, timezone, next_run_at, notify_mode, notify_on,
+            allowed_unattended_tools
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         RETURNING
             id, user_id, name, enabled, paused_reason, target_kind, workflow_id,
             inputs_json as "inputs_json: _", assistant_id, prompt, model_id,
@@ -58,7 +59,9 @@ pub async fn insert(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         "#,
         user_id,
@@ -76,6 +79,8 @@ pub async fn insert(
         to_offset_opt(next_run_at),
         req.notify_mode,
         req.notify_on,
+        serde_json::to_value(&req.allowed_unattended_tools)
+            .unwrap_or_else(|_| serde_json::json!([])),
     )
     .fetch_one(pool)
     .await
@@ -100,7 +105,9 @@ pub async fn get_for_user(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM scheduled_tasks
         WHERE id = $1 AND user_id = $2
@@ -130,7 +137,9 @@ pub async fn list_for_user(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM scheduled_tasks
         WHERE user_id = $1
@@ -189,6 +198,7 @@ pub async fn update(
             notify_mode   = COALESCE($13, notify_mode),
             notify_on     = COALESCE($14, notify_on),
             next_run_at   = CASE WHEN $15 THEN $16 ELSE next_run_at END,
+            allowed_unattended_tools = COALESCE($17, allowed_unattended_tools),
             updated_at    = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING
@@ -199,7 +209,9 @@ pub async fn update(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         "#,
         id,
@@ -218,6 +230,9 @@ pub async fn update(
         upd.notify_on,
         set_next,
         to_offset_opt(next_val),
+        upd.allowed_unattended_tools
+            .as_ref()
+            .map(|v| serde_json::to_value(v).unwrap_or_else(|_| serde_json::json!([]))),
     )
     .fetch_optional(pool)
     .await
@@ -263,7 +278,9 @@ pub async fn claim_due_tasks(
             last_status, consecutive_failures, notify_mode, notify_on,
             last_result_fingerprint,
             last_result_signature_json as "last_result_signature_json: _",
-            bound_conversation_id, created_at as "created_at: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
             updated_at as "updated_at: _"
         FROM scheduled_tasks
         WHERE enabled
@@ -309,7 +326,14 @@ pub async fn mark_fired(
                                 WHEN $2::timestamptz IS NULL THEN FALSE
                                 ELSE enabled
                             END,
-            paused_reason = COALESCE($4, paused_reason),
+            -- ITEM-10: a spent task (no further occurrence → next_run_at NULL)
+            -- with no explicit pause reason is marked 'completed' so the UI can
+            -- show "Completed" rather than an ambiguous disabled/paused state.
+            paused_reason = CASE
+                                WHEN $4::text IS NOT NULL THEN $4
+                                WHEN $2::timestamptz IS NULL THEN 'completed'
+                                ELSE paused_reason
+                            END,
             updated_at    = NOW()
         WHERE id = $1
         "#,
@@ -368,9 +392,9 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
         INSERT INTO scheduled_task_runs (
             scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
-            fired_at, finished_at
+            skipped_tools, fired_at, finished_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
         RETURNING id
         "#,
         run.scheduled_task_id,
@@ -382,12 +406,31 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
         run.notification_id,
         run.workflow_run_id,
         run.conversation_id,
+        serde_json::to_value(&run.skipped_tools).unwrap_or_else(|_| serde_json::json!([])),
         to_offset(run.fired_at),
     )
     .fetch_one(pool)
     .await
     .map_err(AppError::database_error)?;
     Ok(row.id)
+}
+
+/// ITEM-8/DEC-7: delete `scheduled_task_runs` older than `cutoff` (retention
+/// prune). Returns rows deleted. Reuses the admin `notification_retention_days`
+/// window (migration 144's documented-but-unimplemented "pruned alongside
+/// notifications" intent).
+pub async fn prune_runs_older_than(
+    pool: &PgPool,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, AppError> {
+    let res = sqlx::query!(
+        r#"DELETE FROM scheduled_task_runs WHERE fired_at < $1"#,
+        to_offset(cutoff),
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(res.rows_affected())
 }
 
 /// A task's firing history, newest-first (owner-scoped via the task).
@@ -403,6 +446,7 @@ pub async fn list_runs_for_task(
         SELECT
             id, scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
+            skipped_tools as "skipped_tools: _",
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE scheduled_task_id = $1 AND user_id = $2
@@ -432,6 +476,7 @@ pub async fn get_run_for_user(
         SELECT
             id, scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
+            skipped_tools as "skipped_tools: _",
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE id = $1 AND user_id = $2
@@ -460,4 +505,178 @@ pub async fn set_bound_conversation(
     .await
     .map_err(AppError::database_error)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These exercise the real SQL of the repository against a live migrated DB.
+    // DB-gated (mirrors `web_search/repository.rs`): soft-skips when `DATABASE_URL`
+    // is unset / unreachable so `cargo test --lib` without Postgres stays green;
+    // runs for real wherever `DATABASE_URL` points at a migrated DB. Prune has NO
+    // REST/re-export seam, so an in-source DB test is the only real-path home for
+    // TEST-14/15 (the private `prune_runs_older_than` DELETE predicate).
+    async fn db() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+        {
+            Ok(p) => Some(p),
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                None
+            }
+        }
+    }
+
+    /// Insert a minimal, real `users` row (only username/email are NOT NULL
+    /// without a default). FK target for a task row.
+    async fn seed_user(pool: &PgPool) -> Uuid {
+        let uniq = Uuid::new_v4().to_string();
+        let short = &uniq[..8];
+        let id: Uuid = sqlx::query_scalar(
+            "INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id",
+        )
+        .bind(format!("sched_repo_{short}"))
+        .bind(format!("sched_repo_{short}@example.test"))
+        .fetch_one(pool)
+        .await
+        .expect("seed user");
+        id
+    }
+
+    /// Insert a minimal prompt-kind task (model_id NULL — nullable FK) satisfying
+    /// both CHECK constraints. `kind` ∈ {"once","recurring"}.
+    async fn seed_prompt_task(pool: &PgPool, user_id: Uuid, kind: &str, enabled: bool) -> Uuid {
+        let now = Utc::now();
+        let (run_at, cron, next): (Option<time::OffsetDateTime>, Option<String>, Option<time::OffsetDateTime>) =
+            if kind == "once" {
+                (Some(to_offset(now)), None, None)
+            } else {
+                (None, Some("0 9 * * 1".to_string()), Some(to_offset(now)))
+            };
+        let id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO scheduled_tasks
+                (user_id, name, target_kind, prompt, schedule_kind,
+                 run_at, cron_expr, timezone, enabled, next_run_at)
+            VALUES ($1, $2, 'prompt', 'hi', $3, $4, $5, 'UTC', $6, $7)
+            RETURNING id
+            "#,
+        )
+        .bind(user_id)
+        .bind("repo-test")
+        .bind(kind)
+        .bind(run_at)
+        .bind(cron)
+        .bind(enabled)
+        .bind(next)
+        .fetch_one(pool)
+        .await
+        .expect("seed task");
+        id
+    }
+
+    fn run_for(task: Uuid, user: Uuid, fired_at: DateTime<Utc>) -> NewTaskRun {
+        NewTaskRun {
+            scheduled_task_id: task,
+            user_id: user,
+            trigger: "schedule".to_string(),
+            status: "completed".to_string(),
+            error_class: None,
+            error_message: None,
+            notification_id: None,
+            workflow_run_id: None,
+            conversation_id: None,
+            skipped_tools: Vec::new(),
+            fired_at,
+        }
+    }
+
+    // TEST-11 (ITEM-6): the active-task count excludes DISABLED rows, so the
+    // re-enable quota check has no off-by-one (a disabled task being re-enabled
+    // isn't already in the count).
+    #[tokio::test]
+    async fn count_active_excludes_disabled_rows() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        seed_prompt_task(&pool, user, "recurring", true).await; // active
+        seed_prompt_task(&pool, user, "recurring", false).await; // disabled → excluded
+
+        let n = count_active_for_user(&pool, user).await.expect("count");
+        assert_eq!(n, 1, "count_active_for_user must exclude the disabled row");
+    }
+
+    // TEST-19 (ITEM-10): `mark_fired` marks a SPENT once-kind task (no next
+    // occurrence → next_run_at NULL) `paused_reason='completed'` + disabled;
+    // a recurring task that still has a next occurrence stays enabled with a
+    // NULL paused_reason.
+    #[tokio::test]
+    async fn mark_fired_completes_spent_once_and_leaves_recurring_unpaused() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+
+        let once = seed_prompt_task(&pool, user, "once", true).await;
+        mark_fired(&pool, once, None, Utc::now(), None)
+            .await
+            .expect("mark once");
+        let t = get_for_user(&pool, user, once)
+            .await
+            .expect("get once")
+            .expect("once row");
+        assert!(!t.enabled, "a spent once task is disabled");
+        assert_eq!(
+            t.paused_reason.as_deref(),
+            Some("completed"),
+            "a spent once task is marked 'completed'"
+        );
+
+        let rec = seed_prompt_task(&pool, user, "recurring", true).await;
+        let future = Utc::now() + chrono::Duration::days(7);
+        mark_fired(&pool, rec, Some(future), Utc::now(), None)
+            .await
+            .expect("mark recurring");
+        let t = get_for_user(&pool, user, rec)
+            .await
+            .expect("get rec")
+            .expect("rec row");
+        assert!(t.enabled, "a recurring task with a next run stays enabled");
+        assert!(
+            t.paused_reason.is_none(),
+            "a recurring task with a next run keeps a NULL paused_reason"
+        );
+    }
+
+    // TEST-14 / TEST-15 (ITEM-8): `prune_runs_older_than` deletes ONLY runs whose
+    // `fired_at < cutoff`; newer runs are retained.
+    #[tokio::test]
+    async fn prune_deletes_only_runs_older_than_cutoff() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        let task = seed_prompt_task(&pool, user, "recurring", true).await;
+
+        let old_at = Utc::now() - chrono::Duration::days(40);
+        let recent_at = Utc::now() - chrono::Duration::days(1);
+        let old_run = insert_run(&pool, run_for(task, user, old_at))
+            .await
+            .expect("old run");
+        let new_run = insert_run(&pool, run_for(task, user, recent_at))
+            .await
+            .expect("new run");
+
+        // Cutoff = 30 days ago: the 40-day-old run is deleted, the 1-day-old kept.
+        let cutoff = Utc::now() - chrono::Duration::days(30);
+        let deleted = prune_runs_older_than(&pool, cutoff).await.expect("prune");
+        assert!(deleted >= 1, "at least the 40-day-old run is pruned");
+
+        let remaining = list_runs_for_task(&pool, user, task, 100)
+            .await
+            .expect("list runs");
+        let ids: Vec<Uuid> = remaining.iter().map(|r| r.id).collect();
+        assert!(!ids.contains(&old_run), "the old run (fired_at < cutoff) is pruned");
+        assert!(ids.contains(&new_run), "the recent run (fired_at >= cutoff) is retained");
+    }
 }

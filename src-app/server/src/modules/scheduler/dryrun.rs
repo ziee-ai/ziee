@@ -197,11 +197,23 @@ async fn run_throwaway_turn(
     conversation_id: Uuid,
     branch_id: Uuid,
 ) -> Result<String, AppError> {
+    // Test-fire runs headless too (no user to approve), so it uses the SAME
+    // unattended policy as a real scheduled run: approval-required, non-allow-
+    // listed tools are denied and no Always-mode side effect pre-executes during
+    // a mere "Test" (blind-audit fidelity fix — Test previously attached ALL
+    // accessible servers). The allow-list rides the request when the UI sends it;
+    // absent ⇒ the read-only safe floor.
     let mut req_json = serde_json::json!({
         "content": prompt,
         "model_id": req.model_id,
         "branch_id": branch_id,
         "enable_mcp": true,
+        "unattended": true,
+        // No allow-list on the test body → the read-only safe floor: only
+        // built-in read-only servers attach (empty mcp_servers ⇒ no third-party,
+        // so no Always-mode pre-execution during a Test).
+        "unattended_allowed_tools": [],
+        "mcp_config": { "mcp_servers": [] },
     });
     if let Some(aid) = req.assistant_id {
         req_json["assistant_id"] = serde_json::json!(aid);

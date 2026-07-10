@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 361 surfaces carry renderable-state signals; 2061 signals total.
+// 361 surfaces carry renderable-state signals; 2067 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3494,39 +3494,45 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/scheduler/components/ScheduleBuilder",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 127 },
-      { kind: "branch", condition: "!raw", line: 136 },
-      { kind: "branch", condition: "preset !== 'custom'", line: 163 },
-      { kind: "branch", condition: "preset === 'weekly'", line: 179 },
-      { kind: "branch", condition: "preset === 'monthly'", line: 190 },
-      { kind: "branch", condition: "preset === 'custom'", line: 203 },
+      { kind: "branch", condition: "days.size === 1", line: 104 },
+      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 156 },
+      { kind: "branch", condition: "!raw", line: 165 },
+      { kind: "branch", condition: "preset !== 'custom'", line: 192 },
+      { kind: "branch", condition: "preset === 'weekly'", line: 208 },
+      { kind: "branch", condition: "preset === 'monthly'", line: 236 },
+      { kind: "branch", condition: "preset === 'custom'", line: 249 },
     ],
   },
   "modules/scheduler/components/ScheduledTaskFormDrawer": {
     surface: "modules/scheduler/components/ScheduledTaskFormDrawer",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "!open", line: 69 },
-      { kind: "branch", condition: "err", line: 145 },
-      { kind: "branch", condition: "err", line: 168 },
-      { kind: "overlay", condition: "<Drawer open>", line: 198 },
-      { kind: "branch", condition: "canUse", line: 223 },
-      { kind: "branch", condition: "f.target_kind === 'prompt'", line: 259 },
-      { kind: "branch", condition: "testing", line: 339 },
-      { kind: "branch", condition: "testResult", line: 344 },
+      { kind: "branch", condition: "!open", line: 104 },
+      { kind: "branch", condition: "!open", line: 112 },
+      { kind: "branch", condition: "targetKind !== 'workflow' || !hasDeclaredInputs", line: 159 },
+      { kind: "branch", condition: "err", line: 249 },
+      { kind: "branch", condition: "err", line: 273 },
+      { kind: "overlay", condition: "<Drawer open>", line: 307 },
+      { kind: "branch", condition: "canUse", line: 332 },
+      { kind: "branch", condition: "targetKind === 'prompt'", line: 371 },
+      { kind: "branch", condition: "hasDeclaredInputs", line: 393 },
+      { kind: "branch", condition: "testing", line: 459 },
+      { kind: "branch", condition: "testResult", line: 464 },
     ],
   },
   "modules/scheduler/pages/ScheduledTasksPage": {
     surface: "modules/scheduler/pages/ScheduledTasksPage",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "task.paused_reason", line: 66 },
-      { kind: "branch", condition: "expanded", line: 89 },
-      { kind: "branch", condition: "!runs", line: 91 },
-      { kind: "empty", condition: "runs.length === 0", line: 93 },
-      { kind: "loading", condition: "loading && tasks.length === 0", line: 193 },
-      { kind: "error", condition: "error && tasks.length === 0", line: 197 },
-      { kind: "empty", condition: "tasks.length === 0", line: 205 },
+      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 54 },
+      { kind: "branch", condition: "task.paused_reason", line: 61 },
+      { kind: "branch", condition: "expanded", line: 85 },
+      { kind: "branch", condition: "!runs", line: 87 },
+      { kind: "empty", condition: "runs.length === 0", line: 89 },
+      { kind: "branch", condition: "skippedToolsNote(r.skipped_tools)", line: 101 },
+      { kind: "loading", condition: "loading && tasks.length === 0", line: 197 },
+      { kind: "error", condition: "error && tasks.length === 0", line: 201 },
+      { kind: "empty", condition: "tasks.length === 0", line: 209 },
     ],
   },
   "modules/scheduler/pages/SchedulerAdminPage": {
