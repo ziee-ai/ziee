@@ -42,9 +42,13 @@ All inputs the implementation needs, resolved up front so Phase 5 runs nonstop.
 **Resolution:** No change to `validate_schedule` — re-enabling a `once` task whose `run_at` is in the past still 400s (`RunAtInPast`); that is correct (a spent one-shot needs a NEW future time to run again). The fix is purely the `paused_reason='completed'` marker + the UI "Completed" badge, so the state is legible and the user is prompted to pick a new time rather than being silently blocked.
 **Basis:** convention — a fired one-shot is done; re-running requires an explicit new schedule.
 
-### DEC-11: Timezone picker options source (ITEM-2)?
-**Resolution:** `Intl.supportedValuesOf('timeZone')` (IANA zone list), deduped + sorted, with the browser default surfaced first/selected; fall back to a small curated common-zone list if `supportedValuesOf` is unavailable. Default value = browser tz (as today).
-**Basis:** convention — the drawer already derives `browserTz()` via `Intl`; this extends the same API.
+### DEC-11: Timezone — auto-detect vs picker (ITEM-2, per FB-3)?
+**Resolution:** AUTO-DETECT only — no timezone control. On drawer/builder mount, set `timezone` from `Intl.DateTimeFormat().resolvedOptions().timeZone` and display it as read-only helper text ("Times are in your timezone: <zone>"). The user never inputs or picks a timezone. On edit of an existing task whose stored zone differs from the browser, show the stored zone read-only (do not silently rewrite it).
+**Basis:** user (FB-3) — "who would try to input timezone? we need to auto detect timezone from user client." The drawer already computes `browserTz()`; this removes the field entirely.
+
+### DEC-16: Multi-day-of-week cron encoding + humanization (ITEM-12, resolves CONCERN)?
+**Resolution:** The weekly multi-toggle emits the cron day-of-week field as a SORTED, comma-separated numeric list `d1,d2,…` (0=Sun..6=Sat), e.g. Mon+Wed+Fri → `0 9 * * 1,3,5`. At least one day must be selected (validation: empty selection → "Pick at least one day"). `humanizeCron` is extended to parse a comma dow list into "Weekly on Mon, Wed, Fri at HH:MM"; any expression it can't classify still falls back to `Cron: <expr>`. Editing a task loads the selected days by splitting the stored dow on commas.
+**Basis:** codebase — `schedule.rs` parses arbitrary valid 5-field crons via `cron`/`chrono_tz` and its min-interval floor samples a 24-occurrence window, so a comma dow needs NO backend change; only the frontend builder + `humanizeCron` change.
 
 ### DEC-12: Assistant picker "use my default" affordance (ITEM-1)?
 **Resolution:** The Assistant picker offers a "Default assistant" option (value = empty ⇒ `assistant_id` omitted) plus the user's assistants. Selecting it sends no `assistant_id`, preserving the NULL⇒default semantics.
