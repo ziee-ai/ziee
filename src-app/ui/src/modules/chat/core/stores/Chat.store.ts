@@ -2097,6 +2097,13 @@ const chatStoreConfig = {
     // subscription.
     if (get().chatStreamClient) return
 
+    // Per-init-lifecycle teardown flag. The async continuation below restarts the
+    // stream client AFTER an `await`; under React StrictMode a pane's init runs
+    // init#1 → destroy#1 → init#2 on the SAME api, so init#1's resumed tail must
+    // NOT restart its already-stopped client (that would leak an SSE the final
+    // teardown can't reach). `onCleanup` sets this true; the tail bails on it.
+    let destroyed = false
+
     // Per-instance stream/serialization state (formerly module singletons). Each
     // pane serializes its own frame-apply chain, throttles its own resync, and
     // owns its own stream client — so panes never couple (ITEM-6).
@@ -2202,6 +2209,11 @@ const chatStoreConfig = {
         // down in `onCleanup`, so a re-init (or a pane unmount) never stacks
         // subscribers or leaks a connection.
         const { useAuthStore } = await import('@/modules/auth/Auth.store')
+        // Bail if this init lifecycle was torn down during the await (a StrictMode
+        // destroy#1 landing between init#1's await and its resume) — otherwise we'd
+        // restart a stopped client and register an orphaned auth sub that the
+        // already-drained teardown will never reach (DRIFT-2.16).
+        if (destroyed) return
         let currentUserId = useAuthStore.getState().user?.id
         const applyAuth = (userId: string | undefined) => {
           streamClient.stop()
@@ -2229,22 +2241,23 @@ const chatStoreConfig = {
       // store-kit builder's per-group cleanup — NO manual
       // `removeGroupListeners('Chat')` here: for a split pane that would wipe the
       // PRIMARY pane's ('Chat'-group) listeners too.
+      // Mark this init lifecycle destroyed FIRST, so init#1's still-pending async
+      // tail (under a StrictMode init#1→destroy#1→init#2 remount) bails at its
+      // `if (destroyed) return` instead of restarting this client (DRIFT-2.16).
+      destroyed = true
       streamClient.stop()
 
       // Null the client so a destroy→re-init cycle passes the init guard
-      // (`if (get().chatStreamClient) return`, ~L2097). ONLY the SINGLETON primary
-      // (`paneId == null`) needs this: its STATE OBJECT survives destroy (defineStore
-      // creates it once; ref-count destroy only tears down subscriptions), so
-      // without the reset a navigate-away >5s (grace destroy) + return leaves the
-      // stopped client in state, the guard early-returns, and streaming + sync
-      // never re-establish (DRIFT-2.15). Local pane instances (`paneId` set) are
-      // EXCLUDED: they get a fresh state per mount so they never need it, AND under
-      // React StrictMode's synchronous double-invoke of the mount effect on the
-      // SAME api, nulling here would let the 2nd init spawn a 2nd stream client
-      // while the 1st init's async tail restarts the orphaned 1st — leaking an idle
-      // SSE per pane open (dev-only, but avoided entirely by scoping to the
-      // singleton).
-      if (get().paneId == null) set({ chatStreamClient: null })
+      // (`if (get().chatStreamClient) return`, ~L2098). The SINGLETON primary's
+      // STATE OBJECT survives destroy (defineStore creates it once; ref-count
+      // destroy only tears down subscriptions), so without this a navigate-away >5s
+      // (grace destroy) + return leaves the stopped client in state, the guard
+      // early-returns, and streaming + sync never re-establish (DRIFT-2.15). Now
+      // SAFE for pane instances too: the `destroyed` flag above stops init#1's tail
+      // from restarting the orphaned client, so nulling lets init#2 fully
+      // re-register the teardown + sync subscriptions instead of early-returning
+      // with them dropped (the StrictMode teardown-drop FIX_ROUND-7 caught).
+      set({ chatStreamClient: null })
 
       const state = get()
 

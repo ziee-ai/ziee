@@ -160,4 +160,17 @@ resolved; every drift is `impl-wins` with an amended-plan rationale or `resolved
   conversation pane; a pane is only ever one at runtime, but the plugin enforces
   literal uniqueness).
 
+- **DRIFT-2.16** — verdict: impl-wins — **The Chat init's async tail has a
+  `destroyed` guard; the `chatStreamClient` null-set is unconditional again.** The
+  init idempotency work (ITEM-6/35) + React StrictMode's init#1→destroy#1→init#2
+  double-invoke on a pane's SAME api created a two-sided dev-only hazard: nulling
+  the client unconditionally spawned a 2nd client (init#1's orphaned tail restarts
+  the 1st), while scoping the null-set to the singleton dropped the pane's teardown
+  (init#2 early-returns without re-registering it). Root cause: the async tail
+  restarts the client after an `await` with no destroyed-guard. Fixed with a
+  per-init `destroyed` flag (set in `onCleanup`, checked after the `await` before
+  the client restart) + an unconditional null-set — so init#1's tail bails, init#2
+  fully re-inits, and the singleton navigate-away/return re-wire (DRIFT-2.15) holds.
+  Dev/StrictMode-only; production runs init once and is unaffected.
+
 **Unresolved drifts:** 0
