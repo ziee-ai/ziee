@@ -2046,7 +2046,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canMonitor` | 25 |
+| branch | `!canMonitor` | 34 |
 
 ### `modules/hardware/HardwareSettings`
 
