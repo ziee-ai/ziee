@@ -362,6 +362,20 @@ site + a general kit dialog method.
   `new` → `newPane` (reusing the existing `capReached` handling). No prompt in any
   other case (single-pane, already-open, explicit modifier/menu intent).
 
+### Iteration round 4 — single-pane pop-out is desktop-only (FB-9, human-reviewed)
+
+FB-9: on review, the single-pane "Open in new tab" button is redundant with the
+browser's native new-tab and reads as clutter on web; on desktop it's the only way
+to a native window. DEC-60 (user-picked): keep it in single-pane on DESKTOP, hide
+on WEB single-pane; split panes keep it on both.
+
+- **ITEM-44**: Gate the pop-out header action so single-pane is desktop-only. A
+  pure `popoutActionVisible(inPane, isDesktop)` predicate (own module + unit test)
+  + a one-line render gate in `OpenInNewWindowAction` using the existing runtime
+  `'__TAURI__' in window` check. Split panes always show it (both platforms).
+  Re-point the `popout-new-tab` e2e (which popped out from single-pane web) at a
+  split pane, and add the single-pane-web-hidden gating assertion.
+
 ## Files to touch
 
 New files (frontend, `src-app/ui/src` unless noted):

@@ -551,3 +551,14 @@ them — NOT a chat-specific dialog component.
 **Basis:** convention + user (FB-8) — mirrors the existing imperative-dialog seam
 (`dialog.confirm`) and the pure-reducer pattern (`openConversationInWorkspace`); a
 general kit primitive is reusable app-wide and adds no cross-module coupling.
+
+### DEC-60: Should the single-pane "Open in new tab/window" pop-out button exist on the web?
+**Resolution:** DESKTOP-ONLY in single-pane. Inside a split pane the pop-out shows
+on both platforms (it is the "move this pane out" action). In single-pane it shows
+ONLY on the desktop app; on the WEB the single-pane button is hidden.
+**Basis:** user — chosen via AskUserQuestion in the review thread ("why would a
+user want to open in a new tab for a single pane?"). Rationale: on desktop a
+native OS window is the only way to get a second top-level view, so the button is
+the sole affordance; on the web the browser already provides "open in new tab"
+(Cmd/middle-click, duplicate tab), so an in-app single-pane button is redundant
+chrome. Implemented as a pure `popoutActionVisible(inPane, isDesktop)` gate.

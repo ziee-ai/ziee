@@ -95,6 +95,19 @@ global mcp-chip) — all fixed and re-run green.
   clicking an already-open conversation (it focuses). The GitHub-404 "server update
   check failed (soft)" backend warnings are the offline box, not test failures.
 
+## Iteration round 4 (single-pane pop-out is desktop-only; ITEM-44 / FB-9 / DEC-60)
+
+- **`npm run check (ui): PASS`** — full chain, exit 0 (`splitchat-ui-check-r4b.log`);
+  `gen:state-matrix` re-run + committed for the new conditional-render (hidden) state.
+- **Unit (TEST-65): 2/2 PASS** — `popoutVisibility.test.ts` truth table
+  (`popoutActionVisible`): TRUE in a split pane (both platforms) + single-pane
+  desktop; FALSE single-pane web.
+- **E2E (TEST-66 + updated TEST-P3/P4): 2/2 PASS** — `popout-new-tab.spec.ts` on a
+  real backend, `--workers=1` (`splitchat-e2e-r4.log`: `2 passed`): (web) the
+  `chat-open-in-new-window` button is ABSENT in single-pane and PRESENT in each
+  pane once split; popping out a split pane opens an independent second page for
+  that conversation AND moves the pane out (origin collapses to single-pane A).
+
 ## Per-TEST-ID (Phase 3 TESTS.md — all 64)
 
 - **TEST-P1**: PASS
@@ -166,6 +179,8 @@ global mcp-chip) — all fixed and re-run green.
 - **TEST-62**: PASS
 - **TEST-63**: PASS
 - **TEST-64**: PASS
+- **TEST-65**: PASS
+- **TEST-66**: PASS
 
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 

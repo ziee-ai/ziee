@@ -393,3 +393,15 @@ no backend, no permission, no new render state.
   coupling (the two feature-module extensions that read `SplitView` are untouched).
   A new imperative-dialog render state may need a `check:state-matrix` gallery cell
   or allowlist reason — handled at phase 8.
+
+## Iteration round 4 — single-pane pop-out is desktop-only (FB-9 / DEC-60)
+
+- **ITEM-44** — verdict: PASS — a one-line render gate in `OpenInNewWindowAction`
+  driven by a new PURE `popoutActionVisible(inPane, isDesktop)` (its own module +
+  unit test, mirrors `needsOpenChoice`). Platform gate via the existing runtime
+  `'__TAURI__' in window` check ([[feedback_platform_gating]]) — desktop keeps the
+  single-pane button, web hides it; split panes unaffected on both. No new
+  coupling, no migration, no openapi. Desktop shares ui's component (no desktop
+  copy), so the runtime check covers both bundles. The existing `popout-new-tab`
+  e2e (TEST-P3/P4) pops out from single-pane WEB, which this hides — so that spec
+  is re-pointed at a SPLIT pane (where the button remains) + a gating case added.

@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2128** signals total: 1679 branch, 134 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2129** signals total: 1680 branch, 134 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -1067,7 +1067,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation` | 30 |
+| branch | `!conversation` | 34 |
+| branch | `!popoutActionVisible(pane != null, isDesktop)` | 38 |
 
 ### `modules/chat/components/PlusMenuItem`
 

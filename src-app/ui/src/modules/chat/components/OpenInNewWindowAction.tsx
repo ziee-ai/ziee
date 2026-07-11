@@ -2,6 +2,7 @@ import { Button } from '@/components/ui'
 import { SquareArrowOutUpRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { openConversationWindow } from '@/modules/chat/core/popout/openConversationWindow'
+import { popoutActionVisible } from '@/modules/chat/core/popout/popoutVisibility'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
 
@@ -16,9 +17,12 @@ import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
  *
  * Inside a SPLIT pane this is a **pop-out that MOVES** (ITEM-29): it opens the
  * window AND removes the pane from the workspace, so the conversation is never
- * live in two competing places. On the single-pane route it just opens the
- * window. The pane's own conversation is read via `useChatPane()` (not the
- * focused-pane bridge), so popping out pane B never pops out pane A.
+ * live in two competing places. In SINGLE-pane it opens the window but renders
+ * ONLY on the desktop app (ITEM-44/DEC-60): a native OS window is the only way to
+ * get one there, whereas on the web the browser's own "open in new tab" already
+ * covers it, so the single-pane web button is hidden as redundant. The pane's own
+ * conversation is read via `useChatPane()` (not the focused-pane bridge), so
+ * popping out pane B never pops out pane A.
  */
 export function OpenInNewWindowAction() {
   const pane = useChatPaneOrNull()
@@ -30,6 +34,9 @@ export function OpenInNewWindowAction() {
   if (!conversation) return null
 
   const isDesktop = typeof window !== 'undefined' && '__TAURI__' in window
+  // Single-pane pop-out is desktop-only (ITEM-44/DEC-60); split panes always show it.
+  if (!popoutActionVisible(pane != null, isDesktop)) return null
+
   const label = pane
     ? isDesktop
       ? 'Pop out to new window'

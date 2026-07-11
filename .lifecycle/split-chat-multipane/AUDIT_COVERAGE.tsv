@@ -16,12 +16,12 @@ src-app/ui/src/components/ui/testIds.generated.ts	1	1560	correctness,patterns-co
 src-app/ui/src/core/store-kit.test.ts	1	119	tests-quality,correctness,api-contract
 src-app/ui/src/core/store-kit.ts	1	331	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/RUNTIME_FINDINGS.md	1	311	correctness,state-management,patterns-conformance
-src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4760	correctness,state-management,patterns-conformance
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4761	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/coverage.ts	1	564	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/galleryCoverage.generated.ts	1	483	correctness,patterns-conformance,api-contract
 src-app/ui/src/dev/gallery/runtime-baseline.js	1	109	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/stateCoverage.ts	1	466	correctness,state-management,patterns-conformance
-src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	5160	correctness,patterns-conformance,api-contract
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	5161	correctness,patterns-conformance,api-contract
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantMenuItem.tsx	1	139	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantSelector.tsx	1	71	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantStatusChip.tsx	1	39	correctness,state-management,patterns-conformance
@@ -31,7 +31,7 @@ src-app/ui/src/modules/chat/components/BranchNavigator.tsx	1	69	correctness,stat
 src-app/ui/src/modules/chat/components/ConversationCard.tsx	1	250	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/components/ConversationPickerPane.tsx	1	166	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/components/MessageActions.tsx	1	130	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/components/OpenInNewWindowAction.tsx	1	59	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/components/OpenInNewWindowAction.tsx	1	66	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/components/PaneTabStrip.tsx	1	91	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/components/SplitChatView.tsx	1	199	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/components/ChatRightPanel.tsx	1	239	correctness,state-management,patterns-conformance
@@ -107,7 +107,7 @@ src-app/ui/tests/e2e/14-split-chat/new-chat-adopt.spec.ts	1	77	tests-quality,cor
 src-app/ui/tests/e2e/14-split-chat/open-in-split.spec.ts	1	58	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/pane-lifecycle.spec.ts	1	127	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/persistence.spec.ts	1	93	tests-quality,correctness,api-contract
-src-app/ui/tests/e2e/14-split-chat/popout-new-tab.spec.ts	1	63	tests-quality,correctness,api-contract
+src-app/ui/tests/e2e/14-split-chat/popout-new-tab.spec.ts	1	116	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/registry-runtime-per-pane.spec.ts	1	98	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/right-panel-per-pane.spec.ts	1	106	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/same-conversation-streaming.spec.ts	1	77	tests-quality,correctness,api-contract
@@ -121,3 +121,5 @@ src-app/ui/tests/e2e/14-split-chat/composer-files-per-pane.spec.ts	1	216	tests-q
 src-app/ui/tests/e2e/14-split-chat/COVERAGE_GAPS.md	1	73	tests-quality,test-coverage,patterns-conformance
 src-app/ui/src/components/ui/kit/dialog-host.tsx	1	191	correctness,state-management,api-contract,patterns-conformance,a11y
 src-app/ui/tests/e2e/14-split-chat/open-conversation-choice.spec.ts	1	139	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/chat/core/popout/popoutVisibility.ts	1	18	correctness,patterns-conformance,state-management
+src-app/ui/src/modules/chat/core/popout/popoutVisibility.test.ts	1	20	tests-quality,test-coverage,correctness
