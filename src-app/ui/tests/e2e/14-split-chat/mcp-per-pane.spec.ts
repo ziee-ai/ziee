@@ -8,13 +8,16 @@ import {
 } from '../../common/provider-helpers'
 
 /**
- * Split-chat E2E — per-pane MCP selection (TEST-53, ITEM-33). MCP server selection
- * is conversation-keyed (`conversationConfigs` / `getSelectedServersConfigFor`), so
- * enabling a server for pane B's conversation shows its chip in pane B's composer
- * ONLY — the last-loaded pane never hijacks the other. (The wrong-pane tool-
- * approval routing itself is proven deterministically at the unit level by
- * `approvalRouting.test.ts`, since an e2e approval needs a real MCP tool call with
- * an approval-gated tool.) No LLM.
+ * Split-chat E2E — per-pane MCP surface (TEST-53, ITEM-33). The MCP config/menu
+ * SURFACE is reachable per-pane (each split pane's composer carries its own `+`
+ * tools button; opening the config modal from a pane and enabling a server applies
+ * it). NOTE (DRIFT-2.11): the composer STATUS chip reads the GLOBAL single-active
+ * `McpComposer.selectedServers`, so it is NOT per-pane — this spec asserts the
+ * chip page-scoped, not per-pane isolation. The per-pane MCP correctness that
+ * matters — the conversation-keyed send config (`getSelectedServersConfigFor`) and
+ * the wrong-pane tool-approval routing (`approvalKeyOf`, the flagship ITEM-33 bug)
+ * — is proven deterministically at the UNIT level (`approvalRouting.test.ts`), an
+ * e2e approval needing a real MCP tool call with an approval-gated tool. No LLM.
  */
 test.describe('Split chat — per-pane MCP selection', () => {
   const mkConv = async (

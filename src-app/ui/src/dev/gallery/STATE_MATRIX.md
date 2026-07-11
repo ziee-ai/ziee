@@ -989,8 +989,8 @@ Required states: `empty`
 | kind | condition | line |
 |---|---|---|
 | branch | `openIds.has(c.id)` | 45 |
-| branch | `mode === 'new'` | 74 |
-| empty | `filtered.length === 0` | 124 |
+| branch | `mode === 'new'` | 79 |
+| empty | `filtered.length === 0` | 129 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1080,12 +1080,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!md` | 35 |
-| branch | `i > 0` | 70 |
-| branch | `dragKind(e.dataTransfer) !== 'conversation'` | 114 |
-| branch | `dragKind(e.dataTransfer) !== 'conversation'` | 120 |
-| branch | `!cid` | 122 |
-| branch | `!drag.current` | 138 |
+| branch | `md` | 52 |
+| branch | `!md && i > 0` | 55 |
+| branch | `dragKind(e.dataTransfer) !== 'conversation'` | 105 |
+| branch | `dragKind(e.dataTransfer) !== 'conversation'` | 111 |
+| branch | `!cid` | 113 |
+| branch | `!drag.current` | 129 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1129,7 +1129,7 @@ Required states: `empty`
 | branch | `this.initialized` | 365 |
 | empty | `extensions.length === 0` | 543 |
 | empty | `extensions.length === 0` | 576 |
-| empty | `!registered \|\| registered.length === 0` | 894 |
+| empty | `!registered \|\| registered.length === 0` | 895 |
 
 ### `modules/chat/core/extensions/slots`
 

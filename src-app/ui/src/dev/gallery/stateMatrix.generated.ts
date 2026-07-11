@@ -866,8 +866,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["empty"],
     signals: [
       { kind: "branch", condition: "openIds.has(c.id)", line: 45 },
-      { kind: "branch", condition: "mode === 'new'", line: 74 },
-      { kind: "empty", condition: "filtered.length === 0", line: 124 },
+      { kind: "branch", condition: "mode === 'new'", line: 79 },
+      { kind: "empty", condition: "filtered.length === 0", line: 129 },
     ],
   },
   "modules/chat/components/EditingMessageBanner": {
@@ -949,12 +949,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/SplitChatView",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!md", line: 35 },
-      { kind: "branch", condition: "i > 0", line: 70 },
-      { kind: "branch", condition: "dragKind(e.dataTransfer) !== 'conversation'", line: 114 },
-      { kind: "branch", condition: "dragKind(e.dataTransfer) !== 'conversation'", line: 120 },
-      { kind: "branch", condition: "!cid", line: 122 },
-      { kind: "branch", condition: "!drag.current", line: 138 },
+      { kind: "branch", condition: "md", line: 52 },
+      { kind: "branch", condition: "!md && i > 0", line: 55 },
+      { kind: "branch", condition: "dragKind(e.dataTransfer) !== 'conversation'", line: 105 },
+      { kind: "branch", condition: "dragKind(e.dataTransfer) !== 'conversation'", line: 111 },
+      { kind: "branch", condition: "!cid", line: 113 },
+      { kind: "branch", condition: "!drag.current", line: 129 },
     ],
   },
   "modules/chat/components/TextContent": {
@@ -994,7 +994,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "this.initialized", line: 365 },
       { kind: "empty", condition: "extensions.length === 0", line: 543 },
       { kind: "empty", condition: "extensions.length === 0", line: 576 },
-      { kind: "empty", condition: "!registered || registered.length === 0", line: 894 },
+      { kind: "empty", condition: "!registered || registered.length === 0", line: 895 },
     ],
   },
   "modules/chat/core/extensions/slots": {

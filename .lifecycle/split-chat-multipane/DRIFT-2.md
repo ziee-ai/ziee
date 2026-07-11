@@ -146,4 +146,18 @@ resolved; every drift is `impl-wins` with an amended-plan rationale or `resolved
   Both modes remain e2e-proven (`independent-input` columns @1280, `mobile-tabs`
   @390).
 
+- **DRIFT-2.15** — verdict: impl-wins — **The singleton primary Chat store nulls
+  `chatStreamClient` on destroy so a destroy→re-init cycle re-wires streaming.**
+  Moving the stream client from the old module-scope `chatStreamWired` flag into
+  per-instance `chatStreamClient` state (ITEM-6/35) added an init guard
+  `if (get().chatStreamClient) return`. That is correct for pane instances (fresh
+  state per mount) but WRONG for the `defineStore` singleton, whose state object
+  survives the ref-count destroy — the stopped client lingered, the guard bailed on
+  re-init, and streaming/sync stayed dead after a >5s navigate-away + return.
+  Amended: `onCleanup` resets `chatStreamClient: null` after `stop()`. The picker
+  pane also gets its own `chat-picker-pane-*` testids (the vite dev testid-unique
+  plugin forbids the `chat-pane-*` literal appearing in both the picker + the
+  conversation pane; a pane is only ever one at runtime, but the plugin enforces
+  literal uniqueness).
+
 **Unresolved drifts:** 0

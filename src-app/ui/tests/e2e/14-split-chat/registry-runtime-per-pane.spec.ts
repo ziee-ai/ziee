@@ -10,11 +10,14 @@ import {
 /**
  * Split-chat E2E — extension-registry runtime per-pane (TEST-54, ITEM-34). The
  * keyboard extension's shared `document` listener is refcounted across panes
- * (`keyboardInitCount`), so CLOSING one pane must NOT tear it down for the
- * survivor: the survivor's Ctrl+K / Esc / Ctrl+Enter keep working. This is the
- * regression the singleton-gated `initialize()/initialized` bug caused (the 2nd
- * pane's init early-returned; the 1st pane's cleanup disarmed the survivor). Uses
- * the local OpenAI-compatible bridge for the Ctrl+Enter send.
+ * (`keyboardInitCount`), so CLOSING one pane (while ≥2 remain) must NOT tear it
+ * down for the survivors. This is the regression the singleton-gated
+ * `initialize()/initialized` bug caused (the 2nd pane's init early-returned; the
+ * 1st pane's cleanup disarmed the survivor). Probed via the survivor's Esc (clear)
+ * + blur-then-Ctrl+K (refocus) — the two shortcuts ONLY the global listener
+ * provides. No LLM: the provider/model are inert setup so the composer renders
+ * enabled; no message is sent (Ctrl+Enter also fires via TextInput's own handler,
+ * so it can't detect the teardown and is deliberately not the probe).
  */
 test.describe('Split chat — registry runtime survives pane close', () => {
   const mkConv = async (

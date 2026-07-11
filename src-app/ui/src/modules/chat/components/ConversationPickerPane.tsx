@@ -51,14 +51,19 @@ export function ConversationPickerPane({ paneId }: { paneId: string }) {
   const header = (
     <div
       className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3"
-      data-testid="chat-pane-header"
+      // Distinct from ConversationPage's `chat-pane-header`/`chat-pane-close`: a
+      // pane is EITHER a picker OR a conversation (never both at runtime), but the
+      // testid-unique dev plugin enforces globally-unique LITERALS, so the empty
+      // picker pane gets its own ids (no spec targets the picker's close/header;
+      // the pane-close specs fill the pane with a conversation first).
+      data-testid="chat-picker-pane-header"
     >
       <span className="min-w-0 truncate text-sm text-muted-foreground">
         {mode === 'new' ? 'New chat' : 'Open a conversation'}
       </span>
       <Tooltip content="Close pane">
         <Button
-          data-testid="chat-pane-close"
+          data-testid="chat-picker-pane-close"
           variant="ghost"
           size="icon"
           icon={<X />}
