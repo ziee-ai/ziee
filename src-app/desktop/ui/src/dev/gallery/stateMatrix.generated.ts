@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 12 surfaces carry renderable-state signals; 78 signals total.
+// 9 surfaces carry renderable-state signals; 57 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -43,6 +43,19 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "existing", line: 30 },
     ],
   },
+  "modules/desktop-base/overrides/sidebar-header-spacer": {
+    surface: "modules/desktop-base/overrides/sidebar-header-spacer",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!isTauriView", line: 21 },
+      { kind: "branch", condition: "isLinux", line: 23 },
+      { kind: "branch", condition: "e.button !== 0", line: 24 },
+      { kind: "branch", condition: "target.closest?.(INTERACTIVE_SEL)", line: 26 },
+      { kind: "branch", condition: "!isTauriView", line: 35 },
+      { kind: "branch", condition: "isLinux", line: 36 },
+      { kind: "branch", condition: "target.closest?.(INTERACTIVE_SEL)", line: 38 },
+    ],
+  },
   "modules/host-mount/conversation-extension/components/ConversationMountsControl": {
     surface: "modules/host-mount/conversation-extension/components/ConversationMountsControl",
     requiredStates: ["empty","open"],
@@ -63,50 +76,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "draft.some((m) => m.host_path === picked)", line: 50 },
       { kind: "loading", condition: "loading && draft.length === 0", line: 102 },
       { kind: "empty", condition: "draft.length === 0", line: 107 },
-    ],
-  },
-  "modules/layouts/app-layout/components/Drawer": {
-    surface: "modules/layouts/app-layout/components/Drawer",
-    requiredStates: ["empty"],
-    signals: [
-      { kind: "branch", condition: "!isTauriView", line: 145 },
-      { kind: "branch", condition: "!open", line: 146 },
-      { kind: "branch", condition: "!isTauriView", line: 180 },
-      { kind: "branch", condition: "isLinux", line: 181 },
-      { kind: "branch", condition: "e.button !== 0", line: 182 },
-      { kind: "branch", condition: "target.closest?.(INTERACTIVE_SEL)", line: 184 },
-      { kind: "branch", condition: "!isTauriView", line: 193 },
-      { kind: "branch", condition: "isLinux", line: 194 },
-      { kind: "branch", condition: "target.closest?.(INTERACTIVE_SEL)", line: 196 },
-      { kind: "branch", condition: "Array.isArray(footer)", line: 245 },
-      { kind: "branch", condition: "showOverlay", line: 271 },
-      { kind: "branch", condition: "title != null", line: 298 },
-      { kind: "branch", condition: "typeof title === 'string'", line: 310 },
-      { kind: "branch", condition: "extra != null", line: 328 },
-      { kind: "branch", condition: "closable", line: 329 },
-      { kind: "empty", condition: "noBodyScrollWrap", line: 339 },
-      { kind: "branch", condition: "footerNode != null", line: 342 },
-      { kind: "branch", condition: "title == null", line: 349 },
-    ],
-  },
-  "modules/layouts/app-layout/components/SidebarHeaderSpacer": {
-    surface: "modules/layouts/app-layout/components/SidebarHeaderSpacer",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "!isTauriView", line: 30 },
-      { kind: "branch", condition: "isLinux", line: 32 },
-      { kind: "branch", condition: "e.button !== 0", line: 33 },
-      { kind: "branch", condition: "target.closest?.(INTERACTIVE_SEL)", line: 35 },
-      { kind: "branch", condition: "!isTauriView", line: 44 },
-      { kind: "branch", condition: "isLinux", line: 45 },
-      { kind: "branch", condition: "target.closest?.(INTERACTIVE_SEL)", line: 47 },
-    ],
-  },
-  "modules/layouts/app-layout/components/SidebarToggleButton": {
-    surface: "modules/layouts/app-layout/components/SidebarToggleButton",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "isSidebarCollapsed", line: 76 },
     ],
   },
   "modules/remote-access/pages/RemoteAccessPage": {
@@ -131,14 +100,6 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "status.password_auth_enabled && status.password_rotated", line: 601 },
       { kind: "branch", condition: "showChangePassword", line: 612 },
       { kind: "branch", condition: "needsRotationToEnable", line: 619 },
-    ],
-  },
-  "modules/settings/SettingsPage": {
-    surface: "modules/settings/SettingsPage",
-    requiredStates: [],
-    signals: [
-      { kind: "branch", condition: "useMobileLayout", line: 196 },
-      { kind: "branch", condition: "!useMobileLayout", line: 229 },
     ],
   },
   "modules/tunnel-auth/MagicLinkPage": {
@@ -210,14 +171,13 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 9 keys.
+ * 8 keys.
  */
 export type RequiredState =
   | "modules/host-mount/conversation-extension/components/ConversationMountsControl:empty"
   | "modules/host-mount/conversation-extension/components/ConversationMountsControl:open"
   | "modules/host-mount/project-extension/components/ProjectMountsPanel:delayed"
   | "modules/host-mount/project-extension/components/ProjectMountsPanel:empty"
-  | "modules/layouts/app-layout/components/Drawer:empty"
   | "modules/remote-access/pages/RemoteAccessPage:delayed"
   | "modules/remote-access/pages/RemoteAccessPage:error"
   | "modules/updater/components/UpdateBanner:error"
@@ -229,7 +189,6 @@ export const REQUIRED_STATE_KEYS = [
   "modules/host-mount/conversation-extension/components/ConversationMountsControl:open",
   "modules/host-mount/project-extension/components/ProjectMountsPanel:delayed",
   "modules/host-mount/project-extension/components/ProjectMountsPanel:empty",
-  "modules/layouts/app-layout/components/Drawer:empty",
   "modules/remote-access/pages/RemoteAccessPage:delayed",
   "modules/remote-access/pages/RemoteAccessPage:error",
   "modules/updater/components/UpdateBanner:error",

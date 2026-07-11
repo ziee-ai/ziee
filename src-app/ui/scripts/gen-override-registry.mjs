@@ -41,6 +41,60 @@ function walk(dir, acc = []) {
 }
 
 const rel = (f) => path.relative(path.resolve(HERE, '../../..'), f)
+const REPO = path.resolve(HERE, '../../..')
+
+// ── Raw-shadow gate ──────────────────────────────────────────────────────────
+// A "raw whole-file shadow" is a desktop-tree file `desktop/ui/src/X` whose core
+// sibling `ui/src/X` exists — the coarse override we're eliminating. After
+// migration a shadow must be gone (replaced by a co-located `X.desktop.tsx` or a
+// `<Seam>`); the only raw shadow allowed is one recorded as an approved
+// SHADOW-EXCEPTION in DECISIONS.md (main.tsx entry, glob-discovered module.tsx,
+// generated types). Desktop-EXCLUSIVE files (no core sibling) are legit modules.
+
+/** Desktop-tree source files (excluding tests/dev/gallery/generated). */
+function walkDesktopSrc(dir, acc = []) {
+  if (!fs.existsSync(dir)) return acc
+  for (const e of fs.readdirSync(dir)) {
+    const full = path.join(dir, e)
+    if (fs.statSync(full).isDirectory()) {
+      if (!['node_modules', 'dist', 'build', '.git', 'dev', '__detector_fixtures__'].includes(e))
+        walkDesktopSrc(full, acc)
+    } else if (
+      /\.(tsx|ts)$/.test(e) &&
+      !/\.(test|spec)\.(tsx|ts)$/.test(e) &&
+      !/\.generated\.(tsx|ts)$/.test(e)
+    ) {
+      acc.push(full)
+    }
+  }
+  return acc
+}
+
+/** Every desktop-tree file, split into raw shadows (ui sibling exists) vs
+ *  desktop-exclusive (no ui sibling). Paths are relative to `desktop/ui/src`. */
+export function enumerateDesktopFiles(uiSrc = UI_SRC, desktopSrc = DESKTOP_SRC) {
+  const shadows = []
+  const exclusive = []
+  for (const abs of walkDesktopSrc(desktopSrc)) {
+    const relPath = path.relative(desktopSrc, abs).replace(/\\/g, '/')
+    if (fs.existsSync(path.join(uiSrc, relPath))) shadows.push(relPath)
+    else exclusive.push(relPath)
+  }
+  return { shadows: shadows.sort(), exclusive: exclusive.sort() }
+}
+
+/** Approved raw-shadow exceptions from DECISIONS.md. Format:
+ *  `- SHADOW-EXCEPTION: <path> — <reason> [approved: <who/when>]` */
+export function parseShadowExceptions(decisionsText) {
+  const set = new Set()
+  // Path is a single whitespace-delimited token (may contain `-`, `/`, `.`),
+  // then a ` — `/` - ` separator, then the reason + [approved: …].
+  const re = /^-\s*SHADOW-EXCEPTION:\s*(\S+)\s+[—-]\s.*\[approved:/gim
+  let m
+  while ((m = re.exec(decisionsText || '')) !== null) set.add(m[1].trim())
+  return set
+}
+
 
 // Strip block + line comments so JSDoc EXAMPLES (which legitimately show
 // `<Seam id="…">` / `interface UIOverrides { … }`) don't pollute the scan. Naive
@@ -143,6 +197,24 @@ const { deadOverrides, orphanDesktopFiles, unregisteredSeams } = computeDrift(
   desktopFiles,
 )
 
+// --- raw-shadow gate ----------------------------------------------------------
+const { shadows: desktopShadows, exclusive: desktopExclusive } =
+  enumerateDesktopFiles()
+const decisionsText = (() => {
+  for (const p of [
+    path.join(REPO, '.lifecycle/desktop-ui-override/DECISIONS.md'),
+  ]) {
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8')
+  }
+  return ''
+})()
+const shadowExceptions = parseShadowExceptions(decisionsText)
+const unaccountedShadows = desktopShadows.filter((s) => !shadowExceptions.has(s))
+// Exclusive MODULE roots (for the manifest listing).
+const exclusiveModules = desktopExclusive
+  .filter((f) => /(^|\/)module\.tsx$/.test(f))
+  .map((f) => f.replace(/\/module\.tsx$/, '').replace(/^module\.tsx$/, '.'))
+
 // --- manifest -----------------------------------------------------------------
 const seamKeys = [...declared.keys()].sort()
 const rows = seamKeys
@@ -178,6 +250,23 @@ ${desktopFiles.length} co-located override file${desktopFiles.length === 1 ? '' 
 | File | Core sibling |
 |---|---|
 ${relocRows || '| _(none)_ | |'}
+
+## Approved raw whole-file shadows (structural exceptions)
+
+Desktop-tree files that shadow a \`src-app/ui\` path AND cannot use a finer
+mechanism — each requires an approved \`SHADOW-EXCEPTION\` in DECISIONS.md.
+
+${desktopShadows.length} raw shadow${desktopShadows.length === 1 ? '' : 's'} (${unaccountedShadows.length} UNACCOUNTED).
+
+| Shadow | Approved exception? |
+|---|---|
+${desktopShadows.map((s) => `| \`${s}\` | ${shadowExceptions.has(s) ? '✓' : '❌ UNACCOUNTED — migrate to a <Seam>/.desktop.tsx or record an approved SHADOW-EXCEPTION'} |`).join('\n') || '| _(none)_ | |'}
+
+## Desktop-exclusive modules (no \`src-app/ui\` sibling — legit file modules)
+
+${exclusiveModules.length} exclusive module${exclusiveModules.length === 1 ? '' : 's'}.
+
+${exclusiveModules.map((m) => `- \`${m}\``).join('\n') || '- _(none)_'}
 `
 
 const check = process.argv.includes('--check')
@@ -189,6 +278,15 @@ if (deadOverrides.length) {
     `override drift: registerOverride() for undeclared seam(s): ${deadOverrides
       .map((k) => `'${k}' (${registered.get(k)})`)
       .join(', ')} — declare the seam in the core component or remove the registration.`,
+  )
+}
+if (unaccountedShadows.length) {
+  failed = true
+  console.error(
+    `override drift: ${unaccountedShadows.length} RAW whole-file shadow(s) not migrated and not approved:\n` +
+      unaccountedShadows.map((s) => `    desktop/ui/src/${s}`).join('\n') +
+      `\n  → convert each to a <Seam> (finest) or a co-located ui/src/${'<path>'}.desktop.tsx, ` +
+      `or record an approved "- SHADOW-EXCEPTION: <path> — <structural reason> [approved: …]" in DECISIONS.md.`,
   )
 }
 if (orphanDesktopFiles.length) {

@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **12** surfaces carry at least one renderable-state signal.
-- **78** signals total: 69 branch, 3 empty, 3 error, 2 loading, 1 overlay.
+- **9** surfaces carry at least one renderable-state signal.
+- **57** signals total: 49 branch, 2 empty, 3 error, 2 loading, 1 overlay.
 - **0** right-panel renderers registered (each a right-panel-open state).
 - **5** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 2 |
-| `empty` | 3 |
+| `empty` | 2 |
 | `error` | 3 |
 | `open` | 1 |
 
@@ -51,6 +51,20 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `existing` | 30 |
 
+### `modules/desktop-base/overrides/sidebar-header-spacer`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!isTauriView` | 21 |
+| branch | `isLinux` | 23 |
+| branch | `e.button !== 0` | 24 |
+| branch | `target.closest?.(INTERACTIVE_SEL)` | 26 |
+| branch | `!isTauriView` | 35 |
+| branch | `isLinux` | 36 |
+| branch | `target.closest?.(INTERACTIVE_SEL)` | 38 |
+
 ### `modules/host-mount/conversation-extension/components/ConversationMountsControl`
 
 Required states: `empty`, `open`
@@ -74,53 +88,6 @@ Required states: `delayed`, `empty`
 | branch | `draft.some((m) => m.host_path === picked)` | 50 |
 | loading | `loading && draft.length === 0` | 102 |
 | empty | `draft.length === 0` | 107 |
-
-### `modules/layouts/app-layout/components/Drawer`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!isTauriView` | 145 |
-| branch | `!open` | 146 |
-| branch | `!isTauriView` | 180 |
-| branch | `isLinux` | 181 |
-| branch | `e.button !== 0` | 182 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 184 |
-| branch | `!isTauriView` | 193 |
-| branch | `isLinux` | 194 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 196 |
-| branch | `Array.isArray(footer)` | 245 |
-| branch | `showOverlay` | 271 |
-| branch | `title != null` | 298 |
-| branch | `typeof title === 'string'` | 310 |
-| branch | `extra != null` | 328 |
-| branch | `closable` | 329 |
-| empty | `noBodyScrollWrap` | 339 |
-| branch | `footerNode != null` | 342 |
-| branch | `title == null` | 349 |
-
-### `modules/layouts/app-layout/components/SidebarHeaderSpacer`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!isTauriView` | 30 |
-| branch | `isLinux` | 32 |
-| branch | `e.button !== 0` | 33 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 35 |
-| branch | `!isTauriView` | 44 |
-| branch | `isLinux` | 45 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 47 |
-
-### `modules/layouts/app-layout/components/SidebarToggleButton`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `isSidebarCollapsed` | 76 |
 
 ### `modules/remote-access/pages/RemoteAccessPage`
 
@@ -146,15 +113,6 @@ Required states: `delayed`, `error`
 | branch | `status.password_auth_enabled && status.password_rotated` | 601 |
 | branch | `showChangePassword` | 612 |
 | branch | `needsRotationToEnable` | 619 |
-
-### `modules/settings/SettingsPage`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `useMobileLayout` | 196 |
-| branch | `!useMobileLayout` | 229 |
 
 ### `modules/tunnel-auth/MagicLinkPage`
 

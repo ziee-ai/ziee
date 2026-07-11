@@ -8,7 +8,7 @@
  * being present + correct proves the guard was ported back.
  */
 import { describe, test, expect } from 'vitest'
-import { isHigherLayerPresent } from './Drawer'
+import { isHigherLayerPresent } from '@/modules/layouts/app-layout/components/Drawer.desktop'
 
 const el = (id: string) => ({ id }) as unknown as Element
 

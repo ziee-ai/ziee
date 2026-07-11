@@ -129,4 +129,19 @@ classifies a shadow (element-level → scaffold; structural → advise file-swap
 Output is always human-reviewed. Build-time `.mjs` dev script, never shipped.
 **Basis:** codebase + implement-time evidence (the classifier's own output).
 
+### DEC-17: Which raw whole-file desktop shadows genuinely CANNOT use a finer mechanism?
+**Resolution:** Three, each recorded as an approved SHADOW-EXCEPTION below (the
+`gen-override-registry.mjs` gate enforces that every remaining raw shadow is one
+of these). Every other shadow was migrated: 2 → `<Seam>` (HardwareMonitorButton,
+SidebarHeaderSpacer); 11 → co-located `.desktop.{tsx,ts}` (AuthGuard, LeftSidebar,
+HeaderBarContainer, ProviderGroupAssignmentCard, SettingsPage, Drawer,
+SidebarToggleButton, lazyWithPreload, getBaseURL, loader, App.store); 1 dead
+barrel deleted (auth/index.ts).
+**Basis:** codebase — the three below are structurally un-migratable (entry
+point / glob-discovered / generated), not a matter of effort.
+
+- SHADOW-EXCEPTION: main.tsx — the desktop entry point, loaded DIRECTLY by index.html (`<script src="./main.tsx">`), never through the `@/` resolver, so neither a `.desktop.tsx` (tier-2 fires only for `@/` imports) nor a `<Seam>` (it renders the root, not an element) can apply [approved: user "MIGRATE EVERY POSSIBLE … main.tsx entry point … approved [DESCOPED]" 2026-07-11]
+- SHADOW-EXCEPTION: modules/memory/module.tsx — a `module.tsx` is discovered by `import.meta.glob`, which bypasses the `@/` resolver; a core-tree `module.desktop.tsx` is found by neither `desktop-loader.ts` (globs the desktop tree) nor core `loader.ts` (globs the literal `module.tsx`). It is a whole-module structural override that must stay glob-discovered in the desktop tree (DRIFT-1.5) [approved: user "MIGRATE EVERY POSSIBLE … approved [DESCOPED] with structural justification" 2026-07-11]
+- SHADOW-EXCEPTION: api-client/types.ts — a GENERATED file: the desktop `--generate-openapi` binary writes the desktop-specific OpenAPI types here (the desktop tsconfig special-cases `@/api-client/types` to it). Relocating it would require re-plumbing the codegen output path; it is machine-generated, not a hand-written override [approved: user "MIGRATE EVERY POSSIBLE … approved [DESCOPED]" 2026-07-11]
+
 All decisions above are resolved; no unresolved markers remain.

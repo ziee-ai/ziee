@@ -81,17 +81,14 @@ export const GALLERY_COVERAGE = {
   "modules/host-mount/pages/HostMountPolicyPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/host-mount/project-extension/components/ProjectMountsPanel": { kind: 'via', reason: 'rendered within the host-mount project extension panel' },
   "modules/host-mount/project-extension/extension": { kind: 'nonvisual', reason: 'project-extension registration' },
-  "modules/layouts/app-layout/components/Drawer": { kind: 'via', reason: 'the desktop Drawer primitive — exercised by every drawer the app-layout opens' },
-  "modules/layouts/app-layout/components/SidebarHeaderSpacer": { kind: 'via', reason: 'rendered within the app-layout chrome' },
-  "modules/layouts/app-layout/components/SidebarToggleButton": { kind: 'via', reason: 'rendered within the app-layout chrome' },
   "modules/memory/pages/MemoryCombinedPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/remote-access/pages/RemoteAccessPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
-  "modules/settings/SettingsPage": { kind: 'via', reason: 'desktop settings layout shell (outlet)' },
   "modules/tunnel-auth/MagicLinkPage": { kind: 'flow', reason: 'magic-link auth flow' },
   "modules/tunnel-auth/PhoneAuthPage": { kind: 'flow', reason: 'phone auth flow' },
   "modules/updater/components/UpdateBanner": { kind: 'via', reason: 'slot banner in the app-layout' },
   "modules/updater/pages/AboutPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/desktop-base/overrides/hardware-monitor": { kind: 'via', reason: 'desktop override for the hardware.monitor-button <Seam> — rendered inside the hardware settings header' },
+  "modules/desktop-base/overrides/sidebar-header-spacer": { kind: 'via', reason: 'desktop override for the layout.sidebar-header-spacer <Seam> — the drag-enabled top spacer rendered inside the LeftSidebar' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>
 

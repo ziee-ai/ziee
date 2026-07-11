@@ -6,7 +6,11 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeDrift, topLevelSeamKeys } from './gen-override-registry.mjs'
+import {
+  computeDrift,
+  topLevelSeamKeys,
+  parseShadowExceptions,
+} from './gen-override-registry.mjs'
 
 const m = (pairs) => new Map(pairs)
 
@@ -34,6 +38,30 @@ test('TEST-7: a declared-but-unregistered seam is reported, not failed', () => {
   const d = computeDrift(m([['web.only', 'core.tsx']]), m([]), [])
   assert.deepEqual(d.unregisteredSeams, ['web.only'])
   assert.deepEqual(d.deadOverrides, [])
+})
+
+test('TEST-12: parseShadowExceptions captures approved shadow paths incl. hyphens/slashes', () => {
+  const decisions = `
+- SHADOW-EXCEPTION: main.tsx — entry point [approved: user 2026-07-11]
+- SHADOW-EXCEPTION: api-client/types.ts — generated [approved: user 2026-07-11]
+- SHADOW-EXCEPTION: modules/memory/module.tsx — glob module [approved: user 2026-07-11]
+- SHADOW-EXCEPTION: not-approved/file.ts — reason with no approval token
+`
+  const set = parseShadowExceptions(decisions)
+  assert.ok(set.has('main.tsx'))
+  assert.ok(set.has('api-client/types.ts')) // hyphen in path captured fully
+  assert.ok(set.has('modules/memory/module.tsx'))
+  // an exception WITHOUT an [approved: …] token is NOT accepted
+  assert.ok(!set.has('not-approved/file.ts'))
+})
+
+test('TEST-12: the raw-shadow gate flags an unaccounted shadow', () => {
+  const shadows = ['main.tsx', 'modules/new-raw-override.tsx']
+  const approved = parseShadowExceptions(
+    '- SHADOW-EXCEPTION: main.tsx — entry [approved: user 2026-07-11]',
+  )
+  const unaccounted = shadows.filter((s) => !approved.has(s))
+  assert.deepEqual(unaccounted, ['modules/new-raw-override.tsx'])
 })
 
 test('TEST-7: topLevelSeamKeys handles multi-line object seam values + ignores nested keys', () => {
