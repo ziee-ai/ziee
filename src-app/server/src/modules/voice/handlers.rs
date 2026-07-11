@@ -303,6 +303,30 @@ pub fn sync_cache_docs(op: TransformOperation) -> TransformOperation {
 mod tests {
     use super::*;
 
+    // TEST-5: storable model-name format + source-repo format validators.
+    #[test]
+    fn model_name_format_accepts_valid_rejects_bad() {
+        assert!(is_valid_model_name("base"));
+        assert!(is_valid_model_name("large-v3-turbo-q5_0"));
+        assert!(is_valid_model_name("my.custom_model-1"));
+        assert!(!is_valid_model_name("")); // empty
+        assert!(!is_valid_model_name("../etc/passwd")); // traversal chars
+        assert!(!is_valid_model_name("a/b")); // slash
+        assert!(!is_valid_model_name("..")); // dotdot
+        assert!(!is_valid_model_name(&"x".repeat(51))); // > 50
+    }
+
+    #[test]
+    fn source_repo_format_accepts_slug_and_https_rejects_bad() {
+        assert!(is_valid_model_source_repo("ggerganov/whisper.cpp"));
+        assert!(is_valid_model_source_repo("https://hf.internal/mirror"));
+        assert!(!is_valid_model_source_repo("")); // empty
+        assert!(!is_valid_model_source_repo("no-slash")); // not owner/repo
+        assert!(!is_valid_model_source_repo("a/b/c")); // too many segments
+        assert!(!is_valid_model_source_repo("../evil")); // traversal
+        assert!(!is_valid_model_source_repo("http://insecure/x")); // non-https url
+    }
+
     fn base() -> UpdateVoiceSettingsRequest {
         UpdateVoiceSettingsRequest::default()
     }

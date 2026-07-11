@@ -529,6 +529,11 @@ pub async fn upload_model(
             }
             Some("file") => {
                 orig_filename = field.file_name().map(|s| s.to_string());
+                // A repeated `file` field: discard the previous temp before
+                // replacing it (no leak on atypical multi-file input).
+                if let Some(prev) = upload.take() {
+                    model::discard_temp(&prev.tmp);
+                }
                 // Stream to a temp file (cap enforced as bytes arrive — never
                 // buffers the whole multi-GB file in RAM).
                 match model::stream_upload_to_temp(field).await {

@@ -111,7 +111,7 @@ pub async fn apply_active_model_change() {
         Ok(s) => s,
         Err(_) => return,
     };
-    let desired = crate::modules::voice::model::model_filename(&settings.model);
+    let desired = desired_active_filename(&settings.model);
     let dep = get_deployment_manager().local();
     if !dep.status().await.running {
         return; // nothing running — next transcribe starts fresh.
@@ -379,7 +379,7 @@ pub async fn ensure_running() -> Result<InstanceHandle, AppError> {
     }
 
     let dep = get_deployment_manager().local();
-    let desired_model_file = crate::modules::voice::model::model_filename(&settings.model);
+    let desired_model_file = desired_active_filename(&settings.model);
 
     // Fast path — healthy, correctly-modelled instance already running.
     if let Some(handle) = live_handle_if_current(&dep, &desired_model_file).await? {
@@ -461,6 +461,19 @@ pub async fn admin_restart() -> Result<InstanceHandle, AppError> {
         persist_stopped("stopped").await;
     }
     ensure_running().await
+}
+
+/// The on-disk basename the running whisper-server serves for `name` — the
+/// RESOLVED installed file (`.bin` OR `.gguf`), falling back to the default `.bin`
+/// name when nothing is installed yet. The auto-start comparison + persist MUST
+/// use this, not `model::model_filename` (always `.bin`): `LocalDeployment::start`
+/// records `active_model` from the resolved path, so an activated `.gguf` model
+/// only matches the warm-instance fast path when the desired key is resolved the
+/// same way (else it drains + respawns on every transcribe — restart storm).
+fn desired_active_filename(name: &str) -> String {
+    crate::modules::voice::model::installed_model_path(name)
+        .and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| crate::modules::voice::model::model_filename(name))
 }
 
 /// Return a handle IFF the deployment currently runs a HEALTHY instance whose
@@ -566,7 +579,7 @@ async fn do_start(
         )));
     }
 
-    let model_file = crate::modules::voice::model::model_filename(&settings.model);
+    let model_file = desired_active_filename(&settings.model);
     persist_running(&model_file, outcome.port, &outcome.base_url).await?;
 
     Ok(InstanceHandle {

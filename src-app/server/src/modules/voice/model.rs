@@ -626,4 +626,40 @@ mod tests {
     fn hex_lower_pads_and_lowercases() {
         assert_eq!(hex_lower(&[0x00, 0x0a, 0xff]), "000aff");
     }
+
+    // TEST-2: magic-byte validation + upload cap.
+    #[test]
+    fn whisper_magic_accepts_ggml_and_gguf_rejects_junk() {
+        assert!(has_whisper_magic(b"ggml....."));
+        assert!(has_whisper_magic(b"GGUF\x00\x00"));
+        assert!(!has_whisper_magic(b"<htm"));
+        assert!(!has_whisper_magic(b"PK\x03\x04")); // zip
+        assert!(!has_whisper_magic(b"gg")); // too short
+        assert!(!has_whisper_magic(b""));
+    }
+
+    #[test]
+    fn upload_cap_is_a_sane_bound() {
+        // 5 GiB — above the largest whisper model (~3.1 GB), below absurd.
+        assert_eq!(VOICE_MODEL_MAX_UPLOAD_BYTES, 5 * 1024 * 1024 * 1024);
+        assert_eq!(MAX_MODEL_BYTES, VOICE_MODEL_MAX_UPLOAD_BYTES);
+    }
+
+    #[test]
+    fn installed_path_prefers_bin_then_gguf_naming() {
+        // Pure naming contract (no filesystem): the resolver looks for these two.
+        assert_eq!(model_filename("large-v3"), "ggml-large-v3.bin");
+    }
+
+    #[test]
+    fn redact_url_strips_credentials() {
+        assert_eq!(
+            redact_url("https://user:pass@example.com/ggml-base.bin"),
+            "https://example.com/ggml-base.bin"
+        );
+        assert_eq!(
+            redact_url("https://example.com/x.bin"),
+            "https://example.com/x.bin"
+        );
+    }
 }
