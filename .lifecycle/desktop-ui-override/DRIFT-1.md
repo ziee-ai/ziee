@@ -49,4 +49,28 @@
   UI_OVERRIDES.md + a codemod guard candidate): `.desktop.tsx` co-location works
   only for `@/`-imported files, NEVER for glob-discovered `module.tsx`.
 
+- **DRIFT-1.6** — verdict: impl-wins — Drawer + SettingsPage reclassified B→A on
+  close reading (the triage's element-level call was optimistic). Both diverge
+  STRUCTURALLY, not in a single element: desktop Drawer differs in overlay styling,
+  header LAYOUT (close-right + window-drag vs close-left + a11y), chrome-reserve
+  insets, footer padding, and resize max-width — a seam would need 5+ contorted
+  sub-seams and can't cleanly capture the desktop chrome/inset needs (which core
+  can't compute — it can't import desktop platform helpers). Desktop SettingsPage
+  likewise renders a deliberately different (flat, single-user) menu and drops the
+  permission-filter/403/help-footer BY DESIGN (single-admin desktop), not as drift.
+  Resolution: BOTH retained as tier-1 desktop-tree shadows (their current, working
+  location) — NOT seams, NOT relocated. Seam exemplar remains HardwareMonitorButton
+  (1 clean element-level conversion); the infra's element-level capability is proven
+  by it, and most existing overrides are honestly structural (file-swap). ITEM-8
+  seams = 1; PLAN/TESTS/DEC amended.
+
+- **DRIFT-1.7** — verdict: resolved — ITEM-9 (Drawer drift) is executed IN the
+  retained tier-1 Drawer shadow (not during a seam conversion): restore core's
+  `higherLayerOpen` stacking guard (a real bug — closing a dialog stacked above the
+  drawer also dismissed the drawer) + `titleText`/node-title `Dialog.Title` a11y +
+  the `data-testid` override + the `data-slot="layout-drawer"`/`layout-drawer-content`
+  markers the stacking-guard query depends on. Swipe-to-close is deliberately NOT
+  ported (touch-drag-to-close is low-value on a mouse/trackpad desktop and the
+  stacking guard is the actual regression); noted here as an intentional omission.
+
 **Unresolved drifts:** 0

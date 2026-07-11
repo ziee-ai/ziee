@@ -62,13 +62,16 @@ seam) and on an orphaned `*.desktop.tsx` (no core sibling).
 **Basis:** codebase — mirrors `gen-testid-registry.mjs`.
 
 ### DEC-10: Which existing shadows convert to seams vs relocate vs stay?
-**Resolution:** Per the triage, REFINED at implement time (DRIFT-1.1, 1.5) — 3
-class-B → seams (`Drawer`, `SettingsPage`, `HardwareMonitorButton`); 4 class-A →
+**Resolution:** Per the triage, REFINED at implement time (DRIFT-1.1/1.5/1.6) — 1
+seam (`HardwareMonitorButton`, a genuine element-level divergence); 4 class-A →
 `.desktop.tsx` co-location (`AuthGuard`, `LeftSidebar`, `HeaderBarContainer`,
-`ProviderGroupAssignmentCard`); `memory/module` retained as a tier-1 desktop-tree
-MODULE (`module.tsx` is glob-discovered — `.desktop.tsx` cannot resolve it);
-`SidebarToggleButton` + `SidebarHeaderSpacer` retained as tier-1 shadows
-(structural divergence + relative-import consumers); 8 class-C infra → unchanged.
+`ProviderGroupAssignmentCard`); retained as tier-1 desktop-tree shadows:
+`Drawer` + `SettingsPage` (structural divergence — many elements differ + desktop
+chrome/inset needs core can't compute; Drawer additionally gets a drift/bug fix,
+DRIFT-1.7), `memory/module` (`module.tsx` is glob-discovered), `SidebarToggleButton`
++ `SidebarHeaderSpacer`; 8 class-C infra → unchanged. The seam mechanism's
+element-level capability is proven by HardwareMonitorButton; the honest finding is
+that most existing desktop overrides are STRUCTURAL and correctly use file-swap.
 **Basis:** codebase — a seam removes duplication only for genuine element-level
 divergence; structural/whole-component overrides stay as file-swaps (tier-1 shadow
 or tier-2 `.desktop.tsx`).

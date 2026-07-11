@@ -39,6 +39,23 @@ import { cn } from '@/lib/utils'
 const INTERACTIVE_SEL =
   'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"]'
 
+/**
+ * Pure decision for the stacking guard: is any layer OTHER than `self` stacked
+ * strictly above `thisZ`? Extracted so the guard's logic is unit-testable
+ * without a real DOM (the DOM query/parse is done by the caller). See DRIFT-1.7.
+ */
+export function isHigherLayerPresent(
+  layers: { el: Element; z: number }[],
+  self: Element | null,
+  thisZ: number,
+): boolean {
+  for (const { el, z } of layers) {
+    if (el === self) continue
+    if (Number.isFinite(z) && z > thisZ) return true
+  }
+  return false
+}
+
 type Placement = 'left' | 'right' | 'top' | 'bottom'
 
 // Local app Drawer. Public API preserved from the previous antd-backed
@@ -49,6 +66,11 @@ export interface DrawerProps {
   open?: boolean
   onClose?: () => void
   title?: React.ReactNode
+  /**
+   * Accessible name when `title` is a non-string node (Radix requires a
+   * `Dialog.Title`; a node can't be introspected for its text).
+   */
+  titleText?: string
   placement?: Placement
   /** Panel size on the resize axis: a px number, or legacy 'default'(378)/'large'(736). */
   size?: number | 'default' | 'large'
@@ -75,6 +97,8 @@ export interface DrawerProps {
   zIndex?: number
   /** Render children directly (caller owns scrolling) instead of inside the DivScrollY layer. */
   noBodyScrollWrap?: boolean
+  /** Overrides the default `layout-drawer-content` testid on the content root. */
+  'data-testid'?: string
   children?: React.ReactNode
 }
 
@@ -92,6 +116,7 @@ export const Drawer: React.FC<DrawerProps> = ({
   open,
   onClose,
   title,
+  titleText,
   placement = 'right',
   size,
   width,
@@ -105,6 +130,7 @@ export const Drawer: React.FC<DrawerProps> = ({
   styles,
   zIndex,
   noBodyScrollWrap = false,
+  'data-testid': testid,
   children,
 }) => {
   const windowMinSize = useWindowMinSize()
@@ -177,6 +203,21 @@ export const Drawer: React.FC<DrawerProps> = ({
     maskClosableProp ?? (typeof mask === 'object' ? mask.closable !== false : mask !== false)
   const showOverlay = mask !== false
 
+  // A drawer must NOT dismiss (Escape / click-outside) while another drawer or
+  // dialog is stacked ABOVE it — e.g. a file preview opened from inside this
+  // drawer. Radix fires this lower layer's dismiss handlers too; guard them so
+  // closing the top layer doesn't also close this one. (Ported back from core —
+  // the desktop shadow had dropped it; see DRIFT-1.7.)
+  const thisZ = zIndex ?? 50
+  const higherLayerOpen = () => {
+    const layers = [
+      ...document.querySelectorAll(
+        '[data-testid="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]',
+      ),
+    ].map(el => ({ el, z: parseInt(getComputedStyle(el).zIndex, 10) }))
+    return isHigherLayerPresent(layers, drawerDivRef.current, thisZ)
+  }
+
   // px size on the resize axis; full-bleed on the smallest breakpoint.
   const axisPx = width ?? (windowMinSize.xs && horizontal ? '100%' : sizePx(size))
   const sizeStyle: React.CSSProperties = horizontal ? { width: axisPx } : { height: axisPx }
@@ -234,9 +275,17 @@ export const Drawer: React.FC<DrawerProps> = ({
         )}
         <DialogPrimitive.Content
           ref={drawerDivRef}
+          // Stable marker for "an app Drawer is open" + the target the stacking
+          // guard's querySelector looks for. NOT the data-testid (a caller can
+          // override that, which would silently break the guard).
+          data-slot="layout-drawer"
+          data-testid={testid ?? 'layout-drawer-content'}
           // maskClosable=false → backdrop/outside click doesn't dismiss (Escape still does).
-          onPointerDownOutside={maskClosable ? undefined : e => e.preventDefault()}
-          onInteractOutside={maskClosable ? undefined : e => e.preventDefault()}
+          // A higher-stacked drawer/dialog (e.g. a file preview opened from here)
+          // being closed must not also dismiss THIS drawer.
+          onEscapeKeyDown={e => { if (higherLayerOpen()) e.preventDefault() }}
+          onPointerDownOutside={e => { if (!maskClosable || higherLayerOpen()) e.preventDefault() }}
+          onInteractOutside={e => { if (!maskClosable || higherLayerOpen()) e.preventDefault() }}
           style={{ ...sizeStyle, ...wrapperStyle, zIndex, ...styles?.wrapper }}
           className={cn(
             'fixed z-50 flex flex-col gap-0 bg-background shadow-none transition ease-in-out overflow-hidden',
@@ -258,7 +307,20 @@ export const Drawer: React.FC<DrawerProps> = ({
               onMouseDown={handleTitleMouseDown}
               onDoubleClick={handleTitleDoubleClick}
             >
-              {typeof title === 'string' ? <Title level={5} className="!m-0">{title}</Title> : title}
+              {typeof title === 'string' ? (
+                // The visible heading IS the dialog's accessible name.
+                <DialogPrimitive.Title asChild>
+                  <Title level={5} className="!m-0">{title}</Title>
+                </DialogPrimitive.Title>
+              ) : (
+                // A node title can't be introspected for text — render it
+                // visually and label the dialog via an sr-only Title so Radix
+                // still gets an accessible name (aria-labelledby).
+                <>
+                  <DialogPrimitive.Title className="sr-only">{titleText ?? 'Drawer'}</DialogPrimitive.Title>
+                  {title}
+                </>
+              )}
               {/* Header-action + close cluster, right-aligned. J7: the close
                   affordance is standardized to the RIGHT to match the dialog /
                   sheet / panel majority rather than the old left-of-title spot. */}

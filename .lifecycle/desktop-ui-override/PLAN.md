@@ -91,18 +91,22 @@ declares ONE fallback-preserving seam + desktop registers ONE override."
   `UIOverrides` declaration, emit the desktop `registerOverride` block, and delete
   the shadow. `add <key>`: scaffold a new seam (decl + registration stub + manifest
   row). Deterministic + fixture-tested; output reviewed before commit.
-- **ITEM-8**: Convert the 3 genuinely element-level class-B shadows to seams via
-  the codemod (reviewed output): `Drawer`, `SettingsPage`, `HardwareMonitorButton`.
-  Each: core declares the seam (fallback = original element), desktop registers its
-  variant, desktop shadow deleted. (`SidebarToggleButton` + `SidebarHeaderSpacer`
-  reclassified B→A at implement time — structural divergence + relative-import
-  consumers; RETAINED as tier-1 desktop-tree shadows, see DRIFT-1.1. `HardwareMonitorButton`
-  is a hand-conversion; the codemod reproduces its scaffold as a golden fixture.)
-- **ITEM-9**: Reconcile `Drawer` drift during its conversion — RESTORE core's
-  swipe-to-close + `higherLayerOpen` stacking guard that the desktop shadow
-  silently dropped, rather than propagating the bug. The desktop Drawer seam
-  overrides ONLY the intended header/inset/traffic-light elements; swipe + stacking
-  come from the shared fallback path.
+- **ITEM-8**: Convert the genuinely element-level shadow(s) to seams:
+  `HardwareMonitorButton` (done — core declares the seam, desktop registers its
+  variant, shadow deleted). On close reading (DRIFT-1.6) `Drawer` + `SettingsPage`
+  are STRUCTURAL, not element-level — a seam would need many contorted sub-seams and
+  can't capture desktop chrome/inset needs — so both are RETAINED as tier-1
+  desktop-tree shadows (like `SidebarToggleButton`/`SidebarHeaderSpacer`/`memory`).
+  The seam mechanism's element-level capability is proven by HardwareMonitorButton;
+  most existing overrides are honestly structural (file-swap). `HardwareMonitorButton`
+  is the codemod's golden fixture.
+- **ITEM-9**: Reconcile `Drawer` drift in the retained tier-1 shadow (DRIFT-1.7) —
+  RESTORE core's `higherLayerOpen` stacking guard (a real bug: a stacked dialog
+  closing also dismissed the drawer) + `titleText`/node-title `Dialog.Title` a11y +
+  the `data-testid` override + the `data-slot`/`layout-drawer-content` markers the
+  guard's query depends on. Swipe-to-close deliberately NOT ported (low value on a
+  mouse-driven desktop). Guard decision logic extracted to `isHigherLayerPresent`
+  for unit testing.
 - **ITEM-10**: Manifest + lint — `ui/scripts/gen-override-registry.mjs` (or a
   `seam check` subcommand): emit `OVERRIDE_MANIFEST.md` + a generated key list;
   `--check` FAILS on (a) a registered override whose key has no declared seam (dead
