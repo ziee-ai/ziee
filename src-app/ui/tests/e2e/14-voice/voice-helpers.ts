@@ -282,6 +282,7 @@ export function defaultVoiceState(
     settings: {
       enabled: true,
       model: 'base',
+      model_source_repo: 'ggerganov/whisper.cpp',
       language: 'auto',
       streaming_enabled: true,
       stream_interval_ms: 1000,

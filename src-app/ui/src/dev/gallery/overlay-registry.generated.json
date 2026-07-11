@@ -1,9 +1,9 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 83,
-    "hosts": 60,
-    "triggers": 23,
+    "total": 85,
+    "hosts": 61,
+    "triggers": 24,
     "wiredOpen": 37
   },
   "hosts": [
@@ -775,6 +775,19 @@
       ]
     },
     {
+      "surface": "modules/voice/components/UploadModelDrawer",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
       "surface": "modules/workflow/components/DryRunPreviewDialog",
       "class": "host",
       "primitives": [
@@ -1130,6 +1143,19 @@
           "primitive": "Drawer",
           "mode": "trigger"
         },
+        {
+          "primitive": "Confirm",
+          "mode": "trigger"
+        }
+      ]
+    },
+    {
+      "surface": "modules/voice/components/InstalledModelsCard",
+      "class": "trigger",
+      "primitives": [
+        "Confirm"
+      ],
+      "occurrences": [
         {
           "primitive": "Confirm",
           "mode": "trigger"

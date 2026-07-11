@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 363 surfaces carry renderable-state signals; 2102 signals total.
+// 365 surfaces carry renderable-state signals; 2131 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3966,6 +3966,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "users.length > 0", line: 302 },
     ],
   },
+  "modules/voice/components/AvailableModelsCard": {
+    surface: "modules/voice/components/AvailableModelsCard",
+    requiredStates: ["empty","error"],
+    signals: [
+      { kind: "branch", condition: "sourceRepo", line: 101 },
+      { kind: "branch", condition: "checking && !hasLoaded", line: 114 },
+      { kind: "error", condition: "error && !hasLoaded", line: 116 },
+      { kind: "branch", condition: "!sourceReachable", line: 124 },
+      { kind: "empty", condition: "total === 0", line: 129 },
+      { kind: "branch", condition: "total > PAGE_SIZE", line: 146 },
+      { kind: "branch", condition: "model.size_bytes != null && !model.installed", line: 198 },
+      { kind: "branch", condition: "model.quantization", line: 203 },
+      { kind: "branch", condition: "model.sha256", line: 215 },
+      { kind: "branch", condition: "model.installed", line: 224 },
+      { kind: "branch", condition: "progress", line: 247 },
+      { kind: "error", condition: "failed && progress?.error", line: 248 },
+    ],
+  },
   "modules/voice/components/AvailableVersionsCard": {
     surface: "modules/voice/components/AvailableVersionsCard",
     requiredStates: ["empty","error"],
@@ -3984,6 +4002,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "failed && progress?.error", line: 217 },
     ],
   },
+  "modules/voice/components/InstalledModelsCard": {
+    surface: "modules/voice/components/InstalledModelsCard",
+    requiredStates: ["empty","error"],
+    signals: [
+      { kind: "empty", condition: "loadingInstalled && installed.length === 0", line: 60 },
+      { kind: "error", condition: "error && installed.length === 0", line: 62 },
+      { kind: "empty", condition: "installed.length === 0", line: 70 },
+      { kind: "branch", condition: "i > 0", line: 80 },
+      { kind: "branch", condition: "total > PAGE_SIZE", line: 85 },
+      { kind: "branch", condition: "model.is_active", line: 134 },
+      { kind: "branch", condition: "model.update_available", line: 153 },
+      { kind: "branch", condition: "canManage && !model.is_active", line: 165 },
+      { kind: "branch", condition: "canManage", line: 179 },
+      { kind: "branch", condition: "model.is_active", line: 186 },
+    ],
+  },
   "modules/voice/components/InstalledVersionsCard": {
     surface: "modules/voice/components/InstalledVersionsCard",
     requiredStates: ["delayed","empty","error"],
@@ -3998,14 +4032,21 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "version.is_system_default", line: 141 },
     ],
   },
-  "modules/voice/components/ModelCard": {
-    surface: "modules/voice/components/ModelCard",
-    requiredStates: ["delayed","error"],
+  "modules/voice/components/UploadModelDrawer": {
+    surface: "modules/voice/components/UploadModelDrawer",
+    requiredStates: ["open"],
     signals: [
-      { kind: "loading", condition: "loading && !status", line: 42 },
-      { kind: "error", condition: "error && !status", line: 44 },
-      { kind: "branch", condition: "status?.present", line: 57 },
-      { kind: "branch", condition: "status?.present && status.size_bytes != null", line: 67 },
+      { kind: "branch", condition: "!first", line: 34 },
+      { kind: "branch", condition: "uploading", line: 50 },
+      { kind: "branch", condition: "!file", line: 59 },
+      { kind: "branch", condition: "!name.trim()", line: 63 },
+      { kind: "overlay", condition: "<Drawer open>", line: 78 },
+      { kind: "branch", condition: "canManage", line: 95 },
+      { kind: "branch", condition: "file", line: 141 },
+      { kind: "branch", condition: "uploadError", line: 148 },
+      { kind: "branch", condition: "uploading && (uploadProgress.length > 0 || overallUploadProgress > 0)", line: 154 },
+      { kind: "branch", condition: "overallUploadProgress > 0", line: 171 },
+      { kind: "branch", condition: "fp.size > 0", line: 191 },
     ],
   },
   "modules/voice/components/VoiceConfigCard": {
@@ -4031,7 +4072,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/voice/components/VoiceSettingsPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "showBanner", line: 34 },
+      { kind: "branch", condition: "showBanner", line: 40 },
     ],
   },
   "modules/web-search/components/WebSearchGlobalSection": {
@@ -4370,7 +4411,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 370 keys.
+ * 373 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4699,13 +4740,16 @@ export type RequiredState =
   | "modules/user/components/user/UserGroupsDrawer:open"
   | "modules/user/components/user/UsersSettings:empty"
   | "modules/user/components/user/UsersSettings:open"
+  | "modules/voice/components/AvailableModelsCard:empty"
+  | "modules/voice/components/AvailableModelsCard:error"
   | "modules/voice/components/AvailableVersionsCard:empty"
   | "modules/voice/components/AvailableVersionsCard:error"
+  | "modules/voice/components/InstalledModelsCard:empty"
+  | "modules/voice/components/InstalledModelsCard:error"
   | "modules/voice/components/InstalledVersionsCard:delayed"
   | "modules/voice/components/InstalledVersionsCard:empty"
   | "modules/voice/components/InstalledVersionsCard:error"
-  | "modules/voice/components/ModelCard:delayed"
-  | "modules/voice/components/ModelCard:error"
+  | "modules/voice/components/UploadModelDrawer:open"
   | "modules/voice/components/VoiceConfigCard:error"
   | "modules/voice/components/VoiceInstanceCard:delayed"
   | "modules/voice/components/VoiceInstanceCard:error"
@@ -5072,13 +5116,16 @@ export const REQUIRED_STATE_KEYS = [
   "modules/user/components/user/UserGroupsDrawer:open",
   "modules/user/components/user/UsersSettings:empty",
   "modules/user/components/user/UsersSettings:open",
+  "modules/voice/components/AvailableModelsCard:empty",
+  "modules/voice/components/AvailableModelsCard:error",
   "modules/voice/components/AvailableVersionsCard:empty",
   "modules/voice/components/AvailableVersionsCard:error",
+  "modules/voice/components/InstalledModelsCard:empty",
+  "modules/voice/components/InstalledModelsCard:error",
   "modules/voice/components/InstalledVersionsCard:delayed",
   "modules/voice/components/InstalledVersionsCard:empty",
   "modules/voice/components/InstalledVersionsCard:error",
-  "modules/voice/components/ModelCard:delayed",
-  "modules/voice/components/ModelCard:error",
+  "modules/voice/components/UploadModelDrawer:open",
   "modules/voice/components/VoiceConfigCard:error",
   "modules/voice/components/VoiceInstanceCard:delayed",
   "modules/voice/components/VoiceInstanceCard:error",

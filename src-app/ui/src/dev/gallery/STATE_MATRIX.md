@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **363** surfaces carry at least one renderable-state signal.
-- **2102** signals total: 1654 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **365** surfaces carry at least one renderable-state signal.
+- **2131** signals total: 1678 branch, 136 empty, 111 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,10 +16,10 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 96 |
-| `empty` | 104 |
-| `error` | 87 |
-| `open` | 80 |
+| `delayed` | 95 |
+| `empty` | 106 |
+| `error` | 88 |
+| `open` | 81 |
 | `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -4340,6 +4340,25 @@ Required states: `empty`, `open`
 | branch | `index < users.length - 1` | 296 |
 | branch | `users.length > 0` | 302 |
 
+### `modules/voice/components/AvailableModelsCard`
+
+Required states: `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `sourceRepo` | 101 |
+| branch | `checking && !hasLoaded` | 114 |
+| error | `error && !hasLoaded` | 116 |
+| branch | `!sourceReachable` | 124 |
+| empty | `total === 0` | 129 |
+| branch | `total > PAGE_SIZE` | 146 |
+| branch | `model.size_bytes != null && !model.installed` | 198 |
+| branch | `model.quantization` | 203 |
+| branch | `model.sha256` | 215 |
+| branch | `model.installed` | 224 |
+| branch | `progress` | 247 |
+| error | `failed && progress?.error` | 248 |
+
 ### `modules/voice/components/AvailableVersionsCard`
 
 Required states: `empty`, `error`
@@ -4359,6 +4378,23 @@ Required states: `empty`, `error`
 | branch | `progress` | 216 |
 | error | `failed && progress?.error` | 217 |
 
+### `modules/voice/components/InstalledModelsCard`
+
+Required states: `empty`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `loadingInstalled && installed.length === 0` | 60 |
+| error | `error && installed.length === 0` | 62 |
+| empty | `installed.length === 0` | 70 |
+| branch | `i > 0` | 80 |
+| branch | `total > PAGE_SIZE` | 85 |
+| branch | `model.is_active` | 134 |
+| branch | `model.update_available` | 153 |
+| branch | `canManage && !model.is_active` | 165 |
+| branch | `canManage` | 179 |
+| branch | `model.is_active` | 186 |
+
 ### `modules/voice/components/InstalledVersionsCard`
 
 Required states: `delayed`, `empty`, `error`
@@ -4374,16 +4410,23 @@ Required states: `delayed`, `empty`, `error`
 | branch | `canManage` | 134 |
 | branch | `version.is_system_default` | 141 |
 
-### `modules/voice/components/ModelCard`
+### `modules/voice/components/UploadModelDrawer`
 
-Required states: `delayed`, `error`
+Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && !status` | 42 |
-| error | `error && !status` | 44 |
-| branch | `status?.present` | 57 |
-| branch | `status?.present && status.size_bytes != null` | 67 |
+| branch | `!first` | 34 |
+| branch | `uploading` | 50 |
+| branch | `!file` | 59 |
+| branch | `!name.trim()` | 63 |
+| overlay | `<Drawer open>` | 78 |
+| branch | `canManage` | 95 |
+| branch | `file` | 141 |
+| branch | `uploadError` | 148 |
+| branch | `uploading && (uploadProgress.length > 0 \|\| overallUploadProgress > 0)` | 154 |
+| branch | `overallUploadProgress > 0` | 171 |
+| branch | `fp.size > 0` | 191 |
 
 ### `modules/voice/components/VoiceConfigCard`
 
@@ -4412,7 +4455,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `showBanner` | 34 |
+| branch | `showBanner` | 40 |
 
 ### `modules/web-search/components/WebSearchGlobalSection`
 
