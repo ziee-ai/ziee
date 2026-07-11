@@ -360,6 +360,64 @@ async fn file_delete_removes_join_rows() {
     );
 }
 
+// The project upload-and-attach path shares `upload_file_inner`, so it must
+// honor the same configurable per-file cap. Spawn with a tiny 1 MiB cap.
+#[tokio::test]
+async fn upload_and_attach_respects_configured_cap() {
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        max_file_upload_mb: Some(1),
+        ..Default::default()
+    })
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        helpers::full_project_permissions(),
+    )
+    .await;
+    let project = helpers::create_project(&server, &user, "cap").await;
+    let pid = project["id"].as_str().unwrap();
+    let client = reqwest::Client::new();
+    let url = server.api_url(&format!("/projects/{}/files/upload", pid));
+
+    use reqwest::multipart;
+    // Under the cap → 201.
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(vec![0u8; 900 * 1024])
+            .file_name("under.bin")
+            .mime_str("application/octet-stream")
+            .unwrap(),
+    );
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED, "under-cap project upload must succeed");
+
+    // Over the cap → 400 FILE_TOO_LARGE.
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(vec![0u8; 1024 * 1024 + 512 * 1024])
+            .file_name("over.bin")
+            .mime_str("application/octet-stream")
+            .unwrap(),
+    );
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "over-cap project upload must be rejected");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error_code"], "FILE_TOO_LARGE", "body: {body}");
+}
+
 #[tokio::test]
 async fn upload_and_attach_one_round_trip() {
     let server = crate::common::TestServer::start().await;

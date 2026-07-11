@@ -8,7 +8,7 @@
 ## Summary
 
 - **363** surfaces carry at least one renderable-state signal.
-- **2091** signals total: 1643 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2099** signals total: 1651 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -910,12 +910,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 46 |
-| empty | `!message.contents \|\| message.contents.length === 0` | 54 |
-| branch | `attachmentBlocks.length > 0` | 136 |
-| branch | `bubbleBlocks.length > 0` | 165 |
-| branch | `offerCollapse` | 191 |
-| branch | `isUser` | 216 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 54 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 76 |
+| branch | `attachmentBlocks.length > 0` | 158 |
+| branch | `bubbleBlocks.length > 0` | 187 |
+| branch | `offerCollapse` | 213 |
+| branch | `showEmptyCompletionNotice` | 233 |
+| branch | `isUser` | 252 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1013,28 +1014,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 116 |
-| branch | `w <= 0` | 118 |
-| branch | `!el` | 129 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
-| branch | `!import.meta.env.DEV` | 295 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
-| branch | `!el` | 378 |
-| empty | `count === 0` | 385 |
-| branch | `!el` | 403 |
-| branch | `!item` | 406 |
-| branch | `!msg` | 408 |
-| branch | `!c` | 414 |
-| branch | `virtualize` | 419 |
-| branch | `idx < 0` | 421 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
-| branch | `!c` | 448 |
-| branch | `top == null` | 451 |
-| loading | `!loading && count === 0` | 474 |
-| branch | `loadingOlder` | 500 |
-| branch | `virtualize` | 510 |
-| branch | `!msg` | 525 |
-| loading | `(loading \|\| isStreaming)` | 573 |
+| branch | `!vw \|\| vw <= 0` | 117 |
+| branch | `w <= 0` | 119 |
+| branch | `!el` | 130 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 264 |
+| branch | `!import.meta.env.DEV` | 296 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 370 |
+| branch | `!el` | 379 |
+| empty | `count === 0` | 386 |
+| branch | `!el` | 404 |
+| branch | `!item` | 407 |
+| branch | `!msg` | 409 |
+| branch | `!c` | 415 |
+| branch | `virtualize` | 420 |
+| branch | `idx < 0` | 422 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 434 |
+| branch | `!c` | 449 |
+| branch | `top == null` | 452 |
+| loading | `!loading && count === 0` | 475 |
+| branch | `loadingOlder` | 501 |
+| branch | `virtualize` | 511 |
+| branch | `!msg` | 526 |
+| loading | `(loading \|\| isStreaming)` | 582 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1151,13 +1152,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 58 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 75 |
-| branch | `citeN !== null` | 91 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 95 |
-| branch | `scopedHref?.startsWith('#')` | 116 |
-| empty | `verdict === 'empty'` | 171 |
-| branch | `verdict === 'allowed'` | 172 |
+| branch | `isFootnoteLabel(props.id)` | 62 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 78 |
+| branch | `citeN !== null` | 94 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 98 |
+| branch | `scopedHref?.startsWith('#')` | 115 |
+| empty | `verdict === 'empty'` | 170 |
+| branch | `verdict === 'allowed'` | 171 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1518,7 +1519,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canUpload` | 21 |
+| branch | `!canUpload` | 23 |
 
 ### `modules/file/chat-extension/components/FilePasteHandler`
 
@@ -1526,10 +1527,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 33 |
-| branch | `!canUploadRef.current` | 36 |
-| branch | `!dt` | 38 |
-| empty | `collected.length === 0` | 57 |
+| branch | `!el` | 34 |
+| branch | `!canUploadRef.current` | 37 |
+| branch | `!dt` | 39 |
+| empty | `collected.length === 0` | 58 |
 
 ### `modules/file/chat-extension/components/FilePreviewList`
 
@@ -1546,11 +1547,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 38 |
-| branch | `!canUploadRef.current` | 42 |
-| branch | `!canUploadRef.current` | 57 |
-| empty | `dropped.length === 0` | 63 |
-| branch | `dragging && host` | 98 |
+| branch | `!el` | 39 |
+| branch | `!canUploadRef.current` | 43 |
+| branch | `!canUploadRef.current` | 58 |
+| empty | `dropped.length === 0` | 64 |
+| branch | `dragging && host` | 101 |
 
 ### `modules/file/chat-extension/components/FileUploadButton`
 
@@ -1558,7 +1559,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canUpload` | 19 |
+| branch | `!canUpload` | 20 |
 
 ### `modules/file/chat-extension/components/ImageContent`
 
@@ -1765,26 +1766,26 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!projectId` | 68 |
-| empty | `!projectId \|\| selectedFileIds.size === 0` | 80 |
-| empty | `!projectId \|\| incoming.length === 0` | 104 |
-| branch | `atCap` | 105 |
-| empty | `accepted.length === 0` | 121 |
-| branch | `!canUpload` | 130 |
-| branch | `!body` | 134 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 145 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 151 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 157 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 161 |
-| branch | `!project` | 183 |
-| branch | `canUpload` | 195 |
-| branch | `selectedFileIds.size > 0` | 230 |
-| empty | `!(uploadingRows.length === 0)` | 256 |
-| branch | `initialLoading` | 278 |
-| empty | `files.length === 0` | 282 |
-| branch | `canEdit` | 312 |
-| branch | `atCap` | 358 |
-| branch | `isDragging && drawerBody` | 371 |
+| branch | `!projectId` | 66 |
+| empty | `!projectId \|\| selectedFileIds.size === 0` | 78 |
+| empty | `!projectId \|\| incoming.length === 0` | 102 |
+| branch | `atCap` | 103 |
+| empty | `accepted.length === 0` | 119 |
+| branch | `!canUpload` | 128 |
+| branch | `!body` | 132 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 143 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 149 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 155 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 159 |
+| branch | `!project` | 181 |
+| branch | `canUpload` | 193 |
+| branch | `selectedFileIds.size > 0` | 228 |
+| empty | `!(uploadingRows.length === 0)` | 254 |
+| branch | `initialLoading` | 276 |
+| empty | `files.length === 0` | 280 |
+| branch | `canEdit` | 310 |
+| branch | `atCap` | 356 |
+| branch | `isDragging && drawerBody` | 369 |
 
 ### `modules/file/viewers/image/body`
 
@@ -3042,9 +3043,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `grayed` | 18 |
-| branch | `!grayed` | 39 |
-| branch | `help` | 69 |
+| branch | `grayed` | 19 |
+| branch | `!grayed` | 40 |
+| branch | `help` | 156 |
+| branch | `help` | 203 |
 
 ### `modules/llm-provider/components/llm-models/shared/LlmModelParametersSection`
 
@@ -3873,12 +3875,13 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `value.schedule_kind === 'once'` | 127 |
-| branch | `!raw` | 136 |
-| branch | `preset !== 'custom'` | 163 |
-| branch | `preset === 'weekly'` | 179 |
-| branch | `preset === 'monthly'` | 190 |
-| branch | `preset === 'custom'` | 203 |
+| branch | `days.size === 1` | 104 |
+| branch | `value.schedule_kind === 'once'` | 156 |
+| branch | `!raw` | 165 |
+| branch | `preset !== 'custom'` | 192 |
+| branch | `preset === 'weekly'` | 208 |
+| branch | `preset === 'monthly'` | 236 |
+| branch | `preset === 'custom'` | 249 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3886,14 +3889,17 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 69 |
-| branch | `err` | 145 |
-| branch | `err` | 168 |
-| overlay | `<Drawer open>` | 198 |
-| branch | `canUse` | 223 |
-| branch | `f.target_kind === 'prompt'` | 259 |
-| branch | `testing` | 339 |
-| branch | `testResult` | 344 |
+| branch | `!open` | 104 |
+| branch | `!open` | 112 |
+| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 159 |
+| branch | `err` | 249 |
+| branch | `err` | 273 |
+| overlay | `<Drawer open>` | 307 |
+| branch | `canUse` | 332 |
+| branch | `targetKind === 'prompt'` | 371 |
+| branch | `hasDeclaredInputs` | 393 |
+| branch | `testing` | 459 |
+| branch | `testResult` | 464 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
@@ -3901,13 +3907,15 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `task.paused_reason` | 66 |
-| branch | `expanded` | 89 |
-| branch | `!runs` | 91 |
-| empty | `runs.length === 0` | 93 |
-| loading | `loading && tasks.length === 0` | 193 |
-| error | `error && tasks.length === 0` | 197 |
-| empty | `tasks.length === 0` | 205 |
+| branch | `task.paused_reason === 'completed'` | 54 |
+| branch | `task.paused_reason` | 61 |
+| branch | `expanded` | 85 |
+| branch | `!runs` | 87 |
+| empty | `runs.length === 0` | 89 |
+| branch | `skippedToolsNote(r.skipped_tools)` | 101 |
+| loading | `loading && tasks.length === 0` | 197 |
+| error | `error && tasks.length === 0` | 201 |
+| empty | `tasks.length === 0` | 209 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 

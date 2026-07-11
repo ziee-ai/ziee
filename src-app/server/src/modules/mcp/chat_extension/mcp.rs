@@ -234,6 +234,91 @@ fn is_side_effect_tool(server_id: Uuid, tool_name: &str) -> bool {
         && matches!(tool_name, "remember" | "forget")
 }
 
+/// Recover the server that advertised a BARE tool name (one the model returned
+/// without the `<server_id>__` prefix ziee prepends). `map` is the per-message
+/// `bare_name -> Option<server_id>` built in `before_llm_call`; a `None` value
+/// marks an ambiguous name advertised by ≥2 servers. Returns `Some(server_id)`
+/// ONLY for an unambiguous single-server hit — never guesses, so an ambiguous or
+/// unknown name yields `None` and falls through to a clear error instead of
+/// mis-dispatching a side-effecting tool.
+fn recover_server_id_for_bare_name(
+    bare: &str,
+    map: &HashMap<String, Option<Uuid>>,
+) -> Option<Uuid> {
+    map.get(bare).copied().flatten()
+}
+
+/// Resolve `(server_id, tool_name)` from a finalized tool-call wire name.
+///
+/// A well-formed name is `<server_uuid>__<tool>` — split on the FIRST `__` into a
+/// valid UUID + the (possibly `__`-containing) tool name. Some models (e.g.
+/// gpt-oss/harmony) strip the server prefix, yielding a prefix-less name:
+/// bare (`execute_command`), empty-prefix (`__query_rag`), or a bare name that
+/// itself contains `__` (`get__weather`). For those, recover the server from
+/// `map` (the tools advertised this turn) by trying the whole name, and — ONLY
+/// for an empty-prefix `__tool` — the remainder after the leading `__`. A `__`
+/// in the MIDDLE of a name is part of the tool name and is never stripped (so a
+/// non-advertised `get__weather` can't be mis-dispatched to some other server's
+/// `weather` tool). Returns `(None, full_name)` when unresolvable — the caller
+/// surfaces a clear error rather than guessing.
+fn resolve_server_and_tool(
+    full_name: &str,
+    map: &HashMap<String, Option<Uuid>>,
+) -> (Option<Uuid>, String) {
+    if let Some((id, name)) = full_name.split_once("__")
+        && let Ok(sid) = Uuid::parse_str(id)
+    {
+        return (Some(sid), name.to_string());
+    }
+    let candidates: Vec<&str> = match full_name.strip_prefix("__") {
+        Some(rest) if !rest.is_empty() => vec![rest, full_name],
+        _ => vec![full_name],
+    };
+    for cand in candidates {
+        if let Some(sid) = recover_server_id_for_bare_name(cand, map) {
+            return (Some(sid), cand.to_string());
+        }
+    }
+    (None, full_name.to_string())
+}
+
+/// Pick the tool_use id to persist for a finalized tool call, guaranteeing it is
+/// non-empty and unique within its assistant message. `provider_id` is the id the
+/// provider streamed (may be empty, or a non-unique constant like gpt-oss/harmony's
+/// `"tool_use"`); `used` is the set of ids already taken by this message (persisted
+/// tool_uses from prior loop iterations + ids assigned earlier in this finalize
+/// batch). Mints a fresh `call_<uuid>` iff `provider_id` is empty OR already taken;
+/// otherwise keeps `provider_id` so well-behaved providers (Anthropic `toolu_…`,
+/// real OpenAI `call_…`) round-trip unchanged. ziee owns both sides of the
+/// round-trip (the id it sends back as `tool_call_id` and the tool_result that
+/// references it), so replacing a bad id is safe.
+fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSet<String>) -> String {
+    if provider_id.is_empty() || used.contains(provider_id) {
+        format!("call_{}", Uuid::new_v4())
+    } else {
+        provider_id.to_string()
+    }
+}
+
+/// ITEM-13/DEC-17: is `(server_id, tool_name)` in an unattended run's allow-list?
+/// The allow-list is a JSON array of `{ server_id, tool_name? }` (tool_name
+/// absent ⇒ whole server allowed). Parsed generically from `context.metadata`
+/// to avoid a type dependency across the extension boundary.
+fn unattended_tool_allowed(allow: &serde_json::Value, server_id: &str, tool_name: &str) -> bool {
+    allow
+        .as_array()
+        .map(|arr| {
+            arr.iter().any(|g| {
+                g.get("server_id").and_then(|v| v.as_str()) == Some(server_id)
+                    && g.get("tool_name")
+                        .and_then(|v| v.as_str())
+                        .map(|t| t == tool_name)
+                        .unwrap_or(true)
+            })
+        })
+        .unwrap_or(false)
+}
+
 /// Privileged built-in servers (files, memory, elicitation, bio, web_search,
 /// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
 /// read-only / save-only / user-prompting and auto-attached, so a
@@ -288,6 +373,13 @@ pub struct McpChatExtension {
     /// Storage for accumulating tool use deltas during streaming
     /// Key: (message_id, content_index)
     tool_use_accumulator: Arc<Mutex<HashMap<(Uuid, usize), AccumulatedToolUse>>>,
+    /// Per-message map from a BARE tool name (`execute_command`) to the server that
+    /// advertised it, populated when the tool list is shipped in `before_llm_call`.
+    /// Lets `get_accumulated_content` recover the server_id when a model (e.g.
+    /// gpt-oss/harmony) drops the `<server_id>__` prefix ziee prepends. `None`
+    /// marks an AMBIGUOUS bare name (≥2 servers) — never auto-resolved.
+    /// Key: message_id → (bare_tool_name → Option<server_id>).
+    tool_name_server_map: Arc<Mutex<HashMap<Uuid, HashMap<String, Option<Uuid>>>>>,
 }
 
 impl McpChatExtension {
@@ -299,6 +391,7 @@ impl McpChatExtension {
             config,
             session_manager,
             tool_use_accumulator: Arc::new(Mutex::new(HashMap::new())),
+            tool_name_server_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -522,7 +615,44 @@ impl McpChatExtension {
             let server_id = match approval.server_id {
                 Some(id) => id,
                 None => {
+                    // The tool_use never resolved to a server (e.g. the model
+                    // returned a bare tool name with no `<server_id>__` prefix and
+                    // it could not be matched to an advertised tool). Surface a
+                    // clear error AND delete the approval row so the loop can't
+                    // spin here to `max_iteration` (the reported bug).
                     tracing::error!("No server_id in approval record for tool: {}", tool_name);
+                    let error_result = McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.clone()),
+                        server_id: None,
+                        content: format!(
+                            "Could not resolve an MCP server for tool '{}'. The model returned \
+                             a tool name without a server prefix and it could not be matched to \
+                             an advertised tool, so the call was not executed. Retry, or select \
+                             the tool explicitly.",
+                            tool_name
+                        ),
+                        is_error: Some(true),
+                        attachment: None,
+                        images: None,
+                        resource_links: None,
+                        hidden_content: None,
+                        structured_content: None,
+                    };
+                    tool_results.push(error_result.to_message_content());
+                    executed_tool_use_ids.push(tool_use_id.clone());
+                    if let Err(e) = Repos
+                        .chat
+                        .mcp
+                        .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to delete unresolved approval record for tool_use_id={}: {}",
+                            tool_use_id,
+                            e
+                        );
+                    }
                     continue;
                 }
             };
@@ -545,6 +675,20 @@ impl McpChatExtension {
                     structured_content: None,
                 };
                 tool_results.push(error_result.to_message_content());
+                executed_tool_use_ids.push(tool_use_id.clone());
+                // Delete the approval row so this branch can't re-loop to max_iteration.
+                if let Err(e) = Repos
+                    .chat
+                    .mcp
+                    .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to delete server-not-found approval record for tool_use_id={}: {}",
+                        tool_use_id,
+                        e
+                    );
+                }
                 continue;
             }
 
@@ -628,6 +772,20 @@ impl McpChatExtension {
                         structured_content: None,
                     };
                     tool_results.push(error_result.to_message_content());
+                    executed_tool_use_ids.push(tool_use_id.clone());
+                    // Delete the approval row so this branch can't re-loop to max_iteration.
+                    if let Err(e) = Repos
+                        .chat
+                        .mcp
+                        .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to delete sampling-no-session approval record for tool_use_id={}: {}",
+                            tool_use_id,
+                            e
+                        );
+                    }
                     continue;
                 }
                 let arc = match self.session_manager
@@ -661,6 +819,20 @@ impl McpChatExtension {
                             structured_content: None,
                         };
                         tool_results.push(err_result.to_message_content());
+                        executed_tool_use_ids.push(tool_use_id.clone());
+                        // Delete the approval row so this branch can't re-loop to max_iteration.
+                        if let Err(e) = Repos
+                            .chat
+                            .mcp
+                            .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to delete connect-fail approval record for tool_use_id={}: {}",
+                                tool_use_id,
+                                e
+                            );
+                        }
                         continue;
                     }
                 };
@@ -1000,6 +1172,21 @@ impl ChatExtension for McpChatExtension {
         send_request: &SendMessageRequest,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
+        // ITEM-13/DEC-17: stash the unattended signal + allow-list into context
+        // metadata so `after_llm_call` (which has no `send_request`) can branch
+        // the approval decision to deny-not-pause. Default-false, so an
+        // interactive request is byte-identical (nothing is inserted).
+        if send_request.unattended {
+            context
+                .metadata
+                .insert("unattended".to_string(), serde_json::json!(true));
+            context.metadata.insert(
+                "unattended_allowed_tools".to_string(),
+                serde_json::to_value(&send_request.unattended_allowed_tools)
+                    .unwrap_or_else(|_| serde_json::json!([])),
+            );
+        }
+
         // === STEP 1: Process tool approvals (if resuming after approval) ===
         if let Some(approvals) = &send_request.tool_approvals {
             tracing::info!(
@@ -1653,6 +1840,52 @@ impl ChatExtension for McpChatExtension {
             );
         }
 
+        // Stash a per-message `bare_tool_name -> Option<server_id>` map from the
+        // tools we actually advertised this turn, so `get_accumulated_content` can
+        // recover the server when a model (e.g. gpt-oss/harmony) returns a tool
+        // call WITHOUT the `<server_id>__` prefix. A bare name advertised by ≥2
+        // servers is marked `None` (ambiguous) and never auto-resolved. Built from
+        // `all_tools` (the exact composed names shipped) so it matches what the
+        // model saw and never resolves a tool that was dropped from the list.
+        if let Some(message_id) = context.message_id {
+            let mut bare_map: HashMap<String, Option<Uuid>> = HashMap::new();
+            for tool in &all_tools {
+                let composed = &tool.function.name;
+                if let Some((id_str, bare)) = composed.split_once("__")
+                    && let Ok(sid) = Uuid::parse_str(id_str)
+                {
+                    match bare_map.get(bare) {
+                        // Same bare name from a different server → ambiguous.
+                        Some(Some(existing)) if *existing != sid => {
+                            bare_map.insert(bare.to_string(), None);
+                        }
+                        Some(_) => { /* already Some(same) or already None (ambiguous) */ }
+                        None => {
+                            bare_map.insert(bare.to_string(), Some(sid));
+                        }
+                    }
+                }
+            }
+            if let Ok(mut guard) = self.tool_name_server_map.lock() {
+                // Normally the matching `get_accumulated_content` removes this
+                // entry at finalize; a stream that errors/aborts before finalize
+                // would orphan it. Bound the map so those leaks can't grow without
+                // limit — it's a best-effort per-turn recovery cache, so clearing
+                // stale entries at most degrades a concurrent bare-name call to the
+                // clear "could not resolve" error, which self-heals next turn.
+                const MAX_PENDING_TOOL_MAPS: usize = 1024;
+                if guard.len() >= MAX_PENDING_TOOL_MAPS && !guard.contains_key(&message_id) {
+                    tracing::warn!(
+                        "tool_name_server_map exceeded {} entries; clearing stale recovery cache \
+                         (streams that aborted before finalize)",
+                        MAX_PENDING_TOOL_MAPS
+                    );
+                    guard.clear();
+                }
+                guard.insert(message_id, bare_map);
+            }
+        }
+
         tracing::info!(
             "MCP extension: added {} tools from {} servers",
             all_tools.len(),
@@ -2049,6 +2282,22 @@ impl ChatExtension for McpChatExtension {
         // pairing every tool_use with a tool_result.
         let mut tools_disabled = Vec::new();
 
+        // ITEM-13: unattended (scheduled) run signals stashed by before_llm_call.
+        // A tool that would need approval and is NOT allow-listed is denied here
+        // (turn continues) rather than creating an orphaned pending approval.
+        let unattended = context
+            .metadata
+            .get("unattended")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let unattended_allowed = context
+            .metadata
+            .get("unattended_allowed_tools")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([]));
+        // (tool_use_id, tool_name, server_id) denied because unattended + not allow-listed.
+        let mut tools_denied_unattended: Vec<(String, String, String)> = Vec::new();
+
         for (tool_use_id, tool_name, server_id, input) in tool_uses {
             // Privileged built-in servers bypass approval entirely.
             let is_builtin = uuid::Uuid::parse_str(&server_id)
@@ -2118,6 +2367,23 @@ impl ChatExtension for McpChatExtension {
             );
 
             if needs_approval {
+                // ITEM-13/DEC-17: in an unattended run, an approval-required tool is
+                // resolved by the task's allow-list, NOT by a live approval prompt
+                // (there is no user to answer). An ALLOW-LISTED tool was pre-
+                // authorized by the task creator → it AUTO-RUNS (that is the whole
+                // point of the allow-list). A NON-allow-listed tool is DENIED (a
+                // synthesized denial tool_result; no orphaned pending row, no
+                // truncation) so the turn continues. (Blind-audit fix: an allow-
+                // listed tool previously fell through to a pause that no one could
+                // resolve + was omitted from the skipped report.)
+                if unattended {
+                    if unattended_tool_allowed(&unattended_allowed, &server_id, &tool_name) {
+                        tools_to_execute.push((tool_use_id, tool_name, server_id, input));
+                    } else {
+                        tools_denied_unattended.push((tool_use_id, tool_name, server_id));
+                    }
+                    continue;
+                }
                 tools_needing_approval.push((tool_use_id, tool_name.clone(), server_id.clone(), input));
             } else {
                 tools_to_execute.push((tool_use_id, tool_name, server_id, input));
@@ -2225,6 +2491,33 @@ impl ChatExtension for McpChatExtension {
                 resource_links: None,
                 hidden_content: None,
                 structured_content: None,
+            };
+            tool_results.push(denial.to_message_content());
+        }
+
+        // ITEM-13/17: unattended-denied tools get a denial tool_result too (turn
+        // stays protocol-valid + continues), with a structured marker the
+        // scheduler reads back for its skipped-tools report. Because these are
+        // NOT in `tools_needing_approval`, the pause-for-approval block below is
+        // skipped → no orphaned pending rows, no truncation.
+        for (tool_use_id, tool_name, server_id_str) in &tools_denied_unattended {
+            let denial = McpContentData::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                name: Some(tool_name.clone()),
+                server_id: Some(server_id_str.clone()),
+                content: format!(
+                    "Tool '{tool_name}' requires approval and is not permitted to run \
+                     unattended for this scheduled task; it was skipped."
+                ),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: Some(serde_json::json!({
+                    "unattended_denied": true,
+                    "tool_name": tool_name,
+                })),
             };
             tool_results.push(denial.to_message_content());
         }
@@ -2925,64 +3218,140 @@ impl ChatExtension for McpChatExtension {
             .message_id
             .ok_or_else(|| AppError::internal_error("No message_id in context"))?;
 
-        // Lock accumulator and extract all entries for this message
-        let mut accumulator = self
-            .tool_use_accumulator
+        // Drain this message's accumulated entries (sorted by index for
+        // deterministic id assignment), then drop the accumulator lock BEFORE any
+        // `.await` — never hold a std Mutex across await.
+        let mut drained: Vec<(usize, AccumulatedToolUse)> = {
+            let mut accumulator = self
+                .tool_use_accumulator
+                .lock()
+                .map_err(|e| AppError::internal_error(format!("Failed to lock accumulator: {}", e)))?;
+            let keys: Vec<(Uuid, usize)> = accumulator
+                .keys()
+                .filter(|(msg_id, _)| *msg_id == message_id)
+                .copied()
+                .collect();
+            keys.into_iter()
+                .filter_map(|key| accumulator.remove(&key).map(|acc| (key.1, acc)))
+                .collect()
+        };
+        drained.sort_by_key(|(index, _)| *index);
+
+        // Snapshot + clear the per-message bare-name→server_id recovery map that
+        // `before_llm_call` populated for this turn (symmetric with the accumulator
+        // drain above). Used to recover server_id when the model dropped the prefix.
+        let bare_name_map: HashMap<String, Option<Uuid>> = self
+            .tool_name_server_map
             .lock()
-            .map_err(|e| AppError::internal_error(format!("Failed to lock accumulator: {}", e)))?;
+            .ok()
+            .and_then(|mut g| g.remove(&message_id))
+            .unwrap_or_default();
+
+        // Seed the used-id set from tool_use ids already persisted on this message
+        // (prior loop iterations) so a fresh call with the same provider id gets a
+        // distinct id (cross-iteration collision). Targeted query on the indexed
+        // `content_type` column so we only load the small tool_use rows — never the
+        // (potentially large, per-iteration-accumulating) tool_result blobs.
+        // Degrade to empty on DB error.
+        let mut used_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        match sqlx::query_scalar::<_, serde_json::Value>(
+            "SELECT content FROM message_contents \
+             WHERE message_id = $1 AND content_type = 'tool_use'",
+        )
+        .bind(message_id)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rows) => {
+                for raw in rows {
+                    if let Ok(data) = serde_json::from_value::<MessageContentData>(raw)
+                        && let Ok(McpContentData::ToolUse { id, .. }) =
+                            McpContentData::from_message_content(&data)
+                        && !id.is_empty()
+                    {
+                        used_ids.insert(id);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "get_accumulated_content: could not load existing tool_use ids for message {} \
+                     ({}); proceeding with within-batch dedup only",
+                    message_id,
+                    e
+                );
+            }
+        }
 
         let mut content_blocks = Vec::new();
 
-        // Collect keys to remove (entries for this message)
-        let keys_to_remove: Vec<_> = accumulator
-            .keys()
-            .filter(|(msg_id, _)| *msg_id == message_id)
-            .copied()
-            .collect();
-
-        // Extract and convert each accumulated tool use
-        for key in keys_to_remove {
-            let (_, index) = key;
-            if let Some(accumulated) = accumulator.remove(&key) {
-                // Parse accumulated JSON input
-                let input = serde_json::from_str(&accumulated.input_json).unwrap_or_else(|e| {
-                    tracing::error!(
-                        "Failed to parse accumulated tool use input JSON: {}. Input: {}",
-                        e,
-                        accumulated.input_json
-                    );
-                    serde_json::json!({}) // Fallback to empty object
-                });
-
-                // Parse server_id and tool name from accumulated name (format: server_id__tool_name)
-                let full_name = accumulated.name.unwrap_or_default();
-                let mut parts = full_name.splitn(2, "__");
-                let (server_id, tool_name) = match (parts.next(), parts.next()) {
-                    (Some(id), Some(name)) => (id.to_string(), name.to_string()),
-                    _ => {
-                        tracing::warn!("[mcp] Tool name missing server_id prefix: {}", full_name);
-                        (String::new(), full_name)
-                    }
-                };
-
-                // Create McpContentData::ToolUse with separate server_id and name
-                let tool_use = McpContentData::ToolUse {
-                    id: accumulated.id.unwrap_or_default(),
-                    name: tool_name.clone(),
-                    server_id: server_id.clone(),
-                    input,
-                };
-
-                tracing::info!(
-                    "MCP: Finalized tool use at index {}: id={}, name={}, server_id={}",
-                    index,
-                    tool_use.to_message_content().content_type(),
-                    tool_name,
-                    server_id,
+        // Convert each accumulated tool use
+        for (index, accumulated) in drained {
+            // Parse accumulated JSON input
+            let input = serde_json::from_str(&accumulated.input_json).unwrap_or_else(|e| {
+                tracing::error!(
+                    "Failed to parse accumulated tool use input JSON: {}. Input: {}",
+                    e,
+                    accumulated.input_json
                 );
+                serde_json::json!({}) // Fallback to empty object
+            });
 
-                content_blocks.push((index, tool_use.to_message_content()));
-            }
+            // Resolve (server_id, tool_name) from the accumulated wire name — a
+            // well-formed `<uuid>__tool`, or a prefix-less name recovered from the
+            // tools advertised this turn (see `resolve_server_and_tool`).
+            let full_name = accumulated.name.unwrap_or_default();
+            let was_well_formed = full_name
+                .split_once("__")
+                .is_some_and(|(id, _)| Uuid::parse_str(id).is_ok());
+            let (recovered_sid, tool_name) =
+                resolve_server_and_tool(&full_name, &bare_name_map);
+            let server_id = match recovered_sid {
+                Some(sid) => {
+                    if !was_well_formed {
+                        tracing::info!(
+                            "[mcp] Recovered server_id for prefix-less tool name '{}' -> '{}': {}",
+                            full_name,
+                            tool_name,
+                            sid
+                        );
+                    }
+                    sid.to_string()
+                }
+                None => {
+                    tracing::warn!(
+                        "[mcp] Tool name has no valid server_id prefix and is not uniquely \
+                         recoverable: {}",
+                        full_name
+                    );
+                    String::new()
+                }
+            };
+
+            // Ensure the tool_use id is non-empty and unique within this message,
+            // even when the provider streams an empty or duplicate id. Track
+            // assigned ids so two calls in one batch also stay distinct.
+            let provider_id = accumulated.id.unwrap_or_default();
+            let tool_use_id = resolve_unique_tool_use_id(&provider_id, &used_ids);
+            used_ids.insert(tool_use_id.clone());
+
+            tracing::info!(
+                "MCP: Finalized tool use at index {}: id={}, name={}, server_id={}",
+                index,
+                tool_use_id,
+                tool_name,
+                server_id,
+            );
+
+            // Create McpContentData::ToolUse with separate server_id and name
+            let tool_use = McpContentData::ToolUse {
+                id: tool_use_id,
+                name: tool_name.clone(),
+                server_id: server_id.clone(),
+                input,
+            };
+
+            content_blocks.push((index, tool_use.to_message_content()));
         }
 
         Ok(content_blocks)
@@ -3416,6 +3785,152 @@ mod builtin_tests {
     }
 }
 
+// Regression tests for the gpt-oss/harmony approval-loop fix: bare tool-name
+// server_id recovery (ITEM-3) + message-unique tool_use ids (ITEM-2).
+#[cfg(test)]
+mod approval_loop_tests {
+    use super::{
+        recover_server_id_for_bare_name, resolve_server_and_tool, resolve_unique_tool_use_id,
+    };
+    use std::collections::{HashMap, HashSet};
+    use uuid::Uuid;
+
+    // resolve_server_and_tool — the wire-name → (server_id, tool_name) resolver.
+    #[test]
+    fn resolve_well_formed_uuid_prefix() {
+        let sid = Uuid::new_v4();
+        let map = HashMap::new();
+        let (got_sid, tool) = resolve_server_and_tool(&format!("{sid}__echo"), &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "echo");
+    }
+
+    #[test]
+    fn resolve_well_formed_keeps_double_underscore_in_tool_name() {
+        // `<uuid>__get__weather` splits on the FIRST `__` → tool name `get__weather`.
+        let sid = Uuid::new_v4();
+        let map = HashMap::new();
+        let (got_sid, tool) = resolve_server_and_tool(&format!("{sid}__get__weather"), &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "get__weather");
+    }
+
+    #[test]
+    fn resolve_bare_name_recovers() {
+        let sid = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("execute_command".to_string(), Some(sid));
+        let (got_sid, tool) = resolve_server_and_tool("execute_command", &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "execute_command");
+    }
+
+    #[test]
+    fn resolve_empty_prefix_recovers_remainder() {
+        // gpt-oss/harmony `__query_rag`: advertised bare name is `query_rag`.
+        let sid = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("query_rag".to_string(), Some(sid));
+        let (got_sid, tool) = resolve_server_and_tool("__query_rag", &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "query_rag");
+    }
+
+    #[test]
+    fn resolve_middle_double_underscore_is_not_stripped() {
+        // `get__weather` (NOT advertised) must NOT be mis-dispatched to a different
+        // server's `weather` tool — the middle `__` is part of the name.
+        let other = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("weather".to_string(), Some(other)); // a DIFFERENT tool/server
+        let (got_sid, tool) = resolve_server_and_tool("get__weather", &map);
+        assert_eq!(got_sid, None, "must not recover to the unrelated `weather` server");
+        assert_eq!(tool, "get__weather");
+    }
+
+    #[test]
+    fn resolve_middle_double_underscore_recovers_when_advertised() {
+        // A genuine `get__weather` tool IS advertised → recovered as the whole name.
+        let sid = Uuid::new_v4();
+        let mut map = HashMap::new();
+        map.insert("get__weather".to_string(), Some(sid));
+        let (got_sid, tool) = resolve_server_and_tool("get__weather", &map);
+        assert_eq!(got_sid, Some(sid));
+        assert_eq!(tool, "get__weather");
+    }
+
+    #[test]
+    fn resolve_unknown_bare_name_is_unresolved() {
+        let map = HashMap::new();
+        let (got_sid, tool) = resolve_server_and_tool("ghost_tool", &map);
+        assert_eq!(got_sid, None);
+        assert_eq!(tool, "ghost_tool");
+    }
+
+    // TEST-1 — an unambiguous bare name resolves to its single advertising server.
+    #[test]
+    fn recover_server_id_unambiguous_happy_path() {
+        let sid = Uuid::new_v4();
+        let mut map: HashMap<String, Option<Uuid>> = HashMap::new();
+        map.insert("execute_command".to_string(), Some(sid));
+        assert_eq!(
+            recover_server_id_for_bare_name("execute_command", &map),
+            Some(sid)
+        );
+    }
+
+    // TEST-2 — a bare name advertised by ≥2 servers is marked ambiguous (`None`)
+    // and is NOT auto-resolved (never guess a side-effecting tool's server).
+    #[test]
+    fn recover_server_id_ambiguous_returns_none() {
+        let mut map: HashMap<String, Option<Uuid>> = HashMap::new();
+        map.insert("execute_command".to_string(), None); // ambiguous sentinel
+        assert_eq!(recover_server_id_for_bare_name("execute_command", &map), None);
+    }
+
+    // TEST-3 — an unknown bare name (absent from the advertised map) → None.
+    #[test]
+    fn recover_server_id_not_found_returns_none() {
+        let map: HashMap<String, Option<Uuid>> = HashMap::new();
+        assert_eq!(recover_server_id_for_bare_name("execute_command", &map), None);
+    }
+
+    // TEST-4 — an empty provider id mints a fresh, non-empty `call_<uuid>` id.
+    #[test]
+    fn resolve_id_mints_when_empty() {
+        let used = HashSet::new();
+        let id = resolve_unique_tool_use_id("", &used);
+        assert!(!id.is_empty());
+        assert!(id.starts_with("call_"), "{id}");
+        // The suffix must be a valid UUID.
+        assert!(Uuid::parse_str(id.trim_start_matches("call_")).is_ok(), "{id}");
+    }
+
+    // TEST-5 — a provider id already in `used` (within-batch OR cross-iteration
+    // collision — both flow through `used`-membership) mints a fresh distinct id.
+    #[test]
+    fn resolve_id_mints_on_collision() {
+        let mut used = HashSet::new();
+        used.insert("tool_use".to_string());
+        let id = resolve_unique_tool_use_id("tool_use", &used);
+        assert_ne!(id, "tool_use");
+        assert!(id.starts_with("call_"), "{id}");
+        assert!(!used.contains(&id), "minted id must not already be taken");
+    }
+
+    // TEST-6 — a unique provider id not in `used` is preserved unchanged, so
+    // well-behaved providers (Anthropic `toolu_…`, real OpenAI `call_…`) round-trip.
+    #[test]
+    fn resolve_id_preserves_good_provider_id() {
+        let used = HashSet::new();
+        assert_eq!(resolve_unique_tool_use_id("toolu_abc123", &used), "toolu_abc123");
+        assert_eq!(
+            resolve_unique_tool_use_id("chatcmpl-tool-90d1ec58ce2478f5", &used),
+            "chatcmpl-tool-90d1ec58ce2478f5"
+        );
+    }
+}
+
 #[cfg(test)]
 mod kb_builtin_tests {
     use super::is_builtin_server_id;
@@ -3427,6 +3942,76 @@ mod kb_builtin_tests {
     #[test]
     fn knowledge_base_id_is_a_builtin() {
         assert!(is_builtin_server_id(knowledge_base_server_id()));
+        assert!(!is_builtin_server_id(Uuid::new_v4()));
+    }
+}
+
+/// TEST-25 (ITEM-13): the two load-bearing predicates of the unattended
+/// approval decision in the execute loop
+/// (`needs_approval && unattended && !unattended_tool_allowed(..)` → Deny). These
+/// tests exercise the REAL `unattended_tool_allowed` + `is_builtin_server_id`
+/// (the exact inputs the decision consumes), not a reimplementation of the `if`.
+#[cfg(test)]
+mod scheduler_unattended_tests {
+    use super::{is_builtin_server_id, unattended_tool_allowed};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    // The allow-list predicate: a whole-server grant (no `tool_name`) allows ANY
+    // tool on that server; a per-tool grant allows only the named tool; a
+    // different server / tool is never allowed; an empty list allows nothing.
+    #[test]
+    fn allow_list_matches_whole_server_and_specific_tool() {
+        let srv = Uuid::new_v4().to_string();
+        let other = Uuid::new_v4().to_string();
+
+        // Empty allow-list → nothing is allowed.
+        assert!(!unattended_tool_allowed(&json!([]), &srv, "anything"));
+
+        // Whole-server grant → every tool on `srv`, but nothing on `other`.
+        let whole = json!([{ "server_id": srv }]);
+        assert!(unattended_tool_allowed(&whole, &srv, "foo"));
+        assert!(unattended_tool_allowed(&whole, &srv, "bar"));
+        assert!(!unattended_tool_allowed(&whole, &other, "foo"));
+
+        // Per-tool grant → only the named tool on `srv`.
+        let per_tool = json!([{ "server_id": srv, "tool_name": "foo" }]);
+        assert!(unattended_tool_allowed(&per_tool, &srv, "foo"));
+        assert!(!unattended_tool_allowed(&per_tool, &srv, "bar"));
+        assert!(!unattended_tool_allowed(&per_tool, &other, "foo"));
+    }
+
+    // Decision semantics via the real predicate: in an unattended run, an
+    // approval-required tool is DENIED iff it is NOT allow-listed. `Deny` ⇔
+    // `!unattended_tool_allowed(..)`; adding a matching grant flips it back to
+    // the ordinary (non-denied) approval path.
+    #[test]
+    fn unattended_denies_only_non_allow_listed_tools() {
+        let srv = Uuid::new_v4().to_string();
+        // Not allow-listed → the guard `!unattended_tool_allowed` is true → Deny.
+        assert!(!unattended_tool_allowed(&json!([]), &srv, "delete_everything"));
+        // Allow-listed (whole server) → guard false → NOT denied.
+        let allow = json!([{ "server_id": srv }]);
+        assert!(unattended_tool_allowed(&allow, &srv, "delete_everything"));
+    }
+
+    // A read-only built-in server is `is_builtin` → `needs_approval` is forced
+    // false BEFORE the unattended check, so its tools ALWAYS bypass (never denied
+    // even in an unattended run). A third-party id is not a built-in, so it flows
+    // into the approval/deny decision above.
+    #[test]
+    fn readonly_builtins_bypass_the_unattended_gate() {
+        assert!(is_builtin_server_id(
+            crate::modules::files_mcp::files_mcp_server_id()
+        ));
+        assert!(is_builtin_server_id(
+            crate::modules::memory_mcp::memory_mcp_server_id()
+        ));
+        assert!(is_builtin_server_id(
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id()
+        ));
+        // An arbitrary third-party server is NOT approval-bypassed → it is the
+        // one subject to the unattended allow-list gate.
         assert!(!is_builtin_server_id(Uuid::new_v4()));
     }
 }

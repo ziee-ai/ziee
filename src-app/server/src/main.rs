@@ -190,6 +190,12 @@ async fn main() {
         config.server.port,
         config.server.api_prefix.clone(),
     );
+    // Capture the per-file upload cap (bytes) so both the per-route body-limit
+    // layer (built in build_api_router below) and the upload handler read one
+    // source of truth. Set BEFORE build_api_router so the layer picks it up.
+    core::set_max_file_upload_bytes(
+        (config.server.max_file_upload_mb as usize).saturating_mul(1024 * 1024),
+    );
 
     // Initialize database
     let pool = match core::database::initialize_database(&config).await {

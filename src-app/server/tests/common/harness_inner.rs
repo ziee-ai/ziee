@@ -379,6 +379,11 @@ pub struct TestServerOptions {
     /// Override `jwt.refresh_token_expiry_days` in the test config
     /// (seed value for `session_settings` on first boot).
     pub refresh_token_expiry_days: Option<i64>,
+    /// Override `server.max_file_upload_mb` in the test config. Lets upload
+    /// boundary tests spawn a server with a tiny per-file cap (e.g. `Some(1)`)
+    /// and exercise accept/reject with KB-to-low-MB bodies instead of allocating
+    /// the 128 MiB default. `None` omits the line (server default = 128).
+    pub max_file_upload_mb: Option<u64>,
     /// Deploy-level kill-switch for the `voice` dictation runtime. `None` omits
     /// the config section (module default = enabled). `Some(false)` disables the
     /// whole voice surface (no routes mounted, no reaper) — mirrors
@@ -527,7 +532,7 @@ server:
   # redirect_uri from HOST. The flag's value doesn't matter for
   # tests except that we want to exercise the default-safe path.
   trust_forwarded_headers: false
-
+{max_upload}
 jwt:
   # Must match the production issuer/audience because the MCP client
   # (modules/mcp/client/manager.rs) hardcodes these values when minting
@@ -556,6 +561,10 @@ secrets:
             access_seconds = opts
                 .access_token_expiry_seconds
                 .map(|s| format!("  access_token_expiry_seconds: {s}\n"))
+                .unwrap_or_default(),
+            max_upload = opts
+                .max_file_upload_mb
+                .map(|mb| format!("  max_file_upload_mb: {mb}\n"))
                 .unwrap_or_default(),
         );
 

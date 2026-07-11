@@ -37,6 +37,10 @@ server:
   # nginx sets X-Forwarded-* (and strips inbound), so trust them for OAuth
   # redirect_uri derivation.
   trust_forwarded_headers: true
+  # Per-file upload cap in MiB. The server derives the route body limit as
+  # cap + 16 MiB, so keep nginx's client_max_body_size (1024m) >= that. Raise
+  # ZIEE_MAX_FILE_UPLOAD_MB for large scientific/genomics files.
+  max_file_upload_mb: ${ZIEE_MAX_FILE_UPLOAD_MB}
   # Disabled: behind nginx every client shares the loopback source IP, so the
   # per-IP limiter would throttle all users as one. Re-enable + widen if you
   # front this with a per-client key extractor.
@@ -73,6 +77,11 @@ jwt:
 # environments" page fetches + mounts a rootfs from GitHub on first use.
 code_sandbox:
   enabled: ${ZIEE_CODE_SANDBOX_ENABLED}
+  # Origin used for get_resource_link + tool-to-tool file download URLs handed to
+  # OTHER MCP servers (which run in separate containers). Empty → 127.0.0.1
+  # loopback, which a remote server cannot fetch. Set to an address those servers
+  # can reach ziee at (the host gateway + published web port).
+  public_base_url: "${ZIEE_PUBLIC_FILE_ORIGIN}"
 
 # At-rest encryption for stored credentials. Set a stable ZIEE_STORAGE_KEY
 # (>=32 chars) per deployment; losing it makes encrypted secrets unrecoverable.

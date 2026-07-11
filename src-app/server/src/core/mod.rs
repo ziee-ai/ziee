@@ -14,7 +14,8 @@ pub mod secrets;
 // unused-imports warning since it only appears in the library target.
 #[allow(unused_imports)]
 pub use app_state::{
-    get_app_data_dir, get_caches_config, get_server_addr, set_app_data_dir, set_caches_config,
+    file_upload_body_limit_bytes, get_app_data_dir, get_caches_config, get_max_file_upload_bytes,
+    get_server_addr, set_app_data_dir, set_caches_config, set_max_file_upload_bytes,
     set_server_addr,
 };
 pub use events::{AppEvent, EventBus, EventHandler};

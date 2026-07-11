@@ -64,7 +64,7 @@ impl StreamingService {
         // Create provider from model_id
         use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
-        let (provider, model_name, model_id, provider_id, model_params) =
+        let (provider, model_name, model_id, provider_id, model_params, model_caps) =
             create_provider_from_model_id(request.model_id, user_id).await?;
 
         // Conditionally create user message (check extensions)
@@ -183,6 +183,14 @@ impl StreamingService {
             // This is just a failsafe - MCP extension enforces user-configured max_iteration.
             const SAFETY_MAX_ITERATIONS: u32 = 1000;
             let mut iteration = 1u32;
+
+            // Whether ANY iteration of this turn persisted a user-visible answer.
+            // The per-iteration `DeltaAccumulator` is recreated each loop, so its
+            // own `produced_visible_content` reflects only the latest LLM response;
+            // this OR-accumulates across iterations so the terminal
+            // "empty completion" signal matches the WHOLE assistant message (which
+            // is what the frontend inspects), not just the final iteration.
+            let mut turn_produced_visible_content = false;
 
             // OPTIMIZATION: Fetch history ONCE before loop, cache in memory
             // On Continue action, we append new content to cache instead of re-fetching
@@ -365,13 +373,20 @@ impl StreamingService {
                     messages,
                     ..Default::default()
                 };
-                // Apply model-level generation parameters (sampling), with defaults
-                // preserved when unset. The provider gates params it rejects
-                // (e.g. Anthropic Opus 4.7/4.8 drop temperature/top_p/top_k).
+                // Apply model-level generation parameters (sampling). Temperature
+                // is forwarded only when the user set it (never force-injected);
+                // the provider adapter then gates params a model rejects.
                 apply_model_params(&mut chat_request, &model_params);
-                // Registry-gated thinking (None for models that don't support it).
-                chat_request.thinking =
-                    thinking_config_for(provider_for_task.provider_type(), &model_name);
+                // Per-model capability override (editable DB row) → the top-priority
+                // source of the parameter contract. The adapter falls back to the
+                // curated catalog + provider model-family policy when a field is unset.
+                chat_request.model_caps = Some(model_caps.to_param_contract());
+                // Thinking resolved from the row → catalog → family policy.
+                chat_request.thinking = thinking_config_for(
+                    provider_for_task.provider_type(),
+                    &model_name,
+                    &model_caps,
+                );
                 // OpenAI prompt-cache routing key (ignored by other providers).
                 chat_request.prompt_cache_key = Some(conversation_id.to_string());
 
@@ -486,6 +501,7 @@ impl StreamingService {
                     reasoning_tokens: None,
                     extension_tx: Some(ext_tx.clone()),
                     finalized: false,
+                    produced_visible_content: false,
                 }));
 
                 // Stream chunks through accumulator
@@ -553,6 +569,11 @@ impl StreamingService {
                     if let Err(e) = acc.finalize().await {
                         let _ = tx.send(Err(e));
                         return;
+                    }
+                    // Carry this iteration's visibility into the turn-level flag
+                    // (the accumulator is dropped/recreated next iteration).
+                    if acc.produced_visible_content {
+                        turn_produced_visible_content = true;
                     }
                 }
 
@@ -670,8 +691,40 @@ impl StreamingService {
                             (acc.finish_reason.clone(), acc.usage.clone())
                         };
 
-                        // Use finish_reason from provider, or default to "stop" if not provided
-                        let final_finish_reason = finish_reason.unwrap_or_else(|| "stop".to_string());
+                        // Canonicalize the provider's raw finish_reason into the
+                        // unified vocabulary (stop/length/tool_calls/…) for the
+                        // client, or default to "stop" if not provided. MCP
+                        // sampling reads the raw provider value on its own path.
+                        let mut final_finish_reason = finish_reason
+                            .map(|r| {
+                                ai_providers::FinishReason::canonicalize(
+                                    ai_providers::ProviderFamily::from_provider_type(
+                                        provider_for_task.provider_type(),
+                                    ),
+                                    &r,
+                                )
+                            })
+                            .unwrap_or_else(|| "stop".to_string());
+
+                        // Empty-completion guard: the turn terminated (no tool call to
+                        // run) but produced NO user-visible answer across ANY iteration
+                        // — only reasoning, or nothing. Without this the client just
+                        // sees a bare `stop` and the chat appears to hang. Override the
+                        // terminal finish_reason to "empty" (an authoritative signal for
+                        // telemetry + the client) and log it. The frontend renders an
+                        // inline notice for such a turn; it does NOT branch on
+                        // finish_reason, so this is non-breaking. We deliberately do NOT
+                        // emit an Err here (that would render as a hard
+                        // conversation-level error banner).
+                        if !turn_produced_visible_content {
+                            tracing::warn!(
+                                conversation_id = %conversation_id,
+                                message_id = %assistant_message_id,
+                                provider_finish_reason = %final_finish_reason,
+                                "chat turn completed with no user-visible content and no tool call (empty completion)"
+                            );
+                            final_finish_reason = "empty".to_string();
+                        }
 
                         // Send Complete event now that we're actually done
                         let complete_chunk = ChatStreamChunk {
@@ -1051,15 +1104,20 @@ impl StreamingService {
 
 }
 
-/// Build a thinking config from the model registry, or `None` when the model is
-/// unknown or doesn't support thinking. Registry-driven only (no DB/UI toggle).
-fn thinking_config_for(provider_type: &str, model_id: &str) -> Option<ai_providers::ThinkingConfig> {
+/// Build a thinking config, or `None` when the model doesn't support thinking.
+/// The thinking style is resolved dynamically: the editable DB model row →
+/// curated catalog → provider model-family policy (so a user can enable thinking
+/// on an uncatalogued model, and new models in a known family are auto-covered).
+fn thinking_config_for(
+    provider_type: &str,
+    model_id: &str,
+    caps: &crate::modules::llm_model::models::ModelCapabilities,
+) -> Option<ai_providers::ThinkingConfig> {
     use ai_providers::{ThinkingConfig, ThinkingEffort, ThinkingMode};
-    let caps = ai_providers::registry_lookup(provider_type, model_id)?;
-    if caps.supports_thinking != Some(true) {
-        return None;
-    }
-    let cfg = if caps.thinking_style.as_deref() == Some("budget") {
+    let family = ai_providers::ProviderFamily::from_provider_type(provider_type);
+    let contract = caps.to_param_contract();
+    let style = ai_providers::resolved_thinking_style(family, model_id, &contract)?;
+    let cfg = if style == "budget" {
         ThinkingConfig {
             mode: ThinkingMode::Enabled,
             budget_tokens: Some(4096),
@@ -1077,13 +1135,16 @@ fn thinking_config_for(provider_type: &str, model_id: &str) -> Option<ai_provide
     Some(cfg)
 }
 
-/// Map model-level generation parameters onto a `ChatRequest`. Defaults preserve
-/// the historical behavior (`temperature` 0.7 / `max_tokens` 8192) when unset.
+/// Map model-level generation parameters onto a `ChatRequest`. `temperature` is
+/// forwarded ONLY when the user configured it — never force-injected — so a model
+/// that rejects a non-default temperature isn't sent one it never asked for. The
+/// provider adapter then gates params a model rejects. `max_tokens` keeps its
+/// required-field default (Anthropic mandates the field).
 fn apply_model_params(
     req: &mut ai_providers::ChatRequest,
     p: &crate::modules::llm_model::models::ModelParameters,
 ) {
-    req.temperature = p.temperature.or(Some(0.7));
+    req.temperature = p.temperature;
     // Guard against a negative/zero i32 wrapping to a huge u32; fall back to the default.
     req.max_tokens = p
         .max_tokens
@@ -1134,6 +1195,23 @@ fn accumulated_to_content_block(
     }
 }
 
+/// Does a persisted content block count as a **user-visible answer** for this turn?
+///
+/// Used to distinguish a turn that produced something for the user (text / tool
+/// call / attachment) from a reasoning-only or empty turn. `thinking` blocks and
+/// empty/whitespace `text` do NOT count — they are what make a turn *appear* to
+/// hang with nothing shown. Any non-reasoning content type counts; the `text`
+/// param is only consulted for the `"text"` type (extension blocks pass "").
+fn is_visible_answer(content_type: &str, text: &str) -> bool {
+    match content_type {
+        "thinking" => false,
+        "text" => !text.trim().is_empty(),
+        // tool_use / tool_result / image / file_attachment / elicitation_request /
+        // any other extension-owned content type is a user-visible answer.
+        _ => true,
+    }
+}
+
 /// Delta accumulator - Manages delta accumulation in memory
 /// Writes to database ONLY when streaming finishes (memory accumulation strategy)
 struct DeltaAccumulator {
@@ -1156,6 +1234,11 @@ struct DeltaAccumulator {
     extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     /// Flag to track if finalize() has been called (prevents double-finalization)
     finalized: bool,
+    /// Set true during `finalize` when this turn persisted at least one
+    /// user-visible answer block (text with content, tool_use, attachment, …).
+    /// Stays false for a reasoning-only or empty turn — the terminal arm uses it
+    /// to surface an "empty completion" notice instead of a silent `stop`.
+    produced_visible_content: bool,
 }
 
 impl DeltaAccumulator {
@@ -1402,6 +1485,10 @@ impl DeltaAccumulator {
             .await
             .map_err(AppError::database_error)?;
             next_seq += 1;
+
+            if is_visible_answer(&accumulated.content_type, &accumulated.accumulated_text) {
+                self.produced_visible_content = true;
+            }
         }
 
         // Get accumulated content from extensions and persist to database
@@ -1441,6 +1528,18 @@ impl DeltaAccumulator {
                 .await
                 .map_err(AppError::database_error)?;
                 next_seq += 1;
+
+                // Extension content (tool_use / tool_result / attachments / …) is a
+                // user-visible answer. Extract any `text` field so an extension that
+                // emits a text-typed block (the text extension declares text/thinking)
+                // is classified on its actual content, not assumed non-empty.
+                let text = content_json
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if is_visible_answer(&content_type, text) {
+                    self.produced_visible_content = true;
+                }
             }
         }
 
@@ -1808,6 +1907,23 @@ mod tests {
     }
 
     #[test]
+    fn is_visible_answer_classifies_blocks() {
+        // Reasoning-only / empty text do NOT count as a user-visible answer.
+        assert!(!is_visible_answer("thinking", "some reasoning"));
+        assert!(!is_visible_answer("text", ""));
+        assert!(!is_visible_answer("text", "   \n\t "));
+
+        // Real answers DO count.
+        assert!(is_visible_answer("text", "hi"));
+        assert!(is_visible_answer("text", "  padded  "));
+        assert!(is_visible_answer("tool_use", ""));
+        assert!(is_visible_answer("tool_result", ""));
+        assert!(is_visible_answer("image", ""));
+        assert!(is_visible_answer("file_attachment", ""));
+        assert!(is_visible_answer("elicitation_request", ""));
+    }
+
+    #[test]
     fn accumulated_to_content_block_reconstructs_provider_shapes() {
         // Text → ContentBlock::Text.
         assert!(matches!(
@@ -1989,22 +2105,40 @@ mod tests {
     }
 
 
+    // TEST-15: thinking resolves via row → catalog → family policy.
     #[test]
-    fn thinking_config_for_registry_gated() {
+    fn thinking_config_for_resolves_row_catalog_family() {
+        use crate::modules::llm_model::models::ModelCapabilities;
         use ai_providers::ThinkingMode;
-        // Adaptive thinking model.
-        let cfg = thinking_config_for("anthropic", "claude-opus-4-7").expect("thinking enabled");
+        let none = ModelCapabilities::default();
+        // Catalog: adaptive thinking model.
+        let cfg = thinking_config_for("anthropic", "claude-opus-4-7", &none).expect("thinking enabled");
         assert_eq!(cfg.mode, ThinkingMode::Adaptive);
         assert!(cfg.effort.is_some());
-        // Non-thinking model.
-        assert!(thinking_config_for("openai", "gpt-4o").is_none());
-        // Unknown model.
-        assert!(thinking_config_for("anthropic", "no-such-model").is_none());
+        // Catalog: a non-thinking model (haiku is catalogued but not thinking-capable).
+        assert!(thinking_config_for("anthropic", "claude-haiku-4-5", &none).is_none());
+        assert!(thinking_config_for("openai", "gpt-4o", &none).is_none());
+        // Family pattern: an uncatalogued o-series model still enables thinking.
+        assert!(thinking_config_for("openai", "o5-mini", &none).is_some());
+        // Row override enables thinking on an otherwise-unknown model.
+        let row = ModelCapabilities {
+            supports_thinking: Some(true),
+            ..Default::default()
+        };
+        assert!(thinking_config_for("openai", "totally-unknown", &row).is_some());
+        // Row override disables thinking even for a thinking-capable family.
+        let off = ModelCapabilities {
+            supports_thinking: Some(false),
+            ..Default::default()
+        };
+        assert!(thinking_config_for("anthropic", "claude-opus-4-7", &off).is_none());
     }
 
 
+    // TEST-15: temperature is forwarded only when set (no forced 0.7); max_tokens
+    // keeps its required-field default.
     #[test]
-    fn apply_model_params_maps_and_defaults() {
+    fn apply_model_params_maps_and_omits_temperature() {
         use crate::modules::llm_model::models::ModelParameters;
 
         // Configured params flow through.
@@ -2020,10 +2154,11 @@ mod tests {
         assert_eq!(req.top_k, Some(20));
         assert_eq!(req.stop, Some(vec!["END".to_string()]));
 
-        // Empty params fall back to the historical defaults.
+        // Empty params: temperature is OMITTED (never force-injected); max_tokens
+        // still gets its required-field default.
         let mut req2 = ai_providers::ChatRequest::default();
         apply_model_params(&mut req2, &ModelParameters::default());
-        assert_eq!(req2.temperature, Some(0.7));
+        assert_eq!(req2.temperature, None);
         assert_eq!(req2.max_tokens, Some(8192));
         assert!(req2.top_k.is_none());
     }
