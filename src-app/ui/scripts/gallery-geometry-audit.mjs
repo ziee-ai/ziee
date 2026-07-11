@@ -1751,12 +1751,9 @@ async function enumerateSurfaces(browser) {
   const overlays = await p.evaluate(() => window.__GALLERY_OVERLAYS__ || [])
   const deep = await p.evaluate(() => window.__GALLERY_DEEP_STATES__ || [])
   const seeded = await p.evaluate(() => window.__GALLERY_SEEDED__ || [])
-<<<<<<< Updated upstream
   // Interaction recipes ({slug,name}) drive post-mount actions (open a menu,
   // expand a panel) so interaction-gated states get scanned too — else A9's
   // menu-item check / A11 etc. never see e.g. the composer "+" dropdown.
-=======
->>>>>>> Stashed changes
   const interactions = await p.evaluate(() => window.__GALLERY_INTERACTIONS__ || [])
   await p.close()
   const special = new Set([...overlays, ...deep, ...seeded])
@@ -1769,7 +1766,6 @@ async function main() {
   })
   const { pages, overlays, deep, seeded, interactions } = await enumerateSurfaces(browser)
 
-<<<<<<< Updated upstream
   // Optional surface filter (substring match) for fast iteration on a few surfaces.
   const surfaceFilter = arg('surfaces', '').split(',').map(s => s.trim()).filter(Boolean)
   const keep = s => !surfaceFilter.length || surfaceFilter.some(f => s.includes(f))
@@ -1780,26 +1776,11 @@ async function main() {
   // Interaction-gated states: one cell per recipe, driven post-mount (open a menu,
   // expand a panel). state='loaded' + the `interact` slug the frame runs on mount.
   for (const it of interactions) if (keep(it.slug)) cells.push({ surface: it.slug, state: 'interact', interact: it.name })
-=======
-  const INTERACT_ONLY = process.env.INTERACT_ONLY === '1'
-  const cells = []
-  if (!INTERACT_ONLY) {
-    for (const s of pages) for (const st of PAGE_STATES) cells.push({ surface: s, state: st })
-    for (const s of [...seeded, ...deep]) cells.push({ surface: s, state: 'seeded' })
-    for (const s of overlays) cells.push({ surface: s, state: 'open' })
-  }
-  for (const it of interactions || [])
-    cells.push({ surface: it.slug, state: it.name, interact: it.name })
->>>>>>> Stashed changes
 
   const jobs = []
   for (const c of cells) for (const vp of VIEWPORTS) jobs.push({ c, vp })
   console.log(
-<<<<<<< Updated upstream
     `geometry-audit${PREVIEW ? ' [preview-build]' : ''}: ${pages.length} pages×${PAGE_STATES.length} + ${seeded.length + deep.length} seeded + ${overlays.length} overlays + ${interactions.length} interactions = ${cells.length} cells × ${VIEWPORTS.length} viewports = ${jobs.length} renders\n`,
-=======
-    `geometry-audit${PREVIEW ? ' [preview-build]' : ''}${INTERACT_ONLY ? ' [INTERACT-ONLY]' : ''}: ${INTERACT_ONLY ? 0 : pages.length} pages×${PAGE_STATES.length} + ${INTERACT_ONLY ? 0 : seeded.length + deep.length} seeded + ${INTERACT_ONLY ? 0 : overlays.length} overlays + ${(interactions || []).length} interactions = ${cells.length} cells × ${VIEWPORTS.length} viewports = ${jobs.length} renders\n`,
->>>>>>> Stashed changes
   )
 
   const findings = []
@@ -1813,7 +1794,6 @@ async function main() {
   }
   async function runJob({ c, vp }) {
     const p = await browser.newPage({ viewport: { width: vp.width, height: vp.height } })
-<<<<<<< Updated upstream
     const stateParam = c.state === 'seeded' || c.state === 'open' || c.state === 'interact' ? 'loaded' : c.state
     const url = `${BASE}?surface=${c.surface}&state=${stateParam}&theme=light${c.interact ? `&interact=${c.interact}` : ''}`
     try {
@@ -1824,24 +1804,6 @@ async function main() {
         await p.waitForSelector('body[data-gallery-interact-done]', { timeout: 12_000 }).catch(() => {})
       }
       await p.waitForTimeout(c.state === 'error' ? 1100 : 900)
-=======
-    const stateParam = c.interact
-      ? 'loaded'
-      : c.state === 'seeded' || c.state === 'open'
-        ? 'loaded'
-        : c.state
-    const url = `${BASE}?surface=${c.surface}&state=${stateParam}&theme=light${c.interact ? `&interact=${c.interact}` : ''}`
-    try {
-      await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 25_000 })
-      if (c.interact) {
-        await p
-          .waitForSelector('body[data-gallery-interact-done]', { timeout: 15_000 })
-          .catch(() => {})
-        await p.waitForTimeout(500)
-      } else {
-        await p.waitForTimeout(c.state === 'error' ? 1100 : 900)
-      }
->>>>>>> Stashed changes
       const { findings: raw, actionSides: sides } = await p.evaluate(inPageGeometry, inPageArg)
       for (const f of raw) {
         findings.push({

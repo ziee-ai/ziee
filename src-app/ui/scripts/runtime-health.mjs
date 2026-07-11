@@ -410,20 +410,15 @@ async function main() {
   // 2. Build the surface × state matrix. Pages get the data-state set; the
   //    interaction-only classes (overlay/deep/seeded) render once via
   //    `?surface=<slug>` (state is ignored by the mock for those).
-  const INTERACT_ONLY = process.env.INTERACT_ONLY === '1'
   const cells = []
-  if (!INTERACT_ONLY) {
-    for (const slug of classes.pages)
-      for (const state of STATES) cells.push({ surface: slug, state, kind: 'page' })
-    for (const slug of classes.overlays)
-      cells.push({ surface: slug, state: 'open', kind: 'overlay' })
-    for (const slug of classes.deep)
-      cells.push({ surface: slug, state: 'deep', kind: 'deep' })
-    for (const slug of classes.seeded)
-      cells.push({ surface: slug, state: 'seeded', kind: 'seeded' })
-  }
-  for (const it of classes.interactions || [])
-    cells.push({ surface: it.slug, state: it.name, kind: 'interaction', interact: it.name })
+  for (const slug of classes.pages)
+    for (const state of STATES) cells.push({ surface: slug, state, kind: 'page' })
+  for (const slug of classes.overlays)
+    cells.push({ surface: slug, state: 'open', kind: 'overlay' })
+  for (const slug of classes.deep)
+    cells.push({ surface: slug, state: 'deep', kind: 'deep' })
+  for (const slug of classes.seeded)
+    cells.push({ surface: slug, state: 'seeded', kind: 'seeded' })
 
   // Optional scoping: `--only-kinds=overlay` (comma-list) restricts the run to
   // one or more surface classes; `--only-match=<substr>` restricts to slugs
@@ -532,25 +527,18 @@ async function main() {
       })
     })
 
-    const url = `${BASE}?surface=${cell.surface}&state=${cell.interact ? 'loaded' : cell.state}&theme=${theme}${cell.interact ? `&interact=${cell.interact}` : ''}`
+    const url = `${BASE}?surface=${cell.surface}&state=${cell.state}&theme=${theme}`
     try {
       await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
       // deep/seeded surfaces run a mount-time store seed (a few seconds) before
       // their reviewable state settles; pages/overlays settle fast.
-      if (cell.interact) {
-        await p
-          .waitForSelector('body[data-gallery-interact-done]', { timeout: 15_000 })
-          .catch(() => {})
-        await p.waitForTimeout(700)
-      } else {
-        const settle =
-          cell.kind === 'deep' || cell.kind === 'seeded'
-            ? 2600
-            : cell.state === 'error'
-              ? 1100
-              : 800
-        await p.waitForTimeout(settle)
-      }
+      const settle =
+        cell.kind === 'deep' || cell.kind === 'seeded'
+          ? 2600
+          : cell.state === 'error'
+            ? 1100
+            : 800
+      await p.waitForTimeout(settle)
       const audit = await p.evaluate(inPageAudit)
       for (const f of audit) record(cell, theme, f)
     } catch (e) {
