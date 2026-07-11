@@ -95,13 +95,32 @@ function scan(root, isCore) {
   }
 }
 
+/**
+ * Pure drift analysis (exported for TEST-7). `declared`/`registered` are
+ * key→file Maps; `desktopFiles` is `{ file, hasSibling }[]`.
+ *   - deadOverrides: a registerOverride key with no declared seam.
+ *   - orphanDesktopFiles: a `*.desktop.*` with no core sibling.
+ *   - unregisteredSeams: a declared seam with no desktop override (legitimate).
+ */
+export function computeDrift(declared, registered, desktopFiles) {
+  return {
+    deadOverrides: [...registered.keys()].filter((k) => !declared.has(k)),
+    orphanDesktopFiles: desktopFiles.filter((d) => !d.hasSibling),
+    unregisteredSeams: [...declared.keys()].filter((k) => !registered.has(k)),
+  }
+}
+
+const isMain = import.meta.url === `file://${process.argv[1]}`
+if (isMain) {
 scan(UI_SRC, true)
 scan(DESKTOP_SRC, false)
 
 // --- drift checks -------------------------------------------------------------
-const deadOverrides = [...registered.keys()].filter((k) => !declared.has(k))
-const orphanDesktopFiles = desktopFiles.filter((d) => !d.hasSibling)
-const unregisteredSeams = [...declared.keys()].filter((k) => !registered.has(k))
+const { deadOverrides, orphanDesktopFiles, unregisteredSeams } = computeDrift(
+  declared,
+  registered,
+  desktopFiles,
+)
 
 // --- manifest -----------------------------------------------------------------
 const seamKeys = [...declared.keys()].sort()
@@ -178,4 +197,5 @@ if (check) {
     `Wrote ${OUT} — ${seamKeys.length} seam(s), ${desktopFiles.length} .desktop file(s).`,
   )
   if (failed) process.exit(1)
+}
 }
