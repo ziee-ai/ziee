@@ -56,6 +56,73 @@ static LAST_USED_MS: AtomicI64 = AtomicI64::new(-1);
 /// holds an [`InflightGuard`] for the duration of a transcription.
 static INFLIGHT: AtomicUsize = AtomicUsize::new(0);
 
+/// Set while a drain-before-stop is in progress (idle-reap or model switch). The
+/// transcribe front door (`ensure_running`) rejects new work with 503 during a
+/// drain so a new transcription never races the SIGTERM (F6/ITEM-27).
+static DRAINING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// True while a drain is in progress — the transcribe entrypoint should 503.
+pub fn is_draining() -> bool {
+    DRAINING.load(Ordering::Relaxed)
+}
+
+/// Drain in-flight transcriptions (up to `drain_timeout_secs`) then SIGTERM the
+/// whisper-server, holding the `Draining` front-door flag for the whole window so
+/// no new transcription is routed to the dying process. Shared by the idle reaper
+/// and the active-model switch.
+pub async fn drain_and_stop(drain_timeout_secs: i32) -> Result<(), AppError> {
+    DRAINING.store(true, Ordering::Relaxed);
+    let _clear = DrainGuard;
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_secs(drain_timeout_secs.max(1) as u64);
+    loop {
+        if inflight_count() == 0 {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            tracing::warn!(
+                "voice: drain timeout with {} in-flight transcriptions; SIGTERM anyway",
+                inflight_count()
+            );
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    get_deployment_manager().local().stop().await
+}
+
+/// Clears the `Draining` flag on scope exit (even on early return / panic).
+struct DrainGuard;
+impl Drop for DrainGuard {
+    fn drop(&mut self) {
+        DRAINING.store(false, Ordering::Relaxed);
+    }
+}
+
+/// Apply an active-model change (called after `settings.model` is updated): if a
+/// whisper-server is running on a different model, drain + stop it so the next
+/// transcribe respawns cleanly with the new model — instead of the unconditional
+/// mid-transcription kill the old `start()`-stops-prior path did (F4/ITEM-26).
+pub async fn apply_active_model_change() {
+    let settings = match get_settings().await {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let desired = crate::modules::voice::model::model_filename(&settings.model);
+    let dep = get_deployment_manager().local();
+    if !dep.status().await.running {
+        return; // nothing running — next transcribe starts fresh.
+    }
+    if dep.active_model().await.as_deref() == Some(desired.as_str()) {
+        return; // already serving the desired model.
+    }
+    let _guard = START_LOCK.lock().await;
+    if let Err(e) = drain_and_stop(settings.drain_timeout_secs).await {
+        tracing::warn!("voice: drain on model switch failed: {e}");
+    }
+    persist_stopped("stopped").await;
+}
+
 // ───────────────────────────── state machine ────────────────────────────────
 
 /// Seed the in-memory state machine from the persisted singleton row, once.
@@ -302,6 +369,12 @@ pub async fn ensure_running() -> Result<InstanceHandle, AppError> {
         return Err(AppError::conflict("voice dictation is disabled"));
     }
 
+    // Front door: reject new work while a drain-before-stop is in progress so a
+    // transcription never races the SIGTERM (F6/ITEM-27).
+    if is_draining() {
+        return Err(not_ready("voice runtime is draining; retry shortly"));
+    }
+
     let dep = get_deployment_manager().local();
     let desired_model_file = crate::modules::voice::model::model_filename(&settings.model);
 
@@ -310,6 +383,25 @@ pub async fn ensure_running() -> Result<InstanceHandle, AppError> {
         note_event(HealthEvent::StartedOk).await;
         touch_last_used();
         return Ok(handle);
+    }
+
+    // F1: a persisted-`running` instance on the SAME desired model that no longer
+    // answers health is a crash-after-healthy. Feed `Crashed` on the REQUEST path
+    // (not only via the 60s reaper poll) so the flap cap can actually trip, and
+    // F2: honor the exponential backoff before respawning.
+    if detect_crash(&dep, &desired_model_file).await {
+        match note_event(HealthEvent::Crashed(None)).await {
+            Transition::GiveUp { reason } => {
+                persist_failed(&reason).await;
+                return Err(not_ready(
+                    "voice runtime is marked failed (flap protection); restart it before retrying",
+                ));
+            }
+            Transition::Restart { next_at, .. } if std::time::Instant::now() < next_at => {
+                return Err(not_ready("voice runtime is in restart backoff; retry shortly"));
+            }
+            _ => {}
+        }
     }
 
     // Don't auto-spawn an instance the flap cap has already failed.
@@ -391,6 +483,30 @@ async fn live_handle_if_current(
         Ok(Some(InstanceHandle { base_url }))
     } else {
         Ok(None)
+    }
+}
+
+/// True when the tracked instance is `running` on the SAME desired model but no
+/// longer answers health — a crash-after-healthy (distinct from a clean stop or a
+/// deliberate model switch, neither of which is a crash). Drives the request-path
+/// `Crashed` event so the flap cap can trip without waiting for the reaper poll.
+async fn detect_crash(
+    dep: &crate::modules::voice::deployment::LocalDeployment,
+    desired_model_file: &str,
+) -> bool {
+    let status = dep.status().await;
+    if !status.running {
+        return false; // cleanly stopped — not a crash.
+    }
+    if dep.active_model().await.as_deref() != Some(desired_model_file) {
+        return false; // a model switch, not a crash.
+    }
+    match status.port {
+        Some(port) => !dep
+            .health_check(&format!("http://127.0.0.1:{port}"))
+            .await
+            .unwrap_or(false),
+        None => true,
     }
 }
 

@@ -172,8 +172,11 @@ pub(super) async fn forward_to_whisper(
         form = form.text("language", lang.to_string());
     }
 
+    // Loopback forward to whisper-server. `.no_proxy()` so an env HTTP proxy can't
+    // reroute the 127.0.0.1 inference call (F5/ITEM-28; matches the health client).
     let client = reqwest::Client::builder()
         .timeout(timeout)
+        .no_proxy()
         .build()
         .map_err(AppError::internal_with_id)?;
 

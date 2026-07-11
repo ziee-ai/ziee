@@ -47,10 +47,21 @@ pub const KNOWN_MODEL_SHA256: &[(&str, &str)] = &[
     ),
 ];
 
-/// Hard cap on a downloaded model file. The largest offered model (`small`) is
-/// ~466 MB; 1 GiB leaves generous headroom while bounding a malicious/mis-sized
-/// response.
-const MAX_MODEL_BYTES: u64 = 1024 * 1024 * 1024;
+/// Hard cap on a downloaded model file. The largest whisper model (`large-v3`) is
+/// ~3.1 GB; 5 GiB leaves headroom for future/quantized variants while bounding a
+/// malicious/mis-sized response. Whisper model files are upstream-bounded, so this
+/// is a safety ceiling, not a per-deployment tunable (DEC-6).
+pub const MAX_MODEL_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+/// Cap on an admin-uploaded model file (same bound + rationale as [`MAX_MODEL_BYTES`]).
+pub const VOICE_MODEL_MAX_UPLOAD_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+/// Validate that `bytes` begin with a whisper ggml (`ggml`) or GGUF (`GGUF`) magic.
+/// Uploaded / arbitrary-URL model files are checked so a non-model blob is rejected
+/// before it lands in the library.
+pub fn has_whisper_magic(bytes: &[u8]) -> bool {
+    bytes.len() >= 4 && (&bytes[..4] == b"ggml" || &bytes[..4] == b"GGUF")
+}
 
 /// Look up the pinned sha256 for `name`, if any.
 pub fn known_sha256(name: &str) -> Option<&'static str> {
@@ -116,16 +127,6 @@ fn model_url(name: &str) -> String {
 /// partial on mismatch), and return the cached path.
 pub async fn ensure_model(name: &str) -> Result<PathBuf, AppError> {
     ensure_model_with_progress(name, |_, _| {}).await
-}
-
-/// Download `ggml-<name>.bin` reporting `(downloaded, total)` byte progress via
-/// `cb` (for the SSE admin endpoint). Idempotent: a present model short-circuits
-/// with a single terminal progress callback.
-pub async fn download_model_with_progress<F>(name: &str, cb: F) -> Result<PathBuf, AppError>
-where
-    F: Fn(u64, Option<u64>) + Send + Sync,
-{
-    ensure_model_with_progress(name, cb).await
 }
 
 async fn ensure_model_with_progress<F>(name: &str, cb: F) -> Result<PathBuf, AppError>
@@ -268,6 +269,216 @@ where
     finalize_download(&tmp, &dest)?;
     tracing::info!("voice: whisper model {name} ready ({downloaded} bytes)");
     Ok(dest)
+}
+
+// =====================================================================
+// Unified model-library download (catalog / HF-repo / arbitrary URL)
+// =====================================================================
+
+/// Where a model download's bytes come from + how to verify them.
+pub struct ModelDownloadSpec {
+    /// Stored short name (also the `settings.model` pointer value).
+    pub name: String,
+    /// On-disk filename (`ggml-<name>.bin` for catalog; else the source filename).
+    pub filename: String,
+    /// The resolved https URL to stream from.
+    pub url: String,
+    /// The HF-advertised git-LFS oid (sha256) to verify against. `Some` → the
+    /// download is fail-closed on mismatch and stored `verified=true`; `None` →
+    /// sha256 is only computed and stored `verified=false`.
+    pub expected_sha256: Option<String>,
+    /// SSRF-validate the URL before fetching. True for user-supplied arbitrary
+    /// URLs; false for the admin-configured (trusted) catalog/HF source.
+    pub ssrf_check: bool,
+}
+
+/// The result of a completed model-library download.
+pub struct DownloadedModel {
+    pub filename: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub verified: bool,
+}
+
+/// Stream a model file into `voice-models/`, reporting `(received, total)`
+/// progress via `cb` and cooperatively cancelling when `cancelled` is set (or the
+/// caller's shutdown race fires). Validates the whisper magic, enforces the size
+/// cap, verifies against `expected_sha256` when present (fail-closed), computes
+/// the digest otherwise, and atomically publishes. Cleans up the temp file on any
+/// error/cancel (fixes the shutdown temp-leak of the legacy path).
+pub async fn download_model_file<F>(
+    spec: &ModelDownloadSpec,
+    cb: F,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<DownloadedModel, AppError>
+where
+    F: Fn(u64, Option<u64>) + Send + Sync,
+{
+    use std::sync::atomic::Ordering;
+
+    if spec.ssrf_check {
+        crate::utils::url_validator::validate_outbound_url(
+            &spec.url,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        )
+        .map_err(|e| {
+            AppError::bad_request(
+                "VOICE_MODEL_URL_REJECTED",
+                format!("model URL rejected by SSRF policy: {e}"),
+            )
+        })?;
+    }
+
+    let dir = models_dir();
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal_error(format!("create voice-models dir: {e}")))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1800))
+        .no_proxy()
+        .build()
+        .map_err(AppError::internal_with_id)?;
+    let resp = client
+        .get(&spec.url)
+        .send()
+        .await
+        .map_err(|e| AppError::internal_error(format!("download request failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(AppError::internal_error(format!(
+            "model download returned HTTP {} for {}",
+            resp.status(),
+            spec.url
+        )));
+    }
+
+    let total = resp.content_length();
+    if let Some(len) = total
+        && len > MAX_MODEL_BYTES
+    {
+        return Err(AppError::bad_request(
+            "VOICE_MODEL_TOO_LARGE",
+            format!("model is {len} bytes, exceeds cap of {MAX_MODEL_BYTES}"),
+        ));
+    }
+
+    let tmp = dir.join(format!("{}.{}.tmp", spec.filename, uuid::Uuid::new_v4()));
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
+    let mut hasher = Sha256::new();
+    let mut downloaded: u64 = 0;
+    let mut head: Vec<u8> = Vec::with_capacity(4);
+    let mut stream = resp.bytes_stream();
+
+    let result: Result<(), AppError> = async {
+        while let Some(chunk) = stream.next().await {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_DOWNLOAD_CANCELLED",
+                    "download cancelled",
+                ));
+            }
+            let chunk =
+                chunk.map_err(|e| AppError::internal_error(format!("download read failed: {e}")))?;
+            if head.len() < 4 {
+                head.extend_from_slice(&chunk[..chunk.len().min(4 - head.len())]);
+                if head.len() >= 4 && !has_whisper_magic(&head) {
+                    return Err(AppError::bad_request(
+                        "VOICE_MODEL_INVALID",
+                        "file is not a whisper ggml/GGUF model (bad magic)",
+                    ));
+                }
+            }
+            downloaded += chunk.len() as u64;
+            if downloaded > MAX_MODEL_BYTES {
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_TOO_LARGE",
+                    format!("model exceeds cap of {MAX_MODEL_BYTES} bytes"),
+                ));
+            }
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| AppError::internal_error(format!("write model chunk: {e}")))?;
+            cb(downloaded, total);
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::internal_error(format!("flush model file: {e}")))?;
+        Ok(())
+    }
+    .await;
+
+    // Always clean up the temp file on any failure/cancel (no leak).
+    if let Err(e) = result {
+        drop(file);
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    drop(file);
+
+    if downloaded == 0 || !has_whisper_magic(&head) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(AppError::bad_request(
+            "VOICE_MODEL_INVALID",
+            "download produced no valid whisper model bytes",
+        ));
+    }
+
+    let actual = hex_lower(&hasher.finalize());
+    let verified = match &spec.expected_sha256 {
+        Some(expected) => {
+            if !expected.eq_ignore_ascii_case(&actual) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_SHA_MISMATCH",
+                    format!(
+                        "sha256 mismatch for {}: expected {expected}, got {actual}",
+                        spec.name
+                    ),
+                ));
+            }
+            true
+        }
+        None => false,
+    };
+
+    let dest = dir.join(&spec.filename);
+    finalize_download(&tmp, &dest)?;
+    Ok(DownloadedModel {
+        filename: spec.filename.clone(),
+        size_bytes: downloaded,
+        sha256: actual,
+        verified,
+    })
+}
+
+/// Persist an uploaded model file under `voice-models/` (temp + atomic rename),
+/// returning `(size_bytes, sha256)`. Magic validation is the caller's job.
+pub async fn store_uploaded_model_file(
+    filename: &str,
+    bytes: &[u8],
+) -> Result<(u64, String), AppError> {
+    let dir = models_dir();
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal_error(format!("create voice-models dir: {e}")))?;
+    let tmp = dir.join(format!("{}.{}.tmp", filename, uuid::Uuid::new_v4()));
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
+    file.write_all(bytes)
+        .await
+        .map_err(|e| AppError::internal_error(format!("write uploaded model: {e}")))?;
+    file.flush()
+        .await
+        .map_err(|e| AppError::internal_error(format!("flush uploaded model: {e}")))?;
+    drop(file);
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let sha = hex_lower(&hasher.finalize());
+    let dest = dir.join(filename);
+    finalize_download(&tmp, &dest)?;
+    Ok((bytes.len() as u64, sha))
 }
 
 /// Rename the verified temp file into place (best-effort cross-device fallback).
