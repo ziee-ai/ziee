@@ -120,6 +120,21 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # → /usr/local/bin/ziee
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Stage 2b — validate nginx.conf keeps the SSE-critical directives
+#   The runtime COPYs nginx.conf FROM this stage, so the build graph depends on
+#   it and the guard runs on every image build (an unreferenced stage would be
+#   skipped). If `check-sse-headers.mjs` fails — proxy_buffering off or
+#   X-Accel-Buffering no missing from `location /api` — the image build fails,
+#   so a config edit that re-breaks SSE through a buffering edge (the Coder
+#   published URL) can never ship. Reuses the node base already pulled for
+#   ui-build; copies only the two files it needs.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:22-bookworm-slim AS config-check
+WORKDIR /app
+COPY docker/web/nginx.conf docker/web/check-sse-headers.mjs ./docker/web/
+RUN node docker/web/check-sse-headers.mjs
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Stage 3 — runtime
 # ─────────────────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
@@ -151,7 +166,7 @@ RUN set -eux; \
 
 COPY --from=server-build /usr/local/bin/ziee /usr/local/bin/ziee
 COPY --from=ui-build     /webroot            /srv/www
-COPY docker/web/nginx.conf            /etc/nginx/nginx.conf
+COPY --from=config-check /app/docker/web/nginx.conf /etc/nginx/nginx.conf
 COPY docker/web/config.template.yaml  /etc/ziee/config.template.yaml
 COPY docker/web/entrypoint.sh         /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/ziee
