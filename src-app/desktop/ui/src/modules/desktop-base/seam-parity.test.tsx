@@ -11,9 +11,11 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import { resolveOverride } from '@/core/overrides'
 import { __clearOverrides } from '@/core/overrides/registry'
 import { register as registerHardware } from './overrides/hardware-monitor'
+import { register as registerSpacer } from './overrides/sidebar-header-spacer'
 
 const CONVERTED_SEAMS: { key: string; register: () => void }[] = [
   { key: 'hardware.monitor-button', register: registerHardware },
+  { key: 'layout.sidebar-header-spacer', register: registerSpacer },
 ]
 
 describe('converted seam parity', () => {

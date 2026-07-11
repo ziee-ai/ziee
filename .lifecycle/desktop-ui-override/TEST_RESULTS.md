@@ -31,7 +31,18 @@ icon-action/logical-direction/tooltip-placement + check:kit-manifest + check:tes
 - **TEST-7**: PASS (override manifest computeDrift: dead-override/orphan/web-only — node:test, 4 cases)
 - **TEST-8**: PASS (converted seam parity — hardware.monitor-button — desktop vitest, 1 case)
 
-Totals: 30 unit assertions green (8 core node:test + 10 codemod/manifest node:test + 12 desktop vitest).
+- **TEST-12**: PASS (raw-shadow gate: parseShadowExceptions incl. hyphenated paths + unaccounted-shadow detection — ui node:test, 2 cases)
+
+Totals: 35 unit assertions green (8 core node:test + 13 codemod/manifest/gate node:test + 14 desktop vitest).
+
+## Full-migration completeness (ITEM-13/14)
+
+- Raw-shadow gate (`check:override-registry`): **PASS** — 2 seams, 11 `.desktop`
+  co-locations, 0 web-only, 0 UNACCOUNTED shadows. The only 3 remaining raw
+  shadows (main.tsx, memory/module.tsx, api-client/types.ts) are approved
+  SHADOW-EXCEPTIONs. Manifest lists 7 desktop-exclusive modules.
+- Both `npm run check` (which RUNS the gate) + desktop `vite build` (7736 modules,
+  1701 unique testids) green post-migration.
 
 ## Runtime gate (gate:ui — runtime-health)
 

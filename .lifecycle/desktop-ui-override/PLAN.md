@@ -116,6 +116,20 @@ declares ONE fallback-preserving seam + desktop registers ONE override."
   converted seam's FALLBACK and the desktop gallery renders its OVERRIDE; the
   relocated class-A `.desktop.tsx` render in the desktop gallery. Satisfy
   `check:state-matrix` / `check:gallery-coverage` in both workspaces.
+- **ITEM-13**: MIGRATE EVERY POSSIBLE raw shadow to its finest mechanism (not just
+  the demo). SidebarHeaderSpacer → `<Seam>` (2nd element-level seam); SettingsPage,
+  Drawer, SidebarToggleButton → co-located `.desktop.tsx`; loader, App.store,
+  lazyWithPreload, getBaseURL → co-located `.desktop.ts` (behavior-preserving
+  tier-1→tier-2 relocations, all `@/`-imported); delete the dead auth/index.ts
+  barrel. Result: 2 seams + 11 `.desktop` co-locations; only 3 raw shadows remain,
+  each an approved SHADOW-EXCEPTION (DEC-17: main.tsx entry, memory/module.tsx glob,
+  api-client/types.ts generated).
+- **ITEM-14**: RAW-SHADOW GATE — `gen-override-registry.mjs --check` enumerates
+  every desktop-tree file with a `src-app/ui` sibling and FAILS on any that is not
+  a `<Seam>` registration / a co-located `.desktop.tsx` (no desktop-tree file) / a
+  desktop-exclusive module / an approved `SHADOW-EXCEPTION`. Wired into `npm run
+  check` in both workspaces; the manifest lists exclusives + exceptions. Proves the
+  migration complete AND blocks a future raw whole-file override from sneaking in.
 - **ITEM-12**: Docs — a "Desktop UI Override" section (design-system docs /
   CLAUDE.md): the two axes, the `<Seam>`-vs-`.desktop.tsx` decision rule, the
   `<module>.<element>` key convention, and codemod usage; the generated
