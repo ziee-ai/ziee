@@ -81,7 +81,7 @@ test.describe('Split chat — drag-to-split', () => {
     const pane0 = byTestId(page, 'chat-pane-0')
     const pane1 = byTestId(page, 'chat-pane-1')
 
-    // Drop conversation C onto pane 0's header → REPLACE pane 0 with C.
+    // Drop conversation C onto pane 0's header → REPLACE pane 0 with C. Panes: [C, B].
     await dropConversation(page, pane0.getByTestId('chat-pane-header'), convC)
     await expect(pane0.getByTestId('conversation-title')).toContainText('Charlie', {
       timeout: 15000,
@@ -89,12 +89,8 @@ test.describe('Split chat — drag-to-split', () => {
     // Pane 1 (B) is untouched — the replace was scoped to pane 0.
     await expect(pane1.getByTestId('conversation-title')).toContainText('Bravo')
 
-    // Drop conversation A (not currently open) onto the seam → OPEN a new pane.
-    await dropConversation(page, byTestId(page, 'split-divider-0'), convA)
-    await expect(byTestId(page, 'chat-pane-2')).toBeVisible({ timeout: 15000 })
-
-    // Negative: an OS file dropped on a pane header is IGNORED (dragKind→'file'),
-    // so pane 1's conversation does not change and no pane is replaced/added.
+    // Negative (BEFORE the seam drop reorders panes): an OS file dropped on pane 1's
+    // header is IGNORED (dragKind→'file'), so pane 1 stays Bravo and no pane is added.
     const fileDt = await page.evaluateHandle(() => {
       const d = new DataTransfer()
       d.items.add(new File(['x'], 'note.txt', { type: 'text/plain' }))
@@ -103,7 +99,19 @@ test.describe('Split chat — drag-to-split', () => {
     await pane1.getByTestId('chat-pane-header').dispatchEvent('drop', { dataTransfer: fileDt })
     await fileDt.dispose()
     await expect(pane1.getByTestId('conversation-title')).toContainText('Bravo')
-    await expect(byTestId(page, 'chat-pane-3')).toHaveCount(0)
+    await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0) // file drop added no pane
+
+    // Drop conversation A onto the seam (after pane 0) → OPEN a new pane holding A
+    // at index 1, shifting B to index 2. Panes: [C, A, B].
+    await dropConversation(page, byTestId(page, 'split-divider-0'), convA)
+    await expect(byTestId(page, 'chat-pane-2')).toBeVisible({ timeout: 15000 })
+    // The seam-inserted pane (index 1) actually holds the dropped conversation A.
+    await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText(
+      'Alpha',
+    )
+    await expect(byTestId(page, 'chat-pane-2').getByTestId('conversation-title')).toContainText(
+      'Bravo',
+    )
   })
 
   test('dragging a pane grip onto another pane header reorders the panes', async ({

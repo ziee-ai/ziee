@@ -64,17 +64,20 @@ test.describe('Split chat — registry runtime survives pane close', () => {
     await input.click()
     await input.fill('draft to clear')
 
-    // Esc clears the focused composer (pure DOM shortcut) — proves the listener lives.
+    // Esc clears the focused composer — the keyboard extension's GLOBAL document
+    // listener (refcounted across panes via keyboardInitCount) blanks it. If the
+    // first pane's cleanup had disarmed the shared listener, Esc would do nothing.
     await page.keyboard.press('Escape')
     await expect(input).toHaveValue('')
 
-    // Ctrl+K focuses the composer.
+    // Blur the composer, then Ctrl+K must REFOCUS it — only the global listener
+    // does that (a blurred textarea cannot self-focus), so a passing focus here
+    // proves the survivor's shortcut listener is still armed after the pane close.
+    // (Ctrl+Enter is deliberately NOT used as the probe: TextInput's own onKeyDown
+    // sends on Enter regardless of the extension, so it can't detect the teardown.)
+    await input.blur()
+    await expect(input).not.toBeFocused()
     await page.keyboard.press('Control+k')
-    await expect(input).toBeFocused()
-
-    // Ctrl+Enter sends (a user bubble appears) — the send shortcut survived the close.
-    await input.fill('Reply with exactly the single word: PONG')
-    await page.keyboard.press('Control+Enter')
-    await expect(page.locator('[data-role="user"]')).toBeVisible({ timeout: 30000 })
+    await expect(input).toBeFocused({ timeout: 5000 })
   })
 })

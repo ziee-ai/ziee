@@ -116,8 +116,12 @@ test.describe('Split chat — pane lifecycle', () => {
     const replaceBtn = page.getByRole('button', { name: 'Replace focused pane' })
     await expect(replaceBtn).toBeVisible({ timeout: 15000 })
     await replaceBtn.click()
-    // Still capped at 3 panes — D replaced the focused pane, no 4th pane appeared.
+    // Still capped at 3 panes — no 4th pane appeared...
     await expect(byTestId(page, 'chat-pane-2')).toBeVisible()
     await expect(byTestId(page, 'chat-pane-3')).toHaveCount(0)
+    // ...and D actually REPLACED the focused pane (the 3rd, which held Charlie).
+    await expect(byTestId(page, 'chat-pane-2').getByTestId('conversation-title')).toContainText(
+      'Delta',
+    )
   })
 })

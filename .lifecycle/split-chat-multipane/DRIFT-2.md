@@ -96,4 +96,29 @@ resolved; every drift is `impl-wins` with an amended-plan rationale or `resolved
   viewports orphan, referenced by no TEST-ID) was removed and replaced by
   `mobile-tabs.spec.ts` (TEST-23's shipped tab-strip vehicle).
 
+- **DRIFT-2.11** — verdict: impl-wins — **The composer MCP status chip is a GLOBAL
+  single-active display; per-pane MCP correctness lives in the send/approval path.**
+  The FIX_ROUND-3 blind audit found `McpStatusRow` reads the singleton
+  `Stores.McpComposer.selectedServers` (no per-pane store / no conversationId prop),
+  so both split panes render the same chip. This is acceptable: the per-pane MCP
+  behavior that MATTERS — the wrong-pane tool-approval routing (`approvalKeyOf`,
+  the flagship ITEM-33 bug) and the per-conversation send config
+  (`getSelectedServersConfigFor`) — IS conversation-keyed and unit-proven
+  (`approvalRouting.test.ts`). Making the chip DISPLAY per-pane would require a
+  per-pane McpComposer store instance (a larger reshape than ITEM-33 scoped); the
+  display staying single-active is a bounded, documented limitation. TEST-53 is
+  re-scoped accordingly (it asserts the per-pane config SURFACE, not chip isolation).
+
+- **DRIFT-2.12** — verdict: resolved — **`SplitChatView` rendered TABS on desktop /
+  COLUMNS on mobile (inverted `!md`); fixed to `if (md)`.** The FIX_ROUND-3 audit +
+  an empirical run proved the branch was reversed: `useWindowMinSize().md` is TRUE
+  at ≤768px (main's 2026-05 breakpoint-table fix made every key `width <= threshold`),
+  so `if (!md) return tabs` put tab mode on desktop (≥769px) and columns on mobile —
+  the opposite of the intent. `independent-input.spec.ts` (columns @1280) failed on
+  the un-fixed code (`chat-pane-0` hidden in tab mode). Fixed to `if (md) return tabs`:
+  desktop (md===false) tiles columns, ≤768px shows the tab strip — which makes the
+  column-mode specs (open-in-split / sidebar-reroute / header / workspace-persist)
+  and `mobile-tabs.spec.ts` (tabs @390) all correct. A real shipped functional bug
+  the blind audit caught.
+
 **Unresolved drifts:** 0

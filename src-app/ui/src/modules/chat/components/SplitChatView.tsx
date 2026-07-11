@@ -27,12 +27,14 @@ export function SplitChatView() {
   // Split is a desktop layout — force the inner-scroll shell for the whole view.
   useNativeScroll(false)
   const { panes, focusedPaneId, dividerWidths } = Stores.SplitView
-  // Below `md` there isn't room to tile columns → tab mode (ITEM-30): one visible
-  // pane + a tab strip. All panes stay MOUNTED (only the focused one is shown) so
-  // a background pane keeps streaming.
+  // At/below `md` (≤768px) there isn't room to tile columns → tab mode (ITEM-30):
+  // one visible pane + a tab strip. All panes stay MOUNTED (only the focused one is
+  // shown) so a background pane keeps streaming. `useWindowMinSize().md` is TRUE
+  // when the viewport is AT MOST 768px (mobile/tablet), so tab mode is `if (md)` —
+  // desktop (md === false) tiles columns.
   const { md } = useWindowMinSize()
 
-  if (!md) {
+  if (md) {
     return (
       <div
         className="flex h-full min-h-0 w-full flex-col overflow-hidden"

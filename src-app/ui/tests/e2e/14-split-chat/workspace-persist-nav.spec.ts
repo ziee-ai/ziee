@@ -50,35 +50,39 @@ test.describe('Split chat — workspace persist + nav', () => {
     // A blob is written once panes>=2 (250ms debounce) — settle before navigating.
     await page.waitForTimeout(600)
 
-    // --- Nav away (settings) and back: both panes restore (in-memory store). ---
+    // --- Nav away (settings) and back to a PANED conversation URL: both panes
+    // restore. (Bare `/chat` routes to NewChatPage, which is split-unaware —
+    // SplitChatView only mounts inside ConversationPage at /chat/:id when
+    // panes>=2, so the restore is asserted on a conversation URL.) ---
     await page.goto(`${baseURL}/settings`)
     await page.waitForLoadState('load')
-    await page.goto(`${baseURL}/chat`)
+    await page.goto(`${baseURL}/chat/${convA}`)
     await page.waitForLoadState('load')
     await expect(byTestId(page, 'chat-pane-0')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible()
 
-    // --- Full reload: both panes restore from localStorage. ---
+    // --- Full reload (still on the conversation URL): both panes restore from
+    // localStorage. ---
     await page.reload()
     await page.waitForLoadState('load')
     await expect(byTestId(page, 'chat-pane-0')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible()
 
-    // --- Deep-link to a paned conversation FOCUSES its pane (no duplicate). ---
-    await byTestId(page, 'chat-pane-1').click() // focus pane 1 (B)
-    await page.goto(`${baseURL}/chat/${convA}`) // A is in pane 0
+    // --- Deep-link to a PANED conversation (A) FOCUSES its pane, no duplicate:
+    // still exactly 2 panes and A is shown. (A full-load deep-link reconciles the
+    // URL against the hydrated workspace; A is already in a pane → focus it.) ---
+    await page.goto(`${baseURL}/chat/${convA}`)
     await page.waitForLoadState('load')
-    await expect(byTestId(page, 'chat-pane-0')).toHaveClass(/ring-primary/, { timeout: 15000 })
+    await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0) // no duplicate pane
+    await expect(byTestId(page, 'split-chat-view')).toContainText('Persist Alpha')
 
-    // --- Deep-link to a NON-paned conversation REPLACES the focused pane. ---
-    await byTestId(page, 'chat-pane-0').click() // focus pane 0
-    await page.goto(`${baseURL}/chat/${convC}`) // C not in any pane
+    // --- Deep-link to a NON-paned conversation (C) REPLACES a pane (does NOT
+    // append): still exactly 2 panes and C now appears in the workspace. ---
+    await page.goto(`${baseURL}/chat/${convC}`)
     await page.waitForLoadState('load')
-    await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 }) // still 2 panes
-    await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0)
-    await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText(
-      'Charlie',
-    )
+    await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0) // replaced, not appended
+    await expect(byTestId(page, 'split-chat-view')).toContainText('Persist Charlie')
   })
 })

@@ -366,14 +366,17 @@ const fileExtension: ChatExtension = createExtension({
     return { file_ids: fileIds }
   },
 
-  // Backup files before clearing (this runs after composeRequestFields)
+  // Backup files before clearing (this runs after composeRequestFields). The
+  // sending pane is the focused pane (sending pointer-focuses it first, DRIFT-2.4);
+  // backup/restore/clear are keyed by it so per-pane buffers stay isolated.
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
+    const paneKey = composerPaneKey(Stores.SplitView.$.focusedPaneId)
 
-    // Backup files before clearing
-    fileStore.setBackupFiles()
-    fileStore.clearFiles(composerPaneKey(Stores.SplitView.$.focusedPaneId))
+    // Backup THIS pane's files before clearing THIS pane's buffer.
+    fileStore.setBackupFiles(paneKey)
+    fileStore.clearFiles(paneKey)
     console.log('[FileExtension] Backed up and cleared files after message sent')
     return {}
   },
@@ -383,8 +386,8 @@ const fileExtension: ChatExtension = createExtension({
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
 
-    // Restore files from backup
-    fileStore.restoreFromBackup()
+    // Restore only THIS pane's backed-up files (leaves other panes untouched).
+    fileStore.restoreFromBackup(composerPaneKey(Stores.SplitView.$.focusedPaneId))
     console.log('[FileExtension] Restored files from backup after stream error')
     return {}
   },
@@ -394,8 +397,8 @@ const fileExtension: ChatExtension = createExtension({
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
 
-    // Clear backup since message was sent successfully
-    fileStore.clearBackup()
+    // Clear THIS pane's backup since its message was sent successfully.
+    fileStore.clearBackup(composerPaneKey(Stores.SplitView.$.focusedPaneId))
     console.log('[FileExtension] Cleared file backup after successful stream')
     return {}
   },

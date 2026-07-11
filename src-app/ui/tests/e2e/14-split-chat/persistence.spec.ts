@@ -8,12 +8,14 @@ import {
 } from '../../common/provider-helpers'
 
 /**
- * Split-chat E2E — layout persistence across reload (TEST-21).
+ * Split-chat E2E — layout persistence across reload (TEST-2 / TEST-21).
  *
- * The SplitView layout persists to localStorage (`ziee-split-view-v1`; the
- * `?pane=` URL mirroring was dropped per DRIFT-1.9). After opening a split and
- * resizing a divider, a full reload restores both panes and the divider width.
- * No LLM needed.
+ * The SplitView workspace persists to localStorage
+ * (`ziee-split-workspace-v2:<userId>`; the `?pane=` URL mirroring was dropped per
+ * DRIFT-1.9). After opening a split of TWO EXISTING conversations and resizing a
+ * divider, a full reload restores both panes and the divider width. (Two existing
+ * conversations — not a new-chat pane — because v2 hydrate PRUNES empty panes, so
+ * an unfilled picker pane would not survive the reload.) No LLM needed.
  */
 test.describe('Split chat — layout persistence', () => {
   test('a split + resized divider survives a full page reload', async ({
@@ -27,11 +29,15 @@ test.describe('Split chat — layout persistence', () => {
     await assignProviderToAdministratorsGroup(apiURL, token, providerId)
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
 
-    const res = await page.request.post(`${apiURL}/api/conversations`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { title: 'Split Persist' },
-    })
-    const convId = (await res.json()).id as string
+    const mkConv = async (title: string): Promise<string> => {
+      const r = await page.request.post(`${apiURL}/api/conversations`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { title },
+      })
+      return (await r.json()).id as string
+    }
+    const convId = await mkConv('Split Persist A')
+    const convB = await mkConv('Split Persist B')
 
     await page.goto(`${baseURL}/chat/${convId}`)
     await page.waitForLoadState('load')
@@ -41,6 +47,12 @@ test.describe('Split chat — layout persistence', () => {
     const pane1 = byTestId(page, 'chat-pane-1')
     await expect(pane0).toBeVisible({ timeout: 15000 })
     await expect(pane1).toBeVisible({ timeout: 15000 })
+    // Fill pane 1 with an EXISTING conversation (B) so it is not an empty pane
+    // that v2 hydrate would prune on reload.
+    await pane1.getByTestId(`conversation-picker-item-${convB}`).click()
+    await expect(
+      pane1.locator('textarea[placeholder*="Type your message"]'),
+    ).toBeVisible({ timeout: 15000 })
 
     // Capture the DEFAULT pane width first, so we can prove the resize actually
     // diverged from it — otherwise a persistence RESET-to-default would false-green
@@ -58,6 +70,10 @@ test.describe('Split chat — layout persistence', () => {
     // The resize genuinely changed the width away from the default — without this
     // the persistence assertion could pass on a silent reset-to-default.
     expect(Math.abs(widthBefore - widthDefault)).toBeGreaterThan(TOL)
+
+    // The v2 workspace save is debounced (~250ms) — let it flush before reloading,
+    // otherwise the layout isn't persisted yet and the reload restores nothing.
+    await page.waitForTimeout(600)
 
     // Full reload — the layout must come back from localStorage.
     await page.reload()
