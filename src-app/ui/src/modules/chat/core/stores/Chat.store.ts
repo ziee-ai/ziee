@@ -1625,23 +1625,21 @@ export const Chat = defineStore('Chat', {
                   hasMoreAfter: false,
                 }
               })
-            } else {
-              // Switched away mid-fetch: only clear our own transient flag — the
-              // streaming flags are already cleared, and touching global state
-              // here would clobber whatever conversation is now open.
-              set({ finalizingTurn: false })
             }
+            // else — switched away mid-fetch: do NOT touch finalizingTurn. The
+            // switch/reset that changed the conversation already cleared it
+            // (loadConversation cleanup / reset), and whatever conversation is now
+            // on-screen may own its OWN finalize; clearing it here would clobber
+            // that newer suppression.
           } catch (error: any) {
             // getHistory failed: the streamed row is still in `messages`, so it
-            // stays visible; just clear the finalize flag (streaming flags are
-            // already cleared) and surface the error only if still on-screen.
+            // stays visible; clear the finalize flag + surface the error only if
+            // we're still on-screen (else the switch already cleared it).
             if (get().conversation?.id === conversation.id) {
               set({
                 finalizingTurn: false,
                 error: get().error || error.message || 'Failed to refresh messages',
               })
-            } else {
-              set({ finalizingTurn: false })
             }
           }
         } else {
