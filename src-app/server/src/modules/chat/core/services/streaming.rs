@@ -1704,14 +1704,21 @@ fn flush_assistant_tool_pair(
 /// outstanding tool_use has received its tool_result, one
 /// `[Assistant { text + tool_use }, Tool { tool_result }]` pair is flushed.
 ///
-/// The wire-format invariant is ALWAYS upheld, even when the stored message is
-/// malformed (a failed/parallel tool batch where a tool_use never got a matching
-/// tool_result, or a stray tool_result): every tool_use in an emitted Assistant
-/// turn is answered by a tool_result (real, or a synthesized `is_error`
+/// The wire-format invariant is upheld for every batch whose tools have RUN:
+/// once a batch has produced ≥1 tool_result (the normal case — the MCP layer
+/// persists a real OR `is_error` tool_result for every executed tool, so a
+/// failed/parallel batch always has results), every tool_use in the emitted
+/// Assistant turn is answered by a tool_result (real, or a synthesized `is_error`
 /// placeholder) in the immediately following Tool turn, and orphan tool_results
 /// (no matching tool_use) are dropped. Anthropic/OpenAI/Gemini all reject an
 /// unpaired tool_use, so this is the single point that keeps the assembled
-/// request valid regardless of tool outcome.
+/// request valid regardless of tool OUTCOME.
+///
+/// The ONE case deliberately left as a bare Assistant turn is a trailing batch
+/// with NO tool_result yet — the in-progress / awaiting-approval state, whose
+/// real result is appended separately (the approval-resume path emits it as the
+/// following User message). Synthesizing there would race that result, so it is
+/// emitted alone; the pairing is completed by the appended results downstream.
 ///
 /// Pure + registry-free so the invariant is directly unit-testable. Assumes
 /// blocks arrive in `sequence_order` (guaranteed by the repository's atomic MAX+1
@@ -2356,6 +2363,51 @@ mod tests {
             .sum();
         assert_eq!(total_results, 1, "orphan result must be dropped");
         assert_eq!(result_ids(&msgs[1].content), vec!["A"]);
+    }
+
+    /// TEST-7: an orphan tool_result arriving BEFORE the batch completes (interleaved
+    /// mid-stream) is dropped from the flushed Tool turn. Pre-fix it rode along inside
+    /// the Tool message (`mem::take` of a flat `current_results`), producing an invalid
+    /// tool_result with no matching tool_use. This is the per-flush orphan-drop that the
+    /// trailing-only orphan test does NOT exercise.
+    #[test]
+    fn group_assistant_blocks_drops_mid_stream_orphan_result() {
+        let blocks = vec![
+            tool_use("A", "srv__a"),
+            tool_result("X", "orphan-before-flush"), // no tool_use X in this batch
+            tool_result("A", "ra"),
+        ];
+        let msgs = group_assistant_blocks(blocks);
+
+        assert_eq!(msgs.len(), 2);
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(
+            result_ids(&msgs[1].content),
+            vec!["A"],
+            "mid-stream orphan X must be dropped from the flushed Tool turn"
+        );
+    }
+
+    /// TEST-8: a duplicate tool_result for the same id keeps the FIRST and drops the
+    /// duplicate — exactly one result per tool_use reaches the provider.
+    #[test]
+    fn group_assistant_blocks_dedups_duplicate_result() {
+        let blocks = vec![
+            tool_use("A", "srv__a"),
+            tool_result("A", "first"),
+            tool_result("A", "second"),
+        ];
+        let msgs = group_assistant_blocks(blocks);
+
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(result_ids(&msgs[1].content), vec!["A"]);
+        match &msgs[1].content[0] {
+            ContentBlock::ToolResult { content, .. } => assert!(
+                matches!(&content[0], ContentBlock::Text { text } if text == "first"),
+                "the first result is kept, the duplicate dropped"
+            ),
+            _ => panic!("expected tool_result"),
+        }
     }
 
     // TEST-15: thinking resolves via row → catalog → family policy.

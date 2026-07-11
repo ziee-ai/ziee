@@ -414,7 +414,12 @@ pub fn apply_summary_block(summary: &ConversationSummary, chat_request: &mut Cha
     // dropped prefix (grouping always emits the Tool turn immediately after its
     // Assistant tool_use turn), so dropping it too — the summary text condenses it
     // anyway — is the correct, provider-agnostic fix.
-    while drop_until < chat_request.messages.len()
+    // Only snap when we are actually dropping a prefix (`drop_until >
+    // system_prefix_len`): a `message_count` of 0 means "insert the summary, drop
+    // nothing", so a (hypothetical) leading Tool must not be dropped — there is no
+    // dropped tool_use for it to be orphaned by.
+    while drop_until > system_prefix_len
+        && drop_until < chat_request.messages.len()
         && matches!(chat_request.messages[drop_until].role, Role::Tool)
     {
         drop_until += 1;
