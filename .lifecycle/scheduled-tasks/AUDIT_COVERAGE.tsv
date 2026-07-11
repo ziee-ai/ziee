@@ -49,3 +49,8 @@ src-app/ui/src/modules/scheduler/components/runTimeline.test.ts	1	99999	tests-qu
 src-app/ui/src/modules/scheduler/pages/ScheduledTasksPage.tsx	1	99999	a11y,precedent-fidelity,responsive-fidelity,affordance-parity,state-management,design-in-context
 src-app/ui/src/modules/scheduler/stores/ScheduledTasks.store.ts	1	99999	state-management,correctness,api-contract
 src-app/ui/src/modules/scheduler/stores/ScheduledTasks.store.test.ts	1	99999	tests-quality,correctness,state-management
+src-app/server/tests/scheduler/continue_in_chat_test.rs	1	99999	tests-quality,correctness,api-contract
+src-app/server/tests/scheduler/runs_timeline_test.rs	1	99999	tests-quality,correctness,api-contract
+src-app/ui/plugins/vite-plugin-testid-unique.js	1	99999	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	99999	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	99999	patterns-conformance,correctness,tests-quality
