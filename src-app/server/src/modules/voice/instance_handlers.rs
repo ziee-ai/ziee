@@ -139,14 +139,11 @@ pub async fn get_model_status(
     _auth: RequirePermissions<(VoiceAdminRead,)>,
 ) -> ApiResult<Json<VoiceModelStatus>> {
     let model = Repos.voice.get_settings().await?.model;
-    let present = super::model::model_present(&model);
-    let size_bytes = if present {
-        std::fs::metadata(super::model::model_path(&model))
-            .ok()
-            .map(|m| m.len() as i64)
-    } else {
-        None
-    };
+    let resolved = super::model::installed_model_path(&model);
+    let present = resolved.is_some();
+    let size_bytes = resolved
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len() as i64);
     Ok((
         StatusCode::OK,
         Json(VoiceModelStatus {

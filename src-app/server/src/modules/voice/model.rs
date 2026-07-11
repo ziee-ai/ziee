@@ -89,17 +89,29 @@ pub fn model_filename(name: &str) -> String {
     format!("ggml-{name}.bin")
 }
 
-/// The on-disk path a model resolves to (present or not).
+/// The default on-disk path for a model (`ggml-<name>.bin`), present or not.
 pub fn model_path(name: &str) -> PathBuf {
     models_dir().join(model_filename(name))
 }
 
+/// Resolve the actual installed file for `name`, checking BOTH the `.bin` and
+/// `.gguf` variants (an uploaded/downloaded GGUF is stored `ggml-<name>.gguf`).
+/// Returns the first non-empty file that exists. This is the runtime's source of
+/// truth for "which file to serve", so a library model (catalog/url/upload) with
+/// any supported name — not just the 4 built-in defaults — actually runs.
+pub fn installed_model_path(name: &str) -> Option<PathBuf> {
+    for fname in [format!("ggml-{name}.bin"), format!("ggml-{name}.gguf")] {
+        let p = models_dir().join(&fname);
+        if std::fs::metadata(&p).map(|m| m.is_file() && m.len() > 0).unwrap_or(false) {
+            return Some(p);
+        }
+    }
+    None
+}
+
 /// True when a non-empty model file exists on disk (downloaded or pre-staged).
 pub fn model_present(name: &str) -> bool {
-    match std::fs::metadata(model_path(name)) {
-        Ok(m) => m.is_file() && m.len() > 0,
-        Err(_) => false,
-    }
+    installed_model_path(name).is_some()
 }
 
 /// Base URL for the whisper.cpp ggml model files. Overridable in **debug builds
@@ -133,19 +145,25 @@ async fn ensure_model_with_progress<F>(name: &str, cb: F) -> Result<PathBuf, App
 where
     F: Fn(u64, Option<u64>) + Send + Sync,
 {
+    // Already installed (any library model — catalog/url/upload, .bin or .gguf) →
+    // serve it directly, regardless of whether it's one of the 4 built-in
+    // auto-downloadable defaults. This is what lets an activated `large-v3` run.
+    if let Some(existing) = installed_model_path(name) {
+        let len = std::fs::metadata(&existing).map(|m| m.len()).unwrap_or(0);
+        cb(len, Some(len));
+        return Ok(existing);
+    }
+
+    // Absent → we can only AUTO-download a known built-in default (pinned URL);
+    // an arbitrary library model that isn't on disk can't be re-fetched here.
     if !is_supported_model(name) {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
-            format!("unsupported whisper model: {name:?}"),
+            format!("whisper model {name:?} is not installed (download or upload it first)"),
         ));
     }
 
     let dest = model_path(name);
-    if model_present(name) {
-        let len = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
-        cb(len, Some(len));
-        return Ok(dest);
-    }
 
     let dir = models_dir();
     std::fs::create_dir_all(&dir)

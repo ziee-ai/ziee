@@ -178,13 +178,20 @@ async fn prune_terminal_tasks(keep_key: &str) {
     if MODEL_DOWNLOAD_TASKS.len() <= REGISTRY_CAP {
         return;
     }
+    // Snapshot (key, Arc) pairs FIRST so we never hold a DashMap shard guard
+    // across the `state.lock().await` (which a runner holds across its DB upsert)
+    // — that would stall other threads' synchronous DashMap ops on the shard.
+    let snapshot: Vec<(String, Arc<ModelDownloadTask>)> = MODEL_DOWNLOAD_TASKS
+        .iter()
+        .map(|e| (e.key().clone(), e.value().clone()))
+        .collect();
     let mut evict = Vec::new();
-    for entry in MODEL_DOWNLOAD_TASKS.iter() {
-        if entry.key() == keep_key {
+    for (k, task) in snapshot {
+        if k == keep_key {
             continue;
         }
-        if entry.value().state.lock().await.status.is_terminal() {
-            evict.push(entry.key().clone());
+        if task.state.lock().await.status.is_terminal() {
+            evict.push(k);
         }
     }
     for k in evict {

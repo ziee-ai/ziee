@@ -482,6 +482,23 @@ pub fn subscribe_model_download_events_docs(op: aide::transform::TransformOperat
 
 // ─────────────────────────────── upload ──────────────────────────────────
 
+/// Removes a streamed upload temp on scope exit unless `disarm`ed — covers EVERY
+/// early-return path (a later multipart field erroring, name/magic rejection,
+/// finalize failure) so no `.upload-*.tmp` leaks.
+struct TempGuard(Option<std::path::PathBuf>);
+impl Drop for TempGuard {
+    fn drop(&mut self) {
+        if let Some(p) = &self.0 {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+impl TempGuard {
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
 /// Upload a whisper model file (multipart). Validates the whisper magic + size
 /// cap, stores under `voice-models/`, and registers an unverified row.
 pub async fn upload_model(
@@ -492,6 +509,9 @@ pub async fn upload_model(
     let mut name: Option<String> = None;
     let mut upload: Option<model::UploadTemp> = None;
     let mut orig_filename: Option<String> = None;
+    // Cleans up the streamed temp on ANY early return (incl. a later field
+    // erroring), disarmed only once the file is finalized into place.
+    let mut temp_guard = TempGuard(None);
 
     while let Some(field) = multipart
         .next_field()
@@ -512,7 +532,10 @@ pub async fn upload_model(
                 // Stream to a temp file (cap enforced as bytes arrive — never
                 // buffers the whole multi-GB file in RAM).
                 match model::stream_upload_to_temp(field).await {
-                    Ok(u) => upload = Some(u),
+                    Ok(u) => {
+                        temp_guard.0 = Some(u.tmp.clone());
+                        upload = Some(u);
+                    }
                     Err(e) => return Err(e.to_api_error()),
                 }
             }
@@ -520,31 +543,26 @@ pub async fn upload_model(
         }
     }
 
-    // Validate name + magic; discard the temp on any rejection.
+    // Validate name + magic; `temp_guard` discards the temp on any rejection.
     let upload = upload.ok_or_else(|| {
         AppError::bad_request("VALIDATION_ERROR", "missing file").to_api_error()
     })?;
-    let reject = |u: &model::UploadTemp, code: &'static str, msg: &'static str| {
-        model::discard_temp(&u.tmp);
-        AppError::bad_request(code, msg).to_api_error()
-    };
-    let name = match name.filter(|n| !n.is_empty()) {
-        Some(n) => n,
-        None => return Err(reject(&upload, "VALIDATION_ERROR", "missing model name")),
-    };
+    let name = name.filter(|n| !n.is_empty()).ok_or_else(|| {
+        AppError::bad_request("VALIDATION_ERROR", "missing model name").to_api_error()
+    })?;
     if !is_valid_model_name(&name) {
-        return Err(reject(
-            &upload,
+        return Err(AppError::bad_request(
             "VALIDATION_ERROR",
             "model name must be 1..=50 chars of [A-Za-z0-9._-]",
-        ));
+        )
+        .to_api_error());
     }
     if !model::has_whisper_magic(&upload.head) {
-        return Err(reject(
-            &upload,
+        return Err(AppError::bad_request(
             "VOICE_MODEL_INVALID",
             "file is not a whisper ggml/GGUF model (bad magic)",
-        ));
+        )
+        .to_api_error());
     }
 
     // Filename: keep a .gguf upload's extension, else the ggml-<name>.bin form.
@@ -553,6 +571,7 @@ pub async fn upload_model(
         _ => model::model_filename(&name),
     };
     model::finalize_upload_temp(&upload.tmp, &filename).map_err(|e| e.to_api_error())?;
+    temp_guard.disarm(); // file is in place now — don't delete it
     let (size_bytes, sha256) = (upload.size, upload.sha256.clone());
     let row = Repos
         .voice_model
