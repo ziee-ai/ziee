@@ -33,15 +33,15 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 ## Items
 
 ### Backend — data + catalog
-- **ITEM-1**: Add `voice_models` table (migration `00000000000155_create_voice_models.sql`):
-  installed-model rows `(id uuid pk, name, filename unique, source enum['catalog','url','upload'], source_url nullable, size_bytes bigint, sha256 char(64) nullable, verified bool, created_at)`. Mirrors `voice_runtime_versions` (migration 151) shape/conventions. No new permission migration (reuse `voice::admin::*`).
+- **ITEM-1**: Migration `00000000000155_create_voice_models.sql` — (a) `voice_models` table
+  `(id uuid pk, name, filename unique, source enum['catalog','url','upload'], source_url nullable, size_bytes bigint, sha256 char(64) nullable, verified bool, created_at)` mirroring `voice_runtime_versions` (mig 151); (b) `ALTER TABLE voice_runtime_settings ADD COLUMN model_source_repo VARCHAR(200) DEFAULT 'ggerganov/whisper.cpp'` (the admin-configurable model source, DEC-17). No new permission migration (reuse `voice::admin::*`).
 - **ITEM-2**: `VoiceModelRow` + `VoiceModelRepository` (CRUD: list, get_by_id, get_by_filename, insert, delete) in `voice/repository.rs` + a `voice/models.rs` DTO (`VoiceModel`, `VoiceModelSource`). Mirror `runtime_version` repository idioms.
-- **ITEM-3**: Curated model **catalog** constant in `voice/model.rs` (`CATALOG: &[CatalogModel]` with name, filename, size, pinned sha256, `quantization`, `multilingual`/`english_only`) covering tiny/base/small/medium/large-v3/large-v3-turbo + `.en` + `q5_1`/`q8_0`. Keep `KNOWN_MODEL_SHA256` fail-closed for catalog entries; expose `catalog()` + `catalog_lookup(name)`.
+- **ITEM-3**: Runtime **catalog fetch** in new `voice/model_catalog.rs` — query the HF model/tree API for the configured source repo (default `ggerganov/whisper.cpp`), filter `ggml-*.bin` (multilingual/.en/quantized), read each file's LFS `oid` (= sha256) + size. Short-TTL cache + a `check-updates`/refresh path (mirror `runtime_version` upstream fetch). **Graceful degradation**: a fetch failure yields an empty list + a surfaced "source unreachable" state — never a crash; upload + arbitrary-URL + installed models are unaffected. The list-fetch uses a **trusted** outbound policy (admin-configured source may be an internal mirror/loopback), distinct from the user-URL boundary in ITEM-5 (mirrors web_search's SearXNG-trusted vs page-fetch-strict split).
 
 ### Backend — download (async SSE, mirror runtime_version)
 - **ITEM-4**: `voice/model_download_task.rs` — mirror of `runtime_version/download_task.rs`:
   `static MODEL_DOWNLOAD_TASKS: Lazy<DashMap<String, Arc<ModelDownloadTask>>>` keyed by target filename; per-task `broadcast::Sender<SSEModelDownloadEvent>` (`sse_event_enum!` → `Connected/Progress/Complete/Failed`, progress = `bytes_received/total_bytes/percent`); `start_or_join`, `spawn_runner`, `SHUTDOWN` Notify + `shutdown_all()` (wired into main shutdown next to voice runtime-version `shutdown_all`).
-- **ITEM-5**: Download runner supports BOTH sources via a unified single-file streaming path in `model.rs`: catalog → pinned URL + verify-against-pin (fail-closed); arbitrary → user URL/HF-repo+filename, **SSRF-validated** (`OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS`, debug `WHISPER_MODEL_MIRROR`/`DEV_LOCAL` seam retained), sha256 **computed** (not required), `verified=false`. Magic-byte validation (whisper ggml magic `0x67676d6c` / GGUF `0x46554747`) before commit. On success: register a `voice_models` row + `sync_publish(VoiceModel, Create)`.
+- **ITEM-5**: Download runner supports BOTH sources via a unified single-file streaming path in `model.rs`: catalog/HF → URL from the configured source repo, verify downloaded bytes against HF's advertised LFS `oid` (sha256) → `verified=true` on match (fetched from the configured, admin-trusted source); arbitrary non-HF → user URL/HF-repo+filename, **SSRF-validated** (`OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS`, debug `WHISPER_MODEL_MIRROR`/`DEV_LOCAL` seam retained), sha256 **computed** (no source of truth), `verified=false`. Magic-byte validation (whisper ggml magic `0x67676d6c` / GGUF `0x46554747`) before commit. On success: register a `voice_models` row (recording `sha256` for update-detection) + `sync_publish(VoiceModel, Create)`.
 - **ITEM-6**: Download REST (`instance_handlers.rs`/new `model_handlers.rs`, `voice::admin::manage` for start, `admin::read` for read):
   `POST /voice/models/download` (body: `{name, source: 'catalog'|'url', repository?, filename?, url?}` → `DownloadVersionStartedResponse`-shaped `{task_id,key,events_url}`),
   `GET /voice/models/downloads` (active snapshots, reload-repaint),
@@ -67,6 +67,20 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 - **ITEM-18**: Pagination — both catalog and installed lists use the shared numbered `ListPagination` (pageSize 10) per the settings-list idiom, with the "N of M" summary. (Client-side over the bounded catalog constant + installed list; both are low-cardinality but the gate/idiom require bounded render + N-of-M.)
 - **ITEM-19**: `api-client` regen (`just openapi-regen` → BOTH `ui/` + `desktop/ui/`), new `Voice.*` methods (uploadModel, listModels, deleteModel, activateModel, downloadModel(plural), listModelDownloads, subscribeModelDownloadEvents).
 
+### Source config + update detection
+- **ITEM-22**: Admin-configurable **model source** — `voice_runtime_settings.model_source_repo`
+  (default `ggerganov/whisper.cpp`) surfaced through the EXISTING `GET/PUT /voice/settings` +
+  `VoiceSettings` sync + `validate_settings_patch` (validate a well-formed `owner/repo` or https
+  base URL; the catalog fetch reads it). No new endpoint. A small "Model source" field in the
+  voice admin UI (VoiceConfigCard or the AvailableModelsCard header) mirroring the existing
+  settings-field style. (Configurable-settings rule — DEC-17.)
+- **ITEM-23**: Update-detection + graceful degradation — `VoiceModelUpdate.store.ts` (mirror
+  `VoiceUpdate.store.ts`): a `check-updates`/refresh that re-fetches the catalog and compares
+  each INSTALLED model's recorded `sha256` against the current upstream `oid`, tagging
+  "update available" on the Installed row (re-download replaces). AvailableModelsCard renders a
+  "source unreachable" empty/error state when the fetch fails (upload + arbitrary-URL + installed
+  unaffected). (DEC-16.)
+
 ### Cross-cutting
 - **ITEM-20**: `VOICE_MODEL_MAX_UPLOAD_BYTES` limit (see DECISIONS: fixed constant w/ rationale — whisper models are upstream-bounded ~3 GB) as a named const in `voice/model.rs`, structured for later promotion to a settings column.
 - **ITEM-21**: Responsive: all new cards/rows use the voice house style (`Flex … wrap` + `flex-1 min-w-48`), no breakpoints; verify at 390 px. Gallery: follow the existing voice **DRIFT-1 pending** convention in `dev/gallery/coverage.ts` (voice surfaces are e2e-covered, not gallery cells) — add `coverage.ts` entries for the new cards/drawer marked pending→e2e, and (if a gallery overlay is warranted for the upload drawer) an `overlays.tsx` entry + fixture mirroring `overlay-add-local-llm-model-upload-drawer`.
@@ -75,7 +89,8 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 
 ### Backend (`src-app/server/`)
 - `migrations/00000000000155_create_voice_models.sql` (new)
-- `src/modules/voice/model.rs` (catalog, unified streaming download, magic validate, SSRF, limit const)
+- `src/modules/voice/model.rs` (unified streaming download, oid-verify, magic validate, SSRF, limit const)
+- `src/modules/voice/model_catalog.rs` (new — runtime HF catalog fetch + cache + oid parse + graceful-degrade)
 - `src/modules/voice/model_download_task.rs` (new — async SSE task registry)
 - `src/modules/voice/models.rs` (DTOs: `VoiceModel`, `VoiceModelSource`, requests/responses)
 - `src/modules/voice/repository.rs` (`VoiceModelRepository`)
@@ -96,6 +111,7 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 - `src/modules/voice/components/ModelCard.tsx` (removed/absorbed)
 - `src/modules/voice/stores/VoiceModelDownloadProgress.store.ts` (new)
 - `src/modules/voice/stores/VoiceModelUpload.store.ts` (new)
+- `src/modules/voice/stores/VoiceModelUpdate.store.ts` (new — check-updates/refresh, mirror VoiceUpdate.store)
 - `src/modules/voice/stores/VoiceModel.store.ts` (extend)
 - `src/modules/voice/stores/index.ts`, `src/modules/voice/module.tsx` (register)
 - `src/modules/voice/types.ts` (declmerge new types)
@@ -114,7 +130,8 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 - Available list + install + inline progress → **`AvailableVersionsCard.tsx`** + `VoiceDownloadProgress.store.ts` + `downloadProgress.helpers.ts`.
 - Multipart upload (validate → temp → commit) → **`file/handlers/upload.rs`** + **`llm_model/handlers/uploads.rs`**.
 - Upload UI (kit `<Upload>` + XHR per-file progress + drawer) → **`AddLocalLlmModelUploadDrawer.tsx`** + `LlmModelUpload.store.ts` + `api-client/core.ts` XHR path.
-- SSRF for arbitrary URL → **`utils/url_validator.rs` `PUBLIC_HTTP_OR_HTTPS`** (as web_search/lit_search page-fetch use it).
+- Two-trust-boundary source fetch → **web_search's SearXNG-trusted (admin-configured source) vs page-fetch-strict (user URL) split**; user URL → `utils/url_validator.rs` `PUBLIC_HTTP_OR_HTTPS`.
+- Runtime upstream catalog fetch + check-updates → **`runtime_version` upstream fetch + `VoiceUpdate.store.ts`/`check_updates` endpoint** (engine-version available-list sibling).
 - Sync entity emit (admin audience) → **`runtime_version/download_task.rs:339`** (`VoiceRuntimeVersion` Create).
 - Numbered pagination → **`common/ListPagination.tsx`** as used in `LlmRepositorySettings.tsx`.
 - Permission gating (reuse, no new perm) → route `VoiceAdminRead` + `<Can VoiceAdminManage>` as in `ModelCard.tsx`/`AvailableVersionsCard.tsx`.
@@ -126,6 +143,7 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 - **Scale/cardinality**: catalog is a fixed constant (~24 entries with quantized). Bounded. Render via `ListPagination` (pageSize 10) + "N of M". Never render-all beyond a page.
 - **Device**: `Flex … wrap` house style; verify 390 px (tags/buttons wrap, no h-scroll), mirrors the sibling. Narrow state exercised in e2e (voice is gallery-DRIFT-1).
 - **Progress**: per-row byte/percent progress bar via the SSE snapshot (not an indeterminate spinner) — the whole point of the async upgrade.
+- **Source state**: a "Check for updates" affordance + an explicit **"source unreachable"** empty/error state when the runtime catalog fetch fails (mirrors AvailableVersionsCard's update-check), plus a small admin "Model source" field. Live list ⇒ new upstream models appear automatically; installed rows show an "update available" tag on oid mismatch.
 
 ### InstalledModelsCard (twin of InstalledVersionsCard)
 - **Precedent**: `InstalledVersionsCard.tsx` — Descriptions row + Set-active(Star)/Delete(Confirm), source+verified tags. Mirror exactly.

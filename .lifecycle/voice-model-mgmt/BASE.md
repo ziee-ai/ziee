@@ -4,7 +4,9 @@ Branch cut from `origin/main` @ `304f4a011` (verified current tip at plan time).
 
 ## Migrations
 - Highest existing migration on main: **`00000000000154_add_voice_streaming_settings.sql`**.
-- This branch adds **`00000000000155_create_voice_models.sql`** (next free number). No renumber needed.
+- This branch adds **`00000000000155_create_voice_models.sql`** (next free number): creates the
+  `voice_models` table AND `ALTER`s `voice_runtime_settings` to add `model_source_repo` (additive
+  column with a DEFAULT — no backfill). No renumber needed.
 - Collision risk: any concurrently-merging branch that also claims `155` — none known. The
   merge-gate (C2) re-checks migration-number collision against real main at merge time; if
   main advances past 154 before merge, bump this to the next free number.

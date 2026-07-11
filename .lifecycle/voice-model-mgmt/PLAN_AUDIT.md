@@ -68,9 +68,9 @@ Audit of PLAN.md against the current codebase (surveyed), before writing code.
 ## Per-item verdicts
 - **ITEM-1** — verdict: PASS — new table mirrors `voice_runtime_versions` (mig 151); no collision.
 - **ITEM-2** — verdict: PASS — repository/DTO mirror `runtime_version` idioms.
-- **ITEM-3** — verdict: PASS — catalog constant extends existing `KNOWN_MODEL_SHA256`/`SUPPORTED_MODELS`; sha256 pins fetched at implementation.
+- **ITEM-3** — verdict: PASS — runtime HF catalog fetch mirrors the engine-version upstream-fetch sibling; reads the admin-configured source (DEC-7/17); graceful-degrades on failure; oid = sha256 for verification.
 - **ITEM-4** — verdict: PASS — direct mirror of `runtime_version/download_task.rs`.
-- **ITEM-5** — verdict: CONCERN — SSRF + fail-closed-vs-unverified split is the security-critical part; must use `PUBLIC_HTTP_OR_HTTPS` + magic-byte validation + retain catalog pinning. Resolved by explicit sub-plan above; enumerated as its own tests.
+- **ITEM-5** — verdict: CONCERN — two-trust-boundary fetch is the security-critical part: admin-configured source = trusted (internal mirror allowed), user arbitrary URL = `PUBLIC_HTTP_OR_HTTPS`; verify against HF oid where available, magic-byte validate always. Resolved by the web_search-style split above; enumerated as its own tests (TEST-3/8/9).
 - **ITEM-6** — verdict: PASS — endpoints mirror `/voice/versions/*` download trio.
 - **ITEM-7** — verdict: CONCERN — active-model delete/activate guard (breakage risk above); resolved with the ack guard + activate-before-delete rule.
 - **ITEM-8** — verdict: PASS — mirrors file/llm_model multipart upload; needs per-route body limit + name-length validation.
@@ -87,5 +87,13 @@ Audit of PLAN.md against the current codebase (surveyed), before writing code.
 - **ITEM-19** — verdict: PASS — `just openapi-regen` both workspaces; golden parity test guards it.
 - **ITEM-20** — verdict: PASS — fixed limit const w/ rationale (see DECISIONS); structured for later promotion.
 - **ITEM-21** — verdict: CONCERN — voice is gallery-DRIFT-1 (e2e-covered, no cells). Must follow that convention (coverage.ts pending entries + rely on e2e) rather than force gallery cells; Phase-8 `gate:ui`/state-matrix must still pass — resolved by matching the existing voice `coverage.ts` pending pattern and adding an overlay+fixture only for the upload drawer if `check:gallery-coverage` demands it.
+
+- **ITEM-22** — verdict: PASS — `model_source_repo` rides the EXISTING `/voice/settings` GET/PUT + `VoiceSettings` sync + `validate_settings_patch`; only an additive column (mig 155 ALTER) + a validation clause + one settings field. No new endpoint.
+- **ITEM-23** — verdict: PASS — `VoiceModelUpdate.store` mirrors `VoiceUpdate.store`; update-detection compares recorded sha256 vs upstream oid (additive); graceful-degrade is an empty/error render state, not new control flow.
+
+## Migration collisions (revised)
+- Migration `155` now also `ALTER`s `voice_runtime_settings` (add `model_source_repo`). Still a
+  single new file at the next free number (154→155); additive column, no data backfill needed
+  (DEFAULT covers existing singleton row). `cargo clean -p ziee` after adding it.
 
 No `BLOCKED` verdicts. CONCERNs are all resolved in-plan (documented dispositions above); none require a plan amendment beyond what PLAN.md already states.
