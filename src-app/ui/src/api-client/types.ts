@@ -3755,6 +3755,12 @@ export interface ModelCapabilities {
   /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
   /**
+   * Reranker (cross-encoder) capability - scores query/document relevance for
+   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
+   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
+   */
+  rerank?: boolean
+  /**
    * Whether the model accepts sampling params (temperature/top_p/top_k).
    *  `Some(false)` ⇒ they are omitted from the request. `None` ⇒ inferred from
    *  the catalog + family policy (the common case).
@@ -3766,12 +3772,6 @@ export interface ModelCapabilities {
    *  provider model-family policy. Drives whether thinking is enabled.
    */
   supports_thinking?: boolean
-  /**
-   * Reranker (cross-encoder) capability - scores query/document relevance for
-   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
-   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
-   */
-  rerank?: boolean
   /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
   /** How thinking is requested: `"adaptive"` or `"budget"`. `None` ⇒ inferred. */
