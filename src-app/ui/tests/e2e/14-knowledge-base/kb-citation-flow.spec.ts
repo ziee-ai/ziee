@@ -80,14 +80,24 @@ test.describe('Knowledge Base — citation flow (real LLM)', () => {
     await textarea.fill('What does the Quintal beacon read? Use the knowledge base.')
     await byTestId(page, 'chat-input-send-btn').click()
 
-    // The tool-capable model fires search_knowledge → the transparency card renders.
-    const card = byTestId(page, 'kb-tool-result-card')
-    await expect(card).toBeVisible({ timeout: 120_000 })
+    // The tool-capable model fires search_knowledge → a transparency card
+    // renders. (The model may search MORE THAN ONCE in a turn → multiple cards;
+    // `.first()` avoids a strict-locator error, and the chip resolves to the
+    // most-recent card by design.)
+    await expect(byTestId(page, 'kb-tool-result-card').first()).toBeVisible({ timeout: 120_000 })
 
-    // FB-14: the card is DEFAULT-COLLAPSED — passages are hidden until the header
-    // toggle expands it.
+    // FB-14: cards are DEFAULT-COLLAPSED — no passages shown until expanded.
     await expect(byTestId(page, 'kb-tool-result-hits')).toHaveCount(0)
-    await byTestId(page, 'kb-tool-result-toggle').click()
+
+    // FB-11 (the true test): the REAL model, under the grounding prompt, emits
+    // inline `[n]` citation markers in its answer → the tokenizer + `a`-override
+    // render them as clickable citation chips. If the model never emits `[n]`,
+    // no chip appears and THIS FAILS (a real finding, not skipped).
+    const chip = page.locator('[data-testid^="kb-citation-chip-"]').first()
+    await expect(chip).toBeVisible({ timeout: 90_000 })
+    // Clicking the chip expands the transparency card + reveals the passages
+    // (FB-11 chip action + FB-14 expand-on-demand, in one).
+    await chip.click()
     await expect(byTestId(page, 'kb-tool-result-hits')).toBeVisible()
 
     // "Open source" opens the right-panel kb_source viewer (a tab for the cited doc).
