@@ -126,6 +126,21 @@ skips them ships as a defect):
   index, fetch) must show the live status the user expects (%, thumbnails, index
   state, itemized errors), answering "what does the user want to SEE and DO
   here?" — a silent boolean spinner is a defect.
+- **Input economy** — never make the user type what the system can supply or pick.
+  Auto-detect client-known values (timezone via `Intl…`, locale) and show them
+  read-only, never as an input. Collect a structured value via a form generated
+  from the target's declared schema (one typed field per input), NEVER a raw-JSON
+  textarea (last-resort fallback only). Offer multi-select where a field naturally
+  takes multiple values (e.g. days-of-week), not single-select. (Entity references
+  → pickers is already covered above.)
+- **JTBD design (mandatory deliverable)** — write an explicit **jobs-to-be-done /
+  user-experience design** stating what a real human wants to DO with this feature,
+  enumerated across EVERY surface it exposes (list, detail, drawer/form,
+  notifications, thread/conversation, empty/error/loading, mobile). Reconcile each
+  surface against it before implementing. A code-mechanism description is NOT a UX
+  design. This feeds the checklist above; it is what caught a feature shipping a
+  bare `timestamp — status` row where the user actually wanted an evolving,
+  followable result stream.
 
 **P3 — conflict-surface scoping (BASE.md).** Also write a short
 `.lifecycle/<feature>/BASE.md` recording what CURRENT main touches that this
@@ -222,6 +237,14 @@ by existing convention and record the rationale; batch anything genuinely
 ambiguous into ONE `AskUserQuestion` at plan time. **Zero** `TBD`/`TODO`/`ASK`/
 `???` markers may remain (the gate greps for them).
 
+**Enumerate the full option space, and escalate genuine product choices as
+pickers.** Exhaustively list every decision the feature requires (surfaces,
+defaults, behaviors, tunables). Resolve by convention ONLY those with an
+unambiguous codebase precedent. For any decision that is a genuine product/human
+choice about WHAT to build or modify, present it as an explicit `AskUserQuestion`
+**option picker** for the human to choose — never silently pick a default and
+proceed, and never a bare "I recommend X, proceeding." Give the human the options.
+
 ```
 ### DEC-1: How is the search matched — prefix or substring?
 **Resolution:** case-insensitive substring (ILIKE '%q%')
@@ -249,6 +272,16 @@ validation in TESTS.md when configurable.
 Gate: `--phase 4`.
 
 ## Phase 5 — Implement + drift loop
+
+**Two mandatory walks per item, before/while implementing it** (record findings
+in an `INFRA_INTEGRATION.md` artifact): (1) a **user-experience walk** — how does a
+real user actually encounter, trigger, and live with this item end-to-end? (2) an
+**infrastructure-integration walk** — enumerate EVERY existing subsystem the item
+touches (chat pipeline, MCP tool-call + approval flow, permissions, notifications,
+sync, streaming, workflow runner, settings, …) and, for each, check whether it has
+specific behaviors/constraints that must be handled, not assumed. This is what
+surfaced the unattended-tool-approval gap that drove a safe-default policy rather
+than a silent security hole.
 
 Implement all items (only `cargo check` / `tsc` mid-flight; don't run the full
 suites yet — [[feedback_finish_all_before_testing]]). Then audit
