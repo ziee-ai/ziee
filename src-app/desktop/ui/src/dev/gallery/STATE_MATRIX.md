@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **15** surfaces carry at least one renderable-state signal.
-- **91** signals total: 82 branch, 3 empty, 3 error, 2 loading, 1 overlay.
+- **12** surfaces carry at least one renderable-state signal.
+- **78** signals total: 69 branch, 3 empty, 3 error, 2 loading, 1 overlay.
 - **0** right-panel renderers registered (each a right-panel-open state).
 - **5** slot registrations (sidebar / settings / chat mount points).
 
@@ -38,28 +38,18 @@ conversation page.
 | `chatConversationHeaderTrailing` | `modules/host-mount/module`:68 |
 | `settingsAdminPages` | `modules/host-mount/module`:57 |
 | `settingsAdminPages` | `modules/remote-access/module`:53 |
-| `settingsUserPages` | `modules/memory/module`:42 |
+| `settingsUserPages` | `modules/memory/module`:48 |
 | `settingsUserPages` | `modules/updater/module`:49 |
 
 ## Per-surface required states
 
-### `modules/auth/AuthGuard`
+### `modules/desktop-base/overrides/hardware-monitor`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isAuthenticated` | 61 |
-| branch | `!isTauriView` | 65 |
-
-### `modules/hardware/HardwareMonitorButton`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!canMonitor` | 29 |
-| branch | `existing` | 35 |
+| branch | `existing` | 30 |
 
 ### `modules/host-mount/conversation-extension/components/ConversationMountsControl`
 
@@ -91,48 +81,24 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isTauriView` | 119 |
-| branch | `!open` | 120 |
-| branch | `!isTauriView` | 154 |
-| branch | `isLinux` | 155 |
-| branch | `e.button !== 0` | 156 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 158 |
-| branch | `!isTauriView` | 167 |
-| branch | `isLinux` | 168 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 170 |
-| branch | `Array.isArray(footer)` | 204 |
-| branch | `showOverlay` | 230 |
-| branch | `title != null` | 249 |
-| branch | `typeof title === 'string'` | 261 |
-| branch | `extra != null` | 266 |
-| branch | `closable` | 267 |
-| empty | `noBodyScrollWrap` | 277 |
-| branch | `footerNode != null` | 280 |
-| branch | `title == null` | 287 |
-
-### `modules/layouts/app-layout/components/HeaderBarContainer`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!isTauriView` | 128 |
-| branch | `isLinux` | 133 |
-| branch | `e.button !== 0` | 134 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 136 |
-| branch | `!isTauriView` | 147 |
-| branch | `isLinux` | 148 |
-| branch | `target.closest?.(INTERACTIVE_SEL)` | 150 |
-
-### `modules/layouts/app-layout/components/LeftSidebar`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!glassActive` | 135 |
-| branch | `showResizeHandle` | 231 |
-| branch | `!realHandle` | 237 |
+| branch | `!isTauriView` | 145 |
+| branch | `!open` | 146 |
+| branch | `!isTauriView` | 180 |
+| branch | `isLinux` | 181 |
+| branch | `e.button !== 0` | 182 |
+| branch | `target.closest?.(INTERACTIVE_SEL)` | 184 |
+| branch | `!isTauriView` | 193 |
+| branch | `isLinux` | 194 |
+| branch | `target.closest?.(INTERACTIVE_SEL)` | 196 |
+| branch | `Array.isArray(footer)` | 245 |
+| branch | `showOverlay` | 271 |
+| branch | `title != null` | 298 |
+| branch | `typeof title === 'string'` | 310 |
+| branch | `extra != null` | 328 |
+| branch | `closable` | 329 |
+| empty | `noBodyScrollWrap` | 339 |
+| branch | `footerNode != null` | 342 |
+| branch | `title == null` | 349 |
 
 ### `modules/layouts/app-layout/components/SidebarHeaderSpacer`
 
