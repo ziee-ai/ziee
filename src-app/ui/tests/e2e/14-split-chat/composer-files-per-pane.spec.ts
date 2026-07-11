@@ -138,33 +138,30 @@ test.describe('Split chat — per-pane composer files', () => {
     const token = await setupProviderAndModel(apiURL)
     const { pane0, pane1 } = await splitIntoTwoPanes(page, baseURL, apiURL, token)
 
-    // Hold the upload request open so the "uploading" state persists long enough
-    // to assert the send-blocker window deterministically (no timing guesswork).
-    let releaseUpload: () => void = () => {}
-    const uploadGate = new Promise<void>((resolve) => {
-      releaseUpload = resolve
-    })
+    // Delay the upload RESPONSE (not gate-and-release: that raced route.continue
+    // against unroute) so the "uploading" window is observable, then let it
+    // complete naturally. The pending uploadingFiles entry is added synchronously
+    // on setInputFiles, so the disabled state is observable well within the hold.
     await page.route('**/api/files/upload', async (route) => {
-      await uploadGate
+      await new Promise((r) => setTimeout(r, 5000))
       await route.continue()
     })
 
     const send0 = pane0.getByTestId('chat-input-send-btn')
     const send1 = pane1.getByTestId('chat-input-send-btn')
 
-    // Begin an upload in pane 0 (its uploadingFiles entry is added synchronously,
-    // owned by pane 0). Do NOT wait for the card — the request is gated open.
+    // Begin an upload in pane 0 (its uploadingFiles entry is owned by pane 0).
     await pane0.getByTestId('chat-input-add-btn').click()
     await page.locator('input[type="file"]').first().setInputFiles(FILE_ASSETS.md)
 
-    // While pane 0's upload is in flight: pane 0's Send is blocked; pane 1's Send
-    // is unaffected (per-pane useSendBlocker keyed by the owning pane).
-    await expect(send0).toBeDisabled({ timeout: 15000 })
+    // While pane 0's upload is in flight (within the 5s hold): pane 0's Send is
+    // blocked; pane 1's Send is unaffected (per-pane useSendBlocker keyed by the
+    // owning pane). This is the discriminator — a shared blocker would disable both.
+    await expect(send0).toBeDisabled({ timeout: 4000 })
     await expect(send1).toBeEnabled()
 
-    // Release the upload → it completes and pane 0's Send re-enables.
-    releaseUpload()
-    await page.unroute('**/api/files/upload')
+    // After the hold the upload completes on its own → pane 0's card appears and
+    // its Send re-enables.
     await expect(
       pane0.locator(`[data-testid="file-card"][data-filename="${path.basename(FILE_ASSETS.md)}"]`),
     ).toBeVisible({ timeout: 30000 })

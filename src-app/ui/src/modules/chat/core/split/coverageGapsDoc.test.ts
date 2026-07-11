@@ -57,3 +57,23 @@ test('COVERAGE_GAPS.md records the two meta-findings (phantom coverage + unteste
   assert.ok(/phantom coverage/i.test(DOC), 'must name the phantom-coverage finding')
   assert.ok(/FIX_ROUND/i.test(DOC), 'must name the untested-FIX_ROUND-bug finding')
 })
+
+// The doc CLAIMS ITEM-40/41 close the reported gap. Cross-validate that claim
+// against the actual repo, so the test isn't a pure string tautology: if the
+// implementation or the covering spec is deleted while the doc still points at
+// them, THIS test fails (the doc-vs-repo consistency guard).
+test('the artifacts COVERAGE_GAPS.md claims exist actually exist in the repo', () => {
+  const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url))
+  const impl = here('../../../file/stores/composerOwnership.ts') // ITEM-40 pure module
+  const spec = here(
+    '../../../../../tests/e2e/14-split-chat/composer-files-per-pane.spec.ts', // ITEM-41 e2e
+  )
+  assert.ok(
+    readFileSync(impl, 'utf8').includes('mergeOwnedInto'),
+    'ITEM-40 composerOwnership.ts must exist and export the backup-MERGE helper the doc credits',
+  )
+  assert.ok(
+    readFileSync(spec, 'utf8').includes('assistant-status-chip'),
+    'ITEM-41 composer-files-per-pane.spec.ts must exist and assert the per-pane isolation the doc credits',
+  )
+})

@@ -50,7 +50,7 @@ src-app/ui/src/modules/chat/core/split/galleryCoverage.test.ts	1	36	tests-qualit
 src-app/ui/src/modules/chat/core/split/limits.ts	1	20	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/split/reconcile.test.ts	1	205	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/split/reconcile.ts	1	172	correctness,state-management,concurrency
-src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2317	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2344	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	86	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts	1	86	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	179	tests-quality,correctness,api-contract
@@ -114,3 +114,8 @@ src-app/ui/tests/e2e/14-split-chat/same-conversation-streaming.spec.ts	1	77	test
 src-app/ui/tests/e2e/14-split-chat/sidebar-reroute.spec.ts	1	71	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/workspace-persist-nav.spec.ts	1	88	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/visual/layout-baseline.ts	1	106	tests-quality,correctness,api-contract
+src-app/ui/src/modules/file/stores/composerOwnership.ts	1	79	correctness,concurrency,state-management,patterns-conformance,error-handling
+src-app/ui/src/modules/file/stores/composerOwnership.test.ts	1	137	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/chat/core/split/coverageGapsDoc.test.ts	1	80	tests-quality,test-coverage,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/composer-files-per-pane.spec.ts	1	216	tests-quality,test-coverage,correctness,state-management
+src-app/ui/tests/e2e/14-split-chat/COVERAGE_GAPS.md	1	73	tests-quality,test-coverage,patterns-conformance

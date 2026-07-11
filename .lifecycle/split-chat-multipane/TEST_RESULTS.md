@@ -59,6 +59,26 @@ columns on mobile, inverted `!md`) and multiple spec bugs (pane-reorder ordering
 bare-`/chat` restore, destructive-edit ordering, false-green shortcut probes,
 global mcp-chip) — all fixed and re-run green.
 
+## Iteration round 2 (merged base @origin/main 304f4a011; ITEM-40/41/42)
+
+- **`npm run check (ui): PASS`** — re-run on the merged base after the round-2
+  delta. Full chain (tsc + all lints + kit-manifest + testid-registry +
+  design-spec + gallery-coverage + state-matrix + overlay-registry). Exit 0
+  (`splitchat-ui-check-r2b.log`).
+- **Unit (TEST-60 + TEST-62): 17/17 PASS** — `node --test`
+  `composerOwnership.test.ts` (7) + `coverageGapsDoc.test.ts` (10), via the
+  project's `node-test-loader.mjs`.
+- **E2E (TEST-61): 3/3 PASS** — `composer-files-per-pane.spec.ts` on a real
+  `cargo run` backend, `--workers=1` (`splitchat-e2e-test61b.log`: `3 passed
+  (1.1m)`): file attach/remove isolation, in-flight-upload send-blocker per-pane,
+  assistant-chip isolation — each acting on a pane with NO prior focus-click.
+  The server was built into an ISOLATED private `CARGO_TARGET_DIR` (avoiding the
+  shared-target build-script cross-worktree pollution) and the harness `cargo run`
+  pointed at it. The send-blocker leg initially failed on a TEST-mechanics bug
+  (a `route.continue`/`unroute` race — `Route is already handled!`), NOT a product
+  defect (the `send0` disabled assertion had already passed); reworked to a
+  fixed-delay route hold and re-ran green.
+
 ## Per-TEST-ID (Phase 3 TESTS.md — all 64)
 
 - **TEST-P1**: PASS
@@ -125,6 +145,9 @@ global mcp-chip) — all fixed and re-run green.
 - **TEST-57**: PASS
 - **TEST-58**: PASS
 - **TEST-59**: PASS
+- **TEST-60**: PASS
+- **TEST-61**: PASS
+- **TEST-62**: PASS
 
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
