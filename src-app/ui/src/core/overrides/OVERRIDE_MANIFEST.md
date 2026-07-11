@@ -34,7 +34,7 @@ The living index of every desktop UI override. Regenerate with
 ## Approved raw whole-file shadows (structural exceptions)
 
 Desktop-tree files that shadow a `src-app/ui` path AND cannot use a finer
-mechanism — each requires an approved `SHADOW-EXCEPTION` in DECISIONS.md.
+mechanism — each requires an approved `SHADOW-EXCEPTION` in `desktop/ui/OVERRIDE_EXCEPTIONS.md`.
 
 3 raw shadows (0 UNACCOUNTED).
 

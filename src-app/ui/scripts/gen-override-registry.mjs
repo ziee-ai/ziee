@@ -48,7 +48,7 @@ const REPO = path.resolve(HERE, '../../..')
 // sibling `ui/src/X` exists — the coarse override we're eliminating. After
 // migration a shadow must be gone (replaced by a co-located `X.desktop.tsx` or a
 // `<Seam>`); the only raw shadow allowed is one recorded as an approved
-// SHADOW-EXCEPTION in DECISIONS.md (main.tsx entry, glob-discovered module.tsx,
+// SHADOW-EXCEPTION in OVERRIDE_EXCEPTIONS.md (main.tsx entry, glob-discovered module.tsx,
 // generated types). Desktop-EXCLUSIVE files (no core sibling) are legit modules.
 
 /** Desktop-tree source files (excluding tests/dev/gallery/generated). */
@@ -83,7 +83,7 @@ export function enumerateDesktopFiles(uiSrc = UI_SRC, desktopSrc = DESKTOP_SRC) 
   return { shadows: shadows.sort(), exclusive: exclusive.sort() }
 }
 
-/** Approved raw-shadow exceptions from DECISIONS.md. Format:
+/** Approved raw-shadow exceptions from desktop/ui/OVERRIDE_EXCEPTIONS.md. Format:
  *  `- SHADOW-EXCEPTION: <path> — <reason> [approved: <who/when>]` */
 export function parseShadowExceptions(decisionsText) {
   const set = new Set()
@@ -200,15 +200,14 @@ const { deadOverrides, orphanDesktopFiles, unregisteredSeams } = computeDrift(
 // --- raw-shadow gate ----------------------------------------------------------
 const { shadows: desktopShadows, exclusive: desktopExclusive } =
   enumerateDesktopFiles()
-const decisionsText = (() => {
-  for (const p of [
-    path.join(REPO, '.lifecycle/desktop-ui-override/DECISIONS.md'),
-  ]) {
-    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8')
-  }
-  return ''
-})()
-const shadowExceptions = parseShadowExceptions(decisionsText)
+// PERMANENT source of truth for approved exceptions — a committed product-tree
+// file (NOT `.lifecycle/`, which is STRIPPED at merge, which would make the gate
+// find zero exceptions and fail `npm run check` forever on main).
+const EXCEPTIONS_PATH = path.join(DESKTOP_SRC, '..', 'OVERRIDE_EXCEPTIONS.md')
+const exceptionsText = fs.existsSync(EXCEPTIONS_PATH)
+  ? fs.readFileSync(EXCEPTIONS_PATH, 'utf-8')
+  : ''
+const shadowExceptions = parseShadowExceptions(exceptionsText)
 const unaccountedShadows = desktopShadows.filter((s) => !shadowExceptions.has(s))
 // Exclusive MODULE roots (for the manifest listing).
 const exclusiveModules = desktopExclusive
@@ -254,7 +253,7 @@ ${relocRows || '| _(none)_ | |'}
 ## Approved raw whole-file shadows (structural exceptions)
 
 Desktop-tree files that shadow a \`src-app/ui\` path AND cannot use a finer
-mechanism — each requires an approved \`SHADOW-EXCEPTION\` in DECISIONS.md.
+mechanism — each requires an approved \`SHADOW-EXCEPTION\` in \`desktop/ui/OVERRIDE_EXCEPTIONS.md\`.
 
 ${desktopShadows.length} raw shadow${desktopShadows.length === 1 ? '' : 's'} (${unaccountedShadows.length} UNACCOUNTED).
 
@@ -286,7 +285,7 @@ if (unaccountedShadows.length) {
     `override drift: ${unaccountedShadows.length} RAW whole-file shadow(s) not migrated and not approved:\n` +
       unaccountedShadows.map((s) => `    desktop/ui/src/${s}`).join('\n') +
       `\n  → convert each to a <Seam> (finest) or a co-located ui/src/${'<path>'}.desktop.tsx, ` +
-      `or record an approved "- SHADOW-EXCEPTION: <path> — <structural reason> [approved: …]" in DECISIONS.md.`,
+      `or record an approved "- SHADOW-EXCEPTION: <path> — <structural reason> [approved: …]" in src-app/desktop/ui/OVERRIDE_EXCEPTIONS.md.`,
   )
 }
 if (orphanDesktopFiles.length) {

@@ -6,6 +6,9 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   computeDrift,
   topLevelSeamKeys,
@@ -53,6 +56,19 @@ test('TEST-12: parseShadowExceptions captures approved shadow paths incl. hyphen
   assert.ok(set.has('modules/memory/module.tsx'))
   // an exception WITHOUT an [approved: …] token is NOT accepted
   assert.ok(!set.has('not-approved/file.ts'))
+})
+
+test('TEST-12: exceptions live in the PERMANENT OVERRIDE_EXCEPTIONS.md (survives .lifecycle strip)', () => {
+  // The gate must NOT read approvals from .lifecycle/ (stripped at merge) — else
+  // it false-fails on main forever. Source of truth is the committed product-tree
+  // file; assert it exists and yields the 3 approved shadow paths.
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const permanent = path.join(here, '../../desktop/ui/OVERRIDE_EXCEPTIONS.md')
+  assert.ok(fs.existsSync(permanent), 'OVERRIDE_EXCEPTIONS.md must exist in the product tree')
+  const set = parseShadowExceptions(fs.readFileSync(permanent, 'utf-8'))
+  for (const p of ['main.tsx', 'api-client/types.ts', 'modules/memory/module.tsx']) {
+    assert.ok(set.has(p), `${p} must be an approved exception in OVERRIDE_EXCEPTIONS.md`)
+  }
 })
 
 test('TEST-12: the raw-shadow gate flags an unaccounted shadow', () => {

@@ -129,6 +129,17 @@ classifies a shadow (element-level → scaffold; structural → advise file-swap
 Output is always human-reviewed. Build-time `.mjs` dev script, never shipped.
 **Basis:** codebase + implement-time evidence (the classifier's own output).
 
+### DEC-18: Where does the gate read the approved SHADOW-EXCEPTIONs from?
+**Resolution:** From a PERMANENT committed product-tree file,
+`src-app/desktop/ui/OVERRIDE_EXCEPTIONS.md` — NOT from this `.lifecycle/DECISIONS.md`.
+`.lifecycle/` is STRIPPED at merge, so reading approvals from it made
+`check:override-registry` false-fail on `main` forever (0 exceptions found → 3
+raw shadows UNACCOUNTED). The `SHADOW-EXCEPTION` lines below are retained as the
+lifecycle DECISION RECORD, but the gate's runtime source of truth is the
+permanent file (verified: gate passes with `.lifecycle` removed). TEST-12 asserts
+the permanent file exists + carries the 3 approvals.
+**Basis:** user — caught in a clean staging-merge off origin/main.
+
 ### DEC-17: Which raw whole-file desktop shadows genuinely CANNOT use a finer mechanism?
 **Resolution:** Three, each recorded as an approved SHADOW-EXCEPTION below (the
 `gen-override-registry.mjs` gate enforces that every remaining raw shadow is one
