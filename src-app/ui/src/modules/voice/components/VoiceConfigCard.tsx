@@ -1,25 +1,26 @@
 import { useEffect } from 'react'
 import { z } from 'zod'
+import { Permissions } from '@/api-client/types'
 import {
   Alert,
   Card,
   ErrorState,
   Form,
   FormField,
+  Input,
   InputNumber,
+  message,
   Select,
   Separator,
   Spin,
   Switch,
   Text,
-  message,
   useForm,
   zodResolver,
 } from '@/components/ui'
-import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { Stores } from '@/core/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Permissions } from '@/api-client/types'
 
 const MIB = 1024 * 1024
 
@@ -48,6 +49,7 @@ const LANGUAGE_OPTIONS = [
 const schema = z.object({
   enabled: z.boolean(),
   model: z.string().min(1),
+  model_source_repo: z.string().min(1),
   language: z.string().min(1),
   streaming_enabled: z.boolean(),
   stream_interval_ms: z.number().min(300).max(10000),
@@ -65,14 +67,35 @@ type Schema = z.infer<typeof schema>
  * timeouts, and the record/upload caps. Mirrors the peer settings-card layout.
  */
 export function VoiceConfigCard() {
-  const { settings, loadingSettings, savingSettings, error } = Stores.VoiceConfig
+  const { settings, loadingSettings, savingSettings, error } =
+    Stores.VoiceConfig
+  const { installed } = Stores.VoiceModel
   const canManage = usePermission(Permissions.VoiceAdminManage)
+
+  // The active-model options come from the INSTALLED library (so a downloaded/
+  // uploaded model like `large-v3` is selectable), not a hardcoded list. The
+  // currently-configured model is always included even if its file was removed,
+  // and the standard names are offered as a fallback before anything is installed.
+  const modelOptions = (() => {
+    const opts = installed.length
+      ? installed.map(m => ({
+          value: m.name,
+          label: m.verified ? m.name : `${m.name} (unverified)`,
+        }))
+      : [...MODEL_OPTIONS]
+    const current = settings?.model
+    if (current && !opts.some(o => o.value === current)) {
+      opts.unshift({ value: current, label: current })
+    }
+    return opts
+  })()
 
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
     defaultValues: {
       enabled: false,
       model: 'base',
+      model_source_repo: 'ggerganov/whisper.cpp',
       language: 'auto',
       streaming_enabled: true,
       stream_interval_ms: 1000,
@@ -90,6 +113,7 @@ export function VoiceConfigCard() {
       form.reset({
         enabled: settings.enabled,
         model: settings.model,
+        model_source_repo: settings.model_source_repo,
         language: settings.language,
         streaming_enabled: settings.streaming_enabled,
         stream_interval_ms: settings.stream_interval_ms,
@@ -98,7 +122,10 @@ export function VoiceConfigCard() {
         auto_start_timeout_secs: settings.auto_start_timeout_secs,
         drain_timeout_secs: settings.drain_timeout_secs,
         max_clip_seconds: settings.max_clip_seconds,
-        max_upload_mib: Math.max(1, Math.round(settings.max_upload_bytes / MIB)),
+        max_upload_mib: Math.max(
+          1,
+          Math.round(settings.max_upload_bytes / MIB),
+        ),
       })
     }
   }, [settings, form])
@@ -108,6 +135,7 @@ export function VoiceConfigCard() {
       await Stores.VoiceConfig.saveSettings({
         enabled: values.enabled,
         model: values.model,
+        model_source_repo: values.model_source_repo,
         language: values.language,
         streaming_enabled: values.streaming_enabled,
         stream_interval_ms: values.stream_interval_ms,
@@ -121,7 +149,9 @@ export function VoiceConfigCard() {
       form.reset(values)
       message.success('Voice settings saved')
     } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Failed to save voice settings')
+      message.error(
+        e instanceof Error ? e.message : 'Failed to save voice settings',
+      )
     }
   }
 
@@ -198,7 +228,19 @@ export function VoiceConfigCard() {
           <Select
             data-testid="voice-config-model"
             className="w-full"
-            options={MODEL_OPTIONS}
+            options={modelOptions}
+          />
+        </FormField>
+
+        <FormField
+          name="model_source_repo"
+          label="Model source"
+          description="Repo the downloadable model catalog is fetched from (default `ggerganov/whisper.cpp`). Repoint it to an internal mirror or a moved upstream."
+          required
+        >
+          <Input
+            data-testid="voice-config-model-source-repo"
+            className="w-full"
           />
         </FormField>
 
@@ -271,7 +313,12 @@ export function VoiceConfigCard() {
           description="Unload the whisper server after this idle time. 0 disables idle eviction."
           required
         >
-          <InputNumber min={0} max={86400} className="!w-full" data-testid="voice-config-idle-unload" />
+          <InputNumber
+            min={0}
+            max={86400}
+            className="!w-full"
+            data-testid="voice-config-idle-unload"
+          />
         </FormField>
 
         <FormField
@@ -280,7 +327,12 @@ export function VoiceConfigCard() {
           description="How long to wait for a freshly-spawned whisper server to become healthy."
           required
         >
-          <InputNumber min={1} max={600} className="!w-full" data-testid="voice-config-autostart-timeout" />
+          <InputNumber
+            min={1}
+            max={600}
+            className="!w-full"
+            data-testid="voice-config-autostart-timeout"
+          />
         </FormField>
 
         <FormField
@@ -289,7 +341,12 @@ export function VoiceConfigCard() {
           description="When unloading, how long to wait for in-flight transcriptions before forcing a stop."
           required
         >
-          <InputNumber min={1} max={600} className="!w-full" data-testid="voice-config-drain-timeout" />
+          <InputNumber
+            min={1}
+            max={600}
+            className="!w-full"
+            data-testid="voice-config-drain-timeout"
+          />
         </FormField>
 
         <Separator titlePlacement="left">
@@ -304,7 +361,12 @@ export function VoiceConfigCard() {
           description="Recording auto-stops at this length."
           required
         >
-          <InputNumber min={1} max={600} className="!w-full" data-testid="voice-config-max-clip" />
+          <InputNumber
+            min={1}
+            max={600}
+            className="!w-full"
+            data-testid="voice-config-max-clip"
+          />
         </FormField>
 
         <FormField
@@ -313,7 +375,13 @@ export function VoiceConfigCard() {
           description="Largest audio clip the transcription endpoint accepts."
           required
         >
-          <InputNumber min={1} max={200} suffix="MiB" className="!w-full" data-testid="voice-config-max-upload" />
+          <InputNumber
+            min={1}
+            max={200}
+            suffix="MiB"
+            className="!w-full"
+            data-testid="voice-config-max-upload"
+          />
         </FormField>
       </Form>
     </Card>

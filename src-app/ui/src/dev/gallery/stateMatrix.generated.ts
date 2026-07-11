@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 363 surfaces carry renderable-state signals; 2102 signals total.
+// 365 surfaces carry renderable-state signals; 2146 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -794,13 +794,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ChatMessage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 54 },
-      { kind: "empty", condition: "contents.length === 0 && !showEmptyCompletionNotice", line: 76 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 158 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 187 },
-      { kind: "branch", condition: "offerCollapse", line: 213 },
-      { kind: "branch", condition: "showEmptyCompletionNotice", line: 233 },
-      { kind: "branch", condition: "isUser", line: 252 },
+      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 55 },
+      { kind: "empty", condition: "contents.length === 0 && !showEmptyCompletionNotice", line: 77 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 167 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 196 },
+      { kind: "branch", condition: "offerCollapse", line: 222 },
+      { kind: "branch", condition: "showEmptyCompletionNotice", line: 242 },
+      { kind: "branch", condition: "isUser", line: 261 },
     ],
   },
   "modules/chat/components/CollapsibleBlock": {
@@ -1111,30 +1111,32 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!sentinel", line: 143 },
-      { kind: "branch", condition: "!el", line: 163 },
-      { kind: "branch", condition: "!nativeScroll", line: 178 },
-      { kind: "branch", condition: "y < 0 || y > maxY", line: 187 },
-      { kind: "branch", condition: "maxY - y <= 8", line: 191 },
-      { kind: "branch", condition: "Math.abs(dy) < 6", line: 197 },
-      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 217 },
-      { kind: "branch", condition: "!conversationId", line: 259 },
-      { kind: "branch", condition: "!sentinel", line: 307 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 311 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 314 },
-      { kind: "branch", condition: "!sentinel", line: 349 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 353 },
-      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 354 },
-      { kind: "loading", condition: "!pending", line: 369 },
-      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 372 },
-      { kind: "branch", condition: "!conversation?.id", line: 381 },
-      { kind: "branch", condition: "!m", line: 385 },
-      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 388 },
-      { kind: "loading", condition: "loading && !conversation", line: 408 },
-      { kind: "loading", condition: "!loading && !conversation", line: 417 },
-      { kind: "error", condition: "error", line: 420 },
-      { kind: "error", condition: "error", line: 477 },
-      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 576 },
+      { kind: "branch", condition: "!sentinel", line: 149 },
+      { kind: "branch", condition: "!el", line: 169 },
+      { kind: "branch", condition: "!nativeScroll", line: 184 },
+      { kind: "branch", condition: "y < 0 || y > maxY", line: 193 },
+      { kind: "branch", condition: "maxY - y <= 8", line: 197 },
+      { kind: "branch", condition: "Math.abs(dy) < 6", line: 203 },
+      { kind: "branch", condition: "!Stores.Chat.$.conversation", line: 223 },
+      { kind: "branch", condition: "!conversationId", line: 265 },
+      { kind: "branch", condition: "!hasNewApproval", line: 340 },
+      { kind: "branch", condition: "pendingAnchorRef.current || hasMoreAfter || conversation?.id !== conversationId || initialScrollConvIdRef.current !== conversationId", line: 344 },
+      { kind: "branch", condition: "!sentinel", line: 372 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 376 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder", line: 379 },
+      { kind: "branch", condition: "!sentinel", line: 414 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 418 },
+      { kind: "branch", condition: "!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming", line: 419 },
+      { kind: "loading", condition: "!pending", line: 434 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 437 },
+      { kind: "branch", condition: "!conversation?.id", line: 446 },
+      { kind: "branch", condition: "!m", line: 450 },
+      { kind: "branch", condition: "!found || Stores.Chat.$.conversation?.id !== conversation.id", line: 453 },
+      { kind: "loading", condition: "loading && !conversation", line: 473 },
+      { kind: "loading", condition: "!loading && !conversation", line: 482 },
+      { kind: "error", condition: "error", line: 485 },
+      { kind: "error", condition: "error", line: 542 },
+      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 641 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -2940,29 +2942,31 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/extension",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "toolCall.status === 'pending_approval'", line: 32 },
-      { kind: "branch", condition: "serverLabel", line: 48 },
-      { kind: "error", condition: "(toolCall.status === 'completed' || toolCall.status === 'error')", line: 56 },
-      { kind: "branch", condition: "toolCall.status === 'started' && toolCall.progress", line: 74 },
-      { kind: "branch", condition: "toolCall.progress.message", line: 76 },
-      { kind: "branch", condition: "isExpanded", line: 99 },
-      { kind: "branch", condition: "toolCall.input !== undefined", line: 101 },
-      { kind: "branch", condition: "toolCall.result !== undefined", line: 110 },
-      { kind: "error", condition: "toolCall.error", line: 119 },
-      { kind: "branch", condition: "!toolUseData.id", line: 150 },
-      { kind: "branch", condition: "toolCall", line: 157 },
-      { kind: "branch", condition: "mcpServerParenLabel(server?.display_name)", line: 183 },
-      { kind: "branch", condition: "toolResultData", line: 188 },
-      { kind: "branch", condition: "hasDetails", line: 196 },
-      { kind: "branch", condition: "isExpanded", line: 207 },
-      { kind: "branch", condition: "!!toolUseData.input", line: 209 },
-      { kind: "branch", condition: "toolResultData", line: 217 },
-      { kind: "branch", condition: "toolResultData.is_error", line: 220 },
-      { kind: "branch", condition: "isExpanded", line: 301 },
-      { kind: "branch", condition: "!run || countToolUses(run) < 2", line: 326 },
-      { kind: "branch", condition: "!mcpStore", line: 356 },
-      { kind: "branch", condition: "!streamingMessage", line: 783 },
-      { kind: "branch", condition: "!toolUseId", line: 798 },
+      { kind: "branch", condition: "toolCall.status === 'pending_approval'", line: 40 },
+      { kind: "branch", condition: "serverLabel", line: 56 },
+      { kind: "error", condition: "(toolCall.status === 'completed' || toolCall.status === 'error')", line: 64 },
+      { kind: "branch", condition: "toolCall.status === 'started' && toolCall.progress", line: 82 },
+      { kind: "branch", condition: "toolCall.progress.message", line: 84 },
+      { kind: "branch", condition: "isExpanded", line: 107 },
+      { kind: "branch", condition: "toolCall.input !== undefined", line: 109 },
+      { kind: "branch", condition: "toolCall.result !== undefined", line: 118 },
+      { kind: "error", condition: "toolCall.error", line: 127 },
+      { kind: "branch", condition: "!toolUseData.id", line: 158 },
+      { kind: "branch", condition: "toolCall", line: 165 },
+      { kind: "branch", condition: "mcpServerParenLabel(server?.display_name)", line: 191 },
+      { kind: "branch", condition: "toolResultData", line: 196 },
+      { kind: "branch", condition: "hasDetails", line: 204 },
+      { kind: "branch", condition: "isExpanded", line: 215 },
+      { kind: "branch", condition: "!!toolUseData.input", line: 217 },
+      { kind: "branch", condition: "toolResultData", line: 225 },
+      { kind: "branch", condition: "toolResultData.is_error", line: 228 },
+      { kind: "branch", condition: "singleUse", line: 336 },
+      { kind: "branch", condition: "singleServerLabel", line: 341 },
+      { kind: "branch", condition: "isExpanded", line: 360 },
+      { kind: "branch", condition: "!run || !shouldWrapRun(run)", line: 393 },
+      { kind: "branch", condition: "!mcpStore", line: 426 },
+      { kind: "branch", condition: "!streamingMessage", line: 853 },
+      { kind: "branch", condition: "!toolUseId", line: 865 },
     ],
   },
   "modules/mcp/components/McpConfigModal": {
@@ -3571,15 +3575,23 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/scheduler/pages/ScheduledTasksPage",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 54 },
-      { kind: "branch", condition: "task.paused_reason", line: 61 },
-      { kind: "branch", condition: "expanded", line: 85 },
-      { kind: "branch", condition: "!runs", line: 87 },
-      { kind: "empty", condition: "runs.length === 0", line: 89 },
-      { kind: "branch", condition: "skippedToolsNote(r.skipped_tools)", line: 101 },
-      { kind: "loading", condition: "loading && tasks.length === 0", line: 197 },
-      { kind: "error", condition: "error && tasks.length === 0", line: 201 },
-      { kind: "empty", condition: "tasks.length === 0", line: 209 },
+      { kind: "branch", condition: "open", line: 118 },
+      { kind: "branch", condition: "badge", line: 125 },
+      { kind: "branch", condition: "preview", line: 131 },
+      { kind: "branch", condition: "open", line: 176 },
+      { kind: "error", condition: "run.status === 'failed' && run.error_message", line: 178 },
+      { kind: "branch", condition: "skip", line: 184 },
+      { kind: "error", condition: "!preview && run.status !== 'failed'", line: 192 },
+      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 260 },
+      { kind: "branch", condition: "task.paused_reason", line: 265 },
+      { kind: "branch", condition: "expanded", line: 289 },
+      { kind: "branch", condition: "!runs", line: 291 },
+      { kind: "empty", condition: "total === 0", line: 293 },
+      { kind: "branch", condition: "total > perPage", line: 309 },
+      { kind: "branch", condition: "task.target_kind === 'prompt'", line: 330 },
+      { kind: "loading", condition: "loading && tasks.length === 0", line: 411 },
+      { kind: "error", condition: "error && tasks.length === 0", line: 415 },
+      { kind: "empty", condition: "tasks.length === 0", line: 423 },
     ],
   },
   "modules/scheduler/pages/SchedulerAdminPage": {
@@ -3966,6 +3978,24 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "users.length > 0", line: 302 },
     ],
   },
+  "modules/voice/components/AvailableModelsCard": {
+    surface: "modules/voice/components/AvailableModelsCard",
+    requiredStates: ["empty","error"],
+    signals: [
+      { kind: "branch", condition: "sourceRepo", line: 107 },
+      { kind: "branch", condition: "checking && !hasLoaded", line: 120 },
+      { kind: "error", condition: "error && !hasLoaded", line: 122 },
+      { kind: "branch", condition: "!sourceReachable", line: 134 },
+      { kind: "empty", condition: "total === 0", line: 139 },
+      { kind: "branch", condition: "total > PAGE_SIZE", line: 156 },
+      { kind: "branch", condition: "model.size_bytes != null && !model.installed", line: 213 },
+      { kind: "branch", condition: "model.quantization", line: 218 },
+      { kind: "branch", condition: "model.sha256", line: 233 },
+      { kind: "branch", condition: "model.installed", line: 242 },
+      { kind: "branch", condition: "progress", line: 269 },
+      { kind: "error", condition: "failed && progress?.error", line: 270 },
+    ],
+  },
   "modules/voice/components/AvailableVersionsCard": {
     surface: "modules/voice/components/AvailableVersionsCard",
     requiredStates: ["empty","error"],
@@ -3984,6 +4014,22 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "error", condition: "failed && progress?.error", line: 217 },
     ],
   },
+  "modules/voice/components/InstalledModelsCard": {
+    surface: "modules/voice/components/InstalledModelsCard",
+    requiredStates: ["empty","error"],
+    signals: [
+      { kind: "empty", condition: "loadingInstalled && installed.length === 0", line: 60 },
+      { kind: "error", condition: "error && installed.length === 0", line: 62 },
+      { kind: "empty", condition: "installed.length === 0", line: 70 },
+      { kind: "branch", condition: "i > 0", line: 80 },
+      { kind: "branch", condition: "total > PAGE_SIZE", line: 85 },
+      { kind: "branch", condition: "model.is_active", line: 136 },
+      { kind: "branch", condition: "model.update_available", line: 158 },
+      { kind: "branch", condition: "canManage && !model.is_active", line: 170 },
+      { kind: "branch", condition: "canManage", line: 184 },
+      { kind: "branch", condition: "model.is_active", line: 191 },
+    ],
+  },
   "modules/voice/components/InstalledVersionsCard": {
     surface: "modules/voice/components/InstalledVersionsCard",
     requiredStates: ["delayed","empty","error"],
@@ -3998,40 +4044,50 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "version.is_system_default", line: 141 },
     ],
   },
-  "modules/voice/components/ModelCard": {
-    surface: "modules/voice/components/ModelCard",
-    requiredStates: ["delayed","error"],
+  "modules/voice/components/UploadModelDrawer": {
+    surface: "modules/voice/components/UploadModelDrawer",
+    requiredStates: ["open"],
     signals: [
-      { kind: "loading", condition: "loading && !status", line: 42 },
-      { kind: "error", condition: "error && !status", line: 44 },
-      { kind: "branch", condition: "status?.present", line: 57 },
-      { kind: "branch", condition: "status?.present && status.size_bytes != null", line: 67 },
+      { kind: "branch", condition: "!first", line: 34 },
+      { kind: "branch", condition: "uploading", line: 52 },
+      { kind: "branch", condition: "!file", line: 63 },
+      { kind: "branch", condition: "!name.trim()", line: 67 },
+      { kind: "overlay", condition: "<Drawer open>", line: 82 },
+      { kind: "branch", condition: "canManage", line: 99 },
+      { kind: "branch", condition: "file", line: 159 },
+      { kind: "branch", condition: "uploadError", line: 170 },
+      { kind: "branch", condition: "uploading && (uploadProgress.length > 0 || overallUploadProgress > 0)", line: 176 },
+      { kind: "branch", condition: "overallUploadProgress > 0", line: 194 },
+      { kind: "branch", condition: "fp.size > 0", line: 214 },
     ],
   },
   "modules/voice/components/VoiceConfigCard": {
     surface: "modules/voice/components/VoiceConfigCard",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "loadingSettings && !settings", line: 128 },
-      { kind: "error", condition: "error && !settings", line: 136 },
-      { kind: "branch", condition: "canManage", line: 155 },
-      { kind: "branch", condition: "!canManage", line: 166 },
+      { kind: "branch", condition: "loadingSettings && !settings", line: 158 },
+      { kind: "error", condition: "error && !settings", line: 166 },
+      { kind: "branch", condition: "canManage", line: 185 },
+      { kind: "branch", condition: "!canManage", line: 196 },
     ],
   },
   "modules/voice/components/VoiceInstanceCard": {
     surface: "modules/voice/components/VoiceInstanceCard",
-    requiredStates: ["delayed","error"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading && !info", line: 74 },
-      { kind: "error", condition: "error && !info", line: 76 },
-      { kind: "branch", condition: "!info", line: 84 },
+      { kind: "loading", condition: "loading && !info", line: 93 },
+      { kind: "error", condition: "error && !info", line: 95 },
+      { kind: "branch", condition: "!info", line: 103 },
+      { kind: "branch", condition: "!canRead", line: 204 },
+      { kind: "branch", condition: "lines == null", line: 236 },
+      { kind: "empty", condition: "lines.length === 0", line: 240 },
     ],
   },
   "modules/voice/components/VoiceSettingsPage": {
     surface: "modules/voice/components/VoiceSettingsPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "showBanner", line: 34 },
+      { kind: "branch", condition: "showBanner", line: 40 },
     ],
   },
   "modules/web-search/components/WebSearchGlobalSection": {
@@ -4345,7 +4401,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
   { slot: "settingsAdminPages", surface: "modules/user/module", line: 91 },
-  { slot: "settingsAdminPages", surface: "modules/voice/module", line: 50 },
+  { slot: "settingsAdminPages", surface: "modules/voice/module", line: 61 },
   { slot: "settingsAdminPages", surface: "modules/web-search/module", line: 57 },
   { slot: "settingsAdminPages", surface: "modules/workflow/module", line: 104 },
   { slot: "settingsUserPages", surface: "modules/assistant/module", line: 69 },
@@ -4370,7 +4426,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 370 keys.
+ * 374 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4699,15 +4755,19 @@ export type RequiredState =
   | "modules/user/components/user/UserGroupsDrawer:open"
   | "modules/user/components/user/UsersSettings:empty"
   | "modules/user/components/user/UsersSettings:open"
+  | "modules/voice/components/AvailableModelsCard:empty"
+  | "modules/voice/components/AvailableModelsCard:error"
   | "modules/voice/components/AvailableVersionsCard:empty"
   | "modules/voice/components/AvailableVersionsCard:error"
+  | "modules/voice/components/InstalledModelsCard:empty"
+  | "modules/voice/components/InstalledModelsCard:error"
   | "modules/voice/components/InstalledVersionsCard:delayed"
   | "modules/voice/components/InstalledVersionsCard:empty"
   | "modules/voice/components/InstalledVersionsCard:error"
-  | "modules/voice/components/ModelCard:delayed"
-  | "modules/voice/components/ModelCard:error"
+  | "modules/voice/components/UploadModelDrawer:open"
   | "modules/voice/components/VoiceConfigCard:error"
   | "modules/voice/components/VoiceInstanceCard:delayed"
+  | "modules/voice/components/VoiceInstanceCard:empty"
   | "modules/voice/components/VoiceInstanceCard:error"
   | "modules/web-search/components/WebSearchGlobalSection:delayed"
   | "modules/web-search/components/WebSearchGlobalSection:empty"
@@ -5072,15 +5132,19 @@ export const REQUIRED_STATE_KEYS = [
   "modules/user/components/user/UserGroupsDrawer:open",
   "modules/user/components/user/UsersSettings:empty",
   "modules/user/components/user/UsersSettings:open",
+  "modules/voice/components/AvailableModelsCard:empty",
+  "modules/voice/components/AvailableModelsCard:error",
   "modules/voice/components/AvailableVersionsCard:empty",
   "modules/voice/components/AvailableVersionsCard:error",
+  "modules/voice/components/InstalledModelsCard:empty",
+  "modules/voice/components/InstalledModelsCard:error",
   "modules/voice/components/InstalledVersionsCard:delayed",
   "modules/voice/components/InstalledVersionsCard:empty",
   "modules/voice/components/InstalledVersionsCard:error",
-  "modules/voice/components/ModelCard:delayed",
-  "modules/voice/components/ModelCard:error",
+  "modules/voice/components/UploadModelDrawer:open",
   "modules/voice/components/VoiceConfigCard:error",
   "modules/voice/components/VoiceInstanceCard:delayed",
+  "modules/voice/components/VoiceInstanceCard:empty",
   "modules/voice/components/VoiceInstanceCard:error",
   "modules/web-search/components/WebSearchGlobalSection:delayed",
   "modules/web-search/components/WebSearchGlobalSection:empty",

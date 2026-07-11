@@ -37,13 +37,60 @@ pub fn get_settings_docs(op: TransformOperation) -> TransformOperation {
 /// alongside the DB CHECKs → clearer 400s than an opaque constraint violation.
 /// Pure (no I/O) so it is directly unit-testable; `update_settings` calls it
 /// before touching the repository, so the handler behavior is unchanged.
+/// A storable whisper-model name: 1..=50 chars of `[A-Za-z0-9._-]` (fits
+/// `voice_runtime_settings.model VARCHAR(50)` + the `ggml-<name>.bin` convention,
+/// with no path-traversal characters).
+pub fn is_valid_model_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 50
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        && name != "."
+        && name != ".."
+        && !name.contains("..")
+}
+
+/// A valid model source: an `owner/repo` HF slug OR an `https://` base URL.
+pub fn is_valid_model_source_repo(repo: &str) -> bool {
+    let r = repo.trim();
+    if r.is_empty() || r.len() > 200 {
+        return false;
+    }
+    if r.starts_with("https://") {
+        return url::Url::parse(r).is_ok();
+    }
+    // owner/repo — exactly one slash, both sides non-empty, no traversal/space.
+    let parts: Vec<&str> = r.split('/').collect();
+    parts.len() == 2
+        && parts.iter().all(|p| {
+            !p.is_empty()
+                && *p != "."
+                && *p != ".."
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        })
+}
+
 pub fn validate_settings_patch(body: &UpdateVoiceSettingsRequest) -> Result<(), AppError> {
+    // Model can now be ANY installed model name (catalog ∪ uploaded), so the
+    // validator only enforces the storable FORMAT (fits VARCHAR(50), safe slug);
+    // the handler additionally verifies the name resolves to a catalog-supported
+    // OR an installed model (async) before persisting it.
     if let Some(ref m) = body.model
-        && !super::model::is_supported_model(m)
+        && !is_valid_model_name(m)
     {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
-            "unsupported model (expected one of: tiny, base, base.en, small)",
+            "model name must be 1..=50 chars of [A-Za-z0-9._-]",
+        ));
+    }
+    if let Some(ref repo) = body.model_source_repo
+        && !is_valid_model_source_repo(repo)
+    {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "model_source_repo must be an 'owner/repo' slug or an https:// URL",
         ));
     }
     if let Some(ref lang) = body.language {
@@ -135,6 +182,24 @@ pub async fn update_settings(
 ) -> ApiResult<Json<VoiceSettings>> {
     validate_settings_patch(&body)?;
 
+    // The model, if changed via settings, must resolve to a catalog-supported
+    // name OR an already-installed model (the primary activation path is
+    // POST /voice/models/{id}/activate; this covers a direct settings edit).
+    if let Some(ref m) = body.model
+        && !super::model::is_supported_model(m)
+        && Repos.voice_model.get_by_name(m).await?.is_none()
+    {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            format!("model {m:?} is neither a catalog model nor installed"),
+        )
+        .to_api_error());
+    }
+
+    // A source-repo change must invalidate the catalog cache so the next fetch
+    // hits the new source.
+    let source_changed = body.model_source_repo.is_some();
+
     let row = Repos
         .voice
         .update_settings(
@@ -149,8 +214,13 @@ pub async fn update_settings(
             body.streaming_enabled,
             body.stream_interval_ms,
             body.stream_max_decode_secs,
+            body.model_source_repo,
         )
         .await?;
+
+    if source_changed {
+        super::model_catalog::invalidate_cache();
+    }
 
     sync_publish(
         SyncEntity::VoiceSettings,
@@ -233,6 +303,30 @@ pub fn sync_cache_docs(op: TransformOperation) -> TransformOperation {
 mod tests {
     use super::*;
 
+    // TEST-5: storable model-name format + source-repo format validators.
+    #[test]
+    fn model_name_format_accepts_valid_rejects_bad() {
+        assert!(is_valid_model_name("base"));
+        assert!(is_valid_model_name("large-v3-turbo-q5_0"));
+        assert!(is_valid_model_name("my.custom_model-1"));
+        assert!(!is_valid_model_name("")); // empty
+        assert!(!is_valid_model_name("../etc/passwd")); // traversal chars
+        assert!(!is_valid_model_name("a/b")); // slash
+        assert!(!is_valid_model_name("..")); // dotdot
+        assert!(!is_valid_model_name(&"x".repeat(51))); // > 50
+    }
+
+    #[test]
+    fn source_repo_format_accepts_slug_and_https_rejects_bad() {
+        assert!(is_valid_model_source_repo("ggerganov/whisper.cpp"));
+        assert!(is_valid_model_source_repo("https://hf.internal/mirror"));
+        assert!(!is_valid_model_source_repo("")); // empty
+        assert!(!is_valid_model_source_repo("no-slash")); // not owner/repo
+        assert!(!is_valid_model_source_repo("a/b/c")); // too many segments
+        assert!(!is_valid_model_source_repo("../evil")); // traversal
+        assert!(!is_valid_model_source_repo("http://insecure/x")); // non-https url
+    }
+
     fn base() -> UpdateVoiceSettingsRequest {
         UpdateVoiceSettingsRequest::default()
     }
@@ -258,6 +352,7 @@ mod tests {
             streaming_enabled: Some(true),
             stream_interval_ms: Some(1500),
             stream_max_decode_secs: Some(30),
+            model_source_repo: Some("ggerganov/whisper.cpp".to_string()),
         };
         assert!(validate_settings_patch(&ok).is_ok());
         // Empty patch (all None → leave everything) is valid.
@@ -286,19 +381,30 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_model_rejected() {
-        for m in ["tiny", "base", "base.en", "small"] {
+    fn model_name_format_validated_existence_deferred_to_handler() {
+        // The pure validator now checks storable FORMAT only (any library model
+        // name is allowed — a catalog `large-v3` is format-valid); the
+        // catalog-or-installed EXISTENCE check moved to the async `update_settings`
+        // handler (covered by the integration tests). So a well-formed name passes
+        // here regardless of whether it's one of the 4 built-in defaults.
+        for m in ["tiny", "base", "base.en", "small", "large-v3", "large-v3-turbo-q5_0"] {
             let b = UpdateVoiceSettingsRequest {
                 model: Some(m.to_string()),
                 ..base()
             };
-            assert!(validate_settings_patch(&b).is_ok(), "model {m} is supported");
+            assert!(
+                validate_settings_patch(&b).is_ok(),
+                "well-formed model {m} passes format validation"
+            );
         }
-        let b = UpdateVoiceSettingsRequest {
-            model: Some("large-v3".to_string()),
-            ..base()
-        };
-        assert_validation_400(&b, "unsupported model must be rejected");
+        // A MALFORMED name (path-traversal / slash / too long) is still rejected.
+        for bad in ["../etc", "a/b", ".."] {
+            let b = UpdateVoiceSettingsRequest {
+                model: Some(bad.to_string()),
+                ..base()
+            };
+            assert_validation_400(&b, "malformed model name must be rejected");
+        }
     }
 
     #[test]

@@ -214,6 +214,51 @@ pub async fn list_active_downloads(
     Ok((StatusCode::OK, Json(DownloadListResponse { downloads })))
 }
 
+/// Single-download poll snapshot (non-SSE fallback; F9 parity with the llm runtime).
+pub async fn get_download_snapshot(
+    _auth: RequirePermissions<(VoiceAdminRead,)>,
+    Path(key): Path<String>,
+) -> ApiResult<Json<DownloadSnapshot>> {
+    let task = download_task::get_task(&key)
+        .ok_or_else(|| AppError::not_found(&format!("download {key:?}")).to_api_error())?;
+    Ok((StatusCode::OK, Json(snapshot_of(&task).await)))
+}
+
+pub fn get_download_snapshot_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(VoiceAdminRead,)>(op)
+        .id("Voice.getVersionDownload")
+        .tag("Voice")
+        .summary("Poll a single whisper runtime-version download snapshot")
+        .response::<200, Json<DownloadSnapshot>>()
+}
+
+/// Fetch a single runtime version by id (F10 parity).
+pub async fn get_version(
+    _auth: RequirePermissions<(VoiceAdminRead,)>,
+    Path(version_id): Path<Uuid>,
+) -> ApiResult<Json<RuntimeVersion>> {
+    let pool = Repos.pool();
+    let v = repository::get_by_id(pool, version_id)
+        .await
+        .map_err(|e| AppError::database_error(e).to_api_error())?
+        .ok_or_else(|| AppError::not_found("voice runtime version").to_api_error())?;
+    Ok((StatusCode::OK, Json(v)))
+}
+
+pub fn get_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(VoiceAdminRead,)>(op)
+        .id("Voice.getVersion")
+        .tag("Voice")
+        .summary("Read a single whisper runtime version")
+        .response::<200, Json<RuntimeVersion>>()
+}
+
+// NOTE: a standalone `GET /voice/detect-gpu` (F10) is intentionally NOT added —
+// the backend recommendation is already surfaced by `check-updates`
+// (`binary_manager` folds `gpu_detect::recommend_backend` into it), and a proper
+// available-backends list requires an upstream release-asset fetch. Descoped as
+// redundant (see DECISIONS DEC-19); not a silent omission.
+
 /// SSE stream of download events for a single task.
 pub async fn subscribe_download_events(
     _auth: RequirePermissions<(VoiceAdminRead,)>,

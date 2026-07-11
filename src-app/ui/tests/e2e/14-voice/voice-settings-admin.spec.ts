@@ -1,10 +1,11 @@
-import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { expect, test } from '../../fixtures/test-context'
 import { byTestId } from '../testid'
 import {
-  installVoiceBrowserMocks,
-  routeVoice,
   defaultVoiceState,
+  installVoiceBrowserMocks,
+  mkVoiceModel,
+  routeVoice,
 } from './voice-helpers'
 
 /**
@@ -13,19 +14,13 @@ import {
  * (GET/PUT /api/voice/settings + POST /api/voice/model/download round-trips).
  */
 test.describe('Voice — settings admin (TEST-29)', () => {
-  test('edit config + download model, save, and persist across reload', async ({
+  test('edit config, save, and persist across reload', async ({
     page,
     testInfra,
   }) => {
     const { baseURL } = testInfra
     await installVoiceBrowserMocks(page)
-    await routeVoice(
-      page,
-      // Start with the model NOT present so the download flips its badge.
-      defaultVoiceState({
-        modelStatus: { model: 'base', present: false },
-      }),
-    )
+    await routeVoice(page, defaultVoiceState())
 
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/voice`)
@@ -33,13 +28,9 @@ test.describe('Voice — settings admin (TEST-29)', () => {
       timeout: 30000,
     })
 
-    // ── Download the model: missing → present. ──
-    const modelCard = byTestId(page, 'voice-model-card')
-    await expect(byTestId(modelCard, 'voice-model-missing-tag')).toBeVisible()
-    await byTestId(page, 'voice-model-download-btn').click()
-    await expect(byTestId(modelCard, 'voice-model-present-tag')).toBeVisible({
-      timeout: 10000,
-    })
+    // (Model download/install is exercised by voice-model-mgmt.spec.ts
+    // TEST-17/18 against the new Available/Installed cards; the old single
+    // ModelCard was removed in the model-library rework.)
 
     // ── Edit the config fields. ──
     const configCard = byTestId(page, 'voice-config-card')
@@ -73,9 +64,62 @@ test.describe('Voice — settings admin (TEST-29)', () => {
     await expect(byTestId(page, 'voice-config-language')).toContainText(
       'English',
     )
-    // The model stays present after reload.
-    await expect(
-      byTestId(byTestId(page, 'voice-model-card'), 'voice-model-present-tag'),
-    ).toBeVisible()
+  })
+})
+
+/**
+ * TEST-21 — the reworked model surface: the Available + Installed model cards
+ * replace the old single ModelCard, and the not-ready banner reflects whether
+ * an installed model covers the configured `settings.model` pointer.
+ */
+test.describe('Voice — reworked model cards (TEST-21)', () => {
+  test('Available + Installed cards replace ModelCard; banner shows when no matching model is installed', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await installVoiceBrowserMocks(page)
+    // enabled + a runtime installed, but NO installed models → not ready.
+    await routeVoice(page, defaultVoiceState({ models: [] }))
+
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/voice`)
+    await expect(byTestId(page, 'voice-settings-page-title')).toBeVisible({
+      timeout: 30000,
+    })
+
+    // Both new cards render; the old single ModelCard is gone.
+    await expect(byTestId(page, 'voice-available-models-card')).toBeVisible()
+    await expect(byTestId(page, 'voice-installed-models-card')).toBeVisible()
+    await expect(byTestId(page, 'voice-model-card')).toHaveCount(0)
+
+    // No installed model covers settings.model ('base') → not-ready banner shows,
+    // and the installed card is empty.
+    await expect(byTestId(page, 'voice-not-ready-banner')).toBeVisible()
+    await expect(byTestId(page, 'voice-installed-models-empty')).toBeVisible()
+  })
+
+  test('not-ready banner clears once a matching model is installed', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await installVoiceBrowserMocks(page)
+    // A `base` model is installed, matching settings.model → ready, no banner.
+    await routeVoice(
+      page,
+      defaultVoiceState({
+        models: [mkVoiceModel('base', { is_active: true })],
+      }),
+    )
+
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/voice`)
+    await expect(byTestId(page, 'voice-settings-page-title')).toBeVisible({
+      timeout: 30000,
+    })
+
+    await expect(byTestId(page, 'voice-installed-model-row-base')).toBeVisible()
+    await expect(byTestId(page, 'voice-not-ready-banner')).toHaveCount(0)
   })
 })

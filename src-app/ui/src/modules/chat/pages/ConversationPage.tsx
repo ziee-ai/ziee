@@ -35,6 +35,9 @@ export default function ConversationPage() {
   // is a fixed overlay on mobile, so the chat column is effectively full-width.
   useNativeScroll(true)
   const { nativeScroll } = Stores.AppLayout
+  // Live MCP tool-call statuses — subscribed reactively (proxy destructure) so a
+  // newly-`pending_approval` tool triggers the scroll-to-approval effect below.
+  const { toolCalls } = Stores.McpComposer
 
   // Load conversation and messages on mount or when ID changes.
   useEffect(() => {
@@ -65,6 +68,9 @@ export default function ConversationPage() {
   const [composerHidden, setComposerHidden] = useState(false)
   // Conversation id whose initial bottom-jump we've already done.
   const initialScrollConvIdRef = useRef<string | null>(null)
+  // tool_use_ids whose pending approval we've already scrolled to — so the
+  // scroll-to-approval effect fires once per approval, not on every toolCalls change.
+  const scrolledApprovalsRef = useRef<Set<string>>(new Set())
 
   // ── Reverse-infinite-scroll (load older on scroll-up) refs (ITEM-9) ────────
   // The OverlayScrollbars component (desktop inner scroll). In mobile native
@@ -296,6 +302,65 @@ export default function ConversationPage() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, conversationId, conversation, hasMoreAfter])
+
+  // On mount, treat any already-`pending_approval` tool calls as already-scrolled.
+  // `toolCalls` is a process-global map that is never cleared across conversations,
+  // so a leftover pending approval from a previously-viewed conversation must NOT
+  // yank a freshly-opened one to the bottom — only approvals that appear AFTER this
+  // page mounts should scroll.
+  useEffect(() => {
+    for (const [id, call] of toolCalls) {
+      if (call.status === 'pending_approval') scrolledApprovalsRef.current.add(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // A tool call that needs approval must grab the user's attention even if they've
+  // scrolled up reading history — the streaming approval is injected at the TAIL of
+  // the message, so bring the tail into view. Same guards as the auto-follow effect
+  // above, EXCEPT the `isAtBottomRef` gate is deliberately bypassed (that gate is
+  // exactly why an off-bottom approval was never scrolled to). Fires once per
+  // approval (deduped). `messagesEndRef.scrollIntoView` moves the native/mobile
+  // (non-virtualized) scroll and gets close under virtualization (estimated
+  // heights); `messageListRef.scrollToBottom()` then settles on the true measured
+  // bottom of the virtualized list (a no-op on the mobile plain path).
+  useEffect(() => {
+    // Record every newly-pending approval as "seen" REGARDLESS of whether we
+    // scroll to it — so an approval that arrives while a guard is active (e.g. a
+    // mid-list `hasMoreAfter` window) is not left un-seen and cannot trigger a
+    // stray cross-conversation scroll later.
+    const seen = scrolledApprovalsRef.current
+    let hasNewApproval = false
+    for (const [id, call] of toolCalls) {
+      if (call.status === 'pending_approval' && !seen.has(id)) {
+        seen.add(id)
+        hasNewApproval = true
+      }
+    }
+    if (!hasNewApproval) return
+    // Only scroll when it's safe — same guards as the auto-follow effect above,
+    // EXCEPT the `isAtBottomRef` gate is deliberately bypassed (that gate is
+    // exactly why an off-bottom approval was never scrolled to).
+    if (
+      pendingAnchorRef.current ||
+      hasMoreAfter ||
+      conversation?.id !== conversationId ||
+      initialScrollConvIdRef.current !== conversationId
+    ) {
+      return
+    }
+    // Desktop is virtualized → `scrollToBottom()` (virt.scrollToIndex + re-assert)
+    // is what actually moves the OverlayScrollbars viewport. On the mobile plain
+    // path `scrollToBottom()` is a no-op, so fall back to the end-anchor
+    // `scrollIntoView` (which moves the native document scroll). Splitting on
+    // `nativeScroll` avoids running BOTH on desktop, where the anchor jump would
+    // fight the virtualized scroll.
+    if (nativeScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    } else {
+      messageListRef.current?.scrollToBottom()
+    }
+  }, [toolCalls, conversation, conversationId, hasMoreAfter])
 
   // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
   // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next

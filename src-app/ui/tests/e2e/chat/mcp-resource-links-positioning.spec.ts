@@ -207,6 +207,11 @@ test.describe('Inline file previews — per-block positioning', () => {
     await expect(group).toBeVisible({ timeout: 10000 })
     await expect(group.locator('img').first()).toBeVisible({ timeout: 10000 })
     await expect(group.locator('table').first()).toBeVisible({ timeout: 10000 })
+    // The 3rd file (markdown) sits lower now that the run is wrapped in the group
+    // card; InlineFilePreview viewport-gates a body until it scrolls within ~800px,
+    // so scroll the md preview into view before asserting its rendered <h1>.
+    const mdPreview = group.locator('[data-testid="inline-file-preview"]').nth(2)
+    await mdPreview.scrollIntoViewIfNeeded()
     await expect(group.locator('h1').first()).toHaveText('Hi', { timeout: 10000 })
   })
 })
