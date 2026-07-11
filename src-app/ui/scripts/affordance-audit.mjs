@@ -163,16 +163,30 @@ async function main() {
 
   // Only the rich-conversation deep-states render the content types we audit.
   const classes = await enumerateSurfaces(page, BASE)
-  const surfaces = (classes.deep || []).filter(s => s.startsWith('deep-chat'))
+  const INTERACT_ONLY = process.env.INTERACT_ONLY === '1'
+  // Base units: each deep-chat deep-state. Interaction units: each deep-chat
+  // interaction recipe (drives a real user action, then re-checks affordances).
+  const units = INTERACT_ONLY
+    ? (classes.interactions || [])
+        .filter(it => it.slug.startsWith('deep-chat'))
+        .map(it => ({ slug: it.slug, interact: it.name }))
+    : (classes.deep || [])
+        .filter(s => s.startsWith('deep-chat'))
+        .map(slug => ({ slug }))
 
   const findings = []
-  for (const slug of surfaces) {
+  for (const unit of units) {
+    const { slug, interact } = unit
     for (const theme of THEMES) {
-      const url = cellUrl(BASE, { slug, cls: 'deep', state: 'deep' }, { theme })
+      const url = cellUrl(BASE, { slug, cls: 'deep', state: 'deep', interact }, { theme })
       await page.goto(url, { waitUntil: 'domcontentloaded' })
       // Let the deep-state's setup() seed the conversation + Streamdown render
       // (mermaid/shiki are async). The deep-states resolve `whenLoaded` first.
       await page.waitForTimeout(3500)
+      if (interact)
+        await page
+          .waitForSelector('body[data-gallery-interact-done]', { timeout: 15_000 })
+          .catch(() => {})
 
       const results = await page.evaluate(inPagePresence, RULES)
       for (const r of results) {
@@ -183,6 +197,7 @@ async function main() {
           rule: r.name,
           label: rule.label,
           surface: slug,
+          interact: interact || null,
           theme,
           containers: r.containers,
           missing: r.missing.length,
@@ -203,7 +218,7 @@ async function main() {
   const md = [
     '# Affordance-audit findings',
     '',
-    `Surfaces audited: ${surfaces.length} deep-chat states × ${THEMES.length} theme(s).`,
+    `Surfaces audited: ${units.length} deep-chat ${INTERACT_ONLY ? 'interaction recipes' : 'states'} × ${THEMES.length} theme(s).`,
     `Gating misses (HIGH): ${gating.length} · Allowlisted gaps: ${allowed.length}.`,
     '',
     '## Gating (non-allowlisted REQUIRED control missing)',

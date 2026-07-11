@@ -62,12 +62,16 @@ seam) and on an orphaned `*.desktop.tsx` (no core sibling).
 **Basis:** codebase — mirrors `gen-testid-registry.mjs`.
 
 ### DEC-10: Which existing shadows convert to seams vs relocate vs stay?
-**Resolution:** Per the triage — 5 class-B → seams (`Drawer`, `SettingsPage`,
-`HardwareMonitorButton`, `SidebarToggleButton`, `SidebarHeaderSpacer`); 5 class-A →
+**Resolution:** Per the triage, REFINED at implement time (DRIFT-1.1) — 3 class-B →
+seams (`Drawer`, `SettingsPage`, `HardwareMonitorButton`); 5 class-A →
 `.desktop.tsx` co-location (`AuthGuard`, `LeftSidebar`, `HeaderBarContainer`,
-`memory/module`, `ProviderGroupAssignmentCard`); 8 class-C infra → unchanged.
-**Basis:** codebase — a seam removes duplication only for element-level (class-B)
-divergences; class-A/C have none to remove.
+`memory/module`, `ProviderGroupAssignmentCard`); `SidebarToggleButton` +
+`SidebarHeaderSpacer` retained as tier-1 desktop-tree shadows (structural
+divergence + relative-import consumers — no seam/relocation benefit); 8 class-C
+infra → unchanged.
+**Basis:** codebase — a seam removes duplication only for genuine element-level
+divergence; structural/whole-component overrides stay as file-swaps (tier-1 shadow
+or tier-2 `.desktop.tsx`).
 
 ### DEC-11: Does converting a shadow change platform behavior?
 **Resolution:** No, except the intentional Drawer fix (DEC-15). Web renders the

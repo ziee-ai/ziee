@@ -1,18 +1,27 @@
 # DRIFT-1.md — implementation vs plan (round 1, in progress)
 
-- **DRIFT-1.1** — verdict: impl-wins — SidebarToggleButton + SidebarHeaderSpacer
-  reclassified B→A (seam → `.desktop.tsx` relocation). On reading the real files,
-  their divergence is STRUCTURAL (SidebarToggleButton: a different wrapper —
-  `TauriDragRegion` overlay + macOS traffic-light offset vs the core
-  nativeScroll/headerHidden auto-hide wrapper — different icon set (react-icons/go
-  vs lucide), different button styling, different testid; SidebarHeaderSpacer is a
-  1-div component the desktop reimplements with drag handlers). A seam would
-  eliminate almost no duplication and would need 2 contorted sub-seams. Applying
-  the design's OWN decision rule ("`.desktop.tsx` when the whole component
-  diverges; `<Seam>` when one element diverges"), both become `.desktop.tsx`
-  relocations. Net: seam conversions = 3 (Drawer, SettingsPage, HardwareMonitorButton);
-  `.desktop.tsx` relocations = 7 (the original 5 + these 2). PLAN ITEM-6/ITEM-8 +
-  TESTS TEST-8/TEST-9 amended accordingly; DEC-10 updated.
+- **DRIFT-1.1** — verdict: resolved — SidebarToggleButton + SidebarHeaderSpacer
+  reclassified B→A and RETAINED as tier-1 desktop-tree shadows (no change), not
+  converted to seams and not relocated. Reasons: (1) their divergence is
+  STRUCTURAL, not element-level (SidebarToggleButton: different wrapper —
+  `TauriDragRegion` overlay + macOS traffic-light offset — different icon set,
+  styling, testid; SidebarHeaderSpacer: a 1-div component reimplemented with drag
+  handlers) — a seam eliminates ~no duplication and would need contorted sub-seams;
+  (2) they are consumed RELATIVELY by core `LeftSidebar` (`./SidebarToggleButton`),
+  and tier-2 `.desktop.tsx` only intercepts `@/` imports — relocating them would
+  force rewiring core consumers to `@/` for zero duplication benefit. The existing
+  tier-1 shadow already handles them correctly. Net: seam conversions = 3 (Drawer,
+  SettingsPage, HardwareMonitorButton); `.desktop.tsx` relocations = 5 (done); 2
+  structural overrides retained as tier-1 shadows. PLAN ITEM-6/ITEM-8 + TESTS
+  TEST-8 + DEC-10 amended.
+
+- **DRIFT-1.4** — verdict: resolved — `.desktop.tsx` co-location has a barrel
+  caveat surfaced during the AuthGuard relocation: a core barrel that RELATIVELY
+  re-exports (`export { X } from './X'`) yields the CORE version in the desktop
+  build, because tier-2 resolution only fires for `@/` specifiers. Fix pattern: the
+  desktop keeps (or adds) a barrel shadow that re-exports via `@/modules/.../X` so
+  the resolver picks the `.desktop` file. Documented in the `.desktop.tsx` section
+  of the docs (ITEM-12) as a required consumer rule.
 
 - **DRIFT-1.2** — verdict: resolved — the Seam primitive lives in `Override.ts`
   (not `.tsx`) because the core `node --test` runner strips types but does not
@@ -26,4 +35,4 @@
   moved into the relocation work (it only matters once real `.desktop.tsx` files
   with testids exist).
 
-**Unresolved drifts:** 1
+**Unresolved drifts:** 0

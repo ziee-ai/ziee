@@ -87,11 +87,13 @@ declares ONE fallback-preserving seam + desktop registers ONE override."
   `UIOverrides` declaration, emit the desktop `registerOverride` block, and delete
   the shadow. `add <key>`: scaffold a new seam (decl + registration stub + manifest
   row). Deterministic + fixture-tested; output reviewed before commit.
-- **ITEM-8**: Convert the 5 class-B element-level shadows to seams via the codemod
-  (reviewed output): `Drawer`, `SettingsPage`, `HardwareMonitorButton`,
-  `SidebarToggleButton`, `SidebarHeaderSpacer`. Each: core declares the seam
-  (fallback = original element), desktop registers its variant, desktop shadow
-  deleted.
+- **ITEM-8**: Convert the 3 genuinely element-level class-B shadows to seams via
+  the codemod (reviewed output): `Drawer`, `SettingsPage`, `HardwareMonitorButton`.
+  Each: core declares the seam (fallback = original element), desktop registers its
+  variant, desktop shadow deleted. (`SidebarToggleButton` + `SidebarHeaderSpacer`
+  reclassified B→A at implement time — structural divergence + relative-import
+  consumers; RETAINED as tier-1 desktop-tree shadows, see DRIFT-1.1. `HardwareMonitorButton`
+  is a hand-conversion; the codemod reproduces its scaffold as a golden fixture.)
 - **ITEM-9**: Reconcile `Drawer` drift during its conversion — RESTORE core's
   swipe-to-close + `higherLayerOpen` stacking guard that the desktop shadow
   silently dropped, rather than propagating the bug. The desktop Drawer seam
