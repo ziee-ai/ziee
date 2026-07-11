@@ -9,12 +9,29 @@
  *
  * Run: npx playwright test -c playwright.gallery.config.ts gallery-desktop-override
  */
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 // Desktop-only route surfaces that render inside the relocated desktop
 // SettingsPage.desktop.tsx shell.
 const SURFACES = ['settings-about', 'settings-remote-access', 'settings-host-mount']
 const THEMES = ['light', 'dark'] as const
+
+// The vite DEV server pre-bundles deps on first load and returns 504 "Outdated
+// Optimize Dep" (with a full-reload signal) until it settles; navigate + reload
+// until the gallery root renders. Resilient to a cold optimize cache.
+async function gotoSurface(page: Page, url: string) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await page.goto(url, { waitUntil: 'domcontentloaded' })
+    try {
+      await page.waitForSelector('[data-testid="gallery-root"]', { timeout: 15_000 })
+      return
+    } catch {
+      // 504/optimize-in-progress → reload picks up the freshly-optimized deps.
+      await page.waitForTimeout(1500)
+    }
+  }
+  await page.waitForSelector('[data-testid="gallery-root"]', { timeout: 15_000 })
+}
 
 for (const surface of SURFACES) {
   for (const theme of THEMES) {
@@ -25,16 +42,21 @@ for (const surface of SURFACES) {
     }) => {
       const consoleErrors: string[] = []
       const pageErrors: string[] = []
+      // Ignore the vite DEV-server dep-optimization noise (504/reload during the
+      // cold first load) — it is not an application error.
+      const isDevNoise = (t: string) =>
+        /Outdated Optimize Dep|504|Failed to load resource|net::ERR_ABORTED/i.test(t)
       page.on('console', m => {
-        if (m.type() === 'error') consoleErrors.push(m.text())
+        if (m.type() === 'error' && !isDevNoise(m.text())) consoleErrors.push(m.text())
       })
-      page.on('pageerror', e => pageErrors.push(String(e)))
+      page.on('pageerror', e => {
+        if (!isDevNoise(String(e))) pageErrors.push(String(e))
+      })
 
-      await page.goto(
+      await gotoSurface(
+        page,
         `/gallery.html?surface=${surface}&state=loaded&theme=${theme}`,
-        { waitUntil: 'networkidle' },
       )
-      await page.waitForSelector('[data-testid="gallery-root"]', { timeout: 20_000 })
       await page.waitForSelector(`[data-testid="gallery-page-${surface}"]`, {
         timeout: 20_000,
       })
