@@ -106,9 +106,9 @@ function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
   return (
     <div data-testid={`run-row-${run.id}`} className="rounded-md border p-2">
       <Flex className="items-start justify-between gap-2">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-start gap-1 text-left"
+        <Button
+          variant="ghost"
+          className="h-auto min-w-0 flex-1 justify-start gap-1 p-0 text-start font-normal hover:bg-transparent"
           data-testid={`run-expand-${run.id}`}
           aria-expanded={open}
           aria-controls={detailId}
@@ -137,7 +137,7 @@ function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
               </Text>
             )}
           </span>
-        </button>
+        </Button>
 
         {/* Actions: inline on ≥sm, overflow menu on mobile (ITEM-48). */}
         <div className="hidden items-center gap-1 sm:flex">
@@ -156,13 +156,16 @@ function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
         </div>
         <div className="sm:hidden">
           <Dropdown items={items} data-testid={`run-actions-menu-${run.id}`}>
-            <button
-              type="button"
+            {/* role=button (not a raw <button>) so the kit lint + Base UI trigger
+                are satisfied; the Dropdown trigger handles keyboard activation. */}
+            <div
+              role="button"
+              tabIndex={0}
               aria-label="Run actions"
               className="hover:bg-muted inline-flex h-8 w-8 items-center justify-center rounded-md"
             >
               <MoreHorizontal size={16} />
-            </button>
+            </div>
           </Dropdown>
         </div>
       </Flex>
@@ -214,13 +217,15 @@ function SeriesChooser({
   }))
   return (
     <Dropdown items={items} data-testid={`series-chooser-${task.id}`}>
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Discuss recent runs"
+        className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs"
       >
         Discuss recent runs
         <ChevronDown size={14} />
-      </button>
+      </div>
     </Dropdown>
   )
 }

@@ -249,3 +249,52 @@ test('TEST-30: allow-list picker present; selections persist on create', async (
     | undefined
   expect(grants).toEqual([{ server_id: SERVER_ID }])
 })
+
+// TEST-50 (ITEM-45 / DEC-21): "Open thread" is present + enabled for a fired
+// prompt task (bound conversation), disabled before first fire, and ABSENT for a
+// workflow task (which has no thread).
+test('TEST-50: Open thread affordance reflects target kind + bound conversation', async ({
+  page,
+  testInfra,
+}) => {
+  const { baseURL } = testInfra
+  const BOUND = 'cccccccc-1111-1111-1111-1111111111cc'
+  const firedPrompt = baseRow({
+    id: '5a000000-0000-0000-0000-0000000000a1',
+    name: 'Fired prompt',
+    target_kind: 'prompt',
+    bound_conversation_id: BOUND,
+  })
+  const neverFired = baseRow({
+    id: '5a000000-0000-0000-0000-0000000000a2',
+    name: 'Never fired',
+    target_kind: 'prompt',
+    bound_conversation_id: null,
+  })
+  const workflowTask = baseRow({
+    id: '5a000000-0000-0000-0000-0000000000a3',
+    name: 'Workflow task',
+    target_kind: 'workflow',
+    workflow_id: WORKFLOW_ID,
+    prompt: null,
+    bound_conversation_id: null,
+  })
+
+  await page.route(/\/api\/scheduled-tasks$/, async route =>
+    route.fulfill({ status: 200, json: [firedPrompt, neverFired, workflowTask] }),
+  )
+
+  await loginAsAdmin(page, baseURL)
+  await page.goto(`${baseURL}/scheduled-tasks`)
+
+  // Fired prompt: enabled Open thread → navigates to the bound conversation.
+  const openThread = byTestId(page, `task-open-thread-${firedPrompt.id}`)
+  await expect(openThread).toBeEnabled({ timeout: 10000 })
+  // Never-fired prompt: Open thread present but disabled.
+  await expect(byTestId(page, `task-open-thread-${neverFired.id}`)).toBeDisabled()
+  // Workflow task: no Open thread at all.
+  await expect(page.getByTestId(`task-open-thread-${workflowTask.id}`)).toHaveCount(0)
+
+  await openThread.click()
+  await expect(page).toHaveURL(new RegExp(`/conversations/${BOUND}`), { timeout: 10000 })
+})

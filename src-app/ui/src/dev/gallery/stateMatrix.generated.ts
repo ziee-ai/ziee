@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 363 surfaces carry renderable-state signals; 2102 signals total.
+// 363 surfaces carry renderable-state signals; 2110 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3571,15 +3571,23 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/scheduler/pages/ScheduledTasksPage",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 54 },
-      { kind: "branch", condition: "task.paused_reason", line: 61 },
-      { kind: "branch", condition: "expanded", line: 85 },
-      { kind: "branch", condition: "!runs", line: 87 },
-      { kind: "empty", condition: "runs.length === 0", line: 89 },
-      { kind: "branch", condition: "skippedToolsNote(r.skipped_tools)", line: 101 },
-      { kind: "loading", condition: "loading && tasks.length === 0", line: 197 },
-      { kind: "error", condition: "error && tasks.length === 0", line: 201 },
-      { kind: "empty", condition: "tasks.length === 0", line: 209 },
+      { kind: "branch", condition: "open", line: 118 },
+      { kind: "branch", condition: "badge", line: 125 },
+      { kind: "branch", condition: "preview", line: 131 },
+      { kind: "branch", condition: "open", line: 173 },
+      { kind: "error", condition: "run.status === 'failed' && run.error_message", line: 175 },
+      { kind: "branch", condition: "skip", line: 181 },
+      { kind: "error", condition: "!preview && run.status !== 'failed'", line: 189 },
+      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 256 },
+      { kind: "branch", condition: "task.paused_reason", line: 261 },
+      { kind: "branch", condition: "expanded", line: 285 },
+      { kind: "branch", condition: "!runs", line: 287 },
+      { kind: "empty", condition: "total === 0", line: 289 },
+      { kind: "branch", condition: "total > perPage", line: 305 },
+      { kind: "branch", condition: "task.target_kind === 'prompt'", line: 326 },
+      { kind: "loading", condition: "loading && tasks.length === 0", line: 407 },
+      { kind: "error", condition: "error && tasks.length === 0", line: 411 },
+      { kind: "empty", condition: "tasks.length === 0", line: 419 },
     ],
   },
   "modules/scheduler/pages/SchedulerAdminPage": {
