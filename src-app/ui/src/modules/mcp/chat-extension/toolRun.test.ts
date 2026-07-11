@@ -87,23 +87,24 @@ test('shouldWrapRun: an empty / no-tool run does NOT wrap', () => {
   assert.equal(shouldWrapRun([result('ORPHAN', [{ file_id: 'f1' }])]), false)
 })
 
-test('shouldWrapRun is a pure function of the run — the SAME value drives both the group render-branch and contentSpan (no run-loop desync)', () => {
-  // A table of runs; each must map to exactly one wrap decision, so
-  // McpToolUseGroup (render group?) and contentSpan (consume run.length?) —
-  // which both call shouldWrapRun(run) — can never disagree.
-  const cases: Array<[MessageContent[], boolean]> = [
-    [[use('A')], false],
-    [[use('A'), result('A', [{ file_id: 'f1' }])], true],
-    [[use('A'), use('B')], true],
-    [[], false],
+test('shouldWrapRun is deterministic + total (the invariant that lets the group render-branch and contentSpan share one decision)', () => {
+  // McpToolUseGroup (render group?) and McpToolUseGroup.contentSpan (consume
+  // run.length?) both call this single exported predicate on the SAME run, so
+  // they can only agree if the predicate returns the same value for the same
+  // input every time. Assert that determinism + totality here; the end-to-end
+  // agreement (no run-loop desync / corrupted blocks) is exercised by the
+  // wrapping e2e in tests/e2e/07-mcp/tool-group-single-artifact.spec.ts.
+  const cases: MessageContent[][] = [
+    [use('A')],
+    [use('A'), result('A', [{ file_id: 'f1' }])],
+    [use('A'), use('B')],
+    [use('A'), result('A'), use('B'), result('B')],
+    [],
   ]
-  for (const [run, expected] of cases) {
-    const decision = shouldWrapRun(run)
-    assert.equal(decision, expected)
-    // The render branch wraps iff `decision`; contentSpan consumes run.length iff
-    // `decision`, else 1 — both derived from this one call.
-    const consumed = decision ? run.length : 1
-    assert.equal(consumed === run.length, decision || run.length === 1)
+  for (const run of cases) {
+    const first = shouldWrapRun(run)
+    assert.equal(typeof first, 'boolean') // total: always a boolean, never throws
+    assert.equal(shouldWrapRun(run), first) // deterministic: same input → same output
   }
 })
 

@@ -52,9 +52,9 @@ export function ToolCallPendingApprovalContent({
     // Fire once per approval (guard the loadMessages remount / re-renders).
     if (scrolledApprovals.has(toolCall.tool_use_id)) return
     scrolledApprovals.add(toolCall.tool_use_id)
-    const reduceMotion = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
     // `block: 'nearest'` scrolls the nearest scrollable ancestor (the chat
     // ScrollArea viewport) minimally, not the window.
     el.scrollIntoView({

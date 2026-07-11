@@ -3205,13 +3205,13 @@ Required states: `error`
 | branch | `!!toolUseData.input` | 217 |
 | branch | `toolResultData` | 225 |
 | branch | `toolResultData.is_error` | 228 |
-| branch | `singleUse` | 333 |
-| branch | `singleServerLabel` | 336 |
-| branch | `isExpanded` | 355 |
-| branch | `!run \|\| !shouldWrapRun(run)` | 380 |
-| branch | `!mcpStore` | 413 |
-| branch | `!streamingMessage` | 840 |
-| branch | `!toolUseId` | 852 |
+| branch | `singleUse` | 336 |
+| branch | `singleServerLabel` | 341 |
+| branch | `isExpanded` | 360 |
+| branch | `!run \|\| !shouldWrapRun(run)` | 393 |
+| branch | `!mcpStore` | 426 |
+| branch | `!streamingMessage` | 853 |
+| branch | `!toolUseId` | 865 |
 
 ### `modules/mcp/components/McpConfigModal`
 

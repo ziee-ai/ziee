@@ -312,12 +312,15 @@ function McpToolGroupCard({
     <ToolStatusIcon status={hasError ? 'failed' : !allDone ? 'running' : 'success'} />
   )
 
-  // Single-tool wrapper (one tool call that produced an artifact): show the tool
-  // name + server label like the bare McpToolCallUI/McpToolUseRenderer header —
-  // "N tools called" would be wrong/uninformative for one call.
+  // Single-tool wrapper (one tool call that produced an artifact): the header
+  // itself stands in for the tool-call block — it shows the tool name + server
+  // label + status icon like the bare McpToolCallUI/McpToolUseRenderer card
+  // ("N tools called" would be wrong for one call). The expanded body then
+  // renders ONLY the result (files); re-rendering the tool_use card too would
+  // duplicate the name/server/status.
   const singleUse =
     toolUses.length === 1
-      ? (toolUses[0].content as MessageContentDataToolUse)
+      ? (toolUses[0]?.content as MessageContentDataToolUse | undefined)
       : null
   const singleServerLabel = singleUse
     ? mcpServerParenLabel(
@@ -332,7 +335,9 @@ function McpToolGroupCard({
           {icon}
           {singleUse ? (
             <>
-              <Text strong className="truncate">{singleUse.name || 'Tool Call'}</Text>
+              <Text strong className="truncate" title={singleUse.name || undefined}>
+                {singleUse.name || 'Tool Call'}
+              </Text>
               {singleServerLabel && (
                 <Text type="secondary" className="text-xs whitespace-nowrap">
                   {singleServerLabel}
@@ -354,12 +359,20 @@ function McpToolGroupCard({
       </div>
       {isExpanded && (
         <div className="mt-2 flex flex-col gap-2">
-          {run.map((b, i) => {
-            // Single-block render (no `blocks`), so the group renderer falls back
-            // to its single form — no recursion.
-            const res = chatExtensionRegistry.renderContent({ content: b, isUser })
-            return <Fragment key={b.id || `run-${i}`}>{res?.node ?? null}</Fragment>
-          })}
+          {run
+            // For a single-tool wrapper the header already stands in for the
+            // tool_use card, so render only the remaining blocks (its result /
+            // files) to avoid duplicating the tool name+server+status. EXCEPTION:
+            // if that tool errored, keep its tool_use card so its error alert /
+            // message stays visible (the header only shows a 'failed' icon). A
+            // multi-tool group always renders every member.
+            .filter(b => !singleUse || hasError || b.content_type !== 'tool_use')
+            .map((b, i) => {
+              // Single-block render (no `blocks`), so the group renderer falls back
+              // to its single form — no recursion.
+              const res = chatExtensionRegistry.renderContent({ content: b, isUser })
+              return <Fragment key={b.id || `run-${i}`}>{res?.node ?? null}</Fragment>
+            })}
         </div>
       )}
     </Card>
