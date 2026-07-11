@@ -462,6 +462,16 @@ async fn shutdown_signal() {
         tracing::info!("Shutdown: interrupted {engine_dl} in-flight engine download(s)");
     }
 
+    // Voice whisper-server BINARY + whisper-MODEL downloads use their own task
+    // registries; interrupt both so no `.tmp` leaks on shutdown.
+    let voice_bin = modules::voice::runtime_version::download_task::shutdown_all().await;
+    let voice_model = modules::voice::model_download_task::shutdown_all().await;
+    if voice_bin + voice_model > 0 {
+        tracing::info!(
+            "Shutdown: interrupted {voice_bin} voice binary + {voice_model} voice model download(s)"
+        );
+    }
+
     // Tear down the server-owned squashfuse FUSE daemon (if any was
     // lazily spawned by code_sandbox). No-op if sandbox is disabled
     // or no execute_command ever ran. PDEATHSIG handles SIGKILL paths

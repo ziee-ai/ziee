@@ -151,7 +151,14 @@ TeamCity build step notes:
 - **`nginx.conf`** — SPA with history-API fallback (`try_files … /index.html`)
   for BrowserRouter; `location /api` proxies to `127.0.0.1:9000` with buffering
   **off** so SSE frames flush immediately, and forwards `X-Forwarded-*`
-  (incl. `X-Forwarded-Host` for OAuth).
+  (incl. `X-Forwarded-Host` for OAuth). It also re-emits `X-Accel-Buffering: no`
+  via `add_header` so an **outer** reverse proxy (e.g. a Coder / ingress `nginx`
+  published in front) also streams `/api` SSE un-buffered — nginx consumes the
+  axum-set copy, so it must be re-emitted here to reach the edge.
+  `check-sse-headers.mjs` guards both directives against regression: the
+  Dockerfile's `config-check` stage runs it on every image build (the runtime
+  COPYs `nginx.conf` from that stage, so the build fails if a directive is
+  dropped), and it can be run standalone with `node docker/web/check-sse-headers.mjs`.
 - **`entrypoint.sh`** — renders the config, then supervises `ziee` + `nginx`
   under `tini`; if either exits the container exits (Docker restarts it).
 - **`config.template.yaml`** — external Postgres, loopback server, sandbox off,

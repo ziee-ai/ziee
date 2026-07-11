@@ -906,6 +906,21 @@ impl McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
+                // Same-host trust set: hosts of the user's OWN registered (non-system) MCP servers,
+                // so an external server's artifact URL on its own (private/RFC1918) host can be
+                // ingested. EXCLUDE `is_system` servers: that covers the auto-attached BUILT-IN
+                // servers pushed above via `get_any_server` (which does NOT redact `url`) — those
+                // carry a loopback `url` (`http://127.0.0.1:<port>/…`), and including it would let an
+                // external server's `resource_link` at `http://127.0.0.1:<port>` bypass the default
+                // loopback block. Admin-registered *system* external servers (url redacted in the
+                // base list anyway) are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in
+                // instead (see resource_link.rs).
+                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_servers(
+                    accessible_servers
+                        .iter()
+                        .map(|s| (s.is_system, s.url.as_deref())),
+                );
+
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
                     context.user_id,
@@ -916,6 +931,7 @@ impl McpChatExtension {
                     server.id,
                     server.is_built_in,
                     &server.headers,
+                    &trusted_hosts,
                     &allowed_roots,
                     Some(self.config.jwt.secret.as_str()),
                     Some(self.config.jwt.issuer.as_str()),
@@ -2852,6 +2868,21 @@ impl ChatExtension for McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
+                // Same-host trust set: hosts of the user's OWN registered (non-system) MCP servers,
+                // so an external server's artifact URL on its own (private/RFC1918) host can be
+                // ingested. EXCLUDE `is_system` servers: that covers the auto-attached BUILT-IN
+                // servers pushed above via `get_any_server` (which does NOT redact `url`) — those
+                // carry a loopback `url` (`http://127.0.0.1:<port>/…`), and including it would let an
+                // external server's `resource_link` at `http://127.0.0.1:<port>` bypass the default
+                // loopback block. Admin-registered *system* external servers (url redacted in the
+                // base list anyway) are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in
+                // instead (see resource_link.rs).
+                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_servers(
+                    accessible_servers
+                        .iter()
+                        .map(|s| (s.is_system, s.url.as_deref())),
+                );
+
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
                     context.user_id,
@@ -2862,6 +2893,7 @@ impl ChatExtension for McpChatExtension {
                     server.id,
                     server.is_built_in,
                     &server.headers,
+                    &trusted_hosts,
                     &allowed_roots,
                     Some(self.config.jwt.secret.as_str()),
                     Some(self.config.jwt.issuer.as_str()),

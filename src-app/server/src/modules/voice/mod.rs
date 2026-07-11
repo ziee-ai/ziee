@@ -27,6 +27,9 @@ pub mod engine;
 pub mod handlers;
 pub mod instance_handlers;
 pub mod model;
+pub mod model_catalog;
+pub mod model_download_task;
+pub mod model_handlers;
 pub mod models;
 pub mod permissions;
 pub mod reaper;
@@ -36,7 +39,7 @@ pub mod runtime_version;
 pub mod stream;
 pub mod transcribe;
 
-pub use repository::VoiceRepository;
+pub use repository::{VoiceModelRepository, VoiceRepository};
 
 #[distributed_slice(MODULE_ENTRIES)]
 static VOICE_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {

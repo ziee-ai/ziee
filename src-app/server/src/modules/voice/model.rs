@@ -47,10 +47,21 @@ pub const KNOWN_MODEL_SHA256: &[(&str, &str)] = &[
     ),
 ];
 
-/// Hard cap on a downloaded model file. The largest offered model (`small`) is
-/// ~466 MB; 1 GiB leaves generous headroom while bounding a malicious/mis-sized
-/// response.
-const MAX_MODEL_BYTES: u64 = 1024 * 1024 * 1024;
+/// Hard cap on a downloaded model file. The largest whisper model (`large-v3`) is
+/// ~3.1 GB; 5 GiB leaves headroom for future/quantized variants while bounding a
+/// malicious/mis-sized response. Whisper model files are upstream-bounded, so this
+/// is a safety ceiling, not a per-deployment tunable (DEC-6).
+pub const MAX_MODEL_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+/// Cap on an admin-uploaded model file (same bound + rationale as [`MAX_MODEL_BYTES`]).
+pub const VOICE_MODEL_MAX_UPLOAD_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+/// Validate that `bytes` begin with a whisper ggml (`ggml`) or GGUF (`GGUF`) magic.
+/// Uploaded / arbitrary-URL model files are checked so a non-model blob is rejected
+/// before it lands in the library.
+pub fn has_whisper_magic(bytes: &[u8]) -> bool {
+    bytes.len() >= 4 && (&bytes[..4] == b"ggml" || &bytes[..4] == b"GGUF")
+}
 
 /// Look up the pinned sha256 for `name`, if any.
 pub fn known_sha256(name: &str) -> Option<&'static str> {
@@ -78,17 +89,29 @@ pub fn model_filename(name: &str) -> String {
     format!("ggml-{name}.bin")
 }
 
-/// The on-disk path a model resolves to (present or not).
+/// The default on-disk path for a model (`ggml-<name>.bin`), present or not.
 pub fn model_path(name: &str) -> PathBuf {
     models_dir().join(model_filename(name))
 }
 
+/// Resolve the actual installed file for `name`, checking BOTH the `.bin` and
+/// `.gguf` variants (an uploaded/downloaded GGUF is stored `ggml-<name>.gguf`).
+/// Returns the first non-empty file that exists. This is the runtime's source of
+/// truth for "which file to serve", so a library model (catalog/url/upload) with
+/// any supported name — not just the 4 built-in defaults — actually runs.
+pub fn installed_model_path(name: &str) -> Option<PathBuf> {
+    for fname in [format!("ggml-{name}.bin"), format!("ggml-{name}.gguf")] {
+        let p = models_dir().join(&fname);
+        if std::fs::metadata(&p).map(|m| m.is_file() && m.len() > 0).unwrap_or(false) {
+            return Some(p);
+        }
+    }
+    None
+}
+
 /// True when a non-empty model file exists on disk (downloaded or pre-staged).
 pub fn model_present(name: &str) -> bool {
-    match std::fs::metadata(model_path(name)) {
-        Ok(m) => m.is_file() && m.len() > 0,
-        Err(_) => false,
-    }
+    installed_model_path(name).is_some()
 }
 
 /// Base URL for the whisper.cpp ggml model files. Overridable in **debug builds
@@ -118,33 +141,29 @@ pub async fn ensure_model(name: &str) -> Result<PathBuf, AppError> {
     ensure_model_with_progress(name, |_, _| {}).await
 }
 
-/// Download `ggml-<name>.bin` reporting `(downloaded, total)` byte progress via
-/// `cb` (for the SSE admin endpoint). Idempotent: a present model short-circuits
-/// with a single terminal progress callback.
-pub async fn download_model_with_progress<F>(name: &str, cb: F) -> Result<PathBuf, AppError>
-where
-    F: Fn(u64, Option<u64>) + Send + Sync,
-{
-    ensure_model_with_progress(name, cb).await
-}
-
 async fn ensure_model_with_progress<F>(name: &str, cb: F) -> Result<PathBuf, AppError>
 where
     F: Fn(u64, Option<u64>) + Send + Sync,
 {
+    // Already installed (any library model — catalog/url/upload, .bin or .gguf) →
+    // serve it directly, regardless of whether it's one of the 4 built-in
+    // auto-downloadable defaults. This is what lets an activated `large-v3` run.
+    if let Some(existing) = installed_model_path(name) {
+        let len = std::fs::metadata(&existing).map(|m| m.len()).unwrap_or(0);
+        cb(len, Some(len));
+        return Ok(existing);
+    }
+
+    // Absent → we can only AUTO-download a known built-in default (pinned URL);
+    // an arbitrary library model that isn't on disk can't be re-fetched here.
     if !is_supported_model(name) {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
-            format!("unsupported whisper model: {name:?}"),
+            format!("whisper model {name:?} is not installed (download or upload it first)"),
         ));
     }
 
     let dest = model_path(name);
-    if model_present(name) {
-        let len = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
-        cb(len, Some(len));
-        return Ok(dest);
-    }
 
     let dir = models_dir();
     std::fs::create_dir_all(&dir)
@@ -270,6 +289,281 @@ where
     Ok(dest)
 }
 
+// =====================================================================
+// Unified model-library download (catalog / HF-repo / arbitrary URL)
+// =====================================================================
+
+/// Where a model download's bytes come from + how to verify them.
+pub struct ModelDownloadSpec {
+    /// Stored short name (also the `settings.model` pointer value).
+    pub name: String,
+    /// On-disk filename (`ggml-<name>.bin` for catalog; else the source filename).
+    pub filename: String,
+    /// The resolved https URL to stream from.
+    pub url: String,
+    /// The HF-advertised git-LFS oid (sha256) to verify against. `Some` → the
+    /// download is fail-closed on mismatch and stored `verified=true`; `None` →
+    /// sha256 is only computed and stored `verified=false`.
+    pub expected_sha256: Option<String>,
+    /// SSRF-validate the URL before fetching. True for user-supplied arbitrary
+    /// URLs; false for the admin-configured (trusted) catalog/HF source.
+    pub ssrf_check: bool,
+}
+
+/// The result of a completed model-library download.
+pub struct DownloadedModel {
+    pub filename: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub verified: bool,
+}
+
+/// Stream a model file into `voice-models/`, reporting `(received, total)`
+/// progress via `cb` and cooperatively cancelling when `cancelled` is set (or the
+/// caller's shutdown race fires). Validates the whisper magic, enforces the size
+/// cap, verifies against `expected_sha256` when present (fail-closed), computes
+/// the digest otherwise, and atomically publishes. Cleans up the temp file on any
+/// error/cancel (fixes the shutdown temp-leak of the legacy path).
+pub async fn download_model_file<F>(
+    spec: &ModelDownloadSpec,
+    cb: F,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Result<DownloadedModel, AppError>
+where
+    F: Fn(u64, Option<u64>) + Send + Sync,
+{
+    use std::sync::atomic::Ordering;
+
+    if spec.ssrf_check {
+        crate::utils::url_validator::validate_outbound_url(
+            &spec.url,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        )
+        .map_err(|e| {
+            AppError::bad_request(
+                "VOICE_MODEL_URL_REJECTED",
+                format!("model URL rejected by SSRF policy: {e}"),
+            )
+        })?;
+    }
+
+    let dir = models_dir();
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal_error(format!("create voice-models dir: {e}")))?;
+
+    // For user-supplied (arbitrary) URLs, use the SSRF-guarding client: it pins a
+    // DNS resolver that rejects private/loopback/IMDS targets AND re-validates
+    // every redirect hop (a plain client would follow a 3xx from a public URL to
+    // loopback — the SSRF-via-redirect bypass). The trusted catalog/HF source uses
+    // a plain no-proxy client.
+    let client = if spec.ssrf_check {
+        crate::utils::url_validator::validated_client_builder(
+            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        )
+        .timeout(std::time::Duration::from_secs(1800))
+        .build()
+        .map_err(AppError::internal_with_id)?
+    } else {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(1800))
+            .no_proxy()
+            .build()
+            .map_err(AppError::internal_with_id)?
+    };
+    let redacted = redact_url(&spec.url);
+    let resp = client
+        .get(&spec.url)
+        .send()
+        .await
+        .map_err(|e| AppError::internal_error(format!("download request failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(AppError::internal_error(format!(
+            "model download returned HTTP {} for {redacted}",
+            resp.status(),
+        )));
+    }
+
+    let total = resp.content_length();
+    if let Some(len) = total
+        && len > MAX_MODEL_BYTES
+    {
+        return Err(AppError::bad_request(
+            "VOICE_MODEL_TOO_LARGE",
+            format!("model is {len} bytes, exceeds cap of {MAX_MODEL_BYTES}"),
+        ));
+    }
+
+    let tmp = dir.join(format!("{}.{}.tmp", spec.filename, uuid::Uuid::new_v4()));
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
+    let mut hasher = Sha256::new();
+    let mut downloaded: u64 = 0;
+    let mut head: Vec<u8> = Vec::with_capacity(4);
+    let mut stream = resp.bytes_stream();
+
+    let result: Result<(), AppError> = async {
+        while let Some(chunk) = stream.next().await {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_DOWNLOAD_CANCELLED",
+                    "download cancelled",
+                ));
+            }
+            let chunk =
+                chunk.map_err(|e| AppError::internal_error(format!("download read failed: {e}")))?;
+            if head.len() < 4 {
+                head.extend_from_slice(&chunk[..chunk.len().min(4 - head.len())]);
+                if head.len() >= 4 && !has_whisper_magic(&head) {
+                    return Err(AppError::bad_request(
+                        "VOICE_MODEL_INVALID",
+                        "file is not a whisper ggml/GGUF model (bad magic)",
+                    ));
+                }
+            }
+            downloaded += chunk.len() as u64;
+            if downloaded > MAX_MODEL_BYTES {
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_TOO_LARGE",
+                    format!("model exceeds cap of {MAX_MODEL_BYTES} bytes"),
+                ));
+            }
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| AppError::internal_error(format!("write model chunk: {e}")))?;
+            cb(downloaded, total);
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::internal_error(format!("flush model file: {e}")))?;
+        Ok(())
+    }
+    .await;
+
+    // Always clean up the temp file on any failure/cancel (no leak).
+    if let Err(e) = result {
+        drop(file);
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    drop(file);
+
+    if downloaded == 0 || !has_whisper_magic(&head) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(AppError::bad_request(
+            "VOICE_MODEL_INVALID",
+            "download produced no valid whisper model bytes",
+        ));
+    }
+
+    let actual = hex_lower(&hasher.finalize());
+    let verified = match &spec.expected_sha256 {
+        Some(expected) => {
+            if !expected.eq_ignore_ascii_case(&actual) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_SHA_MISMATCH",
+                    format!(
+                        "sha256 mismatch for {}: expected {expected}, got {actual}",
+                        spec.name
+                    ),
+                ));
+            }
+            true
+        }
+        None => false,
+    };
+
+    let dest = dir.join(&spec.filename);
+    finalize_download(&tmp, &dest)?;
+    Ok(DownloadedModel {
+        filename: spec.filename.clone(),
+        size_bytes: downloaded,
+        sha256: actual,
+        verified,
+    })
+}
+
+/// A streamed-to-disk upload awaiting validation + finalization.
+pub struct UploadTemp {
+    pub tmp: PathBuf,
+    pub size: u64,
+    pub sha256: String,
+    /// First up-to-4 bytes, for the caller's magic check.
+    pub head: Vec<u8>,
+}
+
+/// Stream a multipart upload field to a temp file under `voice-models/` — hashing
+/// + capturing the head + enforcing the size cap AS IT ARRIVES (never buffering
+/// the whole multi-GB file in RAM). The caller validates `head`/name then calls
+/// [`finalize_upload_temp`]; on any early return the temp is cleaned up.
+pub async fn stream_upload_to_temp(
+    mut field: axum::extract::multipart::Field<'_>,
+) -> Result<UploadTemp, AppError> {
+    let dir = models_dir();
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| AppError::internal_error(format!("create voice-models dir: {e}")))?;
+    let tmp = dir.join(format!(".upload-{}.tmp", uuid::Uuid::new_v4()));
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
+    let mut hasher = Sha256::new();
+    let mut size: u64 = 0;
+    let mut head: Vec<u8> = Vec::with_capacity(4);
+
+    let res: Result<(), AppError> = async {
+        while let Some(chunk) = field
+            .chunk()
+            .await
+            .map_err(|e| AppError::bad_request("UPLOAD_ERROR", format!("read upload: {e}")))?
+        {
+            size += chunk.len() as u64;
+            if size > VOICE_MODEL_MAX_UPLOAD_BYTES {
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_TOO_LARGE",
+                    format!("upload exceeds cap of {VOICE_MODEL_MAX_UPLOAD_BYTES} bytes"),
+                ));
+            }
+            if head.len() < 4 {
+                head.extend_from_slice(&chunk[..chunk.len().min(4 - head.len())]);
+            }
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| AppError::internal_error(format!("write upload: {e}")))?;
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::internal_error(format!("flush upload: {e}")))?;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = res {
+        drop(file);
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    drop(file);
+    Ok(UploadTemp {
+        tmp,
+        size,
+        sha256: hex_lower(&hasher.finalize()),
+        head,
+    })
+}
+
+/// Atomically move a validated upload temp into place as `filename`.
+pub fn finalize_upload_temp(tmp: &Path, filename: &str) -> Result<(), AppError> {
+    finalize_download(tmp, &models_dir().join(filename))
+}
+
+/// Delete an upload temp (validation failed).
+pub fn discard_temp(tmp: &Path) {
+    let _ = std::fs::remove_file(tmp);
+}
+
 /// Rename the verified temp file into place (best-effort cross-device fallback).
 fn finalize_download(tmp: &Path, dest: &Path) -> Result<(), AppError> {
     match std::fs::rename(tmp, dest) {
@@ -280,6 +574,21 @@ fn finalize_download(tmp: &Path, dest: &Path) -> Result<(), AppError> {
             let _ = std::fs::remove_file(tmp);
             Ok(())
         }
+    }
+}
+
+/// Strip any `user:pass@` userinfo from a URL before it lands in a log line or an
+/// admin-visible error (an arbitrary-URL download could embed credentials).
+fn redact_url(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            if !u.username().is_empty() || u.password().is_some() {
+                let _ = u.set_username("");
+                let _ = u.set_password(None);
+            }
+            u.to_string()
+        }
+        Err(_) => "<invalid-url>".to_string(),
     }
 }
 
@@ -316,5 +625,54 @@ mod tests {
     #[test]
     fn hex_lower_pads_and_lowercases() {
         assert_eq!(hex_lower(&[0x00, 0x0a, 0xff]), "000aff");
+    }
+
+    // TEST-2: magic-byte validation + upload cap.
+    #[test]
+    fn whisper_magic_accepts_ggml_and_gguf_rejects_junk() {
+        assert!(has_whisper_magic(b"ggml....."));
+        assert!(has_whisper_magic(b"GGUF\x00\x00"));
+        assert!(!has_whisper_magic(b"<htm"));
+        assert!(!has_whisper_magic(b"PK\x03\x04")); // zip
+        assert!(!has_whisper_magic(b"gg")); // too short
+        assert!(!has_whisper_magic(b""));
+    }
+
+    #[test]
+    fn upload_cap_is_a_sane_bound() {
+        // 5 GiB — above the largest whisper model (~3.1 GB), below absurd.
+        assert_eq!(VOICE_MODEL_MAX_UPLOAD_BYTES, 5 * 1024 * 1024 * 1024);
+        assert_eq!(MAX_MODEL_BYTES, VOICE_MODEL_MAX_UPLOAD_BYTES);
+    }
+
+    #[test]
+    fn installed_path_prefers_bin_then_gguf_naming() {
+        // Pure naming contract (no filesystem): the resolver looks for these two.
+        assert_eq!(model_filename("large-v3"), "ggml-large-v3.bin");
+    }
+
+    // TEST-3: the SSRF boundary the arbitrary-URL download path enforces
+    // (`PUBLIC_HTTP_OR_HTTPS`) rejects loopback / IMDS / RFC1918 targets, while a
+    // normal public URL is allowed. (The trusted catalog path is not SSRF-checked.)
+    #[test]
+    fn arbitrary_url_ssrf_policy_rejects_internal_targets() {
+        use crate::utils::url_validator::{validate_outbound_url, OutboundUrlPolicy};
+        let p = &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS;
+        assert!(validate_outbound_url("http://127.0.0.1/ggml-base.bin", p).is_err());
+        assert!(validate_outbound_url("http://169.254.169.254/latest/meta-data", p).is_err());
+        assert!(validate_outbound_url("http://10.0.0.5/x.bin", p).is_err());
+        assert!(validate_outbound_url("https://huggingface.co/x/resolve/main/ggml-base.bin", p).is_ok());
+    }
+
+    #[test]
+    fn redact_url_strips_credentials() {
+        assert_eq!(
+            redact_url("https://user:pass@example.com/ggml-base.bin"),
+            "https://example.com/ggml-base.bin"
+        );
+        assert_eq!(
+            redact_url("https://example.com/x.bin"),
+            "https://example.com/x.bin"
+        );
     }
 }

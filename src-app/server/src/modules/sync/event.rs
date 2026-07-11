@@ -149,6 +149,10 @@ pub enum SyncEntity {
     /// Voice whisper-server runtime version list changed (install/delete/set-default).
     /// Notify-only; delivered to holders of `voice::admin::read`.
     VoiceRuntimeVersion,
+    /// Voice whisper-MODEL library changed (download-complete / upload / delete /
+    /// activate). Notify-only; delivered to holders of `voice::admin::read` — the
+    /// admin UI refetches `GET /api/voice/models`.
+    VoiceModel,
     /// Deployment-wide MCP user policy (singleton `mcp_user_policy`): which
     /// transports regular users may install + the enforced stdio sandbox
     /// flavor + tool-call retention. Delivered to holders of `mcp_servers::read`

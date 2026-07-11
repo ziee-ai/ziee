@@ -413,9 +413,60 @@ const renderingShowcase: DeepBundle = {
   branches: [],
 }
 
+// A run of ≥2 tool calls folding into the "N tools called" group card, with an
+// artifact `tool_result` on the SECOND call placed NON-adjacent to its tool_use
+// (a `text` block sits between the run and the artifact). ChatMessage's
+// normalizeToolResultOrder pulls the result back adjacent so it groups, and the
+// group AUTO-OPENS because the run produced an artifact — exercising both fixes.
+const TOOL_GROUP_ID = 'dee90008-0000-4000-8000-000000000008'
+const toolGroup: DeepBundle = {
+  conversation: conversation(TOOL_GROUP_ID, 'Tool group — artifact wrapped + auto-open'),
+  messages: [
+    message(`${TOOL_GROUP_ID}-m1`, 'user', [
+      { type: 'text', text: 'Search the trials and chart the hazard ratios.' },
+    ]),
+    message(`${TOOL_GROUP_ID}-m2`, 'assistant', [
+      {
+        type: 'tool_use',
+        id: 'toolu_group_1',
+        name: 'search',
+        server_id: SANDBOX_SERVER,
+        input: { query: 'phase 3 trials' },
+      },
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_group_1',
+        content: 'Found 2 matching trials.',
+        name: 'search',
+        server_id: SANDBOX_SERVER,
+      } as MessageContentData,
+      {
+        type: 'tool_use',
+        id: 'toolu_group_2',
+        name: 'make_chart',
+        server_id: SANDBOX_SERVER,
+        input: { kind: 'bar', metric: 'hazard_ratio' },
+      },
+      { type: 'text', text: 'Here is the chart you asked for.' },
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_group_2',
+        content: '',
+        name: 'make_chart',
+        server_id: SANDBOX_SERVER,
+        // Reuses a file id the gallery mock API already resolves (see the
+        // recorded showcase); the inline preview renders inside the group.
+        resource_links: [{ uri: '/api/files/f1000000-0000-0000-0000-000000000001' }],
+      } as MessageContentData,
+    ]),
+  ],
+  branches: [],
+}
+
 export const chatDeepById: Record<string, DeepBundle> = {
   [TOOL_RUNNING_ID]: toolRunning,
   [TOOL_FAILED_ID]: toolFailed,
+  [TOOL_GROUP_ID]: toolGroup,
   [ATTACHMENTS_ID]: attachments,
   [ELICITATION_ID]: elicitation,
   [ASKUSER_ID]: askUser,
@@ -426,6 +477,7 @@ export const chatDeepById: Record<string, DeepBundle> = {
 export const CHAT_DEEP_CONVERSATION_IDS = {
   toolRunning: TOOL_RUNNING_ID,
   toolFailed: TOOL_FAILED_ID,
+  toolGroup: TOOL_GROUP_ID,
   attachments: ATTACHMENTS_ID,
   elicitation: ELICITATION_ID,
   askUser: ASKUSER_ID,
