@@ -687,3 +687,99 @@ async fn http_link_scoped_path_does_not_follow_redirect() {
     pool.close().await;
     std::fs::remove_dir_all(&store_dir).ok();
 }
+
+/// TEST-4 (stale-artifact-links): re-fetching an artifact link yields the CURRENT file,
+/// never a stale one. This is the behavioral premise the corrected sandbox guidance steers
+/// the model toward — when it re-obtains a link (via get_resource_link → ziee:// →
+/// persist_links) instead of reusing an earlier-turn URL, the fresh ingest reads the live
+/// workspace bytes. Prove it directly on the ingest tail: two persist_links rounds over the
+/// SAME host path across an overwrite produce two distinct files whose blobs are v1 then v2.
+#[tokio::test]
+#[serial_test::serial(repos, file_storage)]
+async fn refetch_reingest_yields_current_file_not_stale() {
+    let server = TestServer::start().await;
+    let uid = user_id(&server).await;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    ziee::init_repositories(pool.clone());
+    let store_dir = std::env::temp_dir().join(format!("ziee_rl_refetch_store_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&store_dir).unwrap();
+    ziee::init_file_storage(&store_dir);
+
+    // A per-conversation workspace root with an artifact the sandbox "produced".
+    let root = std::env::temp_dir().join(format!("ziee_rl_refetch_ws_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let artifact = root.join("gene_stats.csv");
+    let v1 = b"gene,logFC\nA,1.0\n";
+    std::fs::write(&artifact, v1).unwrap();
+
+    // Round 1 (turn 1): produce a link for the current file and ingest it.
+    let mut links1 = vec![ziee_link(&format!("ziee://{}", artifact.display()), "gene_stats.csv")];
+    let out1 = ziee::persist_links(
+        &mut links1,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        code_sandbox_server_id(),
+        true,
+        &serde_json::json!({}),
+        &[],
+        &[root.clone()],
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("persist_links round 1");
+    assert_eq!(out1.saved.len(), 1, "round 1 ingests the current file");
+    let file_v1 = out1.saved[0].file_id;
+    let blob_v1 = ziee::get_file_storage()
+        .load_original(uid, file_v1, "csv")
+        .await
+        .expect("v1 blob readable");
+    assert_eq!(blob_v1, v1, "round 1 blob is the v1 bytes");
+
+    // The workspace file changes (a later DE re-run overwrites gene_stats.csv).
+    let v2 = b"gene,logFC\nA,2.5\nB,-1.1\n";
+    std::fs::write(&artifact, v2).unwrap();
+
+    // Round 2 (a LATER turn): re-obtaining a link and re-ingesting must read the NEW bytes,
+    // not the stale v1 — a distinct file whose blob is v2.
+    let mut links2 = vec![ziee_link(&format!("ziee://{}", artifact.display()), "gene_stats.csv")];
+    let out2 = ziee::persist_links(
+        &mut links2,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        code_sandbox_server_id(),
+        true,
+        &serde_json::json!({}),
+        &[],
+        &[root.clone()],
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("persist_links round 2");
+    assert_eq!(out2.saved.len(), 1, "round 2 ingests the current file");
+    let file_v2 = out2.saved[0].file_id;
+    assert_ne!(file_v1, file_v2, "re-fetch produces a distinct file, not the stale one");
+    let blob_v2 = ziee::get_file_storage()
+        .load_original(uid, file_v2, "csv")
+        .await
+        .expect("v2 blob readable");
+    assert_eq!(blob_v2, v2, "round 2 blob is the CURRENT v2 bytes, never stale");
+
+    pool.close().await;
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&store_dir).ok();
+}
