@@ -69,6 +69,33 @@ export function mergeTailWindow(
   return appendWindow(existing, tailPage)
 }
 
+/**
+ * Finalize a streamed turn: drop the live streaming placeholder row, then merge
+ * the persisted TAIL page — in ONE pure step so the store can swap
+ * streaming→persisted atomically (no empty/absent assistant frame, and no beat
+ * where `isStreaming` is false while the row is missing).
+ *
+ * `streamingId` is the id the streaming buffer was keyed under. It is either:
+ *   - the REAL persisted id (backend sent `message_id` on content frames) — the
+ *     tail page carries the same id, so deleting it then merging re-adds the
+ *     persisted row IN PLACE at the tail (one row, updated content); or
+ *   - a synthetic `streaming-<ts>` id (no `message_id`) — absent from the tail
+ *     page, so deleting it removes the stale placeholder and the persisted row
+ *     appends fresh.
+ * Either way the result holds exactly one assistant row for that turn and never
+ * an empty window. Older already-loaded pages are preserved (via
+ * {@link mergeTailWindow}). Pure — unit-tested (TEST-1).
+ */
+export function finalizeTailWindow(
+  existing: Map<string, MessageWithContent>,
+  tailPage: MessageWithContent[],
+  streamingId: string | null,
+): Map<string, MessageWithContent> {
+  const base = new Map(existing)
+  if (streamingId) base.delete(streamingId)
+  return mergeTailWindow(base, tailPage)
+}
+
 /** First (oldest-loaded) message id, or null when empty. */
 export function firstMessageId(
   messages: Map<string, MessageWithContent>,
