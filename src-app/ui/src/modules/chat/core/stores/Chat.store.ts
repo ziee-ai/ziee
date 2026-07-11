@@ -1605,7 +1605,7 @@ const chatStoreConfig = {
 
         if (isOnOriginalConversation) {
           if (streamingMessage) {
-            await chatExtensionRegistry.afterStreamComplete(streamingMessage)
+            await chatExtensionRegistry.afterStreamComplete(streamingMessage, get().paneId)
           }
           // Capture BEFORE clearing: an edit/regenerate created a NEW branch
           // during this stream, so the loaded window still holds the old
@@ -1636,7 +1636,7 @@ const chatStoreConfig = {
 
       if (type === 'error') {
         const streamError = new Error(event.message || 'Stream error')
-        await chatExtensionRegistry.onStreamError(streamError)
+        await chatExtensionRegistry.onStreamError(streamError, get().paneId)
         const sseEvent: SSEEvent = { event_type: 'error', data: event }
         await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
 
@@ -1820,7 +1820,7 @@ const chatStoreConfig = {
           }
         }
 
-        await chatExtensionRegistry.onMessageSent()
+        await chatExtensionRegistry.onMessageSent(get().paneId)
         get().clearPendingBranch()
         set({ sending: false })
       } catch (error: any) {

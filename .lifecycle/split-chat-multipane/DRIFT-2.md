@@ -121,4 +121,29 @@ resolved; every drift is `impl-wins` with an amended-plan rationale or `resolved
   and `mobile-tabs.spec.ts` (tabs @390) all correct. A real shipped functional bug
   the blind audit caught.
 
+- **DRIFT-2.13** — verdict: impl-wins — **The send-lifecycle hooks
+  (`onMessageSent`/`onStreamError`/`afterStreamComplete`) now receive the OWNING
+  pane id, superseding DRIFT-2.4's focus-resolution for these three.** DRIFT-2.4
+  resolved the ctx-less send hooks via `focusedPaneId` on the premise "the focused
+  pane == the sending pane". FIX_ROUND-4 proved that premise FALSE for the ASYNC
+  hooks: `onMessageSent` runs after the send round-trip and the stream hooks fire
+  seconds later, by which time focus may have moved — wrong-pane file clear/restore
+  (data loss). Amended: the three hooks gained an optional `ownerPaneId` param
+  threaded from the dispatching pane's store (`get().paneId`), the stable owning
+  pane. `beforeSendMessage` is unaffected (it fires synchronously at send-start
+  where focus == sending pane still holds). This is a per-pane-correctness
+  improvement, not a signature-churn regression — the param is optional and
+  ignored by the other extensions that implement these hooks.
+
+- **DRIFT-2.14** — verdict: impl-wins — **`SplitChatView` renders ONE tree for both
+  tab + column modes** (not the two-branch structure the tab-strip work first
+  produced). Crossing the `md` breakpoint with a two-branch render changed each
+  pane's wrapper element TYPE (`<div>` vs `<Fragment><div>`) at the same key,
+  remounting every `ChatPaneProvider` (recreating the per-pane store, tearing down
+  live streams). The unified tree (`<Fragment key=paneId><div key="pane">` always;
+  divider + tab strip toggle around it, keyed) makes a mode switch a
+  className/style/role change only — panes stay mounted (the ITEM-30 guarantee).
+  Both modes remain e2e-proven (`independent-input` columns @1280, `mobile-tabs`
+  @390).
+
 **Unresolved drifts:** 0

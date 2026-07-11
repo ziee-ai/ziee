@@ -366,13 +366,15 @@ const fileExtension: ChatExtension = createExtension({
     return { file_ids: fileIds }
   },
 
-  // Backup files before clearing (this runs after composeRequestFields). The
-  // sending pane is the focused pane (sending pointer-focuses it first, DRIFT-2.4);
-  // backup/restore/clear are keyed by it so per-pane buffers stay isolated.
-  onMessageSent: async () => {
+  // Backup files before clearing (this runs after composeRequestFields). Keyed by
+  // the SENDING pane threaded from the dispatching store (`ownerPaneId`), NOT
+  // `focusedPaneId` — this hook runs after the send round-trip, during which the
+  // user may have focused another pane; the store's own paneId is stable
+  // (ITEM-32/DRIFT-2.13).
+  onMessageSent: async (ownerPaneId) => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
-    const paneKey = composerPaneKey(Stores.SplitView.$.focusedPaneId)
+    const paneKey = composerPaneKey(ownerPaneId)
 
     // Backup THIS pane's files before clearing THIS pane's buffer.
     fileStore.setBackupFiles(paneKey)
@@ -381,24 +383,27 @@ const fileExtension: ChatExtension = createExtension({
     return {}
   },
 
-  // Restore files on stream error
-  onStreamError: async (_error: Error) => {
+  // Restore files on stream error — keyed by the OWNING pane (whose stream
+  // errored), threaded from the pane's store. The error frame arrives async, so
+  // focus is unreliable; using it would restore into / clobber the wrong pane.
+  onStreamError: async (_error, ownerPaneId) => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
 
     // Restore only THIS pane's backed-up files (leaves other panes untouched).
-    fileStore.restoreFromBackup(composerPaneKey(Stores.SplitView.$.focusedPaneId))
+    fileStore.restoreFromBackup(composerPaneKey(ownerPaneId))
     console.log('[FileExtension] Restored files from backup after stream error')
     return {}
   },
 
-  // Clear backup on successful completion
-  afterStreamComplete: async (_message) => {
+  // Clear backup on successful completion — keyed by the OWNING pane (same async-
+  // boundary reasoning as onStreamError).
+  afterStreamComplete: async (_message, ownerPaneId) => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.File
 
     // Clear THIS pane's backup since its message was sent successfully.
-    fileStore.clearBackup(composerPaneKey(Stores.SplitView.$.focusedPaneId))
+    fileStore.clearBackup(composerPaneKey(ownerPaneId))
     console.log('[FileExtension] Cleared file backup after successful stream')
     return {}
   },

@@ -823,11 +823,14 @@ export const File = defineStore('File', {
     // this pane and concurrent panes keep independent slots.
     setBackupFiles: (paneKey: string) => {
       const { selectedFiles, uploadingFiles, fileOwner, uploadOwner } = get()
+      // Use the SAME owner→key resolution as clearFiles (composerPaneKey wrapper),
+      // so the backup captures EXACTLY the entries the paired clearFiles removes
+      // (a null/undefined owner resolves to the single-pane key, not "unowned").
       const sel = new Map(
-        [...selectedFiles].filter(([id]) => fileOwner.get(id) === paneKey),
+        [...selectedFiles].filter(([id]) => composerPaneKey(fileOwner.get(id)) === paneKey),
       )
       const upl = new Map(
-        [...uploadingFiles].filter(([id]) => uploadOwner.get(id) === paneKey),
+        [...uploadingFiles].filter(([id]) => composerPaneKey(uploadOwner.get(id)) === paneKey),
       )
       set((state) => {
         const next = new Map(state.backupByPane)

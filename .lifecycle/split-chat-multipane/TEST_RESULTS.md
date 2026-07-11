@@ -1,56 +1,58 @@
-# TEST_RESULTS — Phase 8 (honest record)
+# TEST_RESULTS — split-chat-multipane (Phase 8, honest record)
 
-GENUINE results only — every line below reflects a test/gate that actually ran
-green in this session. Tests reconciled to the shipped implementation per
-DRIFT-1 + the re-scoped TESTS.md (every TEST-ID → a real shipped vehicle, no ID
-dropped, A5).
+GENUINE results only — every line reflects a test/gate that actually ran green in
+this session. Diff `origin/main...HEAD`: frontend (`src-app/ui/**`) + one backend
+item (`server/.../chat/stream/registry.rs`). Full logs under
+`/data/pbya/ziee/tmp/lifecycle-logs/split-chat-*`.
 
-## Frontend static gate (both touched workspaces)
+## Static + boot gates
 
-- `npm run check (ui): PASS` — tsc + biome guardrails + lint:colors/settings-field
-  + check:kit-manifest/testid-registry/design-spec/gallery-coverage/state-matrix
-  + overlay-registry. 0 fatal failures.
-- `npm run check (desktop/ui): PASS` — same chain on the desktop workspace.
+- **`npm run check (ui): PASS`** — tsc + biome guardrails + lint:colors +
+  lint:settings-field + lint:adjacent-inline + check:kit-manifest +
+  check:testid-registry + check:design-spec + check:gallery-coverage +
+  check:state-matrix + overlay-registry. Exit 0 (`split-chat-check.log`).
+- **`npm run check (desktop/ui): PASS`** — same chain on the desktop workspace
+  (the pop-out override `openConversationWindow.ts` + gate scripts are in the
+  diff). Exit 0 (`split-chat-desktop-check.log`).
+- **`gate:ui (desktop/ui): PASS`** — desktop gallery runtime-health green on a
+  fresh server; the desktop diff is the pop-out `WebviewWindow` override (unit-
+  tested, TEST-P5) + the runtime-baseline/gate scripts.
+- **`gate:ui (ui): PASS`** — tsc + lint + Layer-A/axe + visual green; runtime-health
+  green on a FRESH gallery server (`GALLERY_PORT=1491`). A stale hours-old gallery
+  server produces a one-off cold-start cascade (per the isolation recipe); the
+  fresh run is 0-gating. The split surfaces are not gallery-expressible (a live
+  multi-pane N-SSE runtime, DRIFT-2.7), so their boot + runtime cleanliness is
+  verified by the 28 green `14-split-chat` e2e specs (real app, zero-console-error
+  gating — the A6 browser-verify). Any residual runtime-health HIGH is on
+  main-inherited surfaces NOT in this diff (see the bottom note) — this diff adds
+  ZERO new gating findings.
 
-## A7 boot/runtime canary (gate:ui, both workspaces)
+## Unit + backend
 
-- `gate:ui (ui): PASS` — tsc + lint + runtime-health (161/161 surfaces clean,
-  0 gating HIGH) + Layer A/axe. Run against a FRESH gallery dev server (a stale
-  hours-old server produced a one-off cold-start cascade; the fresh re-run and
-  every `--report-only` run are 0-gating).
-- `gate:ui (desktop/ui): PASS` — tsc + lint + runtime-health (42/42 clean) +
-  coverage in sync.
+- **`npm run test:unit`** (node:test): **308 passed / 0 failed**
+  (`split-chat-unit.log`). Includes `SplitView.store.test.ts`, `reconcile.test.ts`,
+  `splitWorkspace.persist.test.ts`, `MessageViewState.store.test.ts`,
+  `store-kit.test.ts`, `galleryCoverage.test.ts`, `openConversationWindow.test.ts`
+  (ui) and `approvalRouting.test.ts` (the enum-free per-pane MCP approval routing).
+- **`openConversationWindow.test.ts`** (desktop): PASS (TEST-P5).
+- **`cargo test --lib -p ziee stream::registry`**: **9 passed / 0 failed** — the
+  per-user connection cap raised above the legacy 12, the configured-limit read,
+  and the (cap+1)th rejection (TEST-36).
 
-The 8 pre-existing runtime findings (`seeded-llm-models-loading` hooks crash ×6,
-`deep-chat-right-panel-file` contrast ×2) are baselined in `runtime-baseline.js`,
-PROVEN pre-existing by an apples-to-apples runtime-health run on a clean
-`origin/main` worktree (identical 8 findings / 2 surfaces). This diff adds ZERO
-new gating findings.
+## E2E — `tests/e2e/14-split-chat/` (Playwright, `--workers=1`, real backend + bridge)
 
-## Unit + backend (node:test / vitest / Rust)
+**28/28 passed** across 23 spec files against a real `cargo run` backend (per test)
++ the local OpenAI-compatible bridge (qwen3.6-35b-a3b) for streaming specs
+(`split-chat-e2e-full-run.log`: 27/28 first pass; `persistence` fixed for the v2
+prune-empty-pane + save-debounce and re-run green, `persistence-retry.log`).
 
-- **SplitView.store.test.ts** (node:test) 10/10 — TEST-1, TEST-11, TEST-27, TEST-35.
-- **openConversationWindow.test.ts** (ui, node:test) — TEST-P1, TEST-P2.
-- **openConversationWindow.test.ts** (desktop, vitest) 3/3 — TEST-P5.
-- **galleryCoverage.test.ts** (node:test) — TEST-25, TEST-44.
-- **MessageViewState.store.test.ts** (node:test) — TEST-41.
-- **store-kit.test.ts** (node:test) — TEST-42.
-- **chat::stream::registry** (Rust `#[cfg(test)]`) 9/9 — TEST-36 (connection cap).
+The FIX_ROUND-3 blind re-audit + this run caught real defects a static pass could
+not — a shipped functional bug (`SplitChatView` rendered tabs on desktop /
+columns on mobile, inverted `!md`) and multiple spec bugs (pane-reorder ordering,
+bare-`/chat` restore, destructive-edit ordering, false-green shortcut probes,
+global mcp-chip) — all fixed and re-run green.
 
-## E2E — `tests/e2e/14-split-chat/` (Playwright, --workers=1, real bridge)
-
-Full suite GREEN: 11 spec files / 12 test-cases pass (independent-input ×2,
-independent-streaming, independent-scroll, persistence, popout-new-tab,
-focused-affordances, composer-isolation, find-per-pane, mobile-columns,
-new-chat-adopt, right-panel-per-pane). Real streaming via the local
-OpenAI-compatible bridge; message-mocked specs need no LLM.
-
-Three real bugs the suite caught + I fixed (a browser is required — the static
-audit could not): new-chat panes rendered "not found" (→ adopt on create);
-the composer bound to the FOCUSED pane's nested TextStore (→ bind `pane.store`);
-per-pane extension stores injected post-mount (→ render-phase seed).
-
-## Per-TEST-ID results (all 50, reconciled per TESTS.md)
+## Per-TEST-ID (Phase 3 TESTS.md — all 64)
 
 - **TEST-P1**: PASS
 - **TEST-P2**: PASS
@@ -102,14 +104,27 @@ per-pane extension stores injected post-mount (→ render-phase seed).
 - **TEST-43**: PASS
 - **TEST-44**: PASS
 - **TEST-45**: PASS
+- **TEST-46**: PASS
+- **TEST-47**: PASS
+- **TEST-48**: PASS
+- **TEST-49**: PASS
+- **TEST-50**: PASS
+- **TEST-51**: PASS
+- **TEST-52**: PASS
+- **TEST-53**: PASS
+- **TEST-54**: PASS
+- **TEST-55**: PASS
+- **TEST-56**: PASS
+- **TEST-57**: PASS
+- **TEST-58**: PASS
+- **TEST-59**: PASS
 
-## Isolation recipe (this box runs many parallel worktree sessions)
+## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
-- Gallery/e2e servers: FREE port (`:1420`/`--strictPort` collides). Use a fresh
-  `GALLERY_PORT`; a stale long-running server flakes runtime-health (one-off
-  cold-start cascade). e2e allocates its own per-run ports.
-- Backend build/run: `CARGO_TARGET_DIR=/data/pbya/ziee/tmp/splitchat-target`
-  (the shared `target` symlink's macros `.so` cross-pollutes → the
-  `SSEChatStreamEvent::RunJsApprovalRequired` phantom compile error).
-- Real streaming: `OPENAI_BASE_URL=http://localhost:4000/v1`
-  `OPENAI_API_KEY=sk-local-audit` `ZIEE_TEST_LLM_MODEL=qwen3.6-35b-a3b`.
+On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
+findings on `seeded-*-viewer`, `overlay-skill-*`, and `settings-mcp-servers`.
+**None of those files/surfaces are in `git diff origin/main...HEAD`** — they arrived
+with the origin/main merge (kb + voice + scheduled-tasks + UI, DRIFT-2.8). Run
+against a fresh `GALLERY_PORT`, the gate is 0-gating for this diff. The split-chat
+surfaces themselves are verified by the 28 green e2e specs (real app, zero console
+errors). This feature adds no gallery surfaces and no new gating runtime findings.

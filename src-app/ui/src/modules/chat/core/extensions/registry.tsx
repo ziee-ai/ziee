@@ -772,6 +772,7 @@ export class ChatExtensionRegistry {
    */
   async afterStreamComplete(
     message: import('@/api-client/types').MessageWithContent,
+    ownerPaneId?: string | null,
   ): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
       ext.afterStreamComplete !== undefined,
@@ -780,7 +781,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.afterStreamComplete) {
-          const result = await extension.afterStreamComplete(message)
+          const result = await extension.afterStreamComplete(message, ownerPaneId)
 
           // Execute any custom actions
           if (result.actions) {
@@ -1010,7 +1011,7 @@ export class ChatExtensionRegistry {
    * Called after message is successfully sent, before streaming starts
    * Extensions access Stores.Chat directly for conversation data
    */
-  async onMessageSent(): Promise<void> {
+  async onMessageSent(ownerPaneId?: string | null): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
       ext.onMessageSent !== undefined,
     )
@@ -1018,7 +1019,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.onMessageSent) {
-          const result = await extension.onMessageSent()
+          const result = await extension.onMessageSent(ownerPaneId)
 
           // Execute any custom actions
           if (result.actions) {
@@ -1072,7 +1073,7 @@ export class ChatExtensionRegistry {
    * Called when streaming encounters an error
    * Extensions access Stores.Chat directly for conversation data
    */
-  async onStreamError(error: Error): Promise<void> {
+  async onStreamError(error: Error, ownerPaneId?: string | null): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
       ext.onStreamError !== undefined,
     )
@@ -1080,7 +1081,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.onStreamError) {
-          const result = await extension.onStreamError(error)
+          const result = await extension.onStreamError(error, ownerPaneId)
 
           // Execute any custom actions
           if (result.actions) {

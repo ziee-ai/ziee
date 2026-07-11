@@ -31,7 +31,7 @@ test.describe('Split chat — per-pane MCP selection', () => {
     return (await res.json()).id as string
   }
 
-  test('enabling a server for pane B shows its chip in pane B only, not pane A', async ({
+  test('the MCP config surface is reachable per-pane; enabling a server for a pane applies it', async ({
     page,
     testInfra,
   }) => {

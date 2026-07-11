@@ -669,11 +669,15 @@ export interface ChatExtension {
   beforeSendMessage?: () => BeforeSendResult | Promise<BeforeSendResult>
 
   /**
-   * Called after message is successfully sent (before streaming starts)
-   * Useful for clearing state, logging, etc.
-   * Extensions should access Stores.Chat for conversation data
+   * Called after message is successfully sent (before streaming starts).
+   * `ownerPaneId` is the SENDING pane's id (null = single-pane), threaded from the
+   * dispatching store so per-pane hooks resolve the correct pane even if focus
+   * moved during the send round-trip — do NOT read `SplitView.focusedPaneId` here
+   * (it is racy across the async boundary; ITEM-32/DRIFT-2.13).
    */
-  onMessageSent?: () => OnMessageSentResult | Promise<OnMessageSentResult>
+  onMessageSent?: (
+    ownerPaneId?: string | null,
+  ) => OnMessageSentResult | Promise<OnMessageSentResult>
 
   /**
    * Called when streaming starts
@@ -682,18 +686,23 @@ export interface ChatExtension {
   onStreamStart?: () => OnStreamStartResult | Promise<OnStreamStartResult>
 
   /**
-   * Called when streaming encounters an error
-   * Extensions should access Stores.Chat for conversation data
+   * Called when streaming encounters an error. `ownerPaneId` is the OWNING pane's
+   * id (null = single-pane) — the pane whose stream errored; the error frame
+   * arrives async (seconds later), so focus is unreliable — key per-pane recovery
+   * off this, not `focusedPaneId` (ITEM-32/DRIFT-2.13).
    */
-  onStreamError?: (error: Error) => OnStreamErrorResult | Promise<OnStreamErrorResult>
+  onStreamError?: (
+    error: Error,
+    ownerPaneId?: string | null,
+  ) => OnStreamErrorResult | Promise<OnStreamErrorResult>
 
   /**
-   * Called after stream completes successfully
-   * Can perform cleanup, analytics, etc.
-   * Extensions should access Stores.Chat for conversation data
+   * Called after stream completes successfully. `ownerPaneId` is the OWNING pane's
+   * id (null = single-pane); same async-boundary caveat as onStreamError.
    */
   afterStreamComplete?: (
     message: MessageWithContent,
+    ownerPaneId?: string | null,
   ) => AfterStreamCompleteResult | Promise<AfterStreamCompleteResult>
 
   /**

@@ -44,37 +44,49 @@ test.describe('Split chat — registry runtime survives pane close', () => {
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
     const convA = await mkConv(page, apiURL, token, 'Runtime Alpha')
     const convB = await mkConv(page, apiURL, token, 'Runtime Bravo')
+    const convC = await mkConv(page, apiURL, token, 'Runtime Charlie')
 
-    // [A | B] split via the picker, then CLOSE pane 1 → survivor is a single pane.
+    // Build a THREE-pane split so closing ONE leaves the split intact (still ≥2
+    // panes) — the only setup that exercises the refcount surviving a mid-split
+    // close (closing from 2→1 collapses to single-pane, which would re-init its own
+    // listener and prove nothing).
     await page.goto(`${baseURL}/chat/${convA}`)
     await page.waitForLoadState('load')
     await byTestId(page, 'chat-split-btn').click()
     const pane1 = byTestId(page, 'chat-pane-1')
     await expect(pane1).toBeVisible({ timeout: 15000 })
-    await pane1.getByTestId(`conversation-picker-item-${convB}`).click()
-    await expect(pane1.locator('textarea[placeholder*="Type your message"]')).toBeVisible({
-      timeout: 15000,
+    await pane1.getByTestId(`conversation-picker-item-${convB}`).click() // [A | B]
+    // Add a 3rd pane (C) via a Cmd/Ctrl-click on its sidebar row.
+    await byTestId(page, `chat-recent-conversations-menu-item-${convC}`).click({
+      modifiers: ['ControlOrMeta'],
     })
-    // Two panes → keyboardInitCount === 2. Close pane 1 → count 1 (listener MUST survive).
-    await byTestId(page, 'chat-pane-1').getByTestId('chat-pane-close').click()
-    await expect(byTestId(page, 'split-chat-view')).toHaveCount(0, { timeout: 15000 })
+    await expect(byTestId(page, 'chat-pane-2')).toBeVisible({ timeout: 15000 }) // [A | B | C]
 
-    const input = page.locator('textarea[placeholder*="Type your message"]')
+    // 3 panes → keyboardInitCount === 3. Close the MIDDLE pane → 2 panes remain,
+    // still split (keyboardInitCount 3→2, the shared listener MUST survive).
+    await byTestId(page, 'chat-pane-1').getByTestId('chat-pane-close').click()
+    await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 }) // still ≥2 panes
+    await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0)
+    await expect(byTestId(page, 'split-chat-view')).toBeVisible() // NOT collapsed
+
+    // Focus a surviving pane and probe its shortcuts (scoped to that pane).
+    const survivor = byTestId(page, 'chat-pane-0')
+    const input = survivor.locator('textarea[placeholder*="Type your message"]')
     await expect(input).toBeVisible()
     await input.click()
     await input.fill('draft to clear')
 
     // Esc clears the focused composer — the keyboard extension's GLOBAL document
-    // listener (refcounted across panes via keyboardInitCount) blanks it. If the
-    // first pane's cleanup had disarmed the shared listener, Esc would do nothing.
+    // listener (refcounted via keyboardInitCount) blanks it. If the closed pane's
+    // cleanup had disarmed the shared listener, Esc would do nothing.
     await page.keyboard.press('Escape')
     await expect(input).toHaveValue('')
 
-    // Blur the composer, then Ctrl+K must REFOCUS it — only the global listener
-    // does that (a blurred textarea cannot self-focus), so a passing focus here
-    // proves the survivor's shortcut listener is still armed after the pane close.
-    // (Ctrl+Enter is deliberately NOT used as the probe: TextInput's own onKeyDown
-    // sends on Enter regardless of the extension, so it can't detect the teardown.)
+    // Blur, then Ctrl+K must REFOCUS the focused pane's composer — only the global
+    // listener does that (a blurred textarea cannot self-focus), proving the
+    // survivor's shortcut listener is still armed after the mid-split pane close.
+    // (Ctrl+Enter is deliberately NOT the probe: TextInput's own onKeyDown sends on
+    // Enter regardless of the extension, so it can't detect the teardown.)
     await input.blur()
     await expect(input).not.toBeFocused()
     await page.keyboard.press('Control+k')

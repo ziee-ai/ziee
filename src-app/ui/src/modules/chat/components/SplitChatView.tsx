@@ -34,63 +34,52 @@ export function SplitChatView() {
   // desktop (md === false) tiles columns.
   const { md } = useWindowMinSize()
 
-  if (md) {
-    return (
-      <div
-        className="flex h-full min-h-0 w-full flex-col overflow-hidden"
-        data-testid="split-chat-view"
-        data-split-mode="tabs"
-      >
-        <PaneTabStrip />
-        {panes.map((p, i) => (
-          <div
-            key={p.paneId}
-            role="tabpanel"
-            data-testid={`chat-pane-${i}`}
-            className={cn(
-              'relative min-h-0 flex-1 flex-col overflow-hidden',
-              p.paneId === focusedPaneId ? 'flex' : 'hidden',
-            )}
-          >
-            <ChatPaneProvider paneId={p.paneId} conversationId={p.conversationId}>
-              <ConversationPane />
-            </ChatPaneProvider>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
+  // ONE tree for both modes (not two branches): crossing the `md` breakpoint must
+  // NOT change a pane's element TYPE or its key, or React would unmount + remount
+  // every `ChatPaneProvider` (recreating the per-pane store → tearing down live
+  // streams). Each pane is always `<Fragment key=paneId><div key="pane">`; the
+  // divider (columns-only) and the tab strip (tabs-only) toggle around it, and the
+  // KEYED children keep the pane div reconciled by key regardless (DRIFT-2.14).
   return (
     <div
-      className="flex h-full min-h-0 w-full overflow-hidden"
+      className={cn(
+        'flex h-full min-h-0 w-full overflow-hidden',
+        md && 'flex-col',
+      )}
       data-testid="split-chat-view"
-      data-split-mode="columns"
+      data-split-mode={md ? 'tabs' : 'columns'}
     >
+      {md && <PaneTabStrip />}
       {panes.map((p, i) => (
         <Fragment key={p.paneId}>
-          {i > 0 && <SplitDivider leftPaneIndex={i - 1} />}
+          {!md && i > 0 && <SplitDivider key="divider" leftPaneIndex={i - 1} />}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: focus-on-interact is
               pointer-scoped; keyboard focus already lands via the pane's own
               focusable controls, and pointerDownCapture never steals it. */}
           <div
+            key="pane"
             data-testid={`chat-pane-${i}`}
+            role={md ? 'tabpanel' : undefined}
             className={cn(
-              'relative flex min-w-0 flex-col overflow-hidden',
-              focusedPaneId === p.paneId &&
-                'z-10 ring-2 ring-primary ring-inset',
+              'relative min-h-0 flex-col overflow-hidden',
+              md
+                ? p.paneId === focusedPaneId
+                  ? 'flex flex-1'
+                  : 'hidden'
+                : cn(
+                    'flex min-w-0',
+                    focusedPaneId === p.paneId &&
+                      'z-10 ring-2 ring-primary ring-inset',
+                  ),
             )}
-            style={{
-              flex: dividerWidths[i]
-                ? `0 0 ${dividerWidths[i]}px`
-                : '1 1 0%',
-            }}
+            style={
+              md
+                ? undefined
+                : { flex: dividerWidths[i] ? `0 0 ${dividerWidths[i]}px` : '1 1 0%' }
+            }
             onPointerDownCapture={() => Stores.SplitView.focusPane(p.paneId)}
           >
-            <ChatPaneProvider
-              paneId={p.paneId}
-              conversationId={p.conversationId}
-            >
+            <ChatPaneProvider paneId={p.paneId} conversationId={p.conversationId}>
               <ConversationPane />
             </ChatPaneProvider>
           </div>
