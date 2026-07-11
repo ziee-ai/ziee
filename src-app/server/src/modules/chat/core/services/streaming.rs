@@ -1640,23 +1640,91 @@ fn group_blocks_into_provider_messages(
     messages
 }
 
+/// A `tool_result` standing in for a `tool_use` whose real result is absent from
+/// the stored assistant message. EVERY provider (Anthropic/OpenAI/Gemini) rejects
+/// a request that carries a `tool_use` with no matching `tool_result`, so rather
+/// than drop the tool_use (which loses the model's own reasoning) we answer it
+/// with an explicit `is_error` placeholder. Carries the tool_use's `name` so
+/// Gemini's name-based `functionResponse` pairing stays correct.
+fn synthetic_missing_tool_result(
+    tool_use_id: &str,
+    name: Option<String>,
+) -> ai_providers::ContentBlock {
+    ai_providers::ContentBlock::ToolResult {
+        tool_use_id: tool_use_id.to_string(),
+        name,
+        content: vec![ai_providers::ContentBlock::Text {
+            text: "Tool result unavailable (no result was recorded for this tool call)."
+                .to_string(),
+        }],
+        is_error: Some(true),
+    }
+}
+
+/// Emit one `[Assistant { text + tool_use }, Tool { tool_result }]` pair, draining
+/// the accumulators. The Tool turn carries EXACTLY one result per tool_use, in
+/// tool_use order — the real result when we captured it, otherwise a synthesized
+/// `is_error` placeholder (`synthetic_missing_tool_result`). Results with no
+/// matching tool_use in this batch are left in `results_by_id` (dropped by the
+/// caller) — a `tool_result` with no preceding `tool_use` is itself an invalid
+/// provider block. This is what guarantees the wire-format invariant regardless of
+/// whether the tools succeeded, failed, or left a gap.
+fn flush_assistant_tool_pair(
+    messages: &mut Vec<ChatMessage>,
+    current_text: &mut Vec<ai_providers::ContentBlock>,
+    current_tool_uses: &mut Vec<ai_providers::ContentBlock>,
+    results_by_id: &mut std::collections::HashMap<String, ai_providers::ContentBlock>,
+) {
+    let mut tool_content: Vec<ai_providers::ContentBlock> =
+        Vec::with_capacity(current_tool_uses.len());
+    for u in current_tool_uses.iter() {
+        if let ai_providers::ContentBlock::ToolUse { id, name, .. } = u {
+            let result = results_by_id
+                .remove(id)
+                .unwrap_or_else(|| synthetic_missing_tool_result(id, Some(name.clone())));
+            tool_content.push(result);
+        }
+    }
+    let assistant_content: Vec<_> = current_text
+        .drain(..)
+        .chain(current_tool_uses.drain(..))
+        .collect();
+    messages.push(ChatMessage {
+        role: ai_providers::Role::Assistant,
+        content: assistant_content,
+    });
+    messages.push(ChatMessage {
+        role: ai_providers::Role::Tool,
+        content: tool_content,
+    });
+}
+
 /// Group ONE assistant message's already-converted blocks into provider-ready
 /// ChatMessages, reconstructing per-iteration boundaries. Each time every
 /// outstanding tool_use has received its tool_result, one
 /// `[Assistant { text + tool_use }, Tool { tool_result }]` pair is flushed.
-/// Trailing unmatched blocks (in-progress iteration, pure-text final answer, or
-/// an approval-flow tool_use awaiting its result) become a final Assistant turn.
 ///
-/// Pure + registry-free so the wire-format invariant — every tool_use in an
-/// Assistant turn is resolved by a tool_result in the immediately following Tool
-/// turn — is directly unit-testable. Assumes blocks arrive in `sequence_order`
-/// (guaranteed by the repository's atomic MAX+1 assignment).
+/// The wire-format invariant is ALWAYS upheld, even when the stored message is
+/// malformed (a failed/parallel tool batch where a tool_use never got a matching
+/// tool_result, or a stray tool_result): every tool_use in an emitted Assistant
+/// turn is answered by a tool_result (real, or a synthesized `is_error`
+/// placeholder) in the immediately following Tool turn, and orphan tool_results
+/// (no matching tool_use) are dropped. Anthropic/OpenAI/Gemini all reject an
+/// unpaired tool_use, so this is the single point that keeps the assembled
+/// request valid regardless of tool outcome.
+///
+/// Pure + registry-free so the invariant is directly unit-testable. Assumes
+/// blocks arrive in `sequence_order` (guaranteed by the repository's atomic MAX+1
+/// assignment).
 pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<ChatMessage> {
     let mut messages = Vec::new();
     let mut current_text: Vec<ai_providers::ContentBlock> = Vec::new();
     let mut current_tool_uses: Vec<ai_providers::ContentBlock> = Vec::new();
     let mut pending_ids: std::collections::HashSet<String> = Default::default();
-    let mut current_results: Vec<ai_providers::ContentBlock> = Vec::new();
+    // Results captured since the last flush, keyed by tool_use_id. Keyed (not a
+    // flat vec) so the flush can pair strictly by id and drop orphans.
+    let mut results_by_id: std::collections::HashMap<String, ai_providers::ContentBlock> =
+        Default::default();
 
     for b in blocks {
         match &b {
@@ -1665,33 +1733,65 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
                 current_tool_uses.push(b);
             }
             ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
-                pending_ids.remove(tool_use_id);
-                current_results.push(b);
+                let id = tool_use_id.clone();
+                pending_ids.remove(&id);
+                // Keep the first result seen for an id; a duplicate is dropped.
+                results_by_id.entry(id).or_insert(b);
                 // All outstanding tool_uses resolved — flush one Assistant/Tool pair.
                 if pending_ids.is_empty() && !current_tool_uses.is_empty() {
-                    let assistant_content: Vec<_> = current_text
-                        .drain(..)
-                        .chain(current_tool_uses.drain(..))
-                        .collect();
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: assistant_content,
-                    });
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Tool,
-                        content: std::mem::take(&mut current_results),
-                    });
+                    flush_assistant_tool_pair(
+                        &mut messages,
+                        &mut current_text,
+                        &mut current_tool_uses,
+                        &mut results_by_id,
+                    );
                 }
             }
             _ => current_text.push(b),
         }
     }
 
-    let trailing: Vec<_> = current_text.into_iter().chain(current_tool_uses).collect();
-    if !trailing.is_empty() {
+    // Trailing blocks that never completed a full round-trip above.
+    if !current_tool_uses.is_empty() {
+        // Distinguish two trailing cases that look alike but must be handled
+        // differently:
+        //   * COMPLETED-BUT-PARTIAL batch — ≥1 tool_use in this batch already has a
+        //     captured result (the tools ran; some result is missing/failed). Emit
+        //     the Assistant turn AND a Tool turn answering EVERY id: real results
+        //     where captured, a synthesized is_error placeholder for the gaps. This
+        //     is the failed/parallel repro the fix targets.
+        //   * IN-PROGRESS / AWAITING-APPROVAL batch — NO result captured for any
+        //     tool_use yet. The real result is appended separately (the
+        //     approval-resume path emits it as a following User message), so
+        //     synthesizing here would race a result that is still coming. Emit the
+        //     Assistant tool_use turn ALONE, preserving the long-standing behavior.
+        let batch_has_result = current_tool_uses.iter().any(|u| match u {
+            ai_providers::ContentBlock::ToolUse { id, .. } => results_by_id.contains_key(id),
+            _ => false,
+        });
+        if batch_has_result {
+            flush_assistant_tool_pair(
+                &mut messages,
+                &mut current_text,
+                &mut current_tool_uses,
+                &mut results_by_id,
+            );
+        } else {
+            let assistant_content: Vec<_> = current_text
+                .drain(..)
+                .chain(current_tool_uses.drain(..))
+                .collect();
+            messages.push(ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: assistant_content,
+            });
+        }
+    } else if !current_text.is_empty() {
+        // Pure-text final answer (no trailing tool_use). Any leftover results in
+        // `results_by_id` are orphans with no tool_use — dropped here.
         messages.push(ChatMessage {
             role: ai_providers::Role::Assistant,
-            content: trailing,
+            content: std::mem::take(&mut current_text),
         });
     }
 
@@ -2104,6 +2204,159 @@ mod tests {
         );
     }
 
+
+    fn thinking(text: &str) -> ContentBlock {
+        ContentBlock::Thinking {
+            thinking: text.to_string(),
+            signature: None,
+        }
+    }
+
+    fn error_tool_result(id: &str, content: &str) -> ContentBlock {
+        ContentBlock::ToolResult {
+            tool_use_id: id.to_string(),
+            name: None,
+            content: vec![ContentBlock::Text {
+                text: content.to_string(),
+            }],
+            is_error: Some(true),
+        }
+    }
+
+    fn result_ids(content: &[ContentBlock]) -> Vec<String> {
+        content
+            .iter()
+            .filter_map(|b| match b {
+                ContentBlock::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn tool_use_ids(content: &[ContentBlock]) -> Vec<String> {
+        content
+            .iter()
+            .filter_map(|b| match b {
+                ContentBlock::ToolUse { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// TEST-1: a co-located assistant message with THREE parallel tool_use blocks but
+    /// only ONE matching tool_result (the failed-parallel repro) must still produce a
+    /// valid `[Assistant{thinking,text,use×3}, Tool{result×3}]` — the real result plus
+    /// a synthesized `is_error` result for each unanswered id, in tool_use order, each
+    /// carrying the tool_use's name. Thinking/text stay on the assistant side.
+    #[test]
+    fn group_assistant_blocks_pairs_partial_parallel_batch() {
+        let blocks = vec![
+            thinking("planning the analyses"),
+            text("Running pathway + consensus."),
+            tool_use("A", "srv__run_pathway_analysis"),
+            tool_use("B", "srv__run_consensus_analysis"),
+            tool_use("C", "srv__run_consensus_analysis"),
+            tool_result("A", "ok-A"),
+        ];
+        let msgs = group_assistant_blocks(blocks);
+
+        assert_eq!(msgs.len(), 2, "must be exactly one Assistant/Tool pair");
+
+        // Assistant turn: thinking + text + all three tool_use, in order.
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 5);
+        assert!(matches!(msgs[0].content[0], ContentBlock::Thinking { .. }));
+        assert!(matches!(msgs[0].content[1], ContentBlock::Text { .. }));
+        assert_eq!(tool_use_ids(&msgs[0].content), vec!["A", "B", "C"]);
+
+        // Tool turn: exactly one result per tool_use, in tool_use order.
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(result_ids(&msgs[1].content), vec!["A", "B", "C"]);
+
+        // A is the REAL result (is_error None); B and C are synthesized is_error
+        // placeholders carrying the tool_use name (Gemini pairs by name).
+        match &msgs[1].content[0] {
+            ContentBlock::ToolResult { is_error, .. } => assert_eq!(*is_error, None),
+            _ => panic!("expected tool_result"),
+        }
+        for (i, want_name) in [(1usize, "srv__run_consensus_analysis"), (2, "srv__run_consensus_analysis")] {
+            match &msgs[1].content[i] {
+                ContentBlock::ToolResult { is_error, name, .. } => {
+                    assert_eq!(*is_error, Some(true), "synthesized result must be is_error");
+                    assert_eq!(name.as_deref(), Some(want_name), "synthesized result carries the tool_use name");
+                }
+                _ => panic!("expected tool_result"),
+            }
+        }
+    }
+
+    /// TEST-2: a fully-matched parallel batch still groups to exactly ONE pair with
+    /// the real results only — no synthesized results, no regression.
+    #[test]
+    fn group_assistant_blocks_matched_parallel_batch_unchanged() {
+        let blocks = vec![
+            tool_use("A", "srv__a"),
+            tool_use("B", "srv__b"),
+            tool_result("A", "ra"),
+            tool_result("B", "rb"),
+        ];
+        let msgs = group_assistant_blocks(blocks);
+
+        assert_eq!(msgs.len(), 2);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(tool_use_ids(&msgs[0].content), vec!["A", "B"]);
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(result_ids(&msgs[1].content), vec!["A", "B"]);
+        for b in &msgs[1].content {
+            if let ContentBlock::ToolResult { is_error, .. } = b {
+                assert_eq!(*is_error, None, "no synthesized results when all matched");
+            }
+        }
+    }
+
+    /// TEST-3: a real FAILED tool_result (`is_error: Some(true)`) is preserved verbatim
+    /// and paired to its tool_use — a failed tool is never left unpaired.
+    #[test]
+    fn group_assistant_blocks_preserves_failed_tool_result() {
+        let blocks = vec![tool_use("A", "srv__a"), error_tool_result("A", "boom")];
+        let msgs = group_assistant_blocks(blocks);
+
+        assert_eq!(msgs.len(), 2);
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(msgs[1].content.len(), 1);
+        match &msgs[1].content[0] {
+            ContentBlock::ToolResult { tool_use_id, is_error, content, .. } => {
+                assert_eq!(tool_use_id, "A");
+                assert_eq!(*is_error, Some(true));
+                assert!(matches!(content[0], ContentBlock::Text { .. }));
+            }
+            _ => panic!("expected tool_result"),
+        }
+    }
+
+    /// TEST-4: an orphan tool_result (no matching tool_use) is dropped — no orphan Tool
+    /// turn, no dangling Assistant tool_use.
+    #[test]
+    fn group_assistant_blocks_drops_orphan_tool_result() {
+        // Lone orphan result → nothing emitted.
+        let msgs = group_assistant_blocks(vec![tool_result("X", "orphan")]);
+        assert!(msgs.is_empty(), "a lone orphan tool_result emits nothing");
+
+        // A valid pair followed by an orphan result: the orphan is dropped, the pair
+        // stays valid. Exactly one tool_result (the real one) is emitted overall.
+        let msgs = group_assistant_blocks(vec![
+            tool_use("A", "srv__a"),
+            tool_result("A", "ra"),
+            tool_result("X", "orphan"),
+        ]);
+        assert_eq!(msgs.len(), 2);
+        let total_results: usize = msgs
+            .iter()
+            .map(|m| result_ids(&m.content).len())
+            .sum();
+        assert_eq!(total_results, 1, "orphan result must be dropped");
+        assert_eq!(result_ids(&msgs[1].content), vec!["A"]);
+    }
 
     // TEST-15: thinking resolves via row → catalog → family policy.
     #[test]

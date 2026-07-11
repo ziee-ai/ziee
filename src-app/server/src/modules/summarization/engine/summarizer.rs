@@ -401,7 +401,24 @@ pub fn apply_summary_block(summary: &ConversationSummary, chat_request: &mut Cha
         .count();
 
     let raw_drop_until = system_prefix_len.saturating_add(summary.message_count as usize);
-    let drop_until = raw_drop_until.min(chat_request.messages.len());
+    let mut drop_until = raw_drop_until.min(chat_request.messages.len());
+
+    // `message_count` counts DB messages, but the outbound array was already split
+    // by `group_assistant_blocks` — one assistant DB message becomes an
+    // `[Assistant { tool_use }, Tool { tool_result }]` pair per tool round-trip. A
+    // raw count-based cut can therefore land BETWEEN an assistant tool_use turn and
+    // its Tool result turn, leaving the retained history starting on an orphan
+    // `tool_result` (every provider 400s on a tool_result with no preceding
+    // tool_use). Snap the cut FORWARD past any leading Tool message(s): a
+    // retained-leading `Role::Tool` is always an orphan whose tool_use is in the
+    // dropped prefix (grouping always emits the Tool turn immediately after its
+    // Assistant tool_use turn), so dropping it too — the summary text condenses it
+    // anyway — is the correct, provider-agnostic fix.
+    while drop_until < chat_request.messages.len()
+        && matches!(chat_request.messages[drop_until].role, Role::Tool)
+    {
+        drop_until += 1;
+    }
 
     if drop_until > system_prefix_len {
         chat_request.messages.drain(system_prefix_len..drop_until);
@@ -1134,6 +1151,73 @@ mod tests {
         assert!(request_text(&req, 0).contains("condensed"));
     }
 
+
+    fn asst_tool_use_msg(id: &str, name: &str) -> ChatMessage {
+        ChatMessage {
+            role: Role::Assistant,
+            content: vec![ContentBlock::ToolUse {
+                id: id.to_string(),
+                name: name.to_string(),
+                input: serde_json::json!({}),
+            }],
+        }
+    }
+
+    fn tool_result_msg(id: &str) -> ChatMessage {
+        ChatMessage {
+            role: Role::Tool,
+            content: vec![ContentBlock::ToolResult {
+                tool_use_id: id.to_string(),
+                name: None,
+                content: vec![ContentBlock::Text {
+                    text: "r".to_string(),
+                }],
+                is_error: None,
+            }],
+        }
+    }
+
+    /// TEST-6: `message_count` counts DB messages, but the outbound array was split
+    /// by `group_assistant_blocks` into `[Assistant{tool_use}, Tool{tool_result}]`
+    /// pairs. A raw count-based cut can land BETWEEN an assistant tool_use and its
+    /// Tool result, leaving the retained history starting on an orphan tool_result
+    /// (every provider 400s on a tool_result with no preceding tool_use).
+    /// `apply_summary_block` must snap the cut FORWARD past the orphan Tool turn.
+    #[test]
+    fn apply_block_snaps_cut_past_orphan_tool_result() {
+        let mut req = ChatRequest {
+            model: "x".into(),
+            messages: vec![
+                sys_msg("primary instructions"), // 0
+                asst_tool_use_msg("A", "srv__a"), // 1
+                tool_result_msg("A"),            // 2
+                user_msg("m"),                   // 3
+                asst_tool_use_msg("B", "srv__b"), // 4
+                tool_result_msg("B"),            // 5
+                user_msg("keep"),                // 6
+            ],
+            ..Default::default()
+        };
+        // message_count = 1 → naive drain(1..2) removes only the Assistant tool_use A,
+        // leaving Tool{result A} as the new leading message (an orphan). The snap must
+        // advance the cut to also drop that Tool.
+        let s = fake_summary(Some(Uuid::new_v4()), 1, "condensed");
+        apply_summary_block(&s, &mut req);
+
+        // Expected: [System primary, System summary, User m, Assistant B, Tool B, User keep]
+        assert!(matches!(req.messages[0].role, Role::System));
+        assert!(matches!(req.messages[1].role, Role::System));
+        assert!(
+            !matches!(req.messages[2].role, Role::Tool),
+            "retained history must not start on an orphan tool_result; got {:?}",
+            req.messages[2].role
+        );
+        assert!(matches!(req.messages[2].role, Role::User));
+        assert_eq!(request_text(&req, 2), "m");
+        // The B pair survives intact and validly paired.
+        assert!(matches!(req.messages[3].role, Role::Assistant));
+        assert!(matches!(req.messages[4].role, Role::Tool));
+    }
 
     #[test]
     fn render_incremental_prompt_substitutes_once() {
