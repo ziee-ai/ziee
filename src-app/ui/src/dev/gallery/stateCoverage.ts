@@ -70,6 +70,7 @@ export const STATE_COVERAGE = {
   'modules/voice/components/InstalledModelsCard:empty': { skip: true, reason: 'deferred gallery cell — no-installed-models empty state exercised by 14-voice/voice-settings-admin.spec.ts' },
   'modules/voice/components/InstalledModelsCard:error': { skip: true, reason: 'deferred gallery cell; installed-models error branch not yet exercised by a spec (DRIFT-1)' },
   'modules/voice/components/UploadModelDrawer:open': { skip: true, reason: 'deferred gallery cell — upload-drawer open state exercised by 14-voice/voice-settings-admin.spec.ts' },
+  'modules/voice/components/VoiceInstanceCard:empty': { skip: true, reason: 'deferred gallery cell — no-instance/logs empty state exercised by 14-voice/voice-runtime-admin.spec.ts' },
   'modules/voice/components/VoiceConfigCard:error': { skip: true, reason: 'deferred gallery cell; settings-load error branch not yet exercised by a spec (DRIFT-1)' },
   'modules/voice/components/VoiceInstanceCard:delayed': { skip: true, reason: 'deferred gallery cell — loading state exercised by 14-voice/admin-empty-state.spec.ts' },
   'modules/voice/components/VoiceInstanceCard:error': { skip: true, reason: 'deferred gallery cell; instance-load error branch not yet exercised by a spec (DRIFT-1)' },

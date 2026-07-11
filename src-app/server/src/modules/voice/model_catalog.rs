@@ -130,11 +130,16 @@ pub fn name_from_filename(filename: &str) -> Option<String> {
 }
 
 fn detect_quantization(name: &str) -> Option<String> {
-    // whisper.cpp quantized files carry a `-q5_1` / `-q8_0` / `-q5_0` segment.
+    // whisper.cpp quantized files carry a `-q5_1` / `-q8_0` / `-q5_0` segment:
+    // `q`, a digit, then alphanumerics/underscore (the `_` is part of the tag).
     name.split('-')
         .find(|seg| {
             let s = seg.to_ascii_lowercase();
-            s.starts_with('q') && s.len() >= 3 && s[1..].chars().all(|c| c.is_ascii_alphanumeric())
+            let mut chars = s.chars();
+            chars.next() == Some('q')
+                && s.len() >= 3
+                && chars.clone().next().is_some_and(|c| c.is_ascii_digit())
+                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
         })
         .map(|s| s.to_string())
 }

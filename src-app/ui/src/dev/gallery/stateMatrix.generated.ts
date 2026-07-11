@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2131 signals total.
+// 365 surfaces carry renderable-state signals; 2134 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -3970,18 +3970,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/voice/components/AvailableModelsCard",
     requiredStates: ["empty","error"],
     signals: [
-      { kind: "branch", condition: "sourceRepo", line: 101 },
-      { kind: "branch", condition: "checking && !hasLoaded", line: 114 },
-      { kind: "error", condition: "error && !hasLoaded", line: 116 },
-      { kind: "branch", condition: "!sourceReachable", line: 124 },
-      { kind: "empty", condition: "total === 0", line: 129 },
-      { kind: "branch", condition: "total > PAGE_SIZE", line: 146 },
-      { kind: "branch", condition: "model.size_bytes != null && !model.installed", line: 198 },
-      { kind: "branch", condition: "model.quantization", line: 203 },
-      { kind: "branch", condition: "model.sha256", line: 215 },
-      { kind: "branch", condition: "model.installed", line: 224 },
-      { kind: "branch", condition: "progress", line: 247 },
-      { kind: "error", condition: "failed && progress?.error", line: 248 },
+      { kind: "branch", condition: "sourceRepo", line: 107 },
+      { kind: "branch", condition: "checking && !hasLoaded", line: 120 },
+      { kind: "error", condition: "error && !hasLoaded", line: 122 },
+      { kind: "branch", condition: "!sourceReachable", line: 134 },
+      { kind: "empty", condition: "total === 0", line: 139 },
+      { kind: "branch", condition: "total > PAGE_SIZE", line: 156 },
+      { kind: "branch", condition: "model.size_bytes != null && !model.installed", line: 213 },
+      { kind: "branch", condition: "model.quantization", line: 218 },
+      { kind: "branch", condition: "model.sha256", line: 233 },
+      { kind: "branch", condition: "model.installed", line: 242 },
+      { kind: "branch", condition: "progress", line: 269 },
+      { kind: "error", condition: "failed && progress?.error", line: 270 },
     ],
   },
   "modules/voice/components/AvailableVersionsCard": {
@@ -4011,11 +4011,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "empty", condition: "installed.length === 0", line: 70 },
       { kind: "branch", condition: "i > 0", line: 80 },
       { kind: "branch", condition: "total > PAGE_SIZE", line: 85 },
-      { kind: "branch", condition: "model.is_active", line: 134 },
-      { kind: "branch", condition: "model.update_available", line: 153 },
-      { kind: "branch", condition: "canManage && !model.is_active", line: 165 },
-      { kind: "branch", condition: "canManage", line: 179 },
-      { kind: "branch", condition: "model.is_active", line: 186 },
+      { kind: "branch", condition: "model.is_active", line: 136 },
+      { kind: "branch", condition: "model.update_available", line: 158 },
+      { kind: "branch", condition: "canManage && !model.is_active", line: 170 },
+      { kind: "branch", condition: "canManage", line: 184 },
+      { kind: "branch", condition: "model.is_active", line: 191 },
     ],
   },
   "modules/voice/components/InstalledVersionsCard": {
@@ -4037,35 +4037,38 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: ["open"],
     signals: [
       { kind: "branch", condition: "!first", line: 34 },
-      { kind: "branch", condition: "uploading", line: 50 },
-      { kind: "branch", condition: "!file", line: 59 },
-      { kind: "branch", condition: "!name.trim()", line: 63 },
-      { kind: "overlay", condition: "<Drawer open>", line: 78 },
-      { kind: "branch", condition: "canManage", line: 95 },
-      { kind: "branch", condition: "file", line: 141 },
-      { kind: "branch", condition: "uploadError", line: 148 },
-      { kind: "branch", condition: "uploading && (uploadProgress.length > 0 || overallUploadProgress > 0)", line: 154 },
-      { kind: "branch", condition: "overallUploadProgress > 0", line: 171 },
-      { kind: "branch", condition: "fp.size > 0", line: 191 },
+      { kind: "branch", condition: "uploading", line: 52 },
+      { kind: "branch", condition: "!file", line: 63 },
+      { kind: "branch", condition: "!name.trim()", line: 67 },
+      { kind: "overlay", condition: "<Drawer open>", line: 82 },
+      { kind: "branch", condition: "canManage", line: 99 },
+      { kind: "branch", condition: "file", line: 159 },
+      { kind: "branch", condition: "uploadError", line: 170 },
+      { kind: "branch", condition: "uploading && (uploadProgress.length > 0 || overallUploadProgress > 0)", line: 176 },
+      { kind: "branch", condition: "overallUploadProgress > 0", line: 194 },
+      { kind: "branch", condition: "fp.size > 0", line: 214 },
     ],
   },
   "modules/voice/components/VoiceConfigCard": {
     surface: "modules/voice/components/VoiceConfigCard",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "loadingSettings && !settings", line: 128 },
-      { kind: "error", condition: "error && !settings", line: 136 },
-      { kind: "branch", condition: "canManage", line: 155 },
-      { kind: "branch", condition: "!canManage", line: 166 },
+      { kind: "branch", condition: "loadingSettings && !settings", line: 158 },
+      { kind: "error", condition: "error && !settings", line: 166 },
+      { kind: "branch", condition: "canManage", line: 185 },
+      { kind: "branch", condition: "!canManage", line: 196 },
     ],
   },
   "modules/voice/components/VoiceInstanceCard": {
     surface: "modules/voice/components/VoiceInstanceCard",
-    requiredStates: ["delayed","error"],
+    requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "loading", condition: "loading && !info", line: 74 },
-      { kind: "error", condition: "error && !info", line: 76 },
-      { kind: "branch", condition: "!info", line: 84 },
+      { kind: "loading", condition: "loading && !info", line: 93 },
+      { kind: "error", condition: "error && !info", line: 95 },
+      { kind: "branch", condition: "!info", line: 103 },
+      { kind: "branch", condition: "!canRead", line: 204 },
+      { kind: "branch", condition: "lines == null", line: 236 },
+      { kind: "empty", condition: "lines.length === 0", line: 240 },
     ],
   },
   "modules/voice/components/VoiceSettingsPage": {
@@ -4386,7 +4389,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
   { slot: "settingsAdminPages", surface: "modules/user/module", line: 91 },
-  { slot: "settingsAdminPages", surface: "modules/voice/module", line: 50 },
+  { slot: "settingsAdminPages", surface: "modules/voice/module", line: 61 },
   { slot: "settingsAdminPages", surface: "modules/web-search/module", line: 57 },
   { slot: "settingsAdminPages", surface: "modules/workflow/module", line: 104 },
   { slot: "settingsUserPages", surface: "modules/assistant/module", line: 69 },
@@ -4411,7 +4414,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 373 keys.
+ * 374 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4752,6 +4755,7 @@ export type RequiredState =
   | "modules/voice/components/UploadModelDrawer:open"
   | "modules/voice/components/VoiceConfigCard:error"
   | "modules/voice/components/VoiceInstanceCard:delayed"
+  | "modules/voice/components/VoiceInstanceCard:empty"
   | "modules/voice/components/VoiceInstanceCard:error"
   | "modules/web-search/components/WebSearchGlobalSection:delayed"
   | "modules/web-search/components/WebSearchGlobalSection:empty"
@@ -5128,6 +5132,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/voice/components/UploadModelDrawer:open",
   "modules/voice/components/VoiceConfigCard:error",
   "modules/voice/components/VoiceInstanceCard:delayed",
+  "modules/voice/components/VoiceInstanceCard:empty",
   "modules/voice/components/VoiceInstanceCard:error",
   "modules/web-search/components/WebSearchGlobalSection:delayed",
   "modules/web-search/components/WebSearchGlobalSection:empty",

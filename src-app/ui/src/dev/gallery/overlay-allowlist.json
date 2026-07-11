@@ -23,7 +23,8 @@
     "modules/notification/components/NotificationBellWidget": "Notification bell Popover — local open-state, opens on a click on the sidebar bell; the recent-list + empty states are exercised via the notifications e2e spec. Tracked for an interaction recipe.",
     "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec.",
     "modules/knowledge-base/components/KnowledgeBaseCard": "Inline controlled delete-Confirm on a knowledge-base card (local open-state). Reached via the knowledge list (rendered in the gallery). Inline confirm — future interaction recipe.",
-    "modules/knowledge-base/components/KnowledgeBaseFormDrawer": "Create/edit knowledge-base Drawer — opens from a list/detail action (prop open-state). List/detail are rendered in the gallery; a standalone open needs a trigger context. Tracked for an interaction recipe."
+    "modules/knowledge-base/components/KnowledgeBaseFormDrawer": "Create/edit knowledge-base Drawer — opens from a list/detail action (prop open-state). List/detail are rendered in the gallery; a standalone open needs a trigger context. Tracked for an interaction recipe.",
+    "modules/voice/components/UploadModelDrawer": "Upload-model Drawer on the voice settings page (same pattern as AddLocalLlmModelUploadDrawer). Opened via a store action from the AvailableModelsCard 'Upload' trigger; gallery cell deferred (DRIFT-1). Covered by the 14-voice/voice-settings-admin e2e."
   },
   "triggers": {
     "modules/assistant/chat-extension/components/AssistantMenuItem": "Composer assistant-picker Popover — opens on a click in the chat composer '+' menu. Reached via the chat surface; tracked for an interaction recipe.",
@@ -47,6 +48,7 @@
     "modules/user/components/group/GroupListItem": "Inline delete-Confirm on a user-group row. List rendered on the groups page; reached via a row action. Tracked.",
     "modules/workflow/components/WorkflowRunsList": "Inline delete-run Confirm on a workflow-run row. List rendered on the workflow detail; reached via a row action. Tracked.",
     "modules/knowledge-base/chat-extension/components/KbMenuItem": "Composer knowledge-base picker Popover — opens on a click in the chat composer '+' menu (same pattern as AssistantMenuItem). Reached via the chat surface; tracked for an interaction recipe.",
-    "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": "Attach-KB picker Popover on the project knowledge drawer — opens on the 'Attach' button click. Panel rendered inside the project knowledge drawer; reached via a button interaction. Tracked."
+    "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel": "Attach-KB picker Popover on the project knowledge drawer — opens on the 'Attach' button click. Panel rendered inside the project knowledge drawer; reached via a button interaction. Tracked.",
+    "modules/voice/components/InstalledModelsCard": "Inline delete-Confirm on an installed whisper model (same pattern as InstalledVersionsCard). Card rendered on the voice settings page; reached via a card action. Covered by the voice-settings-admin e2e; tracked."
   }
 }

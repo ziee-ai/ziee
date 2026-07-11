@@ -352,6 +352,7 @@ mod tests {
             streaming_enabled: Some(true),
             stream_interval_ms: Some(1500),
             stream_max_decode_secs: Some(30),
+            model_source_repo: Some("ggerganov/whisper.cpp".to_string()),
         };
         assert!(validate_settings_patch(&ok).is_ok());
         // Empty patch (all None → leave everything) is valid.
@@ -380,19 +381,30 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_model_rejected() {
-        for m in ["tiny", "base", "base.en", "small"] {
+    fn model_name_format_validated_existence_deferred_to_handler() {
+        // The pure validator now checks storable FORMAT only (any library model
+        // name is allowed — a catalog `large-v3` is format-valid); the
+        // catalog-or-installed EXISTENCE check moved to the async `update_settings`
+        // handler (covered by the integration tests). So a well-formed name passes
+        // here regardless of whether it's one of the 4 built-in defaults.
+        for m in ["tiny", "base", "base.en", "small", "large-v3", "large-v3-turbo-q5_0"] {
             let b = UpdateVoiceSettingsRequest {
                 model: Some(m.to_string()),
                 ..base()
             };
-            assert!(validate_settings_patch(&b).is_ok(), "model {m} is supported");
+            assert!(
+                validate_settings_patch(&b).is_ok(),
+                "well-formed model {m} passes format validation"
+            );
         }
-        let b = UpdateVoiceSettingsRequest {
-            model: Some("large-v3".to_string()),
-            ..base()
-        };
-        assert_validation_400(&b, "unsupported model must be rejected");
+        // A MALFORMED name (path-traversal / slash / too long) is still rejected.
+        for bad in ["../etc", "a/b", ".."] {
+            let b = UpdateVoiceSettingsRequest {
+                model: Some(bad.to_string()),
+                ..base()
+            };
+            assert_validation_400(&b, "malformed model name must be rejected");
+        }
     }
 
     #[test]

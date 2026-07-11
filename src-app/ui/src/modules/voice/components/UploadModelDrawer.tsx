@@ -113,7 +113,7 @@ export function UploadModelDrawer() {
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium" htmlFor="voice-upload-name">
             Model name{' '}
-            <span className="text-destructive ml-0.5" aria-hidden>
+            <span className="text-destructive ms-0.5" aria-hidden>
               *
             </span>
           </label>
@@ -131,7 +131,7 @@ export function UploadModelDrawer() {
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium">
             Model file{' '}
-            <span className="text-destructive ml-0.5" aria-hidden>
+            <span className="text-destructive ms-0.5" aria-hidden>
               *
             </span>
           </label>

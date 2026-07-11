@@ -28,6 +28,7 @@ pub mod mock_release;
 mod capability_test;
 mod config_gate_test;
 mod lifecycle_test;
+mod model_management_test;
 mod model_test;
 mod permissions_test;
 mod real_repo_test;
