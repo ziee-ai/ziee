@@ -50,7 +50,7 @@ src-app/ui/src/modules/chat/core/split/galleryCoverage.test.ts	1	36	tests-qualit
 src-app/ui/src/modules/chat/core/split/limits.ts	1	20	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/split/reconcile.test.ts	1	205	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/split/reconcile.ts	1	172	correctness,state-management,concurrency
-src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2299	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2304	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	86	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts	1	86	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	179	tests-quality,correctness,api-contract
