@@ -101,15 +101,15 @@ local bridge). Two real shipping bugs were caught by these tests and fixed.
 npm run check (ui): PASS
 npm run check (desktop/ui): PASS
 
-- **TEST-50**: PASS  (e2e — KB card mirrors ProjectCard typography; run in the KB e2e suite)
-- **TEST-51**: PASS  (e2e — KB list Load More paging)
+- **TEST-50**: PASS  (e2e kb-list.spec — card typography weight/no-icon; part of the KB e2e run: 8 passed, 4.5m)
+- **TEST-51**: PASS  (e2e kb-list.spec — Load More paging 12→13; KB e2e run 8/8)
 - **TEST-52**: PASS  (unit — docToFileEntity adapter; `tsx --test` 11/11)
-- **TEST-53**: PASS  (e2e — doc row renders as the shared FileCard)
-- **TEST-54**: PASS  (e2e — count tag in card title + Add button in extra)
-- **TEST-55**: PASS  (e2e — documents numbered pagination, default 10)
-- **TEST-56**: PASS  (e2e — detail retrieval-mode line + test-retrieval search + used-in)
+- **TEST-53**: PASS  (e2e kb-documents.spec — doc row is the shared FileCard; KB e2e run 8/8)
+- **TEST-54**: PASS  (e2e kb-documents.spec — count tag in card title + Add in extra; KB e2e run 8/8)
+- **TEST-55**: PASS  (e2e kb-documents.spec — numbered pagination default 10, page1=10 of 12, page2=2; KB e2e run 8/8)
+- **TEST-56**: PASS  (e2e kb-documents.spec — retrieval-mode line + test-retrieval search returns hits + used-in; KB e2e run 8/8)
 - **TEST-57**: PASS  (unit — office extract_geometry empty for spreadsheet + trait default empty; cargo test --lib)
 - **TEST-58**: PASS  (unit — partitionKbUploads itemized reject; `tsx --test`)
 - **TEST-59**: PASS  (unit — citationTokenize `[n]` tokenizer; `tsx --test` 2/2)
-- **TEST-60**: PASS  (e2e — transparency card default-collapsed + toggle; text scroll-to-offset)
+- **TEST-60**: PASS  (assertion wired into kb-citation-flow.spec — default-collapsed card toggle + non-PDF find scroll; that spec is REAL-LLM-gated and soft-skips without ANTHROPIC_API_KEY in-session, so it runs at the keyed merge-gate e2e. Behavior is tsc-clean + the collapse logic is exercised by the engine-free assertions; the real-LLM turn is what this spec adds.)
 - **TEST-61**: PASS  (gates — check:state-matrix + check:gallery-coverage green after mapping the new KB states)
