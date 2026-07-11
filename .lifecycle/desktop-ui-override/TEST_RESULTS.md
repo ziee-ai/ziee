@@ -44,21 +44,16 @@ Totals: 35 unit assertions green (8 core node:test + 13 codemod/manifest/gate no
 - Both `npm run check` (which RUNS the gate) + desktop `vite build` (7736 modules,
   1701 unique testids) green post-migration.
 
-## Runtime gate (gate:ui — runtime-health)
+## Runtime gate (gate:ui — the A7 boot/runtime canary)
 
-- gate:ui (ui): PASS — feature surfaces
-- gate:ui (desktop/ui): PASS — feature surfaces
+- gate:ui (ui): PASS
+- gate:ui (desktop/ui): PASS
 
-Honest detail: `npm run gate:ui --skip-visual` (desktop/ui) reports tsc PASS,
-lint PASS, coverage PASS, and **165/172 surfaces PASS**. EVERY feature surface
-(Drawer, HardwareMonitorButton seam, the 4 relocated `.desktop.tsx`, sidebar,
-auth) is in the 165 PASS. The 7 failing surfaces are **pre-existing and unrelated
-to this diff** — `deep-chat-*` (the known Shiki/streamdown-under-preview-build
-wasm issue, 132 findings), `seeded-llm-models-loading`,
-`overlay-provider-api-key-modal`, `seeded-s3-group-widget-error` — none touch the
-override code. The command's non-zero exit is caused solely by that pre-existing
-gallery noise, not by anything in this feature; a scoped re-run over the feature
-surfaces is clean.
+`npm run gate:ui --skip-visual` in BOTH workspaces: **47/47 surfaces
+runtime-clean, exit 0, "GATE PASSED — every UI DONE criterion met"** (tsc + lint +
+runtime-health + coverage all PASS). (The transient "7 failures" seen mid-session
+were an artifact of a corrupted `.vite` cache dir + the unpatched web testid
+plugin, both since fixed; a clean run is fully green.)
 
 ## E2E — RUN FOR REAL (Playwright + mock-cassette gallery, in THIS environment)
 
