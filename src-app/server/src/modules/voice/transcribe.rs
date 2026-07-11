@@ -147,6 +147,20 @@ pub(super) async fn read_audio_field(
     })
 }
 
+/// The SHARED, pooled loopback client for whisper-server `/inference` forwards
+/// (F5/ITEM-28): built once with `.no_proxy()` (so an env HTTP proxy can't reroute
+/// the 127.0.0.1 call) and reused across requests (a per-request timeout is set on
+/// the request builder, not the client).
+fn inference_client() -> &'static reqwest::Client {
+    static INFERENCE_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    INFERENCE_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("build whisper inference client")
+    })
+}
+
 /// POST the WAV to whisper-server's native `/inference` endpoint (multipart) and
 /// parse the `{ "text": ... }` response. Shared by the batch transcribe handler
 /// (300s) and the streaming handler (a shorter interim `timeout`).
@@ -173,16 +187,8 @@ pub(super) async fn forward_to_whisper(
     }
 
     // Loopback forward to whisper-server via a SHARED keep-alive client
-    // (F5/ITEM-28): `.no_proxy()` so an env HTTP proxy can't reroute the 127.0.0.1
-    // inference call, and one pooled client instead of one-per-request. The
-    // per-request timeout is applied on the request builder below.
-    static INFERENCE_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    let client = INFERENCE_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .no_proxy()
-            .build()
-            .expect("build whisper inference client")
-    });
+    // (F5/ITEM-28); the per-request timeout is applied on the request builder below.
+    let client = inference_client();
 
     let resp = client
         .post(format!("{}/inference", base_url.trim_end_matches('/')))
@@ -274,6 +280,17 @@ fn wav_duration_secs(bytes: &[u8]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // TEST-31: the inference-forward client is a SINGLE shared instance (pooled,
+    // not built per-request) — two calls return the same `&'static` client. It's
+    // constructed with `.no_proxy()` (F5, verified at the construction site).
+    #[test]
+    fn inference_client_is_a_single_shared_instance() {
+        assert!(
+            std::ptr::eq(inference_client(), inference_client()),
+            "the inference client must be a single shared instance, not per-request"
+        );
+    }
 
     /// Build a minimal 16 kHz mono 16-bit WAV of `secs` seconds of silence.
     fn make_wav(secs: f64) -> Vec<u8> {

@@ -9,6 +9,7 @@ All Phase-3 enumerated tests, run + PASS. Full logs under
 - **TEST-3**: PASS   (arbitrary-URL SSRF policy rejects loopback/IMDS/RFC1918)
 - **TEST-4**: PASS   (model_download_task cancel — live vs terminal)
 - **TEST-5**: PASS   (model-name + source-repo format validators)
+- **TEST-31**: PASS  (shared `.no_proxy()` inference client — single shared instance, not per-request)
 
 ## Backend — integration (`cargo test --test integration_tests voice::model_management -- --test-threads=1` → 17 passed, 0 failed)
 - **TEST-6**: PASS   (catalog download lists + dedups)
