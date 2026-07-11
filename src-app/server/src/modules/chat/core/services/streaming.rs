@@ -2389,22 +2389,32 @@ mod tests {
     }
 
     /// TEST-8: a duplicate tool_result for the same id keeps the FIRST and drops the
-    /// duplicate — exactly one result per tool_use reaches the provider.
+    /// duplicate — exactly one result per tool_use reaches the provider. A co-pending
+    /// second tool_use (B) DEFERS the flush so the duplicate A result arrives while A is
+    /// still in `results_by_id`, exercising the keep-first `or_insert` branch (pre-fix,
+    /// the flat result vec carried BOTH A results into the Tool turn → three results).
     #[test]
     fn group_assistant_blocks_dedups_duplicate_result() {
         let blocks = vec![
             tool_use("A", "srv__a"),
+            tool_use("B", "srv__b"),
             tool_result("A", "first"),
-            tool_result("A", "second"),
+            tool_result("A", "dup"), // duplicate arrives BEFORE the flush (B still pending)
+            tool_result("B", "rb"),
         ];
         let msgs = group_assistant_blocks(blocks);
 
         assert_eq!(msgs.len(), 2);
-        assert_eq!(result_ids(&msgs[1].content), vec!["A"]);
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(
+            result_ids(&msgs[1].content),
+            vec!["A", "B"],
+            "exactly one result per tool_use — the duplicate A is dropped"
+        );
         match &msgs[1].content[0] {
             ContentBlock::ToolResult { content, .. } => assert!(
                 matches!(&content[0], ContentBlock::Text { text } if text == "first"),
-                "the first result is kept, the duplicate dropped"
+                "the FIRST A result is kept, the duplicate dropped"
             ),
             _ => panic!("expected tool_result"),
         }

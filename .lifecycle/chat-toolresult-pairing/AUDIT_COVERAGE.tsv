@@ -1,0 +1,4 @@
+file	start	end	angles
+src-app/server/src/modules/chat/core/services/streaming.rs	1643	2412	correctness,edge-cases,concurrency,api-contract,patterns-conformance,tests-quality,error-handling,security,perf,state-management
+src-app/server/src/modules/summarization/engine/summarizer.rs	404	1226	correctness,edge-cases,concurrency,api-contract,patterns-conformance,tests-quality,error-handling,security,perf,state-management
+src-app/server/tests/chat/assistant_block_grouping_test.rs	150	194	tests-quality,correctness,patterns-conformance
