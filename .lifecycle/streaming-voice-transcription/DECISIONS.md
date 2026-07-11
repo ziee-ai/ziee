@@ -37,15 +37,16 @@ final decode are unaffected; (b) the live-caption strip shows the **tail** (newe
 words) of the stitched transcript via a `dir="rtl"` overflow box, so a long transcript
 stays live instead of freezing on its opening words; (c) `capability.streaming_enabled`
 is gated on `can_transcribe`, so the interim loop never starts against an unprovisioned
-runtime. **Accepted residual:** repeated full-buffer decodes on the single shared
-whisper-server are an authenticated-compute amplification vector (several concurrent
-live-caption users can load the instance and slow batch dictation). This is inherent to
-the user's full-stitch choice; it is byte-bounded per request and clip-length-bounded by
-`max_clip_seconds`, mitigated by client single-flight + whisper's internal
-serialization, and an operator can lower `max_clip_seconds` / raise `stream_interval_ms`
-/ turn `streaming_enabled` off. A stronger bound (a trailing-decode-window cap or a
-per-user interim concurrency guard) is offered to the reviewer in HUMAN_FEEDBACK
-(FB-1) — it would walk back full-stitch on long clips, so it is the user's call.
+runtime. **Cost bound (FB-1, user-approved):** the reviewer chose to add the stronger bound, so
+each interim clip is **server-side clamped to its trailing `stream_max_decode_secs`
+window** (`clamp_wav_tail` in `stream.rs`; admin-configurable, default 30s) before
+decoding — per-tick whisper cost is now bounded regardless of recording length,
+protecting the shared engine under concurrent live-caption users. Clips at/under the
+window are decoded whole (fully stitched — typical dictation is unaffected at the 30s
+default); longer ones show the recent window while recording. The FINAL on-stop decode
+(batch `/transcribe`) remains unclamped, so the composer always gets the complete
+transcript. This partially walks back full-stitch on long (>window) clips, per the
+user's explicit FB-1 decision.
 
 ### DEC-3: Interim vs final semantics — does the composer ever receive interim text?
 **Resolution:** **No.** Interim results render only in a transient live-caption
@@ -69,17 +70,17 @@ runtime toggle. Keeps ONE mic button (no second surface).
 
 ### DEC-5 (Configurable-settings rule): cadence + enable — fixed or admin-configurable?
 **Resolution:** **Admin-configurable**, added to the existing `voice_runtime_settings`
-singleton via migration 153: `streaming_enabled BOOL DEFAULT TRUE` and
-`stream_interval_ms INT DEFAULT 1000 CHECK (300..=10000)`. Read-at-use, GET/PUT gated
-by the existing `voice::admin::{read,manage}`, synced via the existing `VoiceSettings`
+singleton via migration 153: `streaming_enabled BOOL DEFAULT TRUE`,
+`stream_interval_ms INT DEFAULT 1000 CHECK (300..=10000)`, and (FB-1)
+`stream_max_decode_secs INT DEFAULT 30 CHECK (5..=600)`. Read-at-use, GET/PUT gated by
+the existing `voice::admin::{read,manage}`, synced via the existing `VoiceSettings`
 sync entity, bounds-validated in `validate_settings_patch`, surfaced in
-`VoiceConfigCard`. Also mirrored into `VoiceCapability` (non-admin read) so the
-composer can run/pace live mode without an admin call. (No `stream_window_secs` — the
-full-stitched approach re-decodes the whole buffer, so there is no window tunable;
-`stream_interval_ms` is the cadence knob an operator on slow hardware lengthens.)
-**Basis:** the mandatory configurable-settings DEC rule — the decode cadence is an
-operational tunable; default to admin-configurable following the established voice
-settings pattern.
+`VoiceConfigCard`. `streaming_enabled` + `stream_interval_ms` are mirrored into
+`VoiceCapability` (non-admin read) so the composer can run/pace live mode without an
+admin call; `stream_max_decode_secs` stays server-side (the clamp runs on the server).
+**Basis:** the mandatory configurable-settings DEC rule — the decode cadence and the
+per-tick decode-window cost bound (FB-1) are operational tunables; default to
+admin-configurable following the established voice settings pattern.
 
 ### DEC-6: New endpoint vs reuse `/voice/transcribe` for interim?
 **Resolution:** A **dedicated** `POST /api/voice/transcribe/stream`. It requires
@@ -124,12 +125,13 @@ mid-stream chunk (webm chunks after the first lack headers).
 ### DEC-11: Interim caption default + content style — resolved by user
 **Resolution:** When `streaming_enabled`, the per-device Live-captions pref
 **defaults ON** (opt-out to batch), and the interim caption shows the **full stitched
-running transcript** (the whole utterance-so-far, via full re-decode each tick — see
-DEC-2), not just a recent window. The on-stop composer text remains the full
-authoritative transcript in either mode.
-**Basis:** user — chosen directly at plan review via AskUserQuestion (default-ON
-opt-out; full-stitched over windowed-recent). The reviewer accepted the higher
-per-tick decode cost of full-stitched.
+running transcript up to the `stream_max_decode_secs` window** (default 30s): clips
+at/under the window are fully stitched (typical dictation); longer ones show the
+recent window while recording (the FB-1 cost bound — see DEC-2). The on-stop composer
+text is always the full authoritative transcript regardless.
+**Basis:** user — chosen at plan review via AskUserQuestion (default-ON opt-out;
+full-stitched over windowed-recent), then at Phase-9 review the reviewer chose to add
+the decode-window cost bound (FB-1), which caps the fully-stitched window.
 
 ### DEC-12: Interim whisper timeout?
 **Resolution:** The interim `forward_to_whisper` uses a **bounded** timeout

@@ -22,6 +22,9 @@ pub struct VoiceSettings {
     pub streaming_enabled: bool,
     /// Interim decode cadence in milliseconds for live captions.
     pub stream_interval_ms: i32,
+    /// Trailing-window (seconds) each interim clip is clamped to before decoding
+    /// — the per-tick cost bound. The final on-stop decode is unclamped.
+    pub stream_max_decode_secs: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -48,6 +51,8 @@ pub struct UpdateVoiceSettingsRequest {
     pub streaming_enabled: Option<bool>,
     #[serde(default)]
     pub stream_interval_ms: Option<i32>,
+    #[serde(default)]
+    pub stream_max_decode_secs: Option<i32>,
 }
 
 /// Readiness snapshot for the composer mic button. Reachable by any user holding

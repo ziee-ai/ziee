@@ -10,6 +10,7 @@ e2e. Mocks only the external boundary (whisper `/inference` via the real
 
 - **TEST-1** (tier: unit) [covers: ITEM-2] file: `src-app/server/src/modules/voice/handlers.rs` — asserts: `validate_settings_patch` rejects out-of-range `stream_interval_ms` (300..=10000) with a 400 `VALIDATION_ERROR`, accepts in-range values, and accepts `streaming_enabled` toggles.
 - **TEST-2** (tier: unit) [covers: ITEM-6] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: the `types_ts_parity` golden — `types.ts` regenerated from the committed `openapi.json` matches the committed `types.ts` (so the new `Voice.transcribeStream` key + changed schemas are regenerated, not hand-edited).
+- **TEST-16** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/voice/stream.rs` — asserts: `clamp_wav_tail` (FB-1) keeps the trailing `secs` of PCM + rewrites RIFF/`data` sizes (result ≈ window, newest sample preserved); is a no-op when the clip is at/under the window (fully stitched) or the header is non-WAV / `secs==0`.
 
 ## Backend — integration (`tests/voice/streaming_test.rs`, deterministic stub whisper)
 
@@ -17,7 +18,7 @@ e2e. Mocks only the external boundary (whisper `/inference` via the real
 - **TEST-4** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: with `streaming_enabled=false` (PUT settings), `POST /voice/transcribe/stream` returns 409 (feature-off) while batch `/voice/transcribe` still works — the two modes are independently toggled.
 - **TEST-5** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: the backend deny path (A9) — `POST /voice/transcribe/stream` returns 401 with no token and 403 for a user lacking `voice::transcribe`.
 - **TEST-6** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/voice/streaming_test.rs` — asserts: a non-WAV / oversized body is rejected with a clean 4xx (`VOICE_NOT_WAV` / `VOICE_CLIP_TOO_LARGE`), never a 500, before any runtime is touched.
-- **TEST-7** (tier: integration) [covers: ITEM-1, ITEM-2, ITEM-3] file: `src-app/server/tests/voice/settings_test.rs` — asserts: `GET/PUT /voice/settings` round-trips `streaming_enabled`/`stream_interval_ms` (admin-gated), out-of-range values 400, `GET /voice/capability` reflects them for a non-admin `voice::transcribe` user, and PUT emits the `VoiceSettings` sync event.
+- **TEST-7** (tier: integration) [covers: ITEM-1, ITEM-2, ITEM-3] file: `src-app/server/tests/voice/settings_test.rs` — asserts: `GET/PUT /voice/settings` round-trips `streaming_enabled`/`stream_interval_ms`/`stream_max_decode_secs` (admin-gated, defaults 30s), out-of-range values (incl. `stream_max_decode_secs` 5..=600) 400, `GET /voice/capability` reflects `streaming_enabled` for a non-admin `voice::transcribe` user (gated on `can_transcribe`), and PUT emits the `VoiceSettings` sync event.
 
 ## Backend — gold-smoke (real whisper + real voice, soft-skip gated — DEC-13/14)
 

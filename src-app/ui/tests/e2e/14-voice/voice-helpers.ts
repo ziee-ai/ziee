@@ -285,6 +285,7 @@ export function defaultVoiceState(
       language: 'auto',
       streaming_enabled: true,
       stream_interval_ms: 1000,
+      stream_max_decode_secs: 30,
       idle_unload_secs: 300,
       auto_start_timeout_secs: 30,
       drain_timeout_secs: 30,

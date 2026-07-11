@@ -14,4 +14,12 @@ ALTER TABLE voice_runtime_settings
     -- at most this often while recording. Lengthen on slow hardware / heavy models
     -- so interim decodes don't fall behind. Bounds match validate_settings_patch.
     ADD COLUMN stream_interval_ms INTEGER NOT NULL DEFAULT 1000
-        CHECK (stream_interval_ms BETWEEN 300 AND 10000);
+        CHECK (stream_interval_ms BETWEEN 300 AND 10000),
+    -- Cost bound for the interim decode: the server clamps each interim clip to
+    -- its trailing N seconds before decoding, so per-tick whisper cost is bounded
+    -- regardless of recording length (protects the shared engine under concurrent
+    -- live-caption users). Clips at/under this length are fully stitched; longer
+    -- ones show the recent window while recording. The FINAL on-stop decode is
+    -- always the full, unclamped clip.
+    ADD COLUMN stream_max_decode_secs INTEGER NOT NULL DEFAULT 30
+        CHECK (stream_max_decode_secs BETWEEN 5 AND 600);

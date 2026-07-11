@@ -89,12 +89,17 @@ async fn test_streaming_settings_roundtrip_and_validation() {
         .unwrap();
     assert_eq!(row["streaming_enabled"], true, "streaming defaults ON");
     assert_eq!(row["stream_interval_ms"], 1000, "cadence defaults to 1000ms");
+    assert_eq!(row["stream_max_decode_secs"], 30, "decode window defaults to 30s");
 
-    // PUT both fields; they round-trip.
+    // PUT the fields; they round-trip.
     let row: Value = client
         .put(server.api_url("/voice/settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "streaming_enabled": false, "stream_interval_ms": 2500 }))
+        .json(&json!({
+            "streaming_enabled": false,
+            "stream_interval_ms": 2500,
+            "stream_max_decode_secs": 45
+        }))
         .send()
         .await
         .unwrap()
@@ -103,6 +108,7 @@ async fn test_streaming_settings_roundtrip_and_validation() {
         .unwrap();
     assert_eq!(row["streaming_enabled"], false);
     assert_eq!(row["stream_interval_ms"], 2500);
+    assert_eq!(row["stream_max_decode_secs"], 45);
 
     // Persisted.
     let row: Value = client
@@ -116,17 +122,23 @@ async fn test_streaming_settings_roundtrip_and_validation() {
         .unwrap();
     assert_eq!(row["streaming_enabled"], false);
     assert_eq!(row["stream_interval_ms"], 2500);
+    assert_eq!(row["stream_max_decode_secs"], 45);
 
-    // Out-of-range cadence → 400.
-    for bad in [299, 10_001] {
+    // Out-of-range values → 400.
+    for (field, bad) in [
+        ("stream_interval_ms", 299),
+        ("stream_interval_ms", 10_001),
+        ("stream_max_decode_secs", 4),
+        ("stream_max_decode_secs", 601),
+    ] {
         let res = client
             .put(server.api_url("/voice/settings"))
             .header("Authorization", format!("Bearer {}", admin.token))
-            .json(&json!({ "stream_interval_ms": bad }))
+            .json(&json!({ field: bad }))
             .send()
             .await
             .unwrap();
-        assert_eq!(res.status(), 400, "stream_interval_ms={bad} must be rejected");
+        assert_eq!(res.status(), 400, "{field}={bad} must be rejected");
     }
 }
 

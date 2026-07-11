@@ -115,6 +115,16 @@ pub fn validate_settings_patch(body: &UpdateVoiceSettingsRequest) -> Result<(), 
             "stream_interval_ms out of range (300..=10000)",
         ));
     }
+    if let Some(n) = body.stream_max_decode_secs
+        && !(5..=600).contains(&n)
+    {
+        // Matches the DB CHECK. Too small drops useful context; too large defeats
+        // the per-tick cost bound.
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "stream_max_decode_secs out of range (5..=600)",
+        ));
+    }
     Ok(())
 }
 
@@ -138,6 +148,7 @@ pub async fn update_settings(
             body.max_upload_bytes,
             body.streaming_enabled,
             body.stream_interval_ms,
+            body.stream_max_decode_secs,
         )
         .await?;
 
@@ -246,6 +257,7 @@ mod tests {
             max_upload_bytes: Some(1_048_576),
             streaming_enabled: Some(true),
             stream_interval_ms: Some(1500),
+            stream_max_decode_secs: Some(30),
         };
         assert!(validate_settings_patch(&ok).is_ok());
         // Empty patch (all None → leave everything) is valid.
@@ -340,6 +352,15 @@ mod tests {
         assert_validation_400(
             &UpdateVoiceSettingsRequest { stream_interval_ms: Some(10_001), ..base() },
             "stream_interval above range",
+        );
+        // stream_max_decode_secs: 5..=600
+        assert_validation_400(
+            &UpdateVoiceSettingsRequest { stream_max_decode_secs: Some(4), ..base() },
+            "max_decode below range",
+        );
+        assert_validation_400(
+            &UpdateVoiceSettingsRequest { stream_max_decode_secs: Some(601), ..base() },
+            "max_decode above range",
         );
         // Boundary values are inclusive-OK.
         assert!(validate_settings_patch(&UpdateVoiceSettingsRequest {

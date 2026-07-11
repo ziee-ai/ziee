@@ -6447,6 +6447,7 @@ export interface UpdateVoiceSettingsRequest {
   max_upload_bytes?: number
   model?: string
   stream_interval_ms?: number
+  stream_max_decode_secs?: number
   streaming_enabled?: boolean
 }
 
@@ -6872,6 +6873,11 @@ export interface VoiceSettings {
   model: string
   /** Interim decode cadence in milliseconds for live captions. */
   stream_interval_ms: number
+  /**
+   * Trailing-window (seconds) each interim clip is clamped to before decoding
+   *  — the per-tick cost bound. The final on-stop decode is unclamped.
+   */
+  stream_max_decode_secs: number
   /** Live streaming captions available deployment-wide (also needs `enabled`). */
   streaming_enabled: boolean
   updated_at: string
