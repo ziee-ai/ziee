@@ -34,7 +34,7 @@ test.describe('Split chat — registry runtime survives pane close', () => {
     return (await res.json()).id as string
   }
 
-  test('closing a pane leaves the survivor’s Ctrl+K / Esc / Ctrl+Enter working', async ({
+  test('closing a mid-split pane leaves the survivor’s Esc / Ctrl+K shortcuts working', async ({
     page,
     testInfra,
   }) => {

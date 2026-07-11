@@ -2232,14 +2232,19 @@ const chatStoreConfig = {
       streamClient.stop()
 
       // Null the client so a destroy→re-init cycle passes the init guard
-      // (`if (get().chatStreamClient) return`, ~L2097). The SINGLETON primary
-      // Chat store's STATE OBJECT survives destroy (defineStore creates it once;
-      // ref-count destroy only tears down subscriptions), so without this reset a
-      // navigate-away >5s (grace destroy) + return would leave the stopped client
-      // in state, the guard would early-return, and live token streaming + the
-      // sync refetch subscriptions would never re-establish (DRIFT-2.15). Local
-      // pane instances get a fresh state per mount, so this is a no-op for them.
-      set({ chatStreamClient: null })
+      // (`if (get().chatStreamClient) return`, ~L2097). ONLY the SINGLETON primary
+      // (`paneId == null`) needs this: its STATE OBJECT survives destroy (defineStore
+      // creates it once; ref-count destroy only tears down subscriptions), so
+      // without the reset a navigate-away >5s (grace destroy) + return leaves the
+      // stopped client in state, the guard early-returns, and streaming + sync
+      // never re-establish (DRIFT-2.15). Local pane instances (`paneId` set) are
+      // EXCLUDED: they get a fresh state per mount so they never need it, AND under
+      // React StrictMode's synchronous double-invoke of the mount effect on the
+      // SAME api, nulling here would let the 2nd init spawn a 2nd stream client
+      // while the 1st init's async tail restarts the orphaned 1st — leaking an idle
+      // SSE per pane open (dev-only, but avoided entirely by scoping to the
+      // singleton).
+      if (get().paneId == null) set({ chatStreamClient: null })
 
       const state = get()
 
