@@ -12,7 +12,7 @@ import { Seam } from '@/core/overrides'
  * The desktop opens a native Tauri window instead. Rather than fork this whole
  * file, the button element is wrapped in a `<Seam>`: the desktop build registers
  * `hardware.monitor-button` (see
- * `desktop/ui/src/modules/desktop-base/overrides.tsx`) and the seam swaps in the
+ * `desktop/ui/src/modules/desktop-base/overrides/hardware-monitor.tsx`) and the seam swaps in the
  * native-window variant. The permission gate below stays SHARED — it lives once,
  * here, so the desktop variant carries only the ~10 lines that actually differ.
  *

@@ -210,9 +210,13 @@ export const Drawer: React.FC<DrawerProps> = ({
   // the desktop shadow had dropped it; see DRIFT-1.7.)
   const thisZ = zIndex ?? 50
   const higherLayerOpen = () => {
+    // Key drawer detection off the STABLE `data-slot="layout-drawer"` marker, not
+    // the caller-overridable `data-testid` — an overridden testid must not make a
+    // stacked drawer invisible to the guard (audit finding). Other overlay kinds
+    // are matched by their own stable data-slots.
     const layers = [
       ...document.querySelectorAll(
-        '[data-testid="layout-drawer-content"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]',
+        '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]',
       ),
     ].map(el => ({ el, z: parseInt(getComputedStyle(el).zIndex, 10) }))
     return isHigherLayerPresent(layers, drawerDivRef.current, thisZ)
