@@ -5,6 +5,14 @@ import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { type ImageViewState, clampScale, zoomStep } from '../viewers/image/zoom'
 import type { TabularViewState } from '../viewers/tabular/tableView'
+import {
+  SINGLE_PANE_KEY,
+  composerPaneKey,
+  mergeOwnedInto,
+  ownedIds,
+  ownsId,
+  snapshotOwned,
+} from './composerOwnership'
 
 // Enable Map + Set support in Immer (the store uses Map/Set extensively
 // for caches and upload tracking).
@@ -29,11 +37,10 @@ export interface FileUploadProgress {
  * File Extension Store State
  * Manages file uploads and selection for message attachments
  */
-/** Single-pane / primary composer buffer key (ITEM-32). */
-export const SINGLE_PANE_KEY = '__single__'
-/** Resolve a pane id to a composer buffer key (null → the single-pane key). */
-export const composerPaneKey = (paneId: string | null | undefined): string =>
-  paneId || SINGLE_PANE_KEY
+// Per-pane composer file ownership is a pure, node-testable module (ITEM-40);
+// re-export its buffer-key helpers so the existing `@/modules/file/stores/File.store`
+// import sites stay transparent.
+export { SINGLE_PANE_KEY, composerPaneKey }
 
 /** A single pane's compose-time backup (its OWN owned entries only, ITEM-32). */
 type PaneBackup = {
@@ -535,11 +542,11 @@ export const File = defineStore('File', {
       const restoredIds = get().restoredFileIds
       const fileOwner = get().fileOwner
       const uploadOwner = get().uploadOwner
-      const paneFileIds = [...get().selectedFiles.keys()].filter(
-        id => composerPaneKey(fileOwner.get(id)) === paneKey,
-      )
-      const paneUploadIds = [...get().uploadingFiles.keys()].filter(
-        id => composerPaneKey(uploadOwner.get(id)) === paneKey,
+      const paneFileIds = ownedIds(get().selectedFiles.keys(), fileOwner, paneKey)
+      const paneUploadIds = ownedIds(
+        get().uploadingFiles.keys(),
+        uploadOwner,
+        paneKey,
       )
       const sessionFileIds = paneFileIds.filter(id => !restoredIds.has(id))
       if (sessionFileIds.length > 0) {
@@ -630,17 +637,14 @@ export const File = defineStore('File', {
 
     // Get array of file IDs for request composition (ONE pane's buffer, ITEM-32)
     getFileIds: (paneKey: string) => {
-      const owner = get().fileOwner
-      return Array.from(get().selectedFiles.keys()).filter(
-        id => composerPaneKey(owner.get(id)) === paneKey,
-      )
+      return ownedIds(get().selectedFiles.keys(), get().fileOwner, paneKey)
     },
 
     // Get array of file entities for ONE pane's buffer (safe outside React)
     getFiles: (paneKey: string) => {
       const owner = get().fileOwner
       return Array.from(get().selectedFiles.entries())
-        .filter(([id]) => composerPaneKey(owner.get(id)) === paneKey)
+        .filter(([id]) => ownsId(owner, id, paneKey))
         .map(([, file]) => file)
     },
 
@@ -649,7 +653,7 @@ export const File = defineStore('File', {
       const owner = get().uploadOwner
       return Array.from(get().uploadingFiles.entries()).some(
         ([id, file]) =>
-          composerPaneKey(owner.get(id)) === paneKey &&
+          ownsId(owner, id, paneKey) &&
           (file.status === 'pending' || file.status === 'uploading'),
       )
     },
@@ -840,15 +844,11 @@ export const File = defineStore('File', {
     // this pane and concurrent panes keep independent slots.
     setBackupFiles: (paneKey: string) => {
       const { selectedFiles, uploadingFiles, fileOwner, uploadOwner } = get()
-      // Use the SAME owner→key resolution as clearFiles (composerPaneKey wrapper),
-      // so the backup captures EXACTLY the entries the paired clearFiles removes
-      // (a null/undefined owner resolves to the single-pane key, not "unowned").
-      const sel = new Map(
-        [...selectedFiles].filter(([id]) => composerPaneKey(fileOwner.get(id)) === paneKey),
-      )
-      const upl = new Map(
-        [...uploadingFiles].filter(([id]) => composerPaneKey(uploadOwner.get(id)) === paneKey),
-      )
+      // snapshotOwned uses the SAME owner→key resolution as clearFiles, so the
+      // backup captures EXACTLY the entries the paired clearFiles removes (a
+      // null/undefined owner resolves to the single-pane key, not "unowned").
+      const sel = snapshotOwned(selectedFiles, fileOwner, paneKey)
+      const upl = snapshotOwned(uploadingFiles, uploadOwner, paneKey)
       set((state) => {
         const next = new Map(state.backupByPane)
         next.set(paneKey, { selectedFiles: sel, uploadingFiles: upl })
@@ -864,22 +864,24 @@ export const File = defineStore('File', {
       const backup = get().backupByPane.get(paneKey)
       if (!backup) return
       set((state) => {
-        const sel = new Map(state.selectedFiles)
-        const owner = new Map(state.fileOwner)
-        for (const [id, f] of backup.selectedFiles) {
-          sel.set(id, f)
-          owner.set(id, paneKey)
-        }
-        state.selectedFiles = sel
-        state.fileOwner = owner
-        const upl = new Map(state.uploadingFiles)
-        const uowner = new Map(state.uploadOwner)
-        for (const [id, p] of backup.uploadingFiles) {
-          upl.set(id, p)
-          uowner.set(id, paneKey)
-        }
-        state.uploadingFiles = upl
-        state.uploadOwner = uowner
+        // MERGE (not replace) this pane's owned entries back in, re-stamping
+        // ownership to paneKey — other panes' live entries stay untouched.
+        const files = mergeOwnedInto(
+          state.selectedFiles,
+          state.fileOwner,
+          backup.selectedFiles,
+          paneKey,
+        )
+        state.selectedFiles = files.next
+        state.fileOwner = files.nextOwner
+        const uploads = mergeOwnedInto(
+          state.uploadingFiles,
+          state.uploadOwner,
+          backup.uploadingFiles,
+          paneKey,
+        )
+        state.uploadingFiles = uploads.next
+        state.uploadOwner = uploads.nextOwner
       })
       console.log(`[FileStore] Restored files from backup for pane ${paneKey}`)
     },

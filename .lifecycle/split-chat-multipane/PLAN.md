@@ -298,6 +298,43 @@ optional and follows in the same feature:
 - **ITEM-23**: Gallery/harness multi-pane support (its own reviewed change, per B3 — NOT a silent workaround). The gallery cassette (`mockApi.ts`) serves one global SSE stream, and the fixtures (`deepStates.tsx`/`seededSurfaces.tsx`/`shard5.tsx`) drive the singleton `useChatStore` — both are SHARED harness. To render two independent panes (one seeded via the `SplitView` store, both able to stream distinct content), `mockApi.ts` must key its SSE cassette by conversation/subscription and the fixtures migrate to per-pane seeds. This is a genuine multi-pane capability the harness lacks, so it lands as a reviewed infra change (B3: don't edit the shared harness to route around a feature bug — this is a real capability gap, documented here so it isn't a silent workaround).
 - **ITEM-15**: Gallery + state-matrix coverage for the split surface — add gallery cells (loaded / empty / streaming, focused vs unfocused pane, and the mobile tab mode) so `check:state-matrix` / `check:gallery-coverage` and the runtime-health pass (`npm run gate:ui`) cover the new states, mirroring existing chat gallery seeds.
 
+### Iteration round 2 — coverage-gap DELTA (merged onto current origin/main @304f4a011)
+
+This round adds NO new UI surface (the composer file/send/assistant UI already
+exists); it closes the highest-value TEST COVERAGE gaps the 5-agent sweep found
+(FB-6). UI-surface plan checklist is therefore N/A (no new page/drawer/card/panel);
+these items test + harden EXISTING surfaces. The candidate BUGS the sweep found
+(text draft error-restore not pane-threaded, Cmd-F window-global, TitleEditor
+focused-bridge binding, beforeSendMessage approval read, same-file view-state) are
+NOT in this round's scope — they are recorded in `COVERAGE_GAPS.md` (ITEM-42) as
+tracked, prioritized follow-ups (a documented deferral, not a silent cut).
+
+- **ITEM-40**: Extract the per-pane composer file-OWNERSHIP + BACKUP/restore logic
+  out of the 1200-line `File.store.ts` (which pulls `@/` runtime imports, so
+  `node:test` strip-only mode can't load it — the exact reason `approvalRouting.ts`
+  was carved out of `McpComposer.store`) into a PURE, enum-free, node-testable
+  `composerOwnership.ts`: `ownedIds(map, owner, paneKey)`, the `clearFiles`
+  owner-filter, the `setBackupFiles` snapshot filter, and the `restoreFromBackup`
+  MERGE. `File.store` delegates to it (behaviour byte-identical; the e2e suite is
+  the regression guard for the delegation). This gives the file per-pane isolation
+  primitives — the single biggest untested hole — real unit coverage and
+  regression-guards the FIX_ROUND-3/4 backup bugs.
+- **ITEM-41**: End-to-end per-pane composer isolation for the three dimensions
+  TEST-31's prose phantom-claimed but the shipped spec never asserted — FILE
+  attach/remove (attach in pane B → appears in B's preview only, absent from A;
+  remove B's → A intact), the upload-in-flight SEND-BLOCKER (an in-flight upload in
+  pane A disables A's Send but NOT B's), and ASSISTANT selection isolation (assistant
+  chosen in B is independent of A). A new spec `composer-files-per-pane.spec.ts`,
+  mirroring `composer-isolation.spec.ts` + `right-panel-per-pane.spec.ts`'s
+  `attachFileRobust` helper; asserts WITHOUT a focus-click first (per FB-4).
+- **ITEM-42**: Commit a durable `COVERAGE_GAPS.md` (OUTSIDE `.lifecycle/`, which is
+  stripped at merge — placed at `tests/e2e/14-split-chat/COVERAGE_GAPS.md` so it
+  survives to main and is discoverable by future test authors) recording the
+  5-agent sweep: the two meta-findings (phantom coverage; FIX_ROUND-bugs-with-no-
+  regression-test), the 5 candidate bugs, what this round closes, and the
+  prioritized deferred gaps. A structural doc-consistency unit test guards it from
+  silent gutting.
+
 ## Files to touch
 
 New files (frontend, `src-app/ui/src` unless noted):

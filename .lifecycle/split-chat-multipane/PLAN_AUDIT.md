@@ -368,3 +368,14 @@ re-opening the shipped engine.
 - **ITEM-37** — verdict: CONCERN — header/chrome + new-chat sentinel keys; several small independent fixes (summarization read-model, find/deep-link/title scoping, key namespacing). Low-architecture; the new-chat-key namespacing must not break the per-conversation re-key that already works for existing conversations (TEST-57).
 - **ITEM-38** — verdict: CONCERN — message-render actions + tool-result renderers rebind; subsumes v1 ITEM-10/ITEM-21. The wrong-conversation export + regenerate-on-wrong-pane are HIGH, but each is a `useChatPane().store` rebind + capture-before-await; the `resetViewState` no-op is a one-line ordering fix. Broad file count, low risk each (TEST-58).
 - **ITEM-39** — verdict: CONCERN — module singletons / global-DOM; the keyboard `document.querySelector` first-match (Ctrl+Enter always leftmost) is a genuine per-pane-scoping change to a shared listener (B3-adjacent: the keyboard extension is shared, but the fix is per-pane scoping, not a workaround); markdown anchors + project-from-URL are localized. Verify the keyboard extension still works single-pane (TEST-59).
+
+## Iteration round 2 — coverage-gap DELTA audit
+
+Merged onto current origin/main (@304f4a011): no migration collision (branch adds
+no migrations); openapi regenerated for BOTH workspaces; `npm run check` green in
+ui + desktop/ui. This round adds tests + a pure module + a doc — no new UI surface,
+no backend, no permission, no new render state.
+
+- **ITEM-40** — verdict: PASS — mirrors `mcp/stores/approvalRouting.ts` (pure enum-free extraction so `node:test` can load it); `File.store` delegates with byte-identical behaviour, so it breaks no existing caller — the existing `14-split-chat` e2e suite is the delegation regression guard. No migration, no openapi.
+- **ITEM-41** — verdict: PASS — a new e2e spec mirroring `composer-isolation.spec.ts` + `right-panel-per-pane.spec.ts`'s `attachFileRobust`; touches no product code, only `tests/e2e/`. Asserts existing per-pane behaviour without a focus-click (per FB-4).
+- **ITEM-42** — verdict: PASS — a durable Markdown doc under `tests/e2e/14-split-chat/` (survives the `.lifecycle` merge-strip, DEC-56) + a structural unit test; no product-code risk.

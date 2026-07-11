@@ -517,3 +517,17 @@ same-conversation streaming, wrong-pane exports/sends, dropped right-panel input
 Ctrl+Enter always hitting the leftmost pane).
 **Basis:** user (FB-5 "you need to check everything … basically everything") +
 codebase (the converged audit's concrete per-file findings).
+
+## Iteration round 2 — coverage-gap DELTA decisions
+
+### DEC-55: Where does the per-pane file-ownership logic get unit-tested — in `File.store`, or an extracted pure module?
+**Resolution:** Extract the owner-filter + backup-snapshot + restore-MERGE into a pure, enum-free `composerOwnership.ts`; `File.store` delegates to it. Unit-test the pure module with `node:test`.
+**Basis:** convention — `File.store.ts` imports `@/api-client`/`@/core/stores` (which pull the `Permissions` enum), and `node:test` strip-only mode cannot load enums; this is the identical constraint that made `approvalRouting.ts` a pure extraction out of `McpComposer.store`. Mirror that precedent.
+
+### DEC-56: Where does the durable `COVERAGE_GAPS.md` live so it survives to main?
+**Resolution:** `src-app/ui/tests/e2e/14-split-chat/COVERAGE_GAPS.md` (next to the split-chat specs).
+**Basis:** codebase — `.lifecycle/` is `git rm`-stripped at merge (skill "Merge hygiene"), so a doc placed there would not reach main; placing it beside the specs keeps it durable and discoverable by future test authors. Its covering unit test (TEST-62) reads it by a path relative to the test file.
+
+### DEC-57: Are the 5 candidate bugs the sweep found (text error-restore not pane-threaded, Cmd-F window-global, TitleEditor focused-bridge binding, beforeSendMessage approval read, same-file view-state) fixed THIS round?
+**Resolution:** DEFERRED — recorded in `COVERAGE_GAPS.md` as tracked, prioritized follow-ups; not fixed this round.
+**Basis:** user — the human scoped this iteration round to exactly the 3 delta items (composerOwnership extraction + per-pane unit suite, the file-attach/send-blocker/assistant e2e, and the committed COVERAGE_GAPS.md). The candidate bugs are surfaced + documented (not silently cut), to be verified + fixed in a subsequent round.
