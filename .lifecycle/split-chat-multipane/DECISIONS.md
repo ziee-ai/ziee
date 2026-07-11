@@ -610,3 +610,17 @@ selection pattern in this exact area.
 cleanup scopes to that key.
 **Basis:** convention — `File.store`'s per-pane `composerPaneKey` ownership is the
 established pattern for per-pane file state on this branch.
+
+### DEC-66: How is the desktop `openConversationWindow.ts` whole-file shadow handled vs live2's incoming override gate?
+**Resolution:** Deferred + inventoried as ITEM-50 [DESCOPED] this round. live2 is
+landing a desktop-override mechanism (element `<Seam>`/`useOverride` or co-located
+`*.desktop.tsx`) + an enforcing `gen-override-registry.mjs --check` gate (in
+`npm run check`, both workspaces) that fails on any unregistered whole-file desktop
+shadow. My branch's `desktop/ui/.../popout/openConversationWindow.ts` is exactly such
+a raw shadow. It CANNOT be migrated yet (the mechanism is not on main — gate-bug fix
+in progress). When the human signals live2 has landed, migrate it — probably a
+co-located `openConversationWindow.desktop.ts` (Tauri-`WebviewWindow`-specific → a
+whole-file `.desktop` override is the right granularity, not an element seam), else an
+approved shadow-exception carrying the Tauri-API structural reason.
+- DESCOPED: ITEM-50 — live2's desktop-override mechanism + gate are not yet on main, so the migration cannot be performed this round; inventoried now, to be implemented in this iteration once the human signals live2 has landed [approved: user@2026-07-11 · coordination FYI]
+**Basis:** user — coordination FYI directing inventory-now / handle-when-live2-lands.

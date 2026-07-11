@@ -437,6 +437,16 @@ per-pane CORRECTNESS fixes of existing surfaces, so the Phase-1 UI-surface check
   `composerPaneKey` ownership); the pdf viewer body reads its own pane's key; cleanup
   scopes to the pane's key.
 
+- **ITEM-50**: [DESCOPED] Migrate the one raw desktop whole-file shadow
+  `src-app/desktop/ui/src/modules/chat/core/popout/openConversationWindow.ts` (shadows
+  its `src-app/ui` sibling) to live2's incoming desktop-override mechanism — most
+  likely a co-located `openConversationWindow.desktop.ts` (it is Tauri-`WebviewWindow`-
+  specific, so a whole-file `.desktop` override is right, not an element seam), OR an
+  approved shadow-exception with the Tauri-API structural reason. BLOCKED: live2's
+  mechanism + enforcing gate (`gen-override-registry.mjs --check` in `npm run check`)
+  is NOT on main yet (gate-bug fix in progress). Inventoried now per the human's
+  coordination FYI; implement in this iteration when the human signals live2 has landed.
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

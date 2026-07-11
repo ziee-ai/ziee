@@ -33,6 +33,7 @@ import { ConversationFindBar } from '@/modules/chat/components/ConversationFindB
 import { ConversationFindContext } from '@/modules/chat/components/ConversationFindContext'
 import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton'
 import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
+import { pendingApprovalIdsInPane } from '@/modules/chat/core/utils/toolCallPaneScope'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { SplitChatView } from '@/modules/chat/components/SplitChatView'
 
@@ -424,9 +425,11 @@ export function ConversationPane() {
   // yank a freshly-opened one to the bottom — only approvals that appear AFTER this
   // page mounts should scroll.
   useEffect(() => {
-    for (const [id, call] of toolCalls) {
-      if (call.status === 'pending_approval') scrolledApprovalsRef.current.add(id)
-    }
+    // Per-pane (ITEM-48): seed only THIS pane's own already-pending approvals, so a
+    // leftover pending approval belonging to another pane's conversation is never
+    // treated as this pane's (it's filtered out — its message isn't in `messages`).
+    for (const id of pendingApprovalIdsInPane(toolCalls, messages))
+      scrolledApprovalsRef.current.add(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -446,8 +449,11 @@ export function ConversationPane() {
     // stray cross-conversation scroll later.
     const seen = scrolledApprovalsRef.current
     let hasNewApproval = false
-    for (const [id, call] of toolCalls) {
-      if (call.status === 'pending_approval' && !seen.has(id)) {
+    // Per-pane (ITEM-48): only approvals whose carrying message is in THIS pane's
+    // messages count — a pending approval in another pane's conversation must not
+    // scroll this pane's list.
+    for (const id of pendingApprovalIdsInPane(toolCalls, messages)) {
+      if (!seen.has(id)) {
         seen.add(id)
         hasNewApproval = true
       }
@@ -475,7 +481,7 @@ export function ConversationPane() {
     } else {
       messageListRef.current?.scrollToBottom()
     }
-  }, [toolCalls, conversation, conversationId, hasMoreAfter])
+  }, [toolCalls, messages, conversation, conversationId, hasMoreAfter])
 
   // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
   // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next
