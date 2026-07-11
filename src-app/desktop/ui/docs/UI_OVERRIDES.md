@@ -95,6 +95,13 @@ specifier), and the web workspace excludes `**/*.desktop.{tsx,ts}` from
 workspace typechecks + bundles them (its tsconfig includes `../../ui/src` and it
 has the Tauri deps).
 
+> **⚠️ Never for `module.tsx`.** Module files are discovered by
+> `import.meta.glob`, which does NOT go through the `@/` resolver — a core-tree
+> `module.desktop.tsx` is found by no loader. A desktop module override MUST stay
+> a **tier-1 desktop-tree** `module.tsx` (glob-discovered by `desktop-loader.ts`),
+> e.g. `desktop/ui/src/modules/memory/module.tsx`. Same reason the desktop
+> `loader.ts` is itself a tier-1 fork, not a seam.
+
 > **⚠️ Barrel caveat (important).** Tier-2 resolution only fires for **`@/`**
 > imports. A core barrel that RELATIVELY re-exports — `export { X } from './X'` —
 > resolves `./X` to the CORE file even in the desktop build, bypassing

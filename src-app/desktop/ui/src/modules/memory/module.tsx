@@ -16,14 +16,14 @@ import { lazy } from 'react'
 import { Book } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
-// This file was relocated from `desktop/ui/src/modules/memory/module.tsx`
-// into the core tree as a `.desktop.tsx` (localOverridePlugin tier 2). The
-// page it lazy-loads still lives in the desktop tree, so the formerly-relative
-// `./pages/MemoryCombinedPage` is rewritten to the `@ziee/desktop/*` alias
-// (→ `desktop/ui/src/*`) — a relative specifier would now (wrongly) resolve
-// under `ui/src/modules/memory/pages/`, which doesn't exist.
+// This module stays a TIER-1 desktop-tree module (NOT a `.desktop.tsx`
+// co-location): `module.tsx` files are discovered by `import.meta.glob`, which
+// bypasses the `@/` resolver — so a core-tree `module.desktop.tsx` would be
+// found by neither `desktop-loader.ts` (globs the desktop tree) nor the core
+// `loader.ts` (globs the literal `module.tsx`). It is glob-discovered here by
+// `desktop-loader.ts` and registers `memory-desktop`. See DRIFT-1.5.
 const MemoryCombinedPage = lazy(() =>
-  import('@ziee/desktop/modules/memory/pages/MemoryCombinedPage').then((m) => ({
+  import('./pages/MemoryCombinedPage').then((m) => ({
     default: m.MemoryCombinedPage,
   })),
 )

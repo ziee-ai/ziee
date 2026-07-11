@@ -77,10 +77,14 @@ declares ONE fallback-preserving seam + desktop registers ONE override."
   not a duplicate-testid collision. Add `**/*.desktop.*` to web `tsconfig.json`
   `exclude` + `biome.json` ignore so Tauri-importing `.desktop` files don't break
   the web workspace typecheck/lint; the desktop workspace keeps them in scope.
-- **ITEM-6**: Relocate the 5 class-A whole-file shadows from
+- **ITEM-6**: Relocate the 4 class-A component shadows from
   `desktop/ui/src/<path>` to `ui/src/<path>.desktop.tsx` (`AuthGuard`,
-  `LeftSidebar`, `HeaderBarContainer`, `memory/module`, `ProviderGroupAssignmentCard`),
-  deleting the desktop-tree copies. Behavior unchanged; resolved by ITEM-5.
+  `LeftSidebar`, `HeaderBarContainer`, `ProviderGroupAssignmentCard`), deleting the
+  desktop-tree copies. Behavior unchanged; resolved by ITEM-5. (`memory/module`
+  reclassified back to a tier-1 desktop-tree module — `module.tsx` is
+  glob-discovered and cannot use `.desktop.tsx` resolution; see DRIFT-1.5. The
+  desktop auth barrel is updated to re-export AuthGuard via `@/` — the tier-2
+  barrel caveat, DRIFT-1.4.)
 - **ITEM-7**: Auto-migration codemod `ui/scripts/seam-codemod.mjs` (ts-morph) —
   `migrate <shadow>`: AST-diff the desktop shadow against its core sibling, rewrite
   the core file to wrap the diverging element(s) in `<Seam>`, generate the

@@ -35,4 +35,18 @@
   moved into the relocation work (it only matters once real `.desktop.tsx` files
   with testids exist).
 
+- **DRIFT-1.5** — verdict: resolved — memory/module reclassified from `.desktop.tsx`
+  relocation BACK to a tier-1 desktop-tree module. Surfaced by the relocation agent:
+  `module.tsx` files are discovered by `import.meta.glob`, which BYPASSES the `@/`
+  resolver — so a core-tree `module.desktop.tsx` is found by neither
+  `desktop-loader.ts` (globs the desktop tree, from which the file was removed) nor
+  the core `loader.ts` (globs the literal `module.tsx`, which `module.desktop.tsx`
+  does not match). Relocating it orphaned the `memory-desktop` module (a real
+  regression). Reverted to `desktop/ui/src/modules/memory/module.tsx` (its original,
+  working, glob-discovered location). Net: `.desktop.tsx` relocations = 4 (AuthGuard,
+  LeftSidebar, HeaderBarContainer, ProviderGroupAssignmentCard); memory/module +
+  the 2 sidebar overrides retained as tier-1 shadows. GENERAL RULE (documented in
+  UI_OVERRIDES.md + a codemod guard candidate): `.desktop.tsx` co-location works
+  only for `@/`-imported files, NEVER for glob-discovered `module.tsx`.
+
 **Unresolved drifts:** 0
