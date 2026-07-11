@@ -38,6 +38,13 @@ pub fn scheduler_router() -> ApiRouter {
             aide::axum::routing::post_with(handlers::continue_run, handlers::continue_run_docs),
         )
         .api_route(
+            "/scheduled-tasks/{id}/continue-series",
+            aide::axum::routing::post_with(
+                handlers::continue_series,
+                handlers::continue_series_docs,
+            ),
+        )
+        .api_route(
             "/scheduler/admin-settings",
             get_with(handlers::get_admin_settings, handlers::get_admin_settings_docs)
                 .put_with(handlers::update_admin_settings, handlers::update_admin_settings_docs),

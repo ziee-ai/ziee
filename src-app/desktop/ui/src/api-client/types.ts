@@ -645,11 +645,20 @@ export type ContentBlockDelta = {
 }
 
 /**
- * Response of the continue-in-chat endpoint: the id of the freshly-seeded
- *  conversation the client should navigate to.
+ * Response of the continue endpoints: the id of the freshly-seeded conversation
+ *  the client should navigate to.
  */
 export interface ContinueResult {
   conversation_id: string
+}
+
+/**
+ * Query params for the series follow-up (ITEM-43 / DEC-22). `limit` is the
+ *  number of most-recent runs to fold into the seeded discussion (chooser
+ *  {5,10,all-loaded}); server-clamped.
+ */
+export interface ContinueSeriesParams {
+  limit?: number
 }
 
 /** Conversation entity - Represents a chat conversation with an AI assistant */
@@ -4816,6 +4825,27 @@ export interface RunActionAck {
   status: string
 }
 
+/**
+ * A page of run history (ITEM-41) — the paged envelope the runs panel consumes.
+ *  Mirrors `mcp/tool_calls`' page shape.
+ */
+export interface RunsPage {
+  page: number
+  per_page: number
+  runs: ScheduledTaskRun[]
+  total: number
+}
+
+/**
+ * GET /api/scheduled-tasks/{id}/runs — the task's firing history (Runs tab).
+ *  Query params for the paged runs list (ITEM-41). Defaults mirror the
+ *  `RUNS_PAGE_SIZE` UX constant (DEC-20).
+ */
+export interface RunsPageParams {
+  page?: number
+  per_page?: number
+}
+
 export interface RuntimeSettings {
   auto_start_timeout_secs: number
   created_at: string
@@ -5430,6 +5460,11 @@ export interface ScheduledTask {
 
 /** A row of `scheduled_task_runs` — one per firing (the "Runs" history). */
 export interface ScheduledTaskRun {
+  /**
+   * Round 2 (ITEM-40): `{ changed, new_count, new_items? }` from change-detection,
+   *  driving the run row's what-changed badge; NULL when not applicable.
+   */
+  change_summary_json?: unknown
   conversation_id?: string
   error_class?: string
   error_message?: string
@@ -5437,6 +5472,11 @@ export interface ScheduledTaskRun {
   fired_at: string
   id: string
   notification_id?: string
+  /**
+   * Round 2 (ITEM-40): a short plain-text digest of the result for the runs
+   *  timeline; NULL for pre-migration-155 rows + failed/pause rows.
+   */
+  result_preview?: string
   scheduled_task_id: string
   /**
    * Tools skipped this firing because they weren't permitted unattended
@@ -7853,6 +7893,7 @@ export const ApiEndpoints = {
   'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
   'ScheduledTask.continueRun': 'POST /api/scheduled-tasks/runs/{run_id}/continue',
+  'ScheduledTask.continueSeries': 'POST /api/scheduled-tasks/{id}/continue-series',
   'ScheduledTask.create': 'POST /api/scheduled-tasks',
   'ScheduledTask.delete': 'DELETE /api/scheduled-tasks/{id}',
   'ScheduledTask.get': 'GET /api/scheduled-tasks/{id}',
@@ -8295,11 +8336,12 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
   'ScheduledTask.continueRun': { run_id: string }
+  'ScheduledTask.continueSeries': { id: string; limit?: number }
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }
   'ScheduledTask.list': void
-  'ScheduledTask.listRuns': { id: string }
+  'ScheduledTask.listRuns': { id: string } & PaginationQuery
   'ScheduledTask.runNow': { id: string }
   'ScheduledTask.testFire': TestFireRequest
   'ScheduledTask.update': { id: string } & UpdateScheduledTask
@@ -8737,11 +8779,12 @@ export type ApiEndpointResponses = {
   'RuntimeVersion.syncCache': SyncCacheResponse
   'RuntimeVersion.usage': VersionUsageResponse
   'ScheduledTask.continueRun': ContinueResult
+  'ScheduledTask.continueSeries': ContinueResult
   'ScheduledTask.create': ScheduledTask
   'ScheduledTask.delete': void
   'ScheduledTask.get': ScheduledTask
   'ScheduledTask.list': ScheduledTask[]
-  'ScheduledTask.listRuns': ScheduledTaskRun[]
+  'ScheduledTask.listRuns': RunsPage
   'ScheduledTask.runNow': ScheduledTask
   'ScheduledTask.testFire': TestFireResult
   'ScheduledTask.update': ScheduledTask

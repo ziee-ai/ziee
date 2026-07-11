@@ -392,9 +392,9 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
         INSERT INTO scheduled_task_runs (
             scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
-            skipped_tools, fired_at, finished_at
+            skipped_tools, result_preview, change_summary_json, fired_at, finished_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NOW())
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW())
         RETURNING id
         "#,
         run.scheduled_task_id,
@@ -407,6 +407,8 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
         run.workflow_run_id,
         run.conversation_id,
         serde_json::to_value(&run.skipped_tools).unwrap_or_else(|_| serde_json::json!([])),
+        run.result_preview,
+        run.change_summary,
         to_offset(run.fired_at),
     )
     .fetch_one(pool)
@@ -434,12 +436,18 @@ pub async fn prune_runs_older_than(
 }
 
 /// A task's firing history, newest-first (owner-scoped via the task).
+/// ITEM-41: a page of run history, newest-first, owner-scoped, with the total
+/// count for the `ListPagination` "Showing N of M". `page` is 1-based; `per_page`
+/// is clamped to a sane band.
 pub async fn list_runs_for_task(
     pool: &PgPool,
     user_id: Uuid,
     task_id: Uuid,
-    limit: i64,
-) -> Result<Vec<ScheduledTaskRun>, AppError> {
+    page: i64,
+    per_page: i64,
+) -> Result<(Vec<ScheduledTaskRun>, i64), AppError> {
+    let per_page = per_page.clamp(1, 200);
+    let offset = (page - 1).max(0) * per_page;
     let rows = sqlx::query_as!(
         ScheduledTaskRun,
         r#"
@@ -447,20 +455,32 @@ pub async fn list_runs_for_task(
             id, scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
             skipped_tools as "skipped_tools: _",
+            result_preview, change_summary_json,
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE scheduled_task_id = $1 AND user_id = $2
         ORDER BY fired_at DESC
-        LIMIT $3
+        LIMIT $3 OFFSET $4
         "#,
         task_id,
         user_id,
-        limit.clamp(1, 200),
+        per_page,
+        offset,
     )
     .fetch_all(pool)
     .await
     .map_err(AppError::database_error)?;
-    Ok(rows)
+
+    let total = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM scheduled_task_runs WHERE scheduled_task_id = $1 AND user_id = $2"#,
+        task_id,
+        user_id,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok((rows, total))
 }
 
 /// Fetch a single run row owner-scoped (its `user_id` denormalizes the task
@@ -477,6 +497,7 @@ pub async fn get_run_for_user(
             id, scheduled_task_id, user_id, trigger, status, error_class,
             error_message, notification_id, workflow_run_id, conversation_id,
             skipped_tools as "skipped_tools: _",
+            result_preview, change_summary_json,
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE id = $1 AND user_id = $2
@@ -592,6 +613,8 @@ mod tests {
             workflow_run_id: None,
             conversation_id: None,
             skipped_tools: Vec::new(),
+            result_preview: Some("preview".to_string()),
+            change_summary: Some(serde_json::json!({"changed": true, "new_count": 0, "new_items": []})),
             fired_at,
         }
     }
@@ -672,11 +695,41 @@ mod tests {
         let deleted = prune_runs_older_than(&pool, cutoff).await.expect("prune");
         assert!(deleted >= 1, "at least the 40-day-old run is pruned");
 
-        let remaining = list_runs_for_task(&pool, user, task, 100)
+        let (remaining, _total) = list_runs_for_task(&pool, user, task, 1, 100)
             .await
             .expect("list runs");
         let ids: Vec<Uuid> = remaining.iter().map(|r| r.id).collect();
         assert!(!ids.contains(&old_run), "the old run (fired_at < cutoff) is pruned");
         assert!(ids.contains(&new_run), "the recent run (fired_at >= cutoff) is retained");
+    }
+
+    // TEST-43 (ITEM-41): `list_runs_for_task` pages newest-first with a correct total.
+    #[tokio::test]
+    async fn list_runs_paginates_newest_first_with_total() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        let task = seed_prompt_task(&pool, user, "paged", true).await;
+
+        // Insert 3 runs at increasing fired_at (r2 newest).
+        let base = Utc::now() - chrono::Duration::days(3);
+        let mut ids = Vec::new();
+        for i in 0..3 {
+            let id = insert_run(&pool, run_for(task, user, base + chrono::Duration::days(i)))
+                .await
+                .expect("run");
+            ids.push(id);
+        }
+
+        // Page 1, per_page 2 → the two newest (r2, r1); total = 3.
+        let (page1, total) = list_runs_for_task(&pool, user, task, 1, 2).await.expect("page1");
+        assert_eq!(total, 3, "total counts all runs");
+        assert_eq!(page1.len(), 2, "per_page bounds the page");
+        assert_eq!(page1[0].id, ids[2], "newest first");
+        assert_eq!(page1[1].id, ids[1]);
+
+        // Page 2 → the remaining oldest run, no overlap.
+        let (page2, _t) = list_runs_for_task(&pool, user, task, 2, 2).await.expect("page2");
+        assert_eq!(page2.len(), 1);
+        assert_eq!(page2[0].id, ids[0], "oldest on the last page");
     }
 }
