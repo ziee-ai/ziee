@@ -38,7 +38,17 @@ Backend: **41 lib unit** + **11 integration** (streaming/settings, incl. cap) + 
 - **TEST-14**: PASS — `visual-states.spec.ts`: the recording-with-live-caption state renders with zero runtime-health findings (A7 voice-surface boot canary).
 - **TEST-15**: PASS — `voice-desktop-surface.spec.ts` (2 tests): the streaming-augmented voice module glob-discovers into the desktop bundle (settings menu + voice item) and boots without a root ErrorBoundary crash. (Root cause of the earlier failure was environmental — a stray Vite dev server squatting port 1420 with the *core* UI, which the desktop e2e's `reuseExistingServer` reused; freeing the port fixed it. Not a Mac-host limitation.)
 
-The one non-passing 14-voice spec (`voice-runtime-admin.spec.ts:74`, TEST-28 — non-admin forbidden from `/settings/voice`) is **pre-existing and NOT in this diff**: every code path it exercises (route + `voice::admin::read` gate + router-forbidden component + `loginWithPerms`) is byte-identical to main.
+**`voice-runtime-admin.spec.ts:74`** (TEST-28, non-admin forbidden from `/settings/voice`) — RAN + FIXED. On the merged tree it was the sole 14-voice failure (`.last-run.json`). Root cause (empirical): `/settings/voice` resolves through the settings shell, which renders the **settings-section 403** (`settings-forbidden-result`), but the spec waited only for the **router-level** `router-route-forbidden-result`. That mechanism predates this work (present at `af44c73c2`), and the non-voice `literature/admin-settings.spec.ts` already uses the robust `[router-route-forbidden-result], [settings-forbidden-result]` selector for the same reason — so the voice spec was stale, not caused by the streaming diff. Fixed to the same dual-selector and **ran it**: `voice-runtime-admin.spec.ts` → **2 passed (playwright rc=0)** on the merged tree. (The isolated origin/main worktree e2e couldn't complete — the throwaway worktree's cold e2e global-setup is killed by the harness — but the fix mirrors the codebase's proven pattern and is verified passing on the merged base.)
+
+## Merge with current origin/main (tip `eedd8f7f2`)
+
+Merged origin/main (118 commits). Migration renumbered **153 → 154** (`153` taken by
+`scheduled_task_unattended_tools` on main). All merge conflicts were in **generated**
+files (openapi.json ×2, testIds.generated, stateMatrix.generated, STATE_MATRIX.md) —
+resolved by **regenerating** (`--generate-openapi` for BOTH ui/ + desktop/ui/;
+`gen-testid-registry` + `gen-state-matrix`), never hand-edited. Merged server
+`cargo check` clean (migration 154 + main's migrations applied, sqlx verified); ui +
+desktop `tsc` clean; `types_ts_parity` golden holds.
 
 ## Environmental notes (not this diff)
 
