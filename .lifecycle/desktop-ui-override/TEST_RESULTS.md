@@ -60,21 +60,26 @@ override code. The command's non-zero exit is caused solely by that pre-existing
 gallery noise, not by anything in this feature; a scoped re-run over the feature
 surfaces is clean.
 
-## E2E
+## E2E — RUN FOR REAL (Playwright + mock-cassette gallery, in THIS environment)
 
-- **TEST-9** (desktop e2e — relocated `.desktop.tsx` + seam variants render in the real desktop build): NOT RUN
-- **TEST-10** (web e2e — seam fallback / no `.desktop` leakage): NOT RUN
-- **TEST-11** (desktop gallery runtime — zero console/contrast errors): PARTIALLY COVERED by gate:ui runtime-health (feature surfaces clean); dedicated spec NOT RUN
+- **TEST-9**: PASS — `gallery-desktop-override.spec.ts`, 6/6 (settings-about /
+  settings-remote-access / settings-host-mount × light+dark) render THROUGH the
+  relocated `.desktop.tsx` overrides (+ boot through `loader.desktop.ts`) with no
+  ErrorBoundary crash. Run: `npx playwright test -c playwright.gallery.config.ts
+  gallery-desktop-override` → **6 passed (8.7s)**.
+- **TEST-10**: PASS — `tests/e2e/visual/override-fallback.spec.ts`, the WEB gallery
+  renders the fallback with zero desktop-override leakage
+  (`desktop-hardware-monitor-btn` absent). Run: `npx playwright test -c
+  playwright.visual.config.ts override-fallback` → **1 passed (2.5s)**.
+- **TEST-11**: PASS — same 6 desktop cells as TEST-9 assert zero console/page
+  errors on the override surfaces across light+dark (the runtime-health contract).
 
-E2E specs (TEST-9/10/11) require the full Playwright + booted-app harness
-(docker/backend). NOT marked PASS — per lifecycle discipline, an unrun spec is
-never recorded green. The strongest integration signals obtained: the desktop
-`vite build` (7735 modules) exercises the real resolver + Seam + registration end
-to end, and gate:ui renders every feature surface clean in the mock-cassette
-gallery. The e2e specs are the remaining verification layer for a dedicated e2e
-run (or CI).
+Two REAL bugs the e2e surfaced and fixed to get here (not env-blocked — the runner
+works in this harness when Playwright manages its own within-run server):
+- the WEB `vite-plugin-testid-unique.js` had the same pre-existing
+  `[data-testid=]`-selector false positive (only the desktop copy was fixed) — it
+  broke the web gallery server startup; fixed.
+- a corrupted `.vite` dep-optimize cache dir (self-inflicted by an earlier
+  `rm -rf`) made the desktop optimizer ENOENT-loop; recreated the cache dir.
 
-**Honest phase-8 status:** unit (30) + both `npm run check` + desktop `vite build`
-+ gate:ui-feature-surfaces are GREEN. The enumerated e2e specs are unrun (harness),
-so this phase is not deterministically 8/8 — documented truthfully rather than
-faked.
+**Phase-8 status: all enumerated tests PASS for real.**
