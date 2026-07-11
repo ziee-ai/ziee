@@ -83,6 +83,11 @@ test.describe('Knowledge Base — citation flow (real LLM)', () => {
     // The tool-capable model fires search_knowledge → the transparency card renders.
     const card = byTestId(page, 'kb-tool-result-card')
     await expect(card).toBeVisible({ timeout: 120_000 })
+
+    // FB-14: the card is DEFAULT-COLLAPSED — passages are hidden until the header
+    // toggle expands it.
+    await expect(byTestId(page, 'kb-tool-result-hits')).toHaveCount(0)
+    await byTestId(page, 'kb-tool-result-toggle').click()
     await expect(byTestId(page, 'kb-tool-result-hits')).toBeVisible()
 
     // "Open source" opens the right-panel kb_source viewer (a tab for the cited doc).

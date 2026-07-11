@@ -96,6 +96,12 @@ export function FindableRegion({
   const supported = isHighlightSupported()
   const open = Stores.File.fileFindOpen.get(fileId) ?? false
   const [query, setQuery] = useState('')
+  // An external query (e.g. a KB citation's passage text) drives find to
+  // highlight + scroll to it — the text/markdown analog of the PDF highlight.
+  const externalQuery = Stores.File.fileFindQuery.get(fileId) ?? ''
+  useEffect(() => {
+    if (externalQuery) setQuery(externalQuery)
+  }, [externalQuery])
   const contentRef = useRef<HTMLDivElement>(null)
   const regionRef = useRef<HTMLDivElement>(null)
 

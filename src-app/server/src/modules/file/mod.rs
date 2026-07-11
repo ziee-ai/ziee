@@ -13,6 +13,7 @@ pub mod available_files;
 pub mod chat_extension;
 pub mod config;
 pub mod deliverables;
+pub mod geometry_backfill;
 pub mod handlers;
 pub mod ingest;
 pub mod models;
@@ -80,6 +81,12 @@ impl AppModule for FileModule {
         init_file_storage(storage_path.to_str().unwrap_or("./data/files"));
 
         tracing::info!("File module initialized with storage path: {:?}", storage_path);
+
+        // Backfill citation geometry for files ingested before geometry existed
+        // (or that failed capture) so their citations get exact-passage
+        // highlights. Detached + single-flight + bounded per boot.
+        tokio::spawn(async move { geometry_backfill::run_geometry_backfill().await });
+
         Ok(())
     }
 

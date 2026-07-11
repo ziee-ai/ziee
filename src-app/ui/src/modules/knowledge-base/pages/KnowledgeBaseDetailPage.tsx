@@ -8,9 +8,12 @@ import {
   Button,
   Card,
   Descriptions,
+  Empty,
   Progress,
   Result,
   Spin,
+  Tag,
+  Text,
   Title,
 } from '@/components/ui'
 import { Stores } from '@/core/stores'
@@ -19,12 +22,20 @@ import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { KnowledgeBaseDocumentsPanel } from '@/modules/knowledge-base/components/KnowledgeBaseDocumentsPanel'
+import { KnowledgeBaseSearchPanel } from '@/modules/knowledge-base/components/KnowledgeBaseSearchPanel'
+
+/** Human label for the deployment retrieval mode line. */
+const RETRIEVAL_LABEL: Record<string, string> = {
+  hybrid_rerank: 'Hybrid + reranker',
+  hybrid: 'Hybrid (semantic + keyword)',
+  keyword_only: 'Keyword-only (no embedding model)',
+}
 import { KnowledgeBaseFormDrawer } from '@/modules/knowledge-base/components/KnowledgeBaseFormDrawer'
 
 export function KnowledgeBaseDetailPage() {
   const { kbId } = useParams<{ kbId: string }>()
   const navigate = useNavigate()
-  const { kb, loading } = Stores.KnowledgeBaseDetail
+  const { kb, loading, retrievalInfo, usage } = Stores.KnowledgeBaseDetail
   const [editOpen, setEditOpen] = useState(false)
 
   useEffect(() => {
@@ -99,6 +110,13 @@ export function KnowledgeBaseDetailPage() {
               items={[
                 { key: 'documents', label: 'Documents', children: String(kb.document_count) },
                 { key: 'indexed', label: 'Indexed', children: `${s.indexed} / ${s.total}` },
+                ...(retrievalInfo
+                  ? [{
+                      key: 'retrieval',
+                      label: 'Retrieval',
+                      children: RETRIEVAL_LABEL[retrievalInfo.mode] ?? retrievalInfo.mode,
+                    }]
+                  : []),
                 ...(s.failed > 0
                   ? [{ key: 'failed', label: 'Failed', children: String(s.failed) }]
                   : []),
@@ -121,8 +139,56 @@ export function KnowledgeBaseDetailPage() {
             )}
           </Card>
 
-          <Card data-testid="kb-detail-documents" title="Documents">
-            {kbId && <KnowledgeBaseDocumentsPanel kbId={kbId} />}
+          {/* Verify retrieval works on this KB, without opening a chat (DEC-40). */}
+          {kbId && <KnowledgeBaseSearchPanel kbId={kbId} />}
+
+          {/* The documents panel renders its OWN Card (title + count tag +
+              Add-documents in the top-right extra) — checked against the
+              surrounding Overview card + the LlmModelsSection/MyMemoriesSection
+              title-with-extra precedent, not designed in isolation. */}
+          {kbId && <KnowledgeBaseDocumentsPanel kbId={kbId} />}
+
+          {/* Where this KB is used — scope legibility. */}
+          <Card data-testid="kb-detail-used-in" title="Used in">
+            {usage && (usage.conversations.length > 0 || usage.projects.length > 0) ? (
+              <div className="flex flex-col gap-2">
+                {usage.projects.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Text type="secondary" className="text-xs">Projects</Text>
+                    {usage.projects.map(p => (
+                      <Tag
+                        key={p.id}
+                        className="cursor-pointer"
+                        data-testid={`kb-used-in-project-${p.id}`}
+                        onClick={() => navigate(`/projects/${p.id}`)}
+                      >
+                        {p.label}
+                      </Tag>
+                    ))}
+                  </div>
+                )}
+                {usage.conversations.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Text type="secondary" className="text-xs">Chats</Text>
+                    {usage.conversations.map(c => (
+                      <Tag
+                        key={c.id}
+                        className="cursor-pointer"
+                        data-testid={`kb-used-in-conversation-${c.id}`}
+                        onClick={() => navigate(`/chat/${c.id}`)}
+                      >
+                        {c.label}
+                      </Tag>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Empty
+                data-testid="kb-detail-used-in-empty"
+                description="Not attached to any conversation or project yet."
+              />
+            )}
           </Card>
         </div>
       </DivScrollY>

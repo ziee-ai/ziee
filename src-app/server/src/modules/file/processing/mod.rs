@@ -87,21 +87,15 @@ impl ProcessingManager {
                 let metadata_json = processor.extract_metadata(data, mime_type).await?;
                 result.metadata = serde_json::from_value(metadata_json)
                     .unwrap_or_default();
-                // Citation geometry: only PDFs carry per-char boxes today. Best-
-                // effort — a failure just means the citation UI opens the page
-                // without an exact-passage highlight.
-                if mime_type == "application/pdf" {
-                    result.geometry_pages = match pdf::PdfProcessor
-                        .extract_geometry_pages(data)
-                        .await
-                    {
-                        Ok(g) => g,
-                        Err(e) => {
-                            tracing::warn!("geometry: extract_geometry_pages failed: {e}");
-                            Vec::new()
-                        }
-                    };
-                }
+                // Citation geometry: per-char boxes for the exact-passage
+                // highlight. PDFs capture directly; Office docs via their PDF
+                // render; everything else returns none (page-level fallback).
+                // Best-effort — a failure just opens the page without a box.
+                result.geometry_pages =
+                    processor.extract_geometry(data, mime_type).await.unwrap_or_else(|e| {
+                        tracing::warn!("geometry: extract_geometry failed: {e}");
+                        Vec::new()
+                    });
                 break;
             }
         }
@@ -152,6 +146,21 @@ impl ProcessingManager {
         }
 
         Ok(result)
+    }
+
+    /// Geometry-only extraction for the backfill pass — find the processor for
+    /// `mime_type` and capture per-page citation geometry. Empty on any failure
+    /// or when no processor handles the type (page-level fallback).
+    pub async fn geometry_pages(&self, data: &[u8], mime_type: &str) -> Vec<String> {
+        for processor in &self.content_processors {
+            if processor.can_process(mime_type) {
+                return processor
+                    .extract_geometry(data, mime_type)
+                    .await
+                    .unwrap_or_default();
+            }
+        }
+        Vec::new()
     }
 }
 

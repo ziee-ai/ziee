@@ -4,6 +4,7 @@ import type { MessageContent } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
+import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
 import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
 
@@ -40,7 +41,7 @@ export const TextContent = memo(function TextContent({
           components={components}
           urlTransform={streamdownUrlTransform}
         >
-          {textData.text}
+          {citationTokenize(textData.text)}
         </Streamdown>
       </StreamdownErrorBoundary>
     </div>

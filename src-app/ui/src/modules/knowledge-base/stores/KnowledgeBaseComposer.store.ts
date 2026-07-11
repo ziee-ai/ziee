@@ -24,6 +24,9 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
     currentConversationId: null as string | null,
     /** Direct conversation attachments (also the pending buffer when id null). */
     selectedKbIds: new Set<string>(),
+    /** KBs inherited (read-only) from the conversation's project — shown as
+     *  distinct non-removable chips so the active retrieval scope is legible. */
+    inheritedKbIds: new Set<string>(),
     loading: false,
   },
   actions: (set, get) => ({
@@ -52,8 +55,29 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
     setCurrentConversation: (conversationId: string | null): void => {
       set(draft => {
         draft.currentConversationId = conversationId
-        if (!conversationId) draft.selectedKbIds = new Set()
+        if (!conversationId) {
+          draft.selectedKbIds = new Set()
+          draft.inheritedKbIds = new Set()
+        }
       })
+    },
+
+    /** Load the read-only KBs inherited from the conversation's project (if any). */
+    loadInherited: async (projectId: string | null): Promise<void> => {
+      if (!projectId) {
+        set(draft => {
+          draft.inheritedKbIds = new Set()
+        })
+        return
+      }
+      try {
+        const kbs = await ApiClient.KnowledgeBase.listProject({ pid: projectId })
+        set(draft => {
+          draft.inheritedKbIds = new Set((kbs ?? []).map(kb => kb.id))
+        })
+      } catch {
+        /* transient */
+      }
     },
 
     /** Attach a KB. Persists immediately for a real conversation; buffers otherwise. */

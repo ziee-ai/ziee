@@ -226,6 +226,51 @@ impl ContentProcessor for OfficeProcessor {
         }
     }
 
+    /// Per-page citation geometry for Word-style docs — captured from the same
+    /// PDF render used for text (page-aligned), so office citations get an
+    /// exact-passage highlight too. Spreadsheets/other → none (page-level).
+    async fn extract_geometry(
+        &self,
+        data: &[u8],
+        mime_type: &str,
+    ) -> Result<Vec<String>, AppError> {
+        let extension = match Self::extension_from_mime(mime_type) {
+            Some(e) => e,
+            None => return Ok(vec![]),
+        };
+        match mime_type {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            | "application/msword"
+            | "application/rtf"
+            | "text/rtf"
+            | "application/vnd.oasis.opendocument.text" => {
+                let temp_path = Self::write_temp_file(data, extension)?;
+                let temp_dir =
+                    std::env::temp_dir().join(format!("office_geom_pdf_{}", Uuid::new_v4()));
+                fs::create_dir_all(&temp_dir).map_err(AppError::internal_with_id)?;
+                let temp_pdf = temp_dir.join("document.pdf");
+                let converted = pandoc::convert_to_pdf(&temp_path, &temp_pdf).await;
+                Self::cleanup_temp_file(&temp_path);
+                let geometry = match converted {
+                    Ok(_) => match fs::read(&temp_pdf) {
+                        Ok(pdf_data) => PdfProcessor
+                            .extract_geometry_pages(&pdf_data)
+                            .await
+                            .unwrap_or_default(),
+                        Err(_) => vec![],
+                    },
+                    Err(e) => {
+                        tracing::warn!("geometry: {} PDF conversion failed: {e}", extension);
+                        vec![]
+                    }
+                };
+                let _ = fs::remove_dir_all(&temp_dir);
+                Ok(geometry)
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
     async fn extract_metadata(
         &self,
         data: &[u8],

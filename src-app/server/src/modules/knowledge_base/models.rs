@@ -31,7 +31,10 @@ pub struct IndexingSummary {
     pub pending: i64,
 }
 
-/// One document in a KB, with its derived index status.
+/// One document in a KB, with its derived index status plus the file metadata
+/// the documents panel's `FileCard` needs (thumbnail + size/type subtitle) —
+/// so the KB panel reuses the same `FileCard` row the project knowledge-files
+/// panel uses, instead of a hand-rolled list row.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct KnowledgeBaseDocument {
     pub file_id: Uuid,
@@ -41,6 +44,11 @@ pub struct KnowledgeBaseDocument {
     /// `pending` when no state row exists yet).
     pub index_status: String,
     pub chunk_count: i64,
+    /// File metadata (from `files`) for the FileCard thumbnail + subtitle.
+    pub file_size: i64,
+    pub mime_type: Option<String>,
+    pub has_thumbnail: bool,
+    pub preview_page_count: i32,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -83,6 +91,57 @@ pub struct KnowledgeSearchHit {
     pub char_end: i32,
     pub score: f64,
     pub content: String,
+}
+
+/// Deployment-wide retrieval capability (from `file_rag_admin_settings`), so the
+/// KB detail page can show a "Retrieval: hybrid + reranker / hybrid /
+/// keyword-only" line + whether an embedding / reranker model is configured.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct RetrievalInfo {
+    /// `hybrid_rerank` | `hybrid` | `keyword_only`.
+    pub mode: String,
+    pub embedding_configured: bool,
+    pub rerank_enabled: bool,
+}
+
+/// Request body for the detail-page "test retrieval" search box (REST mirror of
+/// the `search_knowledge` MCP tool, scoped to one KB).
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct KnowledgeBaseSearchRequest {
+    pub query: String,
+    #[serde(default)]
+    pub top_k: Option<i64>,
+}
+
+/// How much of the KB is searchable vs total (background indexing may lag).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct IndexingIncomplete {
+    pub searchable: i64,
+    pub total: i64,
+}
+
+/// Result of a direct KB search (detail-page box) — the same hits + mode +
+/// indexing signal the chat tool returns, so a user can verify retrieval.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct KnowledgeBaseSearchResponse {
+    pub hits: Vec<KnowledgeSearchHit>,
+    pub mode: String,
+    pub indexing_incomplete: IndexingIncomplete,
+}
+
+/// One place a KB is attached (a conversation or a project), for the
+/// "Used in" card. `label` is the conversation title / project name.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UsageRef {
+    pub id: Uuid,
+    pub label: String,
+}
+
+/// Where a KB is currently attached (owner-scoped), for the "Used in" card.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct KnowledgeBaseUsage {
+    pub conversations: Vec<UsageRef>,
+    pub projects: Vec<UsageRef>,
 }
 
 /// Compiled DEFAULT for the per-KB document cap (DEC-14). The LIVE cap is

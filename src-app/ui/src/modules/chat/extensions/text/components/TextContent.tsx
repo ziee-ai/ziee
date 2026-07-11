@@ -8,6 +8,7 @@ import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErr
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
 import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
 import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
+import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
 
 interface TextContentProps {
   content: MessageContent
@@ -46,7 +47,10 @@ export const TextContent = memo(function TextContent({
           components={components}
           urlTransform={streamdownUrlTransform}
         >
-          {preprocessMarkdown(textData.text)}
+          {preprocessMarkdown(
+            // Assistant-only: rewrite bare `[n]` KB citations into chip links.
+            isUser ? textData.text : citationTokenize(textData.text),
+          )}
         </Streamdown>
       </StreamdownErrorBoundary>
     </div>

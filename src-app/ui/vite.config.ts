@@ -55,7 +55,7 @@ export default defineConfig(async () => {
   },
 
   server: {
-    port: 1420,
+    port: Number(process.env.VITE_DEV_PORT) || 1420,
     strictPort: true,
     host: host || false,
     hmr: host
@@ -73,7 +73,7 @@ export default defineConfig(async () => {
     },
     proxy: {
       '/api/': {
-        target: 'http://localhost:3000/',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:3000/',
         changeOrigin: true,
         // xfwd: http-proxy sets X-Forwarded-For/Port/Proto but NOT
         // X-Forwarded-Host. The backend's OAuth-authorize handler
