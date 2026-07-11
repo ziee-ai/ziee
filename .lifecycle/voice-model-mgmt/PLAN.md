@@ -34,7 +34,7 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 
 ### Backend — data + catalog
 - **ITEM-1**: Migration `00000000000155_create_voice_models.sql` — (a) `voice_models` table
-  `(id uuid pk, name, filename unique, source enum['catalog','url','upload'], source_url nullable, size_bytes bigint, sha256 char(64) nullable, verified bool, created_at)` mirroring `voice_runtime_versions` (mig 151); (b) `ALTER TABLE voice_runtime_settings ADD COLUMN model_source_repo VARCHAR(200) DEFAULT 'ggerganov/whisper.cpp'` (the admin-configurable model source, DEC-17). No new permission migration (reuse `voice::admin::*`).
+  `(id uuid pk, name, filename unique, source enum['catalog','url','upload'], source_url nullable, size_bytes bigint, sha256 char(64) nullable, verified bool, created_at)` mirroring `voice_runtime_versions` (mig 151); (b) `ALTER TABLE voice_runtime_settings ADD COLUMN model_source_repo VARCHAR(200) DEFAULT 'ggerganov/whisper.cpp'` (the admin-configurable model source, DEC-17); (c) `ALTER TABLE voice_runtime_instance ADD CONSTRAINT ... CHECK (state IN (...))` (ITEM-29 / F7). No new permission migration (reuse `voice::admin::*`).
 - **ITEM-2**: `VoiceModelRow` + `VoiceModelRepository` (CRUD: list, get_by_id, get_by_filename, insert, delete) in `voice/repository.rs` + a `voice/models.rs` DTO (`VoiceModel`, `VoiceModelSource`). Mirror `runtime_version` repository idioms.
 - **ITEM-3**: Runtime **catalog fetch** in new `voice/model_catalog.rs` — query the HF model/tree API for the configured source repo (default `ggerganov/whisper.cpp`), filter `ggml-*.bin` (multilingual/.en/quantized), read each file's LFS `oid` (= sha256) + size. Short-TTL cache + a `check-updates`/refresh path (mirror `runtime_version` upstream fetch). **Graceful degradation**: a fetch failure yields an empty list + a surfaced "source unreachable" state — never a crash; upload + arbitrary-URL + installed models are unaffected. The list-fetch uses a **trusted** outbound policy (admin-configured source may be an internal mirror/loopback), distinct from the user-URL boundary in ITEM-5 (mirrors web_search's SearXNG-trusted vs page-fetch-strict split).
 
@@ -81,6 +81,47 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
   "source unreachable" empty/error state when the fetch fails (upload + arbitrary-URL + installed
   unaffected). (DEC-16.)
 
+### Runtime parity fixes (FB-2 — Tier A+B+C; see RUNTIME_PARITY_AUDIT.md)
+- **ITEM-24**: (F1+F2) Fix crash-recovery wiring in `voice/auto_start.rs::ensure_running` — when a
+  persisted-`running` row's health probe fails, feed `HealthEvent::Crashed` on the REQUEST path
+  (mirror `llm_local_runtime/auto_start.rs::probe_liveness`) so the 5/60s flap cap trips without
+  waiting for the 60s reaper poll; and ENFORCE the `Transition::Restart { next_at }` backoff gate
+  (return "restart backoff" before `next_at`), and stop `mark_starting()` from clobbering a
+  `Restarting` state. Do NOT weaken the existing pre-healthy-crash protection.
+- **ITEM-25**: (F3) Model-download cancellation + shutdown-race + temp cleanup — the new
+  `model_download_task` (ITEM-4) registers a per-download cancel token AND races the module
+  `SHUTDOWN` Notify; on cancel/abort/shutdown it removes the uuid `.tmp` (fix the leak at
+  `model.rs:223-227` that only runs on the Err branch). A `POST /voice/models/downloads/{key}/cancel`
+  endpoint (`voice::admin::manage`). Mirror `runtime_version/download_task.rs:303-310`.
+- **ITEM-26**: (F4) Drain-before-respawn on model activate/switch — the activate path (ITEM-7) and
+  the `do_start` model-change path drain in-flight transcriptions (respect `inflight_count()` +
+  `drain_timeout_secs`) before stopping the old process, mirroring `reaper.rs::drain_and_stop`
+  instead of the unconditional `start()`-stops-prior at `deployment/local.rs:205-213`.
+- **ITEM-27**: (F6) `Draining` front-door interlock — a drain sets a flag the transcribe entrypoint
+  (`transcribe.rs`/`stream.rs`) checks, returning 503 `not_ready` for new work during a drain
+  (mirror `llm_local_runtime` `InstanceFlag::Draining`), so new transcriptions don't race the SIGTERM.
+- **ITEM-28**: (F5) `forward_to_whisper` uses a shared `.no_proxy()` reqwest client (a
+  `OnceLock`/`Lazy` pool), matching voice's own `health_check` client (`deployment/local.rs:352`)
+  and the llm proxy pool — no per-request client, no env-proxy routing of loopback inference.
+- **ITEM-29**: (F7) Add the `voice_runtime_instance.state` value `CHECK` constraint in migration 155
+  (`ALTER TABLE ... ADD CONSTRAINT ... CHECK (state IN (...))`), mirroring `migrations/066:9-11`.
+- **ITEM-30**: (F8) Logs surface — wire `GET /voice/instance/logs` + `GET /voice/instance/logs/stream`
+  (SSE) to the already-built-but-dead-coded `logs()`/`subscribe_logs()`/`log_broadcast`
+  (`deployment/local.rs:370-388`, drop the `#[allow(dead_code)]`); gated `voice::admin::read`.
+  Mirror `llm_local_runtime/routes.rs:49-57` + handlers.
+- **ITEM-31**: (F9) Single-download poll-snapshot fallback — `GET /voice/models/downloads/{key}`
+  (non-SSE snapshot for the new model downloads) AND backfill the missing engine-version
+  `GET /voice/versions/downloads/{key}` (the `snapshot_of` builder already exists at
+  `runtime_version/handlers.rs:175`). Mirror `llm_local_runtime/routes.rs:96-99`.
+- **ITEM-32**: (F10) Minor surface parity — `GET /voice/versions/{id}` (single version), a
+  `GET /voice/detect-gpu` route (expose `binary_manager.rs:141`'s recommendation), and surface live
+  `pid`/`uptime_seconds` on `GET /voice/instance` (un-dead the `#[allow(dead_code)]` fields at
+  `deployment/local.rs:57-61`). Mirror the llm `routes.rs:65,81` + `status()` read path.
+- **ITEM-33**: (F8/F10 frontend) Surface the new runtime endpoints in the existing
+  `VoiceInstanceCard.tsx` — a logs viewer (poll + optional SSE tail, mirror the llm-runtime logs UI)
+  and live pid/uptime; wire `api-client` (regen). Keep the voice house style; gated
+  `VoiceAdminRead`. (Only wires new backend surfaces into the one existing instance card — no new page.)
+
 ### Cross-cutting
 - **ITEM-20**: `VOICE_MODEL_MAX_UPLOAD_BYTES` limit (see DECISIONS: fixed constant w/ rationale — whisper models are upstream-bounded ~3 GB) as a named const in `voice/model.rs`, structured for later promotion to a settings column.
 - **ITEM-21**: Responsive: all new cards/rows use the voice house style (`Flex … wrap` + `flex-1 min-w-48`), no breakpoints; verify at 390 px. Gallery: follow the existing voice **DRIFT-1 pending** convention in `dev/gallery/coverage.ts` (voice surfaces are e2e-covered, not gallery cells) — add `coverage.ts` entries for the new cards/drawer marked pending→e2e, and (if a gallery overlay is warranted for the upload drawer) an `overlays.tsx` entry + fixture mirroring `overlay-add-local-llm-model-upload-drawer`.
@@ -96,8 +137,13 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
 - `src/modules/voice/repository.rs` (`VoiceModelRepository`)
 - `src/modules/voice/model_handlers.rs` (new) or extend `instance_handlers.rs` (model REST)
 - `src/modules/voice/routes.rs` (wire the new `/voice/models/*` sub-router)
-- `src/modules/voice/handlers.rs` (relax `validate_settings_patch`)
-- `src/modules/voice/auto_start.rs` + `deployment/local.rs` (resolve active model from installed set)
+- `src/modules/voice/handlers.rs` (relax `validate_settings_patch`; `model_source_repo` validation)
+- `src/modules/voice/auto_start.rs` (resolve active model from installed set; F1/F2 crash-recovery wiring; F4 drain-before-respawn)
+- `src/modules/voice/deployment/local.rs` (F4 drain hook; F5 shared no_proxy client; F10 live pid/uptime + un-dead logs)
+- `src/modules/voice/reaper.rs` (F6 Draining front-door flag)
+- `src/modules/voice/transcribe.rs` + `src/modules/voice/stream.rs` (F5 shared client; F6 drain 503 gate)
+- `src/modules/voice/instance_handlers.rs` (F8 logs routes; F10 versions/{id}, detect-gpu, pid/uptime)
+- `src/modules/voice/runtime_version/{handlers,mod}.rs` (F9 version snapshot route; F10 get-by-id)
 - `src/modules/voice/mod.rs` (register repo/router; wire `model_download_task::shutdown_all`)
 - `src/modules/sync/event.rs` (`VoiceModel` entity)
 - `src/main.rs` (shutdown hook, if not centralized in voice `mod.rs`)

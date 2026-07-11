@@ -92,8 +92,34 @@ Audit of PLAN.md against the current codebase (surveyed), before writing code.
 - **ITEM-23** — verdict: PASS — `VoiceModelUpdate.store` mirrors `VoiceUpdate.store`; update-detection compares recorded sha256 vs upstream oid (additive); graceful-degrade is an empty/error render state, not new control flow.
 
 ## Migration collisions (revised)
-- Migration `155` now also `ALTER`s `voice_runtime_settings` (add `model_source_repo`). Still a
-  single new file at the next free number (154→155); additive column, no data backfill needed
-  (DEFAULT covers existing singleton row). `cargo clean -p ziee` after adding it.
+- Migration `155` now does three things: create `voice_models`, `ALTER voice_runtime_settings ADD
+  model_source_repo`, `ALTER voice_runtime_instance ADD CONSTRAINT CHECK (state IN (...))`. Still a
+  single new file at the next free number (154→155). The CHECK ALTER is safe: the singleton row's
+  existing `state` is always one of the seven valid names (written only by the state machine), so
+  no pre-existing row violates it. Additive column has a DEFAULT (no backfill). `cargo clean -p ziee`
+  after adding it.
+
+## Runtime parity items (FB-2 — ITEM-24..33)
+- **ITEM-24** — verdict: CONCERN — touches the live crash-recovery path; must ADD hot-path `Crashed`
+  + backoff WITHOUT regressing the existing pre-healthy-crash protection or the `is_failed()` gate.
+  Resolved: mirror `probe_liveness` exactly + a supervision integration test (TEST-28).
+- **ITEM-25** — verdict: PASS — the async task already mirrors the SHUTDOWN-race sibling; adds a
+  cancel token + moves `.tmp` cleanup off the Err-only branch.
+- **ITEM-26** — verdict: CONCERN — drain-before-respawn on the model-switch path is a behavior
+  change to `do_start`/`start`; must not deadlock if inflight never drains (bounded by
+  `drain_timeout_secs`, then SIGTERM anyway — mirror `drain_and_stop`). Resolved via TEST-30.
+- **ITEM-27** — verdict: PASS — additive `Draining` flag + a 503 gate on the transcribe entrypoint.
+- **ITEM-28** — verdict: PASS — one shared `.no_proxy()` client; pure improvement/consistency.
+- **ITEM-29** — verdict: PASS — additive CHECK constraint (safe, see migration note).
+- **ITEM-30** — verdict: PASS — wires existing dead-coded `logs()`/`subscribe_logs()` to two routes.
+- **ITEM-31** — verdict: PASS — additive snapshot routes; `snapshot_of` builder already exists.
+- **ITEM-32** — verdict: PASS — additive read routes; un-deads existing fields.
+- **ITEM-33** — verdict: CONCERN — adds a frontend logs viewer (a UI diff → needs e2e TEST-37 +
+  `npm run check`/`gate:ui`). Resolved: mirror the llm-runtime logs UI + the existing voice card style.
+
+**Do-not-regress guard:** ITEM-24/26 modify proven live paths; the drift loop (phase 5) + the blind
+audit (phase 6) must re-check that pre-healthy-crash flap protection, the `is_failed()` gate, and
+the idle-reaper drain are all still intact. Voice's mandatory-sha256 verification stays (not aligned
+down to the llm runtime's weaker posture).
 
 No `BLOCKED` verdicts. CONCERNs are all resolved in-plan (documented dispositions above); none require a plan amendment beyond what PLAN.md already states.
