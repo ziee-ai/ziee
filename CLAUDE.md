@@ -1333,6 +1333,33 @@ Per link it dispatches on the URI:
 - else (`is_saved:false`/`None`, an HTTP URL) — fetched over HTTP (built-in JWT or external
   headers), ingested; skipped when no `jwt_secret` (the dispatcher passes `None`).
 
+**External-link SSRF policy (`choose_fetch_policy`).** A built-in server's link is a trusted
+loopback URL fetched with a plain client. An EXTERNAL server's link is model-/third-party-influenced,
+so it is SSRF-confined: `PUBLIC_HTTP_OR_HTTPS` by default (blocks loopback/RFC1918/IMDS). Two
+relaxations to `MCP_USER` (RFC1918/loopback + IPv6 ULA `fc00::/7` allowed; **IPv4 link-local/IMDS
+`169.254.0.0/16` + IPv6 link-local `fe80::/10` still blocked** — note an IPv6-only ULA metadata
+endpoint is NOT blocked, same as the existing `MCP_USER` policy for user-configured MCP servers):
+- **Same-host trust** — when the link's host matches the host of **any** enabled, accessible MCP
+  server the acting user has (host-only, port ignored: an admin-registered server at `:9004` vouches
+  for its artifact server on the SAME host at `:9005`). The trust set is the UNION of the user's
+  accessible-server hosts (not just the emitting server's own host — a deliberate choice so artifacts
+  can chain across the user's registered hosts; the tradeoff is that a compromised/injected external
+  server could aim a link at another of the user's registered private hosts). Redirects are
+  **disabled** on this path so an off-host redirect can't inherit the allowance. This is what lets
+  same-host multi-container MCP deployments (reached via a private docker gateway) ingest their
+  artifacts. NOTE: `is_system` servers have their `url` redacted in the accessible list, so a
+  same-host server registered as a *system* server isn't covered by this path — use the env opt-in
+  below.
+- **`ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE=1`** — a release-honored (NOT `cfg!(debug_assertions)`-gated)
+  operator opt-in, off by default, that relaxes ALL external fetches to `MCP_USER` (same block/allow
+  set as above). The first release-honored SSRF opt-in (the sibling `*_ALLOW_LOOPBACK` seams are
+  debug-only). (`MCP_RESOURCE_LINK_ALLOW_LOOPBACK=1` remains the debug-only loopback seam.)
+
+Ingest success stamps `file_id` back onto the link → the UI renders the file card via the
+authenticated `/api/files/{id}` path (fixing "Failed to show file"). The HTTP link's LLM-facing URI
+is intentionally NOT rewritten (only `ziee://` host-path links are), so external→external artifact
+chaining keeps working.
+
 **The three `ziee://` guards (security-critical):**
 1. **Trusted-emitter only** — `is_trusted_resource_emitter(server_id)` (all deterministic
    built-in ids; a SUPERSET of the approval-bypass `is_builtin_server_id`, adding
