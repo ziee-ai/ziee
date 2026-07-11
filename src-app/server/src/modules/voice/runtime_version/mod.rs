@@ -11,7 +11,7 @@ pub mod repository;
 
 use aide::axum::{
     ApiRouter,
-    routing::{delete_with, get_with, post_with},
+    routing::{get_with, post_with},
 };
 
 /// Admin REST router for whisper runtime versions.
@@ -37,6 +37,13 @@ pub fn voice_version_router() -> ApiRouter {
             ),
         )
         .api_route(
+            "/voice/versions/downloads/{key}",
+            get_with(
+                handlers::get_download_snapshot,
+                handlers::get_download_snapshot_docs,
+            ),
+        )
+        .api_route(
             "/voice/versions/downloads/{key}/events",
             get_with(
                 handlers::subscribe_download_events,
@@ -45,7 +52,8 @@ pub fn voice_version_router() -> ApiRouter {
         )
         .api_route(
             "/voice/versions/{id}",
-            delete_with(handlers::delete_version, handlers::delete_version_docs),
+            get_with(handlers::get_version, handlers::get_version_docs)
+                .delete_with(handlers::delete_version, handlers::delete_version_docs),
         )
         .api_route(
             "/voice/versions/{id}/set-default",

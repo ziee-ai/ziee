@@ -1168,6 +1168,12 @@ export interface DeleteModelQuery {
   force?: boolean
 }
 
+/** PATCH-ish activate/delete responses reuse `VoiceModel`; delete takes a query ack. */
+export interface DeleteModelQuery2 {
+  /** Acknowledge deleting the currently-active model. */
+  ack_active?: boolean
+}
+
 export interface DeleteProviderResponse {
   affected_user_links: number
   deleted: boolean
@@ -1275,12 +1281,24 @@ export interface DownloadListResponse2 {
   downloads: DownloadSnapshot2[]
 }
 
-/**
- * Optional body for the model download endpoint. Absent `model` → the
- *  currently-configured settings model.
- */
+/** POST body to start a model download. */
 export interface DownloadModelRequest {
-  model?: string
+  /** For an HF-repo download: the file within the repo. */
+  filename?: string
+  /** Catalog: the model name (e.g. `large-v3`). URL/HF: the display name to store as. */
+  name: string
+  /** For an HF-repo download: `owner/repo` (else the configured source repo). */
+  repository?: string
+  /** For a raw-URL download: the full https URL to the model file. */
+  url?: string
+}
+
+/** Response echoing a started download + where to subscribe for progress. */
+export interface DownloadModelStartedResponse {
+  events_url: string
+  key: string
+  name: string
+  task_id: string
 }
 
 export interface DownloadPaginationQuery {
@@ -3029,6 +3047,11 @@ export interface LoginRequest {
    */
   provider?: string
   username: string
+}
+
+export interface LogsQuery {
+  /** How many trailing lines to return (default 200, capped at 1000). */
+  lines?: number
 }
 
 export interface LogsResponse {
@@ -4855,6 +4878,18 @@ export interface RuntimeSettings {
   updated_at: string
 }
 
+/** Whisper runtime version database entity (`voice_runtime_versions`). */
+export interface RuntimeVersion {
+  arch: string
+  backend: string
+  binary_path: string
+  created_at: string
+  id: string
+  is_system_default: boolean
+  platform: string
+  version: string
+}
+
 /** Response containing a list of runtime versions */
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
@@ -5761,6 +5796,18 @@ export interface SkillListResponse {
   skills: Skill[]
 }
 
+/** A non-SSE progress snapshot for a model download (poll fallback + active list). */
+export interface SnapshotDto {
+  bytes_received: number
+  error?: string
+  key: string
+  name: string
+  percent?: number
+  status: string
+  task_id: string
+  total_bytes?: number
+}
+
 export type StartInstanceRequest = any
 
 /** Stream error information */
@@ -5872,7 +5919,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'voice_model' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -6622,6 +6669,7 @@ export interface UpdateVoiceSettingsRequest {
   max_clip_seconds?: number
   max_upload_bytes?: number
   model?: string
+  model_source_repo?: string
   stream_interval_ms?: number
   stream_max_decode_secs?: number
   streaming_enabled?: boolean
@@ -7018,6 +7066,32 @@ export interface VoiceCapability {
   streaming_enabled: boolean
 }
 
+/** One entry in the runtime-fetched downloadable catalog. */
+export interface VoiceCatalogModel {
+  /** English-only variant (name ends in `.en`). */
+  english_only: boolean
+  filename: string
+  /** True when an installed model already covers this catalog entry. */
+  installed: boolean
+  /** Short model name (derived from the ggml filename). */
+  name: string
+  /** Quantization tag (e.g. `q5_1`, `q8_0`) if the filename carries one. */
+  quantization?: string
+  /** The HF-advertised git-LFS oid (sha256) used to verify a download. */
+  sha256?: string
+  /** Advertised size in bytes (HF LFS metadata), if known. */
+  size_bytes?: number
+}
+
+/** The catalog list response (+ a source-reachability signal for graceful degrade). */
+export interface VoiceCatalogResponse {
+  models: VoiceCatalogModel[]
+  /** False when the configured source was unreachable (models will be empty). */
+  source_reachable: boolean
+  /** The source repo the list was fetched from. */
+  source_repo: string
+}
+
 /** Snapshot of the single managed whisper-server instance (singleton row). */
 export interface VoiceInstanceInfo {
   /** Configured/active whisper model file (e.g. `ggml-base.bin`), if any. */
@@ -7028,13 +7102,45 @@ export interface VoiceInstanceInfo {
   last_used_at?: string
   /** Loopback port the whisper-server is bound to, if running. */
   local_port?: number
+  /** Live OS pid of the running whisper-server (F10), if any. */
+  pid?: number
   restart_attempts: number
   /** Fine health-state-machine name (starting/healthy/unhealthy/…/failed). */
   state: string
   state_changed_at: string
   /** Coarse lifecycle: `stopped` | `running`. */
   status: string
+  /** Seconds since the running process started (F10), if any. */
+  uptime_seconds?: number
 }
+
+/** Recent captured whisper-server stdout/stderr (ring buffer). F8/ITEM-30. */
+export interface VoiceLogsResponse {
+  lines: string[]
+}
+
+/** One installed whisper model (a row in `voice_models`). */
+export interface VoiceModel {
+  created_at: string
+  /** On-disk filename under `voice-models/`. */
+  filename: string
+  id: string
+  /** This model is the one the whisper-server is configured to serve. */
+  is_active: boolean
+  /** Short model name (also the `settings.model` pointer value). */
+  name: string
+  sha256?: string
+  size_bytes: number
+  source: VoiceModelSource
+  source_url?: string
+  /** The upstream catalog now advertises a different digest → a newer file exists. */
+  update_available: boolean
+  /** Bytes matched a source-of-truth digest (catalog/HF oid). */
+  verified: boolean
+}
+
+/** How an installed model was acquired. */
+export type VoiceModelSource = 'catalog' | 'url' | 'upload'
 
 /** Readiness of the configured (or a requested) ggml model on disk. */
 export interface VoiceModelStatus {
@@ -7056,6 +7162,12 @@ export interface VoiceSettings {
   max_upload_bytes: number
   /** Selected whisper ggml model name (tiny | base | base.en | small). */
   model: string
+  /**
+   * Admin-configurable whisper-model source repo (default `ggerganov/whisper.cpp`).
+   *  The runtime catalog fetch lists downloadable models from here; an operator
+   *  repoints it to an internal mirror or a moved upstream with no code change.
+   */
+  model_source_repo: string
   /** Interim decode cadence in milliseconds for live captions. */
   stream_interval_ms: number
   /**
@@ -7948,24 +8060,37 @@ export const ApiEndpoints = {
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
   'Users.changeOwnPassword': 'POST /api/users/me/password',
+  'Voice.activateModel': 'POST /api/voice/models/{id}/activate',
+  'Voice.cancelModelDownload': 'POST /api/voice/models/downloads/{key}/cancel',
   'Voice.capability': 'GET /api/voice/capability',
   'Voice.checkVersionUpdates': 'GET /api/voice/versions/check-updates',
+  'Voice.deleteModel': 'DELETE /api/voice/models/{id}',
   'Voice.deleteVersion': 'DELETE /api/voice/versions/{id}',
-  'Voice.downloadModel': 'POST /api/voice/model/download',
+  'Voice.downloadModel': 'POST /api/voice/models/download',
   'Voice.downloadVersion': 'POST /api/voice/versions/download',
   'Voice.getInstance': 'GET /api/voice/instance',
+  'Voice.getInstanceLogs': 'GET /api/voice/instance/logs',
+  'Voice.getModelDownload': 'GET /api/voice/models/downloads/{key}',
   'Voice.getModelStatus': 'GET /api/voice/model/status',
   'Voice.getSettings': 'GET /api/voice/settings',
+  'Voice.getVersion': 'GET /api/voice/versions/{id}',
+  'Voice.getVersionDownload': 'GET /api/voice/versions/downloads/{key}',
+  'Voice.listModelCatalog': 'GET /api/voice/models/catalog',
+  'Voice.listModelDownloads': 'GET /api/voice/models/downloads',
+  'Voice.listModels': 'GET /api/voice/models',
   'Voice.listVersionDownloads': 'GET /api/voice/versions/downloads',
   'Voice.listVersions': 'GET /api/voice/versions',
   'Voice.restartInstance': 'POST /api/voice/instance/restart',
   'Voice.setDefaultVersion': 'POST /api/voice/versions/{id}/set-default',
   'Voice.stopInstance': 'POST /api/voice/instance/stop',
+  'Voice.streamInstanceLogs': 'GET /api/voice/instance/logs/stream',
+  'Voice.subscribeModelDownloadEvents': 'GET /api/voice/models/downloads/{key}/events',
   'Voice.subscribeVersionDownloadEvents': 'GET /api/voice/versions/downloads/{key}/events',
   'Voice.syncVersionCache': 'POST /api/voice/versions/sync-cache',
   'Voice.transcribe': 'POST /api/voice/transcribe',
   'Voice.transcribeStream': 'POST /api/voice/transcribe/stream',
   'Voice.updateSettings': 'PUT /api/voice/settings',
+  'Voice.uploadModel': 'POST /api/voice/models/upload',
   'WebSearch.deleteUserKey': 'DELETE /api/web-search/user-keys/{provider}',
   'WebSearch.getProviders': 'GET /api/web-search/providers',
   'WebSearch.getSettings': 'GET /api/web-search/settings',
@@ -8391,24 +8516,37 @@ export type ApiEndpointParameters = {
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
   'Users.changeOwnPassword': ChangePasswordRequest2
+  'Voice.activateModel': { id: string }
+  'Voice.cancelModelDownload': { key: string }
   'Voice.capability': void
   'Voice.checkVersionUpdates': void
+  'Voice.deleteModel': { id: string; ack_active?: boolean }
   'Voice.deleteVersion': { id: string; remove_binary?: boolean }
   'Voice.downloadModel': DownloadModelRequest
   'Voice.downloadVersion': DownloadVersionRequest2
   'Voice.getInstance': void
+  'Voice.getInstanceLogs': { lines?: number }
+  'Voice.getModelDownload': { key: string }
   'Voice.getModelStatus': void
   'Voice.getSettings': void
+  'Voice.getVersion': { id: string }
+  'Voice.getVersionDownload': { key: string }
+  'Voice.listModelCatalog': void
+  'Voice.listModelDownloads': void
+  'Voice.listModels': void
   'Voice.listVersionDownloads': void
   'Voice.listVersions': PaginationQuery
   'Voice.restartInstance': void
   'Voice.setDefaultVersion': { id: string }
   'Voice.stopInstance': void
+  'Voice.streamInstanceLogs': void
+  'Voice.subscribeModelDownloadEvents': { key: string }
   'Voice.subscribeVersionDownloadEvents': { key: string }
   'Voice.syncVersionCache': void
   'Voice.transcribe': FormData
   'Voice.transcribeStream': FormData
   'Voice.updateSettings': UpdateVoiceSettingsRequest
+  'Voice.uploadModel': FormData
   'WebSearch.deleteUserKey': { provider: string }
   'WebSearch.getProviders': void
   'WebSearch.getSettings': void
@@ -8834,24 +8972,37 @@ export type ApiEndpointResponses = {
   'UserGroup.removeUser': void
   'UserGroup.update': Group
   'Users.changeOwnPassword': void
+  'Voice.activateModel': VoiceModel
+  'Voice.cancelModelDownload': any
   'Voice.capability': VoiceCapability
   'Voice.checkVersionUpdates': AvailableUpdatesResponse2
+  'Voice.deleteModel': void
   'Voice.deleteVersion': void
-  'Voice.downloadModel': VoiceModelStatus
+  'Voice.downloadModel': DownloadModelStartedResponse
   'Voice.downloadVersion': DownloadVersionStartedResponse2
   'Voice.getInstance': VoiceInstanceInfo
+  'Voice.getInstanceLogs': VoiceLogsResponse
+  'Voice.getModelDownload': SnapshotDto
   'Voice.getModelStatus': VoiceModelStatus
   'Voice.getSettings': VoiceSettings
+  'Voice.getVersion': RuntimeVersion
+  'Voice.getVersionDownload': DownloadSnapshot2
+  'Voice.listModelCatalog': VoiceCatalogResponse
+  'Voice.listModelDownloads': SnapshotDto[]
+  'Voice.listModels': VoiceModel[]
   'Voice.listVersionDownloads': DownloadListResponse2
   'Voice.listVersions': RuntimeVersionListResponse2
   'Voice.restartInstance': VoiceInstanceInfo
   'Voice.setDefaultVersion': RuntimeVersionResponse2
   'Voice.stopInstance': VoiceInstanceInfo
+  'Voice.streamInstanceLogs': any
+  'Voice.subscribeModelDownloadEvents': any
   'Voice.subscribeVersionDownloadEvents': SSEEngineDownloadEvent2
   'Voice.syncVersionCache': SyncCacheResponse2
   'Voice.transcribe': TranscriptionResponse
   'Voice.transcribeStream': TranscriptionResponse
   'Voice.updateSettings': VoiceSettings
+  'Voice.uploadModel': VoiceModel
   'WebSearch.deleteUserKey': void
   'WebSearch.getProviders': ProviderCatalogResponse
   'WebSearch.getSettings': WebSearchSettings

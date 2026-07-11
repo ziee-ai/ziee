@@ -1,10 +1,14 @@
 import type { StoreProxy } from '@/core/stores'
+import type { useVoiceConfigStore } from './stores/VoiceConfig.store'
+import type { useVoiceDownloadProgressStore } from './stores/VoiceDownloadProgress.store'
+import type { useVoiceInstanceStore } from './stores/VoiceInstance.store'
+import type { useVoiceModelStore } from './stores/VoiceModel.store'
+import type { useVoiceModelDownloadProgressStore } from './stores/VoiceModelDownloadProgress.store'
+import type { useVoiceModelUpdateStore } from './stores/VoiceModelUpdate.store'
+import type { useVoiceModelUploadStore } from './stores/VoiceModelUpload.store'
 import type { useVoiceRuntimeVersionStore } from './stores/VoiceRuntimeVersion.store'
 import type { useVoiceUpdateStore } from './stores/VoiceUpdate.store'
-import type { useVoiceDownloadProgressStore } from './stores/VoiceDownloadProgress.store'
-import type { useVoiceConfigStore } from './stores/VoiceConfig.store'
-import type { useVoiceModelStore } from './stores/VoiceModel.store'
-import type { useVoiceInstanceStore } from './stores/VoiceInstance.store'
+import type { useVoiceUploadModelDrawerStore } from './stores/VoiceUploadModelDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -17,6 +21,18 @@ declare module '@/core/stores' {
     >
     VoiceConfig: StoreProxy<ReturnType<typeof useVoiceConfigStore.getState>>
     VoiceModel: StoreProxy<ReturnType<typeof useVoiceModelStore.getState>>
+    VoiceModelUpdate: StoreProxy<
+      ReturnType<typeof useVoiceModelUpdateStore.getState>
+    >
+    VoiceModelDownloadProgress: StoreProxy<
+      ReturnType<typeof useVoiceModelDownloadProgressStore.getState>
+    >
+    VoiceModelUpload: StoreProxy<
+      ReturnType<typeof useVoiceModelUploadStore.getState>
+    >
+    VoiceUploadModelDrawer: StoreProxy<
+      ReturnType<typeof useVoiceUploadModelDrawerStore.getState>
+    >
     VoiceInstance: StoreProxy<ReturnType<typeof useVoiceInstanceStore.getState>>
   }
 }

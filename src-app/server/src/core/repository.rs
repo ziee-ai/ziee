@@ -229,4 +229,5 @@ declare_repositories! {
     lit_search: LitSearchRepository => crate::modules::lit_search,
     js_tool: JsToolRepository => crate::modules::js_tool,
     voice: VoiceRepository => crate::modules::voice,
+    voice_model: VoiceModelRepository => crate::modules::voice,
 }

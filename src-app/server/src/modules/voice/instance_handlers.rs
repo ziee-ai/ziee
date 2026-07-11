@@ -45,6 +45,10 @@ pub struct VoiceInstanceInfo {
     pub last_failure_reason: Option<String>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub state_changed_at: DateTime<Utc>,
+    /// Live OS pid of the running whisper-server (F10), if any.
+    pub pid: Option<i32>,
+    /// Seconds since the running process started (F10), if any.
+    pub uptime_seconds: Option<i64>,
 }
 
 /// Readiness of the configured (or a requested) ggml model on disk.
@@ -53,14 +57,6 @@ pub struct VoiceModelStatus {
     pub model: String,
     pub present: bool,
     pub size_bytes: Option<i64>,
-}
-
-/// Optional body for the model download endpoint. Absent `model` → the
-/// currently-configured settings model.
-#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
-pub struct DownloadModelRequest {
-    #[serde(default)]
-    pub model: Option<String>,
 }
 
 // ───────────────────────────── instance ─────────────────────────────
@@ -76,6 +72,8 @@ async fn read_instance() -> Result<VoiceInstanceInfo, AppError> {
     .fetch_one(Repos.pool())
     .await
     .map_err(AppError::database_error)?;
+    // Enrich with live process pid/uptime from the deployment layer (F10).
+    let live = super::deployment::get_deployment_manager().local().status().await;
     Ok(VoiceInstanceInfo {
         active_model: row.active_model,
         local_port: row.local_port,
@@ -86,6 +84,8 @@ async fn read_instance() -> Result<VoiceInstanceInfo, AppError> {
         last_failure_reason: row.last_failure_reason,
         last_used_at: row.last_used_at,
         state_changed_at: row.state_changed_at,
+        pid: live.pid,
+        uptime_seconds: live.uptime_seconds,
     })
 }
 
@@ -135,33 +135,15 @@ pub fn stop_instance_docs(op: TransformOperation) -> TransformOperation {
 
 // ───────────────────────────── model ─────────────────────────────
 
-async fn resolve_model_name(explicit: Option<String>) -> Result<String, AppError> {
-    match explicit {
-        Some(m) => {
-            if !super::model::is_supported_model(&m) {
-                return Err(AppError::bad_request(
-                    "VALIDATION_ERROR",
-                    "unsupported model (expected one of: tiny, base, base.en, small)",
-                ));
-            }
-            Ok(m)
-        }
-        None => Ok(Repos.voice.get_settings().await?.model),
-    }
-}
-
 pub async fn get_model_status(
     _auth: RequirePermissions<(VoiceAdminRead,)>,
 ) -> ApiResult<Json<VoiceModelStatus>> {
     let model = Repos.voice.get_settings().await?.model;
-    let present = super::model::model_present(&model);
-    let size_bytes = if present {
-        std::fs::metadata(super::model::model_path(&model))
-            .ok()
-            .map(|m| m.len() as i64)
-    } else {
-        None
-    };
+    let resolved = super::model::installed_model_path(&model);
+    let present = resolved.is_some();
+    let size_bytes = resolved
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len() as i64);
     Ok((
         StatusCode::OK,
         Json(VoiceModelStatus {
@@ -180,46 +162,73 @@ pub fn get_model_status_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<VoiceModelStatus>>()
 }
 
-pub async fn download_model(
-    _auth: RequirePermissions<(VoiceAdminManage,)>,
-    body: Option<Json<DownloadModelRequest>>,
-) -> ApiResult<Json<VoiceModelStatus>> {
-    let requested = body.and_then(|b| b.0.model);
-    let model = resolve_model_name(requested).await?;
+// ───────────────────────────── logs ─────────────────────────────
 
-    // Trigger the streaming, sha256-verified download (idempotent when present).
-    // Uses the progress-reporting entry point (logging progress); an SSE variant
-    // of this endpoint can swap the callback for an event sink.
-    let model_for_log = model.clone();
-    let path = super::model::download_model_with_progress(&model, move |done, total| {
-        if let Some(total) = total
-            && total > 0
-        {
-            tracing::debug!(
-                "voice: model {model_for_log} download {done}/{total} ({}%)",
-                done.saturating_mul(100) / total
-            );
-        }
-    })
-    .await?;
-    let size_bytes = std::fs::metadata(&path).ok().map(|m| m.len() as i64);
-
-    Ok((
-        StatusCode::OK,
-        Json(VoiceModelStatus {
-            model,
-            present: true,
-            size_bytes,
-        }),
-    ))
+/// Recent captured whisper-server stdout/stderr (ring buffer). F8/ITEM-30.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct VoiceLogsResponse {
+    pub lines: Vec<String>,
 }
 
-pub fn download_model_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(VoiceAdminManage,)>(op)
-        .id("Voice.downloadModel")
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct LogsQuery {
+    /// How many trailing lines to return (default 200, capped at 1000).
+    #[serde(default)]
+    pub lines: Option<usize>,
+}
+
+pub async fn get_logs(
+    _auth: RequirePermissions<(VoiceAdminRead,)>,
+    axum::extract::Query(q): axum::extract::Query<LogsQuery>,
+) -> ApiResult<Json<VoiceLogsResponse>> {
+    let n = q.lines.unwrap_or(200).min(1000);
+    let lines = super::deployment::get_deployment_manager().local().logs(n).await;
+    Ok((StatusCode::OK, Json(VoiceLogsResponse { lines })))
+}
+
+pub fn get_logs_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(VoiceAdminRead,)>(op)
+        .id("Voice.getInstanceLogs")
         .tag("Voice")
-        .summary("Download the configured (or a specified) whisper ggml model")
-        .response::<200, Json<VoiceModelStatus>>()
+        .summary("Recent whisper-server log lines")
+        .response::<200, Json<VoiceLogsResponse>>()
+}
+
+/// SSE tail of whisper-server logs (snapshot + live lines).
+pub async fn stream_logs(
+    _auth: RequirePermissions<(VoiceAdminRead,)>,
+) -> ApiResult<
+    axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>>,
+> {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    let subscribed = super::deployment::get_deployment_manager()
+        .local()
+        .subscribe_logs()
+        .await;
+    let stream = async_stream::stream! {
+        let Some((mut rx, snapshot)) = subscribed else {
+            // Nothing running — emit nothing and close.
+            return;
+        };
+        for line in snapshot {
+            yield Ok::<Event, axum::Error>(Event::default().data(line));
+        }
+        loop {
+            match rx.recv().await {
+                Ok(line) => yield Ok(Event::default().data(line)),
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            }
+        }
+    };
+    Ok((StatusCode::OK, Sse::new(stream).keep_alive(KeepAlive::default())))
+}
+
+pub fn stream_logs_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(VoiceAdminRead,)>(op)
+        .id("Voice.streamInstanceLogs")
+        .tag("Voice")
+        .summary("SSE stream of whisper-server logs")
 }
 
 // ───────────────────────────── router ─────────────────────────────
@@ -241,11 +250,15 @@ pub fn voice_instance_router() -> ApiRouter {
             post_with(stop_instance, stop_instance_docs),
         )
         .api_route(
-            "/voice/model/status",
-            get_with(get_model_status, get_model_status_docs),
+            "/voice/instance/logs",
+            get_with(get_logs, get_logs_docs),
         )
         .api_route(
-            "/voice/model/download",
-            post_with(download_model, download_model_docs),
+            "/voice/instance/logs/stream",
+            get_with(stream_logs, stream_logs_docs),
+        )
+        .api_route(
+            "/voice/model/status",
+            get_with(get_model_status, get_model_status_docs),
         )
 }

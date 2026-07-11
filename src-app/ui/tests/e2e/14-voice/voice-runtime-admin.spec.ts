@@ -1,11 +1,11 @@
-import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
+import { expect, test } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
 import { byTestId } from '../testid'
 import {
+  defaultVoiceState,
   installVoiceBrowserMocks,
   routeVoice,
-  defaultVoiceState,
 } from './voice-helpers'
 
 /**
@@ -33,7 +33,9 @@ test.describe('Voice — runtime admin (TEST-28)', () => {
     await expect(byTestId(page, 'voice-version-row-v1.1.0')).toBeVisible({
       timeout: 15000,
     })
-    await expect(byTestId(page, 'voice-version-installed-tag-v1.0.0')).toBeVisible()
+    await expect(
+      byTestId(page, 'voice-version-installed-tag-v1.0.0'),
+    ).toBeVisible()
 
     // Manual "Check for updates" re-fetches and reports the one new runtime.
     await byTestId(page, 'voice-check-updates-btn').click()
@@ -46,7 +48,9 @@ test.describe('Voice — runtime admin (TEST-28)', () => {
     // complete the store reloads versions + the update-check, so v1.1.0 flips to
     // "installed" (this asserts the whole progress→complete pipeline ran).
     await byTestId(page, 'voice-version-install-v1.1.0').click()
-    await expect(byTestId(page, 'voice-version-installed-tag-v1.1.0')).toBeVisible({
+    await expect(
+      byTestId(page, 'voice-version-installed-tag-v1.1.0'),
+    ).toBeVisible({
       timeout: 15000,
     })
 
@@ -91,5 +95,56 @@ test.describe('Voice — runtime admin (TEST-28)', () => {
       ),
     ).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'voice-settings-page-title')).toHaveCount(0)
+  })
+})
+
+/**
+ * TEST-37 — VoiceInstanceCard surfaces live pid/uptime and an on-demand log
+ * viewer (GET /api/voice/instance/logs).
+ */
+test.describe('Voice — instance card (TEST-37)', () => {
+  test('shows pid + uptime and loads the captured logs', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await installVoiceBrowserMocks(page)
+    await routeVoice(
+      page,
+      defaultVoiceState({
+        instance: {
+          status: 'running',
+          state: 'healthy',
+          active_model: 'ggml-base.bin',
+          local_port: 51789,
+          pid: 4242,
+          uptime_seconds: 3723,
+          restart_attempts: 0,
+          state_changed_at: new Date().toISOString(),
+        },
+      }),
+    )
+
+    await loginAsAdmin(page, baseURL)
+    await page.goto(`${baseURL}/settings/voice`)
+    await expect(byTestId(page, 'voice-settings-page-title')).toBeVisible({
+      timeout: 30000,
+    })
+
+    const card = byTestId(page, 'voice-instance-card')
+    await expect(card).toBeVisible()
+
+    // Live pid + uptime are rendered in the details block.
+    const desc = byTestId(page, 'voice-instance-desc')
+    await expect(desc).toContainText('4242')
+    await expect(desc).toContainText(/1h/) // 3723s → "1h 02m 03s"
+
+    // The log viewer loads on demand.
+    await expect(byTestId(page, 'voice-instance-logs')).toBeVisible()
+    await byTestId(page, 'voice-instance-logs-refresh').click()
+    await expect(byTestId(page, 'voice-instance-logs-block')).toContainText(
+      'whisper_init',
+      { timeout: 10000 },
+    )
   })
 })
