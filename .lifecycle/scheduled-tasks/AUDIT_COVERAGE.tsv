@@ -54,3 +54,4 @@ src-app/server/tests/scheduler/runs_timeline_test.rs	1	99999	tests-quality,corre
 src-app/ui/plugins/vite-plugin-testid-unique.js	1	99999	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	99999	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	99999	patterns-conformance,correctness,tests-quality
+src-app/ui/tests/e2e/14-scheduler/failure-and-history.spec.ts	1	99999	tests-quality,correctness,api-contract
