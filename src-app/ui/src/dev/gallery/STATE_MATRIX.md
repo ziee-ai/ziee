@@ -8,7 +8,7 @@
 ## Summary
 
 - **361** surfaces carry at least one renderable-state signal.
-- **2074** signals total: 1630 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2073** signals total: 1629 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -1247,30 +1247,32 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 143 |
-| branch | `!el` | 163 |
-| branch | `!nativeScroll` | 178 |
-| branch | `y < 0 \|\| y > maxY` | 187 |
-| branch | `maxY - y <= 8` | 191 |
-| branch | `Math.abs(dy) < 6` | 197 |
-| branch | `!Stores.Chat.$.conversation` | 217 |
-| branch | `!conversationId` | 259 |
-| branch | `!sentinel` | 307 |
-| branch | `!entries[0]?.isIntersecting` | 311 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
-| branch | `!sentinel` | 349 |
-| branch | `!entries[0]?.isIntersecting` | 353 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
-| loading | `!pending` | 369 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
-| branch | `!conversation?.id` | 381 |
-| branch | `!m` | 385 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
-| loading | `loading && !conversation` | 408 |
-| loading | `!loading && !conversation` | 417 |
-| error | `error` | 420 |
-| error | `error` | 477 |
-| branch | `nativeScroll && !composerHidden` | 576 |
+| branch | `!sentinel` | 149 |
+| branch | `!el` | 169 |
+| branch | `!nativeScroll` | 184 |
+| branch | `y < 0 \|\| y > maxY` | 193 |
+| branch | `maxY - y <= 8` | 197 |
+| branch | `Math.abs(dy) < 6` | 203 |
+| branch | `!Stores.Chat.$.conversation` | 223 |
+| branch | `!conversationId` | 265 |
+| branch | `!hasNewApproval` | 340 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 344 |
+| branch | `!sentinel` | 372 |
+| branch | `!entries[0]?.isIntersecting` | 376 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 379 |
+| branch | `!sentinel` | 414 |
+| branch | `!entries[0]?.isIntersecting` | 418 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 419 |
+| loading | `!pending` | 434 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 437 |
+| branch | `!conversation?.id` | 446 |
+| branch | `!m` | 450 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 453 |
+| loading | `loading && !conversation` | 473 |
+| loading | `!loading && !conversation` | 482 |
+| error | `error` | 485 |
+| error | `error` | 542 |
+| branch | `nativeScroll && !composerHidden` | 641 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -3162,12 +3164,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `typeof window === 'undefined'` | 49 |
-| branch | `!el` | 51 |
-| branch | `scrolledApprovals.has(toolCall.tool_use_id)` | 53 |
-| branch | `!isControlWrite` | 228 |
-| branch | `mcpServerParenLabel(toolCall.server)` | 247 |
-| branch | `toolCall.input !== undefined` | 262 |
+| branch | `!isControlWrite` | 189 |
+| branch | `mcpServerParenLabel(toolCall.server)` | 208 |
+| branch | `toolCall.input !== undefined` | 223 |
 
 ### `modules/mcp/chat-extension/components/elicitationFields`
 

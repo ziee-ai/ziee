@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Button, Card, Text } from '@/components/ui'
 import { Clock, Check, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
@@ -8,14 +8,6 @@ import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 interface ToolCallPendingApprovalContentProps {
   toolCall: McpToolCall
 }
-
-/**
- * tool_use_ids whose approval prompt we've already scrolled into view — so we
- * scroll ONCE per approval, not on every render and not again after the
- * loadMessages remount (which re-mounts this component while still pending). A
- * module-level Set survives that remount; local state would not.
- */
-const scrolledApprovals = new Set<string>()
 
 /**
  * Deterministic id of the built-in App Control MCP server
@@ -38,33 +30,6 @@ export function ToolCallPendingApprovalContent({
   toolCall,
 }: ToolCallPendingApprovalContentProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  // Smoothly bring a newly-appeared approval prompt into view — the wrapper
-  // force-opens on a pending approval, but the prompt can still be off-screen and
-  // go unnoticed. This component renders in BOTH the lone-approval and the
-  // grouped-approval paths, and only mounts AFTER the group has expanded, so one
-  // effect here covers both with no scroll-races-the-expand hazard.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const el = containerRef.current
-    if (!el) return
-    // Fire once per approval (guard the loadMessages remount / re-renders).
-    if (scrolledApprovals.has(toolCall.tool_use_id)) return
-    scrolledApprovals.add(toolCall.tool_use_id)
-    const reduceMotion =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    // `block: 'nearest'` scrolls the nearest scrollable ancestor (the chat
-    // ScrollArea viewport) minimally, not the window.
-    el.scrollIntoView({
-      behavior: reduceMotion ? 'auto' : 'smooth',
-      block: 'nearest',
-    })
-    // Mount-only: the component exists only while status === 'pending_approval'
-    // (gated by McpToolCallUI), so mounting == the approval just became visible.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // The built-in App Control server (`invoke_capability`) ALWAYS re-prompts on a
   // state-changing action — the backend deliberately ignores any persisted
@@ -194,11 +159,7 @@ export function ToolCallPendingApprovalContent({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="my-2"
-      data-testid={`tool-approval-${toolCall.tool_use_id}`}
-    >
+    <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
       <Card
         size="sm"
         className="mb-2"
