@@ -63,7 +63,7 @@ src-app/ui/src/modules/chat/core/utils/useStreamdownComponents.tsx	1	209	correct
 src-app/ui/src/modules/chat/extensions/keyboard/extension.tsx	1	189	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx	1	124	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/module.tsx	1	130	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	869	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	939	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/types.ts	1	44	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx	1	310	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/file/chat-extension/components/AttachedFileCard.tsx	1	87	correctness,state-management,error-handling
@@ -80,7 +80,7 @@ src-app/ui/src/modules/knowledge-base/chat-extension/extension.tsx	1	109	correct
 src-app/ui/src/modules/literature/components/LiteratureScreeningPanel.tsx	1	293	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/literature/components/LiteratureToolResultCard.tsx	1	97	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent.tsx	1	245	correctness,security,state-management
-src-app/ui/src/modules/mcp/chat-extension/extension.tsx	1	1125	correctness,security,state-management
+src-app/ui/src/modules/mcp/chat-extension/extension.tsx	1	1195	correctness,security,state-management
 src-app/ui/src/modules/mcp/stores/McpComposer.store.ts	1	1207	correctness,security,state-management
 src-app/ui/src/modules/mcp/stores/approvalRouting.test.ts	1	55	tests-quality,correctness,api-contract
 src-app/ui/src/modules/mcp/stores/approvalRouting.ts	1	47	correctness,security,state-management
