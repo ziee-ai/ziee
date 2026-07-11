@@ -118,11 +118,15 @@ shared fallback. This is a bug FIX made possible by the conversion, not propagat
 **Basis:** codebase + user (accepted aggressive path) — asserted by TEST-6.
 
 ### DEC-16: Codemod AST library?
-**Resolution:** Prefer `ts-morph`; confirm it is (or can be) a devDependency in
-Phase 5. If it cannot be added, fall back to the TypeScript compiler API directly
-(no new dep). Either way the codemod is a build-time `.mjs` dev script, never
-shipped in a binary.
-**Basis:** convention — build-time-only tooling, resolved to a concrete fallback so
-implementation does not stall.
+**Resolution:** String/AST-light transforms (no ts-morph), matching the repo's
+other `.mjs` generators (`gen-testid-registry`, `gen-override-registry`). ts-morph
+IS hoisted in node_modules, but a full AST auto-rewriter is neither warranted —
+the `migrate` classifier empirically confirms most existing overrides are
+STRUCTURAL (Drawer ratio 0.756), so an auto-rewriter would mostly emit
+"structural → file-swap" anyway — nor consistent with the codebase. The codemod
+does the reliable, high-value work: `add` scaffolds a seam (both sides) + `migrate`
+classifies a shadow (element-level → scaffold; structural → advise file-swap).
+Output is always human-reviewed. Build-time `.mjs` dev script, never shipped.
+**Basis:** codebase + implement-time evidence (the classifier's own output).
 
 All decisions above are resolved; no unresolved markers remain.
