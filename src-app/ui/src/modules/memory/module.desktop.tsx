@@ -16,8 +16,14 @@ import { lazy } from 'react'
 import { Book } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
+// This file was relocated from `desktop/ui/src/modules/memory/module.tsx`
+// into the core tree as a `.desktop.tsx` (localOverridePlugin tier 2). The
+// page it lazy-loads still lives in the desktop tree, so the formerly-relative
+// `./pages/MemoryCombinedPage` is rewritten to the `@ziee/desktop/*` alias
+// (→ `desktop/ui/src/*`) — a relative specifier would now (wrongly) resolve
+// under `ui/src/modules/memory/pages/`, which doesn't exist.
 const MemoryCombinedPage = lazy(() =>
-  import('./pages/MemoryCombinedPage').then((m) => ({
+  import('@ziee/desktop/modules/memory/pages/MemoryCombinedPage').then((m) => ({
     default: m.MemoryCombinedPage,
   })),
 )
