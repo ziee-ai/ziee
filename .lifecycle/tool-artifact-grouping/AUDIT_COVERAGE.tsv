@@ -1,0 +1,6 @@
+file	start	end	angles
+src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	700	correctness,edge-cases,state-management,concurrency,regressions,perf,a11y,patterns-conformance,api-contract,naming,error-handling
+src-app/ui/src/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent.tsx	1	240	state-management,a11y,patterns-conformance,error-handling,correctness
+src-app/ui/tests/e2e/07-mcp/tool-group-single-artifact.spec.ts	1	220	tests-quality,regressions,correctness
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	3300	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	3500	patterns-conformance,correctness,tests-quality
