@@ -155,11 +155,16 @@ pub(super) fn clamp_wav_tail(wav: &[u8], secs: u32) -> Vec<u8> {
         }
         pos = body + size + (size & 1); // chunks are word-aligned
     }
-    let block_align = (channels as u32 * (bits as u32) / 8).max(1);
-    let byte_rate = sample_rate * block_align;
-    if byte_rate == 0 || data_off == 0 {
-        return wav.to_vec(); // unparseable → leave whisper the whole clip
-    }
+    // fmt fields are user-controlled (validate_wav only checks the RIFF/WAVE
+    // magic), so compute the frame/byte rates with overflow-safe arithmetic —
+    // a crafted fmt (e.g. sample_rate=1e9, channels=2, bits=32) must not panic
+    // under overflow-checks. Any implausible/overflowing header → no-op (leave
+    // whisper the whole clip; it will reject a genuinely malformed WAV itself).
+    let block_align = ((bits as u32 / 8) * channels as u32).max(1); // ≤ 8191*65535, no overflow
+    let byte_rate = match sample_rate.checked_mul(block_align) {
+        Some(br) if br > 0 && data_off != 0 => br,
+        _ => return wav.to_vec(),
+    };
     let want = (byte_rate as usize).saturating_mul(secs as usize);
     if data_len <= want {
         return wav.to_vec(); // already within the window → no clamp (full stitch)
@@ -250,5 +255,28 @@ mod tests {
         assert_eq!(clamp_wav_tail(&[], 3), Vec::<u8>::new());
         let wav = make_wav(10.0);
         assert_eq!(clamp_wav_tail(&wav, 0), wav, "secs=0 → no clamp");
+    }
+
+    /// A crafted `fmt ` with an overflowing byte_rate (sample_rate 1e9, 2ch, 32-bit)
+    /// must NOT panic (overflow-checks in dev/test) — it falls back to the whole clip.
+    #[test]
+    fn does_not_panic_on_overflowing_fmt() {
+        let mut w = Vec::new();
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&1000u32.to_le_bytes());
+        w.extend_from_slice(b"WAVE");
+        w.extend_from_slice(b"fmt ");
+        w.extend_from_slice(&16u32.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        w.extend_from_slice(&2u16.to_le_bytes()); // channels
+        w.extend_from_slice(&1_000_000_000u32.to_le_bytes()); // sample_rate
+        w.extend_from_slice(&0u32.to_le_bytes()); // byte_rate (ignored — recomputed)
+        w.extend_from_slice(&8u16.to_le_bytes()); // block_align
+        w.extend_from_slice(&32u16.to_le_bytes()); // bits → sample_rate*block_align overflows u32
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&64u32.to_le_bytes());
+        w.extend(std::iter::repeat(1u8).take(64));
+        // Must return the input unchanged rather than panicking.
+        assert_eq!(clamp_wav_tail(&w, 3), w);
     }
 }

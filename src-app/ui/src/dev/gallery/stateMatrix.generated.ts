@@ -3962,10 +3962,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/voice/components/VoiceConfigCard",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "loadingSettings && !settings", line: 124 },
-      { kind: "error", condition: "error && !settings", line: 132 },
-      { kind: "branch", condition: "canManage", line: 151 },
-      { kind: "branch", condition: "!canManage", line: 162 },
+      { kind: "branch", condition: "loadingSettings && !settings", line: 128 },
+      { kind: "error", condition: "error && !settings", line: 136 },
+      { kind: "branch", condition: "canManage", line: 155 },
+      { kind: "branch", condition: "!canManage", line: 166 },
     ],
   },
   "modules/voice/components/VoiceInstanceCard": {
