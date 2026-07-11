@@ -36,6 +36,24 @@ export function hasArtifactInRun(run: MessageContent[]): boolean {
 }
 
 /**
+ * Whether a tool run is folded into the collapsible `McpToolGroupCard` wrapper.
+ * - A run of ≥2 tool calls always wraps (the original "N tools called" group).
+ * - A SINGLE tool call wraps too WHEN it produced an artifact, so its file(s) sit
+ *   in the same collapsible box (visually consistent with the multi-tool group)
+ *   instead of rendering as a bare card with the files loose below it.
+ * - A single tool call with NO artifact does NOT wrap (stays the plain card).
+ *
+ * This is the SINGLE source of truth shared by `McpToolUseGroup` (the render
+ * branch) and its `contentSpan` (how many blocks the run-loop consumes). They MUST
+ * agree — a group that renders N blocks but reports a different `consumed` corrupts
+ * subsequent block rendering — so both call this on the same `run`.
+ */
+export function shouldWrapRun(run: MessageContent[]): boolean {
+  const toolUseCount = runToolUseIds(run).length
+  return toolUseCount >= 2 || (toolUseCount >= 1 && hasArtifactInRun(run))
+}
+
+/**
  * The default-open (latch) condition: a group opens on its own when a tool is
  * running or it has produced an artifact. This is the initial `userOpen` value
  * AND the effect trigger — once true it latches `userOpen` open; the user may
