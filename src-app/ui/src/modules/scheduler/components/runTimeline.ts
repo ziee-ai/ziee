@@ -80,9 +80,17 @@ export interface SeriesChoice {
  * all-loaded}. "All loaded" folds in every run the panel has fetched. (TEST-55)
  */
 export function seriesChoices(loadedCount: number): SeriesChoice[] {
-  return [
+  const raw: SeriesChoice[] = [
     { label: 'Last 5', value: 5 },
     { label: 'Last 10', value: 10 },
     { label: 'All loaded', value: Math.max(loadedCount, 1) },
   ]
+  // Dedupe by value so "All loaded" doesn't collide with "Last 5/10" (duplicate
+  // Select keys) when exactly 5 or 10 runs are loaded.
+  const seen = new Set<number>()
+  return raw.filter(o => {
+    if (seen.has(o.value)) return false
+    seen.add(o.value)
+    return true
+  })
 }

@@ -1,5 +1,14 @@
-import { MessagesSquare, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  MessagesSquare,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Trash2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { ScheduledTask, ScheduledTaskRun } from '@/api-client/types'
 import { ListPagination } from '@/components/common/ListPagination'
@@ -11,7 +20,6 @@ import {
   Empty,
   ErrorState,
   Flex,
-  Select,
   Spin,
   Switch,
   Tag,
@@ -42,9 +50,7 @@ function scheduleSummary(t: ScheduledTask): string {
   return `${humanizeCron(t.cron_expr ?? '')} (${t.timezone})`
 }
 
-function goToConversation(id: string) {
-  window.location.href = `/conversations/${id}`
-}
+type NavigateFn = (to: string) => void
 
 interface RunAction {
   key: string
@@ -58,7 +64,11 @@ interface RunAction {
  * conversation, prompt tasks) is primary; the fork ("New side chat" / "Continue in
  * chat") is always present. Shared by the inline buttons + the mobile overflow menu.
  */
-function runActionItems(task: ScheduledTask, run: ScheduledTaskRun): RunAction[] {
+function runActionItems(
+  task: ScheduledTask,
+  run: ScheduledTaskRun,
+  navigate: NavigateFn,
+): RunAction[] {
   const a = followupActions(task)
   const items: RunAction[] = []
   if (a.openThread !== 'none') {
@@ -67,7 +77,8 @@ function runActionItems(task: ScheduledTask, run: ScheduledTaskRun): RunAction[]
       label: 'Open thread',
       disabled: a.openThread === 'disabled',
       onClick: () => {
-        if (a.threadConversationId) goToConversation(a.threadConversationId)
+        if (a.threadConversationId)
+          navigate(`/conversations/${a.threadConversationId}`)
       },
     })
   }
@@ -76,7 +87,7 @@ function runActionItems(task: ScheduledTask, run: ScheduledTaskRun): RunAction[]
     label: a.forkLabel,
     onClick: async () => {
       const conversationId = await Stores.ScheduledTasks.continueRun(run.id)
-      if (conversationId) goToConversation(conversationId)
+      if (conversationId) navigate(`/conversations/${conversationId}`)
     },
   })
   return items
@@ -84,40 +95,48 @@ function runActionItems(task: ScheduledTask, run: ScheduledTaskRun): RunAction[]
 
 /** ITEM-44: one run in the timeline — what-changed badge + preview, click to expand. */
 function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const badge = changeBadge(run)
   const preview = runPreviewLine(run)
   const skip = skippedToolsNote(run.skipped_tools)
-  const items = runActionItems(task, run)
+  const items = runActionItems(task, run, navigate)
+  const detailId = `run-detail-${run.id}`
 
   return (
     <div data-testid={`run-row-${run.id}`} className="rounded-md border p-2">
       <Flex className="items-start justify-between gap-2">
         <button
           type="button"
-          className="min-w-0 flex-1 text-left"
+          className="flex min-w-0 flex-1 items-start gap-1 text-left"
           data-testid={`run-expand-${run.id}`}
           aria-expanded={open}
+          aria-controls={detailId}
           onClick={() => setOpen(v => !v)}
         >
-          <Flex className="items-center gap-2">
-            <Text className="text-muted-foreground whitespace-nowrap text-xs">
-              {new Date(run.fired_at).toLocaleString()}
-            </Text>
-            {badge && (
-              <Badge tone={badge.tone} data-testid={`run-badge-${run.id}`}>
-                {badge.label}
-              </Badge>
+          <span className="text-muted-foreground mt-0.5 shrink-0">
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <Flex className="items-center gap-2">
+              <Text className="text-muted-foreground whitespace-nowrap text-xs">
+                {new Date(run.fired_at).toLocaleString()}
+              </Text>
+              {badge && (
+                <Badge tone={badge.tone} data-testid={`run-badge-${run.id}`}>
+                  {badge.label}
+                </Badge>
+              )}
+            </Flex>
+            {preview && (
+              <Text
+                className={`text-sm ${open ? '' : 'truncate'}`}
+                data-testid={`run-preview-${run.id}`}
+              >
+                {preview}
+              </Text>
             )}
-          </Flex>
-          {preview && (
-            <Text
-              className={`text-sm ${open ? '' : 'truncate'}`}
-              data-testid={`run-preview-${run.id}`}
-            >
-              {preview}
-            </Text>
-          )}
+          </span>
         </button>
 
         {/* Actions: inline on ≥sm, overflow menu on mobile (ITEM-48). */}
@@ -149,7 +168,7 @@ function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
       </Flex>
 
       {open && (
-        <div className="mt-1 border-t pt-1" data-testid={`run-detail-${run.id}`}>
+        <div id={detailId} className="mt-1 border-t pt-1" data-testid={detailId}>
           {run.status === 'failed' && run.error_message && (
             <Text className="text-destructive text-xs">
               {run.error_class ? `${run.error_class}: ` : ''}
@@ -175,7 +194,7 @@ function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
   )
 }
 
-/** ITEM-47 (DEC-22): the "Discuss recent runs" chooser {5, 10, all-loaded}. */
+/** ITEM-47 (DEC-22): the "Discuss recent runs" action menu {5, 10, all-loaded}. */
 function SeriesChooser({
   task,
   loadedCount,
@@ -183,28 +202,31 @@ function SeriesChooser({
   task: ScheduledTask
   loadedCount: number
 }) {
+  const navigate = useNavigate()
   const start = async (limit: number) => {
     const conversationId = await Stores.ScheduledTasks.continueSeries(task.id, limit)
-    if (conversationId) goToConversation(conversationId)
+    if (conversationId) navigate(`/conversations/${conversationId}`)
   }
+  const items = seriesChoices(loadedCount).map(c => ({
+    key: String(c.value),
+    label: c.label,
+    onClick: () => void start(c.value),
+  }))
   return (
-    <Select
-      data-testid={`series-chooser-${task.id}`}
-      value=""
-      placeholder="Discuss recent runs"
-      popupMatchSelectWidth={false}
-      options={seriesChoices(loadedCount).map(c => ({
-        label: c.label,
-        value: String(c.value),
-      }))}
-      onChange={v => {
-        if (v) void start(Number(v))
-      }}
-    />
+    <Dropdown items={items} data-testid={`series-chooser-${task.id}`}>
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+      >
+        Discuss recent runs
+        <ChevronDown size={14} />
+      </button>
+    </Dropdown>
   )
 }
 
 function TaskRow({ task }: { task: ScheduledTask }) {
+  const navigate = useNavigate()
   const [expanded, setExpanded] = useState(false)
   const runs = Stores.ScheduledTasks.runsByTask[task.id]
   const meta = Stores.ScheduledTasks.runsMetaByTask[task.id]
@@ -259,7 +281,7 @@ function TaskRow({ task }: { task: ScheduledTask }) {
             <div className="mt-1 border-t pt-2">
               {!runs ? (
                 <Spin label="Loading runs" />
-              ) : runs.length === 0 ? (
+              ) : total === 0 ? (
                 <Text className="text-muted-foreground text-xs">No runs yet</Text>
               ) : (
                 <Flex className="flex-col gap-2">
@@ -282,9 +304,11 @@ function TaskRow({ task }: { task: ScheduledTask }) {
                       total={total}
                       pageSize={perPage}
                       itemNoun="run"
-                      onChange={p => void Stores.ScheduledTasks.loadRuns(task.id, p)}
-                      onPageSizeChange={() =>
-                        void Stores.ScheduledTasks.loadRuns(task.id, 1)
+                      onChange={p =>
+                        void Stores.ScheduledTasks.loadRuns(task.id, p, perPage)
+                      }
+                      onPageSizeChange={size =>
+                        void Stores.ScheduledTasks.loadRuns(task.id, 1, size)
                       }
                     />
                   )}
@@ -307,7 +331,7 @@ function TaskRow({ task }: { task: ScheduledTask }) {
               }
               onClick={() => {
                 if (threadActions.threadConversationId)
-                  goToConversation(threadActions.threadConversationId)
+                  navigate(`/conversations/${threadActions.threadConversationId}`)
               }}
             >
               <MessagesSquare size={16} />

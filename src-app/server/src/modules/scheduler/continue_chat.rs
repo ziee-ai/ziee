@@ -32,6 +32,8 @@ pub struct ContinueResult {
 
 /// Cap on the seeded result text so a large run output doesn't bloat the seed.
 const RESULT_TEXT_MAX: usize = 8000;
+/// Cap on the whole series-summary assistant text (bounds 100 runs × preview).
+const SERIES_TEXT_MAX: usize = 12000;
 /// Server-side clamp on the series follow-up run count (DEC-22 "all-loaded").
 const SERIES_LIMIT_MAX: i64 = 100;
 
@@ -94,11 +96,12 @@ fn build_series_seed(task_name: &str, runs: &[ScheduledTaskRun]) -> SeedPlan {
     let assistant_text = if lines.is_empty() {
         format!("\"{task_name}\" has no recorded runs yet.")
     } else {
-        format!(
+        let body = format!(
             "Here are the last {} runs of \"{task_name}\" (newest first):\n\n{}",
             lines.len(),
             lines.join("\n")
-        )
+        );
+        body.chars().take(SERIES_TEXT_MAX).collect()
     };
     SeedPlan {
         title: format!("Series: {task_name}"),

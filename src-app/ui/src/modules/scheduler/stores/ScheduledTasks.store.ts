@@ -115,17 +115,27 @@ export const ScheduledTasks = defineStore('ScheduledTasks', {
       },
       // ITEM-41/46: load ONE page of run history (default page 1). Stores the
       // paged slice + total so the panel can render `ListPagination`.
-      loadRuns: async (taskId: string, page = 1) => {
+      loadRuns: async (taskId: string, page = 1, perPage = RUNS_PAGE_SIZE) => {
         if (!hasPermissionNow(Permissions.SchedulerUse)) return
         set(draft => {
           draft.runsLoading = true
         })
         try {
-          const res = await ApiClient.ScheduledTask.listRuns({
+          let res = await ApiClient.ScheduledTask.listRuns({
             id: taskId,
             page,
-            per_page: RUNS_PAGE_SIZE,
+            per_page: perPage,
           })
+          // Out-of-range page (e.g. a sync reload after retention-prune shrank the
+          // history): snap back to page 1 so the user is never stranded on an empty
+          // "Showing 0 of N" page with the pager hidden.
+          if (res.runs.length === 0 && res.total > 0 && page > 1) {
+            res = await ApiClient.ScheduledTask.listRuns({
+              id: taskId,
+              page: 1,
+              per_page: perPage,
+            })
+          }
           set(draft => {
             draft.runsByTask[taskId] = res.runs
             draft.runsMetaByTask[taskId] = {
@@ -154,7 +164,8 @@ export const ScheduledTasks = defineStore('ScheduledTasks', {
       // refresh the open task's runs, if any are loaded — refetch the SAME page.
       const meta = get().runsMetaByTask
       const loaded = Object.keys(get().runsByTask)
-      for (const id of loaded) void actions.loadRuns(id, meta[id]?.page ?? 1)
+      for (const id of loaded)
+        void actions.loadRuns(id, meta[id]?.page ?? 1, meta[id]?.perPage ?? RUNS_PAGE_SIZE)
     }
     on('sync:scheduled_task', reload)
     on('sync:reconnect', reload)

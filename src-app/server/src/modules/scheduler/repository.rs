@@ -447,7 +447,11 @@ pub async fn list_runs_for_task(
     per_page: i64,
 ) -> Result<(Vec<ScheduledTaskRun>, i64), AppError> {
     let per_page = per_page.clamp(1, 200);
-    let offset = (page - 1).max(0) * per_page;
+    // Saturating math so a crafted huge `page` can't overflow i64 (panic in debug /
+    // negative OFFSET → 500 in release); an out-of-range offset just yields an empty
+    // page. `id DESC` is a stable tie-breaker so runs sharing a `fired_at` can't be
+    // duplicated on one page and dropped from another.
+    let offset = page.max(1).saturating_sub(1).saturating_mul(per_page);
     let rows = sqlx::query_as!(
         ScheduledTaskRun,
         r#"
@@ -459,7 +463,7 @@ pub async fn list_runs_for_task(
             fired_at as "fired_at: _", finished_at as "finished_at: _"
         FROM scheduled_task_runs
         WHERE scheduled_task_id = $1 AND user_id = $2
-        ORDER BY fired_at DESC
+        ORDER BY fired_at DESC, id DESC
         LIMIT $3 OFFSET $4
         "#,
         task_id,
@@ -708,7 +712,7 @@ mod tests {
     async fn list_runs_paginates_newest_first_with_total() {
         let Some(pool) = db().await else { return };
         let user = seed_user(&pool).await;
-        let task = seed_prompt_task(&pool, user, "paged", true).await;
+        let task = seed_prompt_task(&pool, user, "recurring", true).await;
 
         // Insert 3 runs at increasing fired_at (r2 newest).
         let base = Utc::now() - chrono::Duration::days(3);

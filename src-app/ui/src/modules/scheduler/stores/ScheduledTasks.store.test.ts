@@ -48,6 +48,19 @@ describe('ScheduledTasks store — runs paging + series', () => {
     expect(s().runsMetaByTask['t1'].page).toBe(2)
   })
 
+  it('snaps an out-of-range page (empty page, total>0) back to page 1', async () => {
+    // First call: page 3 comes back empty but total=5 (history shrank) → the store
+    // must refetch page 1 rather than strand the user.
+    listRuns
+      .mockResolvedValueOnce({ runs: [], total: 5, page: 3, per_page: 10 })
+      .mockResolvedValueOnce({ runs: [{ id: 'r1' }], total: 5, page: 1, per_page: 10 })
+    await s().loadRuns('t1', 3)
+    expect(listRuns).toHaveBeenCalledTimes(2)
+    expect(listRuns).toHaveBeenLastCalledWith({ id: 't1', page: 1, per_page: 10 })
+    expect(s().runsByTask['t1']).toHaveLength(1)
+    expect(s().runsMetaByTask['t1'].page).toBe(1)
+  })
+
   it('continueSeries maps the selection to the limit query param', async () => {
     continueSeries.mockResolvedValueOnce({ conversation_id: 'c9' })
     const id = await s().continueSeries('t1', 10)

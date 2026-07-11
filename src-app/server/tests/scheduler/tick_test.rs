@@ -100,7 +100,7 @@ async fn tick_fires_scheduled_once_prompt_and_disables_it() {
         .json()
         .await
         .unwrap();
-    let runs = runs.as_array().unwrap();
+    let runs = runs["runs"].as_array().unwrap();
     assert!(!runs.is_empty(), "the firing is recorded in run history");
     assert_eq!(runs[0]["trigger"], "schedule");
     assert_eq!(runs[0]["status"], "completed");

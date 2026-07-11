@@ -36,3 +36,16 @@ src-app/ui/tests/e2e/14-scheduler/dry-run.spec.ts	1	99999	tests-quality,correctn
 src-app/ui/tests/e2e/14-scheduler/helpers.ts	1	99999	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-scheduler/paused-and-runs.spec.ts	1	99999	tests-quality,correctness,patterns-conformance
 src-app/ui/tests/e2e/14-scheduler/scheduled-tasks.spec.ts	1	99999	tests-quality,correctness,patterns-conformance,a11y
+src-app/server/migrations/00000000000155_scheduled_task_run_result_preview.sql	1	99999	correctness,api-contract,patterns-conformance
+src-app/server/src/modules/scheduler/continue_chat.rs	1	99999	correctness,security,error-handling,concurrency
+src-app/server/src/modules/scheduler/dispatch.rs	1	99999	correctness,error-handling,patterns-conformance
+src-app/server/src/modules/scheduler/handlers.rs	1	99999	api-contract,security,correctness
+src-app/server/src/modules/scheduler/models.rs	1	99999	api-contract,correctness,patterns-conformance
+src-app/server/src/modules/scheduler/repository.rs	1	99999	correctness,security,error-handling
+src-app/server/src/modules/scheduler/routes.rs	1	99999	api-contract,security,patterns-conformance
+src-app/server/src/modules/scheduler/tick.rs	1	99999	correctness,error-handling,patterns-conformance
+src-app/ui/src/modules/scheduler/components/runTimeline.ts	1	99999	correctness,state-management,tests-quality,patterns-conformance
+src-app/ui/src/modules/scheduler/components/runTimeline.test.ts	1	99999	tests-quality,correctness,patterns-conformance
+src-app/ui/src/modules/scheduler/pages/ScheduledTasksPage.tsx	1	99999	a11y,precedent-fidelity,responsive-fidelity,affordance-parity,state-management,design-in-context
+src-app/ui/src/modules/scheduler/stores/ScheduledTasks.store.ts	1	99999	state-management,correctness,api-contract
+src-app/ui/src/modules/scheduler/stores/ScheduledTasks.store.test.ts	1	99999	tests-quality,correctness,state-management
