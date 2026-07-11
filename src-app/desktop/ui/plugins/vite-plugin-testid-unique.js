@@ -36,7 +36,11 @@ import path from 'node:path'
 
 // Matches data-testid="literal" / data-testid='literal' (JSX) and the object
 // form "data-testid": "literal" (spread props). NOT data-testid={expr}.
-const TESTID_LITERAL = /data-testid\s*[=:]\s*["']([^"']+)["']/g
+// `(?<!\[)` skips CSS attribute SELECTORS — `querySelector('[data-testid="x"]')`
+// READS a testid, it does not DECLARE one, so it must not count as a second
+// declaration (that false-positived `kb-tool-result-*` as duplicates and broke
+// the desktop `vite build` — a PRE-EXISTING bug, unrelated to UI overrides).
+const TESTID_LITERAL = /(?<!\[)data-testid\s*[=:]\s*["']([^"']+)["']/g
 
 // The detector-acceptance fixture INTENTIONALLY reuses the real app testids the
 // detectors key on (e.g. K1 matches the literal `conversation-title`, so its
