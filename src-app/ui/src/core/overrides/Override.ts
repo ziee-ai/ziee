@@ -15,9 +15,9 @@
  * seam stays terse while a prop-carrying seam is type-checked.
  */
 import type { ReactNode } from 'react'
-import { createElement } from 'react'
+import { createElement, Fragment } from 'react'
 import type { UIOverrides } from './types'
-import { resolveOverride } from './registry'
+import { resolveOverride } from './registry.ts'
 
 type SeamPropsBase<K extends keyof UIOverrides> = {
   id: K
@@ -39,5 +39,7 @@ export function Seam<K extends keyof UIOverrides>({
   if (Override) {
     return createElement(Override, (props ?? {}) as UIOverrides[K])
   }
-  return <>{children}</>
+  // JSX-free `<>{children}</>` so the primitive is importable under `node --test`
+  // (the core unit runner strips types but does not transform JSX).
+  return createElement(Fragment, null, children)
 }

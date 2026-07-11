@@ -11,8 +11,9 @@
  * Tier 1 keeps the historical desktop-tree mirror working (desktop-only modules,
  * anything not yet relocated). Tier 2 lets a whole-file override live NEXT TO its
  * core sibling as `Foo.desktop.tsx` — the web build never imports it (nothing
- * references a `.desktop` specifier) and the web workspace excludes `**/*.desktop.*`
- * from tsc/biome, so the Tauri-importing file is inert there.
+ * references a `.desktop` specifier) and the web workspace excludes every
+ * `.desktop.tsx` / `.desktop.ts` file from tsc/biome, so the Tauri-importing file
+ * is inert there.
  *
  * The resolution ORDER is a pure function (`resolveOverridePath`) so it can be
  * unit-tested without a Vite dev server.

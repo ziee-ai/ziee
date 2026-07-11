@@ -9,7 +9,7 @@
  */
 import type { ComponentType } from 'react'
 import type { UIOverrides } from './types'
-import { resolveOverride } from './registry'
+import { resolveOverride } from './registry.ts'
 
 export function useOverride<K extends keyof UIOverrides>(
   key: K,
