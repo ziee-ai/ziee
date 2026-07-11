@@ -8,7 +8,7 @@
 ## Summary
 
 - **361** surfaces carry at least one renderable-state signal.
-- **2072** signals total: 1628 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2073** signals total: 1629 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -1255,23 +1255,24 @@ Required states: `delayed`, `error`
 | branch | `Math.abs(dy) < 6` | 203 |
 | branch | `!Stores.Chat.$.conversation` | 223 |
 | branch | `!conversationId` | 265 |
-| branch | `conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 316 |
-| branch | `!sentinel` | 342 |
-| branch | `!entries[0]?.isIntersecting` | 346 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 349 |
-| branch | `!sentinel` | 384 |
-| branch | `!entries[0]?.isIntersecting` | 388 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 389 |
-| loading | `!pending` | 404 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 407 |
-| branch | `!conversation?.id` | 416 |
-| branch | `!m` | 420 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 423 |
-| loading | `loading && !conversation` | 443 |
-| loading | `!loading && !conversation` | 452 |
-| error | `error` | 455 |
-| error | `error` | 512 |
-| branch | `nativeScroll && !composerHidden` | 611 |
+| branch | `!hasNewApproval` | 340 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 344 |
+| branch | `!sentinel` | 372 |
+| branch | `!entries[0]?.isIntersecting` | 376 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 379 |
+| branch | `!sentinel` | 414 |
+| branch | `!entries[0]?.isIntersecting` | 418 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 419 |
+| loading | `!pending` | 434 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 437 |
+| branch | `!conversation?.id` | 446 |
+| branch | `!m` | 450 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 453 |
+| loading | `loading && !conversation` | 473 |
+| loading | `!loading && !conversation` | 482 |
+| error | `error` | 485 |
+| error | `error` | 542 |
+| branch | `nativeScroll && !composerHidden` | 641 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

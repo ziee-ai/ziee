@@ -303,22 +303,32 @@ export default function ConversationPage() {
     }
   }, [messages, conversationId, conversation, hasMoreAfter])
 
+  // On mount, treat any already-`pending_approval` tool calls as already-scrolled.
+  // `toolCalls` is a process-global map that is never cleared across conversations,
+  // so a leftover pending approval from a previously-viewed conversation must NOT
+  // yank a freshly-opened one to the bottom — only approvals that appear AFTER this
+  // page mounts should scroll.
+  useEffect(() => {
+    for (const [id, call] of toolCalls) {
+      if (call.status === 'pending_approval') scrolledApprovalsRef.current.add(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // A tool call that needs approval must grab the user's attention even if they've
   // scrolled up reading history — the streaming approval is injected at the TAIL of
-  // the message, so bring the tail into view via the list's own (virtualization-
-  // aware) handle. This DELIBERATELY bypasses the `isAtBottomRef` gate the normal
-  // auto-follow respects: that gate is exactly why an off-bottom approval was never
-  // scrolled to. Fires once per approval (deduped); the conversation-match guard
-  // avoids firing during a stale A→B switch. NOTE: a native per-element
-  // `scrollIntoView` is a no-op on the virtualized OverlayScrollbars viewport —
-  // `messageListRef.scrollToBottom()` is the only thing that moves it.
+  // the message, so bring the tail into view. Same guards as the auto-follow effect
+  // above, EXCEPT the `isAtBottomRef` gate is deliberately bypassed (that gate is
+  // exactly why an off-bottom approval was never scrolled to). Fires once per
+  // approval (deduped). `messagesEndRef.scrollIntoView` moves the native/mobile
+  // (non-virtualized) scroll and gets close under virtualization (estimated
+  // heights); `messageListRef.scrollToBottom()` then settles on the true measured
+  // bottom of the virtualized list (a no-op on the mobile plain path).
   useEffect(() => {
-    if (
-      conversation?.id !== conversationId ||
-      initialScrollConvIdRef.current !== conversationId
-    ) {
-      return
-    }
+    // Record every newly-pending approval as "seen" REGARDLESS of whether we
+    // scroll to it — so an approval that arrives while a guard is active (e.g. a
+    // mid-list `hasMoreAfter` window) is not left un-seen and cannot trigger a
+    // stray cross-conversation scroll later.
     const seen = scrolledApprovalsRef.current
     let hasNewApproval = false
     for (const [id, call] of toolCalls) {
@@ -327,10 +337,30 @@ export default function ConversationPage() {
         hasNewApproval = true
       }
     }
-    if (hasNewApproval) {
+    if (!hasNewApproval) return
+    // Only scroll when it's safe — same guards as the auto-follow effect above,
+    // EXCEPT the `isAtBottomRef` gate is deliberately bypassed (that gate is
+    // exactly why an off-bottom approval was never scrolled to).
+    if (
+      pendingAnchorRef.current ||
+      hasMoreAfter ||
+      conversation?.id !== conversationId ||
+      initialScrollConvIdRef.current !== conversationId
+    ) {
+      return
+    }
+    // Desktop is virtualized → `scrollToBottom()` (virt.scrollToIndex + re-assert)
+    // is what actually moves the OverlayScrollbars viewport. On the mobile plain
+    // path `scrollToBottom()` is a no-op, so fall back to the end-anchor
+    // `scrollIntoView` (which moves the native document scroll). Splitting on
+    // `nativeScroll` avoids running BOTH on desktop, where the anchor jump would
+    // fight the virtualized scroll.
+    if (nativeScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    } else {
       messageListRef.current?.scrollToBottom()
     }
-  }, [toolCalls, conversation, conversationId])
+  }, [toolCalls, conversation, conversationId, hasMoreAfter])
 
   // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
   // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next
