@@ -5,7 +5,14 @@ import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { defineExtensionStore } from '@/modules/chat/core/extensions'
 import { recordedBlobToWav16k } from './audio/wav'
-import { appendTranscript, isSuperseded, micErrorMessage } from './voiceLogic'
+import {
+  appendTranscript,
+  composeInterimCaption,
+  isSuperseded,
+  micErrorMessage,
+  resolveLivePref,
+  shouldRunInterim,
+} from './voiceLogic'
 
 /**
  * VoiceStore — the chat-composer voice-dictation state machine.
@@ -37,6 +44,8 @@ let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let stageTimer: ReturnType<typeof setTimeout> | null = null
 let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
 let requestTimeout: ReturnType<typeof setTimeout> | null = null
+/** Self-rescheduling interim (live-caption) decode timer; null when not looping. */
+let interimTimer: ReturnType<typeof setTimeout> | null = null
 let recordStartedAt = 0
 /**
  * In-progress latch for `stopRecording`'s finalization window. `status` stays
@@ -55,6 +64,21 @@ let requestGeneration = 0
 
 /** getUserMedia can hang forever on an unanswered permission prompt; escape it. */
 const GET_USER_MEDIA_TIMEOUT_MS = 15000
+
+/** Per-device "Live captions" preference (opt-out to batch). */
+const LIVE_CAPTIONS_KEY = 'ziee.voice.liveCaptions'
+/** Clamp the admin cadence to the same bounds the backend validates (300..=10000). */
+function clampInterval(ms: number | undefined): number {
+  return Math.min(10_000, Math.max(300, Math.round(ms ?? 1000)))
+}
+/** Read the stored per-device live-captions pref (null when unset / storage blocked). */
+function storedLivePref(): string | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(LIVE_CAPTIONS_KEY) : null
+  } catch {
+    return null
+  }
+}
 
 function stopStream(): void {
   if (mediaStream) {
@@ -76,6 +100,10 @@ function clearTimers(): void {
   if (requestTimeout !== null) {
     clearTimeout(requestTimeout)
     requestTimeout = null
+  }
+  if (interimTimer !== null) {
+    clearTimeout(interimTimer)
+    interimTimer = null
   }
 }
 
@@ -133,6 +161,14 @@ export const createVoiceStore = defineExtensionStore({
     /** Last error message (surfaced to the user via the persistent live region). */
     errorMessage: null as string | null,
     /**
+     * The live interim caption (full stitched transcript-so-far) shown WHILE
+     * recording when live captions are on. Transient preview only — it is NEVER
+     * written to the composer; the authoritative transcript is inserted on stop.
+     */
+    interimText: '',
+    /** Per-device "Live captions" preference (opt-out to batch). */
+    liveCaptions: false,
+    /**
      * Discrete screen-reader announcement for the single persistent live region
      * in MicButton. Set only on STATE TRANSITIONS ("Recording started",
      * "Transcribing", "Transcript added", "Recording cancelled", or an error
@@ -164,8 +200,44 @@ export const createVoiceStore = defineExtensionStore({
         announcement: msg,
         elapsedMs: 0,
         stageText: '',
+        interimText: '',
       })
       revertToIdleSoon()
+    }
+
+    /**
+     * Self-rescheduling live-caption loop: while recording (and not superseded /
+     * finalizing), decode the WHOLE accumulating buffer and render the returned
+     * full transcript as the interim caption. Single-flight (the next tick is
+     * scheduled only after the previous settles) and interim-errors-non-fatal —
+     * a failed decode just skips one caption update, never the recording.
+     */
+    const runInterimTick = (gen: number, intervalMs: number) => {
+      interimTimer = setTimeout(async () => {
+        interimTimer = null
+        if (isSuperseded(gen, requestGeneration) || get().status !== 'recording' || finalizing) {
+          return
+        }
+        try {
+          const blob = new Blob(chunks, { type: mediaRecorder?.mimeType || 'audio/webm' })
+          if (blob.size > 0) {
+            const wav = await recordedBlobToWav16k(blob)
+            const formData = new FormData()
+            formData.append('file', wav, 'interim.wav')
+            const result = await ApiClient.Voice.transcribeStream(formData)
+            // Only paint the caption while still actively recording this session.
+            if (!isSuperseded(gen, requestGeneration) && get().status === 'recording' && !finalizing) {
+              set({ interimText: composeInterimCaption(result.text) })
+            }
+          }
+        } catch {
+          // Non-fatal: skip this caption update; recording + the authoritative
+          // final decode are unaffected.
+        }
+        if (!isSuperseded(gen, requestGeneration) && get().status === 'recording' && !finalizing) {
+          runInterimTick(gen, intervalMs)
+        }
+      }, intervalMs)
     }
 
     /** Fetch the readiness snapshot. Self-gates on the transcribe permission. */
@@ -176,11 +248,27 @@ export const createVoiceStore = defineExtensionStore({
       }
       try {
         const capability = await ApiClient.Voice.capability()
-        set({ capability, capabilityLoaded: true })
+        // Resolve the per-device live-captions pref against the deployment toggle
+        // (default follows streaming_enabled — opt-out).
+        set({
+          capability,
+          capabilityLoaded: true,
+          liveCaptions: resolveLivePref(storedLivePref(), capability.streaming_enabled),
+        })
       } catch {
         // Non-fatal: the button hides when capability stays null.
         set({ capabilityLoaded: true })
       }
+    }
+
+    /** Toggle + persist the per-device "Live captions" preference. */
+    const setLiveCaptions = (on: boolean) => {
+      try {
+        localStorage.setItem(LIVE_CAPTIONS_KEY, on ? '1' : '0')
+      } catch {
+        /* storage blocked — apply for this session only */
+      }
+      set({ liveCaptions: on })
     }
 
     const startRecording = async () => {
@@ -232,19 +320,27 @@ export const createVoiceStore = defineExtensionStore({
         }
         mediaStream = stream
         chunks = []
+        // Live-caption mode: decode the accumulating buffer on a cadence while
+        // recording. A timeslice makes MediaRecorder flush chunks periodically so
+        // the accumulate-from-start blob is decodable each interim tick.
+        const live = shouldRunInterim('recording', capability, get().liveCaptions)
+        const intervalMs = clampInterval(capability?.stream_interval_ms)
         try {
           const recorder = new MediaRecorder(stream)
           mediaRecorder = recorder
           recorder.ondataavailable = e => {
             if (e.data && e.data.size > 0) chunks.push(e.data)
           }
-          recorder.start()
+          if (live) recorder.start(intervalMs)
+          else recorder.start()
         } catch {
           fail('Could not start the audio recorder.')
           return
         }
         recordStartedAt = Date.now()
-        set({ status: 'recording', elapsedMs: 0, announcement: 'Recording started' })
+        set({ status: 'recording', elapsedMs: 0, interimText: '', announcement: 'Recording started' })
+        // Kick off the interim decode loop (guarded by the same generation token).
+        if (live) runInterimTick(gen, intervalMs)
         const maxMs = (capability?.max_clip_seconds ?? 60) * 1000
         elapsedTimer = setInterval(() => {
           const elapsed = Date.now() - recordStartedAt
@@ -303,6 +399,9 @@ export const createVoiceStore = defineExtensionStore({
           status: 'transcribing',
           stageText: 'Starting voice engine…',
           announcement: 'Transcribing',
+          // The transient interim caption ends here; the authoritative transcript
+          // is what lands in the composer below.
+          interimText: '',
         })
         // The same `gen` token guards the transcribe POST below: a POST that
         // resolves AFTER a cancel/unmount is dropped instead of appending its
@@ -373,12 +472,13 @@ export const createVoiceStore = defineExtensionStore({
         elapsedMs: 0,
         stageText: '',
         errorMessage: null,
+        interimText: '',
         announcement: 'Recording cancelled',
       })
       focusComposer()
     }
 
-    return { fetchCapability, startRecording, stopRecording, cancelRecording }
+    return { fetchCapability, setLiveCaptions, startRecording, stopRecording, cancelRecording }
   },
   init: ({ actions }) => {
     void actions.fetchCapability()

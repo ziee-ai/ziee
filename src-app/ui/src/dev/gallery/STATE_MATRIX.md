@@ -8,7 +8,7 @@
 ## Summary
 
 - **363** surfaces carry at least one renderable-state signal.
-- **2099** signals total: 1651 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2102** signals total: 1654 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -1234,8 +1234,11 @@ Required states: `open`
 | branch | `!canDictate` | 64 |
 | branch | `!capabilityLoaded \|\| !capability \|\| !capability.enabled` | 67 |
 | branch | `!isRecordingSupported()` | 68 |
-| branch | `isRequesting` | 188 |
-| overlay | `<Popover open>` | 206 |
+| branch | `streamingAvailable` | 89 |
+| branch | `liveCaptions` | 95 |
+| branch | `liveCaptions && interimText` | 175 |
+| branch | `isRequesting` | 229 |
+| overlay | `<Popover open>` | 247 |
 
 ### `modules/chat/pages/ChatHistoryPage`
 
@@ -4388,10 +4391,10 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `loadingSettings && !settings` | 116 |
-| error | `error && !settings` | 124 |
-| branch | `canManage` | 143 |
-| branch | `!canManage` | 154 |
+| branch | `loadingSettings && !settings` | 128 |
+| error | `error && !settings` | 136 |
+| branch | `canManage` | 155 |
+| branch | `!canManage` | 166 |
 
 ### `modules/voice/components/VoiceInstanceCard`
 

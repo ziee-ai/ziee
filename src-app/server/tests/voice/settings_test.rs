@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::VOICE_ADMIN_PERMS;
+use super::{insert_version_row, stage_model, stub_whisper_binary, VOICE_ADMIN_PERMS};
 use crate::common::TestServer;
 use crate::common::sync_probe::SyncProbe;
 use crate::common::test_helpers::create_user_with_permissions;
@@ -67,6 +67,141 @@ async fn test_admin_get_and_update_settings_roundtrip() {
     assert_eq!(row["model"], "small");
     assert_eq!(row["idle_unload_secs"], 900);
     assert_eq!(row["max_clip_seconds"], 300);
+}
+
+/// TEST-7 — the streaming settings (`streaming_enabled` / `stream_interval_ms`)
+/// round-trip through GET/PUT with defaults, persist, and validate their bounds.
+#[tokio::test]
+async fn test_streaming_settings_roundtrip_and_validation() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "voice_stream_settings_admin", VOICE_ADMIN_PERMS).await;
+    let client = reqwest::Client::new();
+
+    // Defaults from migration 153.
+    let row: Value = client
+        .get(server.api_url("/voice/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(row["streaming_enabled"], true, "streaming defaults ON");
+    assert_eq!(row["stream_interval_ms"], 1000, "cadence defaults to 1000ms");
+    assert_eq!(row["stream_max_decode_secs"], 30, "decode window defaults to 30s");
+
+    // PUT the fields; they round-trip.
+    let row: Value = client
+        .put(server.api_url("/voice/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "streaming_enabled": false,
+            "stream_interval_ms": 2500,
+            "stream_max_decode_secs": 45
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(row["streaming_enabled"], false);
+    assert_eq!(row["stream_interval_ms"], 2500);
+    assert_eq!(row["stream_max_decode_secs"], 45);
+
+    // Persisted.
+    let row: Value = client
+        .get(server.api_url("/voice/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(row["streaming_enabled"], false);
+    assert_eq!(row["stream_interval_ms"], 2500);
+    assert_eq!(row["stream_max_decode_secs"], 45);
+
+    // Out-of-range values → 400.
+    for (field, bad) in [
+        ("stream_interval_ms", 299),
+        ("stream_interval_ms", 10_001),
+        ("stream_max_decode_secs", 4),
+        ("stream_max_decode_secs", 601),
+    ] {
+        let res = client
+            .put(server.api_url("/voice/settings"))
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&json!({ field: bad }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 400, "{field}={bad} must be rejected");
+    }
+}
+
+/// TEST-7 — the non-admin capability snapshot reflects the streaming settings, and
+/// `streaming_enabled` is gated by the deployment toggle AND full mic-usability
+/// (`can_transcribe` = master enable + runtime + model).
+#[tokio::test]
+async fn test_capability_reflects_streaming_settings() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "voice_cap_stream_admin", VOICE_ADMIN_PERMS).await;
+    // A plain Users member holds voice::transcribe → can read capability.
+    let user = create_user_with_permissions(&server, "voice_cap_stream_user", &[]).await;
+    let client = reqwest::Client::new();
+
+    // Provision a runtime + model so can_transcribe=true — otherwise capability
+    // streaming_enabled is (correctly) false regardless of the toggle.
+    let stub = stub_whisper_binary();
+    insert_version_row(&server, "v0.0.0-stub", "cpu", stub.to_string_lossy().as_ref(), true).await;
+    stage_model(&server, "base");
+
+    let cap = |token: String| {
+        let client = client.clone();
+        let url = server.api_url("/voice/capability");
+        async move {
+            client
+                .get(&url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+
+    // Defaults: enabled=true + streaming_enabled=true → capability streaming on.
+    let c = cap(user.token.clone()).await;
+    assert_eq!(c["streaming_enabled"], true);
+    assert_eq!(c["stream_interval_ms"], 1000);
+
+    // Turn the deployment streaming toggle off → capability streaming off.
+    client
+        .put(server.api_url("/voice/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "streaming_enabled": false }))
+        .send()
+        .await
+        .unwrap();
+    let c = cap(user.token.clone()).await;
+    assert_eq!(c["streaming_enabled"], false, "deployment toggle off → capability off");
+
+    // Master enable off ALSO forces capability streaming off (even if the
+    // deployment toggle is back on).
+    client
+        .put(server.api_url("/voice/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "enabled": false, "streaming_enabled": true }))
+        .send()
+        .await
+        .unwrap();
+    let c = cap(user.token).await;
+    assert_eq!(c["streaming_enabled"], false, "master disable → capability streaming off");
 }
 
 /// TEST-18 — non-admin is denied both read and write.

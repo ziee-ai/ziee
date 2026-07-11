@@ -32,6 +32,8 @@ mod model_test;
 mod permissions_test;
 mod real_repo_test;
 mod settings_test;
+mod streaming_real_test;
+mod streaming_test;
 mod transcribe_test;
 mod version_download_test;
 mod version_update_test;

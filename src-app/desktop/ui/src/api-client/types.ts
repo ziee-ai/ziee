@@ -6581,6 +6581,9 @@ export interface UpdateVoiceSettingsRequest {
   max_clip_seconds?: number
   max_upload_bytes?: number
   model?: string
+  stream_interval_ms?: number
+  stream_max_decode_secs?: number
+  streaming_enabled?: boolean
 }
 
 /** PUT body for the global settings. Every field optional → absent = leave. */
@@ -6964,6 +6967,14 @@ export interface VoiceCapability {
   model_ready: boolean
   /** A whisper-server runtime binary is installed for this host. */
   runtime_ready: boolean
+  /** Interim decode cadence (ms) the composer paces its live-caption loop at. */
+  stream_interval_ms: number
+  /**
+   * Live streaming captions available: the mic is usable (`can_transcribe`)
+   *  AND the deployment `streaming_enabled` toggle is on. The composer runs the
+   *  interim loop only when this is true.
+   */
+  streaming_enabled: boolean
 }
 
 /** Snapshot of the single managed whisper-server instance (singleton row). */
@@ -7004,6 +7015,15 @@ export interface VoiceSettings {
   max_upload_bytes: number
   /** Selected whisper ggml model name (tiny | base | base.en | small). */
   model: string
+  /** Interim decode cadence in milliseconds for live captions. */
+  stream_interval_ms: number
+  /**
+   * Trailing-window (seconds) each interim clip is clamped to before decoding
+   *  — the per-tick cost bound. The final on-stop decode is unclamped.
+   */
+  stream_max_decode_secs: number
+  /** Live streaming captions available deployment-wide (also needs `enabled`). */
+  streaming_enabled: boolean
   updated_at: string
 }
 
@@ -7902,6 +7922,7 @@ export const ApiEndpoints = {
   'Voice.subscribeVersionDownloadEvents': 'GET /api/voice/versions/downloads/{key}/events',
   'Voice.syncVersionCache': 'POST /api/voice/versions/sync-cache',
   'Voice.transcribe': 'POST /api/voice/transcribe',
+  'Voice.transcribeStream': 'POST /api/voice/transcribe/stream',
   'Voice.updateSettings': 'PUT /api/voice/settings',
   'WebSearch.deleteUserKey': 'DELETE /api/web-search/user-keys/{provider}',
   'WebSearch.getProviders': 'GET /api/web-search/providers',
@@ -8343,6 +8364,7 @@ export type ApiEndpointParameters = {
   'Voice.subscribeVersionDownloadEvents': { key: string }
   'Voice.syncVersionCache': void
   'Voice.transcribe': FormData
+  'Voice.transcribeStream': FormData
   'Voice.updateSettings': UpdateVoiceSettingsRequest
   'WebSearch.deleteUserKey': { provider: string }
   'WebSearch.getProviders': void
@@ -8784,6 +8806,7 @@ export type ApiEndpointResponses = {
   'Voice.subscribeVersionDownloadEvents': SSEEngineDownloadEvent2
   'Voice.syncVersionCache': SyncCacheResponse2
   'Voice.transcribe': TranscriptionResponse
+  'Voice.transcribeStream': TranscriptionResponse
   'Voice.updateSettings': VoiceSettings
   'WebSearch.deleteUserKey': void
   'WebSearch.getProviders': ProviderCatalogResponse

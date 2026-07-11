@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 363 surfaces carry renderable-state signals; 2099 signals total.
+// 363 surfaces carry renderable-state signals; 2102 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1088,8 +1088,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!canDictate", line: 64 },
       { kind: "branch", condition: "!capabilityLoaded || !capability || !capability.enabled", line: 67 },
       { kind: "branch", condition: "!isRecordingSupported()", line: 68 },
-      { kind: "branch", condition: "isRequesting", line: 188 },
-      { kind: "overlay", condition: "<Popover open>", line: 206 },
+      { kind: "branch", condition: "streamingAvailable", line: 89 },
+      { kind: "branch", condition: "liveCaptions", line: 95 },
+      { kind: "branch", condition: "liveCaptions && interimText", line: 175 },
+      { kind: "branch", condition: "isRequesting", line: 229 },
+      { kind: "overlay", condition: "<Popover open>", line: 247 },
     ],
   },
   "modules/chat/pages/ChatHistoryPage": {
@@ -4009,10 +4012,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/voice/components/VoiceConfigCard",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "loadingSettings && !settings", line: 116 },
-      { kind: "error", condition: "error && !settings", line: 124 },
-      { kind: "branch", condition: "canManage", line: 143 },
-      { kind: "branch", condition: "!canManage", line: 154 },
+      { kind: "branch", condition: "loadingSettings && !settings", line: 128 },
+      { kind: "error", condition: "error && !settings", line: 136 },
+      { kind: "branch", condition: "canManage", line: 155 },
+      { kind: "branch", condition: "!canManage", line: 166 },
     ],
   },
   "modules/voice/components/VoiceInstanceCard": {

@@ -98,6 +98,43 @@ test.describe('Voice — runtime health of key states (TEST-31)', () => {
     expect(probe.findings, probe.findings.join('\n')).toEqual([])
   })
 
+  test('live-caption recording state renders cleanly (TEST-14)', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await installVoiceBrowserMocks(page)
+    await routeVoice(
+      page,
+      defaultVoiceState({
+        streamTranscribe: { text: 'live caption words', language: 'en', duration_ms: 90 },
+      }),
+    )
+    await loginAsAdmin(page, baseURL)
+
+    const probe = attachHealthProbe(page)
+    await gotoComposer(page, baseURL)
+
+    // Live captions default ON → the toggle renders.
+    await expect(byTestId(page, 'voice-live-toggle')).toBeVisible()
+    const hintDismiss = byTestId(page, 'voice-privacy-hint-dismiss')
+    if (await hintDismiss.isVisible().catch(() => false)) {
+      await hintDismiss.click()
+    }
+
+    // Record → the new live-caption strip renders from the interim loop.
+    await byTestId(page, 'voice-mic-button').first().click()
+    await expect(byTestId(page, 'voice-elapsed')).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'voice-live-caption')).toContainText('live caption words', {
+      timeout: 15000,
+    })
+
+    // The whole recording-with-live-caption state produced zero runtime findings.
+    expect(probe.findings, probe.findings.join('\n')).toEqual([])
+
+    await byTestId(page, 'voice-cancel-button').click()
+  })
+
   test('admin page renders cleanly (provisioned)', async ({
     page,
     testInfra,

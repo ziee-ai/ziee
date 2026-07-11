@@ -8,6 +8,7 @@ use aide::axum::{
 use axum::extract::DefaultBodyLimit;
 
 use super::handlers;
+use super::stream;
 use super::transcribe;
 
 /// Generous per-route ceiling for the transcribe upload (above the 32 MB default
@@ -20,6 +21,11 @@ pub fn voice_router() -> ApiRouter {
         .api_route(
             "/voice/transcribe",
             post_with(transcribe::transcribe, transcribe::transcribe_docs)
+                .layer(DefaultBodyLimit::max(VOICE_TRANSCRIBE_BODY_LIMIT)),
+        )
+        .api_route(
+            "/voice/transcribe/stream",
+            post_with(stream::transcribe_stream, stream::transcribe_stream_docs)
                 .layer(DefaultBodyLimit::max(VOICE_TRANSCRIBE_BODY_LIMIT)),
         )
         .api_route(

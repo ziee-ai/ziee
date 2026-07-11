@@ -46,3 +46,46 @@ export function micErrorMessage(err: unknown): string {
     ? 'Microphone access was denied. Allow it in your browser to dictate.'
     : 'Could not start recording — no microphone available.'
 }
+
+// ── streaming (live-caption) decision helpers ─────────────────────────────────
+// Pure logic for the interim loop, extracted so the store's cadence/gate is
+// unit-testable without the browser + MediaRecorder graph.
+
+/** The subset of `VoiceCapability` the interim decision needs (avoids a store cycle). */
+export interface InterimCapability {
+  streaming_enabled: boolean
+  stream_interval_ms: number
+}
+
+/**
+ * True when the composer should run the live-caption interim loop: only while
+ * actively `recording`, only when the deployment offers streaming captions, and
+ * only when this device's user pref has them ON. Any other status (idle,
+ * requesting, transcribing, error) must NOT decode interim frames.
+ */
+export function shouldRunInterim(
+  status: string,
+  capability: InterimCapability | null | undefined,
+  livePref: boolean,
+): boolean {
+  return status === 'recording' && !!capability?.streaming_enabled && livePref
+}
+
+/**
+ * Resolve the per-device "Live captions" preference. A stored `'1'`/`'0'` wins;
+ * with nothing stored the default FOLLOWS the deployment `streaming_enabled`
+ * (on when available — the opt-out default, DEC-11). Anything else → the default.
+ */
+export function resolveLivePref(stored: string | null, streamingEnabled: boolean): boolean {
+  if (stored === '1') return true
+  if (stored === '0') return false
+  return streamingEnabled
+}
+
+/**
+ * Normalize an interim transcript into the live caption. Trimmed; a blank decode
+ * clears the caption (empty string) rather than showing whitespace.
+ */
+export function composeInterimCaption(text: string | null | undefined): string {
+  return (text ?? '').trim()
+}
