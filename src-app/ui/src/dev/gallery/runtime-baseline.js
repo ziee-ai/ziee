@@ -73,6 +73,29 @@ export const RUNTIME_BASELINE = [
     match: 'rgba(0, 0, 0, 0)',
     note: 'Pre-existing (identical on clean origin/main). A transparent foreground (fg rgba(0,0,0,0), alpha 0 — an element mid fade-in / placeholder) computes a degenerate 1.00:1 on the file right-panel surface. Owner: file right-panel component. Not in this diff — `ChatRightPanel`\'s change is inert on this surface (inPane=false) and the file-load path (FileStore) is unchanged.',
   },
+  // --- Main-inherited (arrived with the origin/main merge — kb + voice + memory
+  // + UI, DRIFT-2.8); NOT introduced by feat/split-chat-multipane. The split diff
+  // touches ZERO files in either surface's render subtree. Baselined so the gate
+  // reflects that this feature adds no new gating finding; owners noted for the
+  // real fixes.
+  {
+    category: 'console-error',
+    surface: 'overlay-provider-api-key-modal',
+    match: 'useNavigate() may be used only',
+    note: 'Main-inherited gallery-harness limitation: `ProviderApiKeyModal.tsx` (NOT in this diff) calls `useNavigate()` (react-router), and the gallery renders the overlay outside a <Router>, so it throws. The split diff\'s only file in this folder is the sibling `ModelSelector.tsx` (per-pane store binding — no useNavigate/Router change). Owner: gallery overlay harness / user-llm-providers (wrap the overlay in a router context or guard the hook).',
+  },
+  {
+    category: 'crash',
+    surface: 'overlay-provider-api-key-modal',
+    match: 'useNavigate() may be used only',
+    note: 'Same root cause as the paired console-error above — the useNavigate-outside-<Router> throw escalates to an AppErrorBoundary crash on the isolated overlay surface. Main-inherited (`ProviderApiKeyModal.tsx`, not in this diff). Owner: gallery overlay harness / user-llm-providers.',
+  },
+  {
+    category: 'page-error',
+    surface: 'settings-memory-admin',
+    match: 'Cannot access',
+    note: 'Main-inherited: the memory-admin settings surface throws a module circular-init error ("Cannot access \'default\' before initialization") from the memory module\'s own import graph, which arrived with the origin/main merge. The split diff touches ZERO memory-module files. Owner: memory module (break the import cycle).',
+  },
 ]
 
 /** True when a finding is a documented, baselined pre-existing item. */
