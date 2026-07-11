@@ -564,16 +564,28 @@ the sole affordance; on the web the browser already provides "open in new tab"
 chrome. Implemented as a pure `popoutActionVisible(inPane, isDesktop)` gate.
 
 ### DEC-61: Voice recording with two panes — exclusive (one at a time) or simultaneous?
-**Resolution:** EXCLUSIVE recording, per-pane STATE. The mic is single hardware
+**Resolution:** EXCLUSIVE recording, per-pane STATE — **A1 (disable others while
+recording)**, confirmed by the human at plan approval. The mic is single hardware
 (one `getUserMedia` stream), so true simultaneous recording is impossible. Each
 pane owns its own VoiceStore instance (caption/status/transcript destination), but
 the imperative recorder is a single guarded resource owned by the pane that started
 it; the transcript lands in THAT pane's TextStore. While a recording is active, the
-mic button in OTHER panes is disabled/busy (recommended A1) rather than silently
-superseding the active recording (A2). [RECOMMENDED — confirm at plan approval;
-this is the one genuine product fork in round 5.]
-**Basis:** codebase + user-to-confirm — single mic hardware makes exclusivity a
-physical constraint; A1 vs A2 is the human's call.
+mic button in OTHER panes is **disabled/busy** (A1) — NOT silently superseding the
+active recording (A2, rejected).
+**Basis:** user — chosen via AskUserQuestion at Stage-2 plan approval ("Disable
+others while recording"); single mic hardware makes exclusivity a physical constraint.
+
+### DEC-65: Are the surveyed out-of-scope surfaces approved as descoped for round 5?
+**Resolution:** Yes, approved. The human approved the Stage-2 plan with the descope
+list as-is (AskUserQuestion "All 5 this round" → the 5 ITEMs are in scope and the
+proposed descopes stand). Out of scope (no in-pane surface exists to make pane-aware):
+(a) web/lit/bio search composer affordances (none exist — backend auto-attach only;
+the tool-result cards + lit screening panel are already pane-safe); (b) voice /
+web-search / literature / citations / scheduled-tasks / model-download-upload ADMIN +
+settings pages (standalone routes, deployment-wide singletons, never in a pane);
+(c) `mcpExtension.beforeSendMessage` reading the focused pane's approvals (intentional
+ITEM-33 "sending = focused"). [approved: user@2026-07-11 · Stage-2 plan approval]
+**Basis:** user — Stage-2 plan approval.
 
 ### DEC-62: How is a tool-call's originating conversation resolved for the scroll-to-approval filter?
 **Resolution:** FRONTEND, via the tool-call's `message_id` → the pane whose messages
