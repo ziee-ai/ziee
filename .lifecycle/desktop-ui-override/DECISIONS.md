@@ -1,96 +1,121 @@
 # DECISIONS.md — resolved up front
 
 ### DEC-1: Which override mechanism — build-time file-swap, runtime registry, or hybrid?
-**Resolution:** Hybrid. Keep `localOverridePlugin` (build-time whole-file shadow)
-UNCHANGED for wholesale component/page/module swaps; ADD a runtime **UI Override
-Registry** for in-place sub-element seams. Use file-shadow when the desktop
-version differs wholesale; use a seam when desktop differs in one part of a
-component the web app still fully owns.
-**Basis:** codebase + research — the two survey axes are complementary; the
-research recommends "one from each axis," and ziee already ships the file-swap
-axis, so the net-new work is the registry (which mirrors the existing chat
-`panelRendererRegistry`).
+**Resolution:** Hybrid, gone aggressive. Keep `localOverridePlugin` (whole-file
+shadow) AND add `.desktop.tsx` co-location for whole-file cases; ADD a runtime UI
+Override Registry + `<Seam>` primitive for element-level cases; ADD a codemod to
+migrate existing shadows.
+**Basis:** codebase + research + user — the two axes are complementary; the user
+selected the aggressive tooling path (codemod + `.desktop.tsx`) in design review.
 
 ### DEC-2: Registry storage — React context/provider, or a module-level Map?
-**Resolution:** A module-level `Map`, populated once at desktop boot, read at
-render via a tiny hook. No provider tree.
-**Basis:** codebase — platform is FIXED at boot (never changes at runtime), so a
-context (which exists to propagate runtime-changing values) is unnecessary
-overhead. This is exactly how `panelRendererRegistry` (`Chat.store.ts:105`)
-stores renderers.
+**Resolution:** Module-level `Map`, populated once at desktop boot, read at render.
+No provider tree.
+**Basis:** codebase — platform is fixed at boot; mirrors `panelRendererRegistry`
+(`Chat.store.ts:105`).
 
 ### DEC-3: Seam API shape?
-**Resolution:** Both — a `useOverride(key, Fallback)` hook (returns the winning
-component) for logic-heavy call sites, and an `<Override id fallback {...props}/>`
-component wrapper for pure-JSX call sites. Both delegate to `resolveOverride`.
-**Basis:** convention — mirrors how the kit exposes both hook (`useSurface`) and
-component (`<KitSurfaceProvider>`) forms; ergonomics.
+**Resolution:** A `<Seam id props>{fallback}</Seam>` wrap-in-place component
+(children are the fallback — no `DefaultFoo` extraction needed) as the primary
+form, plus a `useOverride(key, Fallback)` hook for logic-heavy sites. Both delegate
+to `resolveOverride`.
+**Basis:** convention + user "aggressive / low-instrumentation" steer — wrapping in
+place is the least-ceremony way to declare a seam.
 
 ### DEC-4: Key naming convention?
-**Resolution:** `<module>.<element>` in kebab-case (e.g. `hardware.monitor-button`,
-`llm-provider.group-assignment-card`).
-**Basis:** convention — matches existing string-keyed registries (chat panel
-`type` ids, `data-testid` literals, slot names).
+**Resolution:** `<module>.<element>` kebab-case (e.g. `hardware.monitor-button`,
+`layout.drawer-header`).
+**Basis:** convention — matches chat panel `type` ids, `data-testid`, slot names.
 
 ### DEC-5: How are keys/props typed?
-**Resolution:** Declaration merging on a base `export interface UIOverrides {}`;
-each seam adds `declare module '@/core/overrides' { interface UIOverrides { 'x.y': PropsType } }`.
-The value type is the overridable element's props; `registerOverride`/`resolveOverride`
-are generic over `keyof UIOverrides`.
-**Basis:** codebase — identical to `Slots` (`core/module-system/types.ts:34`),
-`RegisteredStores`, and `PanelRendererMap`.
+**Resolution:** Declaration merging on `interface UIOverrides {}`; value = the
+overridable element's props; `register`/`resolve` generic over `keyof UIOverrides`.
+The codemod GENERATES the declaration so there is no manual typing ceremony.
+**Basis:** codebase — identical to `Slots`/`RegisteredStores`/`PanelRendererMap`.
 
 ### DEC-6: Fallback semantics when no override is registered?
-**Resolution:** Render the Fallback, which IS the extracted original element →
-the web bundle (registers nothing) is behaviorally byte-identical to today. A
-seam declared but never overridden is a legitimate resting state (tested by
-TEST-6).
-**Basis:** convention — non-invasive-by-default; the same "resolve→fallback"
-pattern as `resolvePanelRenderer` returning null when unregistered.
+**Resolution:** Render the fallback (the `<Seam>` children = original markup) → web
+is byte-identical to today. A declared-but-unoverridden seam is a valid resting
+state (tested).
+**Basis:** convention — non-invasive-by-default; mirrors `resolvePanelRenderer`
+returning null on miss.
 
 ### DEC-7: Where/when does the desktop register overrides?
-**Resolution:** In a desktop module's `initialize()`, invoked by
-`loadDesktopModules()` in `desktop/ui/src/main.tsx` BEFORE `ReactDOM.render` —
-the same pre-render window that runs `setMultiUserMode(false)`.
-**Basis:** codebase — desktop-module init already runs pre-render; registrations
-are complete before any routed page (where the exemplar seams live) mounts.
+**Resolution:** In a desktop module `initialize()`, invoked by `loadDesktopModules()`
+in `main.tsx` BEFORE `ReactDOM.render` — same pre-render window as
+`setMultiUserMode(false)`.
+**Basis:** codebase — desktop-module init runs pre-render; the exemplar seams live
+in routed pages that mount well after boot.
 
 ### DEC-8: Is the override mechanism an admin-configurable setting, or fixed?
-**Resolution:** FIXED — no settings row, no admin toggle, no migration. Overrides
-are CODE (a platform/build architecture concern), not an operational tunable an
-admin would flip at runtime. There is no memory/CPU/retention/rate/threshold knob
-here.
-**Basis:** convention + explicit rationale — the Configurable-settings rule
-targets operational tunables; a build-time/platform code seam is categorically
-not one. Structured as a typed registry (not magic numbers), so it remains
-evolvable without a settings rewrite.
+**Resolution:** FIXED — no settings row / admin toggle / migration. Overrides are
+CODE (platform/build architecture), not an operational tunable. No
+memory/CPU/retention/rate/threshold knob exists here.
+**Basis:** convention + explicit rationale — the Configurable-settings rule targets
+operational tunables; a build/platform code seam is categorically not one.
 
-### DEC-9: How is the override surface made discoverable / drift-guarded?
-**Resolution:** A generated manifest (`OVERRIDE_MANIFEST.md` + a generated TS key
-list) via `ui/scripts/gen-override-registry.mjs`, run in `--check` mode inside
-`npm run check` in BOTH workspaces; `--check` FAILS on a registered override
-whose key has no declared seam (dead override).
-**Basis:** codebase — mirrors `gen-testid-registry.mjs` / `gen-kit-manifest.mjs`.
+### DEC-9: How is the override surface discoverable / drift-guarded?
+**Resolution:** A generated `OVERRIDE_MANIFEST.md` + generated key list via a
+`seam check` / `gen-override-registry.mjs`, run `--check` inside `npm run check` in
+BOTH workspaces; `--check` fails on a dead override (registered key, no declared
+seam) and on an orphaned `*.desktop.tsx` (no core sibling).
+**Basis:** codebase — mirrors `gen-testid-registry.mjs`.
 
-### DEC-10: Which components become the two exemplar conversions, and by what criteria?
-**Resolution:** #1 = `HardwareMonitorButton` (self-contained whole-component
-seam; deletes an existing shadow — clean before/after). #2 = an ELEMENT-level
-case chosen at Phase-5 implement time by these criteria: (a) the host core
-component is non-trivial (so forking-the-whole-file is the real current cost),
-(b) desktop needs to change exactly ONE interior element, (c) the host has an
-existing gallery surface. Leading candidate: an interior action in
-`HeaderBarContainer`/`LeftSidebar`. Final pick recorded as a DRIFT/DEC note in
-Phase 5.
-**Basis:** codebase — these are the existing whole-file desktop overrides whose
-divergence is narrow; picking at implement time avoids guessing the host's shape
-before reading it.
+### DEC-10: Which existing shadows convert to seams vs relocate vs stay?
+**Resolution:** Per the triage — 5 class-B → seams (`Drawer`, `SettingsPage`,
+`HardwareMonitorButton`, `SidebarToggleButton`, `SidebarHeaderSpacer`); 5 class-A →
+`.desktop.tsx` co-location (`AuthGuard`, `LeftSidebar`, `HeaderBarContainer`,
+`memory/module`, `ProviderGroupAssignmentCard`); 8 class-C infra → unchanged.
+**Basis:** codebase — a seam removes duplication only for element-level (class-B)
+divergences; class-A/C have none to remove.
 
-### DEC-11: Does converting `HardwareMonitorButton` to a seam change its behavior on either platform?
-**Resolution:** No. Web renders the fallback (unchanged browser-popup button);
-desktop renders the registered native-window variant (identical to today's
-shadow file, minus the duplicated permission/render boilerplate, which now lives
-once in the shared fallback wrapper). The `data-testid` on the desktop variant is
-preserved so existing desktop e2e keeps passing.
-**Basis:** codebase — parity is asserted by TEST-4 (unit) + TEST-5 (e2e).
+### DEC-11: Does converting a shadow change platform behavior?
+**Resolution:** No, except the intentional Drawer fix (DEC-15). Web renders the
+unchanged fallback; desktop renders a variant identical to today's shadow minus the
+duplicated boilerplate. Desktop `data-testid`s preserved so existing desktop e2e
+keeps passing.
+**Basis:** codebase — asserted by TEST-8 (unit parity) + TEST-9 (e2e).
+
+### DEC-12: Full auto-migration codemod, or scaffold + hand-convert?
+**Resolution:** Full auto-migration codemod (ts-morph): `migrate` AST-diffs a
+shadow vs its core sibling and rewrites both sides + deletes the shadow; `add`
+scaffolds a new seam. **Mitigation (mandatory):** codemod output is
+HUMAN-REVIEWED before commit, is fixture/golden-tested (TEST-5), and per-seam
+parity is asserted (TEST-8) — the codemod accelerates the edit, it does not
+blind-ship it.
+**Basis:** user — chose the aggressive codemod in design review; I flagged the risk
+on the 5 subtle files and the mitigation is the review + tests.
+
+### DEC-13: `.desktop.tsx` co-location in the core tree, or leave class-A in the desktop tree?
+**Resolution:** Co-locate — relocate the 5 class-A shadows to
+`ui/src/<path>.desktop.tsx`. Accepted tradeoff: Tauri-importing files now live in
+the web workspace; they are never bundled by web vite and are EXCLUDED from web
+`tsconfig`/`biome` via `**/*.desktop.*`, so they are inert there while the desktop
+workspace typechecks + bundles them.
+**Basis:** user — chose co-location in design review; the exclude mechanism
+neutralizes the cross-workspace dependency concern I raised.
+
+### DEC-14: `.desktop.tsx` resolution precedence vs the existing desktop-tree shadow?
+**Resolution:** For a desktop `@/foo` import the resolver probes, in order: (1)
+desktop-tree `desktop/ui/src/foo.*` (existing behavior, unchanged), (2) core-tree
+`foo.desktop.*` (new), (3) core-tree `foo.*` (core base). Both override mechanisms
+coexist; class-A files move to tier (2), desktop-only modules keep using tier (1).
+**Basis:** codebase — preserves all existing resolutions; the new tier slots
+between the desktop-tree shadow and core base.
+
+### DEC-15: Reconcile Drawer drift during conversion?
+**Resolution:** Yes — restore core's swipe-to-close + `higherLayerOpen` stacking
+guard that the desktop shadow silently dropped; the desktop Drawer seam overrides
+ONLY the header/inset/traffic-light elements, so swipe + stacking flow from the
+shared fallback. This is a bug FIX made possible by the conversion, not propagated.
+**Basis:** codebase + user (accepted aggressive path) — asserted by TEST-6.
+
+### DEC-16: Codemod AST library?
+**Resolution:** Prefer `ts-morph`; confirm it is (or can be) a devDependency in
+Phase 5. If it cannot be added, fall back to the TypeScript compiler API directly
+(no new dep). Either way the codemod is a build-time `.mjs` dev script, never
+shipped in a binary.
+**Basis:** convention — build-time-only tooling, resolved to a concrete fallback so
+implementation does not stall.
 
 All decisions above are resolved; no unresolved markers remain.

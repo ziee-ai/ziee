@@ -2,162 +2,169 @@
 
 ## Problem
 
-Today the ONLY way to customize any UI for the desktop build is
-`localOverridePlugin` — a Vite `resolveId` shadow that swaps a **whole `.tsx`
-file**: `desktop/ui/src/<path>` wins over `ui/src/<path>` for any `@/…` import.
-To change one element inside a core component you must duplicate the entire
-enclosing file into the desktop tree (see `HardwareMonitorButton.tsx`: a 70-line
-desktop copy of a 50-line core component to change only the click behavior;
-`ProviderGroupAssignmentCard.tsx`: an 11-line `return null` shadowing a 65-line
-component). This does not scale to the ~413-component web UI.
+Today the ONLY way to customize UI for the desktop build is `localOverridePlugin`
+— a Vite `resolveId` shadow that swaps a **whole `.tsx` file**
+(`desktop/ui/src/<path>` wins over `ui/src/<path>` for any `@/…` import). To
+change one element you duplicate the entire enclosing file. The triage of the 18
+existing overrides quantifies the waste: e.g. `Drawer.tsx` duplicates ~145 lines
+of core to change a header block; `SettingsPage.tsx` ~150; `HardwareMonitorButton`
+~25 to change one handler.
 
-## Research conclusion (Phase-1 survey — three parallel surveys)
+## Research conclusion (Phase-1 surveys + triage)
 
-Override mechanisms split on two axes:
-- **Axis 1 — build-time file swap** (whole-module; zero runtime cost). ziee
-  ALREADY has this: `localOverridePlugin` + the module blocklist + desktop-only
-  modules. Good for wholesale component/page/module replacement.
-- **Axis 2 — runtime element injection** (sub-element granularity; needs the
-  core component to declare a seam). ziee has **NO** general seam for this: slots
-  are append-only (no replace), `data-slot`/`cva` are styling-only, and there is
-  no runtime component registry. This is the missing capability.
+Override mechanisms split on two axes; ziee needs BOTH:
+- **Axis 1 — build-time file swap** (whole module, zero runtime cost). ziee ships
+  this (`localOverridePlugin` + module blocklist + desktop-only modules).
+- **Axis 2 — runtime element injection** (sub-element; needs the core component to
+  declare a seam). ziee has NONE — slots are append-only, `data-slot`/`cva` are
+  styling-only, no component registry exists.
 
-The honest architectural truth: you cannot override an arbitrary element inside a
-core component that declares no seam — without either forking the whole file or
-fragile AST interception. So the deliverable is a **cheap, typed, ergonomic seam
-primitive + registry** that converts "fork the whole file" into "core declares
-ONE small fallback-preserving seam + desktop registers ONE override." Seams are
-added **on demand**, when a real desktop divergence needs one.
+The honest truth: an element with no declared seam can't be overridden without
+forking the file. So the deliverable converts "fork the whole file" into "core
+declares ONE fallback-preserving seam + desktop registers ONE override."
 
-**Chosen mechanism (see DECISIONS DEC-1): the hybrid.** Keep the existing
-file-shadow plugin unchanged for wholesale swaps; ADD a runtime **UI Override
-Registry** for in-place sub-element seams, modeled byte-for-byte on the existing
-chat `panelRendererRegistry` (`Chat.store.ts:104-150`): a module-level typed
-`Map`, `registerOverride<K>()` / `resolveOverride<K>()`, keys typed via
-declaration-merging on a base `interface UIOverrides {}` (exactly the `Slots` /
-`RegisteredStores` / `PanelRendererMap` idiom).
+**Triage of the 18 existing shadows (class A/B/C):**
+- **B — element-level (5):** `Drawer`, `SettingsPage`, `HardwareMonitorButton`,
+  `SidebarToggleButton`, `SidebarHeaderSpacer` → **convert to seams**.
+- **A — whole-file/structural (5):** `AuthGuard`, `LeftSidebar` (zero-dup wrapper),
+  `HeaderBarContainer`, `memory/module` (a different module), `ProviderGroupAssignmentCard`
+  (a `return null` stub) → **relocate to `.desktop.tsx` co-location** (a seam
+  removes nothing here).
+- **C — infrastructure (8):** entry/loader/api-client/store/css → **leave as-is**
+  (not JSX; a `<Seam>` doesn't apply).
+
+## Chosen design (DECISIONS DEC-1, DEC-12, DEC-13 — approved aggressive)
+
+1. **Runtime UI Override Registry** — modeled on chat `panelRendererRegistry`
+   (`Chat.store.ts:104-150`): module-level typed `Map`, `registerOverride<K>()` /
+   `resolveOverride<K>()`, keys typed via declaration-merging on `interface
+   UIOverrides {}`.
+2. **`<Seam>` wrap-in-place primitive** — `<Seam id props>{fallback children}</Seam>`
+   renders the registered override(props) or, if none, its children (the original
+   markup). Plus a `useOverride(key, Fallback)` hook for logic-heavy sites.
+3. **Full auto-migration codemod** (ts-morph, `ui/scripts/seam-codemod.mjs`):
+   `migrate` diffs a desktop shadow vs its core sibling and rewrites core (seam
+   wrap) + emits the desktop `registerOverride` + deletes the shadow; `add`
+   scaffolds a new seam (decl + registration stub + manifest row). **Codemod
+   output is human-reviewed** before commit (DEC-12).
+4. **`.desktop.tsx` co-location** for class-A whole-file overrides: extend the
+   resolver to probe `<path>.desktop.<ext>` in the CORE tree; relocate the 5
+   class-A shadows there; web workspace excludes `**/*.desktop.*` from tsconfig +
+   biome (Tauri-importing files must not break the web typecheck/lint) (DEC-13).
 
 ## Items
 
-- **ITEM-1**: Core override registry at `ui/src/core/overrides/` — a module-level
-  `Map<string, ComponentType<any>>` with `registerOverride<K extends keyof
-  UIOverrides>(key, component)` and `resolveOverride<K>(key): ComponentType<UIOverrides[K]> | undefined`.
-  Type-erased storage on the private edge, precise `UIOverrides[K]` on the public
-  edge — mirrors `panelRendererRegistry` / `registerPanelRenderer` in
-  `Chat.store.ts:104-127`.
-- **ITEM-2**: Seam primitive — `useOverride(key, Fallback)` hook returning
-  `resolveOverride(key) ?? Fallback`, plus an `<Override id fallback {...props}/>`
-  component wrapper for JSX ergonomics. When nothing is registered it renders the
-  Fallback, so the web bundle (which registers nothing) is behaviorally identical
-  to today.
-- **ITEM-3**: Typed key contract — base `export interface UIOverrides {}` in
-  `ui/src/core/overrides/types.ts`; each declared seam augments it via
-  `declare module` (value type = the overridable element's props). Keys are
-  `keyof UIOverrides`; an unknown key is a compile error. Mirrors the
-  declaration-merging used for `Slots` (`core/module-system/types.ts:34`) and
-  `PanelRendererMap`.
-- **ITEM-4**: Desktop registration entry point — a desktop module whose
-  `initialize()` calls `registerOverride(...)` for every desktop seam, running
-  during `loadDesktopModules()` in `desktop/ui/src/main.tsx` BEFORE
-  `ReactDOM.render` (same pre-render window as `setMultiUserMode(false)`), so an
-  override is registered before the core component first renders.
-- **ITEM-5**: Exemplar conversion #1 (whole-component seam) — convert
-  `HardwareMonitorButton` from a whole-file desktop shadow to a seam: core
-  declares `hardware.monitor-button` with `DefaultHardwareMonitorButton` as
-  fallback; desktop registers the native-window variant. Deletes the desktop
-  shadow file; proves the duplication reduction.
-- **ITEM-6**: Exemplar conversion #2 (ELEMENT-level seam — the net-new
-  capability) — pick a larger core component and override ONE interior element
-  via a seam WITHOUT forking the enclosing file. Candidate chosen at implement
-  time from: an action in `LeftSidebar`/`HeaderBarContainer`, or the
-  `ProviderGroupAssignmentCard` slot inside its parent. Demonstrates changing one
-  element while the rest of the component stays shared.
-- **ITEM-7**: Discoverability manifest + lint — `ui/scripts/gen-override-registry.mjs`
-  (mirrors `gen-testid-registry.mjs`): scan both trees, emit a core-tree manifest
-  (`OVERRIDE_MANIFEST.md` + a generated TS list of declared seam keys), and a
-  `--check` mode wired into `npm run check` in BOTH workspaces that FAILS on an
-  override registered for a key with no declared seam (dead override) and lists
-  every declared seam.
-- **ITEM-8**: Gallery coverage — add gallery cells for the converted seam
-  surfaces so the web gallery renders the FALLBACK and the desktop gallery renders
-  the OVERRIDE; satisfy `check:state-matrix` / `check:gallery-coverage` in both
-  workspaces.
-- **ITEM-9**: Docs — a concise "Desktop UI Override" section (in the design-system
-  docs / CLAUDE.md) documenting the two axes, the seam-on-demand policy, the
-  `<module>.<element>` key convention, and WHEN to use file-shadow vs a seam. The
-  generated `OVERRIDE_MANIFEST.md` (ITEM-7) is the living index this section
-  points at.
-
-## Out of scope (candidate follow-ups — NOT items this round; pull in only on approval)
-
-- `.desktop.tsx` co-located build-time resolution (an axis-1 ergonomic upgrade to
-  `localOverridePlugin` so whole-component overrides can live NEXT TO the core
-  file instead of mirrored deep in the desktop tree). Whole-file only; does not
-  address element-level. Deferred to keep v1 focused on the net-new axis-2 seam.
-- Bulk migration of all ~18 existing whole-file desktop overrides to seams
-  (mechanical follow-up once the pattern is blessed).
-- A codemod that auto-extracts an inline element into a declared seam.
+- **ITEM-1**: Core override registry `ui/src/core/overrides/registry.ts` —
+  module-level `Map` + `registerOverride<K extends keyof UIOverrides>(key, comp)` +
+  `resolveOverride<K>(key): ComponentType<UIOverrides[K]> | undefined`; type-erased
+  storage / precise public edge; dev-warn on unknown-key resolve. Mirrors
+  `panelRendererRegistry`.
+- **ITEM-2**: Seam primitives — `<Seam id props>{fallback}</Seam>` (children are
+  the fallback) + `useOverride(key, Fallback)`; render override(props) when
+  registered else the fallback. Web (registers nothing) is byte-identical to today.
+- **ITEM-3**: Typed keys — base `export interface UIOverrides {}` in
+  `core/overrides/types.ts`; each seam augments it via `declare module` (value =
+  props type). Unknown keys are compile errors. Mirrors `Slots`/`PanelRendererMap`.
+- **ITEM-4**: Desktop registration entry point — a desktop module `initialize()`
+  invoked by `loadDesktopModules()` in `main.tsx` BEFORE `ReactDOM.render` (same
+  window as `setMultiUserMode(false)`), calling `registerOverride(...)` for every
+  desktop seam.
+- **ITEM-5**: `.desktop.tsx` resolver — extend `plugins/vite-plugin-local-override.ts`
+  so, for a desktop `@/foo` import, it probes (order per DEC-14): desktop-tree
+  `desktop/ui/src/foo.*` → core-tree `foo.desktop.*` → core-tree `foo.*`. Extract
+  the resolution order into a pure function for unit-testing. Update the
+  `testidUniquePlugin` scan so `foo.desktop.tsx` is treated as SHADOWING `foo.tsx`,
+  not a duplicate-testid collision. Add `**/*.desktop.*` to web `tsconfig.json`
+  `exclude` + `biome.json` ignore so Tauri-importing `.desktop` files don't break
+  the web workspace typecheck/lint; the desktop workspace keeps them in scope.
+- **ITEM-6**: Relocate the 5 class-A whole-file shadows from
+  `desktop/ui/src/<path>` to `ui/src/<path>.desktop.tsx` (`AuthGuard`,
+  `LeftSidebar`, `HeaderBarContainer`, `memory/module`, `ProviderGroupAssignmentCard`),
+  deleting the desktop-tree copies. Behavior unchanged; resolved by ITEM-5.
+- **ITEM-7**: Auto-migration codemod `ui/scripts/seam-codemod.mjs` (ts-morph) —
+  `migrate <shadow>`: AST-diff the desktop shadow against its core sibling, rewrite
+  the core file to wrap the diverging element(s) in `<Seam>`, generate the
+  `UIOverrides` declaration, emit the desktop `registerOverride` block, and delete
+  the shadow. `add <key>`: scaffold a new seam (decl + registration stub + manifest
+  row). Deterministic + fixture-tested; output reviewed before commit.
+- **ITEM-8**: Convert the 5 class-B element-level shadows to seams via the codemod
+  (reviewed output): `Drawer`, `SettingsPage`, `HardwareMonitorButton`,
+  `SidebarToggleButton`, `SidebarHeaderSpacer`. Each: core declares the seam
+  (fallback = original element), desktop registers its variant, desktop shadow
+  deleted.
+- **ITEM-9**: Reconcile `Drawer` drift during its conversion — RESTORE core's
+  swipe-to-close + `higherLayerOpen` stacking guard that the desktop shadow
+  silently dropped, rather than propagating the bug. The desktop Drawer seam
+  overrides ONLY the intended header/inset/traffic-light elements; swipe + stacking
+  come from the shared fallback path.
+- **ITEM-10**: Manifest + lint — `ui/scripts/gen-override-registry.mjs` (or a
+  `seam check` subcommand): emit `OVERRIDE_MANIFEST.md` + a generated key list;
+  `--check` FAILS on (a) a registered override whose key has no declared seam (dead
+  override) and (b) an orphaned `*.desktop.tsx` with no core sibling. Wire
+  `--check` into `npm run check` in BOTH workspaces (mirrors `gen-testid-registry`).
+- **ITEM-11**: Gallery coverage — gallery cells so the web gallery renders each
+  converted seam's FALLBACK and the desktop gallery renders its OVERRIDE; the
+  relocated class-A `.desktop.tsx` render in the desktop gallery. Satisfy
+  `check:state-matrix` / `check:gallery-coverage` in both workspaces.
+- **ITEM-12**: Docs — a "Desktop UI Override" section (design-system docs /
+  CLAUDE.md): the two axes, the `<Seam>`-vs-`.desktop.tsx` decision rule, the
+  `<module>.<element>` key convention, and codemod usage; the generated
+  `OVERRIDE_MANIFEST.md` is the living index.
 
 ## Files to touch
 
-NEW (core):
-- `src-app/ui/src/core/overrides/registry.ts` — the Map + register/resolve.
-- `src-app/ui/src/core/overrides/useOverride.ts` — hook.
-- `src-app/ui/src/core/overrides/Override.tsx` — `<Override>` component wrapper.
-- `src-app/ui/src/core/overrides/types.ts` — base `UIOverrides` interface.
-- `src-app/ui/src/core/overrides/index.ts` — barrel; re-exported from `core/index.ts`.
-- `src-app/ui/src/core/overrides/*.test.ts(x)` — unit tests.
-- `src-app/ui/scripts/gen-override-registry.mjs` — manifest + `--check`.
+NEW (core): `ui/src/core/overrides/{registry.ts,useOverride.ts,Override.tsx,types.ts,index.ts}`
++ their `*.test.ts(x)`; `ui/scripts/seam-codemod.mjs` (+ `.test.mjs` + fixtures);
+`ui/scripts/gen-override-registry.mjs` (or fold into seam-codemod `check`).
 
-EDIT (core, additive seam declarations):
-- `src-app/ui/src/core/index.ts` — export the overrides barrel.
-- `src-app/ui/src/modules/hardware/HardwareMonitorButton.tsx` — declare
-  `hardware.monitor-button` seam (fallback = existing markup).
-- one larger core component for ITEM-6 (chosen at implement time).
-- `src-app/ui/package.json` — wire `gen-override-registry.mjs --check` into `check`.
-- gallery files under `src-app/ui/src/dev/gallery/` for ITEM-8.
+EDIT (core): `ui/src/core/index.ts` (export overrides barrel);
+`plugins/vite-plugin-local-override.ts` (`.desktop.*` probe + pure resolver fn);
+`plugins/vite-plugin-testid-unique.js` (`.desktop` shadow awareness);
+web `tsconfig.json` + `biome.json` (`**/*.desktop.*` exclude);
+`ui/package.json` + `desktop/ui/package.json` (`--check` wiring);
+the 5 class-B core components (seam wraps); gallery files under
+`ui/src/dev/gallery/` + `desktop/ui/src/dev/gallery/`.
 
-NEW/EDIT (desktop):
-- `src-app/desktop/ui/src/modules/desktop-base/` (or a new `overrides` module) —
-  the registration entry point (ITEM-4).
-- desktop variant components for the two exemplars (ITEM-5/6).
-- DELETE `src-app/desktop/ui/src/modules/hardware/HardwareMonitorButton.tsx`
-  (replaced by a registered override).
-- `src-app/desktop/ui/package.json` — `gen-override-registry.mjs --check`.
-- desktop gallery cells for the OVERRIDE state (ITEM-8).
+RELOCATE (git mv, class-A): `desktop/ui/src/{modules/auth/AuthGuard.tsx,
+modules/layouts/app-layout/components/LeftSidebar.tsx, .../HeaderBarContainer.tsx,
+modules/memory/module.tsx, modules/llm-provider/components/ProviderGroupAssignmentCard.tsx}`
+→ `ui/src/<same-path>.desktop.tsx`.
+
+DELETE (class-B shadows, replaced by seams): the 5 desktop-tree copies of the
+class-B files.
+
+NEW/EDIT (desktop): the registration entry module (ITEM-4); desktop seam variant
+components for the 5 class-B conversions; desktop gallery cells.
 
 ## Patterns to follow
 
-- **Registry shape → chat panel renderer.** `Chat.store.ts:104-150`
-  (`panelRendererRegistry` module-level Map + `registerPanelRenderer<T>` +
-  `resolvePanelRenderer` + type-erased storage / precise public edge). The
-  override registry is the same shape, one level more general.
-- **Typed keys via declaration merging → `Slots`** (`core/module-system/types.ts:34-36`),
-  `RegisteredStores` (`core/module-system/types-store.ts`), `PanelRendererMap`.
-- **Desktop registration timing → `desktop-loader.ts` + `main.tsx`** (desktop
-  modules initialize before first render; `setMultiUserMode(false)` is the
-  precedent for a pre-render platform mutation).
-- **Manifest generator + `--check` → `gen-testid-registry.mjs`** (scans BOTH
-  trees, writes a core-tree generated file, both workspaces run it in `--check`).
-- **Whole-file override convention (unchanged) → `localOverridePlugin` +
-  existing desktop overrides' header-comment style** (e.g. `LeftSidebar.tsx:1-24`
-  importing the core version via the un-intercepted `@ziee/ui-core/*` alias).
+- **Registry → chat panel renderer** (`Chat.store.ts:104-150`).
+- **Typed keys → `Slots`** (`core/module-system/types.ts:34`) / `PanelRendererMap`.
+- **Desktop registration timing → `desktop-loader.ts` + `main.tsx`** (pre-render
+  init; `setMultiUserMode(false)` precedent).
+- **Resolver edit → the existing `localOverridePlugin` extension-probe loop**
+  (`vite-plugin-local-override.ts:42-78`) — add `.desktop.*` as a probe tier.
+- **Manifest + `--check` → `gen-testid-registry.mjs`** (scan both trees, core
+  generated file, both workspaces `--check`).
+- **Codemod → ts-morph** (already a devDep? verify in Phase 5; else the repo's
+  existing `.mjs` script + a lightweight AST lib). Fixtures mirror the
+  `dev/gallery/__detector_fixtures__` style.
 - **Module structure → `core/module-system/`** (index/store/types split).
 
 ## UI-surface plan checklist
 
-This feature adds **infrastructure**, not a new page/drawer/card. It ships two
-exemplar conversions that must not regress their host surfaces:
+Infrastructure feature; the risk surface is the 5 converted class-B host
+surfaces + the 5 relocated class-A surfaces.
 
-- **Precedent.** Each converted seam's fallback MUST render byte-identically to
-  today's core element (the fallback IS the extracted original markup). The
-  desktop override mirrors its sibling's structure/tokens. Divergence beyond the
-  intended element is a bug.
-- **Scale / cardinality.** No new list/collection is introduced; the registry is
-  a small fixed Map keyed by declared seams (tens, not thousands). No paging
-  concern.
-- **Device size / responsive.** The seams are drop-in replacements at existing
-  render points; responsive behavior is inherited from the host surface. Gallery
-  coverage (ITEM-8) includes the host surface's existing narrow-viewport state.
-- **User-visible progress.** N/A — no ingest/produce surface; the override is a
-  synchronous render-time swap.
+- **Precedent.** Every seam's fallback renders byte-identically to today's core
+  element; each desktop variant mirrors its current shadow's behavior (minus
+  duplication). Divergence beyond the intended element is a bug (caught by the
+  precedent-fidelity audit angle in Phase 6). Drawer is the exception BY DESIGN —
+  its conversion FIXES the dropped swipe/stacking (ITEM-9).
+- **Scale / cardinality.** No new list; the registry is a small fixed Map (tens of
+  seams). No paging concern.
+- **Device size / responsive.** Seams are drop-in at existing render points;
+  responsive behavior is inherited from the host. Gallery coverage (ITEM-11)
+  includes each host's existing narrow-viewport (390px) state — critical for
+  `Drawer`/`SettingsPage`/the sidebar components which are layout-sensitive.
+- **User-visible progress.** N/A — synchronous render-time swaps.
