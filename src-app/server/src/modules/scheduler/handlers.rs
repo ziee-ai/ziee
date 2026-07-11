@@ -41,6 +41,82 @@ fn map_schedule_err(e: ScheduleError) -> (StatusCode, AppError) {
     AppError::bad_request("SCHEDULER_INVALID_SCHEDULE", e.to_string()).into()
 }
 
+/// ITEM-18/DEC-18: does the workflow's compiled IR contain an `elicit`
+/// (human-input) step? Such a workflow parks as `waiting` in a headless run.
+fn workflow_has_elicit_step(wf: &crate::modules::workflow::models::Workflow) -> bool {
+    wf.compiled_ir_json
+        .as_ref()
+        .and_then(|ir| ir.get("steps"))
+        .and_then(|s| s.as_array())
+        .map(|steps| {
+            steps
+                .iter()
+                .any(|st| st.get("kind").and_then(|k| k.as_str()) == Some("elicit"))
+        })
+        .unwrap_or(false)
+}
+
+/// ITEM-5/6: a task's `model_id` must exist AND be one whose provider the user
+/// can access — 404 for a missing model (don't leak existence), 403 for an
+/// inaccessible one. Mirrors `workflow/runner.rs::resolve_run_model`; without
+/// this a bad id hit the `llm_models` FK → 500, or an inaccessible model created
+/// a task that silently auto-paused on its first fire.
+async fn validate_model_access(user_id: Uuid, model_id: Uuid) -> Result<(), AppError> {
+    let model = Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Model"))?;
+    let has_access = Repos
+        .user_group_llm_provider
+        .user_has_access_to_provider(user_id, model.provider_id)
+        .await?;
+    if !has_access {
+        return Err(AppError::forbidden(
+            "SCHEDULER_MODEL_FORBIDDEN",
+            "you do not have access to this model",
+        ));
+    }
+    Ok(())
+}
+
+/// ITEM-15/DEC-17.4: every allow-list entry must reference an MCP server the
+/// user can currently access — the allow-list may only NARROW what the owner
+/// can already reach, never widen it. Empty list = the safe read-only floor.
+async fn validate_allowed_tools(
+    user_id: Uuid,
+    allowed: &[super::models::AllowedTool],
+) -> Result<(), AppError> {
+    if allowed.is_empty() {
+        return Ok(());
+    }
+    if allowed.len() > super::models::MAX_ALLOWED_TOOLS {
+        return Err(AppError::bad_request(
+            "SCHEDULER_ALLOWLIST_TOO_LARGE",
+            format!(
+                "at most {} allow-list entries",
+                super::models::MAX_ALLOWED_TOOLS
+            ),
+        ));
+    }
+    let accessible = crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+        Repos.pool(),
+        user_id,
+    )
+    .await?;
+    let accessible_ids: std::collections::HashSet<Uuid> =
+        accessible.iter().map(|s| s.id).collect();
+    for entry in allowed {
+        if !accessible_ids.contains(&entry.server_id) {
+            return Err(AppError::forbidden(
+                "SCHEDULER_ALLOWLIST_INACCESSIBLE",
+                "an allow-listed tool references a server you cannot access",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// POST /api/scheduled-tasks
 #[debug_handler]
 pub async fn create_task(
@@ -96,6 +172,19 @@ pub async fn create_task(
             {
                 return Err(AppError::not_found("Workflow").into());
             }
+            // ITEM-18/DEC-18: a workflow with an `elicit` (human-input) step can't
+            // run unattended — it would park as `waiting` and the scheduler would
+            // time out after 15 min, falsely recording a failure. Reject up front.
+            let wf = crate::modules::workflow::repository::find_by_id(Repos.pool(), wf_id).await?;
+            if let Some(wf) = wf {
+                if workflow_has_elicit_step(&wf) {
+                    return Err(AppError::bad_request(
+                        "SCHEDULER_WORKFLOW_NEEDS_INPUT",
+                        "this workflow needs interactive input (an elicit step) and can't be scheduled to run unattended",
+                    )
+                    .into());
+                }
+            }
         }
     }
 
@@ -113,6 +202,11 @@ pub async fn create_task(
             }
         }
     }
+
+    // The model must exist and be accessible to the user (ITEM-5).
+    validate_model_access(auth.user.id, body.model_id).await?;
+    // The unattended allow-list may only narrow the user's own access (ITEM-15).
+    validate_allowed_tools(auth.user.id, &body.allowed_unattended_tools).await?;
 
     // Delivery-mode enums (400, not a DB-CHECK 500).
     if !matches!(body.notify_mode.as_str(), "always" | "silent")
@@ -219,6 +313,39 @@ pub async fn update_task(
     let existing = repository::get_for_user(Repos.pool(), auth.user.id, id)
         .await?
         .ok_or_else(|| AppError::not_found("Scheduled task"))?;
+
+    // ITEM-6: update re-validates the referenced entities on change (create-time
+    // gating was previously not mirrored here, letting a foreign assistant /
+    // inaccessible model be written and only fail at fire time).
+    if let Some(aid) = body.assistant_id {
+        if Repos.assistant.get_for_user(aid, auth.user.id).await?.is_none() {
+            return Err(AppError::not_found("Assistant").into());
+        }
+    }
+    if let Some(mid) = body.model_id {
+        validate_model_access(auth.user.id, mid).await?;
+    }
+    if let Some(allowed) = body.allowed_unattended_tools.as_ref() {
+        validate_allowed_tools(auth.user.id, allowed).await?;
+    }
+    // ITEM-6/DEC-4: re-enforce the active-task quota when RE-ENABLING a currently
+    // disabled task (create-time quota alone let a user disable→create→re-enable
+    // past the cap). A disabled task isn't in `count_active_for_user`, so a plain
+    // count is the correct exclude-self predicate here.
+    if body.enabled == Some(true) && !existing.enabled {
+        let admin = settings::get(Repos.pool()).await?;
+        let active = repository::count_active_for_user(Repos.pool(), auth.user.id).await?;
+        if active >= i64::from(admin.max_active_tasks_per_user) {
+            return Err(AppError::unprocessable_entity(
+                "SCHEDULER_TASK_QUOTA",
+                format!(
+                    "active scheduled-task limit ({}) reached",
+                    admin.max_active_tasks_per_user
+                ),
+            )
+            .into());
+        }
+    }
 
     // Recompute next_run_at when a schedule field changed or the task is being
     // (re)enabled — a resumed task should fire going forward, not on a stale

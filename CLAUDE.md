@@ -22,6 +22,15 @@ npm run dev
 
 Access at http://localhost:5173
 
+> **Fresh clone / new worktree:** `config/dev.yaml` is **gitignored** (per-machine),
+> so a fresh tree ships only `config/dev.example.yaml`, and the backend hard-refuses
+> to boot on the example's placeholder `jwt.secret`. Run the phase-1 gate
+> `bash .claude/lifecycle/preflight.sh` — it **auto-seeds `config/dev.yaml`** from the
+> example with a freshly generated `jwt.secret` (defaults to embedded Postgres, so it's
+> zero-config; edit for an external DB). Or do it by hand:
+> `cp config/dev.example.yaml config/dev.yaml` then set `jwt.secret` to
+> `openssl rand -base64 48`.
+
 ### Monorepo layout
 
 - **Rust** — single workspace at `src-app/Cargo.toml` listing 9 member

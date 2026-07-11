@@ -37,8 +37,12 @@ impl FailureClass {
         }
     }
 
-    /// Whether a firing that failed this way should be retried within the run
-    /// (with backoff) rather than counted as a hard failure.
+    /// Whether this failure class is a TRANSIENT (retry-eligible) fault vs a
+    /// terminal one. Transient tolerance is now provided by the consecutive-
+    /// failure CAP (not an in-run retry — that re-executed non-idempotent
+    /// targets, removed after the blind audit), so this classifier is kept for
+    /// its semantic value + tests but has no non-test caller.
+    #[allow(dead_code)]
     pub fn is_retryable(&self) -> bool {
         matches!(self, FailureClass::Transient)
     }
@@ -72,10 +76,13 @@ pub fn should_autopause(consecutive_failures: i32, max_consecutive_failures: i32
     consecutive_failures >= max_consecutive_failures.max(1)
 }
 
-/// Exponential backoff (with a cap) for the Nth in-run retry of a transient
-/// failure. `attempt` is 0-based.
+/// Exponential backoff (500ms, 1s, 2s, 4s … capped at 30s) for a bounded retry.
+/// `attempt` is 0-based. Kept as a utility (+ tested) for a possible future
+/// SAFE (idempotent-only) retry; the earlier whole-`dispatch` retry was removed
+/// after the blind audit (it re-executed non-idempotent targets), so this has no
+/// non-test caller today.
+#[allow(dead_code)]
 pub fn retry_backoff_ms(attempt: u32) -> u64 {
-    // 500ms, 1s, 2s, 4s … capped at 30s. Jitter is applied by the caller.
     let base = 500u64.saturating_mul(1u64 << attempt.min(6));
     base.min(30_000)
 }
@@ -131,5 +138,47 @@ mod tests {
         assert_eq!(retry_backoff_ms(1), 1000);
         assert_eq!(retry_backoff_ms(2), 2000);
         assert_eq!(retry_backoff_ms(20), 30_000); // capped
+    }
+
+    // TEST-17: `is_retryable` is true for EXACTLY the Transient class and no
+    // other — auth/permission/validation/target-missing/internal are terminal.
+    #[test]
+    fn is_retryable_only_for_transient() {
+        assert!(FailureClass::Transient.is_retryable());
+        for terminal in [
+            FailureClass::Auth,
+            FailureClass::Permission,
+            FailureClass::Validation,
+            FailureClass::TargetMissing,
+            FailureClass::Internal,
+        ] {
+            assert!(
+                !terminal.is_retryable(),
+                "{terminal:?} must be terminal (never retried in-run)"
+            );
+        }
+    }
+
+    // TEST-17: the in-run backoff grows MONOTONICALLY per attempt until it
+    // saturates at the 30s cap (and never regresses past the cap). This is the
+    // schedule that bounds `MAX_IN_RUN_ATTEMPTS` retries in dispatch.rs.
+    #[test]
+    fn backoff_is_monotonic_nondecreasing_then_capped() {
+        let mut prev = 0u64;
+        for attempt in 0..12u32 {
+            let cur = retry_backoff_ms(attempt);
+            assert!(
+                cur >= prev,
+                "backoff must not regress: attempt {attempt} gave {cur} < prev {prev}"
+            );
+            assert!(cur <= 30_000, "backoff must never exceed the 30s cap");
+            prev = cur;
+        }
+        // Strictly increasing before the cap …
+        assert!(retry_backoff_ms(1) > retry_backoff_ms(0));
+        assert!(retry_backoff_ms(2) > retry_backoff_ms(1));
+        // … and pinned at the cap once it saturates.
+        assert_eq!(retry_backoff_ms(6), 30_000);
+        assert_eq!(retry_backoff_ms(7), 30_000);
     }
 }

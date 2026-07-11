@@ -93,7 +93,8 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     }: MessageListProps,
     ref,
   ) {
-    const { messages, loading, isStreaming, loadingOlder } = Stores.Chat
+    const { messages, loading, isStreaming, loadingOlder, lastTurnInterrupted } =
+      Stores.Chat
 
     // Ordered window (insertion order = render order).
     const messagesArray = useMemo(() => Array.from(messages.values()), [messages])
@@ -434,13 +435,37 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
             virt.scrollToOffset(target)
             return
           }
-          // Plain path: re-pin by the anchor row's new position (window scroll).
+          // Plain (native window-scroll) path: re-pin the anchor row at its
+          // captured viewport offset. The prepended older rows can transiently
+          // render MUCH taller than their settled height (async content — inline
+          // file previews, images, code highlighting — collapsing from a large
+          // default over the next frames), so a single measure in this layout
+          // effect catches an inflated layout (scrollHeight seen 3× the settled
+          // value) and over-scrolls toward the tail. Hold the anchor across the
+          // settle window with a ResizeObserver, re-pinning on each height change
+          // until it goes quiet — the plain-path analog of the virtualizer's own
+          // size-change adjustment on the desktop path above.
           const c = plainContainerRef.current
           if (!c) return
-          const newTop = measureMessageTop(c, anchor.anchorId)
-          if (newTop == null) return
-          const delta = restoreDelta(anchor.viewportOffset, newTop)
-          if (delta !== 0) window.scrollBy(0, delta)
+          const pin = () => {
+            const top = measureMessageTop(c, anchor.anchorId)
+            if (top == null) return
+            const delta = restoreDelta(anchor.viewportOffset, top)
+            // scrollBy changes scroll, not container size, so it never re-triggers
+            // the ResizeObserver → no feedback loop.
+            if (Math.abs(delta) > 0.5) window.scrollBy(0, delta)
+          }
+          pin()
+          let quiet = 0
+          const ro = new ResizeObserver(() => {
+            pin()
+            window.clearTimeout(quiet)
+            // Disconnect once heights have been still for 150ms (settle done).
+            quiet = window.setTimeout(() => ro.disconnect(), 150)
+          })
+          ro.observe(c)
+          // Hard safety cap so a perpetually-animating child can't keep it alive.
+          window.setTimeout(() => ro.disconnect(), 1500)
         },
       }),
       // Re-create when the virtualizer identity, path, or readiness changes.
@@ -512,11 +537,20 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                     transform: `translateY(${vi.start}px)`,
                   }}
                 >
-                  <div className="py-0.5">
+                  {/* flex flex-col: ChatMessage right-aligns the user bubble via
+                      `self-end`, which needs a flex-column parent (the plain path
+                      below already provides one). Without it the virtualized rows
+                      are plain blocks and user messages fall back to the left. */}
+                  <div className="py-0.5 flex flex-col">
                     <ChatMessage
                       message={msg}
                       isStreaming={
                         isStreaming &&
+                        vi.index === count - 1 &&
+                        msg.role === 'assistant'
+                      }
+                      interrupted={
+                        lastTurnInterrupted &&
                         vi.index === count - 1 &&
                         msg.role === 'assistant'
                       }
@@ -535,6 +569,9 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                 message={msg}
                 isStreaming={
                   isStreaming && i === count - 1 && msg.role === 'assistant'
+                }
+                interrupted={
+                  lastTurnInterrupted && i === count - 1 && msg.role === 'assistant'
                 }
               />
             ))}

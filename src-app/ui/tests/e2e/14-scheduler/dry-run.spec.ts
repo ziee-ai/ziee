@@ -1,6 +1,7 @@
 import { expect, test } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { byTestId } from '../testid'
+import { MODEL_ID, mockPickerEndpoints, pickSelect } from './helpers'
 
 /**
  * E2E — Dry-run "Test" + change-detection toggle (ITEM-35 / ITEM-37): in the
@@ -10,8 +11,6 @@ import { byTestId } from '../testid'
  * test-fire + list endpoints at the HTTP boundary.
  */
 
-const MODEL_ID = '11111111-1111-1111-1111-111111111111'
-
 test('Test button runs a dry-run inline without saving; change-detection toggle flips', async ({
   page,
   testInfra,
@@ -20,6 +19,7 @@ test('Test button runs a dry-run inline without saving; change-detection toggle 
   let testFireCalls = 0
   let created = false
 
+  await mockPickerEndpoints(page)
   await page.route(/\/api\/scheduled-tasks\/test-fire$/, async route => {
     testFireCalls += 1
     await route.fulfill({
@@ -42,7 +42,7 @@ test('Test button runs a dry-run inline without saving; change-detection toggle 
   await byTestId(page, 'scheduled-tasks-new').click()
   await byTestId(page, 'task-form-name').fill('Dry run me')
   await byTestId(page, 'task-form-prompt').fill('Say hi.')
-  await byTestId(page, 'task-form-model').fill(MODEL_ID)
+  await pickSelect(page, 'task-form-model', MODEL_ID)
 
   // Flip the change-detection ("only when something changed") toggle.
   await byTestId(page, 'task-form-notify-on-change').click()

@@ -50,6 +50,7 @@ pub async fn create_provider_from_model_id(
         Uuid,
         Uuid,
         crate::modules::llm_model::models::ModelParameters,
+        crate::modules::llm_model::models::ModelCapabilities,
     ),
     AppError,
 > {
@@ -112,12 +113,15 @@ pub async fn create_provider_from_model_id(
             .map_err(|e| AppError::internal_error(format!("Failed to create provider: {}", e)))?,
     );
 
-    // Return provider along with model metadata + generation parameters.
+    // Return provider along with model metadata + generation parameters +
+    // per-model capability overrides (the top-priority source of the parameter
+    // contract; see ai-providers `param_policy`).
     Ok((
         provider,
         model.name.clone(),
         model.id,
         model.provider_id,
         model.parameters.clone(),
+        model.capabilities.clone(),
     ))
 }

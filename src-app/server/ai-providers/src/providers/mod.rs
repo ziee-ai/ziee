@@ -3,6 +3,7 @@
 pub mod anthropic;
 pub mod gemini;
 pub mod openai;
+pub(crate) mod sse;
 mod upload_client;
 
 pub use anthropic::AnthropicProvider;

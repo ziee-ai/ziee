@@ -12,6 +12,7 @@ import {
   Text,
   Link,
 } from '@/components/ui'
+import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 
 interface ProviderApiKeyModalProps {
@@ -40,6 +41,7 @@ export function ProviderApiKeyModal({
   onSuccess,
   onCancel,
 }: ProviderApiKeyModalProps) {
+  const navigate = useNavigate()
   const { saving } = Stores.UserProviderKeys
 
   const form = useForm<FormValues>({
@@ -96,7 +98,16 @@ export function ProviderApiKeyModal({
       <Text type="secondary" className="text-xs">
         Your key is stored securely and only used for inference. You can manage
         keys in{' '}
-        <Link href="/settings/user-llm-providers">
+        <Link
+          href="/settings/user-llm-providers"
+          onClick={e => {
+            // Client-side navigation (react-router) instead of a full-page reload;
+            // close the modal first so it isn't left open over the settings page.
+            e.preventDefault()
+            onCancel()
+            navigate('/settings/user-llm-providers')
+          }}
+        >
           Settings → LLM Providers
         </Link>
         .

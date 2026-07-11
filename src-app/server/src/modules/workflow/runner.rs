@@ -1273,7 +1273,7 @@ pub async fn spawn_run(
     // Only resolve an LLM provider when the run actually has a model. A
     // tool-only workflow runs with no provider (its dispatchers never touch one).
     let provider = if let Some(mid) = model_id {
-        let (provider, _name, _mid, _pid, _params) =
+        let (provider, _name, _mid, _pid, _params, _caps) =
             crate::modules::chat::core::ai_provider::create_provider_from_model_id(mid, user_id)
                 .await?;
         Some(provider)
@@ -1381,7 +1381,7 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     rehydrate_ctx(&mut ctx, &run);
 
     let provider = if let Some(mid) = model_id {
-        let (provider, _name, _mid, _pid, _params) =
+        let (provider, _name, _mid, _pid, _params, _caps) =
             crate::modules::chat::core::ai_provider::create_provider_from_model_id(
                 mid,
                 run.user_id,

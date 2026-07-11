@@ -246,6 +246,19 @@ pub struct ModelCapabilities {
     /// and the summarizer can use the effective window. (B6a)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_length: Option<u32>,
+    /// Whether the model supports thinking/reasoning. Editable per-model override
+    /// for the parameter contract; `None` ⇒ fall back to the curated catalog +
+    /// provider model-family policy. Drives whether thinking is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_thinking: Option<bool>,
+    /// How thinking is requested: `"adaptive"` or `"budget"`. `None` ⇒ inferred.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_style: Option<String>,
+    /// Whether the model accepts sampling params (temperature/top_p/top_k).
+    /// `Some(false)` ⇒ they are omitted from the request. `None` ⇒ inferred from
+    /// the catalog + family policy (the common case).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_sampling_params: Option<bool>,
 }
 
 impl ModelCapabilities {
@@ -254,6 +267,19 @@ impl ModelCapabilities {
     #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Project the per-model capability overrides onto the provider-agnostic
+    /// `ModelParamContract` that the ai-providers adapter consumes as the
+    /// top-priority source. Only the three param-contract signals are carried;
+    /// `max_tokens_field` stays `None` (family-derived by the adapter).
+    pub fn to_param_contract(&self) -> ai_providers::ModelParamContract {
+        ai_providers::ModelParamContract {
+            supports_sampling_params: self.supports_sampling_params,
+            supports_thinking: self.supports_thinking,
+            thinking_style: self.thinking_style.clone(),
+            max_tokens_field: None,
+        }
     }
 }
 

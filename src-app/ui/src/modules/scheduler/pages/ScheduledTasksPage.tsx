@@ -18,23 +18,11 @@ import {
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
+import { humanizeCron } from '../components/scheduleCron'
+import { skippedToolsNote } from '../components/skippedToolsNote'
+
 function targetSummary(t: ScheduledTask): string {
   return t.target_kind === 'workflow' ? 'Workflow' : 'Prompt'
-}
-
-const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-function humanizeCron(cron: string): string {
-  const p = cron.trim().split(/\s+/)
-  if (p.length !== 5) return `Cron: ${cron}`
-  const [min, hour, dom, mon, dow] = p
-  const t = /^\d+$/.test(min) && /^\d+$/.test(hour)
-    ? `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-    : null
-  if (!t) return `Cron: ${cron}`
-  if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${t}`
-  if (dom === '*' && mon === '*' && /^\d$/.test(dow)) return `Weekly on ${DOW_NAMES[Number(dow)]} at ${t}`
-  if (/^\d+$/.test(dom) && mon === '*' && dow === '*') return `Monthly on day ${dom} at ${t}`
-  return `Cron: ${cron}`
 }
 
 function scheduleSummary(t: ScheduledTask): string {
@@ -63,10 +51,18 @@ function TaskRow({ task }: { task: ScheduledTask }) {
             <Tag data-testid={`task-kind-${task.id}`}>
               {targetSummary(task)}
             </Tag>
-            {task.paused_reason && (
-              <Badge tone="error" data-testid={`task-paused-${task.id}`}>
-                Paused: {task.paused_reason}
+            {task.paused_reason === 'completed' ? (
+              // A spent `once` task is DONE, not failed — a distinct neutral badge
+              // (never the error-toned "Paused" surface).
+              <Badge tone="success" data-testid={`task-completed-${task.id}`}>
+                Completed
               </Badge>
+            ) : (
+              task.paused_reason && (
+                <Badge tone="error" data-testid={`task-paused-${task.id}`}>
+                  Paused: {task.paused_reason}
+                </Badge>
+              )
             )}
           </Flex>
           <Text className="text-muted-foreground text-sm">
@@ -102,6 +98,14 @@ function TaskRow({ task }: { task: ScheduledTask }) {
                         {new Date(r.fired_at).toLocaleString()} — {r.status}
                         {r.error_class ? ` (${r.error_class})` : ''}
                       </Text>
+                      {skippedToolsNote(r.skipped_tools) && (
+                        <Text
+                          className="text-muted-foreground text-xs"
+                          data-testid={`run-skipped-${r.id}`}
+                        >
+                          {skippedToolsNote(r.skipped_tools)}
+                        </Text>
+                      )}
                       <Button
                         data-testid={`run-continue-${r.id}`}
                         variant="ghost"

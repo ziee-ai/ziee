@@ -139,6 +139,18 @@ mod tests {
         assert!(lookup("unknown-provider", "anything").is_none());
     }
 
+    // TEST-9: the curated catalog carries claude-sonnet-5 as sampling-restricted,
+    // and a dated SKU resolves to the base entry (prefix-tolerant lookup).
+    #[test]
+    fn sonnet_5_sampling_restricted_and_dated_resolves() {
+        let c = lookup("anthropic", "claude-sonnet-5").expect("sonnet-5 in catalog");
+        assert_eq!(c.supports_sampling_params, Some(false));
+        assert_eq!(c.supports_thinking, Some(true));
+        assert_eq!(c.thinking_style.as_deref(), Some("adaptive"));
+        let dated = lookup("anthropic", "claude-sonnet-5-20260115").expect("dated sonnet-5 resolves");
+        assert_eq!(dated.supports_sampling_params, Some(false));
+    }
+
     #[test]
     fn known_ids_for_openai_nonempty() {
         let ids = known_ids_for("openai");
