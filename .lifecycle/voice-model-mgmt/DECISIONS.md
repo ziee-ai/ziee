@@ -70,6 +70,16 @@ All product/human inputs resolved before implementation. No unresolved markers r
 **Resolution:** **Admin-configurable** — `voice_runtime_settings.model_source_repo` (default `ggerganov/whisper.cpp`), surfaced through the EXISTING `GET/PUT /voice/settings` + `VoiceSettings` sync + `validate_settings_patch` (no new endpoint/table). If upstream renames/moves the repo, or an operator wants an internal HF mirror (air-gapped), they repoint the field — no code release. Fetch failures **graceful-degrade** (empty Available list + "source unreachable" state; upload + arbitrary-URL + installed models unaffected). The admin-configured source is treated as **trusted** for the catalog list/download (may be internal/loopback — a distinct trust boundary from the user-supplied arbitrary URL, which stays `PUBLIC_HTTP_OR_HTTPS`).
 **Basis:** user — plan-time AskUserQuestion #3 ("Admin-configurable, default upstream"). This is a genuine operational tunable (unlike the sha256 digests, which are security artifacts), so the configurable-settings rule's default (admin-configurable) applies. Two-trust-boundary split mirrors `web_search` (trusted SearXNG base vs strict page-fetch).
 
+### DEC-19: Standalone `GET /voice/detect-gpu` route (part of ITEM-32/F10)?
+**Resolution:** **Not added** (narrowed from ITEM-32). The backend recommendation is already
+surfaced by the existing `GET /voice/versions/check-updates` (`binary_manager` folds
+`gpu_detect::recommend_backend` into it), and a correct available-backends list requires an
+upstream release-asset fetch — so a standalone endpoint is redundant. The rest of ITEM-32
+(`GET /voice/versions/{id}` + live `pid`/`uptime_seconds` on `/voice/instance`) IS delivered +
+tested (TEST-35). This is a recorded narrowing, not a silent omission.
+**Basis:** codebase — the parity audit itself rated detect-gpu LOW / "arguably fine since voice
+folds the recommendation into check-updates" (RUNTIME_PARITY_AUDIT.md F10).
+
 ### DEC-18: How much of the voice-runtime parity gap (FB-2 audit) does this feature fix?
 **Resolution:** **All of it — Tier A + B + C** (the 11 findings in RUNTIME_PARITY_AUDIT.md), added as ITEM-24..33 + TEST-28..37. Tier A = correctness on the paths this feature reworks (model-download cancel/leak F3, drain-before-activate F4, state CHECK F7, `.no_proxy()` F5, download poll-snapshot F9). Tier B = runtime supervision (hot-path `Crashed` + backoff F1/F2, drain front-door F6). Tier C = missing surfaces (logs + logs-stream F8, versions/{id}/detect-gpu/live-status F10) + their frontend wiring. Voice's stronger-than-llm download verification is preserved (NOT aligned down).
 **Basis:** user — plan-time AskUserQuestion ("Tier A + B + C (everything)"). The feature therefore spans voice model management AND voice runtime hardening.

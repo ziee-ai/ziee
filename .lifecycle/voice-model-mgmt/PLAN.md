@@ -113,10 +113,10 @@ engine-*binary* download-with-progress pattern (`runtime_version/download_task.r
   (non-SSE snapshot for the new model downloads) AND backfill the missing engine-version
   `GET /voice/versions/downloads/{key}` (the `snapshot_of` builder already exists at
   `runtime_version/handlers.rs:175`). Mirror `llm_local_runtime/routes.rs:96-99`.
-- **ITEM-32**: (F10) Minor surface parity — `GET /voice/versions/{id}` (single version), a
-  `GET /voice/detect-gpu` route (expose `binary_manager.rs:141`'s recommendation), and surface live
-  `pid`/`uptime_seconds` on `GET /voice/instance` (un-dead the `#[allow(dead_code)]` fields at
-  `deployment/local.rs:57-61`). Mirror the llm `routes.rs:65,81` + `status()` read path.
+- **ITEM-32**: (F10) Minor surface parity — `GET /voice/versions/{id}` (single version) and surface
+  live `pid`/`uptime_seconds` on `GET /voice/instance` (un-dead the `#[allow(dead_code)]` fields at
+  `deployment/local.rs:57-61`). Mirror the llm `routes.rs:81` + `status()` read path. (Standalone
+  `GET /voice/detect-gpu` NARROWED OUT per DEC-19 — redundant with `check-updates`.)
 - **ITEM-33**: (F8/F10 frontend) Surface the new runtime endpoints in the existing
   `VoiceInstanceCard.tsx` — a logs viewer (poll + optional SSE tail, mirror the llm-runtime logs UI)
   and live pid/uptime; wire `api-client` (regen). Keep the voice house style; gated

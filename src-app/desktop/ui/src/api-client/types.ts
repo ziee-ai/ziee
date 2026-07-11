@@ -4847,6 +4847,18 @@ export interface RuntimeSettings {
   updated_at: string
 }
 
+/** Whisper runtime version database entity (`voice_runtime_versions`). */
+export interface RuntimeVersion {
+  arch: string
+  backend: string
+  binary_path: string
+  created_at: string
+  id: string
+  is_system_default: boolean
+  platform: string
+  version: string
+}
+
 /** Response containing a list of runtime versions */
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
@@ -8019,6 +8031,8 @@ export const ApiEndpoints = {
   'Voice.getModelDownload': 'GET /api/voice/models/downloads/{key}',
   'Voice.getModelStatus': 'GET /api/voice/model/status',
   'Voice.getSettings': 'GET /api/voice/settings',
+  'Voice.getVersion': 'GET /api/voice/versions/{id}',
+  'Voice.getVersionDownload': 'GET /api/voice/versions/downloads/{key}',
   'Voice.listModelCatalog': 'GET /api/voice/models/catalog',
   'Voice.listModelDownloads': 'GET /api/voice/models/downloads',
   'Voice.listModels': 'GET /api/voice/models',
@@ -8472,6 +8486,8 @@ export type ApiEndpointParameters = {
   'Voice.getModelDownload': { key: string }
   'Voice.getModelStatus': void
   'Voice.getSettings': void
+  'Voice.getVersion': { id: string }
+  'Voice.getVersionDownload': { key: string }
   'Voice.listModelCatalog': void
   'Voice.listModelDownloads': void
   'Voice.listModels': void
@@ -8925,6 +8941,8 @@ export type ApiEndpointResponses = {
   'Voice.getModelDownload': SnapshotDto
   'Voice.getModelStatus': VoiceModelStatus
   'Voice.getSettings': VoiceSettings
+  'Voice.getVersion': RuntimeVersion
+  'Voice.getVersionDownload': DownloadSnapshot2
   'Voice.listModelCatalog': VoiceCatalogResponse
   'Voice.listModelDownloads': SnapshotDto[]
   'Voice.listModels': VoiceModel[]
