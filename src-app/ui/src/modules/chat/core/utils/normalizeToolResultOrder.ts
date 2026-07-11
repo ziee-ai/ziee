@@ -36,7 +36,7 @@ export function normalizeToolResultOrder(
   const resultsByUseId = new Map<string, MessageContent[]>()
   for (const b of blocks) {
     if (b.content_type !== 'tool_result') continue
-    const useId = (b.content as MessageContentDataToolResult).tool_use_id
+    const useId = (b.content as MessageContentDataToolResult | undefined)?.tool_use_id
     if (!useId) continue
     const list = resultsByUseId.get(useId)
     if (list) list.push(b)
@@ -51,7 +51,7 @@ export function normalizeToolResultOrder(
   const presentUseIds = new Set<string>()
   for (const b of blocks) {
     if (b.content_type !== 'tool_use') continue
-    const id = (b.content as MessageContentDataToolUse).id
+    const id = (b.content as MessageContentDataToolUse | undefined)?.id
     if (id) presentUseIds.add(id)
   }
 
@@ -60,7 +60,7 @@ export function normalizeToolResultOrder(
   for (const b of blocks) {
     if (emitted.has(b)) continue
     if (b.content_type === 'tool_result') {
-      const useId = (b.content as MessageContentDataToolResult).tool_use_id
+      const useId = (b.content as MessageContentDataToolResult | undefined)?.tool_use_id
       // A matched result is emitted right after its tool_use (below); skip it in
       // its original slot so it isn't rendered twice / out of place. An orphan
       // result (no matching tool_use present) falls through and emits here.
@@ -69,7 +69,7 @@ export function normalizeToolResultOrder(
     out.push(b)
     emitted.add(b)
     if (b.content_type === 'tool_use') {
-      const id = (b.content as MessageContentDataToolUse).id
+      const id = (b.content as MessageContentDataToolUse | undefined)?.id
       const results = id ? resultsByUseId.get(id) : undefined
       if (results) {
         for (const r of results) {

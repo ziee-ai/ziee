@@ -102,3 +102,12 @@ test('resolveArtifactToolUseId returns null when parallel tools are ambiguous (n
   ])
   assert.equal(resolveArtifactToolUseId(contents, store, undefined), null)
 })
+
+test('resolveArtifactToolUseId ignores an in-flight call NOT in this message (no cross-conversation capture)', () => {
+  const contents = [use('A'), use('B')] // ambiguous within the message
+  // The only in-flight store call belongs to a tool_use NOT in this message.
+  const store = new Map<string, McpToolCall>([
+    ['OTHER', call('OTHER', 'started')],
+  ])
+  assert.equal(resolveArtifactToolUseId(contents, store, undefined), null)
+})

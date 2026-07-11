@@ -16,7 +16,7 @@ export function runToolUseIds(run: MessageContent[]): string[] {
   const ids: string[] = []
   for (const b of run) {
     if (b.content_type !== 'tool_use') continue
-    const id = (b.content as MessageContentDataToolUse).id
+    const id = (b.content as MessageContentDataToolUse | undefined)?.id
     if (id) ids.push(id)
   }
   return ids
@@ -30,8 +30,8 @@ export function hasArtifactInRun(run: MessageContent[]): boolean {
   return run.some(
     b =>
       b.content_type === 'tool_result' &&
-      ((b.content as MessageContentDataToolResult).resource_links?.length ?? 0) >
-        0,
+      ((b.content as MessageContentDataToolResult | undefined)?.resource_links
+        ?.length ?? 0) > 0,
   )
 }
 
@@ -80,12 +80,19 @@ export function resolveArtifactToolUseId(
 
   const toolUseIds = contents
     .filter(c => c.content_type === 'tool_use')
-    .map(c => (c.content as MessageContentDataToolUse).id)
+    .map(c => (c.content as MessageContentDataToolUse | undefined)?.id)
     .filter((id): id is string => !!id)
   if (toolUseIds.length === 1) return toolUseIds[0]
 
+  // Disambiguate via a single in-flight call — but only among THIS message's
+  // tool_use ids, never the global store: an in-flight call from another
+  // conversation (or a prior turn) must not capture this artifact, and the
+  // returned id must be a tool_use that actually exists in this message.
+  const messageUseIds = new Set(toolUseIds)
   const inFlight = [...storeCalls.values()].filter(
-    c => c.status === 'started' || c.status === 'pending_approval',
+    c =>
+      (c.status === 'started' || c.status === 'pending_approval') &&
+      messageUseIds.has(c.tool_use_id),
   )
   if (inFlight.length === 1) return inFlight[0].tool_use_id
 

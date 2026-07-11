@@ -100,16 +100,12 @@ test.describe('MCP tool group — auto-open', () => {
     const useB = 'tu_aop_B'
     const serverId = 'srv-aop'
 
-    // Both tools complete, no artifacts, no approval → no auto-open trigger.
+    // Deterministic: a minimal stream (no tool events) + a persisted 2-tool run.
+    // The McpComposer store holds NO toolCalls, so hasRunning/hasPendingApproval
+    // are false and there is no artifact → no auto-open trigger → the group
+    // renders collapsed on the reload, with no streaming 'started' latch to leak.
     await mockChatTokenStream(page, [
-      [
-        startedEvent({ userMessageId: userMsgId }),
-        mcpToolStartEvent({ toolUseId: useA, toolName: 'search', server: serverId }),
-        mcpToolCompleteEvent({ toolUseId: useA, isError: false, result: { ok: true } }),
-        mcpToolStartEvent({ toolUseId: useB, toolName: 'lookup', server: serverId }),
-        mcpToolCompleteEvent({ toolUseId: useB, isError: false, result: { ok: true } }),
-        completeEvent(),
-      ],
+      [startedEvent({ userMessageId: userMsgId }), completeEvent()],
     ])
     const contents: MockMessageContent[] = [
       mockToolUseContent({ toolUseId: useA, toolName: 'search', serverId }),
@@ -126,7 +122,10 @@ test.describe('MCP tool group — auto-open', () => {
     await selectModelInDropdown(page, 'GPT-4o Mini')
     await sendChatMessage(page, 'look two things up')
 
-    const group = page.locator('[data-testid="mcp-toolgroup-card"]').first()
+    const group = page
+      .locator(`[data-testid="chat-message"][data-message-id="${assistantMsgId}"]`)
+      .locator('[data-testid="mcp-toolgroup-card"]')
+      .first()
     await expect(group).toBeVisible({ timeout: 15000 })
 
     // Collapsed by default: the per-tool cards are NOT rendered until expanded.
