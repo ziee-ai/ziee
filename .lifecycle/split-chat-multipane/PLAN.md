@@ -376,6 +376,79 @@ on WEB single-pane; split panes keep it on both.
   Re-point the `popout-new-tab` e2e (which popped out from single-pane web) at a
   split pane, and add the single-pane-web-hidden gating assertion.
 
+### Iteration round 5 — split-awareness of main's new modules (Stage 2, awaiting approval)
+
+Merged current `origin/main@6b56d0d14` (Stage 1). A 3-agent survey mapped which of
+main's new/reworked chat surfaces break inside a split pane. Message-stream +
+tool-result rendering (ChatMessage, content renderers, KB/Lit/Workflow tool-result
+cards, approval-action UI, SSE injectors) are ALREADY split-safe (bind via
+`useChatPaneOrNull()?.store`, the `PaneApiContext` reactive bridge, or global stores
+keyed by globally-unique ids). The real gaps are in the COMPOSER + the tool-call
+scroll + KB citation highlight. No NEW user-facing surface is added — these are
+per-pane CORRECTNESS fixes of existing surfaces, so the Phase-1 UI-surface checklist
++ JTBD are N/A (behavioral, not a new page/drawer/card). No new permission (no A10).
+
+- **ITEM-45**: Voice composer per-pane. `MicButton` (`chat/extensions/voice/components/MicButton.tsx`)
+  renders in every pane's composer but reads/controls `Stores.Chat.VoiceStore` (FOCUSED
+  pane) — so both panes' mics drive the focused pane and unmounting a background pane
+  cancels the focused pane's recording. And `Voice.store.ts`: the transcript is inserted
+  into `Stores.Chat.$.TextStore` (focused pane); the MediaRecorder/stream/chunks/token
+  are module-level `let`s (process-global); `focusComposer()` uses a document-wide
+  `querySelector` first-match (leftmost pane). Fix: bind `MicButton` to
+  `useChatPaneOrNull()?.store ?? Stores.Chat` (mirror `TextInput`/file); write the
+  transcript to the OWNING pane's `TextStore`; key the imperative recorder resources
+  per pane; scope `focusComposer` to the pane's `chat-pane-<idx>` subtree (mirror the
+  keyboard extension's `focusedPaneRoot`, ITEM-39).
+
+- **ITEM-46**: Knowledge-base grounding chips + picker per-pane. `KbStatusRow`
+  (`knowledge-base/chat-extension/components/KbStatusRow.tsx`) + `KbMenuItem` read the
+  single GLOBAL `Stores.KnowledgeBaseComposer` singleton (one `currentConversationId`,
+  one flat `selectedKbIds`) — both panes show the SAME chips and attach/detach persists
+  to whichever pane last loaded. Fix: make the KB composer selection per-conversation
+  (conversation-keyed Maps, mirroring `McpComposer.store`'s `conversationConfigs`/
+  `resolveConfigKey`), and resolve the visible chips/toggle via the OWNING pane's
+  conversation. (The branch already made this extension's subscription TEARDOWN per-pane
+  in ITEM-34; this fixes the leftover global SELECTION store.)
+
+- **ITEM-47**: MCP grounding chips per-pane. `McpStatusRow`
+  (`mcp/chat-extension/components/McpStatusRow.tsx`) reads `Stores.McpComposer` whose
+  underlying config IS conversation-keyed (Maps) but whose VISIBLE selection resolves
+  through the single global `currentConversationId`, so a non-focused pane's chips show
+  the focused conversation's servers. Fix: resolve the status row's selection by the
+  OWNING pane's conversation id (the Map keys already support it).
+
+- **ITEM-48**: Tool-call scroll-to-approval per-pane. In `ConversationPage.tsx` each pane
+  iterates the process-global `Stores.McpComposer.toolCalls` map (mount-seed + scroll
+  effect) and scrolls its OWN history to the tail on ANY newly-`pending_approval` tool —
+  so a pending approval in pane B yanks every pane's message list to the bottom
+  (`McpToolCall` carries no conversation_id). Fix: resolve each tool-call's originating
+  conversation (via its `message_id` → the pane whose messages contain it — frontend,
+  no backend change) and filter both the seed loop and the scroll loop to
+  `call's conversation === this pane's conversationId` before treating it as this pane's
+  new approval.
+
+- **ITEM-49**: KB citation-highlight per-pane. `KbSourcePanel`
+  (`knowledge-base/chat-extension/components/KbSourcePanel.tsx`) opens a pane-scoped
+  kb_source tab but publishes the highlight to the process-global
+  `Stores.PdfHighlight.setTarget(fileId,…)` (keyed ONLY by fileId) + `Stores.File.setFileFindQuery(fileId,…)`
+  — so two panes opening a citation into the SAME document clobber each other's
+  highlight, and one pane's unmount cleanup wipes the sibling's. Fix: key the
+  PdfHighlight target (+ file find-query) by pane/tab id + fileId (mirror `File.store`'s
+  `composerPaneKey` ownership); the pdf viewer body reads its own pane's key; cleanup
+  scopes to the pane's key.
+
+**Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
+found no in-pane surface, so there is nothing to make pane-aware):**
+- Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp
+  are backend auto-attach; the frontend ships only tool-result cards (already pane-safe),
+  the lit screening right-panel (already pane-safe), and admin settings pages.
+- Voice / Web-search / Literature / Citations / Scheduled-tasks / model-download-upload
+  ADMIN + settings pages — rendered as standalone routes (`settingsAdminPages`), never
+  inside a chat pane; their stores are deployment-wide singletons by design.
+- `mcpExtension.beforeSendMessage` reading `Stores.Chat.$.conversation` (focused pane)
+  for queued approvals — the intentional ITEM-33 "sending = focused" decision (the send
+  happens in the pane you interacted with, which is focused).
+
 ## Files to touch
 
 New files (frontend, `src-app/ui/src` unless noted):

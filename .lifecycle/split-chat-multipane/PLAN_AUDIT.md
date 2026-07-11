@@ -405,3 +405,29 @@ no backend, no permission, no new render state.
   copy), so the runtime check covers both bundles. The existing `popout-new-tab`
   e2e (TEST-P3/P4) pops out from single-pane WEB, which this hides — so that spec
   is re-pointed at a SPLIT pane (where the button remains) + a gating case added.
+
+## Iteration round 5 — split-awareness of main's new modules (Stage 2)
+
+Merged onto current origin/main@6b56d0d14; no migration collision (branch adds none;
+DEC-62 keeps the tool-call fix frontend-only → no new migration/openapi). Survey-backed:
+message-stream cluster is already split-safe; these are per-pane correctness fixes of
+existing composer/right-panel surfaces (no new surface, no permission).
+
+- **ITEM-45** — verdict: CONCERN — voice touches an imperative MediaRecorder singleton
+  (module-level `let`s) + focused-bridge reads; the fix is real per-pane rework (bind to
+  owning pane, exclusive-recorder guard, pane-scoped focus). Reference patterns exist
+  (file send-blocker `useChatPaneOrNull`+`composerPaneKey`; keyboard `focusedPaneRoot`).
+  Product fork DEC-61 (exclusivity A1/A2) must be confirmed before implementing.
+- **ITEM-46** — verdict: CONCERN — `KnowledgeBaseComposer` is a global singleton; making
+  selection per-conversation mirrors `McpComposer` exactly. Risk: the extension's
+  onConversationLoad path currently drives the one global store per pane (race); the fix
+  must not regress single-pane KB grounding. Covered by TEST-69/70.
+- **ITEM-47** — verdict: PASS — smallest: `McpComposer` config is already conversation-
+  keyed; only the `McpStatusRow` visible-selection resolve needs to read the owning pane's
+  conversation. Localized. Covered by TEST-71.
+- **ITEM-48** — verdict: PASS — a frontend `message_id`→conversation filter on the existing
+  seed+scroll loops in `ConversationPage`; no backend change (DEC-62). Extract the filter
+  pure for TEST-72. Verify single-pane scroll-to-approval is unchanged.
+- **ITEM-49** — verdict: CONCERN — re-keying `PdfHighlight` by (paneKey,fileId) touches the
+  store + the pdf viewer body read + cleanup; mirror `File.store` composerPaneKey. Must not
+  regress single-pane citation highlight. Covered by TEST-73/74.

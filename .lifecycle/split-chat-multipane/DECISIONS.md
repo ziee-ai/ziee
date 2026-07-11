@@ -562,3 +562,39 @@ native OS window is the only way to get a second top-level view, so the button i
 the sole affordance; on the web the browser already provides "open in new tab"
 (Cmd/middle-click, duplicate tab), so an in-app single-pane button is redundant
 chrome. Implemented as a pure `popoutActionVisible(inPane, isDesktop)` gate.
+
+### DEC-61: Voice recording with two panes — exclusive (one at a time) or simultaneous?
+**Resolution:** EXCLUSIVE recording, per-pane STATE. The mic is single hardware
+(one `getUserMedia` stream), so true simultaneous recording is impossible. Each
+pane owns its own VoiceStore instance (caption/status/transcript destination), but
+the imperative recorder is a single guarded resource owned by the pane that started
+it; the transcript lands in THAT pane's TextStore. While a recording is active, the
+mic button in OTHER panes is disabled/busy (recommended A1) rather than silently
+superseding the active recording (A2). [RECOMMENDED — confirm at plan approval;
+this is the one genuine product fork in round 5.]
+**Basis:** codebase + user-to-confirm — single mic hardware makes exclusivity a
+physical constraint; A1 vs A2 is the human's call.
+
+### DEC-62: How is a tool-call's originating conversation resolved for the scroll-to-approval filter?
+**Resolution:** FRONTEND, via the tool-call's `message_id` → the pane whose messages
+contain that message_id. No backend change (no new `conversation_id` column on
+`McpToolCall`, no migration, no openapi regen).
+**Basis:** codebase — `message_id` is already tracked on `McpToolCall` for progress
+correlation, and each pane's own `messages` map holds its message ids; a frontend
+resolve is lighter than a backend schema change.
+
+### DEC-63: How is the per-pane KB grounding selection keyed?
+**Resolution:** Conversation-keyed Maps in `KnowledgeBaseComposer.store`, resolved
+via the owning pane's conversation — mirroring `McpComposer.store`'s
+`conversationConfigs` / `resolveConfigKey` (which the branch already relies on for
+MCP). The status row + picker read/write the OWNING pane's conversation's selection.
+**Basis:** convention — `McpComposer` is the established per-conversation composer-
+selection pattern in this exact area.
+
+### DEC-64: How is the per-pane PDF citation highlight keyed?
+**Resolution:** Key the `PdfHighlight` target (+ the file find-query) by
+`(paneKey, fileId)` instead of `fileId` alone, mirroring `File.store`'s
+`composerPaneKey` ownership; the pdf viewer body reads its own pane's key and
+cleanup scopes to that key.
+**Basis:** convention — `File.store`'s per-pane `composerPaneKey` ownership is the
+established pattern for per-pane file state on this branch.
