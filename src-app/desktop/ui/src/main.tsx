@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
 import { Stores } from '@/core/stores'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
+import { registerDesktopOverrides } from '@ziee/desktop/modules/desktop-base/overrides'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { Button } from '@/components/ui'
 // Use the explicit `@ziee/desktop/*` alias — `@/*` resolves against
@@ -49,6 +50,12 @@ loadDesktopModules()
 // their stores (`Stores.AppMode` from `modules/app/module.tsx`) and
 // before `createRoot().render(<App/>)`.
 Stores.AppMode.setMultiUserMode(false)
+
+// Register every element-level desktop UI override (a `<Seam>` declared in a
+// core web component) BEFORE the first render, so a core component that reads
+// its seam resolves the desktop variant on its very first paint. Same
+// pre-render window as `setMultiUserMode(false)` above.
+registerDesktopOverrides()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

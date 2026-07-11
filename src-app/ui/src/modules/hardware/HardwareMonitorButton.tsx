@@ -2,23 +2,32 @@ import { Button, message } from '@/components/ui'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import { Seam } from '@/core/overrides'
 
 /**
  * "Monitor" button shown in the Hardware settings title bar.
  *
  * Core (web): opens `/hardware-monitor` as a browser popup window.
  *
- * Desktop overrides this file via `localOverridePlugin` to open a
- * native Tauri window instead — the desktop bundle imports
- * `desktop/ui/src/modules/hardware/HardwareMonitorButton.tsx` for
- * any `@/modules/hardware/HardwareMonitorButton` reference, so
- * HardwareSettings keeps its single call site and the desktop's
- * window machinery stays out of core.
+ * The desktop opens a native Tauri window instead. Rather than fork this whole
+ * file, the button element is wrapped in a `<Seam>`: the desktop build registers
+ * `hardware.monitor-button` (see
+ * `desktop/ui/src/modules/desktop-base/overrides.tsx`) and the seam swaps in the
+ * native-window variant. The permission gate below stays SHARED — it lives once,
+ * here, so the desktop variant carries only the ~10 lines that actually differ.
  *
- * Permission-gated: returns null when the viewer lacks
- * `hardware::monitor` (same condition as the previous inline check
- * in HardwareSettings).
+ * Permission-gated: returns null when the viewer lacks `hardware::monitor`; the
+ * seam is inside the gate, so the desktop override also only renders when
+ * permitted.
  */
+declare module '@/core/overrides' {
+  interface UIOverrides {
+    // Override takes no props — the shared permission gate + label/icon are
+    // supplied by core; only the click behavior (native window) differs.
+    'hardware.monitor-button': Record<string, never>
+  }
+}
+
 export function HardwareMonitorButton() {
   const canMonitor = usePermission(Permissions.HardwareMonitor)
 
@@ -43,8 +52,10 @@ export function HardwareMonitorButton() {
   }
 
   return (
-    <Button data-testid="hardware-monitor-btn" icon={<MdOutlineMonitorHeart />} onClick={handleClick}>
-      Monitor
-    </Button>
+    <Seam id="hardware.monitor-button">
+      <Button data-testid="hardware-monitor-btn" icon={<MdOutlineMonitorHeart />} onClick={handleClick}>
+        Monitor
+      </Button>
+    </Seam>
   )
 }
