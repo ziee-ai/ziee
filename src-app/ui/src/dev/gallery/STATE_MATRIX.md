@@ -8,7 +8,7 @@
 ## Summary
 
 - **363** surfaces carry at least one renderable-state signal.
-- **2106** signals total: 1658 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2114** signals total: 1664 branch, 133 empty, 111 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -3914,15 +3914,23 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `task.paused_reason === 'completed'` | 54 |
-| branch | `task.paused_reason` | 61 |
-| branch | `expanded` | 85 |
-| branch | `!runs` | 87 |
-| empty | `runs.length === 0` | 89 |
-| branch | `skippedToolsNote(r.skipped_tools)` | 101 |
-| loading | `loading && tasks.length === 0` | 197 |
-| error | `error && tasks.length === 0` | 201 |
-| empty | `tasks.length === 0` | 209 |
+| branch | `open` | 118 |
+| branch | `badge` | 125 |
+| branch | `preview` | 131 |
+| branch | `open` | 176 |
+| error | `run.status === 'failed' && run.error_message` | 178 |
+| branch | `skip` | 184 |
+| error | `!preview && run.status !== 'failed'` | 192 |
+| branch | `task.paused_reason === 'completed'` | 260 |
+| branch | `task.paused_reason` | 265 |
+| branch | `expanded` | 289 |
+| branch | `!runs` | 291 |
+| empty | `total === 0` | 293 |
+| branch | `total > perPage` | 309 |
+| branch | `task.target_kind === 'prompt'` | 330 |
+| loading | `loading && tasks.length === 0` | 411 |
+| error | `error && tasks.length === 0` | 415 |
+| empty | `tasks.length === 0` | 423 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 

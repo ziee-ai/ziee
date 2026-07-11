@@ -169,8 +169,24 @@ pub struct ScheduledTaskRun {
     /// Tools skipped this firing because they weren't permitted unattended
     /// (DEC-17.5). JSONB array of `SkippedTool`; `[]` when none.
     pub skipped_tools: serde_json::Value,
+    /// Round 2 (ITEM-40): a short plain-text digest of the result for the runs
+    /// timeline; NULL for pre-migration-155 rows + failed/pause rows.
+    pub result_preview: Option<String>,
+    /// Round 2 (ITEM-40): `{ changed, new_count, new_items? }` from change-detection,
+    /// driving the run row's what-changed badge; NULL when not applicable.
+    pub change_summary_json: Option<serde_json::Value>,
     pub fired_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
+}
+
+/// A page of run history (ITEM-41) — the paged envelope the runs panel consumes.
+/// Mirrors `mcp/tool_calls`' page shape.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct RunsPage {
+    pub runs: Vec<ScheduledTaskRun>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
 }
 
 /// Insert shape for a completed firing's audit row.
@@ -187,6 +203,9 @@ pub struct NewTaskRun {
     pub conversation_id: Option<Uuid>,
     /// Tools skipped this firing (DEC-17.5); empty when none.
     pub skipped_tools: Vec<SkippedTool>,
+    /// Round 2 (ITEM-40): result preview + change summary for the timeline.
+    pub result_preview: Option<String>,
+    pub change_summary: Option<serde_json::Value>,
     pub fired_at: DateTime<Utc>,
 }
 

@@ -20784,6 +20784,64 @@
         ]
       }
     },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
+      }
+    },
     "/api/scheduled-tasks": {
       "get": {
         "summary": "List your scheduled tasks",
@@ -21138,9 +21196,31 @@
     },
     "/api/scheduled-tasks/{id}/runs": {
       "get": {
-        "summary": "List a scheduled task's run history",
+        "summary": "List a scheduled task's run history (paged)",
         "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
         "operationId": "ScheduledTask.listRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 10
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -21166,14 +21246,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "A page of run history (ITEM-41) — the paged envelope the runs panel consumes.\n Mirrors `mcp/tool_calls`' page shape.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ScheduledTaskRun"
-                  }
+                  "$ref": "#/components/schemas/RunsPage"
                 }
               }
             }
@@ -21216,7 +21293,65 @@
             }
           },
           "201": {
-            "description": "Response of the continue-in-chat endpoint: the id of the freshly-seeded\n conversation the client should navigate to.",
+            "description": "Response of the continue endpoints: the id of the freshly-seeded conversation\n the client should navigate to.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks/{id}/continue-series": {
+      "post": {
+        "summary": "Discuss a scheduled task's recent runs in a new chat",
+        "description": "Opens a new conversation seeded with the last N runs' results and deltas.",
+        "operationId": "ScheduledTask.continueSeries",
+        "requestBody": {
+          "description": "Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the\n number of most-recent runs to fold into the seeded discussion (chooser\n {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client\n puts non-path args of a POST in the body, not the query).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueSeriesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response of the continue endpoints: the id of the freshly-seeded conversation\n the client should navigate to.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21334,64 +21469,6 @@
             "bearerAuth": []
           }
         ]
-      }
-    },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
       }
     },
     "/api/server-update/status": {
@@ -26303,7 +26380,7 @@
         ]
       },
       "ContinueResult": {
-        "description": "Response of the continue-in-chat endpoint: the id of the freshly-seeded\n conversation the client should navigate to.",
+        "description": "Response of the continue endpoints: the id of the freshly-seeded conversation\n the client should navigate to.",
         "type": "object",
         "properties": {
           "conversation_id": {
@@ -26314,6 +26391,17 @@
         "required": [
           "conversation_id"
         ]
+      },
+      "ContinueSeriesBody": {
+        "description": "Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the\n number of most-recent runs to fold into the seeded discussion (chooser\n {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client\n puts non-path args of a POST in the body, not the query).",
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "default": 5
+          }
+        }
       },
       "Conversation": {
         "description": "Conversation entity - Represents a chat conversation with an AI assistant",
@@ -37118,6 +37206,52 @@
           "run_id"
         ]
       },
+      "RunsPage": {
+        "description": "A page of run history (ITEM-41) — the paged envelope the runs panel consumes.\n Mirrors `mcp/tool_calls`' page shape.",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduledTaskRun"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "runs",
+          "total",
+          "page",
+          "per_page"
+        ]
+      },
+      "RunsPageParams": {
+        "description": "GET /api/scheduled-tasks/{id}/runs — the task's firing history (Runs tab).\n Query params for the paged runs list (ITEM-41). Defaults mirror the\n `RUNS_PAGE_SIZE` UX constant (DEC-20).",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 10
+          }
+        }
+      },
       "RuntimeSettings": {
         "type": "object",
         "properties": {
@@ -39275,6 +39409,9 @@
         "description": "A row of `scheduled_task_runs` — one per firing (the \"Runs\" history).",
         "type": "object",
         "properties": {
+          "change_summary_json": {
+            "description": "Round 2 (ITEM-40): `{ changed, new_count, new_items? }` from change-detection,\n driving the run row's what-changed badge; NULL when not applicable."
+          },
           "conversation_id": {
             "type": [
               "string",
@@ -39315,6 +39452,13 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "result_preview": {
+            "description": "Round 2 (ITEM-40): a short plain-text digest of the result for the runs\n timeline; NULL for pre-migration-155 rows + failed/pause rows.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scheduled_task_id": {
             "type": "string",
