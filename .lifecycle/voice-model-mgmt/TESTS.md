@@ -1,0 +1,45 @@
+# TESTS — voice-model-mgmt
+
+Bipartite coverage: every PLAN ITEM (1–21) is covered by ≥1 TEST; every TEST names a
+valid ITEM, tier, target file, and assertion. UI diff → e2e tests enumerated. No new
+permission is introduced (feature reuses `voice::admin::{read,manage}`), so a
+`[negative-perm]` e2e is not gate-mandatory; TEST-24 adds one anyway for defense.
+
+## Backend — unit (`#[cfg(test)]`, no external deps)
+
+- **TEST-1** (tier: unit) [covers: ITEM-3] file: `src-app/server/src/modules/voice/model.rs` — asserts: catalog integrity — every `CatalogModel` has a unique `ggml-<name>.bin` filename, a 64-hex pinned sha256, a valid quantization/lang flag; the standard+turbo+.en+quantized set is present.
+- **TEST-2** (tier: unit) [covers: ITEM-5, ITEM-20] file: `src-app/server/src/modules/voice/model.rs` — asserts: magic-byte validation accepts a whisper ggml magic (`0x67676d6c`) and GGUF (`0x46554747`) header and rejects arbitrary/HTML/empty bytes; the `VOICE_MODEL_MAX_UPLOAD_BYTES` const bounds the accepted size (over-cap rejected).
+- **TEST-3** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/voice/model.rs` — asserts: source→policy selection — a catalog download uses the fixed HF base URL + fail-closed pin; an arbitrary URL is validated with `OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS` so loopback/`169.254.169.254`/RFC1918 are rejected (verified flag stays false for arbitrary).
+- **TEST-4** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/modules/voice/model_download_task.rs` — asserts: `start_or_join` dedupes concurrent starts to one runner, a terminal entry is replaced on retry, the progress replay buffer is capped, and `broadcast` Progress/Complete/Failed transitions follow the state machine (mirrors runtime_version task tests).
+- **TEST-5** (tier: unit) [covers: ITEM-9] file: `src-app/server/src/modules/voice/handlers.rs` — asserts: `validate_settings_patch` accepts a catalog name AND an installed custom name, and still rejects an unknown-and-not-installed model (400) and an over-50-char name.
+
+## Backend — integration (`tests/voice/`, Postgres + TestServer)
+
+- **TEST-6** (tier: integration) [covers: ITEM-1, ITEM-2] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: `VoiceModelRepository` insert/list/get_by_id/get_by_filename/delete roundtrip against migration 155; unique-filename constraint rejects a duplicate.
+- **TEST-7** (tier: integration) [covers: ITEM-4, ITEM-5, ITEM-6] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: `POST /voice/models/download` (catalog, via `WHISPER_MODEL_MIRROR` loopback fixture) returns `{task_id,key,events_url}`; `GET /voice/models/downloads` lists it active; the `/events` SSE yields Connected→Progress→Complete and a `voice_models` row is registered (verified=true, source='catalog').
+- **TEST-8** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: arbitrary-URL download from a loopback mock (debug seam) stores the model as `verified=false, source='url'` with a computed sha256; a download whose bytes fail magic validation is rejected and no row is created.
+- **TEST-9** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: an arbitrary download to a non-seam internal URL (`http://169.254.169.254/...`) is refused by the SSRF policy (no fetch, clear error) — proves `PUBLIC_HTTP_OR_HTTPS` is enforced for user-supplied URLs.
+- **TEST-10** (tier: integration) [covers: ITEM-8] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: `POST /voice/models/upload` multipart with a valid ggml header stores the file under `voice-models/` and inserts a `voice_models` row (source='upload', verified=false); an upload with a bad magic or over-cap size returns 4xx and creates nothing.
+- **TEST-11** (tier: integration) [covers: ITEM-7, ITEM-9] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: `GET /voice/models` lists installed; `POST /voice/models/{id}/activate` sets `voice_runtime_settings.model` to the row's name; `DELETE /voice/models/{id}` removes row+file, and deleting the ACTIVE model without ack is refused (guard).
+- **TEST-12** (tier: integration) [covers: ITEM-6, ITEM-7, ITEM-8] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: **A9 deny path** — a user WITHOUT `voice::admin::manage` gets 403 on download/upload/delete/activate; a user without `voice::admin::read` gets 403 on list/downloads (allow path passes for admin).
+- **TEST-13** (tier: integration) [covers: ITEM-10] file: `src-app/server/tests/voice/model_management_test.rs` — asserts: a `sync:voice_model` (Create) event is emitted to the admin audience on download-complete and on upload, and a `voice_settings` event on activate (via `SyncProbe`, mirroring the runtime-version sync test).
+
+## Frontend — unit (store reducers)
+
+- **TEST-14** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/modules/voice/stores/VoiceModelDownloadProgress.store.ts` — asserts: an SSE `progress` frame patches `activeByKey[key]` bytes/percent; `complete` sets 100% and triggers an installed-list refetch; `loadActive()` re-subscribes non-terminal tasks (reload-safe). (Reuses `downloadProgress.helpers` `percentOf`/`claimSubscription`, whose existing `downloadProgress.helpers.test.ts` stays green.)
+- **TEST-15** (tier: unit) [covers: ITEM-12] file: `src-app/ui/src/modules/voice/stores/VoiceModel.store.ts` — asserts: `listInstalled()` maps the response; `deleteModel`/`activateModel` update state; the store refetches on `sync:voice_model` and `sync:voice_settings`, self-gated on `VoiceAdminRead`.
+- **TEST-16** (tier: unit) [covers: ITEM-13] file: `src-app/ui/src/modules/voice/stores/VoiceModelUpload.store.ts` — asserts: XHR progress callbacks update per-file `uploadProgress[i].progress` + `overallUploadProgress`; error status sets error tone; `cancelUpload()` aborts the XHR.
+
+## Frontend — e2e (`tests/e2e/14-voice/`, Playwright, --workers=1)
+
+- **TEST-17** (tier: e2e) [covers: ITEM-14, ITEM-6, ITEM-11, ITEM-18] file: `src-app/ui/tests/e2e/14-voice/voice-model-mgmt.spec.ts` — asserts: admin opens Voice settings, the AvailableModelsCard lists the catalog (paginated, "N of M"), clicks Install on a model, sees the inline byte/percent progress bar advance to complete (mocked SSE via `voice-helpers`).
+- **TEST-18** (tier: e2e) [covers: ITEM-15, ITEM-7, ITEM-17] file: `src-app/ui/tests/e2e/14-voice/voice-model-mgmt.spec.ts` — asserts: after install the model appears in InstalledModelsCard; clicking Set-active marks it active and updates the configured model; Delete (with Confirm) removes it; the active-model delete guard is honored.
+- **TEST-19** (tier: e2e) [covers: ITEM-16, ITEM-13, ITEM-8] file: `src-app/ui/tests/e2e/14-voice/voice-model-mgmt.spec.ts` — asserts: the Upload Model drawer opens, a file is selected, per-file + overall progress render, and on success the uploaded model appears in InstalledModelsCard tagged unverified/upload.
+- **TEST-20** (tier: e2e) [covers: ITEM-21, ITEM-18] file: `src-app/ui/tests/e2e/14-voice/voice-model-mgmt.spec.ts` — asserts: at a 390px viewport the Available/Installed cards render without horizontal page scroll and controls wrap (responsive-fidelity), and lists page rather than render-all.
+- **TEST-21** (tier: e2e) [covers: ITEM-17] file: `src-app/ui/tests/e2e/14-voice/voice-settings-admin.spec.ts` — asserts: the reworked VoiceSettingsPage composition (Available + Installed cards replacing ModelCard) renders and the not-ready banner reflects installed-set presence (re-points the former TEST-29 model-download assertion to the new async flow).
+
+## Static / generated / gate coverage
+
+- **TEST-22** (tier: unit) [covers: ITEM-19] file: `src-app/server/src/openapi/emit_ts.rs` — asserts: the golden parity test `openapi::emit_ts::tests::types_ts_parity` stays green after regen (types.ts matches openapi.json for the new `Voice.*` endpoints); enforced in both workspaces by `npm run check`.
+- **TEST-23** (tier: e2e) [covers: ITEM-21] file: `src-app/ui/src/dev/gallery/coverage.ts` — asserts: `check:gallery-coverage` + `check:state-matrix` (inside `npm run check`) pass with the new voice cards/drawer recorded under the existing voice DRIFT-1 pending→e2e convention (plus an overlay+fixture for the upload drawer if the gate demands a cell).
+- **TEST-24** (tier: e2e) [negative-perm] [covers: ITEM-9] file: `src-app/ui/tests/e2e/14-voice/voice-model-permissions.spec.ts` — asserts: a user LACKING `voice::admin::manage` (holding only read) sees NO Install / Upload / Set-active / Delete controls (all four gating layers), and a user lacking `voice::admin::read` cannot reach the Voice settings page at all — defense for the reused-permission surface (no 403s; controls absent).
