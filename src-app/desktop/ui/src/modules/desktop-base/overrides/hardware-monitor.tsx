@@ -1,19 +1,11 @@
 /**
- * Desktop UI Override registrations.
+ * Desktop override: Hardware "Monitor" button (seam `hardware.monitor-button`).
  *
- * Every element-level desktop override (a `<Seam>` declared in a core web
- * component) is registered here. `registerDesktopOverrides()` is invoked
- * SYNCHRONOUSLY from `main.tsx` before `ReactDOM.render`, so an override is in
- * the registry before the core component that reads its seam first renders
- * (same pre-render window as `Stores.AppMode.setMultiUserMode(false)`).
- *
- * Imports use the `@/…` alias (resolved to core for typecheck, and — since no
- * desktop shadow exists for these — to core at runtime too), so the seam-key
- * declaration merging from the core files applies to `registerOverride` here.
- *
- * Adding an override: declare the seam in the core component (a `<Seam>` +
- * `declare module '@/core/overrides'`), then add ONE `registerOverride(...)`
- * line below. The `seam` codemod scaffolds both sides.
+ * Each file under `overrides/` owns ONE seam and exports a `register()` that
+ * `overrides/index.ts` auto-discovers + calls (synchronously, pre-render). The
+ * `@/…` alias resolves to core (no desktop shadow exists for these), so the
+ * seam-key declaration merging from the core component applies to
+ * `registerOverride` here. The `seam` codemod scaffolds this file.
  */
 import { registerOverride } from '@/core/overrides'
 import { Button, message } from '@/components/ui'
@@ -73,7 +65,7 @@ function DesktopHardwareMonitorButton() {
   )
 }
 
-/** Register every desktop UI override. Call once, synchronously, pre-render. */
-export function registerDesktopOverrides(): void {
+/** Register this file's seam(s). Auto-called by `overrides/index.ts`. */
+export function register(): void {
   registerOverride('hardware.monitor-button', DesktopHardwareMonitorButton)
 }
