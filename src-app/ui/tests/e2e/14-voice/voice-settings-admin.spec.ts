@@ -14,19 +14,13 @@ import {
  * (GET/PUT /api/voice/settings + POST /api/voice/model/download round-trips).
  */
 test.describe('Voice — settings admin (TEST-29)', () => {
-  test('edit config + download model, save, and persist across reload', async ({
+  test('edit config, save, and persist across reload', async ({
     page,
     testInfra,
   }) => {
     const { baseURL } = testInfra
     await installVoiceBrowserMocks(page)
-    await routeVoice(
-      page,
-      // Start with the model NOT present so the download flips its badge.
-      defaultVoiceState({
-        modelStatus: { model: 'base', present: false },
-      }),
-    )
+    await routeVoice(page, defaultVoiceState())
 
     await loginAsAdmin(page, baseURL)
     await page.goto(`${baseURL}/settings/voice`)
@@ -34,13 +28,9 @@ test.describe('Voice — settings admin (TEST-29)', () => {
       timeout: 30000,
     })
 
-    // ── Download the model: missing → present. ──
-    const modelCard = byTestId(page, 'voice-model-card')
-    await expect(byTestId(modelCard, 'voice-model-missing-tag')).toBeVisible()
-    await byTestId(page, 'voice-model-download-btn').click()
-    await expect(byTestId(modelCard, 'voice-model-present-tag')).toBeVisible({
-      timeout: 10000,
-    })
+    // (Model download/install is exercised by voice-model-mgmt.spec.ts
+    // TEST-17/18 against the new Available/Installed cards; the old single
+    // ModelCard was removed in the model-library rework.)
 
     // ── Edit the config fields. ──
     const configCard = byTestId(page, 'voice-config-card')
@@ -74,10 +64,6 @@ test.describe('Voice — settings admin (TEST-29)', () => {
     await expect(byTestId(page, 'voice-config-language')).toContainText(
       'English',
     )
-    // The model stays present after reload.
-    await expect(
-      byTestId(byTestId(page, 'voice-model-card'), 'voice-model-present-tag'),
-    ).toBeVisible()
   })
 })
 

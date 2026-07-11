@@ -651,6 +651,19 @@ mod tests {
         assert_eq!(model_filename("large-v3"), "ggml-large-v3.bin");
     }
 
+    // TEST-3: the SSRF boundary the arbitrary-URL download path enforces
+    // (`PUBLIC_HTTP_OR_HTTPS`) rejects loopback / IMDS / RFC1918 targets, while a
+    // normal public URL is allowed. (The trusted catalog path is not SSRF-checked.)
+    #[test]
+    fn arbitrary_url_ssrf_policy_rejects_internal_targets() {
+        use crate::utils::url_validator::{validate_outbound_url, OutboundUrlPolicy};
+        let p = &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS;
+        assert!(validate_outbound_url("http://127.0.0.1/ggml-base.bin", p).is_err());
+        assert!(validate_outbound_url("http://169.254.169.254/latest/meta-data", p).is_err());
+        assert!(validate_outbound_url("http://10.0.0.5/x.bin", p).is_err());
+        assert!(validate_outbound_url("https://huggingface.co/x/resolve/main/ggml-base.bin", p).is_ok());
+    }
+
     #[test]
     fn redact_url_strips_credentials() {
         assert_eq!(

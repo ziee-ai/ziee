@@ -760,8 +760,10 @@ async fn test_12_permission_denials() {
 
 // ═══════════════════════════════ TEST-13 ═════════════════════════════════
 
-/// TEST-13 — `sync:voice_model` Create is emitted on download-complete AND on
-/// upload; `sync:voice_settings` (+ `voice_model` update) is emitted on activate.
+/// TEST-13 (+ TEST-36 sync_emit) — `sync:voice_model` Create is emitted on
+/// download-complete AND on upload; `sync:voice_settings` (+ `voice_model` update)
+/// is emitted on activate, delivered to the admin `SyncProbe`. This IS the
+/// sync-emit audience coverage (ITEM-10) enumerated as TEST-36.
 #[tokio::test]
 async fn test_13_sync_emits() {
     let mock = spawn_mock().await;
@@ -1085,12 +1087,8 @@ async fn test_35_get_version_and_instance_fields() {
 /// drains-and-stops, it does not eagerly respawn). Uses the REAL auto-start path
 /// with the freshly-built `stub-whisper-server` (available as a test binary) +
 /// pre-staged model files, so no live upstream engine is needed.
-///
-/// NOTE: TEST-28 (crash/backoff SUPERVISION) genuinely requires inducing a
-/// whisper-server *crash*; the healthy stub never crashes, so the crash-path
-/// backoff/flap-cap is covered by the health state-machine unit tests in
-/// `engine/health.rs` and the restart transition in `lifecycle_test`. The
-/// reachable-without-a-crash part (drain + respawn on activate) is covered here.
+/// (TEST-28 — the crash/backoff SUPERVISION path — is implemented separately
+/// below using a never-healthy binary that trips the flap cap.)
 #[tokio::test]
 async fn test_30_activate_drains_and_respawns_running_instance() {
     use super::{make_wav, stage_model, stub_whisper_binary};
@@ -1199,4 +1197,114 @@ async fn test_30_activate_drains_and_respawns_running_instance() {
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await;
+}
+
+/// TEST-28 — request-path crash supervision (F1/F2): a whisper-server binary that
+/// never becomes healthy makes every auto-start time out → `Crashed` on each
+/// transcribe; 5 crashes in the flap window latch the instance `failed` and stop
+/// auto-respawning. Exercises the request-path wiring end-to-end (the health
+/// state-machine transitions themselves are additionally unit-tested).
+#[tokio::test]
+async fn test_28_flap_cap_marks_failed_on_repeated_crash() {
+    use super::{make_wav, stage_model};
+    use std::io::Write as _;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "voice_mm_t28", VOICE_ADMIN_PERMS).await;
+
+    // A "whisper-server" that spawns but never binds its port → health never
+    // passes → each auto-start times out → Crashed.
+    let dir = std::env::temp_dir().join(format!("voice-t28-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bin = dir.join("never-healthy.sh");
+    {
+        let mut f = std::fs::File::create(&bin).unwrap();
+        writeln!(f, "#!/bin/sh").unwrap();
+        writeln!(f, "sleep 30").unwrap();
+    }
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    insert_version_row(&server, "v0.0.0-nohealth", "cpu", bin.to_string_lossy().as_ref(), true).await;
+    stage_model(&server, "base");
+
+    // Short auto-start timeout so 5 crashes happen in seconds, not minutes.
+    let r = client()
+        .put(server.api_url("/voice/settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "auto_start_timeout_secs": 1, "model": "base" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200, "settings update should 200");
+
+    let wav = make_wav(1.0);
+    let mut failed = false;
+    for _ in 0..8 {
+        let part = reqwest::multipart::Part::bytes(wav.clone())
+            .file_name("a.wav")
+            .mime_str("audio/wav")
+            .unwrap();
+        let form = reqwest::multipart::Form::new().part("file", part);
+        let _ = client()
+            .post(server.api_url("/voice/transcribe"))
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+        let (_, info) = get_json(&server, &admin.token, "/voice/instance").await;
+        if info["state"] == "failed" {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed, "flap cap should latch the instance `failed` after repeated crashes");
+
+    // While failed, a further transcribe is refused (flap protection), not respawned.
+    let part = reqwest::multipart::Part::bytes(wav.clone())
+        .file_name("a.wav")
+        .mime_str("audio/wav")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("file", part);
+    let resp = client()
+        .post(server.api_url("/voice/transcribe"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(resp.status(), 200, "a failed runtime must not auto-respawn");
+
+    // Admin restart clears the failed latch (the endpoint runs; it may itself
+    // fail health again, but clear_failed must have executed).
+    let r = client()
+        .post(server.api_url("/voice/instance/restart"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status() != 403 && r.status() != 404, "restart endpoint reachable");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// TEST-33 — instance logs endpoints (F8): admin gets 200 + a `lines` array
+/// (empty when nothing is running); a non-admin is 403.
+#[tokio::test]
+async fn test_33_instance_logs_endpoints() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "voice_mm_t33", VOICE_ADMIN_PERMS).await;
+    let (st, v) = get_json(&server, &admin.token, "/voice/instance/logs").await;
+    assert_eq!(st, StatusCode::OK, "admin can read logs");
+    assert!(v["lines"].is_array(), "logs returns a lines array");
+
+    let member =
+        create_user_with_permissions(&server, "voice_mm_t33m", &["voice::transcribe"]).await;
+    let r = client()
+        .get(server.api_url("/voice/instance/logs"))
+        .header("Authorization", format!("Bearer {}", member.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 403, "logs needs voice::admin::read");
 }
