@@ -1,7 +1,32 @@
 # TEST_RESULTS — scheduled-tasks (Phase 8)
 
-All 34 enumerated tests ran and PASS. Full logs saved under
-`/data/pbya/ziee/tmp/lifecycle-logs/scheduled-tasks-*.log`.
+All 51 enumerated tests (34 round-1 + 17 round-2 follow-up/series) ran and PASS.
+Round-2 logs under `/data/pbya/ziee/tmp/lifecycle-logs/sched-r2-*.log`.
+
+## Round 2 (Follow-up & Series, TEST-40..56) — run summary
+
+- **Backend integration** (`cargo test --test integration_tests scheduler:: --test-threads=6`):
+  **26 passed / 0 failed** (`sched-r2-int-v3-*.log`). Covers TEST-40/42/44/46 (runs
+  timeline preview+change, pagination + huge-page guard, real-content assistant-turn
+  seed, series follow-up owner-scoped). No pre-existing scheduler test regressed
+  (the run-list envelope change was threaded through tick_test + continue_in_chat_test).
+- **Backend unit** (`cargo test --lib scheduler::`): **28 passed / 0 failed**
+  (`sched-r2-unit-*.log`). Covers TEST-41/43/45/47 (preview+change builders, paged
+  repo query, run-seed + series-seed builders).
+- **Frontend unit** (`vitest run runTimeline.test.ts ScheduledTasks.store.test.ts`):
+  **14 passed / 0 failed**. Covers TEST-49/51/53/55 (change badge / followup-action /
+  series-chooser mappers + paged loadRuns + snap-back + continueSeries).
+- **Frontend e2e** (`playwright test tests/e2e/14-scheduler --workers=1`):
+  the whole `14-scheduler` suite is green incl. the round-2 specs. Covers
+  TEST-48/50/52/54/56 (run-row badge+preview+expand, Open-thread affordance,
+  pagination, discuss-recent-runs→continue-series, responsive mobile overflow).
+
+**Bugs the tests caught + fixed during Phase 8:** (a) the run-list response became a
+paged envelope, breaking `tick_test`/`continue_in_chat_test` array reads → updated the
+consumers; (b) e2e TEST-54 caught that `continue-series` read `limit` from the query
+while the api-client sends non-path POST args in the BODY → the chosen limit was
+silently ignored (always 5); fixed the handler to read the JSON body + regenerated
+OpenAPI (both workspaces).
 
 ## Run summary (by tier)
 
@@ -72,3 +97,20 @@ canary above is therefore recorded against the touched surfaces, which are clean
 - **TEST-32**: PASS
 - **TEST-33**: PASS
 - **TEST-34**: PASS
+- **TEST-40**: PASS
+- **TEST-41**: PASS
+- **TEST-42**: PASS
+- **TEST-43**: PASS
+- **TEST-44**: PASS
+- **TEST-45**: PASS
+- **TEST-46**: PASS
+- **TEST-47**: PASS
+- **TEST-48**: PASS
+- **TEST-49**: PASS
+- **TEST-50**: PASS
+- **TEST-51**: PASS
+- **TEST-52**: PASS
+- **TEST-53**: PASS
+- **TEST-54**: PASS
+- **TEST-55**: PASS
+- **TEST-56**: PASS

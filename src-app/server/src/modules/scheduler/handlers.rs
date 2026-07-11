@@ -485,11 +485,12 @@ pub fn list_task_runs_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<RunsPage>>()
 }
 
-/// Query params for the series follow-up (ITEM-43 / DEC-22). `limit` is the
+/// Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the
 /// number of most-recent runs to fold into the seeded discussion (chooser
-/// {5,10,all-loaded}); server-clamped.
+/// {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client
+/// puts non-path args of a POST in the body, not the query).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ContinueSeriesParams {
+pub struct ContinueSeriesBody {
     #[serde(default = "default_series_limit")]
     pub limit: i64,
 }
@@ -505,10 +506,10 @@ fn default_series_limit() -> i64 {
 pub async fn continue_series(
     auth: RequirePermissions<(SchedulerUse,)>,
     Path(id): Path<Uuid>,
-    Query(params): Query<ContinueSeriesParams>,
+    Json(body): Json<ContinueSeriesBody>,
 ) -> ApiResult<Json<ContinueResult>> {
     let conversation_id =
-        continue_chat::continue_series_in_chat(Repos.pool(), auth.user.id, id, params.limit).await?;
+        continue_chat::continue_series_in_chat(Repos.pool(), auth.user.id, id, body.limit).await?;
     Ok((StatusCode::CREATED, Json(ContinueResult { conversation_id })))
 }
 

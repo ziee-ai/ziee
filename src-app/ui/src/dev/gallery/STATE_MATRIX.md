@@ -3913,20 +3913,20 @@ Required states: `delayed`, `empty`, `error`
 | branch | `open` | 118 |
 | branch | `badge` | 125 |
 | branch | `preview` | 131 |
-| branch | `open` | 173 |
-| error | `run.status === 'failed' && run.error_message` | 175 |
-| branch | `skip` | 181 |
-| error | `!preview && run.status !== 'failed'` | 189 |
-| branch | `task.paused_reason === 'completed'` | 256 |
-| branch | `task.paused_reason` | 261 |
-| branch | `expanded` | 285 |
-| branch | `!runs` | 287 |
-| empty | `total === 0` | 289 |
-| branch | `total > perPage` | 305 |
-| branch | `task.target_kind === 'prompt'` | 326 |
-| loading | `loading && tasks.length === 0` | 407 |
-| error | `error && tasks.length === 0` | 411 |
-| empty | `tasks.length === 0` | 419 |
+| branch | `open` | 176 |
+| error | `run.status === 'failed' && run.error_message` | 178 |
+| branch | `skip` | 184 |
+| error | `!preview && run.status !== 'failed'` | 192 |
+| branch | `task.paused_reason === 'completed'` | 260 |
+| branch | `task.paused_reason` | 265 |
+| branch | `expanded` | 289 |
+| branch | `!runs` | 291 |
+| empty | `total === 0` | 293 |
+| branch | `total > perPage` | 309 |
+| branch | `task.target_kind === 'prompt'` | 330 |
+| loading | `loading && tasks.length === 0` | 411 |
+| error | `error && tasks.length === 0` | 415 |
+| empty | `tasks.length === 0` | 423 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 

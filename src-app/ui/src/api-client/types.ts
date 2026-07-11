@@ -611,11 +611,12 @@ export interface ContinueResult {
 }
 
 /**
- * Query params for the series follow-up (ITEM-43 / DEC-22). `limit` is the
+ * Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the
  *  number of most-recent runs to fold into the seeded discussion (chooser
- *  {5,10,all-loaded}); server-clamped.
+ *  {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client
+ *  puts non-path args of a POST in the body, not the query).
  */
-export interface ContinueSeriesParams {
+export interface ContinueSeriesBody {
   limit?: number
 }
 
@@ -8064,7 +8065,7 @@ export type ApiEndpointParameters = {
   'RuntimeVersion.syncCache': void
   'RuntimeVersion.usage': { engine?: string; page?: number; per_page?: number }
   'ScheduledTask.continueRun': { run_id: string }
-  'ScheduledTask.continueSeries': { id: string; limit?: number }
+  'ScheduledTask.continueSeries': { id: string } & ContinueSeriesBody
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }

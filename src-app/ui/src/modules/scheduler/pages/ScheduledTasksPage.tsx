@@ -155,13 +155,16 @@ function RunRow({ task, run }: { task: ScheduledTask; run: ScheduledTaskRun }) {
           ))}
         </div>
         <div className="sm:hidden">
-          <Dropdown items={items} data-testid={`run-actions-menu-${run.id}`}>
+          <Dropdown items={items} data-testid={`run-actions-menu-content-${run.id}`}>
             {/* role=button (not a raw <button>) so the kit lint + Base UI trigger
-                are satisfied; the Dropdown trigger handles keyboard activation. */}
+                are satisfied; the Dropdown trigger handles keyboard activation.
+                testid lives on the TRIGGER (the Dropdown prop would tag the menu
+                content, which only mounts when open). */}
             <div
               role="button"
               tabIndex={0}
               aria-label="Run actions"
+              data-testid={`run-actions-menu-${run.id}`}
               className="hover:bg-muted inline-flex h-8 w-8 items-center justify-center rounded-md"
             >
               <MoreHorizontal size={16} />
@@ -216,11 +219,12 @@ function SeriesChooser({
     onClick: () => void start(c.value),
   }))
   return (
-    <Dropdown items={items} data-testid={`series-chooser-${task.id}`}>
+    <Dropdown items={items} data-testid={`series-chooser-menu-${task.id}`}>
       <div
         role="button"
         tabIndex={0}
         aria-label="Discuss recent runs"
+        data-testid={`series-chooser-${task.id}`}
         className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs"
       >
         Discuss recent runs

@@ -149,8 +149,9 @@ async fn continue_series_seeds_and_is_owner_scoped() {
 
     // Owner: series continue → 201 + a fetchable conversation.
     let res = client()
-        .post(server.api_url(&format!("/scheduled-tasks/{task_id}/continue-series?limit=5")))
+        .post(server.api_url(&format!("/scheduled-tasks/{task_id}/continue-series")))
         .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&json!({ "limit": 5 }))
         .send()
         .await
         .unwrap();
@@ -169,8 +170,9 @@ async fn continue_series_seeds_and_is_owner_scoped() {
 
     // A different user cannot seed a series from someone else's task.
     let foreign = client()
-        .post(server.api_url(&format!("/scheduled-tasks/{task_id}/continue-series?limit=5")))
+        .post(server.api_url(&format!("/scheduled-tasks/{task_id}/continue-series")))
         .header("Authorization", format!("Bearer {}", other.token))
+        .json(&json!({ "limit": 5 }))
         .send()
         .await
         .unwrap();

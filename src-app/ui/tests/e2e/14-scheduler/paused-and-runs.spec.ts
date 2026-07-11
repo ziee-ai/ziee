@@ -272,7 +272,9 @@ test('TEST-54: discuss recent runs calls continue-series', async ({ page, testIn
     r.fulfill({ status: 200, json: { runs: [mkRun(1), mkRun(2)], total: 2, page: 1, per_page: 10 } }),
   )
   await page.route(/\/api\/scheduled-tasks\/[^/]+\/continue-series(\?.*)?$/, async route => {
-    seriesLimit = new URL(route.request().url()).searchParams.get('limit')
+    // The api-client sends non-path POST args in the body, not the query.
+    const body = route.request().postDataJSON() as { limit?: number } | null
+    seriesLimit = body?.limit != null ? String(body.limit) : null
     await route.fulfill({ status: 201, json: { conversation_id: 'dddddddd-0000-0000-0000-0000000000dd' } })
   })
 
