@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { dialog } from '@/components/ui'
 import { Stores } from '@/core'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
-import type { ReconcileIntent } from '@/modules/chat/core/split/reconcile'
+import {
+  needsOpenChoice,
+  type ReconcileIntent,
+} from '@/modules/chat/core/split/reconcile'
 
 /** Parse the conversation id out of a `/chat/<id>` (or `/projects/.../chat/<id>`) path. */
 function conversationIdFromPath(pathname: string): string | null {
@@ -40,8 +43,43 @@ export function useOpenConversationInWorkspace() {
         href?: string
       },
     ) => {
-      const intent = opts?.intent ?? 'auto'
+      let intent = opts?.intent ?? 'auto'
       const sv = Stores.SplitView.$
+
+      // FB-8 / ITEM-43: an AMBIGUOUS plain open (a split is open and this
+      // conversation isn't already in a pane) asks the user how to place it,
+      // instead of silently replacing the focused pane. `needsOpenChoice` is the
+      // pure trigger (DEC-58); single-pane opens, already-open focuses, and
+      // explicit Cmd/menu intents skip this entirely.
+      if (
+        needsOpenChoice(
+          { panes: sv.panes, focusedPaneId: sv.focusedPaneId },
+          conversationId,
+          intent,
+        )
+      ) {
+        const atCap = sv.panes.length >= SPLIT_LIMITS.MAX_PANES
+        const choice = await dialog.choose({
+          title: 'Open this conversation',
+          description: 'A split view is open — how should this conversation open?',
+          options: [
+            { key: 'single', label: 'Open as single pane' },
+            { key: 'replace', label: 'Replace the active pane' },
+            // Only offer a new pane when there's room (else it would hit the cap).
+            ...(atCap ? [] : [{ key: 'new', label: 'Add as a new pane' }]),
+          ],
+          cancelText: 'Cancel',
+          testid: 'open-conversation-choice',
+        })
+        if (!choice) return // cancelled / dismissed
+        if (choice === 'single') {
+          Stores.SplitView.reset() // collapse to single-pane (URL-driven)
+          navigate(opts?.href ?? `/chat/${conversationId}`)
+          return
+        }
+        intent = choice === 'replace' ? 'replaceFocused' : 'newPane'
+      }
+
       const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
       // The single-pane base for a `newPane` bootstrap: the focused pane's
       // conversation, else whatever the URL currently shows.

@@ -77,6 +77,29 @@ export interface ReconcileResult {
  * - **`auto` / `replaceFocused` while single** (0–1 panes) → normal navigate
  *   (a lone pane is kept in sync so it doesn't dangle on the old conversation).
  */
+/**
+ * Should opening `conversationId` under `intent` PROMPT the user for how to place
+ * it (single / replace / new pane), instead of auto-resolving (ITEM-43, FB-8)?
+ *
+ * TRUE for exactly the ambiguous case (DEC-58): a plain `auto` open, while a split
+ * is already open (≥2 panes), of a conversation NOT already in a pane. Everything
+ * else stays instant + unprompted: single-pane opens (0–1 panes) navigate;
+ * an already-open conversation just focuses its pane; explicit `newPane` /
+ * `replaceFocused` intents (Cmd/middle-click, the ⋯ menu) keep their intent.
+ *
+ * Pure — reads only its args, so the trigger rule is unit-testable independent of
+ * the dialog/router (mirrors `openConversationInWorkspace`).
+ */
+export function needsOpenChoice(
+  layout: WorkspaceLayout,
+  conversationId: string,
+  intent: ReconcileIntent,
+): boolean {
+  if (intent !== 'auto') return false
+  if (layout.panes.length < 2) return false
+  return !layout.panes.some((p) => p.conversationId === conversationId)
+}
+
 export function openConversationInWorkspace(
   input: ReconcileInput,
 ): ReconcileResult {

@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  needsOpenChoice,
   openConversationInWorkspace,
   type ReconcileIntent,
   type ReconcileOutcome,
@@ -203,3 +204,34 @@ test('reconcile: purity — the input layout object is never mutated', () => {
   })
   assert.equal(JSON.stringify(layout), snapshot, 'reducer must not mutate its input')
 })
+
+// TEST-64 (ITEM-43 / FB-8 / DEC-58): the `needsOpenChoice` trigger predicate — the
+// prompt fires for EXACTLY the ambiguous case (plain `auto` click + a split open +
+// the conversation not already in a pane) and for nothing else.
+{
+  const L = (...convs: (string | null)[]): WorkspaceLayout => ({
+    panes: convs.map((c, i) => pane(`p${i}`, c)),
+    focusedPaneId: convs.length ? 'p0' : null,
+  })
+
+  test('needsOpenChoice: TRUE only for auto + split(>=2) + not-already-open', () => {
+    // The ambiguous case → prompt.
+    assert.equal(needsOpenChoice(L('a', 'b'), 'c', 'auto'), true)
+    assert.equal(needsOpenChoice(L('a', 'b', 'c'), 'd', 'auto'), true)
+  })
+
+  test('needsOpenChoice: FALSE in single-pane (0-1 panes) — a plain open just navigates', () => {
+    assert.equal(needsOpenChoice(L(), 'c', 'auto'), false)
+    assert.equal(needsOpenChoice(L('a'), 'c', 'auto'), false)
+  })
+
+  test('needsOpenChoice: FALSE when the conversation is ALREADY open — it just focuses', () => {
+    assert.equal(needsOpenChoice(L('a', 'b'), 'a', 'auto'), false)
+    assert.equal(needsOpenChoice(L('a', 'b'), 'b', 'auto'), false)
+  })
+
+  test('needsOpenChoice: FALSE for explicit intents (Cmd/middle-click, ⋯ menu keep their intent)', () => {
+    assert.equal(needsOpenChoice(L('a', 'b'), 'c', 'newPane'), false)
+    assert.equal(needsOpenChoice(L('a', 'b'), 'c', 'replaceFocused'), false)
+  })
+}

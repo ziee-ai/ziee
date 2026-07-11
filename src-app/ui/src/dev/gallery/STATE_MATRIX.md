@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2126** signals total: 1677 branch, 134 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2128** signals total: 1679 branch, 134 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -199,12 +199,14 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!items.some((x) => x.id === it.id)` | 84 |
-| branch | `it == null` | 92 |
-| overlay | `<AlertDialog open>` | 96 |
-| branch | `Icon != null` | 100 |
-| branch | `it.description != null` | 103 |
-| branch | `it.cancelText != null` | 106 |
+| branch | `!items.some((x) => x.id === it.id)` | 121 |
+| branch | `it == null` | 129 |
+| overlay | `<AlertDialog open>` | 138 |
+| branch | `Icon != null` | 142 |
+| branch | `it.description != null` | 145 |
+| branch | `it.choices != null` | 147 |
+| branch | `it.cancelText != null` | 164 |
+| branch | `it.cancelText != null` | 176 |
 
 ### `components/ui/kit/dropdown`
 

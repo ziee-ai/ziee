@@ -379,3 +379,17 @@ no backend, no permission, no new render state.
 - **ITEM-40** — verdict: PASS — mirrors `mcp/stores/approvalRouting.ts` (pure enum-free extraction so `node:test` can load it); `File.store` delegates with byte-identical behaviour, so it breaks no existing caller — the existing `14-split-chat` e2e suite is the delegation regression guard. No migration, no openapi.
 - **ITEM-41** — verdict: PASS — a new e2e spec mirroring `composer-isolation.spec.ts` + `right-panel-per-pane.spec.ts`'s `attachFileRobust`; touches no product code, only `tests/e2e/`. Asserts existing per-pane behaviour without a focus-click (per FB-4).
 - **ITEM-42** — verdict: PASS — a durable Markdown doc under `tests/e2e/14-split-chat/` (survives the `.lifecycle` merge-strip, DEC-56) + a structural unit test; no product-code risk.
+
+## Iteration round 3 — explicit open-conversation choice (FB-8)
+
+- **ITEM-43** — verdict: PASS — localized + additive. (a) `dialog.choose` is a new
+  method on the existing imperative kit host — the `confirm`/alert paths are
+  untouched (byte-identical), so no existing dialog caller is affected. (b)
+  `needsOpenChoice` is a new PURE export in `reconcile.ts` — reads only its inputs,
+  independently unit-testable, changes no existing reducer path. (c) the
+  `useOpenConversation` change is a guarded pre-step before the existing reducer
+  call; the non-ambiguous paths (single-pane, already-open, explicit intent) fall
+  through unchanged. No migration, no openapi, no new permission, no cross-module
+  coupling (the two feature-module extensions that read `SplitView` are untouched).
+  A new imperative-dialog render state may need a `check:state-matrix` gallery cell
+  or allowlist reason — handled at phase 8.

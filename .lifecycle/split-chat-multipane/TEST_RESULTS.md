@@ -79,6 +79,22 @@ global mcp-chip) — all fixed and re-run green.
   defect (the `send0` disabled assertion had already passed); reworked to a
   fixed-delay route hold and re-ran green.
 
+## Iteration round 3 (explicit open-conversation choice; ITEM-43 / FB-8)
+
+- **`npm run check (ui): PASS`** — full chain, exit 0 (`splitchat-ui-check-r3b.log`).
+  Required a `npm run gen:state-matrix` regen + commit for the new `dialog.choose`
+  render state (the one gate that tripped; the documented flow).
+- **Unit (TEST-64): PASS** — `reconcile.test.ts` `needsOpenChoice` (14/14 incl. the
+  4 new cases): TRUE only for `auto`+split+not-open; FALSE for single-pane,
+  already-open, and explicit `newPane`/`replaceFocused`.
+- **E2E (TEST-63 + updated TEST-50): 6/6 PASS** — `open-conversation-choice.spec.ts`
+  (5) + `sidebar-reroute.spec.ts` (1) on a real backend, `--workers=1`
+  (`splitchat-e2e-r3.log`: `6 passed`): "Add as a new pane" → 3 panes; "Replace the
+  active pane" → focused pane retitled, split kept; "Open as single pane" →
+  split collapsed to a single view; NO prompt in single-pane mode; NO prompt when
+  clicking an already-open conversation (it focuses). The GitHub-404 "server update
+  check failed (soft)" backend warnings are the offline box, not test failures.
+
 ## Per-TEST-ID (Phase 3 TESTS.md — all 64)
 
 - **TEST-P1**: PASS
@@ -148,6 +164,8 @@ global mcp-chip) — all fixed and re-run green.
 - **TEST-60**: PASS
 - **TEST-61**: PASS
 - **TEST-62**: PASS
+- **TEST-63**: PASS
+- **TEST-64**: PASS
 
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 

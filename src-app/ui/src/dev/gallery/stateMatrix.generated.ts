@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2126 signals total.
+// 365 surfaces carry renderable-state signals; 2128 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -146,12 +146,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/dialog-host",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "!items.some((x) => x.id === it.id)", line: 84 },
-      { kind: "branch", condition: "it == null", line: 92 },
-      { kind: "overlay", condition: "<AlertDialog open>", line: 96 },
-      { kind: "branch", condition: "Icon != null", line: 100 },
-      { kind: "branch", condition: "it.description != null", line: 103 },
-      { kind: "branch", condition: "it.cancelText != null", line: 106 },
+      { kind: "branch", condition: "!items.some((x) => x.id === it.id)", line: 121 },
+      { kind: "branch", condition: "it == null", line: 129 },
+      { kind: "overlay", condition: "<AlertDialog open>", line: 138 },
+      { kind: "branch", condition: "Icon != null", line: 142 },
+      { kind: "branch", condition: "it.description != null", line: 145 },
+      { kind: "branch", condition: "it.choices != null", line: 147 },
+      { kind: "branch", condition: "it.cancelText != null", line: 164 },
+      { kind: "branch", condition: "it.cancelText != null", line: 176 },
     ],
   },
   "components/ui/kit/dropdown": {

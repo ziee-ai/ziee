@@ -335,6 +335,33 @@ tracked, prioritized follow-ups (a documented deferral, not a silent cut).
   prioritized deferred gaps. A structural doc-consistency unit test guards it from
   silent gutting.
 
+### Iteration round 3 — explicit open-conversation choice (FB-8, human-reviewed)
+
+FB-8: the plain-click-while-split default silently REPLACES the focused pane. Per
+the human, an ambiguous open must instead OFFER the choice. Trigger scope (DEC-58,
+human-approved via the AskUserQuestion): **only the ambiguous case** — a plain
+(`auto`) click, while a split is open (≥2 panes), on a conversation NOT already in
+a pane. Single-pane clicks stay instant; an already-open conversation still just
+focuses its pane; Cmd/middle-click + the `⋯` menu keep their explicit `newPane`
+intent. Built on the meta-framework seam, not a chat-specific one-off (FB-8's
+modularity mandate): a REUSABLE imperative `dialog.choose` kit primitive + a PURE
+predicate in the reconciler; the chat hook only wires them. No new cross-module
+coupling — the whole change is the reconciler + the one `useOpenConversation` call
+site + a general kit dialog method.
+
+- **ITEM-43**: The 3-way open-conversation prompt. (a) Add a reusable
+  `dialog.choose({title, options[], cancelText, testid})` to the imperative kit
+  dialog host (`components/ui/kit/dialog-host.tsx`) that renders one action per
+  option and resolves the chosen key (or null on cancel/dismiss) — a general N-way
+  primitive, additive to the existing `confirm`/alert variants. (b) Add a PURE
+  `needsOpenChoice(layout, conversationId, intent)` predicate to
+  `split/reconcile.ts` (true iff `intent==='auto'` && `panes.length>=2` &&
+  conversation not already open). (c) In `useOpenConversation.ts`, when
+  `needsOpenChoice`, `await dialog.choose(...)` and map: `single` → collapse the
+  split (`SplitView.reset()`) + navigate single-pane; `replace` → `replaceFocused`;
+  `new` → `newPane` (reusing the existing `capReached` handling). No prompt in any
+  other case (single-pane, already-open, explicit modifier/menu intent).
+
 ## Files to touch
 
 New files (frontend, `src-app/ui/src` unless noted):

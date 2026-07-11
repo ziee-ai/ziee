@@ -3,12 +3,13 @@ import { byTestId } from '../testid'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
- * Split-chat E2E — sidebar reroute (TEST-50, ITEM-28). With a split open, a plain
- * sidebar click FOCUSES a conversation already in a pane (no duplicate) or
- * REPLACES the focused pane's conversation (no full navigate that tears down the
- * split); Cmd/Ctrl/middle-click opens it in a NEW pane. The recent-conversations
- * widget and the history card both funnel through the same
- * `useOpenConversationInWorkspace` hook. No LLM.
+ * Split-chat E2E — sidebar reroute (TEST-50, ITEM-28; + ITEM-43/FB-8). With a
+ * split open, a plain sidebar click on a NEW conversation now opens the 3-way
+ * choice prompt (single / replace / new); picking "Replace the active pane" gives
+ * the original reroute. A plain click on a conversation ALREADY in a pane FOCUSES
+ * it with NO prompt (dedupe), and Cmd/Ctrl/middle-click opens a NEW pane with NO
+ * prompt (explicit intent). The recent-conversations widget and the history card
+ * both funnel through the same `useOpenConversationInWorkspace` hook. No LLM.
  */
 test.describe('Split chat — sidebar reroute', () => {
   const mkConv = async (
@@ -46,10 +47,12 @@ test.describe('Split chat — sidebar reroute', () => {
     await byTestId(page, `chat-recent-row-menu-${convB}-item-open-in-split`).click()
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
 
-    // Focus pane 0 (conv A), then plain-click C (not open) → REPLACE pane 0 with C.
+    // Focus pane 0 (conv A), then plain-click C (not open) → the 3-way choice
+    // prompt (ITEM-43/FB-8); pick "Replace the active pane" → pane 0 becomes C.
     await byTestId(page, 'chat-pane-0').click()
     await expect(byTestId(page, 'chat-pane-0')).toHaveClass(/ring-primary/)
     await byTestId(page, `chat-recent-conversations-menu-item-${convC}`).click()
+    await byTestId(page, 'open-conversation-choice-opt-replace').click()
     // Still exactly 2 panes (split NOT collapsed); focused pane 0 now shows C.
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible()
     await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0)

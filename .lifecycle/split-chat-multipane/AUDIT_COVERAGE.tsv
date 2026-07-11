@@ -16,12 +16,12 @@ src-app/ui/src/components/ui/testIds.generated.ts	1	1560	correctness,patterns-co
 src-app/ui/src/core/store-kit.test.ts	1	119	tests-quality,correctness,api-contract
 src-app/ui/src/core/store-kit.ts	1	331	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/RUNTIME_FINDINGS.md	1	311	correctness,state-management,patterns-conformance
-src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4709	correctness,state-management,patterns-conformance
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4760	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/coverage.ts	1	564	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/galleryCoverage.generated.ts	1	483	correctness,patterns-conformance,api-contract
 src-app/ui/src/dev/gallery/runtime-baseline.js	1	109	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/stateCoverage.ts	1	466	correctness,state-management,patterns-conformance
-src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	5109	correctness,patterns-conformance,api-contract
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	5160	correctness,patterns-conformance,api-contract
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantMenuItem.tsx	1	139	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantSelector.tsx	1	71	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantStatusChip.tsx	1	39	correctness,state-management,patterns-conformance
@@ -43,13 +43,13 @@ src-app/ui/src/modules/chat/core/pane/ChatPaneContext.tsx	1	149	correctness,stat
 src-app/ui/src/modules/chat/core/pane/paneApiContext.ts	1	23	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/pane/paneDnd.test.ts	1	50	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/pane/paneDnd.ts	1	75	correctness,state-management,concurrency
-src-app/ui/src/modules/chat/core/pane/useOpenConversation.ts	1	107	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/pane/useOpenConversation.ts	1	145	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/popout/openConversationWindow.test.ts	1	58	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/popout/openConversationWindow.ts	1	26	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/split/galleryCoverage.test.ts	1	36	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/split/limits.ts	1	20	correctness,state-management,concurrency
-src-app/ui/src/modules/chat/core/split/reconcile.test.ts	1	205	tests-quality,correctness,api-contract
-src-app/ui/src/modules/chat/core/split/reconcile.ts	1	172	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/split/reconcile.test.ts	1	237	tests-quality,correctness,api-contract
+src-app/ui/src/modules/chat/core/split/reconcile.ts	1	195	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2344	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	86	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts	1	86	correctness,state-management,patterns-conformance
@@ -111,7 +111,7 @@ src-app/ui/tests/e2e/14-split-chat/popout-new-tab.spec.ts	1	63	tests-quality,cor
 src-app/ui/tests/e2e/14-split-chat/registry-runtime-per-pane.spec.ts	1	98	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/right-panel-per-pane.spec.ts	1	106	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/same-conversation-streaming.spec.ts	1	77	tests-quality,correctness,api-contract
-src-app/ui/tests/e2e/14-split-chat/sidebar-reroute.spec.ts	1	71	tests-quality,correctness,api-contract
+src-app/ui/tests/e2e/14-split-chat/sidebar-reroute.spec.ts	1	74	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/workspace-persist-nav.spec.ts	1	88	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/visual/layout-baseline.ts	1	106	tests-quality,correctness,api-contract
 src-app/ui/src/modules/file/stores/composerOwnership.ts	1	79	correctness,concurrency,state-management,patterns-conformance,error-handling
@@ -119,3 +119,5 @@ src-app/ui/src/modules/file/stores/composerOwnership.test.ts	1	137	tests-quality
 src-app/ui/src/modules/chat/core/split/coverageGapsDoc.test.ts	1	80	tests-quality,test-coverage,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/composer-files-per-pane.spec.ts	1	216	tests-quality,test-coverage,correctness,state-management
 src-app/ui/tests/e2e/14-split-chat/COVERAGE_GAPS.md	1	73	tests-quality,test-coverage,patterns-conformance
+src-app/ui/src/components/ui/kit/dialog-host.tsx	1	191	correctness,state-management,api-contract,patterns-conformance,a11y
+src-app/ui/tests/e2e/14-split-chat/open-conversation-choice.spec.ts	1	139	tests-quality,test-coverage,correctness

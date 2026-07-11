@@ -531,3 +531,23 @@ codebase (the converged audit's concrete per-file findings).
 ### DEC-57: Are the 5 candidate bugs the sweep found (text error-restore not pane-threaded, Cmd-F window-global, TitleEditor focused-bridge binding, beforeSendMessage approval read, same-file view-state) fixed THIS round?
 **Resolution:** DEFERRED — recorded in `COVERAGE_GAPS.md` as tracked, prioritized follow-ups; not fixed this round.
 **Basis:** user — the human scoped this iteration round to exactly the 3 delta items (composerOwnership extraction + per-pane unit suite, the file-attach/send-blocker/assistant e2e, and the committed COVERAGE_GAPS.md). The candidate bugs are surfaced + documented (not silently cut), to be verified + fixed in a subsequent round.
+
+### DEC-58: When does the 3-way open-conversation prompt (single / replace / new) fire?
+**Resolution:** ONLY the ambiguous case — a plain (`auto`) click, while a split is
+open (≥2 panes), on a conversation that is NOT already in a pane. Single-pane
+clicks navigate instantly (no prompt); an already-open conversation focuses its
+pane (no prompt, one-conversation-per-workspace); Cmd/middle-click + the `⋯`
+"Open in split pane" menu keep their explicit `newPane` intent (no prompt).
+**Basis:** user — chosen directly via the AskUserQuestion ("Only ambiguous case")
+in the review thread that raised FB-8; keeps routine navigation snappy while
+resolving the one genuinely-ambiguous route.
+
+### DEC-59: How is the 3-way choice implemented so it stays modular (FB-8 mandate)?
+**Resolution:** A REUSABLE imperative `dialog.choose({options[]})` primitive added
+to the shared kit dialog host (`components/ui/kit/dialog-host.tsx`, additive to
+`confirm`/alert) that resolves the chosen option key (or null), PLUS a PURE
+`needsOpenChoice(...)` predicate in `split/reconcile.ts`. The chat hook only wires
+them — NOT a chat-specific dialog component.
+**Basis:** convention + user (FB-8) — mirrors the existing imperative-dialog seam
+(`dialog.confirm`) and the pure-reducer pattern (`openConversationInWorkspace`); a
+general kit primitive is reusable app-wide and adds no cross-module coupling.
