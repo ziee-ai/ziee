@@ -33,6 +33,18 @@ use super::repository::VoiceModelRow;
 
 // ─────────────────────────────── helpers ─────────────────────────────────
 
+/// A safe HF-repo-relative filename for the fetch URL: non-empty, no absolute
+/// path, no `..` traversal segment, reasonable length + charset.
+fn is_safe_remote_filename(f: &str) -> bool {
+    !f.is_empty()
+        && f.len() <= 200
+        && !f.starts_with('/')
+        && !f.split('/').any(|seg| seg == ".." || seg == ".")
+        && f.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'))
+}
+
+
 /// Project a DB row into the API `VoiceModel`, marking active + update-available.
 fn to_api(
     row: VoiceModelRow,
@@ -256,11 +268,23 @@ pub async fn download_model(
             expected_sha256: None,
             ssrf_check: true,
         }
-    } else if let (Some(repo), Some(filename)) = (req.repository.clone(), req.filename.clone()) {
-        // HF repo + file (user-supplied) → SSRF-checked, unverified.
+    } else if let (Some(repo), Some(remote_filename)) = (req.repository.clone(), req.filename.clone())
+    {
+        // HF repo + file (user-supplied) → SSRF-checked, unverified. The remote
+        // filename is used ONLY to build the fetch URL and MUST be a safe relative
+        // path (no traversal); the ON-DISK filename is derived from the validated
+        // `name`, never from the untrusted remote name (path-traversal guard).
+        if !is_safe_remote_filename(&remote_filename) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "filename must be a safe relative path (no '..' or absolute path)",
+            )
+            .to_api_error());
+        }
+        let ext = if remote_filename.ends_with(".gguf") { "gguf" } else { "bin" };
         model::ModelDownloadSpec {
-            url: model_catalog::hf_repo_url(&repo, &filename),
-            filename,
+            url: model_catalog::hf_repo_url(&repo, &remote_filename),
+            filename: format!("ggml-{}.{ext}", req.name),
             name: req.name.clone(),
             expected_sha256: None,
             ssrf_check: true,
@@ -407,10 +431,11 @@ pub async fn subscribe_model_download_events(
     let task = model_download_task::get_task(&key)
         .ok_or_else(|| AppError::not_found(&format!("download task {key:?}")).to_api_error())?;
 
+    // Subscribe BEFORE snapshotting so no live event is dropped in the gap.
     let mut rx = task.events.subscribe();
-    let (initial_status, replay, terminal_err) = {
+    let (initial_status, replay, terminal_complete, terminal_err) = {
         let g = task.state.lock().await;
-        (g.status, g.progress.clone(), g.error.clone())
+        (g.status, g.progress.clone(), g.complete.clone(), g.error.clone())
     };
     let task_clone = task.clone();
     let stream = async_stream::stream! {
@@ -422,6 +447,12 @@ pub async fn subscribe_model_download_events(
         }).into());
         for p in replay {
             yield Ok(SSEModelDownloadEvent::Progress(p).into());
+        }
+        // Terminal-already: replay the terminal event + CLOSE (never enter rx.recv,
+        // whose Complete/Failed frame already fired before this subscription).
+        if let Some(c) = terminal_complete {
+            yield Ok(SSEModelDownloadEvent::Complete(c).into());
+            return;
         }
         if let Some(e) = terminal_err {
             yield Ok(SSEModelDownloadEvent::Failed(super::model_download_task::SSEModelDownloadFailedData { error: e }).into());
@@ -459,7 +490,7 @@ pub async fn upload_model(
     mut multipart: Multipart,
 ) -> ApiResult<Json<VoiceModel>> {
     let mut name: Option<String> = None;
-    let mut file_bytes: Option<Vec<u8>> = None;
+    let mut upload: Option<model::UploadTemp> = None;
     let mut orig_filename: Option<String> = None;
 
     while let Some(field) = multipart
@@ -478,41 +509,42 @@ pub async fn upload_model(
             }
             Some("file") => {
                 orig_filename = field.file_name().map(|s| s.to_string());
-                let bytes = field.bytes().await.map_err(|e| {
-                    AppError::bad_request("UPLOAD_ERROR", format!("read file: {e}")).to_api_error()
-                })?;
-                if bytes.len() as u64 > model::VOICE_MODEL_MAX_UPLOAD_BYTES {
-                    return Err(AppError::bad_request(
-                        "VOICE_MODEL_TOO_LARGE",
-                        format!("upload exceeds cap of {} bytes", model::VOICE_MODEL_MAX_UPLOAD_BYTES),
-                    )
-                    .to_api_error());
+                // Stream to a temp file (cap enforced as bytes arrive — never
+                // buffers the whole multi-GB file in RAM).
+                match model::stream_upload_to_temp(field).await {
+                    Ok(u) => upload = Some(u),
+                    Err(e) => return Err(e.to_api_error()),
                 }
-                file_bytes = Some(bytes.to_vec());
             }
             _ => {}
         }
     }
 
-    let name = name.filter(|n| !n.is_empty()).ok_or_else(|| {
-        AppError::bad_request("VALIDATION_ERROR", "missing model name").to_api_error()
-    })?;
-    if !is_valid_model_name(&name) {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "model name must be 1..=50 chars of [A-Za-z0-9._-]",
-        )
-        .to_api_error());
-    }
-    let bytes = file_bytes.ok_or_else(|| {
+    // Validate name + magic; discard the temp on any rejection.
+    let upload = upload.ok_or_else(|| {
         AppError::bad_request("VALIDATION_ERROR", "missing file").to_api_error()
     })?;
-    if !model::has_whisper_magic(&bytes) {
-        return Err(AppError::bad_request(
+    let reject = |u: &model::UploadTemp, code: &'static str, msg: &'static str| {
+        model::discard_temp(&u.tmp);
+        AppError::bad_request(code, msg).to_api_error()
+    };
+    let name = match name.filter(|n| !n.is_empty()) {
+        Some(n) => n,
+        None => return Err(reject(&upload, "VALIDATION_ERROR", "missing model name")),
+    };
+    if !is_valid_model_name(&name) {
+        return Err(reject(
+            &upload,
+            "VALIDATION_ERROR",
+            "model name must be 1..=50 chars of [A-Za-z0-9._-]",
+        ));
+    }
+    if !model::has_whisper_magic(&upload.head) {
+        return Err(reject(
+            &upload,
             "VOICE_MODEL_INVALID",
             "file is not a whisper ggml/GGUF model (bad magic)",
-        )
-        .to_api_error());
+        ));
     }
 
     // Filename: keep a .gguf upload's extension, else the ggml-<name>.bin form.
@@ -520,9 +552,8 @@ pub async fn upload_model(
         Some(f) if f.ends_with(".gguf") => format!("ggml-{name}.gguf"),
         _ => model::model_filename(&name),
     };
-    let (size_bytes, sha256) = model::store_uploaded_model_file(&filename, &bytes)
-        .await
-        .map_err(|e| e.to_api_error())?;
+    model::finalize_upload_temp(&upload.tmp, &filename).map_err(|e| e.to_api_error())?;
+    let (size_bytes, sha256) = (upload.size, upload.sha256.clone());
     let row = Repos
         .voice_model
         .upsert(

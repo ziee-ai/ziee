@@ -69,7 +69,26 @@ type Schema = z.infer<typeof schema>
 export function VoiceConfigCard() {
   const { settings, loadingSettings, savingSettings, error } =
     Stores.VoiceConfig
+  const { installed } = Stores.VoiceModel
   const canManage = usePermission(Permissions.VoiceAdminManage)
+
+  // The active-model options come from the INSTALLED library (so a downloaded/
+  // uploaded model like `large-v3` is selectable), not a hardcoded list. The
+  // currently-configured model is always included even if its file was removed,
+  // and the standard names are offered as a fallback before anything is installed.
+  const modelOptions = (() => {
+    const opts = installed.length
+      ? installed.map(m => ({
+          value: m.name,
+          label: m.verified ? m.name : `${m.name} (unverified)`,
+        }))
+      : [...MODEL_OPTIONS]
+    const current = settings?.model
+    if (current && !opts.some(o => o.value === current)) {
+      opts.unshift({ value: current, label: current })
+    }
+    return opts
+  })()
 
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
@@ -209,7 +228,7 @@ export function VoiceConfigCard() {
           <Select
             data-testid="voice-config-model"
             className="w-full"
-            options={MODEL_OPTIONS}
+            options={modelOptions}
           />
         </FormField>
 

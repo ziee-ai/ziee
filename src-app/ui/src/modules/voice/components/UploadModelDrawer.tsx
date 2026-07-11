@@ -139,6 +139,7 @@ export function UploadModelDrawer() {
             onFiles={handleFiles}
             data-testid="voice-upload-files"
             label="Select a model file"
+            aria-label="Model file"
             disabled={uploading}
             accept=".bin,.gguf"
           >

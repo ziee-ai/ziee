@@ -56,14 +56,17 @@ static LAST_USED_MS: AtomicI64 = AtomicI64::new(-1);
 /// holds an [`InflightGuard`] for the duration of a transcription.
 static INFLIGHT: AtomicUsize = AtomicUsize::new(0);
 
-/// Set while a drain-before-stop is in progress (idle-reap or model switch). The
-/// transcribe front door (`ensure_running`) rejects new work with 503 during a
-/// drain so a new transcription never races the SIGTERM (F6/ITEM-27).
-static DRAINING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Count of in-progress drain-before-stop operations (idle-reap or model switch).
+/// A COUNTER, not a bool: the reaper idle-drain and `apply_active_model_change`
+/// can overlap (the reaper doesn't hold `START_LOCK`), so a bool cleared by
+/// whichever `DrainGuard` drops first would reopen the transcribe front door while
+/// the other drain is still about to SIGTERM — the exact F6 race. The flag stays
+/// set until the LAST concurrent drain finishes.
+static DRAINING: AtomicUsize = AtomicUsize::new(0);
 
-/// True while a drain is in progress — the transcribe entrypoint should 503.
+/// True while any drain is in progress — the transcribe entrypoint should 503.
 pub fn is_draining() -> bool {
-    DRAINING.load(Ordering::Relaxed)
+    DRAINING.load(Ordering::SeqCst) > 0
 }
 
 /// Drain in-flight transcriptions (up to `drain_timeout_secs`) then SIGTERM the
@@ -71,7 +74,7 @@ pub fn is_draining() -> bool {
 /// no new transcription is routed to the dying process. Shared by the idle reaper
 /// and the active-model switch.
 pub async fn drain_and_stop(drain_timeout_secs: i32) -> Result<(), AppError> {
-    DRAINING.store(true, Ordering::Relaxed);
+    DRAINING.fetch_add(1, Ordering::SeqCst);
     let _clear = DrainGuard;
     let deadline = tokio::time::Instant::now()
         + std::time::Duration::from_secs(drain_timeout_secs.max(1) as u64);
@@ -95,7 +98,7 @@ pub async fn drain_and_stop(drain_timeout_secs: i32) -> Result<(), AppError> {
 struct DrainGuard;
 impl Drop for DrainGuard {
     fn drop(&mut self) {
-        DRAINING.store(false, Ordering::Relaxed);
+        DRAINING.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

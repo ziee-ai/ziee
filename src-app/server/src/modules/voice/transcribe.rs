@@ -172,16 +172,21 @@ pub(super) async fn forward_to_whisper(
         form = form.text("language", lang.to_string());
     }
 
-    // Loopback forward to whisper-server. `.no_proxy()` so an env HTTP proxy can't
-    // reroute the 127.0.0.1 inference call (F5/ITEM-28; matches the health client).
-    let client = reqwest::Client::builder()
-        .timeout(timeout)
-        .no_proxy()
-        .build()
-        .map_err(AppError::internal_with_id)?;
+    // Loopback forward to whisper-server via a SHARED keep-alive client
+    // (F5/ITEM-28): `.no_proxy()` so an env HTTP proxy can't reroute the 127.0.0.1
+    // inference call, and one pooled client instead of one-per-request. The
+    // per-request timeout is applied on the request builder below.
+    static INFERENCE_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = INFERENCE_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("build whisper inference client")
+    });
 
     let resp = client
         .post(format!("{}/inference", base_url.trim_end_matches('/')))
+        .timeout(timeout)
         .multipart(form)
         .send()
         .await

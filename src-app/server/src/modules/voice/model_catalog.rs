@@ -14,11 +14,26 @@
 //! distinct from the user-supplied arbitrary-URL download in `model.rs`, which is
 //! SSRF-validated. (Mirrors web_search's trusted-SearXNG vs strict-page-fetch.)
 
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::common::AppError;
+
+/// Short-TTL cache of the last catalog fetch (PLAN ITEM-3), keyed by source repo.
+/// A reachable result is cached for 5 min; an unreachable one for 30 s (so a
+/// transient outage retries soon without hammering upstream on every list call).
+struct CatalogCache {
+    repo: String,
+    at: Instant,
+    entries: Vec<CatalogEntry>,
+    reachable: bool,
+}
+static CATALOG_CACHE: Lazy<Mutex<Option<CatalogCache>>> = Lazy::new(|| Mutex::new(None));
+const CATALOG_TTL_OK: Duration = Duration::from_secs(300);
+const CATALOG_TTL_ERR: Duration = Duration::from_secs(30);
 
 /// The HF tree-API base. Overridable in **debug builds only** via
 /// `WHISPER_CATALOG_MIRROR` so a test can serve a fixture tree from loopback
@@ -157,13 +172,37 @@ pub fn parse_tree(body: &str) -> Vec<CatalogEntry> {
 /// `(entries, reachable)`; a network/HTTP failure yields `(vec![], false)`
 /// (graceful degradation), never an error to the caller.
 pub async fn fetch_catalog(source_repo: &str) -> (Vec<CatalogEntry>, bool) {
-    match fetch_catalog_inner(source_repo).await {
+    // Serve from the short-TTL cache when fresh for this repo — avoids a blocking
+    // upstream round-trip on every installed-list / catalog / sync-driven call.
+    {
+        let guard = CATALOG_CACHE.lock().unwrap();
+        if let Some(c) = guard.as_ref() {
+            let ttl = if c.reachable { CATALOG_TTL_OK } else { CATALOG_TTL_ERR };
+            if c.repo == source_repo && c.at.elapsed() < ttl {
+                return (c.entries.clone(), c.reachable);
+            }
+        }
+    }
+    let (entries, reachable) = match fetch_catalog_inner(source_repo).await {
         Ok(entries) => (entries, true),
         Err(e) => {
             tracing::warn!("voice: model catalog fetch from {source_repo:?} failed: {e}");
             (Vec::new(), false)
         }
-    }
+    };
+    *CATALOG_CACHE.lock().unwrap() = Some(CatalogCache {
+        repo: source_repo.to_string(),
+        at: Instant::now(),
+        entries: entries.clone(),
+        reachable,
+    });
+    (entries, reachable)
+}
+
+/// Invalidate the catalog cache (e.g. after an admin "check for updates" or a
+/// source-repo change) so the next fetch hits upstream.
+pub fn invalidate_cache() {
+    *CATALOG_CACHE.lock().unwrap() = None;
 }
 
 async fn fetch_catalog_inner(source_repo: &str) -> Result<Vec<CatalogEntry>, AppError> {

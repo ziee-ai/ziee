@@ -196,6 +196,10 @@ pub async fn update_settings(
         .to_api_error());
     }
 
+    // A source-repo change must invalidate the catalog cache so the next fetch
+    // hits the new source.
+    let source_changed = body.model_source_repo.is_some();
+
     let row = Repos
         .voice
         .update_settings(
@@ -213,6 +217,10 @@ pub async fn update_settings(
             body.model_source_repo,
         )
         .await?;
+
+    if source_changed {
+        super::model_catalog::invalidate_cache();
+    }
 
     sync_publish(
         SyncEntity::VoiceSettings,

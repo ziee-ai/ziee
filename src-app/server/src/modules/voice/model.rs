@@ -333,11 +333,26 @@ where
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::internal_error(format!("create voice-models dir: {e}")))?;
 
-    let client = reqwest::Client::builder()
+    // For user-supplied (arbitrary) URLs, use the SSRF-guarding client: it pins a
+    // DNS resolver that rejects private/loopback/IMDS targets AND re-validates
+    // every redirect hop (a plain client would follow a 3xx from a public URL to
+    // loopback — the SSRF-via-redirect bypass). The trusted catalog/HF source uses
+    // a plain no-proxy client.
+    let client = if spec.ssrf_check {
+        crate::utils::url_validator::validated_client_builder(
+            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        )
         .timeout(std::time::Duration::from_secs(1800))
-        .no_proxy()
         .build()
-        .map_err(AppError::internal_with_id)?;
+        .map_err(AppError::internal_with_id)?
+    } else {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(1800))
+            .no_proxy()
+            .build()
+            .map_err(AppError::internal_with_id)?
+    };
+    let redacted = redact_url(&spec.url);
     let resp = client
         .get(&spec.url)
         .send()
@@ -345,9 +360,8 @@ where
         .map_err(|e| AppError::internal_error(format!("download request failed: {e}")))?;
     if !resp.status().is_success() {
         return Err(AppError::internal_error(format!(
-            "model download returned HTTP {} for {}",
+            "model download returned HTTP {} for {redacted}",
             resp.status(),
-            spec.url
         )));
     }
 
@@ -453,32 +467,83 @@ where
     })
 }
 
-/// Persist an uploaded model file under `voice-models/` (temp + atomic rename),
-/// returning `(size_bytes, sha256)`. Magic validation is the caller's job.
-pub async fn store_uploaded_model_file(
-    filename: &str,
-    bytes: &[u8],
-) -> Result<(u64, String), AppError> {
+/// A streamed-to-disk upload awaiting validation + finalization.
+pub struct UploadTemp {
+    pub tmp: PathBuf,
+    pub size: u64,
+    pub sha256: String,
+    /// First up-to-4 bytes, for the caller's magic check.
+    pub head: Vec<u8>,
+}
+
+/// Stream a multipart upload field to a temp file under `voice-models/` — hashing
+/// + capturing the head + enforcing the size cap AS IT ARRIVES (never buffering
+/// the whole multi-GB file in RAM). The caller validates `head`/name then calls
+/// [`finalize_upload_temp`]; on any early return the temp is cleaned up.
+pub async fn stream_upload_to_temp(
+    mut field: axum::extract::multipart::Field<'_>,
+) -> Result<UploadTemp, AppError> {
     let dir = models_dir();
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::internal_error(format!("create voice-models dir: {e}")))?;
-    let tmp = dir.join(format!("{}.{}.tmp", filename, uuid::Uuid::new_v4()));
+    let tmp = dir.join(format!(".upload-{}.tmp", uuid::Uuid::new_v4()));
     let mut file = tokio::fs::File::create(&tmp)
         .await
         .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
-    file.write_all(bytes)
-        .await
-        .map_err(|e| AppError::internal_error(format!("write uploaded model: {e}")))?;
-    file.flush()
-        .await
-        .map_err(|e| AppError::internal_error(format!("flush uploaded model: {e}")))?;
-    drop(file);
     let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let sha = hex_lower(&hasher.finalize());
-    let dest = dir.join(filename);
-    finalize_download(&tmp, &dest)?;
-    Ok((bytes.len() as u64, sha))
+    let mut size: u64 = 0;
+    let mut head: Vec<u8> = Vec::with_capacity(4);
+
+    let res: Result<(), AppError> = async {
+        while let Some(chunk) = field
+            .chunk()
+            .await
+            .map_err(|e| AppError::bad_request("UPLOAD_ERROR", format!("read upload: {e}")))?
+        {
+            size += chunk.len() as u64;
+            if size > VOICE_MODEL_MAX_UPLOAD_BYTES {
+                return Err(AppError::bad_request(
+                    "VOICE_MODEL_TOO_LARGE",
+                    format!("upload exceeds cap of {VOICE_MODEL_MAX_UPLOAD_BYTES} bytes"),
+                ));
+            }
+            if head.len() < 4 {
+                head.extend_from_slice(&chunk[..chunk.len().min(4 - head.len())]);
+            }
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| AppError::internal_error(format!("write upload: {e}")))?;
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::internal_error(format!("flush upload: {e}")))?;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = res {
+        drop(file);
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    drop(file);
+    Ok(UploadTemp {
+        tmp,
+        size,
+        sha256: hex_lower(&hasher.finalize()),
+        head,
+    })
+}
+
+/// Atomically move a validated upload temp into place as `filename`.
+pub fn finalize_upload_temp(tmp: &Path, filename: &str) -> Result<(), AppError> {
+    finalize_download(tmp, &models_dir().join(filename))
+}
+
+/// Delete an upload temp (validation failed).
+pub fn discard_temp(tmp: &Path) {
+    let _ = std::fs::remove_file(tmp);
 }
 
 /// Rename the verified temp file into place (best-effort cross-device fallback).
@@ -491,6 +556,21 @@ fn finalize_download(tmp: &Path, dest: &Path) -> Result<(), AppError> {
             let _ = std::fs::remove_file(tmp);
             Ok(())
         }
+    }
+}
+
+/// Strip any `user:pass@` userinfo from a URL before it lands in a log line or an
+/// admin-visible error (an arbitrary-URL download could embed credentials).
+fn redact_url(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            if !u.username().is_empty() || u.password().is_some() {
+                let _ = u.set_username("");
+                let _ = u.set_password(None);
+            }
+            u.to_string()
+        }
+        Err(_) => "<invalid-url>".to_string(),
     }
 }
 

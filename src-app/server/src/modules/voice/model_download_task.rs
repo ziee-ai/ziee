@@ -58,6 +58,10 @@ pub struct ModelTaskState {
     pub total_bytes: Option<u64>,
     pub progress: Vec<SSEModelDownloadProgressData>,
     pub error: Option<String>,
+    /// The terminal Complete payload, retained so a subscriber that connects
+    /// AFTER completion gets the Complete event + a stream close (instead of
+    /// hanging in `rx.recv()` forever on the already-fired broadcast).
+    pub complete: Option<SSEModelDownloadCompleteData>,
 }
 
 // ─────────────────────────── SSE event surface ───────────────────────────
@@ -159,9 +163,33 @@ pub async fn start_or_join(spec: ModelDownloadSpec) -> Result<Arc<ModelDownloadT
             return Ok(existing);
         }
     }
+    prune_terminal_tasks(&key).await;
     let task = spawn_runner(spec, &key);
     MODEL_DOWNLOAD_TASKS.insert(key, task.clone());
     Ok(task)
+}
+
+/// Bound the registry: terminal (completed/failed) tasks are kept only so a late
+/// subscriber can replay the outcome. When the registry grows past a cap, evict
+/// terminal entries (never the key being (re)started, never a live task) so it
+/// can't grow unbounded across distinct filenames for the process lifetime.
+const REGISTRY_CAP: usize = 32;
+async fn prune_terminal_tasks(keep_key: &str) {
+    if MODEL_DOWNLOAD_TASKS.len() <= REGISTRY_CAP {
+        return;
+    }
+    let mut evict = Vec::new();
+    for entry in MODEL_DOWNLOAD_TASKS.iter() {
+        if entry.key() == keep_key {
+            continue;
+        }
+        if entry.value().state.lock().await.status.is_terminal() {
+            evict.push(entry.key().clone());
+        }
+    }
+    for k in evict {
+        MODEL_DOWNLOAD_TASKS.remove(&k);
+    }
 }
 
 fn spawn_runner(spec: ModelDownloadSpec, key: &str) -> Arc<ModelDownloadTask> {
@@ -177,6 +205,7 @@ fn spawn_runner(spec: ModelDownloadSpec, key: &str) -> Arc<ModelDownloadTask> {
             total_bytes: None,
             progress: Vec::new(),
             error: None,
+            complete: None,
         }),
         events: tx,
         cancelled: Arc::new(AtomicBool::new(false)),
@@ -268,14 +297,14 @@ async fn run_download(task: Arc<ModelDownloadTask>, spec: ModelDownloadSpec) {
             {
                 Ok(row) => {
                     guard.status = ModelDownloadStatus::Completed;
-                    let _ = task.events.send(SSEModelDownloadEvent::Complete(
-                        SSEModelDownloadCompleteData {
-                            model_id: row.id,
-                            name: row.name,
-                            verified: dl.verified,
-                            bytes_downloaded: dl.size_bytes,
-                        },
-                    ));
+                    let complete = SSEModelDownloadCompleteData {
+                        model_id: row.id,
+                        name: row.name,
+                        verified: dl.verified,
+                        bytes_downloaded: dl.size_bytes,
+                    };
+                    guard.complete = Some(complete.clone());
+                    let _ = task.events.send(SSEModelDownloadEvent::Complete(complete));
                     sync_publish(
                         SyncEntity::VoiceModel,
                         SyncAction::Create,
@@ -326,6 +355,7 @@ mod tests {
                 total_bytes: None,
                 progress: Vec::new(),
                 error: None,
+                complete: None,
             }),
             events: tx,
             cancelled: Arc::new(AtomicBool::new(false)),
