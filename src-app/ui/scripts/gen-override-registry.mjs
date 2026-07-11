@@ -52,8 +52,35 @@ function stripComments(src) {
 }
 
 // --- collect declared seams (keys inside `interface UIOverrides { … }`) -------
-const IFACE = /interface\s+UIOverrides\s*\{([\s\S]*?)\n\s*\}/g
-const KEY_IN_FACE = /['"]([^'"]+)['"]\s*:/g
+// Brace-BALANCED extraction: a seam value may be a multi-line object type
+// (`'x.y': { a: number\n  b: string }`), so a non-greedy `}`-terminated regex
+// would truncate the body and also capture NESTED quoted keys. Scan the true
+// interface body by depth, and take only DEPTH-0 keys.
+export function topLevelSeamKeys(src) {
+  const keys = []
+  const open = /interface\s+UIOverrides\s*\{/g
+  let m
+  while ((m = open.exec(src)) !== null) {
+    let i = m.index + m[0].length // just past the opening `{`
+    const start = i
+    let depth = 1
+    while (i < src.length && depth > 0) {
+      const c = src[i++]
+      if (c === '{') depth++
+      else if (c === '}') depth--
+    }
+    const body = src.slice(start, i - 1)
+    let d = 0
+    const tok = /['"]([^'"]+)['"]\s*:|[{}]/g
+    let t
+    while ((t = tok.exec(body)) !== null) {
+      if (t[0] === '{') d++
+      else if (t[0] === '}') d--
+      else if (d === 0 && t[1]) keys.push(t[1])
+    }
+  }
+  return keys
+}
 const SEAM_USE = /<Seam\s+[^>]*\bid=['"]([^'"]+)['"]/g
 const USE_OVERRIDE = /useOverride\(\s*['"]([^'"]+)['"]/g
 const REGISTER = /registerOverride\(\s*['"]([^'"]+)['"]/g
@@ -73,14 +100,8 @@ function scan(root, isCore) {
       desktopFiles.push({ file: f, hasSibling })
     }
     let m
-    IFACE.lastIndex = 0
-    while ((m = IFACE.exec(src)) !== null) {
-      const body = m[1]
-      let k
-      KEY_IN_FACE.lastIndex = 0
-      while ((k = KEY_IN_FACE.exec(body)) !== null) {
-        if (!declared.has(k[1])) declared.set(k[1], rel(f))
-      }
+    for (const key of topLevelSeamKeys(src)) {
+      if (!declared.has(key)) declared.set(key, rel(f))
     }
     for (const [re, map] of [
       [SEAM_USE, used],

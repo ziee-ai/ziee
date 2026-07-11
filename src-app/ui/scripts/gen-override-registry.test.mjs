@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeDrift } from './gen-override-registry.mjs'
+import { computeDrift, topLevelSeamKeys } from './gen-override-registry.mjs'
 
 const m = (pairs) => new Map(pairs)
 
@@ -34,4 +34,19 @@ test('TEST-7: a declared-but-unregistered seam is reported, not failed', () => {
   const d = computeDrift(m([['web.only', 'core.tsx']]), m([]), [])
   assert.deepEqual(d.unregisteredSeams, ['web.only'])
   assert.deepEqual(d.deadOverrides, [])
+})
+
+test('TEST-7: topLevelSeamKeys handles multi-line object seam values + ignores nested keys', () => {
+  const src = `declare module '@/core/overrides' {
+  interface UIOverrides {
+    'layout.drawer-header': {
+      'title': string
+      onClose: () => void
+    }
+    'hardware.monitor-button': Record<string, never>
+  }
+}`
+  const keys = topLevelSeamKeys(src)
+  // both top-level seams captured; the NESTED 'title' key is NOT a seam
+  assert.deepEqual(keys.sort(), ['hardware.monitor-button', 'layout.drawer-header'])
 })
