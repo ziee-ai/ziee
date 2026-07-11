@@ -15,11 +15,11 @@ src-app/ui/scripts/runtime-health.mjs	1	750	correctness,state-management,pattern
 src-app/ui/src/components/ui/testIds.generated.ts	1	1560	correctness,patterns-conformance,api-contract
 src-app/ui/src/core/store-kit.test.ts	1	119	tests-quality,correctness,api-contract
 src-app/ui/src/core/store-kit.ts	1	331	correctness,state-management,patterns-conformance
-src-app/ui/src/dev/gallery/RUNTIME_FINDINGS.md	1	385	correctness,state-management,patterns-conformance
+src-app/ui/src/dev/gallery/RUNTIME_FINDINGS.md	1	311	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	4709	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/coverage.ts	1	564	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/galleryCoverage.generated.ts	1	483	correctness,patterns-conformance,api-contract
-src-app/ui/src/dev/gallery/runtime-baseline.js	1	86	correctness,state-management,patterns-conformance
+src-app/ui/src/dev/gallery/runtime-baseline.js	1	109	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/stateCoverage.ts	1	466	correctness,state-management,patterns-conformance
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	5109	correctness,patterns-conformance,api-contract
 src-app/ui/src/modules/assistant/chat-extension/components/AssistantMenuItem.tsx	1	139	correctness,state-management,patterns-conformance
@@ -50,7 +50,7 @@ src-app/ui/src/modules/chat/core/split/galleryCoverage.test.ts	1	36	tests-qualit
 src-app/ui/src/modules/chat/core/split/limits.ts	1	20	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/split/reconcile.test.ts	1	205	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/split/reconcile.ts	1	172	correctness,state-management,concurrency
-src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2304	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2317	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	86	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts	1	86	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	179	tests-quality,correctness,api-contract
