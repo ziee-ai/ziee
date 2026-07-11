@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Confirm, Flex, Tag, Text, Title, Tooltip } from '@/components/ui'
-import { Library, Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { usePermission } from '@/core/permissions'
 import { type KnowledgeBase, Permissions } from '@/api-client/types'
 import { cn } from '@/lib/utils'
@@ -52,8 +52,10 @@ export function KnowledgeBaseCard({ knowledgeBase, onEdit, onDelete, deleting }:
       className="group h-full focus-visible:outline focus-visible:outline-2"
       title={
         <div className="flex items-start gap-2 min-w-0">
-          <Library aria-hidden="true" className="shrink-0 mt-0.5" />
-          <Title level={5} className="!m-0 line-clamp-2 [overflow-wrap:anywhere]">
+          {/* Mirror ProjectCard's title typography exactly (light weight,
+              small, two-line wrap) so the two list-grid entity cards read as
+              one system — no leading icon, matching the project card. */}
+          <Title level={5} className="!m-0 !font-normal !text-sm line-clamp-2 [overflow-wrap:anywhere]">
             {knowledgeBase.name}
           </Title>
         </div>

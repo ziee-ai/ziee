@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **361** surfaces carry at least one renderable-state signal.
-- **2073** signals total: 1629 branch, 129 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **363** surfaces carry at least one renderable-state signal.
+- **2106** signals total: 1658 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 96 |
-| `empty` | 103 |
+| `empty` | 104 |
 | `error` | 87 |
 | `open` | 80 |
 | `panel-open` | 3 |
@@ -1060,8 +1060,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 23 |
-| branch | `isUser` | 28 |
+| branch | `!textData.text` | 24 |
+| branch | `isUser` | 29 |
 
 ### `modules/chat/components/TitleEditor`
 
@@ -1112,6 +1112,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!match` | 203 |
 
+### `modules/chat/core/utils/CitationChip`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!card` | 24 |
+
 ### `modules/chat/core/utils/HtmlBlock`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -1144,12 +1152,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isFootnoteLabel(props.id)` | 60 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 76 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 92 |
-| branch | `scopedHref?.startsWith('#')` | 109 |
-| empty | `verdict === 'empty'` | 164 |
-| branch | `verdict === 'allowed'` | 165 |
+| branch | `isFootnoteLabel(props.id)` | 62 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 78 |
+| branch | `citeN !== null` | 94 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 98 |
+| branch | `scopedHref?.startsWith('#')` | 115 |
+| empty | `verdict === 'empty'` | 170 |
+| branch | `verdict === 'allowed'` | 171 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1186,7 +1195,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 26 |
+| branch | `!textData.text` | 27 |
 
 ### `modules/chat/extensions/text/components/TextInput`
 
@@ -1225,8 +1234,11 @@ Required states: `open`
 | branch | `!canDictate` | 64 |
 | branch | `!capabilityLoaded \|\| !capability \|\| !capability.enabled` | 67 |
 | branch | `!isRecordingSupported()` | 68 |
-| branch | `isRequesting` | 188 |
-| overlay | `<Popover open>` | 206 |
+| branch | `streamingAvailable` | 89 |
+| branch | `liveCaptions` | 95 |
+| branch | `liveCaptions && interimText` | 175 |
+| branch | `isRequesting` | 229 |
+| overlay | `<Popover open>` | 247 |
 
 ### `modules/chat/pages/ChatHistoryPage`
 
@@ -1906,10 +1918,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!(e.ctrlKey \|\| e.metaKey)` | 45 |
 | branch | `e.key !== 'f' && e.key !== 'F'` | 46 |
 | branch | `unfocused \|\| r.host.contains(active)` | 54 |
-| branch | `!supported` | 133 |
-| branch | `!el` | 135 |
-| branch | `supported` | 146 |
-| branch | `active` | 152 |
+| branch | `!supported` | 139 |
+| branch | `!el` | 141 |
+| branch | `supported` | 152 |
+| branch | `active` | 158 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 
@@ -2395,7 +2407,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!canUse \|\| kbs.length === 0` | 25 |
+| branch | `!canUse` | 32 |
+| empty | `kbs.length === 0` | 50 |
+| branch | `kbs.length > 6` | 69 |
+| branch | `status` | 103 |
+| empty | `filtered.length === 0` | 110 |
 
 ### `modules/knowledge-base/chat-extension/components/KbSourcePanel`
 
@@ -2403,8 +2419,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `cancelled` | 47 |
-| branch | `!file` | 60 |
+| branch | `cancelled` | 56 |
+| branch | `!file` | 69 |
 
 ### `modules/knowledge-base/chat-extension/components/KbStatusRow`
 
@@ -2412,7 +2428,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!canUse \|\| visibleIds.length === 0` | 19 |
+| empty | `!canUse \|\| (visibleIds.length === 0 && inheritedOnly.length === 0)` | 23 |
 
 ### `modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard`
 
@@ -2420,10 +2436,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isSearchKnowledgeResult(content)` | 28 |
-| branch | `!sc` | 31 |
-| branch | `incomplete` | 57 |
-| empty | `sc.hits.length === 0` | 65 |
+| branch | `!isSearchKnowledgeResult(content)` | 29 |
+| branch | `!sc` | 32 |
+| branch | `expanded` | 65 |
+| branch | `incomplete` | 80 |
+| branch | `!(!expanded)` | 87 |
+| empty | `sc.hits.length === 0` | 87 |
+| branch | `expanded` | 123 |
 
 ### `modules/knowledge-base/chat-extension/extension`
 
@@ -2439,9 +2458,9 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canManage` | 62 |
-| overlay | `<Confirm open>` | 100 |
-| branch | `chip` | 125 |
+| branch | `canManage` | 64 |
+| overlay | `<Confirm open>` | 102 |
+| branch | `chip` | 127 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseDocumentsPanel`
 
@@ -2449,10 +2468,23 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `files.length === 0` | 27 |
-| empty | `documentsLoading && documents.length === 0` | 78 |
-| empty | `documents.length === 0` | 82 |
-| branch | `isRetryable(doc.index_status)` | 109 |
+| empty | `files.length === 0` | 62 |
+| empty | `accepted.length === 0` | 81 |
+| empty | `n === 0` | 115 |
+| branch | `!el` | 137 |
+| branch | `!hasFiles(e)` | 142 |
+| branch | `!hasFiles(e)` | 148 |
+| branch | `!hasFiles(e)` | 157 |
+| branch | `kb && (kb.indexing_summary.no_text > 0 \|\| retryablePageCount > 0)` | 223 |
+| branch | `kb.indexing_summary.no_text > 0` | 225 |
+| branch | `retryablePageCount > 0` | 238 |
+| branch | `selectedFileIds.size > 0` | 255 |
+| branch | `uploadingRows.length > 0` | 281 |
+| empty | `documentsLoading && documents.length === 0` | 296 |
+| empty | `documents.length === 0 && uploadingRows.length === 0` | 300 |
+| branch | `isRetryable(doc.index_status)` | 337 |
+| branch | `count > 0` | 371 |
+| branch | `isDragging` | 392 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseFormDrawer`
 
@@ -2464,17 +2496,31 @@ Required states: `open`
 | overlay | `<Drawer open>` | 84 |
 | branch | `canSave` | 101 |
 
+### `modules/knowledge-base/components/KnowledgeBaseSearchPanel`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `searchResults` | 67 |
+| branch | `incomplete` | 73 |
+| empty | `searchResults.hits.length === 0` | 79 |
+
 ### `modules/knowledge-base/pages/KnowledgeBaseDetailPage`
 
 Required states: `delayed`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && !kb` | 35 |
-| branch | `!kb` | 43 |
-| branch | `inProgress > 0` | 111 |
-| branch | `kbId` | 125 |
-| overlay | `<KnowledgeBaseFormDrawer open>` | 130 |
+| loading | `loading && !kb` | 46 |
+| branch | `!kb` | 54 |
+| branch | `inProgress > 0` | 129 |
+| branch | `kbId` | 143 |
+| branch | `kbId` | 149 |
+| branch | `usage && (usage.conversations.length > 0 \|\| usage.projects.length > 0)` | 153 |
+| branch | `usage.projects.length > 0` | 155 |
+| branch | `usage.conversations.length > 0` | 179 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 214 |
 
 ### `modules/knowledge-base/pages/KnowledgeBasesListPage`
 
@@ -2482,10 +2528,11 @@ Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `kbs.length > 0` | 63 |
-| loading | `loading` | 78 |
-| error | `error` | 82 |
-| overlay | `<KnowledgeBaseFormDrawer open>` | 113 |
+| branch | `kbs.length > 0` | 69 |
+| branch | `hasMore` | 96 |
+| loading | `loading` | 107 |
+| error | `error` | 111 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 142 |
 
 ### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview`
 
@@ -3001,10 +3048,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `grayed` | 16 |
-| branch | `!grayed` | 31 |
-| branch | `help` | 147 |
-| branch | `help` | 194 |
+| branch | `grayed` | 19 |
+| branch | `!grayed` | 40 |
+| branch | `help` | 156 |
+| branch | `help` | 203 |
 
 ### `modules/llm-provider/components/llm-models/shared/LlmModelParametersSection`
 
@@ -4348,10 +4395,10 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `loadingSettings && !settings` | 116 |
-| error | `error && !settings` | 124 |
-| branch | `canManage` | 143 |
-| branch | `!canManage` | 154 |
+| branch | `loadingSettings && !settings` | 128 |
+| error | `error && !settings` | 136 |
+| branch | `canManage` | 155 |
+| branch | `!canManage` | 166 |
 
 ### `modules/voice/components/VoiceInstanceCard`
 

@@ -52,6 +52,7 @@ export function hitToPanelData(h: KbHit): {
   page: number
   charStart: number
   charEnd: number
+  snippet: string
 } {
   return {
     fileId: h.file_id,
@@ -59,5 +60,7 @@ export function hitToPanelData(h: KbHit): {
     page: h.page,
     charStart: h.char_start,
     charEnd: h.char_end,
+    // A short distinctive prefix drives find-in-document for non-PDF viewers.
+    snippet: (h.content ?? '').trim().slice(0, 60),
   }
 }

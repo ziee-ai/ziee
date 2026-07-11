@@ -33,6 +33,7 @@ pub mod reaper;
 pub mod repository;
 pub mod routes;
 pub mod runtime_version;
+pub mod stream;
 pub mod transcribe;
 
 pub use repository::VoiceRepository;

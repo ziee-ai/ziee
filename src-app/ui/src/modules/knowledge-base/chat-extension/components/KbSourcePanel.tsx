@@ -11,6 +11,8 @@ export interface KbSourceData {
   page: number
   charStart: number
   charEnd: number
+  /** Passage prefix — drives find-in-document scroll for non-PDF viewers. */
+  snippet?: string
 }
 
 /**
@@ -24,13 +26,20 @@ export interface KbSourceData {
  * that and drives the page-jump + overlay. Non-PDF files return no rects (the
  * endpoint yields an empty set) and simply open at the top.
  */
-export function KbSourcePanel({ fileId, page, charStart, charEnd }: KbSourceData) {
+export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbSourceData) {
   const { messageFilesCache } = Stores.File
   const file = messageFilesCache.get(fileId) ?? null
 
   useEffect(() => {
     if (!file) void Stores.File.getFileEntityById(fileId)
   }, [fileId, file])
+
+  // Non-PDF (text/markdown/code) viewers have no page geometry — drive
+  // find-in-document to the passage prefix so it highlights + scrolls to it.
+  useEffect(() => {
+    const isPdf = file?.mime_type === 'application/pdf'
+    if (file && !isPdf && snippet) Stores.File.setFileFindQuery(fileId, snippet)
+  }, [file, fileId, snippet])
 
   // Fetch + publish the highlight target (page + fraction-normalized rects).
   // Cleared on unmount / re-target so a stale highlight never lingers on the doc.

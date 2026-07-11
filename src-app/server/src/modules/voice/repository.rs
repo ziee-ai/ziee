@@ -30,6 +30,9 @@ impl VoiceRepository {
                 drain_timeout_secs,
                 max_clip_seconds,
                 max_upload_bytes,
+                streaming_enabled,
+                stream_interval_ms,
+                stream_max_decode_secs,
                 updated_at as "updated_at: _"
             FROM voice_runtime_settings
             WHERE id = TRUE
@@ -54,6 +57,9 @@ impl VoiceRepository {
         drain_timeout_secs: Option<i32>,
         max_clip_seconds: Option<i32>,
         max_upload_bytes: Option<i64>,
+        streaming_enabled: Option<bool>,
+        stream_interval_ms: Option<i32>,
+        stream_max_decode_secs: Option<i32>,
     ) -> Result<VoiceSettings, AppError> {
         let row = sqlx::query_as!(
             VoiceSettings,
@@ -68,6 +74,9 @@ impl VoiceRepository {
                 drain_timeout_secs = COALESCE($6, drain_timeout_secs),
                 max_clip_seconds = COALESCE($7, max_clip_seconds),
                 max_upload_bytes = COALESCE($8, max_upload_bytes),
+                streaming_enabled = COALESCE($9, streaming_enabled),
+                stream_interval_ms = COALESCE($10, stream_interval_ms),
+                stream_max_decode_secs = COALESCE($11, stream_max_decode_secs),
                 updated_at = NOW()
             WHERE id = TRUE
             RETURNING
@@ -79,6 +88,9 @@ impl VoiceRepository {
                 drain_timeout_secs,
                 max_clip_seconds,
                 max_upload_bytes,
+                streaming_enabled,
+                stream_interval_ms,
+                stream_max_decode_secs,
                 updated_at as "updated_at: _"
             "#,
             enabled,
@@ -89,6 +101,9 @@ impl VoiceRepository {
             drain_timeout_secs,
             max_clip_seconds,
             max_upload_bytes,
+            streaming_enabled,
+            stream_interval_ms,
+            stream_max_decode_secs,
         )
         .fetch_one(&self.pool)
         .await

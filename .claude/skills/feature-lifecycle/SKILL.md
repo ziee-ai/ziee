@@ -42,6 +42,13 @@ mkdir -p /data/pbya/ziee/tmp/<slug>-wt/.lifecycle/<feature>
 Match these line formats precisely or the gate will not pass.
 
 - **Plan item** — `- **ITEM-3**: <description>`
+- **Descoped plan item** — `- **ITEM-30**: [DESCOPED] <what is being cut this round>`
+  A `[DESCOPED]` item is EXEMPT from needing a covering test, but ONLY if
+  DECISIONS.md records an approved disposition for it (below). Otherwise it fails
+  the **plan-coverage gate** — see Phase 3.
+- **Descope approval** (`DECISIONS.md`) — `- DESCOPED: ITEM-30 — <reason> [approved: <who/when>]`
+  The `[approved: …]` token (or `· approved` / `human-approved`) is the human
+  sign-off. A descope without it is a silent cut and FAILS.
 - **Audit verdict** — `- **ITEM-3** — verdict: PASS — <rationale>`
   (verdict ∈ `PASS | CONCERN | BLOCKED`; `BLOCKED` fails the gate)
 - **Test** — `- **TEST-2** (tier: integration) [covers: ITEM-1, ITEM-3] file: \`path/to/test.rs\` — asserts: <what it proves>`
@@ -96,6 +103,30 @@ Write `.lifecycle/<feature>/PLAN.md` with three required sections:
   to mirror (file structure, naming, idioms). This is a hard project rule
   ([[feedback_match_existing_patterns]]).
 
+**UI-surface plan checklist** (harvested from live human review — answer these
+IN the plan for EVERY page/drawer/card/panel the feature adds; a surface that
+skips them ships as a defect):
+
+- **Precedent** — which existing sibling surface is this the twin of (the
+  Projects card ⇄ a new entity card; a settings list ⇄ a new settings list)?
+  Mirror its structure / typography / tokens / container layout FIRST, then add
+  feature-specific elements. Divergence from the sibling is a bug, not a variant.
+- **Scale / cardinality** — what is the MAX size of every list/collection this
+  surface renders? What bounds the initial load? Never "fetch all + render all"
+  for an unbounded/high-cap set — specify server-side paging or virtualization,
+  a bounded first page, and a "Showing N of M" affordance. Pick the pagination
+  IDIOM by surface type: a settings/detail list uses the numbered `ListPagination`
+  (default page size 10); a top-level nav feed uses Load-More.
+- **Device size / responsive** — what is the behavior at mobile (~390px), tablet,
+  and desktop? What stacks / reflows / hides / scrolls, and which sibling's
+  breakpoint behavior does it mirror? A surface that only works at desktop width
+  is a defect. Its gallery coverage MUST include a narrow-viewport (390px) state
+  (enforced at Phase 8 / `gate:ui`), not only the desktop state.
+- **User-visible progress** — any surface that ingests or produces work (upload,
+  index, fetch) must show the live status the user expects (%, thumbnails, index
+  state, itemized errors), answering "what does the user want to SEE and DO
+  here?" — a silent boolean spinner is a defect.
+
 **P3 — conflict-surface scoping (BASE.md).** Also write a short
 `.lifecycle/<feature>/BASE.md` recording what CURRENT main touches that this
 branch will also touch: the highest existing migration number
@@ -129,7 +160,15 @@ Gate: `--phase 2`.
 
 Enumerate **every** test up front. The gate enforces a bipartite mapping:
 **every ITEM is covered by ≥1 TEST**, and every TEST names a valid ITEM, a tier,
-a target file, and what it asserts. Be comprehensive — mirror the codebase's
+a target file, and what it asserts.
+
+**Plan-coverage gate (FB-7) — no silent scope-dropping.** Every PLAN ITEM must be
+either (a) covered by an enumerated TEST (implemented), or (b) explicitly
+`[DESCOPED]` in PLAN.md **with an approved `DESCOPED: ITEM-N … [approved: …]`
+disposition in DECISIONS.md**. An item that is neither — quietly cut so the tree
+goes green — FAILS the gate. This exists because a feature once shipped "green"
+with ~16 planned, user-facing sub-features silently absent; descoping is now a
+recorded, human-approved DECISION, never an omission. Be comprehensive — mirror the codebase's
 existing tier pattern (unit `#[cfg(test)]` / integration `tests/<module>/` / e2e
 `ui/tests/e2e/`) ([[feedback_comprehensive_tests]]). No cosmetic tests — mock
 only the external boundary ([[feedback_no_cosmetic_tests]]).
@@ -233,6 +272,38 @@ NOT hand them your reasoning. Use ≥10 angles from the proven roster:
 `correctness · security · error-handling · concurrency · perms/authz ·
 api-contract · state-management · a11y · patterns-conformance · tests-quality ·
 perf · i18n/copy`
+
+**UI surfaces additionally require these angles** (harvested from human review —
+each traces to real rework that shipped despite a green gate):
+
+- **precedent-fidelity** — does each new surface mirror its closest sibling's
+  structure/typography/tokens, or did it diverge (a bold heading where the sibling
+  uses `!font-normal !text-sm`, a stray leading icon)? Match the pagination IDIOM
+  of the same KIND of page (settings numbered vs feed Load-More), not just "some
+  pagination exists."
+- **affordance-parity / reuse** — did it REUSE the existing component (`FileCard`,
+  `ProjectFilesManagePanel`, `ListPagination`) via its slots, or hand-roll a
+  parallel implementation? A reimplementation of something that already exists is
+  a finding.
+- **scale-performance** — does every list bound its initial load (paging/
+  virtualization) instead of fetch-all/render-all, and show "Showing N of M"? A
+  list that renders its entire potentially-large set fails.
+- **responsive-fidelity** — verify the surface at ~390px / tablet / desktop: no
+  horizontal page scroll, no clipped/overlapping content, adequate tap targets,
+  and breakpoint behavior matching its sibling. Desktop-only = defect.
+- **design-in-context** — does the component fit its container and siblings
+  (counts in the container title, primary actions in `extra`/top-right, no
+  duplicated headers), or was it designed in isolation and now fights its parent?
+- **plan-coverage / scope-drift** — reconcile EVERY PLAN ITEM against shipped code
+  with file:line evidence. An item with no implementation and no approved
+  `[DESCOPED]` disposition is a finding (this is the human-judgment complement to
+  the deterministic FB-7 gate — the gate catches missing dispositions; the audit
+  catches an item "covered" on paper but absent in code).
+
+**Audit-vs-user-decision rule:** when an audit angle surfaces that a feature's
+cost/behavior conflicts with a decision the human explicitly made (e.g. a perf
+tradeoff on a UX choice they picked), record it as a tracked `HUMAN_FEEDBACK`
+item and surface it — do NOT silently reverse the human's decision.
 
 Each angle appends findings to `LEDGER.jsonl`. **Coverage law:** every hunk of
 `git diff main...HEAD --unified=0` must appear in `AUDIT_COVERAGE.tsv` as reviewed

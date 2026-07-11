@@ -2423,6 +2423,12 @@ export interface IndexItem {
   version?: string
 }
 
+/** How much of the KB is searchable vs total (background indexing may lag). */
+export interface IndexingIncomplete {
+  searchable: number
+  total: number
+}
+
 /**
  * Per-KB rollup of document index states, so the UI can show
  *  "all indexed / M indexing / K failed / P no-text" and gate grounding.
@@ -2547,17 +2553,66 @@ export interface KnowledgeBase {
   updated_at: string
 }
 
-/** One document in a KB, with its derived index status. */
+/**
+ * One document in a KB, with its derived index status plus the file metadata
+ *  the documents panel's `FileCard` needs (thumbnail + size/type subtitle) —
+ *  so the KB panel reuses the same `FileCard` row the project knowledge-files
+ *  panel uses, instead of a hand-rolled list row.
+ */
 export interface KnowledgeBaseDocument {
   added_at: string
   chunk_count: number
   file_id: string
+  /** File metadata (from `files`) for the FileCard thumbnail + subtitle. */
+  file_size: number
   filename: string
+  has_thumbnail: boolean
   /**
    * One of pending|indexing|indexed|failed|no_text (from `file_index_state`;
    *  `pending` when no state row exists yet).
    */
   index_status: string
+  mime_type?: string
+  preview_page_count: number
+}
+
+/**
+ * Request body for the detail-page "test retrieval" search box (REST mirror of
+ *  the `search_knowledge` MCP tool, scoped to one KB).
+ */
+export interface KnowledgeBaseSearchRequest {
+  query: string
+  top_k?: number
+}
+
+/**
+ * Result of a direct KB search (detail-page box) — the same hits + mode +
+ *  indexing signal the chat tool returns, so a user can verify retrieval.
+ */
+export interface KnowledgeBaseSearchResponse {
+  hits: KnowledgeSearchHit[]
+  indexing_incomplete: IndexingIncomplete
+  mode: string
+}
+
+/** Where a KB is currently attached (owner-scoped), for the "Used in" card. */
+export interface KnowledgeBaseUsage {
+  conversations: UsageRef[]
+  projects: UsageRef[]
+}
+
+/**
+ * A `search_knowledge` hit — the SemanticHit provenance plus the file name,
+ *  so the UI can render a citation chip that deep-links to the source page.
+ */
+export interface KnowledgeSearchHit {
+  char_end: number
+  char_start: number
+  content: string
+  file_id: string
+  filename: string
+  page_number: number
+  score: number
 }
 
 export interface LinkAccountRequest {
@@ -3755,6 +3810,12 @@ export interface ModelCapabilities {
   /** Image generation capability - can generate images from text descriptions */
   image_generator?: boolean
   /**
+   * Reranker (cross-encoder) capability - scores query/document relevance for
+   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
+   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
+   */
+  rerank?: boolean
+  /**
    * Whether the model accepts sampling params (temperature/top_p/top_k).
    *  `Some(false)` ⇒ they are omitted from the request. `None` ⇒ inferred from
    *  the catalog + family policy (the common case).
@@ -3766,12 +3827,6 @@ export interface ModelCapabilities {
    *  provider model-family policy. Drives whether thinking is enabled.
    */
   supports_thinking?: boolean
-  /**
-   * Reranker (cross-encoder) capability - scores query/document relevance for
-   *  retrieve-wide → rerank → top-k. Served locally by llama.cpp `--reranking`;
-   *  mutually exclusive with `chat` in the admin UI. Delivered via the hub.
-   */
-  rerank?: boolean
   /** Text embedding capability - can generate text embeddings for semantic search */
   text_embedding?: boolean
   /** How thinking is requested: `"adaptive"` or `"budget"`. `None` ⇒ inferred. */
@@ -4555,6 +4610,18 @@ export interface RespondToElicitationResponse {
 export interface RestoreVersionRequest {
   /** The version number to restore (a new head is appended with its bytes). */
   version: number
+}
+
+/**
+ * Deployment-wide retrieval capability (from `file_rag_admin_settings`), so the
+ *  KB detail page can show a "Retrieval: hybrid + reranker / hybrid /
+ *  keyword-only" line + whether an embedding / reranker model is configured.
+ */
+export interface RetrievalInfo {
+  embedding_configured: boolean
+  /** `hybrid_rerank` | `hybrid` | `keyword_only`. */
+  mode: string
+  rerank_enabled: boolean
 }
 
 /** A file attachment returned by a tool (inline base64 content) */
@@ -6297,6 +6364,9 @@ export interface UpdateVoiceSettingsRequest {
   max_clip_seconds?: number
   max_upload_bytes?: number
   model?: string
+  stream_interval_ms?: number
+  stream_max_decode_secs?: number
+  streaming_enabled?: boolean
 }
 
 /** PUT body for the global settings. Every field optional → absent = leave. */
@@ -6370,6 +6440,15 @@ export interface Usage {
 }
 
 export type UsageMode = 'auto' | 'always'
+
+/**
+ * One place a KB is attached (a conversation or a project), for the
+ *  "Used in" card. `label` is the conversation title / project name.
+ */
+export interface UsageRef {
+  id: string
+  label: string
+}
 
 export interface User {
   avatar_url?: string
@@ -6671,6 +6750,14 @@ export interface VoiceCapability {
   model_ready: boolean
   /** A whisper-server runtime binary is installed for this host. */
   runtime_ready: boolean
+  /** Interim decode cadence (ms) the composer paces its live-caption loop at. */
+  stream_interval_ms: number
+  /**
+   * Live streaming captions available: the mic is usable (`can_transcribe`)
+   *  AND the deployment `streaming_enabled` toggle is on. The composer runs the
+   *  interim loop only when this is true.
+   */
+  streaming_enabled: boolean
 }
 
 /** Snapshot of the single managed whisper-server instance (singleton row). */
@@ -6711,6 +6798,15 @@ export interface VoiceSettings {
   max_upload_bytes: number
   /** Selected whisper ggml model name (tiny | base | base.en | small). */
   model: string
+  /** Interim decode cadence in milliseconds for live captions. */
+  stream_interval_ms: number
+  /**
+   * Trailing-window (seconds) each interim clip is clamped to before decoding
+   *  — the per-tick cost bound. The final on-stop decode is unclamped.
+   */
+  stream_max_decode_secs: number
+  /** Live streaming captions available deployment-wide (also needs `enabled`). */
+  streaming_enabled: boolean
   updated_at: string
 }
 
@@ -7349,7 +7445,10 @@ export const ApiEndpoints = {
   'KnowledgeBase.listProject': 'GET /api/projects/{pid}/knowledge-bases',
   'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
   'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
+  'KnowledgeBase.retrievalInfo': 'GET /api/knowledge-base/retrieval-info',
+  'KnowledgeBase.search': 'POST /api/knowledge-bases/{id}/search',
   'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
+  'KnowledgeBase.usage': 'GET /api/knowledge-bases/{id}/usage',
   'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
   'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
   'LitSearch.getSettings': 'GET /api/lit-search/settings',
@@ -7572,6 +7671,7 @@ export const ApiEndpoints = {
   'Voice.subscribeVersionDownloadEvents': 'GET /api/voice/versions/downloads/{key}/events',
   'Voice.syncVersionCache': 'POST /api/voice/versions/sync-cache',
   'Voice.transcribe': 'POST /api/voice/transcribe',
+  'Voice.transcribeStream': 'POST /api/voice/transcribe/stream',
   'Voice.updateSettings': 'PUT /api/voice/settings',
   'WebSearch.deleteUserKey': 'DELETE /api/web-search/user-keys/{provider}',
   'WebSearch.getProviders': 'GET /api/web-search/providers',
@@ -7761,7 +7861,10 @@ export type ApiEndpointParameters = {
   'KnowledgeBase.listProject': { pid: string }
   'KnowledgeBase.reindexDocument': { id: string; file_id: string }
   'KnowledgeBase.removeDocument': { id: string; file_id: string }
+  'KnowledgeBase.retrievalInfo': void
+  'KnowledgeBase.search': { id: string } & KnowledgeBaseSearchRequest
   'KnowledgeBase.update': { id: string } & UpdateKnowledgeBaseRequest
+  'KnowledgeBase.usage': { id: string }
   'LitSearch.deleteUserKey': { connector: string }
   'LitSearch.getConnectors': void
   'LitSearch.getSettings': void
@@ -7984,6 +8087,7 @@ export type ApiEndpointParameters = {
   'Voice.subscribeVersionDownloadEvents': { key: string }
   'Voice.syncVersionCache': void
   'Voice.transcribe': FormData
+  'Voice.transcribeStream': FormData
   'Voice.updateSettings': UpdateVoiceSettingsRequest
   'WebSearch.deleteUserKey': { provider: string }
   'WebSearch.getProviders': void
@@ -8173,7 +8277,10 @@ export type ApiEndpointResponses = {
   'KnowledgeBase.listProject': KnowledgeBase[]
   'KnowledgeBase.reindexDocument': any
   'KnowledgeBase.removeDocument': any
+  'KnowledgeBase.retrievalInfo': RetrievalInfo
+  'KnowledgeBase.search': KnowledgeBaseSearchResponse
   'KnowledgeBase.update': KnowledgeBase
+  'KnowledgeBase.usage': KnowledgeBaseUsage
   'LitSearch.deleteUserKey': void
   'LitSearch.getConnectors': ConnectorCatalogResponse
   'LitSearch.getSettings': LitSearchSettings
@@ -8396,6 +8503,7 @@ export type ApiEndpointResponses = {
   'Voice.subscribeVersionDownloadEvents': SSEEngineDownloadEvent2
   'Voice.syncVersionCache': SyncCacheResponse2
   'Voice.transcribe': TranscriptionResponse
+  'Voice.transcribeStream': TranscriptionResponse
   'Voice.updateSettings': VoiceSettings
   'WebSearch.deleteUserKey': void
   'WebSearch.getProviders': ProviderCatalogResponse

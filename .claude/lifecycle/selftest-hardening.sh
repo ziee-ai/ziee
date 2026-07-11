@@ -162,6 +162,39 @@ EOF
 git -C "$R" commit -qam tests-shrunk
 lc 1 "A5: TESTS.md shrink (dropped TEST-2) is REFUSED" --phase 3 --repo "$R" --dir "$D" --base main
 
+# --- FB-7 plan-coverage / descope gate ---
+R="$(build_be)"; D="$R/.lifecycle/bar"
+# (1) an extra PLAN item with no covering TEST and no descope -> bipartite FAIL
+cat > "$D/PLAN.md" <<'EOF'
+# PLAN — bar
+## Items
+- **ITEM-1**: Add list_bar to the bar repository.
+- **ITEM-2**: A planned sub-feature.
+## Files to touch
+- `src-app/server/src/modules/bar/repository.rs` — new fn (ITEM-1).
+## Patterns to follow
+- Mirror an existing server repository module.
+EOF
+git -C "$R" commit -qam plan-item2 >/dev/null
+lc 1 "FB-7: an uncovered PLAN item is REFUSED (phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
+# (2) mark ITEM-2 [DESCOPED] but with NO recorded approval -> still FAIL
+cat > "$D/PLAN.md" <<'EOF'
+# PLAN — bar
+## Items
+- **ITEM-1**: Add list_bar to the bar repository.
+- **ITEM-2**: [DESCOPED] cut from this round.
+## Files to touch
+- `src-app/server/src/modules/bar/repository.rs` — new fn (ITEM-1).
+## Patterns to follow
+- Mirror an existing server repository module.
+EOF
+git -C "$R" commit -qam plan-descoped-unapproved >/dev/null
+lc 1 "FB-7: a [DESCOPED] item without recorded approval is REFUSED (phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
+# (3) add an APPROVED descope disposition to DECISIONS.md -> PASS
+printf '\n- DESCOPED: ITEM-2 — deferred to a follow-up [approved: human 2026-07]\n' >> "$D/DECISIONS.md"
+git -C "$R" commit -qam descope-approved >/dev/null
+lc 0 "FB-7: a [DESCOPED] item WITH an approved DECISIONS disposition passes (phase 3)" --phase 3 --repo "$R" --dir "$D" --base main
+
 # --- A8: a built-in MCP server without BOTH mcp.rs edits -> FAIL; with both -> PASS
 R="$(build_be)"; D="$R/.lifecycle/bar"
 printf '\nfn bar_mcp_server_id() -> u32 { 1 }\n' >> "$R/src-app/server/src/modules/bar/repository.rs"
@@ -393,9 +426,13 @@ echo "-- Part C: preflight.sh (env gate) --"
 GOOD="$(new_repo)"; CLEANUP+=("$GOOD")
 mkdir -p "$GOOD/src-app/server/binaries/hub-seed" \
          "$GOOD/src-app/server/vendor/pgvector" \
+         "$GOOD/src-app/server/config" \
          "$GOOD/node_modules"
 echo '{"hub_version":"v0.0.0"}' > "$GOOD/src-app/server/binaries/hub-seed/index.json"
 echo 'all:' > "$GOOD/src-app/server/vendor/pgvector/Makefile"
+# a real repo always ships config/dev.example.yaml; check #7 auto-seeds dev.yaml from it.
+printf 'jwt:\n  secret: "dev-secret-change-in-production-min-32-chars-long"\n' \
+  > "$GOOD/src-app/server/config/dev.example.yaml"
 assert_exit_cmd 0 "preflight: fully-provisioned env passes" -- \
   env -u DATABASE_URL -u ZIEE_BUILD_DB_PERWORKTREE bash "$PREFLIGHT" --repo "$GOOD"
 

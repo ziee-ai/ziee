@@ -8,7 +8,10 @@ export function LlmModelCapabilitiesSection() {
   // — gray them out and surface a hint instead of letting an admin
   // tick contradictory flags.
   const isEmbedding = useWatch({ name: 'capabilities.text_embedding' })
-  const grayed = Boolean(isEmbedding)
+  const isRerank = useWatch({ name: 'capabilities.rerank' })
+  // An embedder OR a reranker is a non-chat model — chat capabilities don't
+  // apply, so gray them out (same as the embedder rule).
+  const grayed = Boolean(isEmbedding || isRerank)
 
   return (
     <Card title="Capabilities" data-testid="llm-capabilities-card">
@@ -18,7 +21,7 @@ export function LlmModelCapabilitiesSection() {
             tone="info"
             className="!mb-1"
             data-testid="llm-capabilities-embedder-alert"
-            title="This model is flagged as an embedder; chat capabilities are hidden because they don't apply."
+            title="This model is flagged as an embedder or reranker; chat capabilities are hidden because they don't apply."
           />
         )}
 
@@ -26,6 +29,12 @@ export function LlmModelCapabilitiesSection() {
           label="Text Embedding"
           name="text_embedding"
           help="Generates vectors instead of chat text. Used by the Memory module."
+        />
+
+        <CapabilityRow
+          label="Reranker"
+          name="rerank"
+          help="Cross-encoder that re-scores retrieved passages. Used by Document RAG / knowledge bases to improve retrieval quality."
         />
 
         {!grayed && (

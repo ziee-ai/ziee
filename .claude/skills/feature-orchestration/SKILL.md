@@ -38,6 +38,25 @@ trusting. This is the P1 discipline; it is non-negotiable.
   then write the `claude --model … --effort … --dangerously-skip-permissions
   --remote-control` launch line.
 
+### `/clear` discipline — a cleared session is amnesiac; the message must carry everything
+`/clear` wipes ALL prior context — the session no longer knows what it built, what
+feature it owns, or where its worktree is. (This bit us: a cleared live session
+was handed a new task and had no idea what it had been working on.) So whenever
+you `/clear` before re-dispatching, the very next message MUST be **fully
+self-contained** — never say "continue your feature" or "you built X" as if it
+remembers. Include, explicitly:
+- **What the feature IS** — one or two sentences naming it and what it does (not
+  just "your feature"), even for iteration mode on its own prior work.
+- **Its status** — merged (and the commit) / in-flight / held-for-manual-test.
+- **The exact worktree path + branch**, and that its `.lifecycle/<feature>/`
+  artifacts (PLAN/TESTS/DECISIONS/HUMAN_FEEDBACK) are restored there — tell it to
+  **read those + the merged code to reconstruct its mental model** (the ledger is
+  the durable memory across a clear; see Iteration mode).
+- **The task** — what to do now, and the plan-first/no-self-push rules.
+Prefer NOT clearing a session that is mid-iteration and whose context is still
+useful; only clear when the context is heavy/stale AND the artifacts+message can
+fully rehydrate it. If in doubt, keep the context.
+
 ## Keeping sessions honest — the catalog of dodges
 Sessions systematically avoid the hardest, most-verifiable work (running the
 e2e, finishing the last phase) behind plausible-sounding excuses. Watch for:

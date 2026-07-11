@@ -13,13 +13,33 @@ export function KbStatusRow() {
   // Explicit permission gate (layer 4) — see KbMenuItem.
   const canUse = usePermission(Permissions.KnowledgeBaseUse)
   const { items } = Stores.KnowledgeBases
-  const { selectedKbIds } = Stores.KnowledgeBaseComposer
+  const { selectedKbIds, inheritedKbIds } = Stores.KnowledgeBaseComposer
 
   const visibleIds = Array.from(selectedKbIds).filter(id => items.has(id))
-  if (!canUse || visibleIds.length === 0) return null
+  // Project-inherited KBs that aren't ALSO directly attached — read-only chips.
+  const inheritedOnly = Array.from(inheritedKbIds).filter(
+    id => items.has(id) && !selectedKbIds.has(id),
+  )
+  if (!canUse || (visibleIds.length === 0 && inheritedOnly.length === 0)) return null
 
   return (
     <>
+      {inheritedOnly.map(id => {
+        const kb = items.get(id)!
+        return (
+          <Tag
+            variant="soft"
+            key={`inh-${id}`}
+            tone="default"
+            icon={<BookOpen />}
+            className="m-0"
+            title="Inherited from this conversation's project"
+            data-testid={`kb-inherited-chip-${id}`}
+          >
+            {kb.name}
+          </Tag>
+        )
+      })}
       {visibleIds.map(id => {
         const kb = items.get(id)!
         return (

@@ -11,6 +11,8 @@ import { renderGfmAlert } from '@/components/common/gfmAlert'
 import { BlockedImage } from '@/components/common/BlockedImage'
 import { ReservedImage } from '@/components/common/ReservedImage'
 import { classifyImageSrc } from '@/components/common/imageSrcPolicy'
+import { CitationChip } from '@/modules/chat/core/utils/CitationChip'
+import { isCitationHref } from '@/modules/chat/core/utils/citationTokenize'
 import {
   scopeFootnoteId,
   scopeHref,
@@ -86,6 +88,10 @@ export function useStreamdownComponents(contentId: string) {
       },
       a(props: JSX.IntrinsicElements['a']) {
         const { href, className, target: _target, id, ...rest } = props
+        // Inline `[n]` knowledge-base citation → focusable chip (FB-11). The
+        // tokenizer rewrote the model's bare `[n]` into `[n](#kb-cite-n)`.
+        const citeN = isCitationHref(href)
+        if (citeN !== null) return <CitationChip n={citeN} />
         // Hide ↩ back-reference icons — they produce stray icons when footnote
         // definitions contain \n\n (multi-paragraph footnotes).
         // Check both class (older remark-gfm) and attribute (remark-gfm v4).

@@ -129,6 +129,14 @@ impl ContentProcessor for PdfProcessor {
         mime_type == "application/pdf"
     }
 
+    async fn extract_geometry(
+        &self,
+        data: &[u8],
+        _mime_type: &str,
+    ) -> Result<Vec<String>, AppError> {
+        self.extract_geometry_pages(data).await
+    }
+
     async fn extract_text(&self, data: &[u8], _mime_type: &str) -> Result<Vec<String>, AppError> {
         // PDFium FFI is synchronous and CPU-bound; run it off the async
         // runtime so it cannot block executor threads.
