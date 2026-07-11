@@ -26,6 +26,7 @@ import {
   shouldAutoOpen,
   deriveGroupOpen,
   resolveArtifactToolUseId,
+  shouldWrapRun,
 } from '@/modules/mcp/chat-extension/toolRun'
 
 /**
@@ -256,15 +257,13 @@ function collectToolRun(
   return run
 }
 
-/** Number of tool_use blocks in a run (the "N tools" count). */
-function countToolUses(run: MessageContent[]): number {
-  return run.filter(b => b.content_type === 'tool_use').length
-}
-
 /**
- * Collapsed "N tools called" card for a run of ≥2 consecutive tool calls.
- * Expanding renders each run member through the registry's single-block path
- * (tool_use → its own card, tool_result → its files), so nothing regroups.
+ * Collapsible wrapper for a tool run — a run of ≥2 consecutive tool calls, OR a
+ * single tool call that produced an artifact (so its file(s) sit in the same
+ * collapsible box). Expanding renders each run member through the registry's
+ * single-block path (tool_use → its own card, tool_result → its files), so
+ * nothing regroups. The header reads "N tools called" for a multi-tool run and
+ * the tool name (+ server label) for a single-tool wrapper.
  */
 function McpToolGroupCard({
   run,
@@ -278,6 +277,9 @@ function McpToolGroupCard({
   // getToolCall() method does NOT trigger re-renders). An approval / running
   // status that arrives after mount re-renders this component and opens it.
   const { toolCalls } = Stores.McpComposer
+  // Server rows for resolving a human display name in the single-tool header
+  // (same reactive read + resolution as McpToolUseRenderer).
+  const { servers } = Stores.McpServer
   const useIds = runToolUseIds(run)
   const hasPendingApproval = useIds.some(
     id => toolCalls.get(id)?.status === 'pending_approval',
@@ -310,12 +312,36 @@ function McpToolGroupCard({
     <ToolStatusIcon status={hasError ? 'failed' : !allDone ? 'running' : 'success'} />
   )
 
+  // Single-tool wrapper (one tool call that produced an artifact): show the tool
+  // name + server label like the bare McpToolCallUI/McpToolUseRenderer header —
+  // "N tools called" would be wrong/uninformative for one call.
+  const singleUse =
+    toolUses.length === 1
+      ? (toolUses[0].content as MessageContentDataToolUse)
+      : null
+  const singleServerLabel = singleUse
+    ? mcpServerParenLabel(
+        servers.find(s => s.id === singleUse.server_id)?.display_name,
+      )
+    : null
+
   return (
     <Card size="sm" className={cn('mb-2', !isExpanded && 'py-2.5')} data-testid="mcp-toolgroup-card">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {icon}
-          <Text strong>{toolUses.length} tools called</Text>
+          {singleUse ? (
+            <>
+              <Text strong className="truncate">{singleUse.name || 'Tool Call'}</Text>
+              {singleServerLabel && (
+                <Text type="secondary" className="text-xs whitespace-nowrap">
+                  {singleServerLabel}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text strong>{toolUses.length} tools called</Text>
+          )}
         </div>
         <Button
           size="icon"
@@ -351,16 +377,19 @@ function McpToolUseGroup(props: ContentRendererProps) {
   const { content, isUser, blocks, index } = props
   const run =
     blocks && index != null ? collectToolRun(blocks, index) : null
-  if (!run || countToolUses(run) < 2) {
+  if (!run || !shouldWrapRun(run)) {
     return <McpToolUseRenderer content={content} isUser={isUser} />
   }
   return <McpToolGroupCard run={run} isUser={isUser} />
 }
 McpToolUseGroup.contentSpan = (blocks: MessageContent[], index: number): number => {
   const run = collectToolRun(blocks, index)
-  // Only swallow the whole run (use+result blocks) when it's an actual group;
-  // a lone tool call consumes just its own block so its result renders normally.
-  return countToolUses(run) >= 2 ? run.length : 1
+  // Swallow the whole run (use+result blocks) ONLY when it wraps — a ≥2-tool run,
+  // or a single tool that produced an artifact. `shouldWrapRun` is the SAME
+  // predicate the render branch uses, so `consumed` always matches what
+  // McpToolGroupCard renders (no run-loop desync). Otherwise consume just this
+  // block so a lone no-artifact tool's result renders normally.
+  return shouldWrapRun(run) ? run.length : 1
 }
 
 /**

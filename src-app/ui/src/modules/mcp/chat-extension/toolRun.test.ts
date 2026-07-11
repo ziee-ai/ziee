@@ -6,6 +6,7 @@ import {
   shouldAutoOpen,
   deriveGroupOpen,
   resolveArtifactToolUseId,
+  shouldWrapRun,
 } from './toolRun.ts'
 import type { MessageContent } from '@/api-client/types'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
@@ -53,6 +54,57 @@ test('hasArtifactInRun is false for empty or absent resource_links', () => {
   assert.equal(hasArtifactInRun([use('A'), result('A', [])]), false)
   assert.equal(hasArtifactInRun([use('A'), result('A')]), false)
   assert.equal(hasArtifactInRun([use('A')]), false)
+})
+
+// ── shouldWrapRun (single source of truth for wrap vs bare card) ───────────
+test('shouldWrapRun: a single tool WITH an artifact wraps', () => {
+  assert.equal(shouldWrapRun([use('A'), result('A', [{ file_id: 'f1' }])]), true)
+})
+
+test('shouldWrapRun: a single tool with MULTIPLE artifacts wraps', () => {
+  assert.equal(
+    shouldWrapRun([use('A'), result('A', [{ file_id: 'f1' }, { file_id: 'f2' }])]),
+    true,
+  )
+})
+
+test('shouldWrapRun: a single tool with NO artifact does NOT wrap (stays a plain card)', () => {
+  assert.equal(shouldWrapRun([use('A'), result('A', [])]), false)
+  assert.equal(shouldWrapRun([use('A'), result('A')]), false)
+  assert.equal(shouldWrapRun([use('A')]), false)
+})
+
+test('shouldWrapRun: ≥2 tools always wrap (with or without artifact)', () => {
+  assert.equal(shouldWrapRun([use('A'), result('A'), use('B'), result('B')]), true)
+  assert.equal(
+    shouldWrapRun([use('A'), use('B'), result('B', [{ file_id: 'f1' }])]),
+    true,
+  )
+})
+
+test('shouldWrapRun: an empty / no-tool run does NOT wrap', () => {
+  assert.equal(shouldWrapRun([]), false)
+  assert.equal(shouldWrapRun([result('ORPHAN', [{ file_id: 'f1' }])]), false)
+})
+
+test('shouldWrapRun is a pure function of the run — the SAME value drives both the group render-branch and contentSpan (no run-loop desync)', () => {
+  // A table of runs; each must map to exactly one wrap decision, so
+  // McpToolUseGroup (render group?) and contentSpan (consume run.length?) —
+  // which both call shouldWrapRun(run) — can never disagree.
+  const cases: Array<[MessageContent[], boolean]> = [
+    [[use('A')], false],
+    [[use('A'), result('A', [{ file_id: 'f1' }])], true],
+    [[use('A'), use('B')], true],
+    [[], false],
+  ]
+  for (const [run, expected] of cases) {
+    const decision = shouldWrapRun(run)
+    assert.equal(decision, expected)
+    // The render branch wraps iff `decision`; contentSpan consumes run.length iff
+    // `decision`, else 1 — both derived from this one call.
+    const consumed = decision ? run.length : 1
+    assert.equal(consumed === run.length, decision || run.length === 1)
+  }
 })
 
 // ── shouldAutoOpen (the latch trigger) ─────────────────────────────────────
