@@ -54,6 +54,9 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const count = kb?.document_count ?? documents.length
+  // Retryable (failed/no_text) docs on the CURRENT page — retry acts on the
+  // loaded page, so the button counts these (not the KB-wide summary).
+  const retryablePageCount = documents.filter(d => isRetryable(d.index_status)).length
 
   const handleFiles = async (files: File[]) => {
     if (files.length === 0) return
@@ -213,8 +216,11 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
       }
     >
       <div ref={rootRef} className="relative flex flex-col gap-3">
-      {/* Honesty-at-scale: scanned/no-text advisory + retry-all-failed. */}
-      {kb && (kb.indexing_summary.no_text > 0 || kb.indexing_summary.failed > 0) && (
+      {/* Honesty-at-scale: scanned/no-text advisory + retry the failed docs on
+          THIS page (retry operates on the loaded page, so the label counts the
+          loaded page's retryable rows — not the KB-wide summary, which could
+          include failures on other pages). */}
+      {kb && (kb.indexing_summary.no_text > 0 || retryablePageCount > 0) && (
         <div className="flex items-center justify-between gap-2 flex-wrap">
           {kb.indexing_summary.no_text > 0 ? (
             <Text
@@ -229,7 +235,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
           ) : (
             <span />
           )}
-          {kb.indexing_summary.failed > 0 && (
+          {retryablePageCount > 0 && (
             <Can permission={Permissions.KnowledgeBaseManage}>
               <Button
                 size="default"
@@ -238,7 +244,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
                 data-testid="kb-documents-retry-all"
                 onClick={() => void handleRetryAll()}
               >
-                Retry {kb.indexing_summary.failed} failed
+                Retry {retryablePageCount} failed on this page
               </Button>
             </Can>
           )}

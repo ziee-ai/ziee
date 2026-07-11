@@ -15,6 +15,13 @@ test('citationTokenize rewrites only bare numeric [n]', () => {
   assert.equal(citationTokenize('a claim[^1]'), 'a claim[^1]')
   // non-numeric bracket
   assert.equal(citationTokenize('array[i] and [TODO]'), 'array[i] and [TODO]')
+  // NUMERIC array index (word-char before `[`) — left alone, not a citation
+  assert.equal(citationTokenize('arr[1] and list[0]'), 'arr[1] and list[0]')
+  // reference-style link usage/definition — untouched
+  assert.equal(citationTokenize('[Smith][1] and [1]: http://x'), '[Smith][1] and [1]: http://x')
+  // inside a code span / fenced block — never rewritten (would corrupt code)
+  assert.equal(citationTokenize('use `x[1]` now'), 'use `x[1]` now')
+  assert.equal(citationTokenize('```py\narr[1]\n```'), '```py\narr[1]\n```')
   // idempotent — an already-tokenized citation is left alone
   assert.equal(citationTokenize('[1](#kb-cite-1)'), '[1](#kb-cite-1)')
 })

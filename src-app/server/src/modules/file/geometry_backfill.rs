@@ -25,8 +25,17 @@ pub async fn run_geometry_backfill() {
     {
         return;
     }
+    // Reset the single-flight flag on drop — so a panic inside `run_inner`
+    // (e.g. a processor panic on a malformed PDF) can't wedge the flag `true`
+    // and permanently disable future backfills for the process.
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            IN_PROGRESS.store(false, Ordering::Release);
+        }
+    }
+    let _guard = Guard;
     run_inner().await;
-    IN_PROGRESS.store(false, Ordering::Release);
 }
 
 async fn run_inner() {

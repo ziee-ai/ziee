@@ -8,7 +8,7 @@
 ## Summary
 
 - **363** surfaces carry at least one renderable-state signal.
-- **2091** signals total: 1641 branch, 133 empty, 111 error, 109 loading, 94 overlay, 3 panel.
+- **2091** signals total: 1643 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,7 +18,7 @@
 |---|---|
 | `delayed` | 96 |
 | `empty` | 104 |
-| `error` | 88 |
+| `error` | 87 |
 | `open` | 80 |
 | `panel-open` | 3 |
 
@@ -1117,7 +1117,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!card` | 21 |
+| branch | `!card` | 24 |
 
 ### `modules/chat/core/utils/HtmlBlock`
 
@@ -2458,27 +2458,27 @@ Required states: `open`
 
 ### `modules/knowledge-base/components/KnowledgeBaseDocumentsPanel`
 
-Required states: `empty`, `error`
+Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `files.length === 0` | 59 |
-| empty | `accepted.length === 0` | 78 |
-| empty | `n === 0` | 112 |
-| branch | `!el` | 134 |
-| branch | `!hasFiles(e)` | 139 |
-| branch | `!hasFiles(e)` | 145 |
-| branch | `!hasFiles(e)` | 154 |
-| error | `kb && (kb.indexing_summary.no_text > 0 \|\| kb.indexing_summary.failed > 0)` | 217 |
-| branch | `kb.indexing_summary.no_text > 0` | 219 |
-| error | `kb.indexing_summary.failed > 0` | 232 |
-| branch | `selectedFileIds.size > 0` | 249 |
-| branch | `uploadingRows.length > 0` | 275 |
-| empty | `documentsLoading && documents.length === 0` | 290 |
-| empty | `documents.length === 0 && uploadingRows.length === 0` | 294 |
-| branch | `isRetryable(doc.index_status)` | 331 |
-| branch | `count > 0` | 365 |
-| branch | `isDragging` | 386 |
+| empty | `files.length === 0` | 62 |
+| empty | `accepted.length === 0` | 81 |
+| empty | `n === 0` | 115 |
+| branch | `!el` | 137 |
+| branch | `!hasFiles(e)` | 142 |
+| branch | `!hasFiles(e)` | 148 |
+| branch | `!hasFiles(e)` | 157 |
+| branch | `kb && (kb.indexing_summary.no_text > 0 \|\| retryablePageCount > 0)` | 223 |
+| branch | `kb.indexing_summary.no_text > 0` | 225 |
+| branch | `retryablePageCount > 0` | 238 |
+| branch | `selectedFileIds.size > 0` | 255 |
+| branch | `uploadingRows.length > 0` | 281 |
+| empty | `documentsLoading && documents.length === 0` | 296 |
+| empty | `documents.length === 0 && uploadingRows.length === 0` | 300 |
+| branch | `isRetryable(doc.index_status)` | 337 |
+| branch | `count > 0` | 371 |
+| branch | `isDragging` | 392 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseFormDrawer`
 
@@ -2513,8 +2513,8 @@ Required states: `delayed`, `open`
 | branch | `kbId` | 149 |
 | branch | `usage && (usage.conversations.length > 0 \|\| usage.projects.length > 0)` | 153 |
 | branch | `usage.projects.length > 0` | 155 |
-| branch | `usage.conversations.length > 0` | 170 |
-| overlay | `<KnowledgeBaseFormDrawer open>` | 196 |
+| branch | `usage.conversations.length > 0` | 179 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 214 |
 
 ### `modules/knowledge-base/pages/KnowledgeBasesListPage`
 

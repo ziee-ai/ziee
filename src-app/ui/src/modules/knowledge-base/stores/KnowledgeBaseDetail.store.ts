@@ -349,8 +349,14 @@ export const KnowledgeBaseDetail = defineStore('KnowledgeBaseDetail', {
       // reach every loaded row without collapsing the user's paging.
       void actions.refreshLoadedDocuments(id)
       void actions.refreshKb(id)
-      void actions.loadUsage(id)
     }
+    // Usage (conversations/projects a KB is attached to) changes on attach/detach,
+    // NOT while documents index — refresh it only on the KB entity + reconnect,
+    // not on the per-document index-state stream (which fires per doc at scale).
+    on('sync:knowledge_base', () => {
+      const id = get().kb?.id
+      if (id) void actions.loadUsage(id)
+    })
     on('sync:file_index_state', refreshOpen)
     on('sync:knowledge_base_document', refreshOpen)
     on('sync:file', refreshOpen)

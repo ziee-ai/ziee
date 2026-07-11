@@ -11,11 +11,14 @@ import type { SyntheticEvent } from 'react'
 export function CitationChip({ n }: { n: number }) {
   const activate = (e: SyntheticEvent<HTMLElement>) => {
     e.preventDefault()
-    // Walk up until an ancestor also contains this message's transparency card.
+    // Walk up until an ancestor contains this message's transparency card(s);
+    // take the LAST one — `[n]` refers to the MOST RECENT search_knowledge
+    // results, so a turn with two searches resolves to the second card.
     let node: HTMLElement | null = e.currentTarget
     let card: HTMLElement | null = null
     while (node && !card) {
-      card = node.querySelector<HTMLElement>('[data-testid="kb-tool-result-card"]')
+      const cards = node.querySelectorAll<HTMLElement>('[data-testid="kb-tool-result-card"]')
+      if (cards.length > 0) card = cards[cards.length - 1]
       node = node.parentElement
     }
     if (!card) return

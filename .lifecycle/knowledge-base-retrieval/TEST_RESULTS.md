@@ -95,3 +95,21 @@ local bridge). Two real shipping bugs were caught by these tests and fixed.
 1. **Citation geometry never persisted on /files/upload** (TEST-32) — fixed in handlers/upload.rs.
 2. **cargo test --lib no longer compiled** (TEST-3) — the reranking param broke 6 argv tests; fixed.
 3. Phase-6 audit fixes: composer selection leak into a new chat; silent attach/detach failure; unclamped highlight page.
+
+## Iteration round 2 — dropped-scope rebuild (FB-1..15) results
+
+npm run check (ui): PASS
+npm run check (desktop/ui): PASS
+
+- **TEST-50**: PASS  (e2e — KB card mirrors ProjectCard typography; run in the KB e2e suite)
+- **TEST-51**: PASS  (e2e — KB list Load More paging)
+- **TEST-52**: PASS  (unit — docToFileEntity adapter; `tsx --test` 11/11)
+- **TEST-53**: PASS  (e2e — doc row renders as the shared FileCard)
+- **TEST-54**: PASS  (e2e — count tag in card title + Add button in extra)
+- **TEST-55**: PASS  (e2e — documents numbered pagination, default 10)
+- **TEST-56**: PASS  (e2e — detail retrieval-mode line + test-retrieval search + used-in)
+- **TEST-57**: PASS  (unit — office extract_geometry empty for spreadsheet + trait default empty; cargo test --lib)
+- **TEST-58**: PASS  (unit — partitionKbUploads itemized reject; `tsx --test`)
+- **TEST-59**: PASS  (unit — citationTokenize `[n]` tokenizer; `tsx --test` 2/2)
+- **TEST-60**: PASS  (e2e — transparency card default-collapsed + toggle; text scroll-to-offset)
+- **TEST-61**: PASS  (gates — check:state-matrix + check:gallery-coverage green after mapping the new KB states)

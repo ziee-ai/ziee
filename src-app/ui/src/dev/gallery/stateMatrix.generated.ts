@@ -983,7 +983,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/utils/CitationChip",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!card", line: 21 },
+      { kind: "branch", condition: "!card", line: 24 },
     ],
   },
   "modules/chat/core/utils/HtmlBlock": {
@@ -2224,25 +2224,25 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel": {
     surface: "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel",
-    requiredStates: ["empty","error"],
+    requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "files.length === 0", line: 59 },
-      { kind: "empty", condition: "accepted.length === 0", line: 78 },
-      { kind: "empty", condition: "n === 0", line: 112 },
-      { kind: "branch", condition: "!el", line: 134 },
-      { kind: "branch", condition: "!hasFiles(e)", line: 139 },
-      { kind: "branch", condition: "!hasFiles(e)", line: 145 },
-      { kind: "branch", condition: "!hasFiles(e)", line: 154 },
-      { kind: "error", condition: "kb && (kb.indexing_summary.no_text > 0 || kb.indexing_summary.failed > 0)", line: 217 },
-      { kind: "branch", condition: "kb.indexing_summary.no_text > 0", line: 219 },
-      { kind: "error", condition: "kb.indexing_summary.failed > 0", line: 232 },
-      { kind: "branch", condition: "selectedFileIds.size > 0", line: 249 },
-      { kind: "branch", condition: "uploadingRows.length > 0", line: 275 },
-      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 290 },
-      { kind: "empty", condition: "documents.length === 0 && uploadingRows.length === 0", line: 294 },
-      { kind: "branch", condition: "isRetryable(doc.index_status)", line: 331 },
-      { kind: "branch", condition: "count > 0", line: 365 },
-      { kind: "branch", condition: "isDragging", line: 386 },
+      { kind: "empty", condition: "files.length === 0", line: 62 },
+      { kind: "empty", condition: "accepted.length === 0", line: 81 },
+      { kind: "empty", condition: "n === 0", line: 115 },
+      { kind: "branch", condition: "!el", line: 137 },
+      { kind: "branch", condition: "!hasFiles(e)", line: 142 },
+      { kind: "branch", condition: "!hasFiles(e)", line: 148 },
+      { kind: "branch", condition: "!hasFiles(e)", line: 157 },
+      { kind: "branch", condition: "kb && (kb.indexing_summary.no_text > 0 || retryablePageCount > 0)", line: 223 },
+      { kind: "branch", condition: "kb.indexing_summary.no_text > 0", line: 225 },
+      { kind: "branch", condition: "retryablePageCount > 0", line: 238 },
+      { kind: "branch", condition: "selectedFileIds.size > 0", line: 255 },
+      { kind: "branch", condition: "uploadingRows.length > 0", line: 281 },
+      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 296 },
+      { kind: "empty", condition: "documents.length === 0 && uploadingRows.length === 0", line: 300 },
+      { kind: "branch", condition: "isRetryable(doc.index_status)", line: 337 },
+      { kind: "branch", condition: "count > 0", line: 371 },
+      { kind: "branch", condition: "isDragging", line: 392 },
     ],
   },
   "modules/knowledge-base/components/KnowledgeBaseFormDrawer": {
@@ -2274,8 +2274,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "kbId", line: 149 },
       { kind: "branch", condition: "usage && (usage.conversations.length > 0 || usage.projects.length > 0)", line: 153 },
       { kind: "branch", condition: "usage.projects.length > 0", line: 155 },
-      { kind: "branch", condition: "usage.conversations.length > 0", line: 170 },
-      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 196 },
+      { kind: "branch", condition: "usage.conversations.length > 0", line: 179 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 214 },
     ],
   },
   "modules/knowledge-base/pages/KnowledgeBasesListPage": {
@@ -4359,7 +4359,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 371 keys.
+ * 370 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4518,7 +4518,6 @@ export type RequiredState =
   | "modules/knowledge-base/chat-extension/extension:panel-open"
   | "modules/knowledge-base/components/KnowledgeBaseCard:open"
   | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty"
-  | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error"
   | "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open"
   | "modules/knowledge-base/components/KnowledgeBaseSearchPanel:empty"
   | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed"
@@ -4892,7 +4891,6 @@ export const REQUIRED_STATE_KEYS = [
   "modules/knowledge-base/chat-extension/extension:panel-open",
   "modules/knowledge-base/components/KnowledgeBaseCard:open",
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty",
-  "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:error",
   "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open",
   "modules/knowledge-base/components/KnowledgeBaseSearchPanel:empty",
   "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed",

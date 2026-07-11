@@ -64,6 +64,9 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
 
     /** Load the read-only KBs inherited from the conversation's project (if any). */
     loadInherited: async (projectId: string | null): Promise<void> => {
+      // Capture the conversation this load is for; a late resolve after the user
+      // switched conversations must not clobber the new one's inherited set.
+      const cid = get().currentConversationId
       if (!projectId) {
         set(draft => {
           draft.inheritedKbIds = new Set()
@@ -73,6 +76,7 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
       try {
         const kbs = await ApiClient.KnowledgeBase.listProject({ pid: projectId })
         set(draft => {
+          if (draft.currentConversationId !== cid) return
           draft.inheritedKbIds = new Set((kbs ?? []).map(kb => kb.id))
         })
       } catch {

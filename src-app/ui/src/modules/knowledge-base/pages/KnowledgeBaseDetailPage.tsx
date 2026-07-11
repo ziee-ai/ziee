@@ -23,6 +23,7 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { KnowledgeBaseDocumentsPanel } from '@/modules/knowledge-base/components/KnowledgeBaseDocumentsPanel'
 import { KnowledgeBaseSearchPanel } from '@/modules/knowledge-base/components/KnowledgeBaseSearchPanel'
+import { KnowledgeBaseFormDrawer } from '@/modules/knowledge-base/components/KnowledgeBaseFormDrawer'
 
 /** Human label for the deployment retrieval mode line. */
 const RETRIEVAL_LABEL: Record<string, string> = {
@@ -30,7 +31,6 @@ const RETRIEVAL_LABEL: Record<string, string> = {
   hybrid: 'Hybrid (semantic + keyword)',
   keyword_only: 'Keyword-only (no embedding model)',
 }
-import { KnowledgeBaseFormDrawer } from '@/modules/knowledge-base/components/KnowledgeBaseFormDrawer'
 
 export function KnowledgeBaseDetailPage() {
   const { kbId } = useParams<{ kbId: string }>()
@@ -158,9 +158,18 @@ export function KnowledgeBaseDetailPage() {
                     {usage.projects.map(p => (
                       <Tag
                         key={p.id}
-                        className="cursor-pointer"
+                        className="cursor-pointer focus-visible:outline focus-visible:outline-2"
                         data-testid={`kb-used-in-project-${p.id}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open project ${p.label}`}
                         onClick={() => navigate(`/projects/${p.id}`)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            navigate(`/projects/${p.id}`)
+                          }
+                        }}
                       >
                         {p.label}
                       </Tag>
@@ -173,9 +182,18 @@ export function KnowledgeBaseDetailPage() {
                     {usage.conversations.map(c => (
                       <Tag
                         key={c.id}
-                        className="cursor-pointer"
+                        className="cursor-pointer focus-visible:outline focus-visible:outline-2"
                         data-testid={`kb-used-in-conversation-${c.id}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open chat ${c.label}`}
                         onClick={() => navigate(`/chat/${c.id}`)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            navigate(`/chat/${c.id}`)
+                          }
+                        }}
                       >
                         {c.label}
                       </Tag>
