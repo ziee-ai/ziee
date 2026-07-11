@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 363 surfaces carry renderable-state signals; 2091 signals total.
+// 365 surfaces carry renderable-state signals; 2126 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -794,12 +794,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ChatMessage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 46 },
-      { kind: "empty", condition: "!message.contents || message.contents.length === 0", line: 54 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 136 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 165 },
-      { kind: "branch", condition: "offerCollapse", line: 191 },
-      { kind: "branch", condition: "isUser", line: 216 },
+      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 54 },
+      { kind: "empty", condition: "contents.length === 0 && !showEmptyCompletionNotice", line: 76 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 158 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 187 },
+      { kind: "branch", condition: "offerCollapse", line: 213 },
+      { kind: "branch", condition: "showEmptyCompletionNotice", line: 233 },
+      { kind: "branch", condition: "isUser", line: 252 },
     ],
   },
   "modules/chat/components/CollapsibleBlock": {
@@ -899,28 +900,28 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/MessageList",
     requiredStates: ["delayed","empty"],
     signals: [
-      { kind: "branch", condition: "!vw || vw <= 0", line: 116 },
-      { kind: "branch", condition: "w <= 0", line: 118 },
-      { kind: "branch", condition: "!el", line: 129 },
-      { kind: "branch", condition: "inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key", line: 263 },
-      { kind: "branch", condition: "!import.meta.env.DEV", line: 295 },
-      { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 369 },
-      { kind: "branch", condition: "!el", line: 378 },
-      { kind: "empty", condition: "count === 0", line: 385 },
-      { kind: "branch", condition: "!el", line: 403 },
-      { kind: "branch", condition: "!item", line: 406 },
-      { kind: "branch", condition: "!msg", line: 408 },
-      { kind: "branch", condition: "!c", line: 414 },
-      { kind: "branch", condition: "virtualize", line: 419 },
-      { kind: "branch", condition: "idx < 0", line: 421 },
-      { kind: "branch", condition: "el && !anchorRestoreNeeded(el.scrollTop, target)", line: 433 },
-      { kind: "branch", condition: "!c", line: 448 },
-      { kind: "branch", condition: "top == null", line: 451 },
-      { kind: "loading", condition: "!loading && count === 0", line: 474 },
-      { kind: "branch", condition: "loadingOlder", line: 500 },
-      { kind: "branch", condition: "virtualize", line: 510 },
-      { kind: "branch", condition: "!msg", line: 525 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 573 },
+      { kind: "branch", condition: "!vw || vw <= 0", line: 117 },
+      { kind: "branch", condition: "w <= 0", line: 119 },
+      { kind: "branch", condition: "!el", line: 130 },
+      { kind: "branch", condition: "inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key", line: 264 },
+      { kind: "branch", condition: "!import.meta.env.DEV", line: 296 },
+      { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 370 },
+      { kind: "branch", condition: "!el", line: 379 },
+      { kind: "empty", condition: "count === 0", line: 386 },
+      { kind: "branch", condition: "!el", line: 404 },
+      { kind: "branch", condition: "!item", line: 407 },
+      { kind: "branch", condition: "!msg", line: 409 },
+      { kind: "branch", condition: "!c", line: 415 },
+      { kind: "branch", condition: "virtualize", line: 420 },
+      { kind: "branch", condition: "idx < 0", line: 422 },
+      { kind: "branch", condition: "el && !anchorRestoreNeeded(el.scrollTop, target)", line: 434 },
+      { kind: "branch", condition: "!c", line: 449 },
+      { kind: "branch", condition: "top == null", line: 452 },
+      { kind: "loading", condition: "!loading && count === 0", line: 475 },
+      { kind: "branch", condition: "loadingOlder", line: 501 },
+      { kind: "branch", condition: "virtualize", line: 511 },
+      { kind: "branch", condition: "!msg", line: 526 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 582 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -961,8 +962,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 23 },
-      { kind: "branch", condition: "isUser", line: 28 },
+      { kind: "branch", condition: "!textData.text", line: 24 },
+      { kind: "branch", condition: "isUser", line: 29 },
     ],
   },
   "modules/chat/components/TitleEditor": {
@@ -1012,6 +1013,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!match", line: 203 },
     ],
   },
+  "modules/chat/core/utils/CitationChip": {
+    surface: "modules/chat/core/utils/CitationChip",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!card", line: 24 },
+    ],
+  },
   "modules/chat/core/utils/HtmlBlock": {
     surface: "modules/chat/core/utils/HtmlBlock",
     requiredStates: [],
@@ -1039,12 +1047,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/core/utils/useStreamdownComponents",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "props.id === 'footnote-label' || props.id === 'user-content-footnote-label'", line: 56 },
-      { kind: "branch", condition: "(rest as Record<string, unknown>)['data-footnotes'] === undefined", line: 73 },
-      { kind: "branch", condition: "className?.includes('data-footnote-backref') || (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined", line: 89 },
-      { kind: "branch", condition: "scopedHref?.startsWith('#')", line: 110 },
-      { kind: "empty", condition: "verdict === 'empty'", line: 176 },
-      { kind: "branch", condition: "verdict === 'allowed'", line: 177 },
+      { kind: "branch", condition: "isFootnoteLabel(props.id)", line: 62 },
+      { kind: "branch", condition: "(rest as Record<string, unknown>)['data-footnotes'] === undefined", line: 78 },
+      { kind: "branch", condition: "citeN !== null", line: 94 },
+      { kind: "branch", condition: "className?.includes('data-footnote-backref') || (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined", line: 98 },
+      { kind: "branch", condition: "scopedHref?.startsWith('#')", line: 115 },
+      { kind: "empty", condition: "verdict === 'empty'", line: 181 },
+      { kind: "branch", condition: "verdict === 'allowed'", line: 182 },
     ],
   },
   "modules/chat/extensions/export/extension": {
@@ -1077,7 +1086,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/extensions/text/components/TextContent",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!textData.text", line: 26 },
+      { kind: "branch", condition: "!textData.text", line: 27 },
     ],
   },
   "modules/chat/extensions/text/components/TextInput": {
@@ -1112,8 +1121,11 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!canDictate", line: 64 },
       { kind: "branch", condition: "!capabilityLoaded || !capability || !capability.enabled", line: 67 },
       { kind: "branch", condition: "!isRecordingSupported()", line: 68 },
-      { kind: "branch", condition: "isRequesting", line: 188 },
-      { kind: "overlay", condition: "<Popover open>", line: 206 },
+      { kind: "branch", condition: "streamingAvailable", line: 89 },
+      { kind: "branch", condition: "liveCaptions", line: 95 },
+      { kind: "branch", condition: "liveCaptions && interimText", line: 175 },
+      { kind: "branch", condition: "isRequesting", line: 229 },
+      { kind: "overlay", condition: "<Popover open>", line: 247 },
     ],
   },
   "modules/chat/pages/ChatHistoryPage": {
@@ -1384,17 +1396,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/chat-extension/components/FileAttachMenuItem",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!canUpload", line: 24 },
+      { kind: "branch", condition: "!canUpload", line: 26 },
     ],
   },
   "modules/file/chat-extension/components/FilePasteHandler": {
     surface: "modules/file/chat-extension/components/FilePasteHandler",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!el", line: 39 },
-      { kind: "branch", condition: "!canUploadRef.current", line: 42 },
-      { kind: "branch", condition: "!dt", line: 44 },
-      { kind: "empty", condition: "collected.length === 0", line: 63 },
+      { kind: "branch", condition: "!el", line: 40 },
+      { kind: "branch", condition: "!canUploadRef.current", line: 43 },
+      { kind: "branch", condition: "!dt", line: 45 },
+      { kind: "empty", condition: "collected.length === 0", line: 64 },
     ],
   },
   "modules/file/chat-extension/components/FilePreviewList": {
@@ -1409,18 +1421,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/chat-extension/components/FileUploadArea",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!el", line: 44 },
-      { kind: "branch", condition: "!canUploadRef.current", line: 48 },
-      { kind: "branch", condition: "!canUploadRef.current", line: 63 },
-      { kind: "empty", condition: "dropped.length === 0", line: 69 },
-      { kind: "branch", condition: "dragging && host", line: 104 },
+      { kind: "branch", condition: "!el", line: 45 },
+      { kind: "branch", condition: "!canUploadRef.current", line: 49 },
+      { kind: "branch", condition: "!canUploadRef.current", line: 64 },
+      { kind: "empty", condition: "dropped.length === 0", line: 70 },
+      { kind: "branch", condition: "dragging && host", line: 107 },
     ],
   },
   "modules/file/chat-extension/components/FileUploadButton": {
     surface: "modules/file/chat-extension/components/FileUploadButton",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!canUpload", line: 22 },
+      { kind: "branch", condition: "!canUpload", line: 23 },
     ],
   },
   "modules/file/chat-extension/components/ImageContent": {
@@ -1611,26 +1623,26 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/file/project-extension/components/ProjectFilesManagePanel",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!projectId", line: 68 },
-      { kind: "empty", condition: "!projectId || selectedFileIds.size === 0", line: 80 },
-      { kind: "empty", condition: "!projectId || incoming.length === 0", line: 104 },
-      { kind: "branch", condition: "atCap", line: 105 },
-      { kind: "empty", condition: "accepted.length === 0", line: 121 },
-      { kind: "branch", condition: "!canUpload", line: 130 },
-      { kind: "branch", condition: "!body", line: 134 },
-      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 145 },
-      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 151 },
-      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 157 },
-      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 161 },
-      { kind: "branch", condition: "!project", line: 183 },
-      { kind: "branch", condition: "canUpload", line: 195 },
-      { kind: "branch", condition: "selectedFileIds.size > 0", line: 230 },
-      { kind: "empty", condition: "!(uploadingRows.length === 0)", line: 256 },
-      { kind: "branch", condition: "initialLoading", line: 278 },
-      { kind: "empty", condition: "files.length === 0", line: 282 },
-      { kind: "branch", condition: "canEdit", line: 312 },
-      { kind: "branch", condition: "atCap", line: 358 },
-      { kind: "branch", condition: "isDragging && drawerBody", line: 371 },
+      { kind: "branch", condition: "!projectId", line: 66 },
+      { kind: "empty", condition: "!projectId || selectedFileIds.size === 0", line: 78 },
+      { kind: "empty", condition: "!projectId || incoming.length === 0", line: 102 },
+      { kind: "branch", condition: "atCap", line: 103 },
+      { kind: "empty", condition: "accepted.length === 0", line: 119 },
+      { kind: "branch", condition: "!canUpload", line: 128 },
+      { kind: "branch", condition: "!body", line: 132 },
+      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 143 },
+      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 149 },
+      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 155 },
+      { kind: "branch", condition: "!Array.from(e.dataTransfer?.types ?? []).includes('Files')", line: 159 },
+      { kind: "branch", condition: "!project", line: 181 },
+      { kind: "branch", condition: "canUpload", line: 193 },
+      { kind: "branch", condition: "selectedFileIds.size > 0", line: 228 },
+      { kind: "empty", condition: "!(uploadingRows.length === 0)", line: 254 },
+      { kind: "branch", condition: "initialLoading", line: 276 },
+      { kind: "empty", condition: "files.length === 0", line: 280 },
+      { kind: "branch", condition: "canEdit", line: 310 },
+      { kind: "branch", condition: "atCap", line: 356 },
+      { kind: "branch", condition: "isDragging && drawerBody", line: 369 },
     ],
   },
   "modules/file/viewers/image/body": {
@@ -1749,10 +1761,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!(e.ctrlKey || e.metaKey)", line: 45 },
       { kind: "branch", condition: "e.key !== 'f' && e.key !== 'F'", line: 46 },
       { kind: "branch", condition: "unfocused || r.host.contains(active)", line: 54 },
-      { kind: "branch", condition: "!supported", line: 133 },
-      { kind: "branch", condition: "!el", line: 135 },
-      { kind: "branch", condition: "supported", line: 146 },
-      { kind: "branch", condition: "active", line: 152 },
+      { kind: "branch", condition: "!supported", line: 139 },
+      { kind: "branch", condition: "!el", line: 141 },
+      { kind: "branch", condition: "supported", line: 152 },
+      { kind: "branch", condition: "active", line: 158 },
     ],
   },
   "modules/file/viewers/tabular/DelimitedTable": {
@@ -2206,32 +2218,39 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/knowledge-base/chat-extension/components/KbMenuItem",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "!canUse || kbs.length === 0", line: 25 },
+      { kind: "branch", condition: "!canUse", line: 32 },
+      { kind: "empty", condition: "kbs.length === 0", line: 50 },
+      { kind: "branch", condition: "kbs.length > 6", line: 69 },
+      { kind: "branch", condition: "status", line: 103 },
+      { kind: "empty", condition: "filtered.length === 0", line: 110 },
     ],
   },
   "modules/knowledge-base/chat-extension/components/KbSourcePanel": {
     surface: "modules/knowledge-base/chat-extension/components/KbSourcePanel",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "cancelled", line: 47 },
-      { kind: "branch", condition: "!file", line: 60 },
+      { kind: "branch", condition: "cancelled", line: 56 },
+      { kind: "branch", condition: "!file", line: 69 },
     ],
   },
   "modules/knowledge-base/chat-extension/components/KbStatusRow": {
     surface: "modules/knowledge-base/chat-extension/components/KbStatusRow",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "!canUse || visibleIds.length === 0", line: 19 },
+      { kind: "empty", condition: "!canUse || (visibleIds.length === 0 && inheritedOnly.length === 0)", line: 23 },
     ],
   },
   "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard": {
     surface: "modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "!isSearchKnowledgeResult(content)", line: 31 },
-      { kind: "branch", condition: "!sc", line: 34 },
-      { kind: "branch", condition: "incomplete", line: 60 },
-      { kind: "empty", condition: "sc.hits.length === 0", line: 68 },
+      { kind: "branch", condition: "!isSearchKnowledgeResult(content)", line: 32 },
+      { kind: "branch", condition: "!sc", line: 35 },
+      { kind: "branch", condition: "expanded", line: 68 },
+      { kind: "branch", condition: "incomplete", line: 83 },
+      { kind: "branch", condition: "!(!expanded)", line: 90 },
+      { kind: "empty", condition: "sc.hits.length === 0", line: 90 },
+      { kind: "branch", condition: "expanded", line: 126 },
     ],
   },
   "modules/knowledge-base/chat-extension/extension": {
@@ -2245,19 +2264,32 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/knowledge-base/components/KnowledgeBaseCard",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "canManage", line: 62 },
-      { kind: "overlay", condition: "<Confirm open>", line: 100 },
-      { kind: "branch", condition: "chip", line: 125 },
+      { kind: "branch", condition: "canManage", line: 64 },
+      { kind: "overlay", condition: "<Confirm open>", line: 102 },
+      { kind: "branch", condition: "chip", line: 127 },
     ],
   },
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel": {
     surface: "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "files.length === 0", line: 27 },
-      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 78 },
-      { kind: "empty", condition: "documents.length === 0", line: 82 },
-      { kind: "branch", condition: "isRetryable(doc.index_status)", line: 109 },
+      { kind: "empty", condition: "files.length === 0", line: 62 },
+      { kind: "empty", condition: "accepted.length === 0", line: 81 },
+      { kind: "empty", condition: "n === 0", line: 115 },
+      { kind: "branch", condition: "!el", line: 137 },
+      { kind: "branch", condition: "!hasFiles(e)", line: 142 },
+      { kind: "branch", condition: "!hasFiles(e)", line: 148 },
+      { kind: "branch", condition: "!hasFiles(e)", line: 157 },
+      { kind: "branch", condition: "kb && (kb.indexing_summary.no_text > 0 || retryablePageCount > 0)", line: 223 },
+      { kind: "branch", condition: "kb.indexing_summary.no_text > 0", line: 225 },
+      { kind: "branch", condition: "retryablePageCount > 0", line: 238 },
+      { kind: "branch", condition: "selectedFileIds.size > 0", line: 255 },
+      { kind: "branch", condition: "uploadingRows.length > 0", line: 281 },
+      { kind: "empty", condition: "documentsLoading && documents.length === 0", line: 296 },
+      { kind: "empty", condition: "documents.length === 0 && uploadingRows.length === 0", line: 300 },
+      { kind: "branch", condition: "isRetryable(doc.index_status)", line: 337 },
+      { kind: "branch", condition: "count > 0", line: 371 },
+      { kind: "branch", condition: "isDragging", line: 392 },
     ],
   },
   "modules/knowledge-base/components/KnowledgeBaseFormDrawer": {
@@ -2269,25 +2301,39 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "canSave", line: 101 },
     ],
   },
+  "modules/knowledge-base/components/KnowledgeBaseSearchPanel": {
+    surface: "modules/knowledge-base/components/KnowledgeBaseSearchPanel",
+    requiredStates: ["empty"],
+    signals: [
+      { kind: "branch", condition: "searchResults", line: 67 },
+      { kind: "branch", condition: "incomplete", line: 73 },
+      { kind: "empty", condition: "searchResults.hits.length === 0", line: 79 },
+    ],
+  },
   "modules/knowledge-base/pages/KnowledgeBaseDetailPage": {
     surface: "modules/knowledge-base/pages/KnowledgeBaseDetailPage",
     requiredStates: ["delayed","open"],
     signals: [
-      { kind: "loading", condition: "loading && !kb", line: 35 },
-      { kind: "branch", condition: "!kb", line: 43 },
-      { kind: "branch", condition: "inProgress > 0", line: 111 },
-      { kind: "branch", condition: "kbId", line: 125 },
-      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 130 },
+      { kind: "loading", condition: "loading && !kb", line: 46 },
+      { kind: "branch", condition: "!kb", line: 54 },
+      { kind: "branch", condition: "inProgress > 0", line: 129 },
+      { kind: "branch", condition: "kbId", line: 143 },
+      { kind: "branch", condition: "kbId", line: 149 },
+      { kind: "branch", condition: "usage && (usage.conversations.length > 0 || usage.projects.length > 0)", line: 153 },
+      { kind: "branch", condition: "usage.projects.length > 0", line: 155 },
+      { kind: "branch", condition: "usage.conversations.length > 0", line: 179 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 214 },
     ],
   },
   "modules/knowledge-base/pages/KnowledgeBasesListPage": {
     surface: "modules/knowledge-base/pages/KnowledgeBasesListPage",
     requiredStates: ["delayed","error","open"],
     signals: [
-      { kind: "branch", condition: "kbs.length > 0", line: 63 },
-      { kind: "loading", condition: "loading", line: 78 },
-      { kind: "error", condition: "error", line: 82 },
-      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 113 },
+      { kind: "branch", condition: "kbs.length > 0", line: 69 },
+      { kind: "branch", condition: "hasMore", line: 96 },
+      { kind: "loading", condition: "loading", line: 107 },
+      { kind: "error", condition: "error", line: 111 },
+      { kind: "overlay", condition: "<KnowledgeBaseFormDrawer open>", line: 142 },
     ],
   },
   "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview": {
@@ -2766,9 +2812,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "grayed", line: 15 },
-      { kind: "branch", condition: "!grayed", line: 30 },
-      { kind: "branch", condition: "help", line: 60 },
+      { kind: "branch", condition: "grayed", line: 19 },
+      { kind: "branch", condition: "!grayed", line: 40 },
+      { kind: "branch", condition: "help", line: 156 },
+      { kind: "branch", condition: "help", line: 203 },
     ],
   },
   "modules/llm-provider/components/llm-models/shared/LlmModelParametersSection": {
@@ -4001,10 +4048,10 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/voice/components/VoiceConfigCard",
     requiredStates: ["error"],
     signals: [
-      { kind: "branch", condition: "loadingSettings && !settings", line: 116 },
-      { kind: "error", condition: "error && !settings", line: 124 },
-      { kind: "branch", condition: "canManage", line: 143 },
-      { kind: "branch", condition: "!canManage", line: 154 },
+      { kind: "branch", condition: "loadingSettings && !settings", line: 128 },
+      { kind: "error", condition: "error && !settings", line: 136 },
+      { kind: "branch", condition: "canManage", line: 155 },
+      { kind: "branch", condition: "!canManage", line: 166 },
     ],
   },
   "modules/voice/components/VoiceInstanceCard": {
@@ -4360,7 +4407,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 370 keys.
+ * 371 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4521,6 +4568,7 @@ export type RequiredState =
   | "modules/knowledge-base/components/KnowledgeBaseCard:open"
   | "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty"
   | "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open"
+  | "modules/knowledge-base/components/KnowledgeBaseSearchPanel:empty"
   | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed"
   | "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open"
   | "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed"
@@ -4894,6 +4942,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/knowledge-base/components/KnowledgeBaseCard:open",
   "modules/knowledge-base/components/KnowledgeBaseDocumentsPanel:empty",
   "modules/knowledge-base/components/KnowledgeBaseFormDrawer:open",
+  "modules/knowledge-base/components/KnowledgeBaseSearchPanel:empty",
   "modules/knowledge-base/pages/KnowledgeBaseDetailPage:delayed",
   "modules/knowledge-base/pages/KnowledgeBaseDetailPage:open",
   "modules/knowledge-base/pages/KnowledgeBasesListPage:delayed",

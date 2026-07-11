@@ -11,7 +11,8 @@
 //!
 //! Coverage — the consumer wiring the crate's Tier-1 unit tests can't reach:
 //!   * sampling: `model.parameters` reach the wire; OpenAI omits `top_k`; empty
-//!     params fall back to the temperature/max_tokens defaults.
+//!     params OMIT temperature (no forced default) but still default max_tokens;
+//!     a `supports_sampling_params:false` row override omits sampling end-to-end.
 //!   * thinking: registry-gated enable emits `reasoning_effort` (+ non-streaming
 //!     for gpt-5); an unknown model gets no thinking; a model's `reasoning_content`
 //!     is persisted as a thinking content block with `ThinkingMetadata.token_count`.
@@ -190,18 +191,97 @@ async fn model_params_reach_provider_request() {
     );
 }
 
+// TEST-16: empty params OMIT temperature (never force-injected) but still
+// default max_tokens (a required field).
 #[tokio::test]
-async fn empty_model_params_fall_back_to_defaults() {
+async fn empty_model_params_omit_temperature_and_default_max_tokens() {
     let (stub, _turn) = run_turn("default_user", StubPlan::default(), "stub-model", None).await;
 
     let req = stub.last_request();
-    // 0.7 is not exact in f32 — assert ~0.7 rather than exact-eq.
-    let temp = req["temperature"].as_f64().expect("temperature present");
     assert!(
-        (temp - 0.7).abs() < 1e-4,
-        "default temperature should be ~0.7, got {temp}"
+        req.get("temperature").is_none(),
+        "temperature must be omitted when the user set none, got: {req}"
     );
     assert_eq!(req["max_tokens"], 8192, "default max_tokens");
+}
+
+// TEST-18: a DB-row capability override (`supports_sampling_params: false`)
+// omits sampling on the wire END-TO-END, even for a model the catalog/family
+// would allow — the row is the top-priority source of the parameter contract.
+#[tokio::test]
+async fn row_override_omits_sampling_end_to_end() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "row_override_user", chat_perms()).await;
+    let stub = StubChat::start(StubPlan::default()).await;
+
+    // Admin creates a custom(→openai) provider + a model with the override set,
+    // AND a configured temperature that would otherwise be sent.
+    let admin = create_user_with_permissions(
+        &server,
+        "row_override_admin",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let provider: Value = client
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": format!("RowOverride {}", &Uuid::new_v4().to_string()[..8]),
+            "provider_type": "custom",
+            "enabled": true,
+            "api_key": "test",
+            "base_url": stub.base_url(),
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let model: Value = client
+        .post(server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "provider_id": provider["id"],
+            "name": "restricted-stub",
+            "display_name": "Restricted Stub",
+            "enabled": true,
+            "engine_type": "none",
+            "file_format": "gguf",
+            "capabilities": { "chat": true, "supports_sampling_params": false },
+            "parameters": { "temperature": 0.5, "top_p": 0.25 }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    helpers::ensure_user_has_model_access(&server, &user.user_id, &model).await;
+    let model_id = parse_uuid(&model["id"]);
+
+    let conversation =
+        create_conversation(&server, &user.token, Some(model_id), Some("preset")).await;
+    let conv_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+    let _turn = send_and_collect(&server, &user.token, conv_id, branch_id, model_id, "hi").await;
+    drop(server);
+
+    let req = stub.last_request();
+    assert!(
+        req.get("temperature").is_none(),
+        "row override supports_sampling_params=false must omit temperature, got: {req}"
+    );
+    assert!(
+        req.get("top_p").is_none(),
+        "row override must omit top_p too, got: {req}"
+    );
 }
 
 // ── T1: thinking enable/disable + persistence ─────────────────────────────
@@ -303,6 +383,73 @@ async fn cache_read_tokens_surface_on_complete_frame() {
     assert_eq!(
         complete.data["usage"]["cache_read_input_tokens"], 30,
         "cached_tokens should surface as cache_read_input_tokens on complete, got: {}",
+        complete.data
+    );
+}
+
+// ── Empty-completion guard ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn empty_completion_reports_finish_reason_empty() {
+    // The model streams reasoning but NO answer text and NO tool call — the
+    // "silent stop" case. The terminal `complete` frame must carry
+    // finish_reason "empty" (not a bare "stop"), and NO `error` frame is
+    // emitted (an empty completion is a benign notice, not a hard error).
+    let plan = StubPlan::text("").with_reasoning("thinking, but I produced no answer", 5);
+    let (_stub, turn) = run_turn("empty_completion_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "empty",
+        "a reasoning-only / no-tool-call turn must report finish_reason \"empty\", got: {}",
+        complete.data
+    );
+    assert!(
+        turn.frames.iter().all(|f| f.event_type != "error"),
+        "no error frame should be emitted for an empty completion, got frames: {:?}",
+        turn.frames.iter().map(|f| &f.event_type).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn fully_empty_completion_reports_finish_reason_empty() {
+    // Harsher variant: NO answer text, NO reasoning, NO tool call — the model
+    // returned a completely empty completion. `finalize` persists zero content
+    // blocks; the guard must still report finish_reason "empty".
+    let plan = StubPlan::text("");
+    let (_stub, turn) = run_turn("fully_empty_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "empty",
+        "a fully-empty completion must report finish_reason \"empty\", got: {}",
+        complete.data
+    );
+}
+
+#[tokio::test]
+async fn normal_text_completion_reports_stop() {
+    // Control: a turn that DID produce answer text keeps the provider's normal
+    // terminal finish_reason ("stop") — the empty-completion guard must not fire.
+    let plan = StubPlan::text("here is the answer");
+    let (_stub, turn) = run_turn("normal_completion_user", plan, "stub-model", None).await;
+
+    let complete = turn
+        .frames
+        .iter()
+        .find(|f| f.event_type == "complete")
+        .expect("a complete frame");
+    assert_eq!(
+        complete.data["finish_reason"], "stop",
+        "a normal text turn must keep finish_reason \"stop\", got: {}",
         complete.data
     );
 }

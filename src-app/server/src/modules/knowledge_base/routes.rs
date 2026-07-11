@@ -38,6 +38,19 @@ pub fn knowledge_base_router() -> ApiRouter {
             "/knowledge-bases/{id}/documents/{file_id}/reindex",
             post_with(handlers::reindex_document, handlers::reindex_document_docs),
         )
+        // Detail-page: verify retrieval + deployment retrieval mode + "used in".
+        .api_route(
+            "/knowledge-base/retrieval-info",
+            get_with(handlers::retrieval_info, handlers::retrieval_info_docs),
+        )
+        .api_route(
+            "/knowledge-bases/{id}/search",
+            post_with(handlers::search_kb, handlers::search_kb_docs),
+        )
+        .api_route(
+            "/knowledge-bases/{id}/usage",
+            get_with(handlers::kb_usage, handlers::kb_usage_docs),
+        )
         // Attach to conversation / project (+ list attached).
         .api_route(
             "/conversations/{cid}/knowledge-bases",

@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **363** surfaces carry at least one renderable-state signal.
-- **2091** signals total: 1646 branch, 130 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **365** surfaces carry at least one renderable-state signal.
+- **2126** signals total: 1677 branch, 134 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 96 |
-| `empty` | 104 |
+| `empty` | 105 |
 | `error` | 87 |
 | `open` | 80 |
 | `panel-open` | 3 |
@@ -911,12 +911,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 46 |
-| empty | `!message.contents \|\| message.contents.length === 0` | 54 |
-| branch | `attachmentBlocks.length > 0` | 136 |
-| branch | `bubbleBlocks.length > 0` | 165 |
-| branch | `offerCollapse` | 191 |
-| branch | `isUser` | 216 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 54 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 76 |
+| branch | `attachmentBlocks.length > 0` | 158 |
+| branch | `bubbleBlocks.length > 0` | 187 |
+| branch | `offerCollapse` | 213 |
+| branch | `showEmptyCompletionNotice` | 233 |
+| branch | `isUser` | 252 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1026,28 +1027,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 116 |
-| branch | `w <= 0` | 118 |
-| branch | `!el` | 129 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 263 |
-| branch | `!import.meta.env.DEV` | 295 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 369 |
-| branch | `!el` | 378 |
-| empty | `count === 0` | 385 |
-| branch | `!el` | 403 |
-| branch | `!item` | 406 |
-| branch | `!msg` | 408 |
-| branch | `!c` | 414 |
-| branch | `virtualize` | 419 |
-| branch | `idx < 0` | 421 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 433 |
-| branch | `!c` | 448 |
-| branch | `top == null` | 451 |
-| loading | `!loading && count === 0` | 474 |
-| branch | `loadingOlder` | 500 |
-| branch | `virtualize` | 510 |
-| branch | `!msg` | 525 |
-| loading | `(loading \|\| isStreaming)` | 573 |
+| branch | `!vw \|\| vw <= 0` | 117 |
+| branch | `w <= 0` | 119 |
+| branch | `!el` | 130 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 264 |
+| branch | `!import.meta.env.DEV` | 296 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 370 |
+| branch | `!el` | 379 |
+| empty | `count === 0` | 386 |
+| branch | `!el` | 404 |
+| branch | `!item` | 407 |
+| branch | `!msg` | 409 |
+| branch | `!c` | 415 |
+| branch | `virtualize` | 420 |
+| branch | `idx < 0` | 422 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 434 |
+| branch | `!c` | 449 |
+| branch | `top == null` | 452 |
+| loading | `!loading && count === 0` | 475 |
+| branch | `loadingOlder` | 501 |
+| branch | `virtualize` | 511 |
+| branch | `!msg` | 526 |
+| loading | `(loading \|\| isStreaming)` | 582 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1093,8 +1094,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 23 |
-| branch | `isUser` | 28 |
+| branch | `!textData.text` | 24 |
+| branch | `isUser` | 29 |
 
 ### `modules/chat/components/TitleEditor`
 
@@ -1148,6 +1149,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `!match` | 203 |
 
+### `modules/chat/core/utils/CitationChip`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!card` | 24 |
+
 ### `modules/chat/core/utils/HtmlBlock`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -1180,12 +1189,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `props.id === 'footnote-label' \|\| props.id === 'user-content-footnote-label'` | 56 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 73 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 89 |
-| branch | `scopedHref?.startsWith('#')` | 110 |
-| empty | `verdict === 'empty'` | 176 |
-| branch | `verdict === 'allowed'` | 177 |
+| branch | `isFootnoteLabel(props.id)` | 62 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 78 |
+| branch | `citeN !== null` | 94 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 98 |
+| branch | `scopedHref?.startsWith('#')` | 115 |
+| empty | `verdict === 'empty'` | 181 |
+| branch | `verdict === 'allowed'` | 182 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1222,7 +1232,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 26 |
+| branch | `!textData.text` | 27 |
 
 ### `modules/chat/extensions/text/components/TextInput`
 
@@ -1261,8 +1271,11 @@ Required states: `open`
 | branch | `!canDictate` | 64 |
 | branch | `!capabilityLoaded \|\| !capability \|\| !capability.enabled` | 67 |
 | branch | `!isRecordingSupported()` | 68 |
-| branch | `isRequesting` | 188 |
-| overlay | `<Popover open>` | 206 |
+| branch | `streamingAvailable` | 89 |
+| branch | `liveCaptions` | 95 |
+| branch | `liveCaptions && interimText` | 175 |
+| branch | `isRequesting` | 229 |
+| overlay | `<Popover open>` | 247 |
 
 ### `modules/chat/pages/ChatHistoryPage`
 
@@ -1556,7 +1569,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canUpload` | 24 |
+| branch | `!canUpload` | 26 |
 
 ### `modules/file/chat-extension/components/FilePasteHandler`
 
@@ -1564,10 +1577,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 39 |
-| branch | `!canUploadRef.current` | 42 |
-| branch | `!dt` | 44 |
-| empty | `collected.length === 0` | 63 |
+| branch | `!el` | 40 |
+| branch | `!canUploadRef.current` | 43 |
+| branch | `!dt` | 45 |
+| empty | `collected.length === 0` | 64 |
 
 ### `modules/file/chat-extension/components/FilePreviewList`
 
@@ -1584,11 +1597,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 44 |
-| branch | `!canUploadRef.current` | 48 |
-| branch | `!canUploadRef.current` | 63 |
-| empty | `dropped.length === 0` | 69 |
-| branch | `dragging && host` | 104 |
+| branch | `!el` | 45 |
+| branch | `!canUploadRef.current` | 49 |
+| branch | `!canUploadRef.current` | 64 |
+| empty | `dropped.length === 0` | 70 |
+| branch | `dragging && host` | 107 |
 
 ### `modules/file/chat-extension/components/FileUploadButton`
 
@@ -1596,7 +1609,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canUpload` | 22 |
+| branch | `!canUpload` | 23 |
 
 ### `modules/file/chat-extension/components/ImageContent`
 
@@ -1803,26 +1816,26 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!projectId` | 68 |
-| empty | `!projectId \|\| selectedFileIds.size === 0` | 80 |
-| empty | `!projectId \|\| incoming.length === 0` | 104 |
-| branch | `atCap` | 105 |
-| empty | `accepted.length === 0` | 121 |
-| branch | `!canUpload` | 130 |
-| branch | `!body` | 134 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 145 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 151 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 157 |
-| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 161 |
-| branch | `!project` | 183 |
-| branch | `canUpload` | 195 |
-| branch | `selectedFileIds.size > 0` | 230 |
-| empty | `!(uploadingRows.length === 0)` | 256 |
-| branch | `initialLoading` | 278 |
-| empty | `files.length === 0` | 282 |
-| branch | `canEdit` | 312 |
-| branch | `atCap` | 358 |
-| branch | `isDragging && drawerBody` | 371 |
+| branch | `!projectId` | 66 |
+| empty | `!projectId \|\| selectedFileIds.size === 0` | 78 |
+| empty | `!projectId \|\| incoming.length === 0` | 102 |
+| branch | `atCap` | 103 |
+| empty | `accepted.length === 0` | 119 |
+| branch | `!canUpload` | 128 |
+| branch | `!body` | 132 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 143 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 149 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 155 |
+| branch | `!Array.from(e.dataTransfer?.types ?? []).includes('Files')` | 159 |
+| branch | `!project` | 181 |
+| branch | `canUpload` | 193 |
+| branch | `selectedFileIds.size > 0` | 228 |
+| empty | `!(uploadingRows.length === 0)` | 254 |
+| branch | `initialLoading` | 276 |
+| empty | `files.length === 0` | 280 |
+| branch | `canEdit` | 310 |
+| branch | `atCap` | 356 |
+| branch | `isDragging && drawerBody` | 369 |
 
 ### `modules/file/viewers/image/body`
 
@@ -1950,10 +1963,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `!(e.ctrlKey \|\| e.metaKey)` | 45 |
 | branch | `e.key !== 'f' && e.key !== 'F'` | 46 |
 | branch | `unfocused \|\| r.host.contains(active)` | 54 |
-| branch | `!supported` | 133 |
-| branch | `!el` | 135 |
-| branch | `supported` | 146 |
-| branch | `active` | 152 |
+| branch | `!supported` | 139 |
+| branch | `!el` | 141 |
+| branch | `supported` | 152 |
+| branch | `active` | 158 |
 
 ### `modules/file/viewers/tabular/DelimitedTable`
 
@@ -2439,7 +2452,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!canUse \|\| kbs.length === 0` | 25 |
+| branch | `!canUse` | 32 |
+| empty | `kbs.length === 0` | 50 |
+| branch | `kbs.length > 6` | 69 |
+| branch | `status` | 103 |
+| empty | `filtered.length === 0` | 110 |
 
 ### `modules/knowledge-base/chat-extension/components/KbSourcePanel`
 
@@ -2447,8 +2464,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `cancelled` | 47 |
-| branch | `!file` | 60 |
+| branch | `cancelled` | 56 |
+| branch | `!file` | 69 |
 
 ### `modules/knowledge-base/chat-extension/components/KbStatusRow`
 
@@ -2456,7 +2473,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!canUse \|\| visibleIds.length === 0` | 19 |
+| empty | `!canUse \|\| (visibleIds.length === 0 && inheritedOnly.length === 0)` | 23 |
 
 ### `modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard`
 
@@ -2464,10 +2481,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isSearchKnowledgeResult(content)` | 31 |
-| branch | `!sc` | 34 |
-| branch | `incomplete` | 60 |
-| empty | `sc.hits.length === 0` | 68 |
+| branch | `!isSearchKnowledgeResult(content)` | 32 |
+| branch | `!sc` | 35 |
+| branch | `expanded` | 68 |
+| branch | `incomplete` | 83 |
+| branch | `!(!expanded)` | 90 |
+| empty | `sc.hits.length === 0` | 90 |
+| branch | `expanded` | 126 |
 
 ### `modules/knowledge-base/chat-extension/extension`
 
@@ -2483,9 +2503,9 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `canManage` | 62 |
-| overlay | `<Confirm open>` | 100 |
-| branch | `chip` | 125 |
+| branch | `canManage` | 64 |
+| overlay | `<Confirm open>` | 102 |
+| branch | `chip` | 127 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseDocumentsPanel`
 
@@ -2493,10 +2513,23 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `files.length === 0` | 27 |
-| empty | `documentsLoading && documents.length === 0` | 78 |
-| empty | `documents.length === 0` | 82 |
-| branch | `isRetryable(doc.index_status)` | 109 |
+| empty | `files.length === 0` | 62 |
+| empty | `accepted.length === 0` | 81 |
+| empty | `n === 0` | 115 |
+| branch | `!el` | 137 |
+| branch | `!hasFiles(e)` | 142 |
+| branch | `!hasFiles(e)` | 148 |
+| branch | `!hasFiles(e)` | 157 |
+| branch | `kb && (kb.indexing_summary.no_text > 0 \|\| retryablePageCount > 0)` | 223 |
+| branch | `kb.indexing_summary.no_text > 0` | 225 |
+| branch | `retryablePageCount > 0` | 238 |
+| branch | `selectedFileIds.size > 0` | 255 |
+| branch | `uploadingRows.length > 0` | 281 |
+| empty | `documentsLoading && documents.length === 0` | 296 |
+| empty | `documents.length === 0 && uploadingRows.length === 0` | 300 |
+| branch | `isRetryable(doc.index_status)` | 337 |
+| branch | `count > 0` | 371 |
+| branch | `isDragging` | 392 |
 
 ### `modules/knowledge-base/components/KnowledgeBaseFormDrawer`
 
@@ -2508,17 +2541,31 @@ Required states: `open`
 | overlay | `<Drawer open>` | 84 |
 | branch | `canSave` | 101 |
 
+### `modules/knowledge-base/components/KnowledgeBaseSearchPanel`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `searchResults` | 67 |
+| branch | `incomplete` | 73 |
+| empty | `searchResults.hits.length === 0` | 79 |
+
 ### `modules/knowledge-base/pages/KnowledgeBaseDetailPage`
 
 Required states: `delayed`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && !kb` | 35 |
-| branch | `!kb` | 43 |
-| branch | `inProgress > 0` | 111 |
-| branch | `kbId` | 125 |
-| overlay | `<KnowledgeBaseFormDrawer open>` | 130 |
+| loading | `loading && !kb` | 46 |
+| branch | `!kb` | 54 |
+| branch | `inProgress > 0` | 129 |
+| branch | `kbId` | 143 |
+| branch | `kbId` | 149 |
+| branch | `usage && (usage.conversations.length > 0 \|\| usage.projects.length > 0)` | 153 |
+| branch | `usage.projects.length > 0` | 155 |
+| branch | `usage.conversations.length > 0` | 179 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 214 |
 
 ### `modules/knowledge-base/pages/KnowledgeBasesListPage`
 
@@ -2526,10 +2573,11 @@ Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `kbs.length > 0` | 63 |
-| loading | `loading` | 78 |
-| error | `error` | 82 |
-| overlay | `<KnowledgeBaseFormDrawer open>` | 113 |
+| branch | `kbs.length > 0` | 69 |
+| branch | `hasMore` | 96 |
+| loading | `loading` | 107 |
+| error | `error` | 111 |
+| overlay | `<KnowledgeBaseFormDrawer open>` | 142 |
 
 ### `modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesInlinePreview`
 
@@ -3045,9 +3093,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `grayed` | 15 |
-| branch | `!grayed` | 30 |
-| branch | `help` | 60 |
+| branch | `grayed` | 19 |
+| branch | `!grayed` | 40 |
+| branch | `help` | 156 |
+| branch | `help` | 203 |
 
 ### `modules/llm-provider/components/llm-models/shared/LlmModelParametersSection`
 
@@ -4381,10 +4430,10 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `loadingSettings && !settings` | 116 |
-| error | `error && !settings` | 124 |
-| branch | `canManage` | 143 |
-| branch | `!canManage` | 154 |
+| branch | `loadingSettings && !settings` | 128 |
+| error | `error && !settings` | 136 |
+| branch | `canManage` | 155 |
+| branch | `!canManage` | 166 |
 
 ### `modules/voice/components/VoiceInstanceCard`
 

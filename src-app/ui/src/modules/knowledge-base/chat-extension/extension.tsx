@@ -92,6 +92,10 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     const store = Stores.KnowledgeBaseComposer
     store.setCurrentConversation(conversation.id)
     if (conversation.id) await store.loadForConversation(conversation.id)
+    // Read-only KBs inherited from the conversation's project (scope legibility).
+    void store.loadInherited(
+      (conversation as { project_id?: string | null }).project_id ?? null,
+    )
   },
 
   onMessageSent: async () => {

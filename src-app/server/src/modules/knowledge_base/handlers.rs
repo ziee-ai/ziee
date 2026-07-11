@@ -22,8 +22,9 @@ use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 use super::models::{
-    AttachDocumentsRequest, AttachDocumentsResult, CreateKnowledgeBaseRequest, KnowledgeBase,
-    KnowledgeBaseDocument, UpdateKnowledgeBaseRequest,
+    AttachDocumentsRequest, AttachDocumentsResult, CreateKnowledgeBaseRequest, IndexingIncomplete,
+    KnowledgeBase, KnowledgeBaseDocument, KnowledgeBaseSearchRequest, KnowledgeBaseSearchResponse,
+    KnowledgeBaseUsage, KnowledgeSearchHit, RetrievalInfo, UpdateKnowledgeBaseRequest, UsageRef,
 };
 use super::permissions::{KnowledgeBaseManage, KnowledgeBaseUse};
 
@@ -424,6 +425,129 @@ pub async fn reindex_document(
 }
 pub fn reindex_document_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.reindexDocument").summary("Retry indexing a KB document.")
+}
+
+// ── detail-page: verify retrieval + retrieval mode + "used in" (FB-8) ────
+
+/// Deployment-wide retrieval capability so the detail page can show the mode
+/// line. Owner-agnostic (reads the shared file_rag settings) but gated on `use`.
+pub async fn retrieval_info(
+    _auth: RequirePermissions<(KnowledgeBaseUse,)>,
+) -> ApiResult<Json<RetrievalInfo>> {
+    let admin = Repos.file_rag.get_admin_settings().await?;
+    let embedding_configured = admin.semantic_enabled && admin.embedding_model_id.is_some();
+    let rerank_enabled = admin.rerank_enabled && admin.reranker_model_id.is_some();
+    let mode = if !embedding_configured {
+        "keyword_only"
+    } else if rerank_enabled {
+        "hybrid_rerank"
+    } else {
+        "hybrid"
+    };
+    Ok((
+        StatusCode::OK,
+        Json(RetrievalInfo {
+            mode: mode.to_string(),
+            embedding_configured,
+            rerank_enabled,
+        }),
+    ))
+}
+pub fn retrieval_info_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.retrievalInfo")
+        .summary("Deployment retrieval mode (hybrid/rerank/keyword) for the KB detail page.")
+        .response::<200, Json<RetrievalInfo>>()
+}
+
+/// Direct KB search — the REST mirror of the `search_knowledge` MCP tool scoped
+/// to ONE owned KB, so a user can verify retrieval on the detail page.
+pub async fn search_kb(
+    auth: RequirePermissions<(KnowledgeBaseUse,)>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<KnowledgeBaseSearchRequest>,
+) -> ApiResult<Json<KnowledgeBaseSearchResponse>> {
+    let user_id = auth.user.id;
+    if !Repos.knowledge_base.owns(user_id, id).await? {
+        return Err(AppError::not_found("KnowledgeBase").into());
+    }
+    let scope_ids = Repos.knowledge_base.resolve_scope_file_ids(user_id, &[id]).await?;
+    let admin = Repos.file_rag.get_admin_settings().await?;
+    let max_top_k = admin.search_max_top_k as i64;
+    let top_k = body.top_k.unwrap_or(admin.default_top_k as i64).clamp(1, max_top_k);
+    let max_hit_chars = admin.search_max_hit_chars as usize;
+
+    let result = crate::modules::file_rag::retrieval::semantic_search(
+        &scope_ids, user_id, &body.query, top_k, &admin,
+    )
+    .await?;
+
+    let file_ids: Vec<Uuid> = result.hits.iter().map(|h| h.file_id).collect();
+    let names = Repos.knowledge_base.filenames_for(user_id, &file_ids).await?;
+    let searchable = scope_ids.len() as i64
+        - Repos
+            .knowledge_base
+            .documents_without_chunks(user_id, &scope_ids)
+            .await?
+            .len() as i64;
+    let total = scope_ids.len() as i64;
+
+    let hits = result
+        .hits
+        .iter()
+        .map(|h| KnowledgeSearchHit {
+            file_id: h.file_id,
+            filename: names.get(&h.file_id).cloned().unwrap_or_default(),
+            page_number: h.page_number,
+            char_start: h.char_start,
+            char_end: h.char_end,
+            score: h.score,
+            content: h.content.chars().take(max_hit_chars).collect(),
+        })
+        .collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(KnowledgeBaseSearchResponse {
+            hits,
+            mode: format!("{:?}", result.mode),
+            indexing_incomplete: IndexingIncomplete { searchable, total },
+        }),
+    ))
+}
+pub fn search_kb_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.search")
+        .summary("Search one KB directly (verify retrieval on the detail page).")
+        .response::<200, Json<KnowledgeBaseSearchResponse>>()
+}
+
+/// The conversations + projects a KB is attached to (owner-scoped), for the
+/// "Used in" card.
+pub async fn kb_usage(
+    auth: RequirePermissions<(KnowledgeBaseUse,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<KnowledgeBaseUsage>> {
+    if !Repos.knowledge_base.owns(auth.user.id, id).await? {
+        return Err(AppError::not_found("KnowledgeBase").into());
+    }
+    let (convs, projs) = Repos
+        .knowledge_base
+        .kb_attachment_targets(auth.user.id, id)
+        .await?;
+    Ok((
+        StatusCode::OK,
+        Json(KnowledgeBaseUsage {
+            conversations: convs.into_iter().map(|(id, label)| UsageRef { id, label }).collect(),
+            projects: projs.into_iter().map(|(id, label)| UsageRef { id, label }).collect(),
+        }),
+    ))
+}
+pub fn kb_usage_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.usage")
+        .summary("Conversations + projects this KB is attached to (Used in).")
+        .response::<200, Json<KnowledgeBaseUsage>>()
 }
 
 // ── attach to conversation / project ────────────────────────────────────

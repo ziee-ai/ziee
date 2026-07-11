@@ -476,6 +476,14 @@ async fn setup_server(
     );
     tracing::info!("JWT service initialized");
 
+    // Capture the per-file upload cap (bytes) before building the router, so the
+    // upload routes' per-route body-limit layer and the upload handler share one
+    // source of truth. (main.rs sets this too; setup_server sets it here so every
+    // caller — incl. desktop — honors the configured cap regardless of ordering.)
+    core::set_max_file_upload_bytes(
+        (config.server.max_file_upload_mb as usize).saturating_mul(1024 * 1024),
+    );
+
     // Build API router with all module routes
     let (api_router, mut api_doc) = core::app_builder::build_api_router(
         &modules,

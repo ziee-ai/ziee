@@ -113,6 +113,13 @@ function glob(prefix) {
 const RE_ITEM = /^-\s*\*\*(ITEM-[A-Za-z0-9._-]+)\*\*\s*:\s*(.+?)\s*$/;
 // AUDIT line:  - **ITEM-3** — verdict: PASS — rationale     (dash may be - or — or :)
 const RE_AUDIT = /^-\s*\*\*(ITEM-[A-Za-z0-9._-]+)\*\*.*?verdict\s*:\s*(PASS|CONCERN|BLOCKED)\b(.*)$/i;
+// FB-7 plan-coverage: a PLAN item may be DESCOPED (cut this round) instead of
+// implemented+tested — but only with recorded human approval, never silently.
+// PLAN marker:      - **ITEM-30**: [DESCOPED] <what was cut>
+const RE_ITEM_DESCOPED = /\[\s*DESCOPED\b/i;
+// DECISIONS approval: - DESCOPED: ITEM-30 — <reason> [approved: <who/how>]
+const RE_DECISION_DESCOPE = /^\s*-?\s*DESCOPED\s*:\s*(ITEM-[A-Za-z0-9._-]+)\b(.*)$/i;
+const RE_DESCOPE_APPROVED = /\[\s*approved\b|·\s*approved\b|\bhuman[-\s]approved\b|\bapproved\s*:/i;
 // TEST line:   - **TEST-2** (tier: integration) [covers: ITEM-1, ITEM-3] file: `x` — asserts: y
 const RE_TEST_ID = /\*\*(TEST-[A-Za-z0-9._-]+)\*\*/;
 const RE_TEST_TIER = /tier\s*:\s*(unit|integration|e2e)\b/i;
@@ -158,6 +165,28 @@ function parseTests() {
     tests.push({ id: idm[1], tier, covers, file: file && file.trim(), asserts: asserts && asserts.trim(), negPerm, line: ln });
   }
   return tests;
+}
+// FB-7: PLAN items explicitly marked [DESCOPED] (cut from this round's build).
+function parseDescopedPlanItems() {
+  const t = read('PLAN.md');
+  if (t == null) return new Set();
+  const s = new Set();
+  for (const ln of t.split(/\r?\n/)) {
+    const m = RE_ITEM.exec(ln);
+    if (m && RE_ITEM_DESCOPED.test(ln)) s.add(m[1]);
+  }
+  return s;
+}
+// FB-7: descope dispositions recorded in DECISIONS.md, split by whether they
+// carry a human-approval token ([approved: …] / · approved / human-approved).
+function parseApprovedDescopes() {
+  const t = read('DECISIONS.md') || '';
+  const approved = new Set(), unapproved = new Set();
+  for (const ln of t.split(/\r?\n/)) {
+    const m = RE_DECISION_DESCOPE.exec(ln);
+    if (m) (RE_DESCOPE_APPROVED.test(m[2]) ? approved : unapproved).add(m[1]);
+  }
+  return { approved, unapproved };
 }
 
 // ---------------------------------------------------------------------------
@@ -639,8 +668,19 @@ function phase3() {
       else covered.add(c);
     }
   }
+  // FB-7 plan-coverage gate: every PLAN ITEM must be either (a) covered by an
+  // enumerated TEST, or (b) explicitly DESCOPED with recorded human approval in
+  // DECISIONS.md. An item that is neither — silently dropped — FAILS. This closes
+  // the hole where a "green" feature shipped with planned sub-features absent.
+  const descoped = parseDescopedPlanItems();
+  const { approved: descApproved } = parseApprovedDescopes();
   for (const id of items.keys()) {
-    if (!covered.has(id)) g.push(`TESTS.md: ${id} is not covered by any TEST (bipartite completeness fails)`);
+    if (descoped.has(id)) {
+      if (!descApproved.has(id))
+        g.push(`PLAN.md: ${id} is marked [DESCOPED] but DECISIONS.md has no approved "DESCOPED: ${id} … [approved: …]" disposition — cutting a planned item requires recorded human sign-off, never a silent omission (FB-7 plan-coverage gate).`);
+      continue; // a human-approved descope is exempt from test coverage
+    }
+    if (!covered.has(id)) g.push(`TESTS.md: ${id} is not covered by any TEST (bipartite completeness fails) — implement + cover it, or mark it [DESCOPED] in PLAN.md with an approved DECISIONS.md disposition (FB-7).`);
   }
   // Frontend work MUST enumerate ≥1 e2e-tier test. Detect a frontend touch from
   // the diff OR (when nothing is implemented yet) from PLAN.md's files-to-touch.

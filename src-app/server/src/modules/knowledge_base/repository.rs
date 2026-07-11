@@ -380,7 +380,9 @@ impl KnowledgeBaseRepository {
             SELECT d.file_id, f.filename,
                    d.added_at AS "added_at: chrono::DateTime<chrono::Utc>",
                    COALESCE(s.status, 'pending') AS "index_status!",
-                   COALESCE(s.chunk_count, 0)    AS "chunk_count!"
+                   COALESCE(s.chunk_count, 0)    AS "chunk_count!",
+                   f.file_size, f.mime_type,
+                   f.has_thumbnail, f.preview_page_count
             FROM knowledge_base_documents d
             JOIN files f ON f.id = d.file_id
             LEFT JOIN file_index_state s ON s.file_id = d.file_id
@@ -404,6 +406,10 @@ impl KnowledgeBaseRepository {
                 added_at: r.added_at,
                 index_status: r.index_status,
                 chunk_count: r.chunk_count as i64,
+                file_size: r.file_size,
+                mime_type: r.mime_type,
+                has_thumbnail: r.has_thumbnail,
+                preview_page_count: r.preview_page_count,
             })
             .collect())
     }
@@ -656,6 +662,52 @@ impl KnowledgeBaseRepository {
             });
         }
         Ok(out)
+    }
+
+    /// Where a KB is attached (owner-scoped) — the conversations + projects that
+    /// currently reference it, for the detail-page "Used in" card. Bounded.
+    pub async fn kb_attachment_targets(
+        &self,
+        user_id: Uuid,
+        kb_id: Uuid,
+    ) -> Result<(Vec<(Uuid, String)>, Vec<(Uuid, String)>), AppError> {
+        let convs = sqlx::query!(
+            r#"
+            SELECT c.id AS "id!",
+                   COALESCE(NULLIF(c.title, ''), 'Untitled') AS "label!"
+            FROM conversation_knowledge_bases ck
+            JOIN conversations c ON c.id = ck.conversation_id
+            WHERE ck.knowledge_base_id = $1 AND c.user_id = $2
+            ORDER BY c.updated_at DESC
+            LIMIT 50
+            "#,
+            kb_id,
+            user_id,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let projs = sqlx::query!(
+            r#"
+            SELECT p.id AS "id!", p.name AS "label!"
+            FROM project_knowledge_bases pk
+            JOIN projects p ON p.id = pk.project_id
+            WHERE pk.knowledge_base_id = $1 AND p.user_id = $2
+            ORDER BY p.updated_at DESC
+            LIMIT 50
+            "#,
+            kb_id,
+            user_id,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok((
+            convs.into_iter().map(|r| (r.id, r.label)).collect(),
+            projs.into_iter().map(|r| (r.id, r.label)).collect(),
+        ))
     }
 
     /// Filenames for a set of (owner's) file_ids, for rendering search hits.

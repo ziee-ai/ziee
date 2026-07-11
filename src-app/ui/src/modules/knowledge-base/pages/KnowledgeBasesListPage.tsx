@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Library, Plus } from 'lucide-react'
-import { Button, Empty, ErrorState, Spin, Title, message } from '@/components/ui'
+import { Button, Empty, ErrorState, Spin, Text, Title, message } from '@/components/ui'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { type KnowledgeBase, Permissions } from '@/api-client/types'
@@ -15,6 +15,12 @@ export function KnowledgeBasesListPage() {
   const { nativeScroll } = Stores.AppLayout
   const { items, loading, error } = Stores.KnowledgeBases
   const kbs = Array.from(items.values())
+  // Client-side "Load More" paging (the store loads the full set): reveal a
+  // page at a time, mirroring ProjectsListPage + the chat conversation list.
+  const PAGE_SIZE = 12
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const visibleKbs = kbs.slice(0, visibleCount)
+  const hasMore = visibleCount < kbs.length
 
   const [drawer, setDrawer] = useState<{ open: boolean; editing: KnowledgeBase | null }>({
     open: false,
@@ -61,18 +67,41 @@ export function KnowledgeBasesListPage() {
 
       <div className={cn('flex-1 flex flex-col items-center', nativeScroll ? '' : 'overflow-hidden')}>
         {kbs.length > 0 ? (
-          <div className={cn('flex flex-col w-full', nativeScroll ? '' : 'h-full overflow-y-auto')}>
-            <div className="max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 w-full self-center px-3">
-              {kbs.map(kb => (
-                <div key={kb.id} className="min-w-0">
-                  <KnowledgeBaseCard
-                    knowledgeBase={kb}
-                    onEdit={k => setDrawer({ open: true, editing: k })}
-                    onDelete={k => void handleDelete(k)}
-                    deleting={deletingId === kb.id}
-                  />
-                </div>
-              ))}
+          <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
+            <div className={cn('flex flex-col', nativeScroll ? '' : 'h-full overflow-y-auto')}>
+              <div className="max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 w-full self-center px-3">
+                {visibleKbs.map(kb => (
+                  <div key={kb.id} className="min-w-0">
+                    <KnowledgeBaseCard
+                      knowledgeBase={kb}
+                      onEdit={k => setDrawer({ open: true, editing: k })}
+                      onDelete={k => void handleDelete(k)}
+                      deleting={deletingId === kb.id}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Paging — "Showing N of M" + Load More (mirrors the projects +
+                  chat conversation lists). */}
+              <div
+                data-testid="kb-list-paging"
+                className="text-center px-3 py-3 flex flex-col items-center gap-2"
+                style={nativeScroll ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' } : undefined}
+              >
+                <Text type="secondary" aria-live="polite" role="status">
+                  Showing {visibleKbs.length} of {kbs.length} knowledge base
+                  {kbs.length === 1 ? '' : 's'}
+                </Text>
+                {hasMore && (
+                  <Button
+                    data-testid="kb-list-load-more-btn"
+                    onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                  >
+                    Load More
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         ) : loading ? (

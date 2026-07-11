@@ -131,6 +131,8 @@ interface FileExtensionStore {
   imageViewStates: Map<string, ImageViewState>
   /** Whether the find-in-document bar is open for a file. Default = false. */
   fileFindOpen: Map<string, boolean>
+  /** External find query (e.g. a KB citation passage) to scroll+highlight to. */
+  fileFindQuery: Map<string, string>
   /** Whether word-wrap is on for a file's raw/code view. Default = false. */
   fileWordWrap: Map<string, boolean>
   /** The tabular viewer's current view snapshot (filtered/sorted rows, visible
@@ -176,6 +178,8 @@ interface FileExtensionStore {
   resetImageView: (fileId: string) => void
   /** Opens/closes the find-in-document bar for a file. */
   setFileFindOpen: (fileId: string, open: boolean) => void
+  /** Set the external find query for a file (opens find + scrolls to it). */
+  setFileFindQuery: (fileId: string, query: string) => void
   /** Turns word-wrap on/off for a file's raw/code view. */
   setFileWordWrap: (fileId: string, on: boolean) => void
   /** Publishes the tabular body's current view snapshot for the header's
@@ -313,6 +317,7 @@ export const File = defineStore('File', {
     fileViewModes: new Map(),
     imageViewStates: new Map(),
     fileFindOpen: new Map(),
+    fileFindQuery: new Map(),
     fileWordWrap: new Map(),
     fileTabularView: new Map(),
   } as unknown as Pick<
@@ -339,6 +344,7 @@ export const File = defineStore('File', {
     | 'fileViewModes'
     | 'imageViewStates'
     | 'fileFindOpen'
+    | 'fileFindQuery'
     | 'fileWordWrap'
     | 'fileTabularView'
   >,
@@ -789,6 +795,17 @@ export const File = defineStore('File', {
         const next = new Map(state.fileFindOpen)
         next.set(fileId, open)
         state.fileFindOpen = next
+      })
+    },
+
+    setFileFindQuery: (fileId: string, query: string) => {
+      set((state) => {
+        const nq = new Map(state.fileFindQuery)
+        nq.set(fileId, query)
+        state.fileFindQuery = nq
+        const no = new Map(state.fileFindOpen)
+        no.set(fileId, true)
+        state.fileFindOpen = no
       })
     },
 

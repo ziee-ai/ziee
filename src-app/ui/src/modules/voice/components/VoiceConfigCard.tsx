@@ -49,6 +49,9 @@ const schema = z.object({
   enabled: z.boolean(),
   model: z.string().min(1),
   language: z.string().min(1),
+  streaming_enabled: z.boolean(),
+  stream_interval_ms: z.number().min(300).max(10000),
+  stream_max_decode_secs: z.number().min(5).max(600),
   idle_unload_secs: z.number().min(0).max(86400),
   auto_start_timeout_secs: z.number().min(1).max(600),
   drain_timeout_secs: z.number().min(1).max(600),
@@ -71,6 +74,9 @@ export function VoiceConfigCard() {
       enabled: false,
       model: 'base',
       language: 'auto',
+      streaming_enabled: true,
+      stream_interval_ms: 1000,
+      stream_max_decode_secs: 30,
       idle_unload_secs: 300,
       auto_start_timeout_secs: 30,
       drain_timeout_secs: 30,
@@ -85,6 +91,9 @@ export function VoiceConfigCard() {
         enabled: settings.enabled,
         model: settings.model,
         language: settings.language,
+        streaming_enabled: settings.streaming_enabled,
+        stream_interval_ms: settings.stream_interval_ms,
+        stream_max_decode_secs: settings.stream_max_decode_secs,
         idle_unload_secs: settings.idle_unload_secs,
         auto_start_timeout_secs: settings.auto_start_timeout_secs,
         drain_timeout_secs: settings.drain_timeout_secs,
@@ -100,6 +109,9 @@ export function VoiceConfigCard() {
         enabled: values.enabled,
         model: values.model,
         language: values.language,
+        streaming_enabled: values.streaming_enabled,
+        stream_interval_ms: values.stream_interval_ms,
+        stream_max_decode_secs: values.stream_max_decode_secs,
         idle_unload_secs: values.idle_unload_secs,
         auto_start_timeout_secs: values.auto_start_timeout_secs,
         drain_timeout_secs: values.drain_timeout_secs,
@@ -200,6 +212,50 @@ export function VoiceConfigCard() {
             data-testid="voice-config-language"
             className="w-full"
             options={LANGUAGE_OPTIONS}
+          />
+        </FormField>
+
+        <Separator titlePlacement="left">
+          <Text className="text-xs" type="secondary">
+            Live captions
+          </Text>
+        </Separator>
+
+        <FormField
+          name="streaming_enabled"
+          label="Enable live captions"
+          valuePropName="checked"
+          description="Show a live transcript while recording (re-decodes the clip as you speak). Users can still opt out per device; the final transcript is unchanged."
+        >
+          <Switch data-testid="voice-config-streaming-enabled" />
+        </FormField>
+
+        <FormField
+          name="stream_interval_ms"
+          label="Interim decode interval (ms)"
+          description="How often the live caption re-decodes while recording. Raise it on slow hardware or heavy models so interim decodes don't fall behind."
+          required
+        >
+          <InputNumber
+            min={300}
+            max={10000}
+            step={100}
+            className="!w-full"
+            data-testid="voice-config-stream-interval"
+          />
+        </FormField>
+
+        <FormField
+          name="stream_max_decode_secs"
+          label="Max interim decode window (seconds)"
+          description="Each live-caption decode is capped to this trailing window, bounding per-tick cost on the shared engine. Clips at/under it are fully captioned; longer ones show recent speech. The final transcript on stop is always complete."
+          required
+        >
+          <InputNumber
+            min={5}
+            max={600}
+            className="!w-full"
+            data-testid="voice-config-stream-max-decode"
           />
         </FormField>
 

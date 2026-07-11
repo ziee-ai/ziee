@@ -85,6 +85,45 @@ async function seedAssistantWithText(
 const assistantBubble = (page: Page) =>
   page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
 
+/**
+ * Seed a conversation with TWO assistant messages (each carrying its own
+ * markdown), so footnote per-message id-scoping can be exercised. The send flow
+ * streams the first assistant turn; `mockGetMessages` then returns BOTH
+ * assistant messages, so after the post-stream reload both bubbles mount, each
+ * rendered by its own `<Streamdown>` with a distinct `content.id` (→ distinct
+ * scoped footnote ids).
+ */
+async function seedTwoAssistantMessages(
+  page: Page,
+  baseURL: string,
+  first: string,
+  second: string,
+) {
+  await mockChatStream(page, [
+    [
+      startedEvent({ userMessageId: 'umsg_md_1' }),
+      textDeltaEvent({ delta: first, messageId: 'amsg_md_1' }),
+      completeEvent(),
+    ],
+  ])
+  await mockGetMessages(page, [
+    mockUserMessage({ id: 'umsg_md_1', text: 'render markdown please' }),
+    assistantTextMessage('amsg_md_1', first),
+    assistantTextMessage('amsg_md_2', second),
+  ])
+
+  await goToNewChatPage(page, baseURL)
+  await selectModelInDropdown(page, 'GPT-4o Mini')
+  const textarea = byTestId(page, 'chat-message-textarea').first()
+  await textarea.fill('render markdown please')
+  await byTestId(page, 'chat-input-send-btn').click()
+
+  // Both assistant bubbles must mount after the post-stream reload.
+  await expect(
+    page.locator('[data-testid="chat-message"][data-role="assistant"]'),
+  ).toHaveCount(2, { timeout: 15000 })
+}
+
 test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
@@ -218,6 +257,97 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
     await expect(details.locator('summary')).toHaveText(/References/i)
     // Collapsed by default (no `open` attribute on <details>).
     expect(await details.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false)
+  })
+
+  test('clicking a footnote reference expands References + cited excerpt and resolves the target', async ({
+    page,
+    testInfra,
+  }) => {
+    // Regression guard for the footnote-reference-click bug: Streamdown v2
+    // double-prefixes footnote element ids (`user-content-user-content-fn-1`)
+    // while the ref href stays single-prefixed, so the un-scoped definition id
+    // used to break `getElementById` and the click no-oped. The prefix-agnostic
+    // scoping (footnoteScope.ts) makes the ref href and the definition `<li>` id
+    // resolve to the same message-scoped element. The 4-space indent keeps the
+    // `>` blockquote INSIDE footnote 1's `<li>` (a multi-block footnote def).
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      'See here[^1] for context.\n\n[^1]: A reference body.\n\n    > An excerpt from the cited source.',
+    )
+    const bubble = assistantBubble(page)
+    const details = bubble.locator('details.footnote-section')
+    await expect(details).toBeVisible({ timeout: 5000 })
+    // Collapsed before the click.
+    expect(await details.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false)
+
+    // The superscript reference link (backrefs are suppressed by the override).
+    const ref = bubble.locator('sup a').first()
+    await expect(ref).toBeVisible()
+    const targetId = await ref.evaluate(
+      el => (el as HTMLAnchorElement).getAttribute('href')?.slice(1) ?? '',
+    )
+    expect(targetId.length).toBeGreaterThan(0)
+
+    await ref.click()
+
+    // The References section is now expanded (the handler opened the enclosing
+    // <details> — only possible if getElementById resolved the target).
+    await expect(details).toHaveJSProperty('open', true)
+    // The ref's href target actually exists in the DOM and is the footnote
+    // definition <li> inside this bubble (the core fix — was null before).
+    const resolved = await bubble.evaluate((el, id) => {
+      const t = document.getElementById(id)
+      return { found: !!t, tag: t?.tagName ?? null, inBubble: !!t && el.contains(t) }
+    }, targetId)
+    expect(resolved.found).toBe(true)
+    expect(resolved.inBubble).toBe(true)
+    expect(resolved.tag).toBe('LI')
+    // The cited-excerpt <details> inside the footnote definition is expanded too.
+    const quote = bubble.locator('details.footnote-quote')
+    await expect(quote.first()).toHaveJSProperty('open', true)
+    // No stray visible "Footnotes" heading leaked outside the <summary>
+    // (isFootnoteLabel suppresses the double-prefixed sr-only label).
+    expect(
+      await bubble.evaluate(
+        el =>
+          Array.from(el.querySelectorAll('h2')).filter(
+            h => /footnotes/i.test(h.textContent ?? ''),
+          ).length,
+      ),
+    ).toBe(0)
+  })
+
+  test('footnote reference click is scoped per message', async ({
+    page,
+    testInfra,
+  }) => {
+    // Two assistant messages each contain `[^1]`. Clicking message 2's
+    // reference must open message 2's References only — message 1's stays
+    // collapsed. Guards the per-message `contentId` scoping (duplicate footnote
+    // numbers across messages must not collide on a shared DOM id).
+    await seedTwoAssistantMessages(
+      page,
+      testInfra.baseURL,
+      'First message[^1].\n\n[^1]: First body.',
+      'Second message[^1].\n\n[^1]: Second body.',
+    )
+    const bubbles = page.locator(
+      '[data-testid="chat-message"][data-role="assistant"]',
+    )
+    const first = bubbles.nth(0)
+    const second = bubbles.nth(1)
+    const firstDetails = first.locator('details.footnote-section')
+    const secondDetails = second.locator('details.footnote-section')
+    await expect(firstDetails).toBeVisible({ timeout: 5000 })
+    await expect(secondDetails).toBeVisible({ timeout: 5000 })
+
+    // Click the reference in the SECOND message.
+    await second.locator('sup a').first().click()
+
+    await expect(secondDetails).toHaveJSProperty('open', true)
+    // The first message's References must NOT have opened.
+    expect(await firstDetails.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false)
   })
 
   test('raw <script> tags in markdown do not execute', async ({

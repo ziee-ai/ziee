@@ -80,9 +80,15 @@ test.describe('Voice — runtime admin (TEST-28)', () => {
     await loginWithPerms(page, baseURL, apiURL, [], 'voice-nonadmin')
     await page.goto(`${baseURL}/settings/voice`)
 
-    // The route-level 403 gate renders in place of the page.
+    // A 403 gate renders in place of the page — accept EITHER the router-level
+    // (`router-route-forbidden-result`) or the settings-section-level
+    // (`settings-forbidden-result`) fallback: `/settings/voice` resolves through
+    // the settings shell, which renders the settings-level 403 for an unpermitted
+    // section. Mirrors the proven selector in literature/admin-settings.spec.ts.
     await expect(
-      byTestId(page, 'router-route-forbidden-result'),
+      page.locator(
+        '[data-testid="router-route-forbidden-result"], [data-testid="settings-forbidden-result"]',
+      ),
     ).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'voice-settings-page-title')).toHaveCount(0)
   })

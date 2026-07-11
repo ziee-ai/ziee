@@ -16,6 +16,7 @@ import {
   emitProjectFileDetached,
 } from '@/modules/file/project-extension/events'
 import { useProjectDetailStore } from '@/modules/projects/stores'
+import { MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE } from '@/modules/file/constants'
 
 /**
  * Per-file upload progress. The map key is a synthetic local id (so the same
@@ -29,9 +30,6 @@ export interface ProjectFileUploadProgress {
   status: 'pending' | 'uploading' | 'error'
   error?: string
 }
-
-/** 100 MiB — mirrors the file module's per-file cap. */
-const MAX_FILE_SIZE = 100 * 1024 * 1024
 
 export const ProjectFiles = defineStore('ProjectFiles', {
   immer: true,

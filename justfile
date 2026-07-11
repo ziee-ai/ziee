@@ -70,7 +70,7 @@ sandbox-test:
 
 # Run everything before pushing changes that touch the sandbox.
 # Skips bwrap tests if no rootfs is mounted (prints a hint).
-check: check-schema-sync check-deadcode-blankets openapi-check check-sandbox-unit
+check: check-schema-sync check-deadcode-blankets openapi-check check-sandbox-unit check-mcp-approval
     @echo "✓ pre-push checks passed (cheap layer)"
     @echo
     @echo "Run \`just check-sandbox\` next if you've mounted a rootfs"
@@ -108,6 +108,14 @@ check-sandbox-unit:
     cd src-app/server && cargo test --lib code_sandbox::
     cd src-app/server && \
         cargo test --test integration_tests -- --test-threads=1 code_sandbox::
+
+# MCP tool-approval-loop regression gate (fix for gpt-oss/harmony bare tool
+# names + non-unique tool_use ids looping to max_iteration). Unit helpers +
+# the `mcp_approval_loop_`-prefixed integration tests. No rootfs needed.
+check-mcp-approval:
+    cd src-app/server && cargo test --lib mcp::chat_extension::
+    cd src-app/server && \
+        cargo test --test integration_tests -- --test-threads=1 mcp_approval_loop_
 
 # Tier 4 + 6 — needs `just sandbox-mount` first (~1 min).
 check-sandbox:

@@ -26,15 +26,13 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { FileCard } from '@/modules/file/components/FileCard'
+import { MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE } from '@/modules/file/constants'
 
 /**
  * Server-enforced cap (`PROJECT_MAX_FILES`). Mirrored here so the UI
  * shows a counter + warning before hitting a 422.
  */
 const PROJECT_FILE_CAP = 100
-
-/** 100 MiB — mirrors the file module's per-file cap. */
-const MAX_FILE_SIZE = 100 * 1024 * 1024
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

@@ -171,7 +171,8 @@ ENV HOME=/var/lib/ziee \
     ZIEE_UPDATE_CHECK=false \
     ZIEE_CODE_SANDBOX_ENABLED=false \
     ZIEE_LOG_LEVEL=info \
-    ZIEE_LOG_FORMAT=json
+    ZIEE_LOG_FORMAT=json \
+    ZIEE_MAX_FILE_UPLOAD_MB=128
 
 USER ziee
 WORKDIR /var/lib/ziee

@@ -53,7 +53,13 @@ test('isIndexingIncomplete flips only when searchable < total', () => {
 
 test('hitToPanelData builds the serializable kb_source payload', () => {
   const data = hitToPanelData({
-    file_id: 'f1', filename: 'doc.pdf', page: 3, char_start: 10, char_end: 42, score: 0.9, content: '…',
+    file_id: 'f1', filename: 'doc.pdf', page: 3, char_start: 10, char_end: 42, score: 0.9,
+    content: 'photosynthesis in the chloroplast',
   })
-  assert.deepEqual(data, { fileId: 'f1', filename: 'doc.pdf', page: 3, charStart: 10, charEnd: 42 })
+  // FB-14: the payload now carries a passage `snippet` that drives non-PDF
+  // find-in-document scroll.
+  assert.deepEqual(data, {
+    fileId: 'f1', filename: 'doc.pdf', page: 3, charStart: 10, charEnd: 42,
+    snippet: 'photosynthesis in the chloroplast',
+  })
 })
