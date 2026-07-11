@@ -1558,38 +1558,37 @@ export const Chat = defineStore('Chat', {
           return
         }
 
-        // ── On-screen finalize: swap streaming→persisted ATOMICALLY ─────────
-        // Keep the streamed assistant row visible; do NOT clear isStreaming or
-        // delete the row up front. Fetch the persisted tail, then drop the
-        // streaming placeholder + merge the tail + clear the streaming flags in
-        // ONE `set()` below — so there is never an empty/absent assistant frame,
-        // and `isStreaming` is never false while the row is missing (the
-        // disappear/reappear + false empty-completion-notice bug). `finalizingTurn`
-        // additionally suppresses the notice for this sub-second window as a
-        // belt-and-suspenders guard.
+        // ── On-screen finalize: keep the streamed row, swap in persisted ────
+        // Clear the streaming CONTROL flags SYNCHRONOUSLY (as the original did),
+        // but do NOT delete the streamed assistant row from `messages`, and set
+        // `finalizingTurn` so the empty-completion notice stays suppressed until
+        // the persisted tail is merged in. The row is therefore continuously
+        // visible (no disappear/reappear + no false notice) WITHOUT holding
+        // `isStreaming` true across the awaited `getHistory` — so a conversation
+        // switch or a `saveConversationState` snapshot during that await can
+        // never observe a mid-stream state (which would strand the row as
+        // "generating" or clobber a background stream). Only the transient
+        // `finalizingTurn` is cleared AFTER the await, in the persisted swap.
         const streamingRowId = streamingMessage?.id ?? null
-        set({ finalizingTurn: true })
-
-        if (streamingMessage) {
-          await chatExtensionRegistry.afterStreamComplete(streamingMessage)
-        }
-        // Capture BEFORE the swap: an edit/regenerate created a NEW branch during
+        // Capture BEFORE clearing: an edit/regenerate created a NEW branch during
         // this stream, so the loaded window still holds the old branch's prefix —
         // a merge would be inconsistent. Snap to the new branch's tail instead.
         const branchChanged = get().branchChangedDuringStream
-        const conversation = get().conversation
-
-        // The atomic teardown applied in the SAME `set()` as the persisted swap.
-        const clearStreaming = {
+        set({
           isStreaming: false,
           sending: false,
           streamingMessage: null,
           streamingAbortController: null,
           streamingMessageId: null,
           branchChangedDuringStream: false,
-          finalizingTurn: false,
+          finalizingTurn: true,
           lastTurnInterrupted: cancelled,
+        })
+
+        if (streamingMessage) {
+          await chatExtensionRegistry.afterStreamComplete(streamingMessage)
         }
+        const conversation = get().conversation
 
         if (conversation) {
           try {
@@ -1608,7 +1607,7 @@ export const Chat = defineStore('Chat', {
                 const snapToTail = branchChanged || state.hasMoreAfter
                 if (snapToTail) {
                   return {
-                    ...clearStreaming,
+                    finalizingTurn: false,
                     messages: toOrderedMap(page.messages),
                     hasMoreBefore: page.has_more_before,
                     hasMoreAfter: page.has_more_after,
@@ -1617,7 +1616,7 @@ export const Chat = defineStore('Chat', {
                   }
                 }
                 return {
-                  ...clearStreaming,
+                  finalizingTurn: false,
                   messages: finalizeTailWindow(
                     state.messages,
                     page.messages,
@@ -1627,22 +1626,26 @@ export const Chat = defineStore('Chat', {
                 }
               })
             } else {
-              // Switched away mid-fetch: just clear the (now background) buffer's
-              // streaming flags.
-              set(clearStreaming)
+              // Switched away mid-fetch: only clear our own transient flag — the
+              // streaming flags are already cleared, and touching global state
+              // here would clobber whatever conversation is now open.
+              set({ finalizingTurn: false })
             }
           } catch (error: any) {
-            // getHistory failed: keep the streamed row visible (it is still in
-            // `messages`) and clear the streaming flags so the UI doesn't hang on
-            // "generating" forever.
-            set(state => ({
-              ...clearStreaming,
-              error:
-                state.error || error.message || 'Failed to refresh messages',
-            }))
+            // getHistory failed: the streamed row is still in `messages`, so it
+            // stays visible; just clear the finalize flag (streaming flags are
+            // already cleared) and surface the error only if still on-screen.
+            if (get().conversation?.id === conversation.id) {
+              set({
+                finalizingTurn: false,
+                error: get().error || error.message || 'Failed to refresh messages',
+              })
+            } else {
+              set({ finalizingTurn: false })
+            }
           }
         } else {
-          set(clearStreaming)
+          set({ finalizingTurn: false })
         }
         await get().computeForkPoints()
         return
@@ -1661,6 +1664,7 @@ export const Chat = defineStore('Chat', {
             streamingMessage: null,
             streamingAbortController: null,
             streamingMessageId: null,
+            finalizingTurn: false,
           })
           get().clearConversationCache(conversationId)
           return
@@ -1680,6 +1684,7 @@ export const Chat = defineStore('Chat', {
               streamingMessage: null,
               streamingAbortController: null,
               streamingMessageId: null,
+              finalizingTurn: false,
               lastTurnInterrupted: true,
             }
           })
@@ -1691,6 +1696,7 @@ export const Chat = defineStore('Chat', {
             streamingMessage: null,
             streamingAbortController: null,
             streamingMessageId: null,
+            finalizingTurn: false,
             lastTurnInterrupted: true,
           })
         }
@@ -1859,6 +1865,7 @@ export const Chat = defineStore('Chat', {
           streamingMessage: null,
           streamingAbortController: null,
           streamingMessageId: null,
+          finalizingTurn: false,
           // Aborted (user cancel) or a transport error — either way the turn's
           // partial is not a genuine empty completion.
           lastTurnInterrupted: true,
