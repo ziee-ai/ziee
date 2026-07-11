@@ -75,6 +75,15 @@ trees. The frontend phase-3/8 gates still apply (non-generated `ui/**` +
   (TEST-8 + TEST-9) before the deletes are trusted.
 - **ITEM-9** — verdict: PASS — restores dropped core behavior (a fix); asserted by
   TEST-6. Strictly improves desktop correctness.
+- **ITEM-13** — verdict: PASS — the infra `.desktop.ts` relocations (loader,
+  App.store, lazyWithPreload, getBaseURL) are behavior-preserving tier-1→tier-2
+  moves (all `@/`-imported; identical resolution result), verified by both tsc, the
+  desktop `vite build`, and `npm run check`. The auth barrel delete is safe (nothing
+  imports the `@/modules/auth` barrel form — verified). SidebarHeaderSpacer→seam is
+  covered by TEST-8.
+- **ITEM-14** — verdict: PASS — the gate is a pure enumeration + DECISIONS parse
+  (TEST-12); wired into the existing `npm run check` chain in both workspaces; no
+  runtime/product impact (build-time dev tooling, like the other generators).
 - **ITEM-10** — verdict: PASS — mirrors `gen-testid-registry.mjs`; `--check` in
   `npm run check` is the established gate.
 - **ITEM-11** — verdict: PASS — standard `check:state-matrix` obligation; both
