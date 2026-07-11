@@ -10,6 +10,7 @@ import {
   mockChatTokenStream,
   startedEvent,
   mcpApprovalRequiredEvent,
+  textDeltaEvent,
   completeEvent,
   mockGetMessages,
   mockUserMessage,
@@ -18,6 +19,12 @@ import {
   seedAssistantWithToolResult,
   mockBackendFile,
 } from '../chat/fixtures/mock-tool-result'
+import type { MockMessageWithContent } from '../helpers/sse-mock-helpers'
+
+/** A tall text message (for overflowing the virtualized list). */
+function textMsg(id: string, role: 'user' | 'assistant', text: string): MockMessageWithContent {
+  return { id, role, contents: [{ content_type: 'text', content: { type: 'text', text } }] }
+}
 
 /**
  * Follow-up: a SINGLE tool call that produces an artifact is now wrapped in the
@@ -106,51 +113,29 @@ test.describe('MCP tool group — single-tool artifact wrapping + scroll-to-appr
     ).toHaveCount(1)
   })
 
-  test('a pending approval scrolls itself into view when it appears', async ({
+  test('a pending approval below the fold is scrolled into view (user NOT at bottom)', async ({
     page,
     testInfra,
   }) => {
-    // Spy on scrollIntoView (patched before any page script) recording the target
-    // element's testid + behavior. This directly asserts the approval component
-    // scrolled ITSELF into view on mount — robust against the chat's own
-    // auto-scroll-to-bottom / reload confounders that make a viewport assertion
-    // unreliable.
-    await page.addInitScript(() => {
-      ;(window as unknown as { __scrollTargets: unknown[] }).__scrollTargets = []
-      const orig = Element.prototype.scrollIntoView
-      Element.prototype.scrollIntoView = function (
-        this: Element,
-        arg?: boolean | ScrollIntoViewOptions,
-      ) {
-        ;(window as unknown as { __scrollTargets: unknown[] }).__scrollTargets.push({
-          tid: this.getAttribute('data-testid'),
-          behavior: typeof arg === 'object' ? arg.behavior : undefined,
-        })
-        return orig.call(this, arg as ScrollIntoViewOptions)
-      }
-    })
-
-    const userMsgId = 'umsg_scroll'
-    const useId = 'tu_scroll_1'
-    const serverId = 'srv-scroll'
-
-    await mockChatTokenStream(page, [
-      [
-        startedEvent({ userMessageId: userMsgId }),
-        mcpApprovalRequiredEvent({
-          toolUseId: useId,
-          toolName: 'dangerous_op',
-          server: serverId,
-          input: { target: 'production' },
-        }),
-        completeEvent({ finishReason: 'tool_use' }),
-      ],
-    ])
-    await mockGetMessages(page, [
-      mockUserMessage({ id: userMsgId, text: 'do the risky thing' }),
+    // Reproduce the real scenario: a long answer where the user has scrolled up
+    // (isAtBottom === false), then an approval streams at the tail — the app's
+    // isAtBottom-gated auto-follow does NOT scroll to it, so the fix must force a
+    // scroll-to-bottom via the virtualized list handle. We assert the EFFECT
+    // (approval actually in the viewport), not that scrollIntoView was called.
+    await page.setViewportSize({ width: 900, height: 600 })
+    const useId = 'tu_appr_scroll'
+    const serverId = 'srv-appr'
+    // Turn 1: a very long answer that overflows the viewport. Turn 2: the approval.
+    const longText = Array.from({ length: 140 }, (_, i) => `Line ${i + 1} of a very long streamed answer.`).join('\n')
+    const turn1 = [
+      mockUserMessage({ id: 'u1', text: 'tell me a lot' }),
+      textMsg('a1', 'assistant', longText),
+    ]
+    const approvalTurn = [
+      mockUserMessage({ id: 'u2', text: 'run it' }),
       {
-        id: 'amsg_scroll',
-        role: 'assistant',
+        id: 'a2',
+        role: 'assistant' as const,
         contents: [
           {
             content_type: 'tool_use',
@@ -164,27 +149,59 @@ test.describe('MCP tool group — single-tool artifact wrapping + scroll-to-appr
           },
         ],
       },
+    ]
+
+    // Two scripts — the 1st send consumes turn 1 (long text), the 2nd the approval.
+    await mockChatTokenStream(page, [
+      [
+        startedEvent({ userMessageId: 'u1' }),
+        textDeltaEvent({ delta: longText, messageId: 'a1' }),
+        completeEvent(),
+      ],
+      [
+        startedEvent({ userMessageId: 'u2' }),
+        mcpApprovalRequiredEvent({
+          toolUseId: useId,
+          toolName: 'dangerous_op',
+          server: serverId,
+          input: { target: 'production' },
+        }),
+        completeEvent({ finishReason: 'tool_use' }),
+      ],
     ])
 
     await goToNewChatPage(page, testInfra.baseURL)
     await selectModelInDropdown(page, 'GPT-4o Mini')
-    await sendChatMessage(page, 'do the risky thing')
 
-    const approval = page.locator(`[data-testid="tool-approval-${useId}"]`)
+    // Turn 1: send + long answer → list overflows.
+    await mockGetMessages(page, turn1)
+    await sendChatMessage(page, 'tell me a lot')
+    await expect(
+      page.locator('[data-testid="chat-message"][data-role="assistant"]').last(),
+    ).toBeVisible({ timeout: 15000 })
+
+    const jumpBtn = page.getByTestId('chat-jump-to-latest-btn')
+
+    // Scroll the message list to the top so the user is NOT at the bottom.
+    await page.evaluate(() => {
+      document.querySelectorAll<HTMLElement>('*').forEach(el => {
+        if (el.scrollHeight > el.clientHeight + 8 && getComputedStyle(el).overflowY !== 'visible') {
+          el.scrollTop = 0
+        }
+      })
+      window.scrollTo(0, 0)
+    })
+    await expect(jumpBtn).toBeVisible() // isAtBottom === false (the pre-fix bug surface)
+
+    // Turn 2: the reload keeps the long turn-1 history + the approval block, so the
+    // approval stays below the fold unless the fix scrolls to it.
+    await mockGetMessages(page, [...turn1, ...approvalTurn])
+    await sendChatMessage(page, 'run it')
+
+    // Without the fix the isAtBottom gate leaves the approval below the fold; the fix
+    // force-scrolls the virtualized list to the tail → the approval is in the viewport.
+    const approval = page.getByTestId(`tool-approval-${useId}`)
     await expect(approval).toBeVisible({ timeout: 15000 })
-
-    // The approval element scrolled itself into view (smooth, since the test env
-    // has no prefers-reduced-motion).
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () =>
-              (window as unknown as { __scrollTargets: { tid: string; behavior?: string }[] })
-                .__scrollTargets,
-          ),
-        { timeout: 5000 },
-      )
-      .toContainEqual({ tid: `tool-approval-${useId}`, behavior: 'smooth' })
+    await expect(approval).toBeInViewport({ timeout: 5000 })
   })
 })

@@ -35,6 +35,9 @@ export default function ConversationPage() {
   // is a fixed overlay on mobile, so the chat column is effectively full-width.
   useNativeScroll(true)
   const { nativeScroll } = Stores.AppLayout
+  // Live MCP tool-call statuses — subscribed reactively (proxy destructure) so a
+  // newly-`pending_approval` tool triggers the scroll-to-approval effect below.
+  const { toolCalls } = Stores.McpComposer
 
   // Load conversation and messages on mount or when ID changes.
   useEffect(() => {
@@ -65,6 +68,9 @@ export default function ConversationPage() {
   const [composerHidden, setComposerHidden] = useState(false)
   // Conversation id whose initial bottom-jump we've already done.
   const initialScrollConvIdRef = useRef<string | null>(null)
+  // tool_use_ids whose pending approval we've already scrolled to — so the
+  // scroll-to-approval effect fires once per approval, not on every toolCalls change.
+  const scrolledApprovalsRef = useRef<Set<string>>(new Set())
 
   // ── Reverse-infinite-scroll (load older on scroll-up) refs (ITEM-9) ────────
   // The OverlayScrollbars component (desktop inner scroll). In mobile native
@@ -296,6 +302,35 @@ export default function ConversationPage() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, conversationId, conversation, hasMoreAfter])
+
+  // A tool call that needs approval must grab the user's attention even if they've
+  // scrolled up reading history — the streaming approval is injected at the TAIL of
+  // the message, so bring the tail into view via the list's own (virtualization-
+  // aware) handle. This DELIBERATELY bypasses the `isAtBottomRef` gate the normal
+  // auto-follow respects: that gate is exactly why an off-bottom approval was never
+  // scrolled to. Fires once per approval (deduped); the conversation-match guard
+  // avoids firing during a stale A→B switch. NOTE: a native per-element
+  // `scrollIntoView` is a no-op on the virtualized OverlayScrollbars viewport —
+  // `messageListRef.scrollToBottom()` is the only thing that moves it.
+  useEffect(() => {
+    if (
+      conversation?.id !== conversationId ||
+      initialScrollConvIdRef.current !== conversationId
+    ) {
+      return
+    }
+    const seen = scrolledApprovalsRef.current
+    let hasNewApproval = false
+    for (const [id, call] of toolCalls) {
+      if (call.status === 'pending_approval' && !seen.has(id)) {
+        seen.add(id)
+        hasNewApproval = true
+      }
+    }
+    if (hasNewApproval) {
+      messageListRef.current?.scrollToBottom()
+    }
+  }, [toolCalls, conversation, conversationId])
 
   // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
   // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next
