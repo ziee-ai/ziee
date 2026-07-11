@@ -15,6 +15,7 @@ import { CollapsibleBlock } from '@/modules/chat/components/CollapsibleBlock'
 import { shouldOfferCollapse } from '@/modules/chat/components/collapsible'
 import { messageText } from '@/modules/chat/components/findMatches'
 import { useConversationFind } from '@/modules/chat/components/ConversationFindContext'
+import { normalizeToolResultOrder } from '@/modules/chat/core/utils/normalizeToolResultOrder'
 
 export const ChatMessage = memo(function ChatMessage({
   message,
@@ -99,9 +100,17 @@ export const ChatMessage = memo(function ChatMessage({
     (c.content_type === 'image' &&
       (c.content as MessageContentDataImage).source?.type === 'file')
   const attachmentBlocks = isUser ? sortedContents.filter(isAttachmentBlock) : []
-  const bubbleBlocks = isUser
-    ? sortedContents.filter(c => !isAttachmentBlock(c))
-    : sortedContents
+  // Relocate each tool_result adjacent to its producing tool_use (by
+  // tool_use_id) so a run of tool calls is contiguous regardless of where an
+  // artifact tool_result physically landed (streaming-appended-at-end or
+  // persisted order). This lets the MCP group renderer wrap the artifact in the
+  // "N tools called" card instead of leaving it stranded next to the group. Pure
+  // — never mutates the store array (operates on the sorted copy).
+  const bubbleBlocks = normalizeToolResultOrder(
+    isUser
+      ? sortedContents.filter(c => !isAttachmentBlock(c))
+      : sortedContents,
+  )
 
   // Render blocks with a run-loop (not a plain map): a renderer that claims a
   // block can consume the blocks that follow it (via its static `contentSpan`),

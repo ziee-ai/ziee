@@ -8,7 +8,7 @@
 ## Summary
 
 - **363** surfaces carry at least one renderable-state signal.
-- **2102** signals total: 1654 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
+- **2106** signals total: 1658 branch, 133 empty, 109 error, 109 loading, 94 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -910,13 +910,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 54 |
-| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 76 |
-| branch | `attachmentBlocks.length > 0` | 158 |
-| branch | `bubbleBlocks.length > 0` | 187 |
-| branch | `offerCollapse` | 213 |
-| branch | `showEmptyCompletionNotice` | 233 |
-| branch | `isUser` | 252 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 55 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 77 |
+| branch | `attachmentBlocks.length > 0` | 167 |
+| branch | `bubbleBlocks.length > 0` | 196 |
+| branch | `offerCollapse` | 222 |
+| branch | `showEmptyCompletionNotice` | 242 |
+| branch | `isUser` | 261 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1259,30 +1259,32 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!sentinel` | 143 |
-| branch | `!el` | 163 |
-| branch | `!nativeScroll` | 178 |
-| branch | `y < 0 \|\| y > maxY` | 187 |
-| branch | `maxY - y <= 8` | 191 |
-| branch | `Math.abs(dy) < 6` | 197 |
-| branch | `!Stores.Chat.$.conversation` | 217 |
-| branch | `!conversationId` | 259 |
-| branch | `!sentinel` | 307 |
-| branch | `!entries[0]?.isIntersecting` | 311 |
-| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 314 |
-| branch | `!sentinel` | 349 |
-| branch | `!entries[0]?.isIntersecting` | 353 |
-| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 354 |
-| loading | `!pending` | 369 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 372 |
-| branch | `!conversation?.id` | 381 |
-| branch | `!m` | 385 |
-| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 388 |
-| loading | `loading && !conversation` | 408 |
-| loading | `!loading && !conversation` | 417 |
-| error | `error` | 420 |
-| error | `error` | 477 |
-| branch | `nativeScroll && !composerHidden` | 576 |
+| branch | `!sentinel` | 149 |
+| branch | `!el` | 169 |
+| branch | `!nativeScroll` | 184 |
+| branch | `y < 0 \|\| y > maxY` | 193 |
+| branch | `maxY - y <= 8` | 197 |
+| branch | `Math.abs(dy) < 6` | 203 |
+| branch | `!Stores.Chat.$.conversation` | 223 |
+| branch | `!conversationId` | 265 |
+| branch | `!hasNewApproval` | 340 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 344 |
+| branch | `!sentinel` | 372 |
+| branch | `!entries[0]?.isIntersecting` | 376 |
+| branch | `!Stores.Chat.$.hasMoreBefore \|\| Stores.Chat.$.loadingOlder` | 379 |
+| branch | `!sentinel` | 414 |
+| branch | `!entries[0]?.isIntersecting` | 418 |
+| branch | `!Stores.Chat.$.hasMoreAfter \|\| Stores.Chat.$.isStreaming` | 419 |
+| loading | `!pending` | 434 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 437 |
+| branch | `!conversation?.id` | 446 |
+| branch | `!m` | 450 |
+| branch | `!found \|\| Stores.Chat.$.conversation?.id !== conversation.id` | 453 |
+| loading | `loading && !conversation` | 473 |
+| loading | `!loading && !conversation` | 482 |
+| error | `error` | 485 |
+| error | `error` | 542 |
+| branch | `nativeScroll && !composerHidden` | 641 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -3231,29 +3233,31 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `toolCall.status === 'pending_approval'` | 32 |
-| branch | `serverLabel` | 48 |
-| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 56 |
-| branch | `toolCall.status === 'started' && toolCall.progress` | 74 |
-| branch | `toolCall.progress.message` | 76 |
-| branch | `isExpanded` | 99 |
-| branch | `toolCall.input !== undefined` | 101 |
-| branch | `toolCall.result !== undefined` | 110 |
-| error | `toolCall.error` | 119 |
-| branch | `!toolUseData.id` | 150 |
-| branch | `toolCall` | 157 |
-| branch | `mcpServerParenLabel(server?.display_name)` | 183 |
-| branch | `toolResultData` | 188 |
-| branch | `hasDetails` | 196 |
-| branch | `isExpanded` | 207 |
-| branch | `!!toolUseData.input` | 209 |
-| branch | `toolResultData` | 217 |
-| branch | `toolResultData.is_error` | 220 |
-| branch | `isExpanded` | 301 |
-| branch | `!run \|\| countToolUses(run) < 2` | 326 |
-| branch | `!mcpStore` | 356 |
-| branch | `!streamingMessage` | 783 |
-| branch | `!toolUseId` | 798 |
+| branch | `toolCall.status === 'pending_approval'` | 40 |
+| branch | `serverLabel` | 56 |
+| error | `(toolCall.status === 'completed' \|\| toolCall.status === 'error')` | 64 |
+| branch | `toolCall.status === 'started' && toolCall.progress` | 82 |
+| branch | `toolCall.progress.message` | 84 |
+| branch | `isExpanded` | 107 |
+| branch | `toolCall.input !== undefined` | 109 |
+| branch | `toolCall.result !== undefined` | 118 |
+| error | `toolCall.error` | 127 |
+| branch | `!toolUseData.id` | 158 |
+| branch | `toolCall` | 165 |
+| branch | `mcpServerParenLabel(server?.display_name)` | 191 |
+| branch | `toolResultData` | 196 |
+| branch | `hasDetails` | 204 |
+| branch | `isExpanded` | 215 |
+| branch | `!!toolUseData.input` | 217 |
+| branch | `toolResultData` | 225 |
+| branch | `toolResultData.is_error` | 228 |
+| branch | `singleUse` | 336 |
+| branch | `singleServerLabel` | 341 |
+| branch | `isExpanded` | 360 |
+| branch | `!run \|\| !shouldWrapRun(run)` | 393 |
+| branch | `!mcpStore` | 426 |
+| branch | `!streamingMessage` | 853 |
+| branch | `!toolUseId` | 865 |
 
 ### `modules/mcp/components/McpConfigModal`
 

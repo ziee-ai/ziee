@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@/components/ui'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,14 @@ import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusR
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
 import { JsToolApprovalContent } from '@/modules/mcp/chat-extension/components/JsToolApprovalContent'
+import {
+  runToolUseIds,
+  hasArtifactInRun,
+  shouldAutoOpen,
+  deriveGroupOpen,
+  resolveArtifactToolUseId,
+  shouldWrapRun,
+} from '@/modules/mcp/chat-extension/toolRun'
 
 /**
  * MCP Tool Call UI Component
@@ -249,15 +257,13 @@ function collectToolRun(
   return run
 }
 
-/** Number of tool_use blocks in a run (the "N tools" count). */
-function countToolUses(run: MessageContent[]): number {
-  return run.filter(b => b.content_type === 'tool_use').length
-}
-
 /**
- * Collapsed "N tools called" card for a run of ≥2 consecutive tool calls.
- * Expanding renders each run member through the registry's single-block path
- * (tool_use → its own card, tool_result → its files), so nothing regroups.
+ * Collapsible wrapper for a tool run — a run of ≥2 consecutive tool calls, OR a
+ * single tool call that produced an artifact (so its file(s) sit in the same
+ * collapsible box). Expanding renders each run member through the registry's
+ * single-block path (tool_use → its own card, tool_result → its files), so
+ * nothing regroups. The header reads "N tools called" for a multi-tool run and
+ * the tool name (+ server label) for a single-tool wrapper.
  */
 function McpToolGroupCard({
   run,
@@ -266,7 +272,31 @@ function McpToolGroupCard({
   run: MessageContent[]
   isUser: boolean
 }) {
-  const [isExpanded, setIsExpanded] = useState(false)
+  // Live tool statuses. Destructure the Map off the store proxy to create a
+  // reactive subscription (the same pattern as McpToolUseRenderer — the
+  // getToolCall() method does NOT trigger re-renders). An approval / running
+  // status that arrives after mount re-renders this component and opens it.
+  const { toolCalls } = Stores.McpComposer
+  // Server rows for resolving a human display name in the single-tool header
+  // (same reactive read + resolution as McpToolUseRenderer).
+  const { servers } = Stores.McpServer
+  const useIds = runToolUseIds(run)
+  const hasPendingApproval = useIds.some(
+    id => toolCalls.get(id)?.status === 'pending_approval',
+  )
+  const hasRunning = useIds.some(id => toolCalls.get(id)?.status === 'started')
+  const hasArtifact = hasArtifactInRun(run)
+
+  // Auto-open: default open when a tool is running or the run produced an
+  // artifact (latches — the user may collapse afterward). A pending approval
+  // FORCES open so a collapsed group can never hide the approval prompt.
+  const autoOpen = shouldAutoOpen({ hasRunning, hasArtifact })
+  const [userOpen, setUserOpen] = useState(autoOpen)
+  useEffect(() => {
+    if (autoOpen) setUserOpen(true)
+  }, [autoOpen])
+  const isExpanded = deriveGroupOpen({ hasPendingApproval, userOpen })
+
   const toolUses = run.filter(b => b.content_type === 'tool_use')
   const resultByUseId = new Map<string, { is_error?: boolean }>()
   for (const b of run) {
@@ -282,30 +312,67 @@ function McpToolGroupCard({
     <ToolStatusIcon status={hasError ? 'failed' : !allDone ? 'running' : 'success'} />
   )
 
+  // Single-tool wrapper (one tool call that produced an artifact): the header
+  // itself stands in for the tool-call block — it shows the tool name + server
+  // label + status icon like the bare McpToolCallUI/McpToolUseRenderer card
+  // ("N tools called" would be wrong for one call). The expanded body then
+  // renders ONLY the result (files); re-rendering the tool_use card too would
+  // duplicate the name/server/status.
+  const singleUse =
+    toolUses.length === 1
+      ? (toolUses[0]?.content as MessageContentDataToolUse | undefined)
+      : null
+  const singleServerLabel = singleUse
+    ? mcpServerParenLabel(
+        servers.find(s => s.id === singleUse.server_id)?.display_name,
+      )
+    : null
+
   return (
     <Card size="sm" className={cn('mb-2', !isExpanded && 'py-2.5')} data-testid="mcp-toolgroup-card">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {icon}
-          <Text strong>{toolUses.length} tools called</Text>
+          {singleUse ? (
+            <>
+              <Text strong className="truncate" title={singleUse.name || undefined}>
+                {singleUse.name || 'Tool Call'}
+              </Text>
+              {singleServerLabel && (
+                <Text type="secondary" className="text-xs whitespace-nowrap">
+                  {singleServerLabel}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text strong>{toolUses.length} tools called</Text>
+          )}
         </div>
         <Button
           size="icon"
           variant="ghost"
           tooltip={isExpanded ? 'Hide details' : 'Show details'}
           icon={<ChevronDown className={cn('transition-transform', isExpanded && 'rotate-180')} />}
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() => setUserOpen(v => !v)}
           data-testid="mcp-toolgroup-details-btn"
         />
       </div>
       {isExpanded && (
         <div className="mt-2 flex flex-col gap-2">
-          {run.map((b, i) => {
-            // Single-block render (no `blocks`), so the group renderer falls back
-            // to its single form — no recursion.
-            const res = chatExtensionRegistry.renderContent({ content: b, isUser })
-            return <Fragment key={b.id || `run-${i}`}>{res?.node ?? null}</Fragment>
-          })}
+          {run
+            // For a single-tool wrapper the header already stands in for the
+            // tool_use card, so render only the remaining blocks (its result /
+            // files) to avoid duplicating the tool name+server+status. EXCEPTION:
+            // if that tool errored, keep its tool_use card so its error alert /
+            // message stays visible (the header only shows a 'failed' icon). A
+            // multi-tool group always renders every member.
+            .filter(b => !singleUse || hasError || b.content_type !== 'tool_use')
+            .map((b, i) => {
+              // Single-block render (no `blocks`), so the group renderer falls back
+              // to its single form — no recursion.
+              const res = chatExtensionRegistry.renderContent({ content: b, isUser })
+              return <Fragment key={b.id || `run-${i}`}>{res?.node ?? null}</Fragment>
+            })}
         </div>
       )}
     </Card>
@@ -323,16 +390,19 @@ function McpToolUseGroup(props: ContentRendererProps) {
   const { content, isUser, blocks, index } = props
   const run =
     blocks && index != null ? collectToolRun(blocks, index) : null
-  if (!run || countToolUses(run) < 2) {
+  if (!run || !shouldWrapRun(run)) {
     return <McpToolUseRenderer content={content} isUser={isUser} />
   }
   return <McpToolGroupCard run={run} isUser={isUser} />
 }
 McpToolUseGroup.contentSpan = (blocks: MessageContent[], index: number): number => {
   const run = collectToolRun(blocks, index)
-  // Only swallow the whole run (use+result blocks) when it's an actual group;
-  // a lone tool call consumes just its own block so its result renders normally.
-  return countToolUses(run) >= 2 ? run.length : 1
+  // Swallow the whole run (use+result blocks) ONLY when it wraps — a ≥2-tool run,
+  // or a single tool that produced an artifact. `shouldWrapRun` is the SAME
+  // predicate the render branch uses, so `consumed` always matches what
+  // McpToolGroupCard renders (no run-loop desync). Otherwise consume just this
+  // block so a lone no-artifact tool's result renders normally.
+  return shouldWrapRun(run) ? run.length : 1
 }
 
 /**
@@ -783,18 +853,15 @@ const mcpExtension: ChatExtension = createExtension({
       if (!streamingMessage) return
 
       // Associate to the producing tool call. Prefer the explicit tool_use_id
-      // from the event (robust under parallel tools); fall back to the last
-      // tool_use block for older backends that don't send it.
-      let toolUseId = data.tool_use_id
-      if (!toolUseId) {
-        for (let i = streamingMessage.contents.length - 1; i >= 0; i--) {
-          const c = streamingMessage.contents[i]
-          if (c.content_type === 'tool_use') {
-            toolUseId = (c.content as MessageContentDataToolUse).id
-            break
-          }
-        }
-      }
+      // from the event (robust under parallel tools). The legacy no-id fallback
+      // attributes ONLY when unambiguous (a single tool_use in the message, or a
+      // single in-flight store call) — it never guesses "the last tool_use",
+      // which would mis-attach a parallel artifact.
+      const toolUseId = resolveArtifactToolUseId(
+        streamingMessage.contents,
+        Stores.McpComposer.$.toolCalls,
+        data.tool_use_id,
+      )
       if (!toolUseId) return
 
       // Backend-owned artifact: render via the authenticated `/api/files/{id}`
@@ -832,11 +899,14 @@ const mcpExtension: ChatExtension = createExtension({
           content: { ...existingData, resource_links: links } as unknown as MessageContentDataToolResult,
         }
       } else {
-        // First artifact for this tool: create the tool_result block right
-        // after its tool_use (append → monotonic sequence_order). `content`
-        // is empty — the result text is shown by the tool_use card; this block
-        // only carries the files. `tool_use_id` lets the card's historical
-        // lookup still match it after reload.
+        // First artifact for this tool: create a tool_result block carrying the
+        // file. Appended at the end (monotonic sequence_order); ChatMessage's
+        // normalizeToolResultOrder relocates it adjacent to its tool_use at
+        // render time (by tool_use_id), so it groups correctly even if a
+        // non-tool block lands in between. `content` is empty — the result text
+        // is shown by the tool_use card; this block only carries the files.
+        // `tool_use_id` lets the card's historical lookup still match it after
+        // reload.
         const toolResult: MessageContent = {
           id: `artifact-result-${toolUseId}`,
           message_id: streamingMessage.id,

@@ -89,6 +89,7 @@ async fn persist_ingests_ziee_under_root_and_handles_mixed_links() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -174,6 +175,7 @@ async fn ziee_link_from_external_server_is_ignored() {
         Uuid::new_v4(), // external/user server id → not a trusted emitter
         false,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -213,6 +215,7 @@ async fn ziee_workflow_runs_handle_is_not_ingested_and_preserved() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[],
         None,
         None, // jwt_issuer
@@ -255,6 +258,7 @@ async fn ziee_link_read_failure_is_blanked() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -293,6 +297,7 @@ async fn http_link_without_jwt_secret_is_skipped() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[],
         None, // no jwt secret → HTTP branch is skipped (the dispatcher path)
         None, // jwt_issuer
@@ -381,6 +386,7 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -468,6 +474,7 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
         code_sandbox_server_id(),
         true,
         &serde_json::json!({}),
+        &[], // trusted_hosts: none — existing behavior for these cases
         &[root.clone()],
         None,
         None, // jwt_issuer
@@ -496,3 +503,187 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
     std::fs::remove_dir_all(&store_dir).ok();
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// External-server HTTP resource_link SSRF policy (same-host trust).
+// A loopback mock stands in for a same-host (private/RFC1918) MCP artifact server.
+// (The release env opt-in ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE is proven purely in the
+// resource_link.rs unit tests — mutating that process-global var here would race the parallel
+// integration binary and could leak into concurrently-spawned server subprocesses.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 200 response with a 12-byte CSV body (`a,b,c\n1,2,3\n`).
+const OK_CSV_RESPONSE: &str =
+    "HTTP/1.1 200 OK\r\nContent-Type: text/csv\r\nContent-Length: 12\r\n\r\na,b,c\n1,2,3\n";
+
+/// Aborts a mock server's accept loop when dropped, so a test doesn't leak a live accept task
+/// for the rest of the test-process lifetime. Each test binds it to a `_mock` local.
+struct MockGuard(tokio::task::JoinHandle<()>);
+impl Drop for MockGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// A loopback HTTP server that answers every request with `response`. Returns its
+/// `http://127.0.0.1:<port>` base URL and a guard that stops the accept loop on drop.
+async fn start_fixed_response_mock(response: impl Into<String>) -> (String, MockGuard) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let response = std::sync::Arc::new(response.into());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            let response = response.clone();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 2048];
+                // Read (and discard) the request head; we answer the same way regardless.
+                let _ = sock.read(&mut buf).await;
+                let _ = sock.write_all(response.as_bytes()).await;
+                let _ = sock.flush().await;
+            });
+        }
+    });
+    (format!("http://{addr}"), MockGuard(handle))
+}
+
+/// Shared setup: TestServer + a user + process-global Repos/file-store pointed at this DB.
+async fn setup_ingest_env(server: &TestServer, tag: &str) -> (Uuid, sqlx::PgPool, std::path::PathBuf) {
+    let uid = user_id(server).await;
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    ziee::init_repositories(pool.clone());
+    let store_dir = std::env::temp_dir().join(format!("ziee_rl_{tag}_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&store_dir).unwrap();
+    ziee::init_file_storage(&store_dir);
+    (uid, pool, store_dir)
+}
+
+/// TEST-6: matched host — an external link on a trusted (loopback stand-in) host is ingested,
+/// and the link gets its file_id/version stamped back (the display-fix precondition).
+#[tokio::test]
+#[serial_test::serial(repos, file_storage)]
+async fn http_link_matched_trusted_host_is_ingested() {
+    let server = TestServer::start().await;
+    let (uid, pool, store_dir) = setup_ingest_env(&server, "match").await;
+    let (base, _mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await;
+
+    let mut links = vec![ziee_link(&format!("{base}/results/de_ad_control_limma.csv"), "de.csv")];
+    let outcome = ziee::persist_links(
+        &mut links,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        Uuid::new_v4(), // external/user server id
+        false,          // NOT built-in → the SSRF-confined external branch
+        &serde_json::json!({}),
+        &["127.0.0.1".to_string()], // trusted_hosts: the mock's host → same-host trust
+        &[],
+        Some("test-secret"), // jwt_secret must be Some or the HTTP branch is skipped
+        Some("ziee"),
+        Some("ziee-api"),
+    )
+    .await
+    .expect("persist_links");
+
+    assert_eq!(outcome.saved.len(), 1, "trusted-host artifact ingested");
+    assert_eq!(outcome.saved[0].size, 12, "the 12-byte CSV body was actually fetched + saved");
+    assert!(links[0].file_id.is_some(), "file_id stamped back → UI renders /api/files/{{id}}");
+
+    pool.close().await;
+    std::fs::remove_dir_all(&store_dir).ok();
+}
+
+/// TEST-7: unmatched host + env off — the default PUBLIC policy blocks the loopback host,
+/// nothing is saved, and the link keeps its raw uri (no file_id).
+#[tokio::test]
+#[serial_test::serial(repos, file_storage)]
+async fn http_link_unmatched_host_is_rejected() {
+    let server = TestServer::start().await;
+    let (uid, pool, store_dir) = setup_ingest_env(&server, "nomatch").await;
+    let (base, _mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await;
+    let uri = format!("{base}/results/x.csv");
+
+    let mut links = vec![ziee_link(&uri, "x.csv")];
+    let outcome = ziee::persist_links(
+        &mut links,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        Uuid::new_v4(),
+        false,
+        &serde_json::json!({}),
+        &[], // trusted_hosts: EMPTY → not same-host → PUBLIC policy blocks loopback/RFC1918
+        &[],
+        Some("test-secret"),
+        Some("ziee"),
+        Some("ziee-api"),
+    )
+    .await
+    .expect("persist_links");
+
+    assert_eq!(outcome.saved.len(), 0, "untrusted private host rejected by SSRF policy");
+    assert_eq!(links[0].uri, uri, "rejected link keeps its original uri");
+    assert!(links[0].file_id.is_none());
+
+    pool.close().await;
+    std::fs::remove_dir_all(&store_dir).ok();
+}
+
+/// TEST-9: the scoped (same-host trust) path has redirects DISABLED. The mock 302-redirects to a
+/// SECOND, reachable loopback mock that serves 200. If redirects were followed the client would
+/// reach that 200 target (loopback → allowed by MCP_USER) and save the artifact; because they are
+/// disabled, the 302 itself is a non-success response and nothing is saved. This DISTINGUISHES
+/// redirects-disabled from redirects-followed (the target is reachable + successful), so the test
+/// would fail if the redirect-disabling were reverted.
+#[tokio::test]
+#[serial_test::serial(repos, file_storage)]
+async fn http_link_scoped_path_does_not_follow_redirect() {
+    let server = TestServer::start().await;
+    let (uid, pool, store_dir) = setup_ingest_env(&server, "redirect").await;
+
+    // The redirect TARGET is a reachable loopback mock serving a real 200 body.
+    let (target, _target_mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await;
+    // The primary mock 302-redirects to that target.
+    let redirect_resp = format!(
+        "HTTP/1.1 302 Found\r\nLocation: {target}/redirected.csv\r\nContent-Length: 0\r\n\r\n"
+    );
+    let (base, _redir_mock) = start_fixed_response_mock(redirect_resp).await;
+
+    let mut links = vec![ziee_link(&format!("{base}/results/x.csv"), "x.csv")];
+    let outcome = ziee::persist_links(
+        &mut links,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        Uuid::new_v4(),
+        false,
+        &serde_json::json!({}),
+        &["127.0.0.1".to_string()], // trusted → PrivateScoped → redirects DISABLED
+        &[],
+        Some("test-secret"),
+        Some("ziee"),
+        Some("ziee-api"),
+    )
+    .await
+    .expect("persist_links");
+
+    assert_eq!(
+        outcome.saved.len(),
+        0,
+        "redirect is not followed (would be 1 if the scoped path followed it to the 200 target)"
+    );
+    assert!(links[0].file_id.is_none());
+
+    pool.close().await;
+    std::fs::remove_dir_all(&store_dir).ok();
+}

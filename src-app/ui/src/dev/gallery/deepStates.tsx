@@ -190,6 +190,17 @@ export const DEEP_STATE_ENTRIES: DeepStateEntry[] = [
     setup: () => whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolFailed),
   },
   {
+    // A ≥2-tool run folded into the "N tools called" group card, with an
+    // artifact tool_result that was persisted non-adjacent to its tool_use.
+    // normalizeToolResultOrder wraps it inside the group and the group
+    // auto-opens for the artifact, so the inline preview shows without a click.
+    slug: 'deep-chat-tool-group',
+    title: 'Conversation — tool group with artifact (auto-open)',
+    conversationId: CHAT_DEEP_CONVERSATION_IDS.toolGroup,
+    note: 'a 2-tool group card, auto-expanded because a run tool_result carries an artifact',
+    setup: () => whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolGroup),
+  },
+  {
     // Live MCP-composer tool-call in COMPLETED status: seeding McpComposer.toolCalls
     // for the running conversation's tool_use block id makes McpToolCallUI render
     // the completed status marker (mcp/chat-extension/extension.tsx:69/70).
