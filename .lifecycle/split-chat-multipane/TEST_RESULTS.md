@@ -231,6 +231,17 @@ The only non-runnable-here behavior — the Tauri cross-OS-window event DELIVERY
 ITEM-54 — is a platform guarantee flagged for desktop-host verification (the
 decision/handler/emit/listen control flow + the render are all RUN here).
 
+## Round 7 (ITEM-55/56) — header-chrome-per-context audit fixes (FB-13)
+
+Action audit ran (every context-sensitive chat button driven in single-pane / split
+pane / pop-out window). Fixes built test-first.
+
+- **TEST-65**: PASS (extended with the ITEM-56 pop-out-window case, TEST-65b)
+- **TEST-84**: PASS (round-6 HIGH-fix test, now enumerated)
+- **TEST-85**: PASS
+- **`npm run check (ui): PASS`** — full chain incl. override gate + state-matrix, exit 0.
+- **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate, exit 0.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
