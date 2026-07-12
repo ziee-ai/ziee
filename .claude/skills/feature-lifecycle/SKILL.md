@@ -557,6 +557,21 @@ or wasted many sessions.
   (temporarily move `.lifecycle/` aside, re-run the gate, confirm it still
   passes) before declaring done. (Caught on the desktop-override gate, which
   read its approval list from `.lifecycle/…/DECISIONS.md`.)
+- **B7 — verification means RUNNING it, never reading the code.** "I determined
+  this behaves correctly by reading the code" is a GUESS, not verification, and it
+  is a recurring miss. Every behavioral claim must be proven by a test that
+  actually EXERCISES the behavior. For UI/render behavior specifically: mount the
+  route/component and assert the DOM (e.g. "the pop-out route renders NO sidebar/
+  app-nav and DOES render the ConversationPane") — a mocked unit that covers the
+  window-API mechanics does NOT cover what actually renders. No item ships with
+  "0 tests" or a read-and-assert stand-in; the FB-7 coverage for a render/behavior
+  item must be a test that genuinely runs it.
+- **B8 — do not stop to ask about IMPLEMENTATION approach.** You are authorized to
+  implement. Once you have worked out the right approach, DO it and keep going —
+  never pause on "want me to start there?" / "should I proceed?". The only things
+  you escalate to the human are genuine PRODUCT choices about what the feature
+  should DO, surfaced as explicit option pickers (the Phase-4 rule). Implementation
+  decisions are resolved by precedent/convention and executed, not asked.
 - **B3 — never edit the SHARED test harness to route around YOUR feature's
   problem.** `tests/common/*`, the gallery cassette, `playwright.*.config`, the
   build DB helper are shared infrastructure. If your test needs them changed,
