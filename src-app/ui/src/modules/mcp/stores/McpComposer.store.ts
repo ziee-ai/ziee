@@ -570,7 +570,7 @@ export const McpComposer = defineStore('McpComposer', {
             approvalMode: 'manual_approve',
             autoApprovedTools: [],
           }
-          state.conversationConfigs.set(PENDING_CONVERSATION_KEY, config)
+          state.conversationConfigs.set(configKey, config)
         }
 
         if (config) {
@@ -597,7 +597,7 @@ export const McpComposer = defineStore('McpComposer', {
             approvalMode: 'manual_approve',
             autoApprovedTools: [],
           }
-          state.conversationConfigs.set(PENDING_CONVERSATION_KEY, config)
+          state.conversationConfigs.set(configKey, config)
         }
 
         if (!config) return
@@ -814,16 +814,29 @@ export const McpComposer = defineStore('McpComposer', {
     /**
      * Select a server (tools=[] means all tools)
      */
-    selectServer: (serverId: string, tools: string[] = []) => {
+    selectServer: (serverId: string, tools: string[] = [], paneId?: string | null) => {
       set(state => {
         state.selectedServers.set(serverId, {
           server_id: serverId,
           tools,
         })
 
-        // Update conversation config (or pending config)
-        const configKey = resolveConfigKey(state, state.currentConversationId)
-        const config = state.conversationConfigs.get(configKey)
+        // Update the target config. When an explicit `paneId` is given (ITEM-51
+        // new-chat seeding from McpInitializer for a specific pane), target THAT
+        // pane's OWN pending config directly, so a new SPLIT pane's default servers
+        // don't land in the current-scope/other-pane config. Otherwise (the modal)
+        // use the current scope's key (which is already currentPaneId-aware).
+        const configKey =
+          paneId !== undefined
+            ? pendingConversationKey(paneId)
+            : resolveConfigKey(state, state.currentConversationId)
+        let config = state.conversationConfigs.get(configKey)
+        // Seeding a specific pane's pending config (paneId given) may run before
+        // that config exists — create an empty one so the selection isn't dropped.
+        if (!config && paneId !== undefined) {
+          config = { selectedServers: new Map(), approvalMode: 'manual_approve', autoApprovedTools: [] }
+          state.conversationConfigs.set(configKey, config)
+        }
         if (config) {
           config.selectedServers.set(serverId, { server_id: serverId, tools })
         }
@@ -927,13 +940,21 @@ export const McpComposer = defineStore('McpComposer', {
      */
     getSelectedServersConfigFor: (
       conversationId: string | null | undefined,
+      paneId?: string | null,
     ): McpServerConfig[] => {
       const state = get()
-      const key = conversationId ?? PENDING_CONVERSATION_KEY
+      // For a new-chat (pre-mint) pane read THIS pane's OWN pending config
+      // (ITEM-51) — the send path is the READ twin of the pane-aware pending
+      // WRITE. A pending pane with no stored config has NO selection: NEVER fall
+      // back to the global `selectedServers` projection there (that is whichever
+      // pane last opened its modal, so it would leak the OTHER pane's servers or,
+      // when empty, silently drop this pane's). The active-projection fallback is
+      // ONLY for the same-REAL-conversation just-created case.
+      const key = conversationId ?? pendingConversationKey(paneId)
       const config = state.conversationConfigs.get(key)
       const selections = config
         ? Array.from(config.selectedServers.values())
-        : conversationId === state.currentConversationId
+        : conversationId != null && conversationId === state.currentConversationId
           ? Array.from(state.selectedServers.values())
           : []
       return selections.map(sel => ({
@@ -1038,7 +1059,7 @@ export const McpComposer = defineStore('McpComposer', {
     /**
      * Apply user defaults to pending config (for new conversations)
      */
-    applyUserDefaultsToPending: (availableServerIds: string[]) => {
+    applyUserDefaultsToPending: (availableServerIds: string[], paneId?: string | null) => {
       const state = get()
       const defaults = state.userDefaults
 
@@ -1059,15 +1080,19 @@ export const McpComposer = defineStore('McpComposer', {
       }
 
       set(s => {
-        s.conversationConfigs.set(PENDING_CONVERSATION_KEY, {
+        // THIS pane's pending config (ITEM-51) so a new SPLIT pane's default MCP
+        // servers land in the same per-pane key its status row + send path read
+        // (a null pane → the bare key, single-pane unchanged).
+        s.conversationConfigs.set(pendingConversationKey(paneId), {
           selectedServers,
           disabledServers: defaults.disabled_servers || [],
           approvalMode: defaults.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve',
           autoApprovedTools: defaults.auto_approved_tools || [],
           loopSettings: defaults.loop_settings,
         })
-        // Also update selectedServers if we're on a new conversation
-        if (!s.currentConversationId) {
+        // Also update the active projection when this pane's default IS the active
+        // scope (a new conversation whose current pane is this one).
+        if (!s.currentConversationId && (s.currentPaneId ?? null) === (paneId ?? null)) {
           s.selectedServers = new Map(selectedServers)
         }
       })

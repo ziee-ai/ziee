@@ -10,15 +10,20 @@ import {
 /**
  * Split-chat E2E — per-PANE PENDING selection isolation (TEST-78, ITEM-51). Two
  * split panes each composing a NEW (not-yet-created) chat must each hold their OWN
- * pending KB + MCP selection: a KB attached / an MCP server enabled in new-chat
- * pane A must NOT appear in new-chat pane B. Before ITEM-51 both panes shared one
- * global pending buffer (`__pending__`), so pane A's pending selection leaked into
- * pane B; now the pending buffer is keyed per pane. No LLM (attach + assert chip).
+ * pending KB + MCP selection. Two complementary isolation proofs:
+ *   • KB (attach-isolation): a KB is NOT auto-seeded, so attaching one in new-chat
+ *     pane A shows its chip in pane A ONLY.
+ *   • MCP (deselect-isolation): an admin-enabled server DOES auto-seed into EACH
+ *     new pane's OWN pending config (per-pane McpInitializer), so it shows in BOTH;
+ *     removing it from pane A's chip edits only pane A's pending buffer — gone from
+ *     A, still in B.
+ * Before ITEM-51 both panes shared one global pending buffer (`__pending__`), so a
+ * pending selection/removal in one pane leaked into the other. No LLM.
  */
 test.describe('Split chat — per-pane PENDING selection isolation (new chats)', () => {
   test.describe.configure({ retries: 1 })
 
-  test('a pending KB + MCP selection in new-chat pane A does not appear in new-chat pane B', async ({
+  test('a pending KB attach + MCP removal in new-chat pane A stay isolated to pane A', async ({
     page,
     testInfra,
   }) => {
@@ -81,35 +86,35 @@ test.describe('Split chat — per-pane PENDING selection isolation (new chats)',
     await paneB.getByTestId('pane-start-new-chat').click()
     await expect(paneB.getByTestId('pane-new-chat-greeting')).toBeVisible({ timeout: 15000 })
 
-    // ── MCP leg first: enable a server in new-chat pane A (its OWN pending config).
-    // (The MCP config modal cleanly closes the "+" dropdown, leaving a fresh state
-    // for the KB leg's own dropdown afterwards.) ──
-    await paneA.getByTestId('chat-input-add-btn').click()
-    await byTestId(page, 'chat-mcp-menu-item').first().click()
-    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({ timeout: 10000 })
-    const toggle = byTestId(page, `mcp-config-server-switch-${serverId}`)
-    if ((await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 5000 })
-    await byTestId(page, 'mcp-config-close-btn').click()
-
-    // MCP chip in pane A's pending config ONLY — pane B's own pending has no server.
+    // ── MCP leg (deselect-isolation): the admin-enabled server auto-seeds into
+    // EACH new pane's OWN pending config (per-pane McpInitializer), so it shows in
+    // BOTH new panes independently. ──
     await expect(paneA.getByTestId(`mcp-chip-${serverId}`)).toBeVisible({ timeout: 15000 })
-    await expect(paneB.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0)
+    await expect(paneB.getByTestId(`mcp-chip-${serverId}`)).toBeVisible({ timeout: 15000 })
 
-    // ── KB leg: attach a KB in new-chat pane A (its OWN pending buffer) ──
+    // Remove it from pane A ONLY via its chip × (deselectServerForConversation on
+    // pane A's OWN pending buffer) — gone from A, STILL in B.
+    await paneA
+      .getByTestId(`mcp-chip-${serverId}`)
+      .getByRole('button', { name: 'Remove' })
+      .click()
+    await expect(paneA.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0, { timeout: 10000 })
+    await expect(paneB.getByTestId(`mcp-chip-${serverId}`)).toBeVisible()
+
+    // ── KB leg (attach-isolation): a KB is NOT auto-seeded; attaching one in pane
+    // A's + menu shows its chip in pane A's pending ONLY. ──
     await paneA.getByTestId('chat-input-add-btn').click()
     await byTestId(page, 'kb-menu-trigger').click()
     await byTestId(page, `kb-option-${kb.id}`).click()
-
-    // Chip shows in pane A's pending selection ONLY — pane B's own pending is empty.
     await expect(paneA.getByTestId(`kb-chip-${kb.id}`)).toBeVisible({ timeout: 15000 })
     await expect(paneB.getByTestId(`kb-chip-${kb.id}`)).toHaveCount(0)
 
-    // Focusing pane B does not surface pane A's pending selections (per-pane, not focus).
+    // Focusing pane B does not surface pane A's pending state, nor resurrect the
+    // MCP server pane A removed (per-pane, not focus-following).
     await paneB.click({ position: { x: 200, y: 80 } })
     await expect(paneB.getByTestId(`kb-chip-${kb.id}`)).toHaveCount(0)
-    await expect(paneB.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0)
     await expect(paneA.getByTestId(`kb-chip-${kb.id}`)).toBeVisible()
-    await expect(paneA.getByTestId(`mcp-chip-${serverId}`)).toBeVisible()
+    await expect(paneA.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0) // removed in A
+    await expect(paneB.getByTestId(`mcp-chip-${serverId}`)).toBeVisible() // B keeps its own
   })
 })

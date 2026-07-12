@@ -989,10 +989,14 @@ const mcpExtension: ChatExtension = createExtension({
     const { Stores } = await import('@/core/stores')
     const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
-    // Resolve the SENDING pane's own MCP config + approvals (ITEM-33) — from the
-    // per-conversation keyed state, not the single-active pointer, so two split
-    // panes send with their own selection and one pane's approval never leaks.
-    const selectedServers = mcpStore.getSelectedServersConfigFor(ctx.conversationId)
+    // Resolve the SENDING pane's own MCP config + approvals (ITEM-33/51) — from the
+    // per-conversation/per-pane keyed state, not the single-active pointer, so two
+    // split panes send with their own selection and one pane's approval never leaks.
+    // `ctx.paneId` scopes the PENDING (new-chat) read to THIS pane's own buffer.
+    const selectedServers = mcpStore.getSelectedServersConfigFor(
+      ctx.conversationId,
+      ctx.paneId,
+    )
     const approvalDecisions = mcpStore.getApprovalDecisions(
       approvalKeyOf(ctx.conversationId),
     )
