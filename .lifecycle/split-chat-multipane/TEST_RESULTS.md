@@ -242,6 +242,21 @@ pane / pop-out window). Fixes built test-first.
 - **`npm run check (ui): PASS`** — full chain incl. override gate + state-matrix, exit 0.
 - **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate, exit 0.
 
+## Round 8 (audit) — message-actions leg: copy per-pane + pop-out-window actions
+
+The "audit all the actions again" pass (FB-13) drove the message-action set. TEST-58
+already proves regenerate/edit/branch per-pane; the audit surfaced two uncovered legs
+— COPY per-pane targeting and whether message actions work in the pop-out window. Both
+DRIVEN (real-LLM bridge) and measured clean (no behavioral defect), then promoted from
+an observational probe into a permanent covering spec so the behavior ships with a
+running test.
+
+- **TEST-86**: PASS — copy on pane 1's message (pane 0 focused+empty) → clipboard =
+  pane 1's exact text; per-pane, no cross-pane leak.
+- **TEST-87**: PASS — pop-out window renders the full action set (copy×2/edit×1/regen×1)
+  and edit restores the text into the window's own composer.
+- Log: `/data/pbya/ziee/tmp/lifecycle-logs/msgaudit-perm-*.log` (1 passed, 15.0s).
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
