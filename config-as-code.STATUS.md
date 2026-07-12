@@ -26,6 +26,27 @@ Postgres advisory lock so concurrent boots can't duplicate). Secrets are never i
 password must be a `${ENV_VAR}` placeholder, resolved from process env and never logged. A bad ENTRY
 is skipped; an unusable FILE fails the boot.
 
+## Deploy dependencies (for TeamCity)
+
+- Env: `BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp`,
+  `RCPA_MCP_URL=http://host.docker.internal:18120/mcp`,
+  `DSCC_MCP_URL=http://host.docker.internal:18122/mcp`, plus `ZIEE_ADMIN_PASSWORD` and
+  `ZIEE_DEFAULT_USER_PASSWORD`. Nothing is hardcoded — local dev points the same vars at
+  `172.21.0.1:9004` etc.
+- **Required compose change (included here):** `extra_hosts: ["host.docker.internal:host-gateway"]` on
+  the ziee service — without it the container cannot reach the host-published MCP ports. Added to both
+  `docker-compose.yml` and `docker-compose.external-db.yml`; a hand-rolled `docker run` needs
+  `--add-host`.
+
+## One operational nuance worth knowing
+
+ziee's boot health check probes every enabled MCP server and **auto-disables the unreachable ones**
+(pre-existing behavior, not introduced here). So if the MCP containers aren't answering when ziee
+boots, the three servers land `enabled=false`. That is exactly why the manifest declares them
+`mode: enforce` — the next deploy re-asserts `enabled: true`. If you want them to come up enabled on
+the FIRST boot every time, ziee's compose should wait for those services (or simply redeploy once
+they're up).
+
 ## Test container for review
 
 `docker compose -p ziee-cac` on **:8090** (own Postgres + volumes — the live :8080 stack is untouched).
