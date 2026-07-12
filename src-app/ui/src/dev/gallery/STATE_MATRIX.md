@@ -8,7 +8,7 @@
 ## Summary
 
 - **367** surfaces carry at least one renderable-state signal.
-- **2173** signals total: 1716 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2175** signals total: 1718 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -1305,34 +1305,36 @@ Required states: `delayed`, `error`
 | branch | `panes.length >= 2` | 69 |
 | branch | `!pane \|\| !isWorkspaceDrag(e.dataTransfer)` | 94 |
 | branch | `!pane` | 99 |
-| branch | `!sentinel` | 265 |
-| branch | `!el` | 285 |
-| branch | `!nativeScroll` | 300 |
-| branch | `y < 0 \|\| y > maxY` | 309 |
-| branch | `maxY - y <= 8` | 313 |
-| branch | `Math.abs(dy) < 6` | 319 |
-| branch | `!chat.$.conversation` | 339 |
-| branch | `!conversationId` | 381 |
-| branch | `!hasNewApproval` | 461 |
-| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 465 |
-| branch | `!sentinel` | 493 |
-| branch | `!entries[0]?.isIntersecting` | 497 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 500 |
-| branch | `!sentinel` | 535 |
-| branch | `!entries[0]?.isIntersecting` | 539 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 540 |
-| loading | `!pending` | 555 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 558 |
-| branch | `!conversation?.id` | 567 |
-| branch | `!m` | 571 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 574 |
-| loading | `loading && !conversation` | 605 |
-| branch | `pane && !conversationId && !conversation` | 617 |
-| loading | `!loading && !conversation` | 624 |
-| error | `error` | 627 |
-| branch | `pane` | 692 |
-| error | `error` | 744 |
-| branch | `nativeScroll && !composerHidden` | 843 |
+| branch | `!sentinel` | 268 |
+| branch | `!el` | 288 |
+| branch | `!nativeScroll` | 303 |
+| branch | `y < 0 \|\| y > maxY` | 312 |
+| branch | `maxY - y <= 8` | 316 |
+| branch | `Math.abs(dy) < 6` | 322 |
+| branch | `!chat.$.conversation` | 342 |
+| branch | `!conversationId` | 384 |
+| branch | `didSeedApprovalsRef.current` | 440 |
+| branch | `conversation?.id !== conversationId` | 441 |
+| branch | `!hasNewApproval` | 476 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 480 |
+| branch | `!sentinel` | 508 |
+| branch | `!entries[0]?.isIntersecting` | 512 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 515 |
+| branch | `!sentinel` | 550 |
+| branch | `!entries[0]?.isIntersecting` | 554 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 555 |
+| loading | `!pending` | 570 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 573 |
+| branch | `!conversation?.id` | 582 |
+| branch | `!m` | 586 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 589 |
+| loading | `loading && !conversation` | 620 |
+| branch | `pane && !conversationId && !conversation` | 632 |
+| loading | `!loading && !conversation` | 639 |
+| error | `error` | 642 |
+| branch | `pane` | 707 |
+| error | `error` | 759 |
+| branch | `nativeScroll && !composerHidden` | 858 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -2457,11 +2459,11 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!canUse` | 38 |
-| empty | `kbs.length === 0` | 56 |
-| branch | `kbs.length > 6` | 75 |
-| branch | `status` | 109 |
-| empty | `filtered.length === 0` | 116 |
+| branch | `!canUse` | 44 |
+| empty | `kbs.length === 0` | 62 |
+| branch | `kbs.length > 6` | 81 |
+| branch | `status` | 115 |
+| empty | `filtered.length === 0` | 122 |
 
 ### `modules/knowledge-base/chat-extension/components/KbSourcePanel`
 
@@ -2478,7 +2480,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `!canUse \|\| (visibleIds.length === 0 && inheritedOnly.length === 0)` | 34 |
+| empty | `!canUse \|\| (visibleIds.length === 0 && inheritedOnly.length === 0)` | 40 |
 
 ### `modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard`
 
@@ -3237,7 +3239,7 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `enabledServers.length === 0 && !loading` | 28 |
+| loading | `enabledServers.length === 0 && !loading` | 33 |
 
 ### `modules/mcp/chat-extension/components/McpStatusRow`
 
@@ -3245,7 +3247,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `visibleServerIds.length === 0` | 44 |
+| empty | `visibleServerIds.length === 0` | 47 |
 
 ### `modules/mcp/chat-extension/components/ToolCallPendingApprovalCancelContent`
 
@@ -3306,8 +3308,8 @@ Required states: `error`
 | branch | `isExpanded` | 360 |
 | branch | `!run \|\| !shouldWrapRun(run)` | 393 |
 | branch | `!mcpStore` | 435 |
-| branch | `!streamingMessage` | 865 |
-| branch | `!toolUseId` | 877 |
+| branch | `!streamingMessage` | 885 |
+| branch | `!toolUseId` | 897 |
 
 ### `modules/mcp/components/McpConfigModal`
 
@@ -3315,20 +3317,20 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!configModalVisible \|\| !isProjectScope` | 137 |
-| branch | `selectedServers.size > 0` | 140 |
-| branch | `!selection` | 188 |
-| branch | `!selection` | 210 |
-| branch | `!isProjectScope && !currentConversationId` | 241 |
-| empty | `tools.length === 0` | 333 |
-| branch | `approvalMode === 'manual_approve'` | 348 |
-| branch | `tool.description` | 362 |
-| branch | `!isPrimaryModal` | 375 |
-| branch | `!isProjectScope` | 384 |
-| empty | `enabledServers.length === 0` | 426 |
-| branch | `isMobile` | 552 |
-| overlay | `<Drawer open>` | 553 |
-| overlay | `<Dialog open>` | 565 |
+| branch | `!configModalVisible \|\| !isProjectScope` | 138 |
+| branch | `selectedServers.size > 0` | 141 |
+| branch | `!selection` | 189 |
+| branch | `!selection` | 211 |
+| branch | `!isProjectScope && !currentConversationId` | 242 |
+| empty | `tools.length === 0` | 334 |
+| branch | `approvalMode === 'manual_approve'` | 349 |
+| branch | `tool.description` | 363 |
+| branch | `!isPrimaryModal` | 376 |
+| branch | `!isProjectScope` | 385 |
+| empty | `enabledServers.length === 0` | 427 |
+| branch | `isMobile` | 553 |
+| overlay | `<Drawer open>` | 554 |
+| overlay | `<Dialog open>` | 566 |
 
 ### `modules/mcp/components/common/KeyValueSecretEditor`
 

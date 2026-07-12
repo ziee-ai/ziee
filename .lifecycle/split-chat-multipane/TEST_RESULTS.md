@@ -203,6 +203,15 @@ round-5 specs re-ran green after the round-13 blind-audit fixes.
 - **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate
   (`../../ui/scripts/gen-override-registry.mjs --check` → 0 web-only), exit 0.
 
+## ITEM-51 (per-pane PENDING KB + MCP) — FB-11 cross-cutting fix
+
+- **TEST-76**: PASS
+- **TEST-77**: PASS
+- **TEST-78**: PASS
+- **`npm run check (ui): PASS`** — full chain incl. the override gate
+  (`gen-override-registry.mjs --check` → 0 web-only) + state-matrix regen, exit 0.
+- **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate, exit 0.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
