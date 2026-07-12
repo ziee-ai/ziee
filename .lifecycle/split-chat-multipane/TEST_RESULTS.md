@@ -212,6 +212,25 @@ round-5 specs re-ran green after the round-13 blind-audit fixes.
   (`gen-override-registry.mjs --check` → 0 web-only) + state-matrix regen, exit 0.
 - **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate, exit 0.
 
+## Round 6 (ITEM-52/53/54) — desktop pop-out UX (FB-12)
+
+Built test-first (render behavior PROVEN by running it). The blind-audit HIGH
+(snap-back never navigated) was fixed + covered by TEST-84 before this record.
+
+- **TEST-79**: PASS
+- **TEST-80**: PASS
+- **TEST-81**: PASS
+- **TEST-82**: PASS
+- **TEST-83**: PASS
+- **TEST-84**: PASS
+- **`npm run check (ui): PASS`** — full chain incl. gallery-coverage + override gate
+  (14 .desktop, 0 web-only) + state-matrix, exit 0.
+- **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate, exit 0.
+
+The only non-runnable-here behavior — the Tauri cross-OS-window event DELIVERY for
+ITEM-54 — is a platform guarantee flagged for desktop-host verification (the
+decision/handler/emit/listen control flow + the render are all RUN here).
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
