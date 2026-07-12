@@ -8,7 +8,7 @@ A declarative, env-templated **`config/desired-state.yaml`** the container recon
 boot (after migrations, before serving), so a fresh deploy comes up fully configured with no manual
 UI setup:
 
-- **3 org system MCP servers** (rcpa / dscc / biognosia) from `${RCPA_MCP_URL}` / `${DSCC_MCP_URL}` /
+- **3 org system MCP servers** (`rcpa-user` / `dscc-user` / `biognosia-user`) from `${RCPA_MCP_URL}` / `${DSCC_MCP_URL}` /
   `${BIOGNOSIA_MCP_URL}`, `usage_mode: auto`, assigned to the **Users** group (without which
   non-admin users cannot use them).
 - **Root admin** (`admin` / `admin@tinnguyen-lab.com`, `${ZIEE_ADMIN_PASSWORD}`) — created only when

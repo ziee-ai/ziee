@@ -13,6 +13,11 @@
 #     and never blocks the boot — so a deploy that doesn't set RCPA_MCP_URL
 #     simply comes up without the RCPA server.
 #   - Everything here is IDEMPOTENT: re-deploying creates no duplicates.
+#   - The idempotency KEY for a server is its `name`, and this file only ever
+#     ADDS or UPDATES — it never deletes. So RENAMING an entry (or deleting one)
+#     leaves the old row behind: the reconciler creates the new name and has no
+#     way to know the old one is obsolete. After a rename, remove the stale
+#     server once in Settings -> MCP Servers (admin). Same for a removed entry.
 #
 # MODES (mcp_servers; accepted-but-inert on admin/users)
 #   ensure  (default) — create when absent; if it already exists, leave its

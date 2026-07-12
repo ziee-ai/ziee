@@ -175,6 +175,22 @@ test.describe('MCP - User Servers', () => {
   })
 
   test('should filter servers by search term', async ({ page }) => {
+    // A second server that must be filtered OUT — the negative control. It used
+    // to be the seeded `Filesystem Access` row, which migration 157 deleted; with
+    // that row gone the assertion below would pass even if search did nothing, so
+    // the spec creates a server it can actually exclude.
+    const probe: McpServerFormData = {
+      name: 'search-probe',
+      displayName: 'Search Probe',
+      transportType: 'http',
+      url: 'http://127.0.0.1:9/mcp',
+      enabled: true,
+    }
+    await openAddServerDrawer(page, false)
+    await fillMcpServerForm(page, probe)
+    await submitMcpServerForm(page, 'create', false)
+    await verifyServerExists(page, probe.displayName)
+
     await byTestId(page, 'mcp-settings-search-input').fill('Web Fetch')
 
     // Should show Web Fetch server
@@ -182,9 +198,9 @@ test.describe('MCP - User Servers', () => {
       page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Web Fetch' }),
     ).toBeVisible()
 
-    // Should not show Filesystem server
+    // …and must NOT show the non-matching server.
     await expect(
-      page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Filesystem' }),
+      page.getByTestId(/^mcp-server-card-/).filter({ hasText: 'Search Probe' }),
     ).toHaveCount(0)
   })
 

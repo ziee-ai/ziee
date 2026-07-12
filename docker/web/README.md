@@ -156,6 +156,12 @@ unauthenticated first-run setup page is open to whoever finds it) is worse than
 one that refuses to start. Note that bind-mounting a host path that does not
 exist makes Docker create a *directory* there; that is caught and reported.
 
+**The file only adds and updates — it never deletes.** A server's identity is its
+`name`, so renaming (or removing) an entry leaves the OLD row in the database: the
+reconciler creates the new name and cannot know the old one is obsolete. After a
+rename, delete the stale server once in **Settings → MCP Servers**. (Accounts and
+group permissions are unaffected — those are keyed by username/group name.)
+
 **Per-entry `mode`:**
 
 - `ensure` (default) — create when absent; if it already exists, leave its
