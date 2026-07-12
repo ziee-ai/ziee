@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   PENDING_CONVERSATION_KEY,
+  pendingConversationKey,
   approvalKeyOf,
   addApprovalDecisionTo,
   getApprovalDecisionsFrom,
@@ -52,4 +53,18 @@ test('the helpers never mutate the input map (immer-safe)', () => {
   const m2 = clearApprovalDecisionsIn(m1, 'conv-A')
   assert.equal(m1.get('conv-A')?.length, 1, 'clear did not mutate its input')
   assert.equal(m2.has('conv-A'), false)
+})
+
+// TEST-77 (ITEM-51): the per-PANE pending MCP config key — two split panes each
+// composing a NEW chat must edit their OWN pending config, not a shared one.
+test('pendingConversationKey: per-pane pending key; null pane → the bare key', () => {
+  assert.equal(pendingConversationKey(null), PENDING_CONVERSATION_KEY)
+  assert.equal(pendingConversationKey(undefined), PENDING_CONVERSATION_KEY)
+  assert.equal(pendingConversationKey(''), PENDING_CONVERSATION_KEY, 'empty pane id → single-pane bare key')
+  assert.equal(pendingConversationKey('pane-A'), `${PENDING_CONVERSATION_KEY}:pane-A`)
+  assert.notEqual(
+    pendingConversationKey('pane-A'),
+    pendingConversationKey('pane-B'),
+    'two new-chat panes get distinct pending config keys (no cross-pane leak)',
+  )
 })

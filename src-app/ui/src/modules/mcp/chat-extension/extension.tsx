@@ -454,10 +454,14 @@ const mcpExtension: ChatExtension = createExtension({
             // messages without the column populated.
           }
         } else {
-          // Edit cancelled or sent — restore from stored conversation config
-          const conversation = chatStore.getState().conversation
-          if (conversation) {
-            mcpStore.setCurrentConversation(conversation.id)
+          // Edit cancelled or sent — restore from stored conversation config,
+          // binding the modal to THIS pane (ITEM-51).
+          const st = chatStore.getState() as {
+            conversation?: { id: string }
+            paneId?: string | null
+          }
+          if (st.conversation) {
+            mcpStore.setCurrentConversation(st.conversation.id, st.paneId ?? null)
           }
         }
         },
@@ -1137,22 +1141,29 @@ const mcpExtension: ChatExtension = createExtension({
   },
 
   // Clear approval decisions after message is sent
-  onMessageSent: async () => {
+  onMessageSent: async ownerPaneId => {
     const { Stores } = await import('@/core/stores')
+    const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     // Read via `$` snapshot (state fields + actions both live on getState())
     const mcpStore = Stores.McpComposer.$
-    const chatStore = Stores.Chat.$
 
-    // Get current conversation from chat store
-    const conversation = chatStore.conversation
+    // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
+    // a `Stores.Chat.$` read (the FOCUSED pane) — in split view the sender may not
+    // be focused by the time this async hook runs, so a `.$` read would transfer the
+    // wrong pane's pending config (ITEM-51). Single-pane falls back to the bridge.
+    const paneState = ownerPaneId
+      ? (paneRegistry.get(ownerPaneId)?.api.getState() as
+          | { conversation?: { id?: string } }
+          | undefined)
+      : undefined
+    const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
 
-    // Handle new conversation creation
-    if (conversation?.id && !mcpStore.currentConversationId) {
-      // Transfer pending config to the new conversation
-      mcpStore.transferPendingConfig(conversation.id)
-
-      // Set current conversation ID
-      mcpStore.setCurrentConversation(conversation.id)
+    // Handle new conversation creation: a freshly-minted conversation has no config
+    // of its own yet → move THIS pane's own pending config (keyed by ownerPaneId)
+    // under the new id, bind the modal to it, and persist.
+    if (conversation?.id && !mcpStore.conversationConfigs.has(conversation.id)) {
+      mcpStore.transferPendingConfig(conversation.id, ownerPaneId)
+      mcpStore.setCurrentConversation(conversation.id, ownerPaneId)
 
       // Get available server IDs for proper disabled_servers computation
       const mcpServerState = Stores.McpServer.$

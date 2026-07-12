@@ -1,7 +1,7 @@
 import { Tag } from '@/components/ui'
 import { Wrench } from 'lucide-react'
 import { Stores } from '@/core/stores'
-import { PENDING_CONVERSATION_KEY } from '@/modules/mcp/stores/McpComposer.store'
+import { pendingConversationKey } from '@/modules/mcp/stores/McpComposer.store'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**
@@ -27,8 +27,11 @@ export function McpStatusRow() {
   // ITS conversation, not the focused one.
   const pane = useChatPaneOrNull()
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const paneId = pane?.paneId ?? null
   const conversation = chat.conversation
-  const convKey = conversation?.id ?? PENDING_CONVERSATION_KEY
+  // A new chat reads THIS pane's own pending config (ITEM-51), so a pending MCP
+  // selection in one new-chat pane never shows in the other.
+  const convKey = conversation?.id ?? pendingConversationKey(paneId)
   const selectedServers = conversationConfigs.get(convKey)?.selectedServers
 
   // Compute derived values during render (not inside event handlers)
@@ -54,8 +57,9 @@ export function McpStatusRow() {
             tone="info"
             icon={<Wrench />}
             onClose={async () => {
-              // Edit THIS pane's conversation, not the global-active one.
-              mcpStore.deselectServerForConversation(conversation?.id ?? null, serverId)
+              // Edit THIS pane's conversation (or its own pending buffer for a new
+              // chat), not the global-active one.
+              mcpStore.deselectServerForConversation(conversation?.id ?? null, serverId, paneId)
               if (conversation?.id) {
                 // Existing conversation: persist to conversation config
                 await mcpStore.saveConversationConfig(conversation.id, enabledServerIds)

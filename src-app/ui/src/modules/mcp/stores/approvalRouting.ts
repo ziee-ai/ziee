@@ -17,6 +17,16 @@ export const approvalKeyOf = (
   conversationId: string | null | undefined,
 ): string => conversationId ?? PENDING_CONVERSATION_KEY
 
+/**
+ * Per-PANE pending (new-chat, pre-mint) config key: `__pending__:<paneId>`, or the
+ * bare `PENDING_CONVERSATION_KEY` when there is no pane (single-pane), so two split
+ * panes each composing a NEW chat don't share one pending config (ITEM-51 —
+ * symmetric with KB's `pendingKbKey`). Lives here (pure) alongside
+ * `PENDING_CONVERSATION_KEY` so it's unit-testable without the ApiClient-laden store.
+ */
+export const pendingConversationKey = (paneId?: string | null): string =>
+  paneId ? `${PENDING_CONVERSATION_KEY}:${paneId}` : PENDING_CONVERSATION_KEY
+
 /** Append a decision to a conversation's list (returns a NEW map — immer-safe). */
 export function addApprovalDecisionTo(
   map: Map<string, ToolApprovalDecision[]>,

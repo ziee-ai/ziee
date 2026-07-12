@@ -25,6 +25,7 @@ export function McpMenuItem() {
   // conversation, else the toggle edits the focused pane's config (ITEM-47).
   const pane = useChatPaneOrNull()
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const paneId = pane?.paneId ?? null
   const conversation = chat.conversation
 
   const enabledServers = servers.filter(s => s.enabled)
@@ -40,7 +41,9 @@ export function McpMenuItem() {
       icon={<Wrench />}
       label="MCP tools & servers"
       onClick={() => {
-        mcpStore.setCurrentConversation(conversation?.id ?? null)
+        // Bind the shared modal to THIS pane's conversation AND pane id (ITEM-51),
+        // so a new-chat toggle edits this pane's own pending config.
+        mcpStore.setCurrentConversation(conversation?.id ?? null, paneId)
         mcpStore.openConfigModal()
         close()
       }}
