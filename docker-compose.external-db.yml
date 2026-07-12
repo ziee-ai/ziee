@@ -24,6 +24,15 @@ services:
       ZIEE_DB_NAME: ${ZIEE_DB_NAME:?set ZIEE_DB_NAME}
       ZIEE_JWT_SECRET: ${ZIEE_JWT_SECRET:?set ZIEE_JWT_SECRET (>=32 chars)}
       ZIEE_STORAGE_KEY: ${ZIEE_STORAGE_KEY:?set ZIEE_STORAGE_KEY (>=32 chars)}
+      # Config as code (docker/web/README.md): the image reconciles
+      # /etc/ziee/desired-state.yaml into the DB on boot; these fill its ${...}
+      # placeholders. Each is OPTIONAL — an unset one skips just its entry (no
+      # server / no admin / no user); it never blocks the boot.
+      RCPA_MCP_URL: "${RCPA_MCP_URL:-}"
+      DSCC_MCP_URL: "${DSCC_MCP_URL:-}"
+      BIOGNOSIA_MCP_URL: "${BIOGNOSIA_MCP_URL:-}"
+      ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:-}"
+      ZIEE_DEFAULT_USER_PASSWORD: "${ZIEE_DEFAULT_USER_PASSWORD:-}"
     ports:
       - "8080:8080"
     volumes:

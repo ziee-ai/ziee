@@ -433,10 +433,12 @@ async fn setup_server(
 
     // Config-as-code: reconcile the declarative desired-state file (located by
     // ZIEE_DESIRED_STATE_FILE) into the DB, before anything is served. A no-op
-    // when the env var is unset / the file is missing — which is the case for
-    // the desktop app and every test that doesn't opt in. Mirrors the same call
-    // in main.rs (this path is the desktop / embedded one).
-    modules::desired_state::reconcile(&pool).await;
+    // when the env var is unset / the file is absent — which is the case for the
+    // desktop app and every test that doesn't opt in. An unusable FILE aborts the
+    // boot (see the same call in main.rs); a bad entry only logs.
+    modules::desired_state::reconcile(&pool)
+        .await
+        .map_err(|e| format!("desired_state: {e}"))?;
 
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), Arc::new(config.clone()));

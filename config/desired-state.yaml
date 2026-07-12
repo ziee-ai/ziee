@@ -14,12 +14,17 @@
 #     simply comes up without the RCPA server.
 #   - Everything here is IDEMPOTENT: re-deploying creates no duplicates.
 #
-# MODES (mcp_servers / admin / users)
-#   ensure  (default) — create when absent; if it already exists, leave it
-#                       alone, so an admin's later UI edits survive a redeploy.
-#   enforce           — create when absent, else re-sync the fields below on
-#                       every boot (the file wins over UI edits).
+# MODES (mcp_servers; accepted-but-inert on admin/users)
+#   ensure  (default) — create when absent; if it already exists, leave its
+#                       fields alone, so an admin's later UI edits survive.
+#   enforce           — create when absent, else re-sync the fields DECLARED
+#                       BELOW on every boot (a field this file omits keeps its
+#                       current DB value).
+# A server's `groups:` list is re-applied every boot in BOTH modes (assignment is
+# additive — removing a group here does not revoke it), because a server in no
+# group is unusable by non-admin users.
 # Group permissions have no mode: they are declarative and re-applied each boot.
+# `add:` may not contain a wildcard — a manifest can never grant `*`.
 #
 # ENV VARS THIS FILE EXPECTS
 #   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
@@ -29,7 +34,15 @@
 # ── Admin system MCP servers ────────────────────────────────────────────────
 # Created as ADMIN system servers (is_system, no owner) and made available to
 # the Users group — a system server assigned to no group is unusable by
-# non-admin users.
+# non-admin users. `usage_mode` is always `auto`: the model decides when to call
+# these tools.
+#
+# They are `enforce` on purpose. ziee's boot health check probes every enabled
+# MCP server and AUTO-DISABLES the unreachable ones, so if an org endpoint is
+# down when ziee starts it gets flipped to enabled=false; `enforce` re-asserts
+# `enabled: true` on the next deploy, where `ensure` would leave it off forever.
+# The cost: an admin who deliberately disables one of these in the UI will see it
+# re-enabled by the next deploy — change it here, not in the UI.
 mcp_servers:
   - name: rcpa
     display_name: RCPA
@@ -39,7 +52,7 @@ mcp_servers:
     supports_sampling: false
     timeout_seconds: 300
     groups: [Users]
-    mode: ensure
+    mode: enforce
 
   - name: dscc
     display_name: DSCC
@@ -49,7 +62,7 @@ mcp_servers:
     supports_sampling: false
     timeout_seconds: 300
     groups: [Users]
-    mode: ensure
+    mode: enforce
 
   - name: biognosia
     display_name: Biognosia
@@ -59,7 +72,7 @@ mcp_servers:
     # This server may ask the model for a completion (MCP sampling).
     supports_sampling: true
     groups: [Users]
-    mode: ensure
+    mode: enforce
 
 # ── Root admin ──────────────────────────────────────────────────────────────
 # Created ONLY when the deployment has no admin yet. On every later boot this
@@ -84,6 +97,10 @@ users:
 # Hide Projects, Hubs and the Settings→Assistants section from regular users.
 # Removing the read permission hides the nav entry AND the settings tab AND
 # gates the route — they share one permission gate.
+#
+# (`projects::*` is a no-op today: migration 54 grants it only to Administrators,
+# so the default group never had it. It is declared anyway, so a future migration
+# that grants Projects to the default group cannot silently un-hide it.)
 #
 # KEPT for users: General (ungated by design), Profile, LLM providers, MCP
 # servers, plus chat/conversations/messages/files and the built-in tool grants.

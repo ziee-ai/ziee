@@ -15,7 +15,7 @@
 //!    server startup; failures flip to `enabled: false` automatically
 //!    so users don't see broken servers in their tool lists.
 //!
-//! Built-in servers (filesystem, memory, code_sandbox, memory_mcp)
+//! Built-in servers (files, memory, code_sandbox, memory_mcp)
 //! are SKIPPED — they're owned by the platform, not by user config,
 //! and their reachability is the platform's responsibility.
 
@@ -293,7 +293,7 @@ pub async fn probe(pool: &PgPool, server: &McpServer) -> Result<(), ProbeFailure
 ///
 /// Runs as a fire-and-forget background task spawned from `mcp::init`
 /// — should NOT block boot. Built-in servers are owned by their
-/// respective modules (filesystem, memory_mcp, code_sandbox) and
+/// respective modules (files_mcp, memory_mcp, code_sandbox) and
 /// don't go through this path.
 ///
 /// No event emission here: the `EventBus` is built AFTER module

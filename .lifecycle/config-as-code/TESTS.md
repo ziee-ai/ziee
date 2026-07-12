@@ -30,7 +30,7 @@ container does. No shared-harness edit (B3).
 ## E2E
 
 - **TEST-14** (tier: e2e) [negative-perm] [covers: ITEM-6, ITEM-5] file: `src-app/ui/tests/e2e/permissions/desired-state-restricted-user.spec.ts` — asserts: a user LACKING `projects::*` / `hub::*` / `assistants::*` (the reconciled default-group user) sees NO Projects nav entry, NO Hub nav entry, and NO "Assistants" tab in Settings — and deep-linking `/projects`, `/hub`, `/settings/assistants` renders the not-authorized result, not the feature — while General, Profile, LLM providers and MCP servers ARE present. Walks all four gating layers (slot → route → `<Can>` → `usePermission`).
-- **TEST-15** (tier: e2e) [covers: ITEM-10] file: `src-app/ui/tests/e2e/07-mcp/mcp-admin-servers.spec.ts` — asserts: the admin MCP-servers specs (enable-toggle, search, built-in badge, edit-configurable-built-in) still pass, retargeted from the deleted "Filesystem Access" card onto the surviving "Web Fetch" card.
+- **TEST-15** (tier: e2e) [covers: ITEM-10] file: `src-app/ui/tests/e2e/mcp/mcp-admin-servers.spec.ts` — asserts: the admin MCP-servers specs (enable-toggle, search, built-in badge, edit-configurable-built-in) still pass, retargeted from the deleted "Filesystem Access" card onto the surviving "Web Fetch" card.
 - **TEST-16** (tier: e2e) [covers: ITEM-10] file: `src-app/ui/tests/e2e/chat/mcp-chip-row-persistence.spec.ts` — asserts: the chat MCP chip-row persistence spec still passes with its fixture server retargeted from "Filesystem Access" to "Web Fetch".
 
 ## Coverage map (every ITEM → ≥1 TEST)
@@ -49,4 +49,4 @@ container does. No shared-harness edit (B3).
 | ITEM-10 (test retargets) | TEST-13, TEST-15, TEST-16 |
 | ITEM-11 (docker + docs) | TEST-17 |
 
-- **TEST-17** (tier: integration) [covers: ITEM-11] file: `src-app/server/tests/desired_state/mod.rs` — asserts: the SHIPPED `config/desired-state.yaml` (the exact file baked into the image) parses and validates — every secret is a `${...}` placeholder, every declared group/server key is well-formed — so a typo in the deploy file fails CI, not the deploy. (This is the machine-checkable half of ITEM-11; the Dockerfile/compose/README wiring itself is proven by the live container run in Phase 8's verification.)
+- **TEST-17** (tier: unit) [covers: ITEM-11] file: `src-app/server/src/modules/desired_state/mod.rs` — asserts: the SHIPPED `config/desired-state.yaml` (the exact file baked into the image) parses and validates — every secret is a `${...}` placeholder, every declared group/server key is well-formed — so a typo in the deploy file fails CI, not the deploy. (This is the machine-checkable half of ITEM-11; the Dockerfile/compose/README wiring itself is proven by the live container run in Phase 8's verification.)

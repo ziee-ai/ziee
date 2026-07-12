@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { test, expect } from './no-403'
 import {
   createTestUser,
@@ -28,7 +30,34 @@ import { byTestId } from '../testid'
 
 const PASSWORD = 'password123'
 
-const REMOVED_PREFIXES = ['projects::', 'hub::', 'assistants::']
+/**
+ * The permission patterns are read from the SHIPPED manifest, not hard-coded —
+ * so if someone edits `config/desired-state.yaml`'s `remove:` list, this spec
+ * follows it (and a typo there fails here rather than silently un-hiding a
+ * feature in production).
+ */
+function shippedRemovePatterns(): string[] {
+  const manifest = fileURLToPath(
+    new URL('../../../../../config/desired-state.yaml', import.meta.url),
+  )
+  const yaml = readFileSync(manifest, 'utf8')
+  // The `remove:` list under the `Users` group entry: a flat list of
+  // `- <pattern>` lines. No YAML parser is available in the e2e deps.
+  const removeBlock = yaml.split(/^\s*remove:\s*$/m)[1] ?? ''
+  const patterns = [...removeBlock.matchAll(/^\s*-\s*([^\s#]+)\s*$/gm)].map(
+    m => m[1],
+  )
+  expect(
+    patterns.length,
+    'could not read the remove: list out of config/desired-state.yaml',
+  ).toBeGreaterThan(0)
+  return patterns
+}
+
+/** `hub::*` → the `hub` prefix; an exact permission → itself. */
+function toPrefix(pattern: string): string {
+  return pattern.endsWith('::*') ? pattern.slice(0, -3) : pattern
+}
 
 test.describe('desired-state — restricted (default-group) user', () => {
   test('[negative-perm] hidden features are absent for a user in the trimmed default group', async ({
@@ -41,17 +70,24 @@ test.describe('desired-state — restricted (default-group) user', () => {
     await loginAsAdmin(page, baseURL)
     const adminToken = await getAdminToken(apiURL)
 
-    // Apply the desired-state trim to the default group (what the reconciler
-    // writes at boot).
+    // Apply the trim the SHIPPED manifest declares, with the same matching
+    // semantics the reconciler uses (`hub::*` strips `hub` and anything under
+    // `hub::`). The backend integration suite (tests/desired_state/) proves the
+    // reconciler WRITES this at boot; this spec is about what the UI then does.
+    const patterns = shippedRemovePatterns()
+    const prefixes = patterns.map(toPrefix)
     await sql(
       `UPDATE groups
           SET permissions = ARRAY(
                 SELECT p FROM unnest(permissions) AS p
-                 WHERE p NOT LIKE 'projects::%'
-                   AND p NOT LIKE 'hub::%'
-                   AND p NOT LIKE 'assistants::%'
+                 WHERE NOT (p = ANY($1::text[]))
+                   AND NOT EXISTS (
+                         SELECT 1 FROM unnest($1::text[]) AS pre
+                          WHERE p LIKE pre || '::%'
+                       )
               )
         WHERE name = 'Users' AND is_system = true AND is_default = true`,
+      [prefixes],
     )
 
     // Sanity-check the fixture actually removed something, so a future rename of
@@ -60,10 +96,19 @@ test.describe('desired-state — restricted (default-group) user', () => {
       `SELECT permissions FROM groups WHERE name = 'Users' AND is_default = true`,
     )
     const perms: string[] = after.rows[0].permissions
-    for (const prefix of REMOVED_PREFIXES) {
-      expect(perms.some(p => p.startsWith(prefix))).toBe(false)
+    for (const prefix of prefixes) {
+      expect(
+        perms.some(p => p === prefix || p.startsWith(`${prefix}::`)),
+        `${prefix} should have been stripped from the Users group`,
+      ).toBe(false)
     }
-    // …and that the KEEP set survived.
+    // The trim must be non-vacuous: hub:: + assistants:: ARE granted to the
+    // default group by migration 27, so at least those must have been present.
+    // (`projects::*` is granted only to Administrators, so its removal is a
+    // documented no-op — see DEC-6.)
+    expect(prefixes).toContain('hub')
+    expect(prefixes).toContain('assistants')
+    // …and the KEEP set survived.
     expect(perms).toContain('mcp_servers::read')
     expect(perms).toContain('user_llm_providers::read')
 

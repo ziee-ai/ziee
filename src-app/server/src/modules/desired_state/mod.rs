@@ -10,29 +10,52 @@
 //!
 //! Contract (all of it deliberate):
 //!
-//! - **Secrets never inline.** Any value may contain `${VAR}` placeholders that
-//!   are resolved from process env at reconcile time. A *secret* field
+//! - **Secrets never inline.** `${VAR}` placeholders are resolved from process
+//!   env at reconcile time, in the fields where they are meaningful: an MCP
+//!   server's `url`, and the `password` of `admin` / `users`. A *secret* field
 //!   (`password`) MUST be exactly one `${VAR}` placeholder — an inline literal
 //!   is rejected. Resolved values are never logged; logs name the env VAR only.
+//!   (Other fields — names, descriptions, emails — are taken verbatim.)
 //! - **Idempotent.** Every entry is existence-checked against its natural key
 //!   before writing (server → `(name, is_system)`; admin → "an admin exists";
 //!   user → username/email; group → name). Re-running on the next deploy
-//!   creates nothing and clobbers nothing.
-//! - **Per-entry `mode`** (servers / admin / users): `ensure` (default) creates
-//!   when absent and otherwise leaves the row completely alone — never
-//!   clobbering an admin's later UI edit (the `seed_from_config_once` contract,
+//!   creates nothing and clobbers nothing. The whole reconcile additionally runs
+//!   under a Postgres ADVISORY LOCK, so two containers booting against one
+//!   database (a rolling redeploy, `--scale`) serialize instead of racing the
+//!   check-then-insert into duplicate rows.
+//! - **Per-entry `mode`** (`mcp_servers`): `ensure` (default) creates when
+//!   absent and otherwise leaves the row's fields alone — never clobbering an
+//!   admin's later UI edit (the `seed_from_config_once` contract,
 //!   `modules/auth/session_settings.rs`); `enforce` additionally re-syncs the
-//!   declared fields to the file on every boot. Group permission entries carry
-//!   no mode: a permission set has no create/update distinction, so it is
-//!   always reconciled (see `GroupEntry`).
-//! - **Never crashes boot.** A bad entry (unresolved env var, inline secret,
-//!   DB error) logs an error and is skipped; an unparseable file skips the whole
-//!   reconcile. The server always goes on to serve.
+//!   fields the file DECLARES on every boot (a field the file omits keeps its DB
+//!   value — the update is COALESCE-based). `mode` is accepted on `admin` /
+//!   `users` but inert: both are pure create-if-absent (the admin password is
+//!   never reset). `groups` carry no mode: a permission set has no create/update
+//!   distinction, so it is always reconciled.
+//! - **Group availability always converges.** The `groups:` list on a server is
+//!   re-applied on every boot even in `ensure` mode (assignment is additive and
+//!   idempotent), because a server assigned to no group is unusable by non-admin
+//!   users — a first-boot assignment failure must be self-healing. Removing a
+//!   group from the file does NOT revoke it.
+//! - **A bad ENTRY never crashes boot; a bad FILE does.** An unresolved env var,
+//!   an inline secret, or a DB error on one entry logs an error and skips just
+//!   that entry. But an unreadable / unparseable desired-state FILE is FATAL:
+//!   booting a publicly-served container that is silently unconfigured (no admin
+//!   → the unauthenticated first-run setup endpoint is open; no permission trim)
+//!   is worse than not booting. A file that is simply ABSENT is not an error —
+//!   that is how every non-config-as-code deployment (dev, desktop, tests) runs.
 //!
 //! Pattern mirrors: `modules/auth/session_settings.rs::seed_from_config_once`
 //! (config → DB once, DB authoritative after) and
 //! `desktop/tauri/src/modules/auth/bootstrap.rs::ensure_desktop_admin`
 //! (boot-time admin creation via `Repos.app.create_admin_user`).
+//!
+//! **Operational note (MCP health check).** `mcp::init` spawns a boot health
+//! check that probes every enabled, non-built-in MCP server and AUTO-DISABLES
+//! the unreachable ones (`mcp/connection_health.rs`). A declared org server whose
+//! endpoint is not up when ziee boots will therefore be flipped to
+//! `enabled = false`. That is why the shipped manifest declares the servers
+//! `mode: enforce` — the next deploy re-asserts `enabled: true`.
 
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -113,6 +136,12 @@ pub struct AdminEntry {
     pub display_name: Option<String>,
     /// MUST be a single `${VAR}` placeholder — an inline literal is rejected.
     pub password: String,
+    /// Accepted for symmetry with `mcp_servers`, but INERT: an account is
+    /// created only when absent, and its password is never reset. Present so a
+    /// manifest that spells out `mode: ensure` here still parses (the structs
+    /// are `deny_unknown_fields`, so an unknown key would fail the WHOLE file).
+    #[serde(default)]
+    pub mode: Mode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +153,9 @@ pub struct UserEntry {
     pub display_name: Option<String>,
     /// MUST be a single `${VAR}` placeholder — an inline literal is rejected.
     pub password: String,
+    /// Accepted but inert — see `AdminEntry::mode`.
+    #[serde(default)]
+    pub mode: Mode,
 }
 
 /// A group's permission reconcile. Deliberately has **no `mode`**: a permission
@@ -172,12 +204,25 @@ impl std::fmt::Display for TemplateError {
     }
 }
 
-/// Substitute every `${VAR}` in `raw` with its process-env value.
+/// How a `${VAR}` is looked up. Production passes [`env_lookup`]; the unit tests
+/// pass a map, so they never mutate the process environment — `std::env::set_var`
+/// is `unsafe` precisely because it races concurrent `getenv` in other test
+/// threads of the same binary.
+pub type Lookup<'a> = &'a dyn Fn(&str) -> Option<String>;
+
+/// The production lookup: process environment.
+pub fn env_lookup(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
+/// Substitute every `${VAR}` in `raw` with its value from `lookup`.
 ///
-/// A `$` not followed by `{` is left intact. An unset/empty var is an error
-/// (the caller skips that entry) rather than a silent empty string — a server
-/// silently registered at the URL "" would be worse than one that is absent.
-pub fn resolve(raw: &str) -> Result<String, TemplateError> {
+/// A `$` not followed by `{` is left intact. An unset/EMPTY var is an error (the
+/// caller skips that entry) rather than a silent empty string — a server
+/// registered at the URL "" would be worse than one that is absent. This also
+/// makes `docker-compose`'s `"${RCPA_MCP_URL:-}"` (unset → empty string) behave
+/// as "not configured", which is what the compose file documents.
+pub fn resolve_with(raw: &str, lookup: Lookup<'_>) -> Result<String, TemplateError> {
     let mut out = String::with_capacity(raw.len());
     let bytes = raw.as_bytes();
     let mut i = 0;
@@ -191,7 +236,7 @@ pub fn resolve(raw: &str) -> Result<String, TemplateError> {
                     if name.is_empty() {
                         out.push_str("${}");
                     } else {
-                        let value = std::env::var(name).unwrap_or_default();
+                        let value = lookup(name).unwrap_or_default();
                         if value.is_empty() {
                             return Err(TemplateError::Unresolved(name.to_string()));
                         }
@@ -217,7 +262,7 @@ pub fn resolve(raw: &str) -> Result<String, TemplateError> {
 
 /// Resolve a SECRET field. The value must be exactly one `${VAR}` placeholder;
 /// anything else means a secret was committed inline, which we refuse.
-pub fn resolve_secret(raw: &str) -> Result<String, TemplateError> {
+pub fn resolve_secret_with(raw: &str, lookup: Lookup<'_>) -> Result<String, TemplateError> {
     let trimmed = raw.trim();
     let is_single_placeholder = trimmed.starts_with("${")
         && trimmed.ends_with('}')
@@ -229,7 +274,7 @@ pub fn resolve_secret(raw: &str) -> Result<String, TemplateError> {
     if !is_single_placeholder {
         return Err(TemplateError::InlineSecret);
     }
-    resolve(trimmed)
+    resolve_with(trimmed, lookup)
 }
 
 // ─────────────────────────── permission set-ops ───────────────────────────
@@ -245,63 +290,137 @@ pub fn permission_matches(pattern: &str, perm: &str) -> bool {
     }
 }
 
+/// Is this a legal `add:` entry? Wildcards are REFUSED on the add side: `*` is
+/// the grant-everything permission the Administrators group holds
+/// (`permissions/checker.rs` short-circuits on it), and `foo::*` is not a real
+/// permission — a typo'd or tampered manifest must not be able to silently
+/// escalate the default group to admin-equivalent access. Removal patterns may
+/// still use `::*`; widening is what needs the guard, not narrowing.
+pub fn is_legal_add(perm: &str) -> bool {
+    !perm.is_empty() && !perm.contains('*')
+}
+
 /// Apply the declared removals + additions to a permission array.
-/// Returns the new array (caller compares against the old one to decide whether
-/// a write is needed at all).
-pub fn apply_permission_ops(current: &[String], remove: &[String], add: &[String]) -> Vec<String> {
+/// Returns `(new_array, rejected_adds)` — the caller compares the array against
+/// the old one to decide whether a write is needed at all, and logs the
+/// rejections.
+pub fn apply_permission_ops(
+    current: &[String],
+    remove: &[String],
+    add: &[String],
+) -> (Vec<String>, Vec<String>) {
     let mut next: Vec<String> = current
         .iter()
         .filter(|perm| !remove.iter().any(|pat| permission_matches(pat, perm)))
         .cloned()
         .collect();
 
+    let mut rejected = Vec::new();
     for perm in add {
+        if !is_legal_add(perm) {
+            rejected.push(perm.clone());
+            continue;
+        }
         if !next.iter().any(|existing| existing == perm) {
             next.push(perm.clone());
         }
     }
 
-    next
+    (next, rejected)
 }
 
 // ───────────────────────────── the reconciler ─────────────────────────────
 
-/// Reconcile the desired-state file into the DB. Never returns an error: every
-/// failure is logged and skipped so a bad manifest can't stop the server from
-/// booting.
-pub async fn reconcile(pool: &PgPool) {
+/// Largest desired-state file we will read. A manifest is a few KiB; this cap
+/// exists so a bind-mount pointed at something pathological can't be slurped
+/// into memory.
+const MAX_FILE_BYTES: u64 = 1024 * 1024;
+
+/// A fixed key for the Postgres advisory lock that serializes the reconcile
+/// across concurrently-booting containers. Arbitrary but stable.
+const RECONCILE_LOCK_KEY: i64 = 0x7A1E_E_DE51_u64 as i64;
+
+/// Reconcile the desired-state file into the DB.
+///
+/// `Ok(())` also covers "there is nothing to do" (env var unset / file absent).
+/// `Err(msg)` means the FILE itself is unusable — the caller must FAIL THE BOOT
+/// rather than serve a silently-unconfigured deployment. A failure of one
+/// ENTRY inside a valid file is logged and skipped, never fatal.
+pub async fn reconcile(pool: &PgPool) -> Result<(), String> {
     let Some(path) = std::env::var_os(DESIRED_STATE_ENV) else {
         tracing::debug!("desired_state: {DESIRED_STATE_ENV} unset; nothing to reconcile");
-        return;
+        return Ok(());
     };
     let path = std::path::PathBuf::from(path);
 
+    // An ABSENT file is the normal "not a config-as-code deployment" case (dev,
+    // desktop, the test suite, and the image with the var pointed elsewhere).
     if !path.exists() {
         tracing::info!(
             path = %path.display(),
             "desired_state: file not found; skipping reconcile"
         );
-        return;
+        return Ok(());
     }
 
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(e) => {
-            tracing::error!(path = %path.display(), error = %e, "desired_state: cannot read file; skipping reconcile");
-            return;
-        }
-    };
+    // A path that exists but is NOT a regular file is a misconfiguration, not a
+    // manifest. Docker famously creates a DIRECTORY when you bind-mount a host
+    // path that doesn't exist; a FIFO/char device would block the read forever.
+    let meta = std::fs::metadata(&path)
+        .map_err(|e| format!("cannot stat {} : {e}", path.display()))?;
+    if !meta.is_file() {
+        return Err(format!(
+            "{} is not a regular file (a bind-mount of a missing host path creates a directory)",
+            path.display()
+        ));
+    }
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "{} is {} bytes, over the {MAX_FILE_BYTES}-byte cap",
+            path.display(),
+            meta.len()
+        ));
+    }
 
-    let desired: DesiredState = match serde_norway::from_str(&raw) {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::error!(path = %path.display(), error = %e, "desired_state: invalid YAML; skipping reconcile");
-            return;
-        }
-    };
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+
+    let desired: DesiredState = serde_norway::from_str(&raw)
+        .map_err(|e| format!("{} is not a valid desired-state file: {e}", path.display()))?;
 
     tracing::info!(path = %path.display(), "desired_state: reconciling");
 
+    // Serialize across concurrently-booting containers (rolling redeploy,
+    // `docker compose up --scale`). Without this, two processes both pass the
+    // check-then-insert and create duplicate system MCP servers — `mcp_servers`
+    // has no unique index on `name`. The lock is released when the connection
+    // returns to the pool at the end of this function.
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| format!("cannot acquire a connection for the reconcile lock: {e}"))?;
+    if let Err(e) = sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(RECONCILE_LOCK_KEY)
+        .execute(&mut *conn)
+        .await
+    {
+        return Err(format!("cannot take the reconcile advisory lock: {e}"));
+    }
+
+    let result = reconcile_entries(&desired).await;
+
+    // Best-effort unlock; dropping the connection releases it regardless.
+    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(RECONCILE_LOCK_KEY)
+        .execute(&mut *conn)
+        .await;
+    drop(conn);
+
+    result
+}
+
+/// The per-entry work, under the advisory lock. Each entry soft-fails.
+async fn reconcile_entries(desired: &DesiredState) -> Result<(), String> {
     // Admin first: `create_admin_user` also joins the Administrators + Users
     // groups, so it must run before the group-permission pass has any bearing
     // on it (it doesn't — root admins bypass permission checks — but the
@@ -316,15 +435,24 @@ pub async fn reconcile(pool: &PgPool) {
         reconcile_group(group).await;
     }
     for server in &desired.mcp_servers {
-        reconcile_mcp_server(pool, server).await;
+        reconcile_mcp_server(server).await;
     }
 
     tracing::info!("desired_state: reconcile complete");
+    Ok(())
 }
 
 /// Create the root admin ONLY when no admin exists. A later boot never resets
 /// the password — the account is the operator's after first boot.
 async fn reconcile_admin(entry: &AdminEntry) {
+    if entry.mode == Mode::Enforce {
+        tracing::warn!(
+            username = %entry.username,
+            "desired_state: `mode: enforce` is INERT on an account — an existing admin is never \
+             re-written and its password is never reset. Remove the key or use `ensure`."
+        );
+    }
+
     match Repos.user.has_admin().await {
         Ok(true) => {
             tracing::info!(
@@ -339,7 +467,7 @@ async fn reconcile_admin(entry: &AdminEntry) {
         }
     }
 
-    let password = match resolve_secret(&entry.password) {
+    let password = match resolve_secret_with(&entry.password, &env_lookup) {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!(
@@ -388,6 +516,14 @@ async fn reconcile_admin(entry: &AdminEntry) {
 
 /// Create a regular (non-admin) user in the default group, if absent.
 async fn reconcile_user(entry: &UserEntry) {
+    if entry.mode == Mode::Enforce {
+        tracing::warn!(
+            username = %entry.username,
+            "desired_state: `mode: enforce` is INERT on an account — an existing user is never \
+             re-written and its password is never reset. Remove the key or use `ensure`."
+        );
+    }
+
     // `users.username` and `users.email` are each UNIQUE, so BOTH must be free
     // before we insert (the lookup matches one identifier against either column,
     // so a single call with the username would miss an email-only collision).
@@ -405,7 +541,7 @@ async fn reconcile_user(entry: &UserEntry) {
         }
     }
 
-    let password = match resolve_secret(&entry.password) {
+    let password = match resolve_secret_with(&entry.password, &env_lookup) {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!(
@@ -467,7 +603,14 @@ async fn reconcile_group(entry: &GroupEntry) {
         }
     };
 
-    let next = apply_permission_ops(&group.permissions, &entry.remove, &entry.add);
+    let (next, rejected) = apply_permission_ops(&group.permissions, &entry.remove, &entry.add);
+    for perm in &rejected {
+        tracing::error!(
+            group = %entry.name,
+            permission = %perm,
+            "desired_state: REFUSING to add a wildcard permission (a manifest must grant concrete permissions, never `*`)"
+        );
+    }
     if next == group.permissions {
         tracing::debug!(group = %entry.name, "desired_state: group permissions already reconciled");
         return;
@@ -500,8 +643,8 @@ async fn reconcile_group(entry: &GroupEntry) {
 
 /// Create (or, in `enforce` mode, re-sync) one admin system MCP server, then
 /// make it available to the declared groups.
-async fn reconcile_mcp_server(pool: &PgPool, entry: &McpServerEntry) {
-    let url = match resolve(&entry.url) {
+async fn reconcile_mcp_server(entry: &McpServerEntry) {
+    let url = match resolve_with(&entry.url, &env_lookup) {
         Ok(u) => u,
         Err(e) => {
             tracing::warn!(
@@ -515,26 +658,23 @@ async fn reconcile_mcp_server(pool: &PgPool, entry: &McpServerEntry) {
 
     // Natural-key dedup. There is NO unique index on `mcp_servers.name`, so
     // without this check a second deploy would silently create a duplicate row.
-    let existing = match sqlx::query!(
-        "SELECT id FROM mcp_servers WHERE name = $1 AND is_system = true",
-        entry.name
-    )
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(row) => row.map(|r| r.id),
+    // (Concurrent deploys are serialized by the advisory lock in `reconcile`.)
+    let existing = match Repos.mcp.get_system_server_by_name(&entry.name).await {
+        Ok(id) => id,
         Err(e) => {
-            tracing::error!(error = %e, server = %entry.name, "desired_state: MCP server lookup failed; skipping");
+            tracing::error!(error = ?e, server = %entry.name, "desired_state: MCP server lookup failed; skipping");
             return;
         }
     };
 
     let server_id = match (existing, entry.mode) {
-        // Already there, `ensure` → leave every field (and its group
-        // assignments) exactly as the admin last left them.
-        (Some(_id), Mode::Ensure) => {
-            tracing::debug!(server = %entry.name, "desired_state: MCP server already present; untouched (ensure)");
-            return;
+        // Already there, `ensure` → leave its FIELDS exactly as the admin last
+        // left them. The group assignment below still runs: a server assigned to
+        // no group is unusable by non-admin users, so a first-boot assignment
+        // failure has to be self-healing (assignment is additive + idempotent).
+        (Some(id), Mode::Ensure) => {
+            tracing::debug!(server = %entry.name, "desired_state: MCP server already present; fields untouched (ensure)");
+            id
         }
 
         // Already there, `enforce` → re-sync the declared fields.
@@ -624,7 +764,7 @@ async fn assign_groups(server_id: Uuid, entry: &McpServerEntry) {
             }
         };
 
-        match Repos.mcp.assign_to_group(server_id, group.id).await {
+        match Repos.mcp.assign_to_group(group.id, server_id).await {
             Ok(()) => {
                 tracing::info!(server = %entry.name, group = %group_name, "desired_state: MCP server assigned to group")
             }
@@ -638,93 +778,109 @@ async fn assign_groups(server_id: Uuid, entry: &McpServerEntry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
-    /// Env is process-global; keep the vars used here unique per test so a
-    /// parallel run can't race.
+    /// A lookup backed by a map — the unit tests NEVER mutate the process
+    /// environment. `std::env::set_var` is `unsafe` because it can realloc the
+    /// shared `environ` block under a concurrent `getenv` in another test thread
+    /// of the same binary; injecting the lookup sidesteps that entirely.
+    fn map_lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |name: &str| map.get(name).cloned()
+    }
+
+    // ── TEST-1: env templating ──
+
     #[test]
-    fn resolve_substitutes_env_vars() {
-        unsafe { std::env::set_var("DS_TEST_URL", "http://rcpa:9000/mcp") };
+    fn resolve_substitutes_vars() {
+        let lookup = map_lookup(&[("RCPA_MCP_URL", "http://rcpa:9000/mcp")]);
+
         assert_eq!(
-            resolve("${DS_TEST_URL}").unwrap(),
+            resolve_with("${RCPA_MCP_URL}", &lookup).unwrap(),
             "http://rcpa:9000/mcp".to_string()
         );
         // Surrounding literal text is preserved.
         assert_eq!(
-            resolve("prefix ${DS_TEST_URL} suffix").unwrap(),
+            resolve_with("prefix ${RCPA_MCP_URL} suffix", &lookup).unwrap(),
             "prefix http://rcpa:9000/mcp suffix".to_string()
         );
     }
 
     #[test]
     fn resolve_errors_on_unset_var() {
-        let err = resolve("${DS_TEST_DEFINITELY_UNSET}").unwrap_err();
+        let lookup = map_lookup(&[]);
         assert_eq!(
-            err,
-            TemplateError::Unresolved("DS_TEST_DEFINITELY_UNSET".to_string())
+            resolve_with("${NOT_SET}", &lookup).unwrap_err(),
+            TemplateError::Unresolved("NOT_SET".to_string())
         );
     }
 
     #[test]
-    fn resolve_errors_on_empty_var() {
-        unsafe { std::env::set_var("DS_TEST_EMPTY", "") };
+    fn resolve_treats_an_empty_var_as_unset() {
+        // docker-compose's `"${RCPA_MCP_URL:-}"` yields an EMPTY string when the
+        // operator didn't set it — that must mean "not configured" (skip the
+        // entry), never a server registered at the url "".
+        let lookup = map_lookup(&[("EMPTY", "")]);
         assert!(matches!(
-            resolve("${DS_TEST_EMPTY}").unwrap_err(),
+            resolve_with("${EMPTY}", &lookup).unwrap_err(),
             TemplateError::Unresolved(_)
         ));
     }
 
     #[test]
     fn resolve_leaves_non_placeholder_dollars_intact() {
-        assert_eq!(resolve("costs $5").unwrap(), "costs $5".to_string());
-        assert_eq!(resolve("${}").unwrap(), "${}".to_string());
+        let lookup = map_lookup(&[]);
+        assert_eq!(resolve_with("costs $5", &lookup).unwrap(), "costs $5");
+        assert_eq!(resolve_with("${}", &lookup).unwrap(), "${}");
         // Unterminated `${` is literal, not an error.
-        assert_eq!(resolve("a ${OPEN").unwrap(), "a ${OPEN".to_string());
+        assert_eq!(resolve_with("a ${OPEN", &lookup).unwrap(), "a ${OPEN");
     }
 
     #[test]
-    fn resolve_secret_rejects_inline_literals() {
-        unsafe { std::env::set_var("DS_TEST_PW", "s3cret-value") };
+    fn resolve_is_utf8_safe() {
+        let lookup = map_lookup(&[("V", "x")]);
+        assert_eq!(resolve_with("héllo ${V} 日本", &lookup).unwrap(), "héllo x 日本");
+    }
 
-        // The only accepted shape: exactly one placeholder.
-        assert_eq!(
-            resolve_secret("${DS_TEST_PW}").unwrap(),
-            "s3cret-value".to_string()
-        );
-        assert_eq!(
-            resolve_secret("  ${DS_TEST_PW}  ").unwrap(),
-            "s3cret-value".to_string()
-        );
+    // ── TEST-2: the inline-secret guard ──
 
-        // Everything else is a committed secret.
-        assert_eq!(
-            resolve_secret("hunter2").unwrap_err(),
-            TemplateError::InlineSecret
-        );
-        assert_eq!(
-            resolve_secret("prefix-${DS_TEST_PW}").unwrap_err(),
-            TemplateError::InlineSecret
-        );
-        assert_eq!(
-            resolve_secret("${DS_TEST_PW}${DS_TEST_PW}").unwrap_err(),
-            TemplateError::InlineSecret
-        );
-        assert_eq!(resolve_secret("").unwrap_err(), TemplateError::InlineSecret);
+    #[test]
+    fn resolve_secret_accepts_only_a_single_placeholder() {
+        let lookup = map_lookup(&[("PW", "s3cret-value")]);
+
+        assert_eq!(resolve_secret_with("${PW}", &lookup).unwrap(), "s3cret-value");
+        assert_eq!(resolve_secret_with("  ${PW}  ", &lookup).unwrap(), "s3cret-value");
+
+        // Everything else means a secret was committed to the file.
+        for inline in ["hunter2", "prefix-${PW}", "${PW}${PW}", "${PW}x", ""] {
+            assert_eq!(
+                resolve_secret_with(inline, &lookup).unwrap_err(),
+                TemplateError::InlineSecret,
+                "{inline:?} must be rejected as an inline secret"
+            );
+        }
     }
 
     #[test]
-    fn resolve_secret_propagates_unset_var() {
+    fn resolve_secret_propagates_an_unset_var() {
+        let lookup = map_lookup(&[]);
         assert!(matches!(
-            resolve_secret("${DS_TEST_PW_UNSET}").unwrap_err(),
+            resolve_secret_with("${PW_UNSET}", &lookup).unwrap_err(),
             TemplateError::Unresolved(_)
         ));
     }
+
+    // ── TEST-3: permission set-ops ──
 
     #[test]
     fn permission_wildcard_matches_by_hierarchy() {
         assert!(permission_matches("hub::*", "hub::models::read"));
         assert!(permission_matches("hub::*", "hub::assistants::create"));
         assert!(permission_matches("hub::*", "hub"));
-        // Must not match a different top-level segment that merely shares a prefix.
+        // Must not match a different segment that merely shares a text prefix.
         assert!(!permission_matches("hub::*", "hubris::read"));
         assert!(!permission_matches("hub::*", "chat::read"));
         // Non-wildcard patterns are exact.
@@ -733,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_permission_ops_removes_hides_and_keeps_the_rest() {
+    fn apply_permission_ops_removes_the_hidden_features_and_keeps_the_rest() {
         let current: Vec<String> = [
             "profile::read",
             "chat::read",
@@ -749,7 +905,7 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
 
-        let next = apply_permission_ops(
+        let (next, rejected) = apply_permission_ops(
             &current,
             &[
                 "assistants::*".to_string(),
@@ -759,11 +915,7 @@ mod tests {
             &[],
         );
 
-        // The hidden features are gone …
-        assert!(!next.iter().any(|p| p.starts_with("assistants::")));
-        assert!(!next.iter().any(|p| p.starts_with("hub::")));
-        assert!(!next.iter().any(|p| p.starts_with("projects::")));
-        // … and the KEEP set survives untouched.
+        assert!(rejected.is_empty());
         assert_eq!(
             next,
             vec![
@@ -771,7 +923,8 @@ mod tests {
                 "chat::read".to_string(),
                 "mcp_servers::read".to_string(),
                 "user_llm_providers::read".to_string(),
-            ]
+            ],
+            "exactly the hidden features are stripped; the KEEP set survives"
         );
     }
 
@@ -779,25 +932,46 @@ mod tests {
     fn apply_permission_ops_add_is_idempotent() {
         let current = vec!["chat::read".to_string()];
 
-        let next = apply_permission_ops(
+        let (next, _) = apply_permission_ops(
             &current,
             &[],
             &["chat::read".to_string(), "chat::create".to_string()],
         );
-        assert_eq!(
-            next,
-            vec!["chat::read".to_string(), "chat::create".to_string()]
-        );
+        assert_eq!(next, vec!["chat::read".to_string(), "chat::create".to_string()]);
 
-        // Re-applying the same ops changes nothing (the caller uses this
-        // equality to skip the DB write entirely).
-        let again = apply_permission_ops(
+        // Re-applying the same ops changes nothing — the caller uses this
+        // equality to skip the DB write entirely.
+        let (again, _) = apply_permission_ops(
             &next,
             &[],
             &["chat::read".to_string(), "chat::create".to_string()],
         );
         assert_eq!(again, next);
     }
+
+    #[test]
+    fn apply_permission_ops_refuses_to_add_a_wildcard() {
+        // `*` is the grant-everything permission the Administrators group holds.
+        // A typo'd or tampered manifest must never be able to hand it to the
+        // default group.
+        let current = vec!["chat::read".to_string()];
+
+        let (next, rejected) = apply_permission_ops(
+            &current,
+            &[],
+            &["*".to_string(), "hub::*".to_string(), "files::read".to_string()],
+        );
+
+        assert_eq!(
+            next,
+            vec!["chat::read".to_string(), "files::read".to_string()],
+            "the concrete permission is added; both wildcards are refused"
+        );
+        assert_eq!(rejected, vec!["*".to_string(), "hub::*".to_string()]);
+        assert!(!next.iter().any(|p| p.contains('*')));
+    }
+
+    // ── TEST-4: the file schema ──
 
     #[test]
     fn parses_a_full_document() {
@@ -817,6 +991,7 @@ admin:
   username: admin
   email: admin@tinnguyen-lab.com
   password: ${ZIEE_ADMIN_PASSWORD}
+  mode: ensure
 users:
   - username: user
     email: user@tinnguyen-lab.com
@@ -840,6 +1015,8 @@ groups:
         assert!(bio.supports_sampling);
         assert_eq!(bio.mode, Mode::Enforce);
 
+        // `mode` on admin/users parses (it is accepted-but-inert). Without the
+        // field, `deny_unknown_fields` would fail the WHOLE document.
         assert_eq!(ds.admin.as_ref().unwrap().username, "admin");
         assert_eq!(ds.users.len(), 1);
         assert_eq!(ds.groups[0].remove.len(), 2);
@@ -879,8 +1056,9 @@ mcp_servers:
 
     #[test]
     fn rejects_an_unknown_field() {
-        // deny_unknown_fields: a typo in the deploy manifest must fail loudly,
-        // not be silently ignored.
+        // deny_unknown_fields: a typo in the deploy manifest must fail loudly.
+        // (Because a file-level parse error is FATAL at boot, that typo stops the
+        // deploy instead of silently shipping an unconfigured server.)
         let yaml = r#"
 mcp_servers:
   - name: rcpa
@@ -891,8 +1069,11 @@ mcp_servers:
         assert!(serde_norway::from_str::<DesiredState>(yaml).is_err());
     }
 
-    /// The file that is actually baked into the container image must parse,
-    /// and every secret in it must be an env placeholder (TEST-17).
+    // ── TEST-17: the file we actually ship ──
+
+    /// The manifest baked into the container image must parse, keep every secret
+    /// in an env placeholder, and declare what the deploy expects — so a typo
+    /// fails the build, not the deploy.
     #[test]
     fn shipped_desired_state_file_is_valid() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -903,12 +1084,15 @@ mcp_servers:
         let ds: DesiredState = serde_norway::from_str(&raw)
             .unwrap_or_else(|e| panic!("shipped desired-state.yaml is invalid: {e}"));
 
-        // Secrets are placeholders, never literals.
+        // Secrets are placeholders, never literals. (An empty lookup makes a
+        // legitimate placeholder fail as `Unresolved` — what we must never see is
+        // `InlineSecret`, which means a password was committed.)
+        let empty = map_lookup(&[]);
         for user in &ds.users {
             assert!(
-                matches!(
-                    resolve_secret(&user.password),
-                    Err(TemplateError::Unresolved(_)) | Ok(_)
+                !matches!(
+                    resolve_secret_with(&user.password, &empty),
+                    Err(TemplateError::InlineSecret)
                 ),
                 "user {} has an INLINE password in the shipped file",
                 user.username
@@ -917,14 +1101,16 @@ mcp_servers:
         if let Some(admin) = &ds.admin {
             assert!(
                 !matches!(
-                    resolve_secret(&admin.password),
+                    resolve_secret_with(&admin.password, &empty),
                     Err(TemplateError::InlineSecret)
                 ),
-                "admin has an INLINE password in the shipped file"
+                "the admin has an INLINE password in the shipped file"
             );
         }
 
-        // The three org servers are declared, each reachable by the Users group.
+        // The three org servers are declared, each reachable by the Users group,
+        // and each `enforce` — the boot health check auto-disables an unreachable
+        // MCP server, so `ensure` would never re-enable it on a later deploy.
         let names: Vec<&str> = ds.mcp_servers.iter().map(|s| s.name.as_str()).collect();
         for expected in ["rcpa", "dscc", "biognosia"] {
             assert!(names.contains(&expected), "{expected} missing from the file");
@@ -935,9 +1121,17 @@ mcp_servers:
                 "{} is assigned to no group — non-admin users could not use it",
                 server.name
             );
+            assert_eq!(
+                server.mode,
+                Mode::Enforce,
+                "{} must be `enforce` so a health-check auto-disable is repaired on the next deploy",
+                server.name
+            );
+            assert!(server.enabled, "{} must ship enabled", server.name);
         }
 
-        // The Users group trims exactly the three hidden features.
+        // The Users group trims exactly the three hidden features, and adds
+        // nothing (an `add` list is where a manifest could escalate).
         let users_group = ds
             .groups
             .iter()
@@ -949,5 +1143,9 @@ mcp_servers:
                 "{pattern} is not removed from the Users group"
             );
         }
+        assert!(
+            users_group.add.is_empty(),
+            "the shipped file must not GRANT permissions"
+        );
     }
 }

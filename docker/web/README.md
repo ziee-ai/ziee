@@ -103,7 +103,7 @@ regular user seeded, and the default group's permissions trimmed.
 | `BIOGNOSIA_MCP_URL` | the `biognosia` system MCP server's URL | that server is skipped |
 | `ZIEE_ADMIN_PASSWORD` | the root `admin` account's password | no admin is created (the UI shows first-run setup) |
 | `ZIEE_DEFAULT_USER_PASSWORD` | the regular `user` account's password | that user is not created |
-| `ZIEE_DESIRED_STATE_FILE` | path of the file itself (default `/etc/ziee/desired-state.yaml`) | reconcile is skipped entirely |
+| `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -128,25 +128,45 @@ never logged (the logs name the env var, never its value).
 creates nothing twice: MCP servers dedup on `(name, is_system)`, the admin is
 created only when the deployment has **no** admin (its password is **never**
 reset on a later boot — rotate it in the UI and the rotation sticks), and users
-dedup on username/email.
+dedup on username/email. Concurrently-booting containers (a rolling redeploy)
+serialize on a Postgres advisory lock, so they cannot race into duplicate rows.
+
+**A bad entry is skipped; a bad FILE fails the boot.** An unresolvable `${VAR}`,
+an inline secret, or a DB error on one entry logs an error and skips just that
+entry. But an unreadable or invalid desired-state file **aborts startup** — a
+publicly-served container that is silently unconfigured (no admin ⇒ the
+unauthenticated first-run setup page is open to whoever finds it) is worse than
+one that refuses to start. Note that bind-mounting a host path that does not
+exist makes Docker create a *directory* there; that is caught and reported.
 
 **Per-entry `mode`:**
 
-- `ensure` (default) — create when absent; if it already exists, leave it alone.
-  An admin's later UI edits survive a redeploy.
-- `enforce` — create when absent, else re-sync that entry's fields on every boot
-  (the file wins over UI edits).
+- `ensure` (default) — create when absent; if it already exists, leave its
+  fields alone. An admin's later UI edits survive a redeploy.
+- `enforce` — create when absent, else re-sync the fields the file **declares**
+  on every boot (a field the file omits keeps its current DB value).
+
+The three org MCP servers ship as `enforce` deliberately: ziee's boot health
+check probes every enabled MCP server and **auto-disables the unreachable ones**,
+so an endpoint that is down when ziee starts gets flipped to `enabled: false` —
+`enforce` re-asserts `enabled: true` on the next deploy, where `ensure` would
+leave it off forever. The trade-off is that an admin who deliberately disables
+one in the UI will see it re-enabled by the next deploy: change it in the file,
+not the UI. A server's `groups:` list is re-applied in **both** modes (assignment
+is additive; removing a group from the file does not revoke it), because a server
+in no group is unusable by non-admin users. Their `usage_mode` is `auto` — the
+model decides when to call them.
 
 Group permissions have no mode: they are declarative and re-applied every boot.
 The shipped file removes `projects::*`, `hub::*` and `assistants::*` from the
-default **Users** group, which hides Projects, Hubs and the Settings→Assistants
-section for regular users (nav entry, settings tab and route share one gate),
-while General, Profile, LLM providers and MCP servers stay. Note the root admin
-**bypasses all permission checks** by design, so it still sees everything — the
-seeded regular user is the account that shows the trimmed UI.
-
-A malformed file, an unresolvable `${VAR}`, or a failing entry logs an error and
-is **skipped** — the server still boots.
+default **Users** group, which hides Hubs and the Settings→Assistants section for
+regular users (nav entry, settings tab and route share one gate), while General,
+Profile, LLM providers and MCP servers stay. (`projects::*` is a no-op today —
+the default group was never granted it — and is declared so a future migration
+cannot silently un-hide Projects.) An `add:` list may **not** contain a wildcard:
+a manifest can never grant `*`. Note the root admin **bypasses all permission
+checks** by design, so it still sees everything — the seeded regular user is the
+account that shows the trimmed UI.
 
 ---
 

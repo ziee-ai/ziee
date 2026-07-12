@@ -17,8 +17,19 @@
 -- existing deployment. Deleting here is equivalent on a fresh DB and safe on an
 -- existing one.
 --
--- `user_group_mcp_servers` rows cascade via ON DELETE CASCADE.
+-- The `is_built_in = true` guard is load-bearing: migration 25 stamped that flag
+-- on EXACTLY the four rows migration 7 seeded. Without it, this DELETE would also
+-- destroy an operator's OWN system MCP server that merely happens to be named
+-- `git` (a very likely name) — along with its group assignments, OAuth config and
+-- tool-approval history, all of which cascade.
+--
+-- Note this DOES still remove a seeded row an admin had enabled/edited (they are
+-- admin-configurable). That is the intent — "remove them for good" — and the
+-- cascade (`user_group_mcp_servers`, `mcp_server_oauth_configs`, `tool_use_approvals`;
+-- `mcp_tool_calls.server_id` is NULLed) is accepted for servers the deployment has
+-- decided it does not want.
 
 DELETE FROM mcp_servers
 WHERE is_system = true
+  AND is_built_in = true
   AND name IN ('filesystem', 'browser', 'git');

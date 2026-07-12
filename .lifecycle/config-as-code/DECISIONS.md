@@ -41,6 +41,12 @@ shipped file uses `enforce` for the Users-group permission trim (so a future `gr
 migration re-adding `hub::*` is re-removed on the next boot) and `ensure` for servers, admin, and
 the seeded user (so an admin's later UI edits survive a redeploy).
 **Basis:** user requirement (per-entry mode) + `seed_from_config_once` precedent.
+**Amended (DRIFT-1.2):** `mode` exists on `mcp_servers` (where create-vs-re-sync is a real
+distinction) and is accepted on `admin`/`users` (both are pure create-if-absent — the
+never-reset-the-password rule IS the ensure contract). `GroupEntry` has **no** `mode`: a permission
+set has no create/update distinction, so both modes would do the identical idempotent set
+arithmetic — a knob that implies a difference the code cannot honor is worse than no knob. Group
+permissions are always reconciled.
 
 ### DEC-6: Which permissions are removed from which group?
 **Resolution:** From the default `Users` group (`is_system`, `is_default`), remove `assistants::*`,
@@ -109,3 +115,12 @@ entry").
 **Basis:** user — mid-task instruction: "build an image and start a container at port 8090 with a
 root admin and a user, so that I can test before merging, note that container, not binary". This
 supersedes the plan's "tear the container down afterwards".
+
+### DEC-14: What `usage_mode` do the three MCP servers get?
+**Resolution:** `auto` on every one — pinned explicitly on BOTH the create path and the
+`enforce` re-sync path, and asserted in TEST-5.
+**Basis:** user — mid-implementation instruction: "for the MCP servers we want to add, please make
+sure that their modes are all auto (let the LLM decide)". `auto` means the model decides when to
+reach for the tools; `always` would force-attach them to every request. The update path previously
+sent `None` ("don't touch"), which would have let an `enforce` re-sync silently preserve a drifted
+value — now it re-pins `auto`.

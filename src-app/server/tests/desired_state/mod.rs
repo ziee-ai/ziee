@@ -89,6 +89,13 @@ fn env_for(yaml: &str, admin_pw: &str, user_pw: &str) -> (tempfile::TempDir, Vec
             "ZIEE_DESIRED_STATE_FILE".to_string(),
             path.to_string_lossy().to_string(),
         ),
+        // The boot health check probes every enabled, non-built-in MCP server and
+        // AUTO-DISABLES the unreachable ones (mcp/connection_health.rs). Our
+        // fixture URLs are deliberately unreachable, so without this debug-only
+        // seam the probe would flip `enabled` to false underneath every
+        // assertion here — a race, not a real defect. (Production handles this by
+        // declaring the servers `enforce`, which re-asserts `enabled` each boot.)
+        ("ZIEE_DISABLE_MCP_HEALTH_CHECK".to_string(), "1".to_string()),
         ("RCPA_MCP_URL".to_string(), RCPA_URL.to_string()),
         ("DSCC_MCP_URL".to_string(), DSCC_URL.to_string()),
         ("BIOGNOSIA_MCP_URL".to_string(), BIOGNOSIA_URL.to_string()),
@@ -330,8 +337,29 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
     .await
     .unwrap();
 
+    // Positive control: delete one declared server outright. If the second boot
+    // really reconciles, it comes back. Without this, TEST-6/8/9 would all be
+    // "assert nothing changed" — which stays green even if the env plumbing to
+    // the second process silently broke and it reconciled NOTHING.
+    sqlx::query!("DELETE FROM mcp_servers WHERE name = 'dscc'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     // ── second deploy, ensure mode ──
     reboot(&server, &manifest("ensure"), ADMIN_PASSWORD, USER_PASSWORD).await;
+
+    let dscc_back = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'dscc'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        dscc_back, 1,
+        "the second boot did not reconcile at all (the deleted server was not re-created) \
+         — every 'nothing changed' assertion below would be vacuous"
+    );
 
     let counts = sqlx::query!(
         r#"SELECT name, COUNT(*) as "count!" FROM mcp_servers
@@ -345,15 +373,22 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
         assert_eq!(row.count, 1, "{} was duplicated by the re-deploy", row.name);
     }
 
+    // Still exactly one Users-group assignment per server. (The join table's PK
+    // makes literal duplicates impossible, so what this really pins is that the
+    // re-deploy neither dropped an assignment nor added a spurious extra group.)
     let assignments = sqlx::query_scalar!(
         r#"SELECT COUNT(*) as "count!" FROM user_group_mcp_servers ugms
            JOIN mcp_servers s ON s.id = ugms.mcp_server_id
-           WHERE s.name IN ('rcpa', 'dscc', 'biognosia')"#
+           JOIN groups g ON g.id = ugms.group_id
+           WHERE s.name IN ('rcpa', 'dscc', 'biognosia') AND g.name = 'Users'"#
     )
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(assignments, 3, "group assignments were duplicated");
+    assert_eq!(
+        assignments, 3,
+        "each server must still be assigned to the Users group after a re-deploy"
+    );
 
     let rcpa = sqlx::query!("SELECT enabled, display_name FROM mcp_servers WHERE name = 'rcpa'")
         .fetch_one(&pool)
