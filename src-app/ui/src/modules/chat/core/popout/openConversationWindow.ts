@@ -8,11 +8,11 @@
  * window NAME `chat-<id>` gives dedup for free: `window.open` with an existing
  * target name focuses/reuses that window instead of opening a duplicate.
  *
- * Desktop OVERRIDES this file (see `src-app/desktop/ui/src/modules/chat/core/
- * popout/openConversationWindow.ts`) to open a native Tauri `WebviewWindow`
- * instead — the same "DELIBERATE DIVERGENCE" override idiom as
- * `HardwareMonitorButton`. Opening a native OS window is shell-native, so the
- * desktop copy uses the Tauri window API directly (NOT an Axum route).
+ * Desktop OVERRIDES this file via the co-located `./openConversationWindow.desktop.ts`
+ * (the live2 `.desktop` override mechanism — resolved by `localOverridePlugin` in the
+ * desktop bundle) to open a native Tauri `WebviewWindow` instead. Opening a native OS
+ * window is shell-native, so the desktop copy uses the Tauri window API directly (NOT
+ * an Axum route).
  */
 export async function openConversationWindow(
   conversationId: string,

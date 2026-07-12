@@ -1,17 +1,26 @@
 /**
- * DELIBERATE DIVERGENCE from core's `openConversationWindow` (web `window.open`).
+ * Desktop override for `openConversationWindow` — DELIBERATE DIVERGENCE from the
+ * web base (`./openConversationWindow.ts`, which uses `window.open`).
  *
  * On the Tauri desktop we open a real OS window via `WebviewWindow` — native
  * taskbar/dock entry, traffic-light controls, resizable, persists across app
  * focus. The same Vite dev server + bundled SPA serves the `/chat/:id` route, so
  * the new window renders the existing single-conversation `ConversationPage` and
  * self-authenticates via the desktop-base `auto_login` boot (its own singleton
- * stores). Resolved by `localOverridePlugin`: any `@/modules/chat/core/popout/
- * openConversationWindow` import lands here in the desktop bundle.
+ * stores). Opening a native OS window is shell-native, so the desktop copy uses
+ * the Tauri window API directly (NOT an Axum route).
+ *
+ * This is a whole-file co-located override: the desktop build's
+ * `localOverridePlugin` resolves any `@/modules/chat/core/popout/
+ * openConversationWindow` import to THIS `.desktop.ts` in the desktop bundle,
+ * while the web bundle keeps the base file. (Migrated from the former raw shadow
+ * at `src-app/desktop/ui/src/modules/chat/core/popout/openConversationWindow.ts`
+ * to the live2 co-located `.desktop` mechanism — same idiom as
+ * `api-client/getBaseURL.desktop.ts`.)
  *
  * Singleton per conversation: the label `chat-<id>` is reused on every open; if a
  * window with that label already exists, focus it instead of duplicating (the
- * same dedup contract as the web window-name, and mirrors HardwareMonitorButton).
+ * same dedup contract as the web window-name).
  */
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 

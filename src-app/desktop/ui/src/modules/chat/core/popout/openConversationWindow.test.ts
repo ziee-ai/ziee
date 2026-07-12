@@ -29,7 +29,11 @@ vi.mock('@tauri-apps/api/webviewWindow', () => {
   return { WebviewWindow }
 })
 
-import { openConversationWindow } from './openConversationWindow.ts'
+// The desktop override now lives co-located in the core UI tree as
+// `openConversationWindow.desktop.ts` (live2 `.desktop` mechanism); import it via
+// the `@/` alias that the desktop vitest config maps to `../../ui/src`, matching
+// the sibling `Drawer.test.ts` / `loader.test.ts` `@/…desktop` convention.
+import { openConversationWindow } from '@/modules/chat/core/popout/openConversationWindow.desktop'
 
 beforeEach(() => {
   h.ctorCalls.length = 0

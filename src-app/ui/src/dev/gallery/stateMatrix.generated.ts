@@ -2947,14 +2947,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/mcp/chat-extension/components/McpMenuItem",
     requiredStates: ["delayed"],
     signals: [
-      { kind: "loading", condition: "enabledServers.length === 0 && !loading", line: 23 },
+      { kind: "loading", condition: "enabledServers.length === 0 && !loading", line: 28 },
     ],
   },
   "modules/mcp/chat-extension/components/McpStatusRow": {
     surface: "modules/mcp/chat-extension/components/McpStatusRow",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "visibleServerIds.length === 0", line: 38 },
+      { kind: "empty", condition: "visibleServerIds.length === 0", line: 44 },
     ],
   },
   "modules/mcp/chat-extension/components/ToolCallPendingApprovalCancelContent": {

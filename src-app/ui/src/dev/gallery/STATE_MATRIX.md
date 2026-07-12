@@ -3237,7 +3237,7 @@ Required states: `delayed`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `enabledServers.length === 0 && !loading` | 23 |
+| loading | `enabledServers.length === 0 && !loading` | 28 |
 
 ### `modules/mcp/chat-extension/components/McpStatusRow`
 
@@ -3245,7 +3245,7 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `visibleServerIds.length === 0` | 38 |
+| empty | `visibleServerIds.length === 0` | 44 |
 
 ### `modules/mcp/chat-extension/components/ToolCallPendingApprovalCancelContent`
 
