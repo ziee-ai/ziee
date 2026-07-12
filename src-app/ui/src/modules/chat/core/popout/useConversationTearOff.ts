@@ -2,7 +2,11 @@ import { useCallback } from 'react'
 import type { DragEvent } from 'react'
 import { openConversationWindow } from '@/modules/chat/core/popout/openConversationWindow'
 import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
-import { isOutsideWindow, planTearOff } from '@/modules/chat/core/popout/tearOff'
+import {
+  isOutsideWindow,
+  planTearOff,
+  runTearOffPlan,
+} from '@/modules/chat/core/popout/tearOff'
 
 /**
  * Tear-off wiring (ITEM-58) — attach the returned handler to a conversation drag
@@ -41,9 +45,11 @@ export function useConversationTearOff() {
         conversationId: source.conversationId,
         paneId: source.paneId ?? null,
       })
-      if (!plan.open) return
-      void openConversationWindow(plan.conversationId, { title: source.title })
-      if (plan.closePaneId) closePane(plan.closePaneId)
+      runTearOffPlan(plan, {
+        openWindow: (id, opts) => void openConversationWindow(id, opts),
+        closePane,
+        title: source.title,
+      })
     },
     [closePane],
   )

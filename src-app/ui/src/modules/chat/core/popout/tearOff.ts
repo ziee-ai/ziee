@@ -70,3 +70,23 @@ export function planTearOff(input: TearOffInput): TearOffPlan {
     closePaneId: active && input.paneId ? input.paneId : null,
   }
 }
+
+/**
+ * Execute a {@link TearOffPlan}: open the conversation window when the plan is
+ * active, and (for a pane source) close the pane. The two effects are injected so
+ * this glue is testable without a Tauri runtime or React render — the hook passes
+ * the real `openConversationWindow` seam + `closePane`. Returns whether it acted.
+ */
+export function runTearOffPlan(
+  plan: TearOffPlan,
+  effects: {
+    openWindow: (id: string, opts?: { title?: string }) => void
+    closePane: (paneId: string) => void
+    title?: string
+  },
+): boolean {
+  if (!plan.open) return false
+  effects.openWindow(plan.conversationId, { title: effects.title })
+  if (plan.closePaneId) effects.closePane(plan.closePaneId)
+  return true
+}

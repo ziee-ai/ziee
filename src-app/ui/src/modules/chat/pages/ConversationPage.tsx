@@ -829,6 +829,8 @@ export function ConversationPane() {
         {/* Chat column. `relative` anchors the floating find bar (ITEM-1) and
             jump-to-latest button (ITEM-2). */}
         <div
+          // Testid only in single-pane (kept unique — split panes have `pane`).
+          data-testid={pane ? undefined : 'chat-single-drop-column'}
           className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}
           onDragOver={onSinglePaneDragOver}
           onDragLeave={onSinglePaneDragLeave}
