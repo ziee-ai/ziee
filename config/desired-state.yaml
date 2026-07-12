@@ -30,6 +30,15 @@
 #   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
 #   ZIEE_ADMIN_PASSWORD                             — root admin password
 #   ZIEE_DEFAULT_USER_PASSWORD                      — the regular user's password
+#
+# On the deploy host the three servers are published on the HOST and reached over
+# host.docker.internal (that host only allows ports 18000-19000):
+#   BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp
+#   RCPA_MCP_URL=http://host.docker.internal:18120/mcp
+#   DSCC_MCP_URL=http://host.docker.internal:18122/mcp
+# That REQUIRES ziee's compose to map `extra_hosts: host.docker.internal:host-gateway`
+# (the bundled compose files here already do). Local dev uses different values
+# (e.g. http://172.21.0.1:9004/mcp) — which is exactly why these are env-templated.
 
 # ── Admin system MCP servers ────────────────────────────────────────────────
 # Created as ADMIN system servers (is_system, no owner) and made available to
@@ -44,7 +53,7 @@
 # The cost: an admin who deliberately disables one of these in the UI will see it
 # re-enabled by the next deploy — change it here, not in the UI.
 mcp_servers:
-  - name: rcpa
+  - name: rcpa-user
     display_name: RCPA
     description: RCPA analysis tools
     url: ${RCPA_MCP_URL}
@@ -54,7 +63,7 @@ mcp_servers:
     groups: [Users]
     mode: enforce
 
-  - name: dscc
+  - name: dscc-user
     display_name: DSCC
     description: DSCC analysis tools
     url: ${DSCC_MCP_URL}
@@ -64,7 +73,7 @@ mcp_servers:
     groups: [Users]
     mode: enforce
 
-  - name: biognosia
+  - name: biognosia-user
     display_name: Biognosia
     description: Biognosia tools
     url: ${BIOGNOSIA_MCP_URL}

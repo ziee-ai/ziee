@@ -40,6 +40,12 @@ services:
       BIOGNOSIA_MCP_URL: "${BIOGNOSIA_MCP_URL:-}"
       ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:-}"
       ZIEE_DEFAULT_USER_PASSWORD: "${ZIEE_DEFAULT_USER_PASSWORD:-}"
+    # REQUIRED for config-as-code: the org MCP servers are published on the HOST
+    # (the deploy host only allows ports 18000-19000) and reached at
+    # http://host.docker.internal:181xx/mcp, so the container must be able to
+    # resolve host.docker.internal to the docker bridge gateway.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Host port is configurable so parallel stacks (e.g. multiple worktrees)
       # don't collide on 8080; the in-container port stays 8080. Default keeps 8080.

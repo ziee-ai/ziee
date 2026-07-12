@@ -19,9 +19,9 @@ use crate::common::{TestServer, TestServerOptions};
 
 // ───────────────────────────── fixtures ─────────────────────────────
 
-const RCPA_URL: &str = "http://rcpa.test.internal:9101/mcp";
-const DSCC_URL: &str = "http://dscc.test.internal:9102/mcp";
-const BIOGNOSIA_URL: &str = "http://biognosia.test.internal:9103/mcp";
+const RCPA_URL: &str = "http://host.docker.internal:18120/mcp";
+const DSCC_URL: &str = "http://host.docker.internal:18122/mcp";
+const BIOGNOSIA_URL: &str = "http://host.docker.internal:18100/mcp";
 const ADMIN_PASSWORD: &str = "ds-admin-pw-1";
 const USER_PASSWORD: &str = "ds-user-pw-1";
 
@@ -30,7 +30,7 @@ fn manifest(mode: &str) -> String {
     format!(
         r#"
 mcp_servers:
-  - name: rcpa
+  - name: rcpa-user
     display_name: RCPA
     description: RCPA analysis tools
     url: ${{RCPA_MCP_URL}}
@@ -39,7 +39,7 @@ mcp_servers:
     timeout_seconds: 300
     groups: [Users]
     mode: {mode}
-  - name: dscc
+  - name: dscc-user
     display_name: DSCC
     url: ${{DSCC_MCP_URL}}
     enabled: true
@@ -47,7 +47,7 @@ mcp_servers:
     timeout_seconds: 300
     groups: [Users]
     mode: {mode}
-  - name: biognosia
+  - name: biognosia-user
     display_name: Biognosia
     url: ${{BIOGNOSIA_MCP_URL}}
     enabled: true
@@ -259,7 +259,7 @@ async fn test_fresh_deploy_creates_system_mcp_servers() {
         r#"SELECT name, display_name, url, enabled, is_system, is_built_in, user_id,
                   transport_type, timeout_seconds, supports_sampling, usage_mode
            FROM mcp_servers
-           WHERE name IN ('rcpa', 'dscc', 'biognosia')
+           WHERE name IN ('rcpa-user', 'dscc-user', 'biognosia-user')
            ORDER BY name"#
     )
     .fetch_all(&pool)
@@ -269,18 +269,18 @@ async fn test_fresh_deploy_creates_system_mcp_servers() {
     assert_eq!(rows.len(), 3, "expected exactly the 3 declared servers");
 
     let bio = &rows[0];
-    assert_eq!(bio.name, "biognosia");
+    assert_eq!(bio.name, "biognosia-user");
     assert_eq!(bio.url.as_deref(), Some(BIOGNOSIA_URL));
     assert!(bio.supports_sampling, "biognosia declares sampling support");
 
     let dscc = &rows[1];
-    assert_eq!(dscc.name, "dscc");
+    assert_eq!(dscc.name, "dscc-user");
     assert_eq!(dscc.url.as_deref(), Some(DSCC_URL));
     assert_eq!(dscc.timeout_seconds, 300);
     assert!(!dscc.supports_sampling);
 
     let rcpa = &rows[2];
-    assert_eq!(rcpa.name, "rcpa");
+    assert_eq!(rcpa.name, "rcpa-user");
     assert_eq!(rcpa.display_name, "RCPA");
     assert_eq!(rcpa.url.as_deref(), Some(RCPA_URL));
     assert_eq!(rcpa.timeout_seconds, 300);
@@ -313,7 +313,7 @@ async fn test_fresh_deploy_creates_system_mcp_servers() {
         r#"SELECT COUNT(*) as "count!" FROM user_group_mcp_servers ugms
            JOIN mcp_servers s ON s.id = ugms.mcp_server_id
            JOIN groups g ON g.id = ugms.group_id
-           WHERE g.name = 'Users' AND s.name IN ('rcpa', 'dscc', 'biognosia')"#
+           WHERE g.name = 'Users' AND s.name IN ('rcpa-user', 'dscc-user', 'biognosia-user')"#
     )
     .fetch_one(&pool)
     .await
@@ -333,7 +333,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
 
     // Simulate an admin editing the row after the first deploy.
     sqlx::query!(
-        "UPDATE mcp_servers SET enabled = false, display_name = 'RCPA (edited)' WHERE name = 'rcpa'"
+        "UPDATE mcp_servers SET enabled = false, display_name = 'RCPA (edited)' WHERE name = 'rcpa-user'"
     )
     .execute(&pool)
     .await
@@ -343,7 +343,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
     // really reconciles, it comes back. Without this, TEST-6/8/9 would all be
     // "assert nothing changed" — which stays green even if the env plumbing to
     // the second process silently broke and it reconciled NOTHING.
-    sqlx::query!("DELETE FROM mcp_servers WHERE name = 'dscc'")
+    sqlx::query!("DELETE FROM mcp_servers WHERE name = 'dscc-user'")
         .execute(&pool)
         .await
         .unwrap();
@@ -352,7 +352,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
     reboot(&server, &manifest("ensure"), ADMIN_PASSWORD, USER_PASSWORD).await;
 
     let dscc_back = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'dscc'"#
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'dscc-user'"#
     )
     .fetch_one(&pool)
     .await
@@ -365,7 +365,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
 
     let counts = sqlx::query!(
         r#"SELECT name, COUNT(*) as "count!" FROM mcp_servers
-           WHERE name IN ('rcpa', 'dscc', 'biognosia') GROUP BY name"#
+           WHERE name IN ('rcpa-user', 'dscc-user', 'biognosia-user') GROUP BY name"#
     )
     .fetch_all(&pool)
     .await
@@ -382,7 +382,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
         r#"SELECT COUNT(*) as "count!" FROM user_group_mcp_servers ugms
            JOIN mcp_servers s ON s.id = ugms.mcp_server_id
            JOIN groups g ON g.id = ugms.group_id
-           WHERE s.name IN ('rcpa', 'dscc', 'biognosia') AND g.name = 'Users'"#
+           WHERE s.name IN ('rcpa-user', 'dscc-user', 'biognosia-user') AND g.name = 'Users'"#
     )
     .fetch_one(&pool)
     .await
@@ -392,7 +392,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
         "each server must still be assigned to the Users group after a re-deploy"
     );
 
-    let rcpa = sqlx::query!("SELECT enabled, display_name FROM mcp_servers WHERE name = 'rcpa'")
+    let rcpa = sqlx::query!("SELECT enabled, display_name FROM mcp_servers WHERE name = 'rcpa-user'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -404,7 +404,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
     // ── third deploy, enforce mode → the file wins ──
     reboot(&server, &manifest("enforce"), ADMIN_PASSWORD, USER_PASSWORD).await;
 
-    let rcpa = sqlx::query!("SELECT enabled, display_name, url FROM mcp_servers WHERE name = 'rcpa'")
+    let rcpa = sqlx::query!("SELECT enabled, display_name, url FROM mcp_servers WHERE name = 'rcpa-user'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -417,7 +417,7 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
 
     // Still no duplicates after the enforce pass.
     let total = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name IN ('rcpa','dscc','biognosia')"#
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name IN ('rcpa-user','dscc-user','biognosia-user')"#
     )
     .fetch_one(&pool)
     .await
@@ -434,11 +434,11 @@ async fn test_second_deploy_is_idempotent_and_respects_mode() {
 async fn test_unset_env_skips_entry_and_inline_secret_is_rejected() {
     let yaml = r#"
 mcp_servers:
-  - name: rcpa
+  - name: rcpa-user
     display_name: RCPA
     url: ${RCPA_MCP_URL}
     groups: [Users]
-  - name: dscc
+  - name: dscc-user
     display_name: DSCC
     url: ${DSCC_MCP_URL_NOT_SET}
     groups: [Users]
@@ -471,7 +471,7 @@ users:
     let pool = pool_of(&server).await;
 
     let rcpa = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'rcpa'"#
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'rcpa-user'"#
     )
     .fetch_one(&pool)
     .await
@@ -479,7 +479,7 @@ users:
     assert_eq!(rcpa, 1, "the resolvable server must still be created");
 
     let dscc = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'dscc'"#
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'dscc-user'"#
     )
     .fetch_one(&pool)
     .await
@@ -610,7 +610,7 @@ async fn test_regular_user_is_seeded_in_the_default_group() {
     // Positive control: a declared server deleted here must come back, proving the
     // second process really reconciled (so "the user was not duplicated" is a
     // real assertion, not an artifact of a no-op boot).
-    sqlx::query!("DELETE FROM mcp_servers WHERE name = 'rcpa'")
+    sqlx::query!("DELETE FROM mcp_servers WHERE name = 'rcpa-user'")
         .execute(&pool)
         .await
         .unwrap();
@@ -618,7 +618,7 @@ async fn test_regular_user_is_seeded_in_the_default_group() {
     reboot(&server, &manifest("ensure"), ADMIN_PASSWORD, USER_PASSWORD).await;
 
     let rcpa_back = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'rcpa'"#
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'rcpa-user'"#
     )
     .fetch_one(&pool)
     .await
@@ -779,7 +779,7 @@ async fn test_no_env_var_means_no_reconcile() {
     let pool = pool_of(&server).await;
 
     let count = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name IN ('rcpa','dscc','biognosia')"#
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name IN ('rcpa-user','dscc-user','biognosia-user')"#
     )
     .fetch_one(&pool)
     .await

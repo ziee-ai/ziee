@@ -63,9 +63,22 @@ function shippedRemovePatterns(): string[] {
   return patterns
 }
 
-/** `hub::*` → the `hub` prefix; an exact permission → itself. */
-function toPrefix(pattern: string): string {
-  return pattern.endsWith('::*') ? pattern.slice(0, -3) : pattern
+/**
+ * Split the manifest's patterns the way the reconciler's `permission_matches`
+ * does: `hub::*` matches `hub` and anything under `hub::`; anything else is an
+ * EXACT match only. Keeping them apart matters — treating an exact entry like
+ * `hub::models` as a prefix would strip `hub::models::read` too, and the spec
+ * would then assert a UI state the real reconciler never produces.
+ */
+function splitPatterns(patterns: string[]): {
+  wildcardPrefixes: string[]
+  exact: string[]
+} {
+  const wildcardPrefixes = patterns
+    .filter(p => p.endsWith('::*'))
+    .map(p => p.slice(0, -3))
+  const exact = patterns.filter(p => !p.endsWith('::*'))
+  return { wildcardPrefixes, exact }
 }
 
 test.describe('desired-state — restricted (default-group) user', () => {
@@ -84,23 +97,24 @@ test.describe('desired-state — restricted (default-group) user', () => {
     // `hub::`). The backend integration suite (tests/desired_state/) proves the
     // reconciler WRITES this at boot; this spec is about what the UI then does.
     const patterns = shippedRemovePatterns()
-    const prefixes = patterns.map(toPrefix)
+    const { wildcardPrefixes, exact } = splitPatterns(patterns)
     await sql(
-      // `starts_with` (not LIKE): a prefix such as `mcp_servers` contains `_`,
-      // which LIKE would treat as a single-char wildcard — stripping permissions
-      // the real reconciler keeps. This mirrors `permission_matches` exactly:
-      // the bare prefix, or anything under `prefix::`.
+      // `starts_with`, not LIKE: a prefix such as `mcp_servers` contains `_`,
+      // which LIKE would treat as a single-char wildcard and strip permissions
+      // the real reconciler keeps. $1 = wildcard prefixes (bare prefix OR
+      // anything under `prefix::`); $2 = exact permissions.
       `UPDATE groups
           SET permissions = ARRAY(
                 SELECT p FROM unnest(permissions) AS p
-                 WHERE NOT (p = ANY($1::text[]))
+                 WHERE NOT (p = ANY($2::text[]))
+                   AND NOT (p = ANY($1::text[]))
                    AND NOT EXISTS (
                          SELECT 1 FROM unnest($1::text[]) AS pre
                           WHERE starts_with(p, pre || '::')
                        )
               )
         WHERE name = 'Users' AND is_system = true AND is_default = true`,
-      [prefixes],
+      [wildcardPrefixes, exact],
     )
 
     // Sanity-check the fixture actually removed something, so a future rename of
@@ -109,18 +123,21 @@ test.describe('desired-state — restricted (default-group) user', () => {
       `SELECT permissions FROM groups WHERE name = 'Users' AND is_default = true`,
     )
     const perms: string[] = after.rows[0].permissions
-    for (const prefix of prefixes) {
+    for (const prefix of wildcardPrefixes) {
       expect(
         perms.some(p => p === prefix || p.startsWith(`${prefix}::`)),
-        `${prefix} should have been stripped from the Users group`,
+        `${prefix}::* should have been stripped from the Users group`,
       ).toBe(false)
+    }
+    for (const perm of exact) {
+      expect(perms, `${perm} should have been stripped`).not.toContain(perm)
     }
     // The trim must be non-vacuous: hub:: + assistants:: ARE granted to the
     // default group by migration 27, so at least those must have been present.
     // (`projects::*` is granted only to Administrators, so its removal is a
     // documented no-op — see DEC-6.)
-    expect(prefixes).toContain('hub')
-    expect(prefixes).toContain('assistants')
+    expect(wildcardPrefixes).toContain('hub')
+    expect(wildcardPrefixes).toContain('assistants')
     // …and the KEEP set survived.
     expect(perms).toContain('mcp_servers::read')
     expect(perms).toContain('user_llm_providers::read')

@@ -1178,7 +1178,7 @@ mcp_servers:
         // and each `enforce` — the boot health check auto-disables an unreachable
         // MCP server, so `ensure` would never re-enable it on a later deploy.
         let names: Vec<&str> = ds.mcp_servers.iter().map(|s| s.name.as_str()).collect();
-        for expected in ["rcpa", "dscc", "biognosia"] {
+        for expected in ["rcpa-user", "dscc-user", "biognosia-user"] {
             assert!(names.contains(&expected), "{expected} missing from the file");
         }
         for server in &ds.mcp_servers {

@@ -98,23 +98,40 @@ regular user seeded, and the default group's permissions trimmed.
 
 | Env var | Fills | If unset |
 |---|---|---|
-| `RCPA_MCP_URL` | the `rcpa` system MCP server's URL | that server is skipped |
-| `DSCC_MCP_URL` | the `dscc` system MCP server's URL | that server is skipped |
-| `BIOGNOSIA_MCP_URL` | the `biognosia` system MCP server's URL | that server is skipped |
+| `RCPA_MCP_URL` | the `rcpa-user` system MCP server's URL | that server is skipped |
+| `DSCC_MCP_URL` | the `dscc-user` system MCP server's URL | that server is skipped |
+| `BIOGNOSIA_MCP_URL` | the `biognosia-user` system MCP server's URL | that server is skipped |
 | `ZIEE_ADMIN_PASSWORD` | the root `admin` account's password | no admin is created (the UI shows first-run setup) |
 | `ZIEE_DEFAULT_USER_PASSWORD` | the regular `user` account's password | that user is not created |
 | `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |
 
+On the **deploy host** the three MCP servers are published on the HOST (that host
+only allows ports `18000-19000`) and reached over `host.docker.internal`:
+
 ```bash
 docker run --rm -p 8080:8080 \
+  --add-host host.docker.internal:host-gateway \
   -e ZIEE_DB_HOST=db.internal -e ZIEE_DB_USER=ziee -e ZIEE_DB_PASSWORD=secret -e ZIEE_DB_NAME=ziee \
   -e ZIEE_JWT_SECRET='…' -e ZIEE_STORAGE_KEY='…' \
-  -e RCPA_MCP_URL=http://rcpa.internal:9000/mcp \
-  -e DSCC_MCP_URL=http://dscc.internal:9000/mcp \
-  -e BIOGNOSIA_MCP_URL=http://biognosia.internal:9000/mcp \
+  -e BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp \
+  -e RCPA_MCP_URL=http://host.docker.internal:18120/mcp \
+  -e DSCC_MCP_URL=http://host.docker.internal:18122/mcp \
   -e ZIEE_ADMIN_PASSWORD='…' -e ZIEE_DEFAULT_USER_PASSWORD='…' \
   ziee-web:local
 ```
+
+> **Required compose change (deploy dependency).** Reaching those host-published
+> ports needs the container to resolve `host.docker.internal`, so ziee's compose
+> **must** carry
+> ```yaml
+> extra_hosts:
+>   - "host.docker.internal:host-gateway"
+> ```
+> — the same mapping `biognosia-mcp` and `cpa-website` already use. Both bundled
+> compose files (`docker-compose.yml`, `docker-compose.external-db.yml`) now set it;
+> a hand-rolled `docker run` needs `--add-host` as above. Local dev points the same
+> env vars somewhere else entirely (e.g. `http://172.21.0.1:9004/mcp`) — which is
+> exactly why they are env-templated rather than baked into the manifest.
 
 **Secrets are never in the file.** A password field must be exactly one
 `${ENV_VAR}` placeholder; an inline literal is rejected. Resolved values are
