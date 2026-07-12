@@ -663,10 +663,16 @@ async fn reconcile_group(entry: &GroupEntry) {
 
     let (next, rejected) = apply_permission_ops(&group.permissions, &entry.remove, &entry.add);
     for perm in &rejected {
+        let reason = if perm.trim().is_empty() {
+            "the entry is empty"
+        } else {
+            "a manifest must grant CONCRETE permissions, never a `*` wildcard"
+        };
         tracing::error!(
             group = %entry.name,
             permission = %perm,
-            "desired_state: REFUSING to add a wildcard permission (a manifest must grant concrete permissions, never `*`)"
+            reason,
+            "desired_state: REFUSING to add this permission"
         );
     }
     if next == group.permissions {

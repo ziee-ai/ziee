@@ -86,13 +86,17 @@ test.describe('desired-state — restricted (default-group) user', () => {
     const patterns = shippedRemovePatterns()
     const prefixes = patterns.map(toPrefix)
     await sql(
+      // `starts_with` (not LIKE): a prefix such as `mcp_servers` contains `_`,
+      // which LIKE would treat as a single-char wildcard — stripping permissions
+      // the real reconciler keeps. This mirrors `permission_matches` exactly:
+      // the bare prefix, or anything under `prefix::`.
       `UPDATE groups
           SET permissions = ARRAY(
                 SELECT p FROM unnest(permissions) AS p
                  WHERE NOT (p = ANY($1::text[]))
                    AND NOT EXISTS (
                          SELECT 1 FROM unnest($1::text[]) AS pre
-                          WHERE p LIKE pre || '::%'
+                          WHERE starts_with(p, pre || '::')
                        )
               )
         WHERE name = 'Users' AND is_system = true AND is_default = true`,

@@ -581,27 +581,8 @@ test.describe('MCP - Admin System Servers', () => {
 
 test.describe('MCP - Admin System Servers: sandbox flavor + command tiers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
-    const { baseURL, apiURL } = testInfra
+    const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
-
-    // A DISABLED system server to exercise the toggle / status-filter / search
-    // paths. Migration 157 deleted the seeded `filesystem` row these tests used
-    // to rely on for "a system server that starts disabled"; the one seeded
-    // server that survives (`fetch` / "Web Fetch") ships ENABLED. Each test gets
-    // its own database, so this fixture is fresh per test.
-    const token = await getAdminToken(apiURL)
-    const res = await page.request.post(`${apiURL}/api/mcp/system-servers`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
-        name: 'disabled-fixture',
-        display_name: 'Disabled Fixture',
-        description: 'A system server that starts disabled',
-        transport_type: 'http',
-        url: 'http://127.0.0.1:9/mcp',
-        enabled: false,
-      },
-    })
-    expect(res.ok()).toBe(true)
 
     await goToMcpAdminPage(page, baseURL)
     await waitForMcpAdminPageLoad(page)
