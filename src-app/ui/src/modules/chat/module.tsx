@@ -17,6 +17,9 @@ const NewChatPage = lazyWithPreload(() => import('./pages/NewChatPage'))
 const ConversationPage = lazyWithPreload(
   () => import('./pages/ConversationPage'),
 )
+const PopoutConversationPage = lazyWithPreload(
+  () => import('./pages/PopoutConversationPage'),
+)
 const ChatHistoryPage = lazyWithPreload(
   () => import('./pages/ChatHistoryPage'),
 )
@@ -75,7 +78,7 @@ export default createModule({
       // second app. Same `:conversationId` param name so ConversationPage's
       // `useParams()` is unchanged. Web pop-out keeps /chat/:id (the whole app).
       path: '/chat-window/:conversationId',
-      element: ConversationPage,
+      element: PopoutConversationPage,
       requiresAuth: true,
     },
     {

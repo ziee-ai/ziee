@@ -441,6 +441,29 @@ existing composer/right-panel surfaces (no new surface, no permission).
   pattern (same portal-context path TEST-69/71 exercise). MCP's added `currentPaneId` is only
   consulted in the pending branch of `resolveConfigKey`, so committed-conversation + project
   scopes are unchanged. Covered by TEST-76/77/78.
+- **ITEM-52** — verdict: PASS — layout is route-controlled (`RouterComponent` renders a
+  layout-less route bare: `route.layout || null`), so a new `/chat-window/:conversationId`
+  route with no `layout` renders `ConversationPage` without the app shell — no new render
+  path, no ConversationPage change (same `:conversationId` param). Web unaffected (the web
+  pop-out still opens `/chat/:id`); only the desktop `.desktop.ts` override retargets the
+  WebviewWindow url. Proven by RUNNING the render (TEST-79 e2e asserts the DOM: shell absent
+  + composer/title present) — not a code-read. Covered by TEST-79 + TEST-75.
+- **ITEM-53** — verdict: PASS — a new web/desktop seam `focusPopoutWindowIfOpen` (web: `false`
+  → open inline unchanged; desktop: `WebviewWindow.getByLabel` → focus) injected as a single
+  guard at the top of the sole open-conversation entry point (`useOpenConversationInWorkspace`).
+  Web behaviour byte-identical (always false). Shared `popoutWindowLabel` removes the duplicate
+  label literal (was inline in `openConversationWindow.desktop.ts`). Desktop control flow RUN by
+  TEST-80 (Tauri mocked, the established TEST-75 seam pattern — the crux is window-focus control
+  flow, NOT render). Covered by TEST-80.
+- **ITEM-54** — verdict: PASS — pure `planPopoutSnapBack`/`handlePopoutClosed` decide the
+  snap-back (never duplicate, never past MAX_PANES) and are RUN by TEST-81/82; the desktop
+  cross-window wiring (`popoutSnapBack.desktop.ts`: pop-out emits `popout-closed` on close, main
+  window listens → `handlePopoutClosed`) is a web/desktop seam whose emit/listen control flow is
+  RUN by TEST-83 (Tauri boundary mocked). Web no-op (seam base). Mounted per-role by the route
+  (pop-out route's `PopoutConversationPage` registers the emitter; `AppLayout`, which the
+  layout-less pop-out route does not render, registers the main listener). The only thing NOT
+  runnable in this Linux env is the Tauri cross-OS-window event DELIVERY itself — a platform
+  guarantee, not owned logic — noted for desktop-host verification. Covered by TEST-81/82/83.
 - **ITEM-50** — verdict: PASS — pure structural migration of the one raw desktop whole-file
   shadow (`desktop/ui/.../openConversationWindow.ts`) to the live2 co-located
   `ui/src/.../openConversationWindow.desktop.ts` mechanism; mirrors the existing
