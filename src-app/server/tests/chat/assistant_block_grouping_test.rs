@@ -147,3 +147,48 @@ fn trailing_tool_use_without_result_is_emitted_as_assistant() {
     assert!(matches!(msgs[0].role, Role::Assistant));
     assert_eq!(tool_use_ids(&msgs[0].content), vec!["a"]);
 }
+
+/// TEST-5a: the failed-parallel repro — three parallel tool_uses but only ONE real
+/// result captured (the others failed/absent). group_assistant_blocks must still
+/// produce a VALID pairing: the real result plus a synthesized result for each
+/// missing id, so no tool_use is left dangling (which every provider 400s on).
+#[test]
+fn partial_parallel_batch_synthesizes_missing_and_stays_valid() {
+    let blocks = vec![
+        tool_use("A", "srv__run_pathway_analysis"),
+        tool_use("B", "srv__run_consensus_analysis"),
+        tool_use("C", "srv__run_consensus_analysis"),
+        tool_result("A", "ok-A"),
+    ];
+    let msgs = group_assistant_blocks(blocks);
+
+    assert_valid_tool_pairing(&msgs);
+    assert_eq!(msgs.len(), 2, "one Assistant/Tool pair");
+    assert_eq!(tool_use_ids(&msgs[0].content), vec!["A", "B", "C"]);
+    assert_eq!(
+        tool_result_ids(&msgs[1].content),
+        vec!["A", "B", "C"],
+        "every tool_use id is answered in the following Tool turn"
+    );
+}
+
+/// TEST-5b: a multi-iteration agentic loop merged into ONE stored assistant message
+/// (iter1: one tool; iter2: two parallel tools) reconstructs into valid per-iteration
+/// pairs across every boundary.
+#[test]
+fn multi_iteration_single_message_stays_valid() {
+    let blocks = vec![
+        tool_use("i1", "search"),
+        tool_result("i1", "r1"),
+        tool_use("i2a", "read_file"),
+        tool_use("i2b", "read_file"),
+        tool_result("i2a", "ra"),
+        tool_result("i2b", "rb"),
+    ];
+    let msgs = group_assistant_blocks(blocks);
+
+    assert_valid_tool_pairing(&msgs);
+    assert_eq!(msgs.len(), 4, "two iterations → 2 Assistant + 2 Tool turns");
+    assert_eq!(tool_use_ids(&msgs[0].content), vec!["i1"]);
+    assert_eq!(tool_use_ids(&msgs[2].content), vec!["i2a", "i2b"]);
+}

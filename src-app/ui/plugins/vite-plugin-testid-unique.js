@@ -34,7 +34,10 @@ import path from 'node:path'
 
 // Matches data-testid="literal" / data-testid='literal' (JSX) and the object
 // form "data-testid": "literal" (spread props). NOT data-testid={expr}.
-const TESTID_LITERAL = /data-testid\s*[=:]\s*["']([^"']+)["']/g
+// `(?<!\[)` skips CSS attribute SELECTORS — `querySelector('[data-testid="x"]')`
+// READS a testid, it does not DECLARE one (a pre-existing false positive that
+// broke the web gallery vite server; mirrors the desktop plugin fix).
+const TESTID_LITERAL = /(?<!\[)data-testid\s*[=:]\s*["']([^"']+)["']/g
 
 // The detector-acceptance fixture INTENTIONALLY reuses the real app testids the
 // detectors key on (e.g. K1 matches the literal `conversation-title`, so its
@@ -52,11 +55,23 @@ const ELICITATION_SHARED_FILES = new Set([
   'modules/mcp/chat-extension/components/AskUserWizardContent.tsx',
   'modules/mcp/chat-extension/components/ElicitationFormContent.tsx',
 ])
+// Intentional cross-file share: `SearchKnowledgeToolResultCard` RENDERS the KB
+// tool-result card + toggle testids, and `CitationChip` QUERIES them by the same
+// literal (`querySelector('[data-testid="kb-tool-result-card"]')`) to enhance the
+// rendered card — a render/query pair, not two competing renders. (The plugin's
+// regex matches the querySelector literal too, so the reader file must be
+// allowlisted alongside the renderer.)
+const KB_TOOL_RESULT_SHARED_FILES = new Set([
+  'modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard.tsx',
+  'modules/chat/core/utils/CitationChip.tsx',
+])
 const SHARED_TESTID_ALLOWLIST = new Map([
   ['mcp-elicitation-pending-card', ELICITATION_SHARED_FILES],
   ['elicitation-decline', ELICITATION_SHARED_FILES],
   ['elicitation-submit', ELICITATION_SHARED_FILES],
   ['mcp-elicitation-form', ELICITATION_SHARED_FILES],
+  ['kb-tool-result-card', KB_TOOL_RESULT_SHARED_FILES],
+  ['kb-tool-result-toggle', KB_TOOL_RESULT_SHARED_FILES],
 ])
 
 function findSourceFiles(dir, fileList = []) {

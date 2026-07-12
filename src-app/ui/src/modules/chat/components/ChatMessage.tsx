@@ -255,7 +255,7 @@ export const ChatMessage = memo(function ChatMessage({
           tone="warning"
           data-testid="chat-empty-completion-notice"
           className="w-full"
-          description="The model returned an empty response and made no tool call."
+          description="The model returned an empty response and made no tool call. Please try again."
         />
       )}
 
