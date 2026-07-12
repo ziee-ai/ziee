@@ -464,6 +464,20 @@ existing composer/right-panel surfaces (no new surface, no permission).
   layout-less pop-out route does not render, registers the main listener). The only thing NOT
   runnable in this Linux env is the Tauri cross-OS-window event DELIVERY itself — a platform
   guarantee, not owned logic — noted for desktop-host verification. Covered by TEST-81/82/83.
+- **ITEM-55** — verdict: PASS — pure render-gate: the back arrow is conditionally rendered on
+  `!isSplit && !isPopoutWindow` (both reactive/route-derived facts). No handler change; a
+  single `!showBackButton && ...` wrap. `isSplit` reads the existing `SplitView.panes` (the
+  same source SplitChatView keys off), `isPopoutWindow` the route. Zero effect on single-pane
+  (both false → shown). RUN by TEST-85 (real DOM: present single-pane, absent split + pop-out).
+- **ITEM-56** — verdict: PASS — the split button becomes `{!isPopoutWindow && <Tooltip>…}` in
+  ConversationPage, and `popoutActionVisible` gains a third `isPopoutWindow` param (default
+  false → all existing callers unchanged) that short-circuits to false; `OpenInNewWindowAction`
+  passes it. A shared `useIsPopoutWindow()` (one `useLocation().startsWith('/chat-window/')`)
+  is the single source, removing the duplicated route literal. All hooks called before the
+  component's early returns (Rules of Hooks). Web/main-window behaviour byte-identical
+  (isPopoutWindow false everywhere except the pop-out route). RUN by TEST-65b (pure — false in
+  a pop-out window across pane/platform) + TEST-85 (real DOM — split + pop-out buttons absent in
+  the pop-out window, find + composer still present).
 - **ITEM-50** — verdict: PASS — pure structural migration of the one raw desktop whole-file
   shadow (`desktop/ui/.../openConversationWindow.ts`) to the live2 co-located
   `ui/src/.../openConversationWindow.desktop.ts` mechanism; mirrors the existing

@@ -35,6 +35,7 @@ import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton
 import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
 import { pendingApprovalIdsInPane } from '@/modules/chat/core/utils/toolCallPaneScope'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { SplitChatView } from '@/modules/chat/components/SplitChatView'
 
 /**
@@ -85,6 +86,10 @@ export function ConversationPane() {
   }>()
   const pane = useChatPaneOrNull()
   const closePane = useClosePane()
+  // The pop-out window is a focused single-conversation view — hide window-management
+  // chrome (split, here; back + pop-out elsewhere) that only fits the main window
+  // (ITEM-56 / FB-13).
+  const isPopoutWindow = useIsPopoutWindow()
   // Pane header drop-zone (ITEM-31): a conversation dropped on the header replaces
   // this pane; a pane-header drag dropped here reorders. File drags are ignored
   // (they belong to the composer) — the header is not over the composer, so they
@@ -682,17 +687,20 @@ export function ConversationPane() {
       </Tooltip>
       {/* Split affordance — open this conversation beside another pane. Visually
           distinct (columns icon) from the pop-out "new window" action, which the
-          trailing slot injects. */}
-      <Tooltip content="Open in split view">
-        <Button
-          data-testid="chat-split-btn"
-          variant="ghost"
-          size="icon"
-          icon={<Columns2 />}
-          aria-label="Open in split view"
-          onClick={onSplit}
-        />
-      </Tooltip>
+          trailing slot injects. Hidden inside the pop-out WINDOW (ITEM-56/FB-13): a
+          focused single-conversation window shouldn't spawn a split inside itself. */}
+      {!isPopoutWindow && (
+        <Tooltip content="Open in split view">
+          <Button
+            data-testid="chat-split-btn"
+            variant="ghost"
+            size="icon"
+            icon={<Columns2 />}
+            aria-label="Open in split view"
+            onClick={onSplit}
+          />
+        </Tooltip>
+      )}
       {/* Decoupled chip injection point — other modules register header
           decorations into `chatConversationHeaderTrailing` without chat
           compiling against them. */}

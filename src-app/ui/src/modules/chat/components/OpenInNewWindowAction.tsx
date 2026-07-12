@@ -3,6 +3,7 @@ import { SquareArrowOutUpRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { openConversationWindow } from '@/modules/chat/core/popout/openConversationWindow'
 import { popoutActionVisible } from '@/modules/chat/core/popout/popoutVisibility'
+import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
 
@@ -27,6 +28,7 @@ import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
 export function OpenInNewWindowAction() {
   const pane = useChatPaneOrNull()
   const closePane = useClosePane()
+  const isPopoutWindow = useIsPopoutWindow()
   // In a pane, act on THAT pane's conversation; single-pane reads the bridge.
   const conversation = pane
     ? pane.store.conversation
@@ -34,8 +36,9 @@ export function OpenInNewWindowAction() {
   if (!conversation) return null
 
   const isDesktop = typeof window !== 'undefined' && '__TAURI__' in window
-  // Single-pane pop-out is desktop-only (ITEM-44/DEC-60); split panes always show it.
-  if (!popoutActionVisible(pane != null, isDesktop)) return null
+  // Single-pane pop-out is desktop-only (ITEM-44/DEC-60); split panes always show it;
+  // NEVER inside the pop-out window itself (ITEM-56/FB-13 — a self-focusing no-op).
+  if (!popoutActionVisible(pane != null, isDesktop, isPopoutWindow)) return null
 
   const label = pane
     ? isDesktop

@@ -13,6 +13,7 @@ import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 
 interface TitleFormValues {
   title: string
@@ -36,6 +37,18 @@ export function TitleEditor() {
   })
   const [isEditing, setIsEditing] = useState(false)
   const navigate = useNavigate()
+
+  // The "back to conversation list" arrow is a WINDOW-WIDE navigate('/chats'), which
+  // predates the split + the pop-out and mis-behaves in both (ITEM-55 / FB-13):
+  //  - in a SPLIT a per-pane back click collapsed the WHOLE split (panes have their
+  //    own ✕ close), and
+  //  - in the chat-only pop-out WINDOW it navigated to /chats, pulling the whole app
+  //    shell into the window (undoing the chat-only ITEM-52).
+  // So show it ONLY in the normal single-pane view: hide when a split is open (panes
+  // >= 2, reactive) or in the pop-out window.
+  const isSplit = Stores.SplitView.panes.length >= 2
+  const isPopoutWindow = useIsPopoutWindow()
+  const showBackButton = !isSplit && !isPopoutWindow
 
   // Get conversation from store
   const { conversation } = Stores.Chat
@@ -117,15 +130,17 @@ export function TitleEditor() {
 
   return (
     <div className="flex gap-1 items-center justify-start overflow-hidden">
-      <Button
-        variant="ghost"
-        className="!px-1"
-        onClick={handleBack}
-        aria-label="Back to conversation list"
-        data-testid="conversation-back-button"
-      >
-        <IoIosArrowBack className="text-md" />
-      </Button>
+      {showBackButton && (
+        <Button
+          variant="ghost"
+          className="!px-1"
+          onClick={handleBack}
+          aria-label="Back to conversation list"
+          data-testid="conversation-back-button"
+        >
+          <IoIosArrowBack className="text-md" />
+        </Button>
+      )}
       <Title
         level={5}
         className="!m-0 !leading-tight truncate"

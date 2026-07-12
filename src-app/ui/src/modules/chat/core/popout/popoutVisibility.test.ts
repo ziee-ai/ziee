@@ -18,3 +18,12 @@ test('popoutActionVisible: single-pane shows on desktop only', () => {
     'single-pane web hides it (browser has its own new-tab)',
   )
 })
+
+// TEST-65b (ITEM-56 / FB-13): NEVER inside the pop-out WINDOW itself — even on the
+// desktop split-pane cases that would otherwise show it. It's a focused
+// single-conversation window; "open in new window" there is a self-focusing no-op.
+test('popoutActionVisible: hidden inside the pop-out window regardless of pane/platform', () => {
+  assert.equal(popoutActionVisible(false, true, true), false) // single-pane, desktop, in pop-out
+  assert.equal(popoutActionVisible(true, true, true), false) // split, desktop, in pop-out
+  assert.equal(popoutActionVisible(true, false, true), false) // split, web, in pop-out
+})

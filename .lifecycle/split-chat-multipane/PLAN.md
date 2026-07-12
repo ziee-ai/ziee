@@ -493,6 +493,28 @@ per-pane CORRECTNESS fixes of existing surfaces, so the Phase-1 UI-surface check
   wiring. Covered by TEST-81 (unit — planSnapBack: a closed pop-out's conversation
   becomes a pane; already-open/at-cap handled).
 
+## Round 7 — header-chrome-per-context audit fixes (FB-13)
+
+An action audit (every context-sensitive chat button driven in single-pane / split
+pane / pop-out window, measured by running it) found the header's WINDOW-MANAGEMENT
+chrome — designed for the main window — mis-behaving in the new contexts. Two fixes:
+
+- **ITEM-55**: The chat-header BACK arrow (`conversation-back-button` → window-wide
+  `navigate('/chats')`) collapsed the WHOLE split from a per-pane click (panes have
+  their own ✕) and, in the chat-only pop-out window, navigated to /chats — pulling
+  the full app shell into the window (undoing ITEM-52). Hide it except in single-pane:
+  in `TitleEditor`, gate on `!isSplit (SplitView.panes.length >= 2) && !isPopoutWindow`.
+  Covered by TEST-85 (e2e — present in single-pane, absent in split + pop-out).
+- **ITEM-56**: The pop-out WINDOW also showed the SPLIT button (which spawns a split
+  INSIDE the focused window) and the POP-OUT button (a self-focusing no-op on desktop).
+  Make the pop-out window a focused single-conversation view: hide all
+  window-management chrome (back + split + pop-out), keep conversation actions (title,
+  find, composer). Shared `useIsPopoutWindow()` hook; `chat-split-btn` gated in
+  `ConversationPage`; `popoutActionVisible(inPane, isDesktop, isPopoutWindow)` extended
+  so `OpenInNewWindowAction` hides in the pop-out window. Covered by TEST-65b (unit —
+  `popoutActionVisible` false in a pop-out window) + TEST-85 (e2e — split + pop-out
+  buttons absent in the pop-out window, conversation actions present).
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp
