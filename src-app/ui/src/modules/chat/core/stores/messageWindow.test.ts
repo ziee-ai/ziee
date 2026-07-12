@@ -8,6 +8,7 @@ import {
   lastMessageId,
   mergeTailWindow,
   prependWindow,
+  resumeOrFreshPlaceholder,
   toOrderedMap,
 } from './messageWindow.ts'
 import type { MessageWithContent } from '@/api-client/types'
@@ -152,6 +153,30 @@ test('finalizeTailWindow with a null streamingId is a plain tail merge (no drop)
   const tail = [msg('u1', 'hi', 'user'), msg('a1', 'answer', 'assistant')]
   const next = finalizeTailWindow(existing, tail, null)
   assert.deepEqual(ids(next), ['u1', 'a1'])
+})
+
+// TEST-6: resumeOrFreshPlaceholder — a tool-approval resume must REUSE the
+// existing assistant row (keep its content) rather than blank it with a fresh
+// empty placeholder (which vanishes the bubble mid-turn).
+
+test('resumeOrFreshPlaceholder REUSES an existing assistant row (keeps its content)', () => {
+  const existing = msg('a1', 'partial answer + a tool call', 'assistant')
+  const fresh = { ...msg('a1', '', 'assistant'), contents: [] } as MessageWithContent
+  const chosen = resumeOrFreshPlaceholder(existing, fresh)
+  assert.equal(chosen, existing) // same object → content preserved
+  assert.ok(chosen.contents.length > 0)
+})
+
+test('resumeOrFreshPlaceholder uses the FRESH placeholder for a genuinely-new turn', () => {
+  const fresh = { ...msg('a2', '', 'assistant'), contents: [] } as MessageWithContent
+  assert.equal(resumeOrFreshPlaceholder(undefined, fresh), fresh)
+})
+
+test('resumeOrFreshPlaceholder does NOT adopt a non-assistant row for the id', () => {
+  // Defensive: ids are role-unique, but never stream assistant content into a user row.
+  const userRow = msg('x', 'hi', 'user')
+  const fresh = { ...msg('x', '', 'assistant'), contents: [] } as MessageWithContent
+  assert.equal(resumeOrFreshPlaceholder(userRow, fresh), fresh)
 })
 
 // TEST-1 (virtualize): id → array index mapping behind scrollToMessageId (the

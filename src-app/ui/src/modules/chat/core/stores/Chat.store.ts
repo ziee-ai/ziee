@@ -25,6 +25,7 @@ import {
   lastMessageId,
   mergeTailWindow,
   prependWindow,
+  resumeOrFreshPlaceholder,
   toOrderedMap,
 } from '@/modules/chat/core/stores/messageWindow'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
@@ -1392,16 +1393,27 @@ export const Chat = defineStore('Chat', {
         if (data.content && Array.isArray(data.content)) {
           if (!state.streamingMessage && data.content.length > 0) {
             const placeholderId = data.message_id || `streaming-${Date.now()}`
-            const placeholder: MessageWithContent = {
-              id: placeholderId,
-              role: 'assistant',
-              contents: [],
-              originated_from_id: '',
-              edit_count: 0,
-              created_at: new Date().toISOString(),
-            }
             set(state => {
               const newMessages = new Map(state.messages)
+              // A tool-approval RESUME continues the SAME assistant message id.
+              // If a message with this id already exists (with accumulated
+              // text/tool_use content), REUSE it as the streaming buffer rather
+              // than overwriting it with an empty placeholder — otherwise the
+              // message renders empty for a beat (ChatMessage bails to null on
+              // zero blocks) and the bubble VANISHES then reappears (the
+              // resume-chain flicker). A genuinely-new turn has no existing row
+              // → a fresh empty placeholder, unchanged from before.
+              const placeholder = resumeOrFreshPlaceholder(
+                newMessages.get(placeholderId),
+                {
+                  id: placeholderId,
+                  role: 'assistant',
+                  contents: [],
+                  originated_from_id: '',
+                  edit_count: 0,
+                  created_at: new Date().toISOString(),
+                },
+              )
               newMessages.set(placeholder.id, placeholder)
               return { streamingMessage: placeholder, messages: newMessages }
             })

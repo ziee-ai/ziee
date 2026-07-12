@@ -96,6 +96,38 @@ export function finalizeTailWindow(
   return mergeTailWindow(base, tailPage)
 }
 
+/**
+ * Choose the message a fresh streaming buffer should adopt when the first content
+ * frame of a (sub-)turn arrives and there is no active `streamingMessage`.
+ *
+ * A tool-approval RESUME re-enters streaming for the SAME assistant message id
+ * that already accumulated text/tool_use content. Overwriting that row with an
+ * empty placeholder blanks it for a beat — `ChatMessage` bails to `null` on a
+ * zero-block message, so the bubble VANISHES then reappears when content refills
+ * (the resume-chain flicker). So REUSE the existing assistant row (keep its
+ * content; new frames append) when one exists for `placeholderId`; otherwise use
+ * the caller's `fresh` empty placeholder (a genuinely-new turn). Pure —
+ * unit-tested.
+ *
+ * ALIASING INVARIANT (load-bearing): on the reuse path this returns the SAME
+ * object that already lives in the `messages` map, so the caller's
+ * `streamingMessage` is REFERENCE-IDENTICAL to the persisted row. Every writer of
+ * `streamingMessage.contents` must therefore stay COPY-ON-WRITE
+ * (`{...msg, contents: [...msg.contents, block]}`) — as all of them are today
+ * (the store's text_delta path and the MCP extension's block injectors). An
+ * in-place `contents.push(...)` / index-assign would now silently mutate the
+ * rendered store row and break React's change detection.
+ *
+ * The `role === 'assistant'` guard only prevents STREAMING INTO a non-assistant
+ * row; ids are server uuids so a collision is unreachable in practice.
+ */
+export function resumeOrFreshPlaceholder(
+  existing: MessageWithContent | undefined,
+  fresh: MessageWithContent,
+): MessageWithContent {
+  return existing && existing.role === 'assistant' ? existing : fresh
+}
+
 /** First (oldest-loaded) message id, or null when empty. */
 export function firstMessageId(
   messages: Map<string, MessageWithContent>,
