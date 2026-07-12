@@ -17,6 +17,11 @@ export function McpMenuItem() {
   const { servers, loading } = Stores.McpServer
   const mcpStore = Stores.McpComposer
   const { close } = usePlusDropdown()
+  // THIS pane's conversation (bridge-resolved) — the modal edits the global
+  // `currentConversationId`, so point it at the pane the modal was opened from
+  // (ITEM-47) before opening, else a split pane's toggle edits the wrong
+  // conversation's config.
+  const conversation = Stores.Chat.conversation
 
   const enabledServers = servers.filter(s => s.enabled)
 
@@ -31,6 +36,7 @@ export function McpMenuItem() {
       icon={<Wrench />}
       label="MCP tools & servers"
       onClick={() => {
+        mcpStore.setCurrentConversation(conversation?.id ?? null)
         mcpStore.openConfigModal()
         close()
       }}
