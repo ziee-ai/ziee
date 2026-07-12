@@ -5,6 +5,9 @@ import { BookOpen, Check, ChevronRight } from 'lucide-react'
 import { type KnowledgeBase, Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
+import { kbKey } from '@/modules/knowledge-base/stores/kbSelectionKey'
+
+const EMPTY_SET: ReadonlySet<string> = new Set()
 
 /** Compact per-KB status suffix for a picker row (from indexing_summary). */
 function statusSuffix(kb: KnowledgeBase): { text: string; className: string } | null {
@@ -26,7 +29,10 @@ export function KbMenuItem() {
   const navigate = useNavigate()
   const canUse = usePermission(Permissions.KnowledgeBaseUse)
   const { items } = Stores.KnowledgeBases
-  const { selectedKbIds } = Stores.KnowledgeBaseComposer
+  // Per-pane (ITEM-46): this pane's conversation's own selection (bridge-resolved).
+  const { selectionByConversation } = Stores.KnowledgeBaseComposer
+  const convId = Stores.Chat.conversation?.id ?? null
+  const selectedKbIds = selectionByConversation.get(kbKey(convId)) ?? EMPTY_SET
   const [query, setQuery] = useState('')
 
   if (!canUse) return null
@@ -38,8 +44,8 @@ export function KbMenuItem() {
 
   const toggle = (id: string) => {
     const p = selectedKbIds.has(id)
-      ? Stores.KnowledgeBaseComposer.detach(id)
-      : Stores.KnowledgeBaseComposer.attach(id)
+      ? Stores.KnowledgeBaseComposer.detachFor(convId, id)
+      : Stores.KnowledgeBaseComposer.attachFor(convId, id)
     p.catch((e: unknown) =>
       message.error(e instanceof Error ? e.message : 'Failed to update knowledge bases'),
     )

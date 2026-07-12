@@ -64,7 +64,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
       ctx.chatStore.subscribe(
         (state: any) => state.conversation?.id,
         (id: string | undefined) => {
-          if (!id) Stores.KnowledgeBaseComposer.setCurrentConversation(null)
+          if (!id) Stores.KnowledgeBaseComposer.resetPending()
         },
       ),
     )
@@ -90,21 +90,31 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   onConversationLoad: async conversation => {
     const { Stores } = await import('@/core/stores')
     const store = Stores.KnowledgeBaseComposer
-    store.setCurrentConversation(conversation.id)
+    // Per-conversation (ITEM-46): hydrate THIS conversation's own slot.
     if (conversation.id) await store.loadForConversation(conversation.id)
     // Read-only KBs inherited from the conversation's project (scope legibility).
-    void store.loadInherited(
+    void store.loadInheritedFor(
+      conversation.id ?? null,
       (conversation as { project_id?: string | null }).project_id ?? null,
     )
   },
 
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    const store = Stores.KnowledgeBaseComposer.$
+    const { PENDING_KB_KEY } = await import('../stores/kbSelectionKey')
+    const snap = Stores.KnowledgeBaseComposer.$
     const conversation = Stores.Chat.$.conversation
-    // New conversation just minted: persist the pending selection to it.
-    if (conversation?.id && !store.currentConversationId) {
-      await store.transferPending(conversation.id)
+    // A brand-new conversation (just minted, not yet hydrated into its own slot)
+    // with a non-empty pending buffer → move the pending selection under it.
+    // An existing conversation already owns a slot (via onConversationLoad), so
+    // this no-ops for it.
+    const pendingSize = snap.selectionByConversation.get(PENDING_KB_KEY)?.size ?? 0
+    if (
+      conversation?.id &&
+      !snap.selectionByConversation.has(conversation.id) &&
+      pendingSize > 0
+    ) {
+      await Stores.KnowledgeBaseComposer.transferPending(conversation.id)
     }
     return {}
   },
