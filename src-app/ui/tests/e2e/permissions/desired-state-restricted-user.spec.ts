@@ -41,12 +41,21 @@ function shippedRemovePatterns(): string[] {
     new URL('../../../../../config/desired-state.yaml', import.meta.url),
   )
   const yaml = readFileSync(manifest, 'utf8')
-  // The `remove:` list under the `Users` group entry: a flat list of
-  // `- <pattern>` lines. No YAML parser is available in the e2e deps.
-  const removeBlock = yaml.split(/^\s*remove:\s*$/m)[1] ?? ''
-  const patterns = [...removeBlock.matchAll(/^\s*-\s*([^\s#]+)\s*$/gm)].map(
-    m => m[1],
-  )
+  // The `remove:` list under the `Users` group entry: a flat run of
+  // `- <pattern>` lines. No YAML parser is available in the e2e deps, so read
+  // ONLY the contiguous list items that immediately follow `remove:` — stopping
+  // at the first line that is not one keeps a block appended later to the file
+  // from silently widening what we extract.
+  const lines = yaml.split('\n')
+  const start = lines.findIndex(l => /^\s*remove:\s*$/.test(l))
+  expect(start, 'no `remove:` list in config/desired-state.yaml').toBeGreaterThan(-1)
+
+  const patterns: string[] = []
+  for (const line of lines.slice(start + 1)) {
+    const item = line.match(/^\s*-\s*([^\s#]+)\s*$/)
+    if (!item) break
+    patterns.push(item[1])
+  }
   expect(
     patterns.length,
     'could not read the remove: list out of config/desired-state.yaml',

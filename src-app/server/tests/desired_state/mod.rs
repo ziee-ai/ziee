@@ -234,9 +234,11 @@ async fn login_token(server: &TestServer, username: &str, password: &str) -> Str
     let res = login(server, username, password).await;
     assert_eq!(res.status(), 200, "{username} should be able to log in");
     let body: serde_json::Value = res.json().await.unwrap();
-    body["tokens"]["access_token"]
+    // `AuthResponse.tokens` is `#[serde(flatten)]`, so the token pair is at the
+    // TOP level of the body, not nested under "tokens".
+    body["access_token"]
         .as_str()
-        .expect("access token")
+        .unwrap_or_else(|| panic!("no access_token in the login response: {body}"))
         .to_string()
 }
 
@@ -530,8 +532,28 @@ async fn test_admin_is_ensured_once_and_password_is_never_reset() {
     // It can log in with the password from the env.
     assert_eq!(login(&server, "admin", ADMIN_PASSWORD).await.status(), 200);
 
+    // Positive control for THIS test: delete the seeded regular user, so the
+    // re-deploy has something it must visibly re-create. Otherwise "the password
+    // was not reset" would also pass if the second process reconciled NOTHING
+    // (e.g. the env plumbing to it silently broke) — a vacuous green.
+    sqlx::query!("DELETE FROM users WHERE username = 'user'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     // ── re-deploy with a DIFFERENT admin password ──
     reboot(&server, &manifest("ensure"), "totally-different-pw-2", USER_PASSWORD).await;
+
+    let user_back = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM users WHERE username = 'user'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        user_back, 1,
+        "the re-deploy did not reconcile accounts at all — the admin assertions below would be vacuous"
+    );
 
     // The ORIGINAL password still works …
     assert_eq!(
@@ -585,7 +607,23 @@ async fn test_regular_user_is_seeded_in_the_default_group() {
 
     assert_eq!(login(&server, "user", USER_PASSWORD).await.status(), 200);
 
+    // Positive control: a declared server deleted here must come back, proving the
+    // second process really reconciled (so "the user was not duplicated" is a
+    // real assertion, not an artifact of a no-op boot).
+    sqlx::query!("DELETE FROM mcp_servers WHERE name = 'rcpa'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     reboot(&server, &manifest("ensure"), ADMIN_PASSWORD, USER_PASSWORD).await;
+
+    let rcpa_back = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers WHERE name = 'rcpa'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rcpa_back, 1, "the second boot did not reconcile at all");
 
     let count = sqlx::query_scalar!(
         r#"SELECT COUNT(*) as "count!" FROM users WHERE username = 'user'"#

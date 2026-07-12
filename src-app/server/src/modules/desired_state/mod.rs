@@ -39,11 +39,18 @@
 //!   group from the file does NOT revoke it.
 //! - **A bad ENTRY never crashes boot; a bad FILE does.** An unresolved env var,
 //!   an inline secret, or a DB error on one entry logs an error and skips just
-//!   that entry. But an unreadable / unparseable desired-state FILE is FATAL:
-//!   booting a publicly-served container that is silently unconfigured (no admin
-//!   → the unauthenticated first-run setup endpoint is open; no permission trim)
-//!   is worse than not booting. A file that is simply ABSENT is not an error —
-//!   that is how every non-config-as-code deployment (dev, desktop, tests) runs.
+//!   that entry. But an unreadable / unparseable desired-state FILE is FATAL: a
+//!   manifest the operator MEANT to apply, which the server cannot even read, is
+//!   a deploy bug — failing loudly beats serving a silently-unconfigured box. A
+//!   file that is simply ABSENT is not an error: that is how every
+//!   non-config-as-code deployment (dev, desktop, tests) runs.
+//!
+//!   Note the deliberate asymmetry: an UNSET `${ZIEE_ADMIN_PASSWORD}` skips the
+//!   admin entry (loudly) rather than aborting. That leaves the deployment in
+//!   ziee's ORDINARY fresh-install state — no admin, so the unauthenticated
+//!   first-run setup page is open, exactly as for any stock `docker compose up`.
+//!   It is not a state this module introduces, and making it fatal would break
+//!   the documented quick-start; the warning tells the operator to set the var.
 //!
 //! Pattern mirrors: `modules/auth/session_settings.rs::seed_from_config_once`
 //! (config → DB once, DB authoritative after) and
@@ -293,9 +300,13 @@ pub fn permission_matches(pattern: &str, perm: &str) -> bool {
 /// Is this a legal `add:` entry? Wildcards are REFUSED on the add side: `*` is
 /// the grant-everything permission the Administrators group holds
 /// (`permissions/checker.rs` short-circuits on it), and `foo::*` is not a real
-/// permission — a typo'd or tampered manifest must not be able to silently
-/// escalate the default group to admin-equivalent access. Removal patterns may
-/// still use `::*`; widening is what needs the guard, not narrowing.
+/// permission — so a `remove:`-shaped pattern accidentally pasted into `add:`
+/// would hand the default group far more than the author meant.
+///
+/// This is a FOOTGUN guard, not a trust boundary: the manifest is trusted deploy
+/// config (same trust level as `config.yaml`, which holds `jwt.secret`), and it
+/// can still grant any CONCRETE permission it names. Removal patterns may use
+/// `::*` freely — widening is what needs the guard, not narrowing.
 pub fn is_legal_add(perm: &str) -> bool {
     !perm.is_empty() && !perm.contains('*')
 }
@@ -339,6 +350,11 @@ const MAX_FILE_BYTES: u64 = 1024 * 1024;
 /// A fixed key for the Postgres advisory lock that serializes the reconcile
 /// across concurrently-booting containers. Arbitrary but stable.
 const RECONCILE_LOCK_KEY: i64 = 0x7A1E_E_DE51_u64 as i64;
+
+/// Bounded wait for that lock: 60 × 500ms = 30s. A reconcile is a handful of
+/// statements, so a peer that holds it longer than this is stuck, not slow.
+const LOCK_WAIT_ATTEMPTS: usize = 60;
+const LOCK_WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Reconcile the desired-state file into the DB.
 ///
@@ -399,22 +415,62 @@ pub async fn reconcile(pool: &PgPool) -> Result<(), String> {
         .acquire()
         .await
         .map_err(|e| format!("cannot acquire a connection for the reconcile lock: {e}"))?;
-    if let Err(e) = sqlx::query("SELECT pg_advisory_lock($1)")
-        .bind(RECONCILE_LOCK_KEY)
-        .execute(&mut *conn)
-        .await
-    {
-        return Err(format!("cannot take the reconcile advisory lock: {e}"));
+
+    // Bounded wait, NOT a bare `pg_advisory_lock`: that blocks forever, so a peer
+    // container hung mid-reconcile would hang THIS boot with no diagnosis. Poll
+    // `pg_try_advisory_lock` and give up with a clear error (the container then
+    // restarts and tries again). A process that DIES holding the lock releases it
+    // automatically — Postgres drops session advisory locks when the session ends.
+    let mut locked = false;
+    for _ in 0..LOCK_WAIT_ATTEMPTS {
+        match sqlx::query_scalar::<_, bool>("SELECT pg_try_advisory_lock($1)")
+            .bind(RECONCILE_LOCK_KEY)
+            .fetch_one(&mut *conn)
+            .await
+        {
+            Ok(true) => {
+                locked = true;
+                break;
+            }
+            Ok(false) => {
+                tracing::info!(
+                    "desired_state: another instance is reconciling; waiting for the lock"
+                );
+                tokio::time::sleep(LOCK_WAIT_INTERVAL).await;
+            }
+            Err(e) => return Err(format!("cannot take the reconcile advisory lock: {e}")),
+        }
+    }
+    if !locked {
+        return Err(
+            "another instance has held the reconcile lock for too long; giving up (the container \
+             will retry on restart)"
+                .to_string(),
+        );
     }
 
     let result = reconcile_entries(&desired).await;
 
-    // Best-effort unlock; dropping the connection releases it regardless.
-    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+    // Release the lock. `drop()` alone is NOT enough: a PoolConnection returns the
+    // LIVE session to the pool, so a session-level advisory lock survives it — if
+    // the unlock statement failed, the lock would be held for this process's whole
+    // lifetime and every peer container would block on boot. On failure, CLOSE the
+    // connection instead: ending the session makes Postgres drop the lock.
+    match sqlx::query("SELECT pg_advisory_unlock($1)")
         .bind(RECONCILE_LOCK_KEY)
         .execute(&mut *conn)
-        .await;
-    drop(conn);
+        .await
+    {
+        Ok(_) => drop(conn),
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "desired_state: could not release the reconcile lock; closing the connection so \
+                 Postgres drops it with the session"
+            );
+            let _ = conn.close().await;
+        }
+    }
 
     result
 }
@@ -473,7 +529,9 @@ async fn reconcile_admin(entry: &AdminEntry) {
             tracing::warn!(
                 username = %entry.username,
                 reason = %e,
-                "desired_state: admin not created (set the password env var to enable it)"
+                "desired_state: NO ADMIN CREATED — this deployment now has no administrator, so \
+                 the unauthenticated first-run setup page is open to whoever reaches it first. \
+                 Set the admin password env var and redeploy."
             );
             return;
         }
@@ -483,7 +541,7 @@ async fn reconcile_admin(entry: &AdminEntry) {
         tracing::error!(
             username = %entry.username,
             reason = %reason,
-            "desired_state: admin password rejected; admin not created"
+            "desired_state: admin password rejected; NO ADMIN CREATED (the first-run setup page is open)"
         );
         return;
     }
@@ -700,9 +758,11 @@ async fn reconcile_mcp_server(entry: &McpServerEntry) {
             };
             match Repos.mcp.update_system_server(id, request).await {
                 Ok(_) => tracing::info!(server = %entry.name, "desired_state: MCP server re-synced (enforce)"),
+                // Log and carry on to the group assignment below — do NOT return.
+                // A failed field re-sync must not also strand the server in no
+                // group (that is the one failure that makes it unusable).
                 Err(e) => {
-                    tracing::error!(error = ?e, server = %entry.name, "desired_state: MCP server update failed");
-                    return;
+                    tracing::error!(error = ?e, server = %entry.name, "desired_state: MCP server field re-sync failed; still converging its group assignment")
                 }
             }
             id
