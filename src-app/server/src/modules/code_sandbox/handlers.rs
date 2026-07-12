@@ -1265,11 +1265,15 @@ pub(crate) fn tool_definitions() -> Value {
                 cannot be returned. If a command wrote its output to /tmp, move it into \
                 /home/sandboxuser first.\n\
                 \n\
-                IMPORTANT: When passing the file to another tool, copy the returned `uri` \
-                VERBATIM into that tool's file/URL argument. Do NOT invent or guess a URL, \
-                do NOT construct a DRS/platform URL (e.g. a ga4gh/drs object URL), and do \
-                NOT substitute '127.0.0.1', 'localhost', or any other host. The returned \
-                `uri` is already reachable exactly as given.",
+                IMPORTANT: the returned download URL is SHORT-LIVED — it may stop working \
+                in a later turn. When passing the file to another tool, \
+                copy the returned `uri` VERBATIM into that tool's file/URL argument. Do NOT \
+                invent or guess a URL, do NOT construct a DRS/platform URL (e.g. a ga4gh/drs \
+                object URL), and do NOT substitute '127.0.0.1', 'localhost', or any other \
+                host. The returned `uri` is reachable exactly as given AT THE MOMENT IT IS \
+                RETURNED. Do NOT reuse a URL from an earlier turn: if you need to hand the \
+                same file to a tool again later, call get_resource_link AGAIN to obtain a \
+                fresh URL first.",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename"],
@@ -1451,6 +1455,46 @@ mod tests {
             desc.contains("/home/sandboxuser"),
             "execute_command description must name the working directory \
              (/home/sandboxuser); got: {desc}"
+        );
+    }
+
+    /// TEST-1 (stale-artifact-links): the get_resource_link description must tell the
+    /// model its download URL is short-lived and to call get_resource_link AGAIN for a
+    /// later-turn hand-off — and must NOT carry the old unqualified durability claim
+    /// ("The returned `uri` is already reachable exactly as given") that trained the
+    /// model to reuse a stale cross-turn URL. The anti-DRS/anti-localhost guidance stays.
+    #[test]
+    fn get_resource_link_description_marks_url_transient_and_requires_refetch() {
+        let tools = super::tool_definitions();
+        let grl = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == "get_resource_link")
+            .expect("get_resource_link tool present");
+        let desc = grl["description"].as_str().unwrap();
+
+        assert!(
+            desc.contains("SHORT-LIVED"),
+            "must state the URL is short-lived; got: {desc}"
+        );
+        assert!(
+            desc.contains("get_resource_link AGAIN"),
+            "must instruct re-fetching a fresh URL for a later turn; got: {desc}"
+        );
+        assert!(
+            desc.contains("Do NOT reuse a URL from an earlier turn"),
+            "must forbid reusing an earlier-turn URL; got: {desc}"
+        );
+        // The specific durability claim that caused the bug must be gone.
+        assert!(
+            !desc.contains("already reachable exactly as given"),
+            "must drop the unqualified durability claim; got: {desc}"
+        );
+        // The still-valid anti-hallucination guidance must be preserved.
+        assert!(
+            desc.contains("DRS") && desc.contains("localhost") && desc.contains("VERBATIM"),
+            "must keep the anti-invent/anti-DRS/anti-localhost + verbatim rules; got: {desc}"
         );
     }
 

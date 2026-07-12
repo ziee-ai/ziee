@@ -95,10 +95,36 @@ fn tool_system_guidance(tools: &[ai_providers::Tool]) -> String {
              produced, you MUST first call get_resource_link to obtain its download URL, then \
              pass that URL verbatim. Never invent, guess, or construct a file/download URL \
              (e.g. a platform or DRS endpoint) — these files are reachable ONLY via the URL \
-             get_resource_link returns.",
+             get_resource_link returns. These download URLs are SHORT-LIVED: call \
+             get_resource_link again to obtain a FRESH URL each time you hand a file to a \
+             tool, and never reuse a URL from an earlier turn (an old URL may have stopped \
+             working).",
         );
     }
     guidance
+}
+
+/// Guidance appended (as `hidden_content`) to a tool result whose produced files were saved
+/// as durable artifacts, listing the download URLs the model may hand to another tool.
+///
+/// Those URLs carry SHORT-LIVED download tokens (the 1-hour token minted at the save sites), so
+/// they are not durable across turns. The wording therefore tells the model the URLs are
+/// temporary and to re-obtain a fresh link via `get_resource_link` rather than reuse one from an
+/// earlier turn — the root-cause fix for stale cross-turn artifact references. Pure so the
+/// wording is unit-testable (mirrors [`tool_system_guidance`]); the single source of the
+/// saved-artifact download guidance (both artifact-save sites call it).
+fn saved_artifact_hidden_content_guidance(url_lines: &str) -> String {
+    format!(
+        "[system: Files saved as artifact attachments (shown as file cards in UI). \
+         Do NOT embed file URLs or images inline in your text response. \
+         To pass one of these files to another tool, copy its URL below VERBATIM into that \
+         tool's file/URL argument — never rewrite the host, never substitute \
+         127.0.0.1/localhost, and never invent a DRS or platform URL. These download URLs are \
+         TEMPORARY — they may stop working in a later turn: to hand one of these files to a \
+         tool again later, first re-obtain a fresh link \
+         (for a file you produced in the sandbox, call get_resource_link with its filename) — \
+         never reuse a URL from an earlier turn:\n{url_lines}]"
+    )
 }
 
 /// Accumulated tool use data during streaming
@@ -1021,16 +1047,8 @@ impl McpChatExtension {
                         url_lines.push(format!("{} - {}", name, url));
                     }
                     if !url_lines.is_empty() {
-                        *hidden_content = Some(format!(
-                            "[system: Files saved as artifact attachments (shown as file cards in UI). \
-                             Do NOT embed file URLs or images inline in your text response. \
-                             To pass one of these files to another tool, copy its URL below \
-                             VERBATIM into that tool's file/URL argument — never rewrite the host, \
-                             never substitute 127.0.0.1/localhost, and never invent a DRS or \
-                             platform URL. The URLs below are already reachable exactly as given \
-                             (do not call get_resource_link for these — use the URL here directly):\n{}]",
-                            url_lines.join("\n")
-                        ));
+                        *hidden_content =
+                            Some(saved_artifact_hidden_content_guidance(&url_lines.join("\n")));
                     }
                 }
 
@@ -2983,16 +3001,8 @@ impl ChatExtension for McpChatExtension {
                         url_lines.push(format!("{} - {}", name, url));
                     }
                     if !url_lines.is_empty() {
-                        *hidden_content = Some(format!(
-                            "[system: Files saved as artifact attachments (shown as file cards in UI). \
-                             Do NOT embed file URLs or images inline in your text response. \
-                             To pass one of these files to another tool, copy its URL below \
-                             VERBATIM into that tool's file/URL argument — never rewrite the host, \
-                             never substitute 127.0.0.1/localhost, and never invent a DRS or \
-                             platform URL. The URLs below are already reachable exactly as given \
-                             (do not call get_resource_link for these — use the URL here directly):\n{}]",
-                            url_lines.join("\n")
-                        ));
+                        *hidden_content =
+                            Some(saved_artifact_hidden_content_guidance(&url_lines.join("\n")));
                     }
                 }
 
@@ -3392,7 +3402,10 @@ impl ChatExtension for McpChatExtension {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_artifact_download_url, file_download_origin, tool_system_guidance};
+    use super::{
+        build_artifact_download_url, file_download_origin, saved_artifact_hidden_content_guidance,
+        tool_system_guidance,
+    };
     use crate::core::config::CodeSandboxConfig;
     use uuid::Uuid;
 
@@ -3424,6 +3437,61 @@ mod tests {
         // (suffix match guards against e.g. "get_resource_link_v2").
         let lookalike = tool_system_guidance(&[tool("abc__get_resource_link_v2")]);
         assert!(!lookalike.contains("you MUST first call get_resource_link"), "{lookalike}");
+    }
+
+    /// TEST-3 (stale-artifact-links): when get_resource_link is present, the system guidance
+    /// must warn that its download URLs are short-lived and must be re-fetched each hand-off
+    /// (never reuse an earlier-turn URL) — the fix for stale cross-turn artifact references.
+    /// The note must be absent when get_resource_link isn't offered.
+    #[test]
+    fn guidance_marks_resource_link_urls_short_lived_and_refetch_each_turn() {
+        let with = tool_system_guidance(&[tool(
+            "11111111-2222-3333-4444-555555555555__get_resource_link",
+        )]);
+        assert!(with.contains("SHORT-LIVED"), "must flag URLs short-lived; {with}");
+        assert!(
+            with.contains("call get_resource_link again to obtain a FRESH URL"),
+            "must instruct re-fetching a fresh URL each hand-off; {with}"
+        );
+        assert!(
+            with.contains("never reuse a URL from an earlier turn"),
+            "must forbid reusing an earlier-turn URL; {with}"
+        );
+        // No get_resource_link tool → no transience note (nothing to re-fetch).
+        let without = tool_system_guidance(&[tool("abc__some_other_tool")]);
+        assert!(!without.contains("SHORT-LIVED"), "{without}");
+    }
+
+    /// TEST-2 (stale-artifact-links): the shared saved-artifact hidden_content guidance must
+    /// tell the model the download URLs are temporary and to re-obtain a fresh link
+    /// (call get_resource_link) rather than reuse one from an earlier turn — and must NOT
+    /// carry the old "do not call get_resource_link for these" instruction that caused the
+    /// stale-URL reuse. It must embed the URL lines it is given.
+    #[test]
+    fn saved_artifact_guidance_is_transient_and_steers_refetch() {
+        let url_lines = "genes.csv - http://127.0.0.1:8080/api/files/abc/download-with-token?token=t";
+        let g = saved_artifact_hidden_content_guidance(url_lines);
+
+        assert!(g.contains(url_lines), "must embed the passed URL lines; {g}");
+        assert!(g.contains("TEMPORARY"), "must mark the URLs temporary; {g}");
+        assert!(
+            g.contains("re-obtain a fresh link") && g.contains("call get_resource_link"),
+            "must steer the model to re-fetch a fresh link; {g}"
+        );
+        assert!(
+            g.contains("never reuse a URL from an earlier turn"),
+            "must forbid reusing an earlier-turn URL; {g}"
+        );
+        // The regression string that trained the model to reuse the stale URL must be gone.
+        assert!(
+            !g.to_lowercase().contains("do not call get_resource_link"),
+            "must NOT tell the model to avoid get_resource_link; {g}"
+        );
+        // Preserve the anti-inline / anti-DRS / anti-localhost rules.
+        assert!(
+            g.contains("VERBATIM") && g.contains("DRS") && g.contains("127.0.0.1/localhost"),
+            "must keep verbatim + anti-DRS/localhost rules; {g}"
+        );
     }
 
     fn cs(public_base_url: Option<&str>) -> CodeSandboxConfig {
