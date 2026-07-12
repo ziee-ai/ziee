@@ -625,3 +625,20 @@ an element seam), else an approved `OVERRIDE_EXCEPTIONS.md` shadow-exception wit
 Tauri-API structural reason. Covered by TEST-75. Sequencing (per the human): done at the
 NEXT main-sync, in the SAME checkpoint, AFTER the current per-pane items (45/46/47/49).
 **Basis:** user — coordination FYI (live2 merged @3d58b011a; migrate at next main-sync).
+
+### DEC-67: How is the PENDING (pre-mint new-chat) KB/MCP selection keyed per pane, and are both composers changed together?
+**Resolution:** Key the pending buffer by PANE in BOTH composers, changed together in one
+ITEM (ITEM-51) so they stay symmetric — `pendingKbKey(paneId)` (KB) +
+`pendingConversationKey(paneId)` (MCP), each `${base}:${paneId}` for a real pane and the
+bare base key (`__pending__` / `PENDING_CONVERSATION_KEY`) when `paneId` is null/empty, so
+SINGLE-PANE behaviour is byte-identical (the whole change is a no-op there). Committed
+(post-mint) state stays keyed by conversation id exactly as before (a real id ignores
+paneId). The pane is resolved at every read/write site via the proven
+`useChatPaneOrNull()?.paneId` (the same portal-context path the passing TEST-69/71 rely
+on) and threaded through the pending-touching store actions as an OPTIONAL trailing param
+(so no non-split caller breaks); MCP additionally carries a `currentPaneId` state field
+(only consulted in `resolveConfigKey`'s pending branch) because its modal edits through a
+single global `currentConversationId` pointer. The pure key helpers live in the already
+node-testable `kbSelectionKey.ts` / `approvalRouting.ts`.
+**Basis:** user — "key the pending/uncommitted selection BY PANE, and do the same for MCP
+in the same change so the two composers stay symmetric" (FB-11 cross-cutting fix directive).

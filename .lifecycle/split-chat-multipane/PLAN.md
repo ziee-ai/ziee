@@ -449,6 +449,22 @@ per-pane CORRECTNESS fixes of existing surfaces, so the Phase-1 UI-surface check
   done at the NEXT main-sync (which picks up live2@3d58b011a + the gate) in the SAME
   checkpoint, AFTER the current per-pane items (45/46/47/49).
 
+- **ITEM-51**: Per-PANE PENDING (pre-mint new-chat) selection for BOTH KB and MCP
+  composers (round-13 blind-audit follow-up FB-11, human-directed). Committed
+  per-conversation state was already per-pane (ITEM-46/47), but the pre-mint pending
+  buffer used a SINGLE global key (`__pending__` / `PENDING_CONVERSATION_KEY`), so two
+  split panes each composing a NEW chat shared/clobbered one buffer. Key the pending
+  buffer by PANE in BOTH composers so they stay symmetric: `pendingKbKey(paneId)` +
+  `pendingConversationKey(paneId)` (`<base>:<paneId>`; null pane → the bare key, so
+  single-pane is byte-identical). Thread `paneId` through the pending-touching store
+  actions (KB `resetPending`/`attachFor`/`detachFor`/`transferPending`/`loadInheritedFor`;
+  MCP `setCurrentConversation`/`transferPendingConfig`/`deselectServerForConversation` +
+  a `currentPaneId` state field feeding `resolveConfigKey`) and the read/write sites
+  (Kb/Mcp StatusRow + MenuItem + McpConfigModal resolve `paneId` via `useChatPaneOrNull`;
+  the extensions' reset subscription + `onMessageSent` use the OWNING pane). Covered by
+  TEST-76/77 (unit, both pending keys) + TEST-78 (e2e, pending selection in new-chat
+  pane A absent from new-chat pane B). Resolves FB-11.
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

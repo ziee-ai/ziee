@@ -431,6 +431,16 @@ existing composer/right-panel surfaces (no new surface, no permission).
 - **ITEM-49** — verdict: CONCERN — re-keying `PdfHighlight` by (paneKey,fileId) touches the
   store + the pdf viewer body read + cleanup; mirror `File.store` composerPaneKey. Must not
   regress single-pane citation highlight. Covered by TEST-73/74.
+- **ITEM-51** — verdict: PASS — mirrors the existing per-conversation keying already in
+  BOTH composers; the pending key simply gains a `:<paneId>` suffix (null pane → bare key,
+  so single-pane is byte-identical, verified against `PENDING_KB_KEY`/`PENDING_CONVERSATION_KEY`
+  callers). No migration, no OpenAPI regen (frontend-only, no request/response shape change).
+  Breakage risk contained: the new `paneId` params are OPTIONAL (existing callers still
+  compile), the pure key helpers live in the already-node-testable `kbSelectionKey.ts` /
+  `approvalRouting.ts`, and the read sites reuse the proven `useChatPaneOrNull()?.paneId`
+  pattern (same portal-context path TEST-69/71 exercise). MCP's added `currentPaneId` is only
+  consulted in the pending branch of `resolveConfigKey`, so committed-conversation + project
+  scopes are unchanged. Covered by TEST-76/77/78.
 - **ITEM-50** — verdict: PASS — pure structural migration of the one raw desktop whole-file
   shadow (`desktop/ui/.../openConversationWindow.ts`) to the live2 co-located
   `ui/src/.../openConversationWindow.desktop.ts` mechanism; mirrors the existing
