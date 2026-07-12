@@ -52,3 +52,15 @@ NOT treated as a backend diff by the gates.
 - **ITEM-7** — verdict: PASS — error/cancel/background/reset null-sites are left byte-identical
   except the on-screen `complete` path; regression asserted by keeping existing behavior + new
   fallback.
+
+## Iteration 2
+
+- **ITEM-8** — verdict: PASS — verified against the backend contract by a fresh blind auditor:
+  `streaming.rs` resumes the SAME `assistant_message_id`, RETAINS its existing content in the LLM
+  history, and appends only new continuation deltas — so reusing the existing assistant row as the
+  streaming buffer is correct (dense `sequence_order` continues; no duplicate text; the MCP
+  extension's `existsInStreaming` dedup now matches the adopted row so no duplicate tool_use). A
+  genuinely-new turn is byte-identical (fresh uuid → no existing row → fresh placeholder), and
+  branch/edit/regenerate mint new uuids so no stale row is adopted. The one real consequence — the
+  new `streamingMessage` ⇄ persisted-row object aliasing — is safe (all writers are copy-on-write)
+  and is now documented as a load-bearing invariant on the helper.
