@@ -30,8 +30,25 @@ export interface WindowRect {
  * True when the release point lies outside the window rect on any side. The
  * right/bottom edges are exclusive (`>=` is outside) so a release exactly on the
  * far edge counts as leaving; the left/top edges are inclusive of the origin.
+ *
+ * A DEGENERATE / unreliable rect (a non-positive `outerWidth`/`outerHeight`, or
+ * any non-finite value) returns `false` — some webviews report
+ * `outerWidth/Height = 0`, which would otherwise make an EMPTY inside-rect so
+ * EVERY point reads as "outside" and every in-window release would spuriously
+ * tear off. When we can't trust the geometry we do NOT tear off (blind-audit
+ * robustness fix; the residual bogus-`(0,0)`-coord case is desktop-host verified).
  */
 export function isOutsideWindow(release: ReleasePoint, win: WindowRect): boolean {
+  if (
+    !Number.isFinite(win.screenX) ||
+    !Number.isFinite(win.screenY) ||
+    !Number.isFinite(release.screenX) ||
+    !Number.isFinite(release.screenY) ||
+    !(win.outerWidth > 0) ||
+    !(win.outerHeight > 0)
+  ) {
+    return false
+  }
   return (
     release.screenX < win.screenX ||
     release.screenY < win.screenY ||

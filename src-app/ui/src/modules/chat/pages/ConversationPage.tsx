@@ -167,10 +167,22 @@ export function ConversationPane() {
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
     const plan = planSinglePaneDrop(zoneForX(e.clientX, rect.left, rect.width), conversationId, droppedId)
-    if (plan.kind === 'split') {
-      for (const cid of plan.order) Stores.SplitView.openPane({ conversationId: cid })
-    } else if (plan.kind === 'replace') {
+    if (plan.kind === 'replace') {
       void openConversationInWorkspace(plan.id)
+    } else if (plan.kind === 'split') {
+      // Route BOTH edges through the canonical reconcile open (blind-audit fixes):
+      // `newPane` seeds `[current | dropped]`, navigates to + focuses the DROPPED
+      // conversation (so URL == focused pane, symmetric for both sides), and
+      // dedups a conversation already live in a pop-out WINDOW instead of
+      // duplicating it (`focusPopoutWindowIfOpen`, which the raw `openPane` loop
+      // skipped). A left drop then reorders the dropped pane to the front.
+      const droppedOnLeft = plan.order[0] === droppedId
+      void openConversationInWorkspace(droppedId, { intent: 'newPane' }).then(() => {
+        if (!droppedOnLeft) return
+        const panes = Stores.SplitView.$.panes
+        const idx = panes.findIndex(p => p.conversationId === droppedId)
+        if (idx > 0) Stores.SplitView.reorderPanes(idx, 0)
+      })
     }
   }
 

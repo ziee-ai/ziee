@@ -72,6 +72,9 @@ test.describe('Split chat — single-pane edge-directional drop', () => {
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText('Alpha')
     await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText('Bravo')
+    // URL tracks the focused (dropped) pane — the dropped conversation (blind-audit
+    // fix: the split routes through the canonical reconcile open, not raw openPane).
+    await expect(page).toHaveURL(new RegExp(`/chat/${convB}`), { timeout: 15000 })
 
     // --- LEFT third (fresh single-pane on A): [C | A] (C new on the LEFT) ---
     await page.goto(`${baseURL}/chat/${convA}`)
@@ -81,6 +84,7 @@ test.describe('Split chat — single-pane edge-directional drop', () => {
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText('Charlie')
     await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText('Alpha')
+    await expect(page).toHaveURL(new RegExp(`/chat/${convC}`), { timeout: 15000 })
 
     // --- CENTER (fresh single-pane on A): replace A with B, still single-pane ---
     await page.goto(`${baseURL}/chat/${convA}`)

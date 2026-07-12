@@ -22,6 +22,16 @@ test('a release past any edge is outside', () => {
   assert.equal(isOutsideWindow({ screenX: 5, screenY: 5 }, WIN), true, 'far off the top-left corner')
 })
 
+test('a degenerate window rect (outerWidth/Height 0 or non-finite) is never "outside"', () => {
+  // outerWidth=0 would otherwise make an EMPTY inside-rect → every point outside.
+  assert.equal(isOutsideWindow({ screenX: 600, screenY: 400 }, { screenX: 200, screenY: 150, outerWidth: 0, outerHeight: 600 }), false)
+  assert.equal(isOutsideWindow({ screenX: 600, screenY: 400 }, { screenX: 200, screenY: 150, outerWidth: 800, outerHeight: 0 }), false)
+  // a bogus (0,0) release against a real window would read as outside — but a
+  // non-finite window origin (unreliable geometry) must not tear off.
+  assert.equal(isOutsideWindow({ screenX: 0, screenY: 0 }, { screenX: Number.NaN, screenY: 150, outerWidth: 800, outerHeight: 600 }), false)
+  assert.equal(isOutsideWindow({ screenX: Number.NaN, screenY: 0 }, WIN), false)
+})
+
 test('planTearOff opens ONLY when outside AND desktop', () => {
   // outside + desktop → open
   assert.deepEqual(planTearOff({ isOutside: true, isDesktop: true, conversationId: 'c1' }), {
