@@ -400,6 +400,10 @@ export function ConversationPane() {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
         if (!chat.$.conversation) return
+        // Each pane registers this window listener; only the FOCUSED pane opens
+        // its find bar (audit #2) — otherwise Cmd-F opened it in EVERY loaded pane.
+        // Single-pane (`!pane`) is always "focused".
+        if (pane && pane.paneId !== Stores.SplitView.$.focusedPaneId) return
         e.preventDefault()
         setFindOpen(true)
       }

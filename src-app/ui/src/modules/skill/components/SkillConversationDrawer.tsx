@@ -17,7 +17,11 @@ interface SkillConversationDrawerProps {
 export function SkillConversationDrawer({
   conversationId,
 }: SkillConversationDrawerProps) {
-  const { open } = Stores.SkillConversationDrawer
+  // Open only when THIS conversation is the one whose drawer was opened — so in a
+  // split, clicking "Skills in this chat" in one pane doesn't render every pane's
+  // dialog. The detail sub-drawer (a global singleton) mounts only for the open
+  // pane, avoiding N stacked copies across panes.
+  const open = Stores.SkillConversationDrawer.openConversationId === conversationId
 
   return (
     <>
@@ -33,7 +37,7 @@ export function SkillConversationDrawer({
       >
         <ConversationSkillsPanel conversationId={conversationId} />
       </Dialog>
-      <SkillDetailDrawer />
+      {open && <SkillDetailDrawer />}
     </>
   )
 }

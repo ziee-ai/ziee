@@ -92,5 +92,12 @@ test.describe('Split chat — message actions per-pane', () => {
     await pane1.getByTestId('edit-message-button').first().click()
     await expect(inputB).toHaveValue(/PING/, { timeout: 15000 })
     await expect(pane0.locator('textarea[placeholder*="Type your message"]')).toHaveValue('')
+    // audit #10: the EditingMessageBanner reads the PANE's store, so it shows in
+    // pane 1 (where the edit started) and NOT pane 0 (focused earlier). Cancel via
+    // pane 1's banner clears pane 1's edit only.
+    await expect(pane1.getByTestId('chat-editing-banner')).toBeVisible()
+    await expect(pane0.getByTestId('chat-editing-banner')).toHaveCount(0)
+    await pane1.getByTestId('chat-editing-cancel-btn').click()
+    await expect(pane1.getByTestId('chat-editing-banner')).toHaveCount(0)
   })
 })

@@ -2,11 +2,13 @@ import { BookOpen } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { SkillConversationDrawer } from '@/modules/skill/components/SkillConversationDrawer'
 
 /**
  * "+" dropdown entry for the per-conversation skills opt-out (Path B).
- * Opening it flips `Stores.SkillConversationDrawer.open`; the Dialog itself is
+ * Opening it sets `Stores.SkillConversationDrawer.openConversationId` to THIS
+ * pane's conversation; the Dialog itself is
  * hosted by `SkillConversationDrawerHost` from an always-mounted composer slot
  * — NOT here. The "+" dropdown unmounts its items when it closes (which this
  * onClick triggers), so a Dialog rendered inside this item would be torn down
@@ -14,9 +16,15 @@ import { SkillConversationDrawer } from '@/modules/skill/components/SkillConvers
  */
 export function SkillMenuItem() {
   const { close } = usePlusDropdown()
-  const conversation = Stores.Chat.conversation
+  // Act on THIS pane's conversation, not the focused-pane bridge (split-safe,
+  // mirrors McpMenuItem) — otherwise opening skills in pane B keyed the drawer to
+  // pane A's conversation.
+  const pane = useChatPaneOrNull()
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const conversation = chat.conversation
 
   if (!conversation?.id) return null
+  const conversationId = conversation.id
 
   return (
     <PlusMenuItem
@@ -25,7 +33,7 @@ export function SkillMenuItem() {
       icon={<BookOpen />}
       label="Skills in this chat"
       onClick={() => {
-        Stores.SkillConversationDrawer.openDrawer()
+        Stores.SkillConversationDrawer.openDrawer(conversationId)
         close()
       }}
     />
@@ -37,7 +45,11 @@ export function SkillMenuItem() {
  * always-mounted composer slot so it survives the "+" dropdown closing.
  */
 export function SkillConversationDrawerHost() {
-  const conversation = Stores.Chat.conversation
+  // Bind to THIS pane's conversation (split-safe) so each pane's drawer opens only
+  // for its own conversation (the store is keyed by conversationId).
+  const pane = useChatPaneOrNull()
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const conversation = chat.conversation
   if (!conversation?.id) return null
   return <SkillConversationDrawer conversationId={conversation.id} />
 }

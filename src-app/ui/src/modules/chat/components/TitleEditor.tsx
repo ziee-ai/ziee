@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 interface TitleFormValues {
   title: string
@@ -50,8 +51,12 @@ export function TitleEditor() {
   const isPopoutWindow = useIsPopoutWindow()
   const showBackButton = !isSplit && !isPopoutWindow
 
-  // Get conversation from store
-  const { conversation } = Stores.Chat
+  // Bind to THIS pane's store, not the focused-pane bridge — the header renders
+  // per-pane, so renaming pane B's title while pane A is focused must update pane
+  // B's conversation, not the focused one (audit #3, mirrors MessageActions).
+  const pane = useChatPaneOrNull()
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { conversation } = chat
 
   const handleEditClick = () => {
     form.setValue('title', conversation?.title || '')
@@ -61,7 +66,7 @@ export function TitleEditor() {
   const handleSave = async (values: TitleFormValues) => {
     try {
       if (conversation && values.title.trim()) {
-        await Stores.Chat.updateConversation({ title: values.title.trim() })
+        await chat.updateConversation({ title: values.title.trim() })
         setIsEditing(false)
       }
     } catch (error) {

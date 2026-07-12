@@ -75,4 +75,64 @@ test.describe('Split chat — per-pane voice dictation', () => {
     // Pane A's mic re-enables once B's recording flow finished.
     await expect(pane0.getByTestId('voice-mic-button')).toBeEnabled({ timeout: 15000 })
   })
+
+  // TEST-67b (audit #8): closing a NON-recording pane must not cancel the
+  // recording pane's session (the recorder is module-level; the ITEM-45 fix made
+  // error-state/unmount cleanup own-pane-only). 3 panes so closing one keeps the
+  // recording pane's component instance (no collapse-to-single remount).
+  test('closing a non-recording pane does NOT cancel the recording pane', async ({
+    page,
+    testInfra,
+  }) => {
+    test.setTimeout(120000)
+    const { baseURL, apiURL } = testInfra
+    await installVoiceBrowserMocks(page)
+    const voice = await routeVoice(page)
+    voice.setTranscribe({ text: 'still recording after close', language: 'en', duration_ms: 500 })
+
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
+    await assignProviderToAdministratorsGroup(apiURL, token, providerId)
+    await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
+    const auth = { Authorization: `Bearer ${token}` }
+    const mkConv = async (t: string) =>
+      (await (await page.request.post(`${apiURL}/api/conversations`, { headers: auth, data: { title: t } })).json()).id as string
+    const convA = await mkConv('VClose A')
+    const convB = await mkConv('VClose B')
+    const convC = await mkConv('VClose C')
+
+    // Build [A | B | C].
+    await page.goto(`${baseURL}/chat/${convA}`)
+    await page.waitForLoadState('load')
+    await byTestId(page, 'chat-split-btn').first().click()
+    await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'chat-pane-1').getByTestId(`conversation-picker-item-${convB}`).click()
+    await expect(byTestId(page, 'chat-pane-1').locator('textarea[placeholder*="Type your message"]')).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'chat-pane-1').getByTestId('chat-split-btn').click()
+    await expect(byTestId(page, 'chat-pane-2')).toBeVisible({ timeout: 15000 })
+    await byTestId(page, 'chat-pane-2').getByTestId(`conversation-picker-item-${convC}`).click()
+    await expect(byTestId(page, 'chat-pane-2').locator('textarea[placeholder*="Type your message"]')).toBeVisible({ timeout: 15000 })
+
+    // Record in pane 1 (B, the middle pane).
+    await byTestId(page, 'chat-pane-1').getByTestId('voice-mic-button').click()
+    await expect(byTestId(page, 'chat-pane-1').getByTestId('voice-elapsed')).toBeVisible({ timeout: 15000 })
+
+    // Close pane 0 (A) — a NON-recording pane. Panes reindex to [B | C]; B → pane 0.
+    await byTestId(page, 'chat-pane-0').getByTestId('chat-pane-close').click()
+    await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 }) // still split (C)
+
+    // B's recording SURVIVED the close (B is now pane 0). Its elapsed timer still
+    // runs — closing the non-recording pane didn't cancel or strand it.
+    const paneB = byTestId(page, 'chat-pane-0')
+    await expect(paneB.getByTestId('conversation-title')).toContainText('VClose B')
+    await expect(paneB.getByTestId('voice-elapsed')).toBeVisible()
+
+    // Stopping B still transcribes into B's composer — the session was intact.
+    await paneB.getByTestId('voice-mic-button').click()
+    await expect(paneB.locator('textarea[placeholder*="Type your message"]')).toHaveValue(
+      /still recording after close/,
+      { timeout: 30000 },
+    )
+  })
 })

@@ -103,4 +103,69 @@ test.describe('Split chat — per-pane right panel', () => {
     await expect(pane0.getByTestId('chat-right-panel')).toBeVisible({ timeout: 15000 })
     await expect(pane1.getByTestId('chat-right-panel')).toHaveCount(0)
   })
+
+  // TEST-56b (audit #7): a file open in EACH pane keeps INDEPENDENT view-state —
+  // toggling the canvas edit/view mode in pane A's viewer does not change pane B's.
+  // (Literal same-file-id-in-two-panes isn't reachable: the same-conversation dedup
+  // guard, proven by same-conversation-streaming.spec, prevents one conversation in
+  // two panes; the per-tab view-state is local `useState` per FilePanel instance,
+  // so it can't be a fileId-keyed global — this exercises that isolation.)
+  test('toggling canvas edit mode in one pane does not affect the other pane', async ({
+    page,
+    testInfra,
+  }) => {
+    test.setTimeout(180000)
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    const token = await getAdminToken(apiURL)
+    const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
+    await assignProviderToAdministratorsGroup(apiURL, token, providerId)
+    await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
+    const auth = { Authorization: `Bearer ${token}` }
+    const mkConv = async (t: string) =>
+      (await (await page.request.post(`${apiURL}/api/conversations`, { headers: auth, data: { title: t } })).json()).id as string
+    const convA = await mkConv('View Alpha')
+    const convB = await mkConv('View Bravo')
+
+    // Attach a markdown file (its card lands on the user message) in each convo.
+    const attachInConversation = async (convId: string, msg: string) => {
+      await page.goto(`${baseURL}/chat/${convId}`)
+      await page.waitForLoadState('load')
+      await attachFileRobust(page, FILE_ASSETS.md)
+      const ta = page.locator('textarea[placeholder*="Type your message"]')
+      await ta.fill(msg)
+      const send = byTestId(page, 'chat-input-send-btn')
+      await expect(send).toBeEnabled({ timeout: 30000 })
+      await send.click()
+      await expect(page.locator('[data-role="user"] [data-testid="file-card"]').first()).toBeVisible({ timeout: 30000 })
+    }
+    await attachInConversation(convA, 'file for A')
+    await attachInConversation(convB, 'file for B')
+
+    // Split [A | B].
+    await page.goto(`${baseURL}/chat/${convA}`)
+    await page.waitForLoadState('load')
+    await byTestId(page, 'chat-split-btn').click()
+    const pane0 = byTestId(page, 'chat-pane-0')
+    const pane1 = byTestId(page, 'chat-pane-1')
+    await expect(pane1).toBeVisible({ timeout: 15000 })
+    await pane1.getByTestId(`conversation-picker-item-${convB}`).click()
+    await expect(pane1.locator('textarea[placeholder*="Type your message"]')).toBeVisible({ timeout: 15000 })
+
+    // Open the file in EACH pane via its own card.
+    await pane0.locator('[data-testid="file-card"][data-filename="test.md"]').first().click()
+    await expect(pane0.getByTestId('chat-right-panel')).toBeVisible({ timeout: 15000 })
+    await pane1.locator('[data-testid="file-card"][data-filename="test.md"]').first().click()
+    await expect(pane1.getByTestId('chat-right-panel')).toBeVisible({ timeout: 15000 })
+
+    // Both viewers start in VIEW mode (no edit body).
+    await expect(pane0.getByTestId('canvas-edit-body')).toHaveCount(0)
+    await expect(pane1.getByTestId('canvas-edit-body')).toHaveCount(0)
+
+    // Toggle EDIT in pane 0 → pane 0 enters edit mode; pane 1 stays in view mode
+    // (independent per-pane view-state).
+    await pane0.getByTestId('canvas-edit-toggle').click()
+    await expect(pane0.getByTestId('canvas-edit-body')).toBeVisible({ timeout: 10000 })
+    await expect(pane1.getByTestId('canvas-edit-body')).toHaveCount(0)
+  })
 })

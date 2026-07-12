@@ -350,7 +350,7 @@ export const OVERLAY_ENTRIES: OverlayEntry[] = [
       { conversationId: SKILLS_CONVERSATION_ID },
     ),
     open: () => {
-      Stores.SkillConversationDrawer.openDrawer()
+      Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
       void seedSkills(skillsList, skillsAvailable)
     },
     interactions: [
@@ -374,7 +374,7 @@ export const OVERLAY_ENTRIES: OverlayEntry[] = [
       { conversationId: SKILLS_CONVERSATION_ID },
     ),
     open: () => {
-      Stores.SkillConversationDrawer.openDrawer()
+      Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
       void seedSkills([], [])
     },
   },
@@ -388,7 +388,7 @@ export const OVERLAY_ENTRIES: OverlayEntry[] = [
       { conversationId: SKILLS_CONVERSATION_ID },
     ),
     open: () => {
-      Stores.SkillConversationDrawer.openDrawer()
+      Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
       void seedSkillsLoading()
     },
   },
