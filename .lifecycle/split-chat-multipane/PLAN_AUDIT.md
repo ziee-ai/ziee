@@ -431,3 +431,12 @@ existing composer/right-panel surfaces (no new surface, no permission).
 - **ITEM-49** — verdict: CONCERN — re-keying `PdfHighlight` by (paneKey,fileId) touches the
   store + the pdf viewer body read + cleanup; mirror `File.store` composerPaneKey. Must not
   regress single-pane citation highlight. Covered by TEST-73/74.
+- **ITEM-50** — verdict: PASS — pure structural migration of the one raw desktop whole-file
+  shadow (`desktop/ui/.../openConversationWindow.ts`) to the live2 co-located
+  `ui/src/.../openConversationWindow.desktop.ts` mechanism; mirrors the existing
+  `api-client/getBaseURL.desktop.ts` precedent (ui tsconfig excludes `*.desktop.ts`, so the
+  Tauri import is not typechecked in the web workspace; `localOverridePlugin` resolves it in
+  the desktop bundle). No behavior change — the WebviewWindow contract is byte-identical; the
+  TEST-P5 desktop unit re-points its import to the `@/…desktop` alias (Drawer.test.ts
+  convention). Gated by `gen-override-registry.mjs --check` (0 web-only) inside `npm run
+  check` in BOTH workspaces. Covered by TEST-75.

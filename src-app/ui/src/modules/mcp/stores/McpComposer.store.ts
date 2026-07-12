@@ -191,11 +191,19 @@ export const McpComposer = defineStore('McpComposer', {
     ) => {
       set(state => {
         for (const [id, call] of state.toolCalls) {
-          // Match server AND the owning streaming message (ITEM-33), so a
+          // Match server AND the owning streaming message (ITEM-33/48), so a
           // progress event only updates the pane whose message spawned the call.
-          // When the event carries no message_id, fall back to server-only (the
-          // pre-split behaviour) so single-pane is unchanged.
-          const messageMatch = !messageId || call.message_id === messageId
+          // BUT a call is stamped with `streamingMessage?.id`, which may be a
+          // synthetic client placeholder (`streaming-<ts>`, see Chat.store
+          // placeholderId) that will NEVER equal the real server message_id a
+          // progress event carries — so only a REAL (non-placeholder) call id is a
+          // usable discriminator. When either side lacks a usable id, fall back to
+          // server-only (the pre-split behaviour) so the progress bar never
+          // silently stalls; the message_id refinement then only kicks in to avoid
+          // cross-pane cross-talk when a real id IS available on both sides.
+          const callMsgId = call.message_id
+          const usableCallId = !!callMsgId && !callMsgId.startsWith('streaming-')
+          const messageMatch = !messageId || !usableCallId || callMsgId === messageId
           if (call.server === server && messageMatch && call.status === 'started') {
             state.toolCalls.set(id, { ...call, progress })
           }

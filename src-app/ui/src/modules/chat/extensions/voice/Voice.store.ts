@@ -47,7 +47,12 @@ let mediaStream: MediaStream | null = null
 let chunks: Blob[] = []
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let stageTimer: ReturnType<typeof setTimeout> | null = null
-let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
+// NOTE: `errorRevertTimer` is deliberately NOT module-scope — see the per-instance
+// declaration inside `actions`. The other timers/recorder above ARE shared because
+// the exclusive recording lock guarantees at most one pane is in the recording flow
+// at a time; but TWO panes can sit in the post-fail 'error' window simultaneously
+// (pane A fails → releases the lock → pane B records → fails), so a shared revert
+// timer would let pane B's fail cancel pane A's error→idle auto-revert.
 let requestTimeout: ReturnType<typeof setTimeout> | null = null
 /** Self-rescheduling interim (live-caption) decode timer; null when not looping. */
 let interimTimer: ReturnType<typeof setTimeout> | null = null
@@ -217,6 +222,9 @@ export const createVoiceStore = defineExtensionStore({
     announcement: '',
   },
   actions: (set, get) => {
+    // Per-instance (per-pane): each pane's 'error' state owns its OWN auto-revert
+    // timer, so a second pane failing doesn't cancel this pane's error→idle revert.
+    let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
     const revertToIdleSoon = () => {
       if (errorRevertTimer !== null) clearTimeout(errorRevertTimer)
       errorRevertTimer = setTimeout(() => {
@@ -506,6 +514,29 @@ export const createVoiceStore = defineExtensionStore({
       // announcement when this runs as an unmount cleanup while already idle.
       const status = get().status
       if (status === 'idle') return
+      // 'error' is the ONE non-idle state where this pane has ALREADY released the
+      // exclusive lock and cleared its recorder ownership (see `fail`). During the
+      // ~2.5s error window ANOTHER pane may have acquired the lock and now owns the
+      // shared module recorder/stream/chunks/timers. So an 'error'-state cancel
+      // (e.g. this pane unmounting) must touch ONLY this pane's own revert timer +
+      // status — never the shared recorder, or it would stop the other pane's live
+      // recording, wipe its buffer, and (since recordingPaneId is null here)
+      // release nothing, stranding that pane's lock forever.
+      if (status === 'error') {
+        if (errorRevertTimer !== null) {
+          clearTimeout(errorRevertTimer)
+          errorRevertTimer = null
+        }
+        set({
+          status: 'idle',
+          errorMessage: null,
+          elapsedMs: 0,
+          stageText: '',
+          interimText: '',
+          announcement: 'Recording cancelled',
+        })
+        return
+      }
       finalizing = false
       clearTimers()
       // Abandon a pending getUserMedia prompt so a late resolve discards its

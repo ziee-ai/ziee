@@ -182,6 +182,27 @@ global mcp-chip) — all fixed and re-run green.
 - **TEST-65**: PASS
 - **TEST-66**: PASS
 
+## Round 5 (ITEM-45..50) — on the origin/main-merged base (b24dcdf51)
+
+Unit (node:test / vitest) + e2e (Playwright, `--workers=1`, real-LLM specs via the
+local bridge `localhost:4000/v1`, `qwen3.6-35b-a3b`). The full `tests/e2e/14-split-chat`
+suite (41 specs) ran green on the merged base as a regression check; the four
+round-5 specs re-ran green after the round-13 blind-audit fixes.
+
+- **TEST-67**: PASS
+- **TEST-68**: PASS
+- **TEST-69**: PASS
+- **TEST-70**: PASS
+- **TEST-71**: PASS
+- **TEST-72**: PASS
+- **TEST-73**: PASS
+- **TEST-74**: PASS
+- **TEST-75**: PASS
+- **`npm run check (ui): PASS`** — full chain incl. the live2 override-registry gate
+  (`gen-override-registry.mjs --check` → 0 web-only), exit 0.
+- **`npm run check (desktop/ui): PASS`** — full chain incl. the override gate
+  (`../../ui/scripts/gen-override-registry.mjs --check` → 0 web-only), exit 0.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health

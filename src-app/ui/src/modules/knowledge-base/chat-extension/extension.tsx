@@ -99,11 +99,23 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     )
   },
 
-  onMessageSent: async () => {
+  onMessageSent: async ownerPaneId => {
     const { Stores } = await import('@/core/stores')
     const { PENDING_KB_KEY } = await import('../stores/kbSelectionKey')
+    const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     const snap = Stores.KnowledgeBaseComposer.$
-    const conversation = Stores.Chat.$.conversation
+    // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
+    // a `Stores.Chat.$` read (which routes to the FOCUSED pane — in split view the
+    // pane that sent may no longer be focused by the time this async hook runs, so
+    // a `.$` read would transfer the pending buffer onto the wrong conversation or
+    // short-circuit and silently drop it). Single-pane (no paneId) falls back to
+    // the bridge, which is the sole/focused pane there.
+    const paneState = ownerPaneId
+      ? (paneRegistry.get(ownerPaneId)?.api.getState() as
+          | { conversation?: { id?: string } }
+          | undefined)
+      : undefined
+    const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
     // A brand-new conversation (just minted, not yet hydrated into its own slot)
     // with a non-empty pending buffer → move the pending selection under it.
     // An existing conversation already owns a slot (via onConversationLoad), so

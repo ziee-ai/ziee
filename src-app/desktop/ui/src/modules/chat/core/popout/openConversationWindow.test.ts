@@ -57,6 +57,11 @@ describe('desktop openConversationWindow (TEST-P5)', () => {
     await openConversationWindow('c1')
     expect(setFocus).toHaveBeenCalledTimes(1)
     expect(unminimize).toHaveBeenCalledTimes(1)
+    // Unminimize MUST precede setFocus — focusing a still-minimized window is a
+    // no-op on several WMs, so the restore has to happen first.
+    expect(unminimize.mock.invocationCallOrder[0]).toBeLessThan(
+      setFocus.mock.invocationCallOrder[0],
+    )
     expect(h.ctorCalls).toHaveLength(0)
   })
 

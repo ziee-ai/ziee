@@ -187,6 +187,9 @@ export function ConversationPane() {
   // tool_use_ids whose pending approval we've already scrolled to — so the
   // scroll-to-approval effect fires once per approval, not on every toolCalls change.
   const scrolledApprovalsRef = useRef<Set<string>>(new Set())
+  // One-shot latch for the pre-existing-approval seed below (it must seed once
+  // THIS pane's messages have loaded, NOT on bare mount when `messages` is empty).
+  const didSeedApprovalsRef = useRef(false)
 
   // ── Reverse-infinite-scroll (load older on scroll-up) refs (ITEM-9) ────────
   // The OverlayScrollbars component (desktop inner scroll). In mobile native
@@ -425,13 +428,25 @@ export function ConversationPane() {
   // yank a freshly-opened one to the bottom — only approvals that appear AFTER this
   // page mounts should scroll.
   useEffect(() => {
+    // Seed ONCE, the first commit where THIS pane's own conversation has loaded —
+    // NOT on bare mount, where `messages` is still empty (so the old `[]`-deps
+    // version seeded nothing and, on a pane REMOUNT into split view / pop-out with
+    // an approval already pending in the process-global toolCalls for this pane's
+    // conversation, let the scroll effect below yank the pane to that pre-existing
+    // approval). Re-running on `messages` and latching via the ref means that in
+    // the commit where messages first include the approval, this effect (declared
+    // BEFORE the scroll effect) marks it seen first, so the scroll effect then
+    // finds it already-seen and does not scroll.
+    if (didSeedApprovalsRef.current) return
+    if (conversation?.id !== conversationId) return
+    didSeedApprovalsRef.current = true
     // Per-pane (ITEM-48): seed only THIS pane's own already-pending approvals, so a
     // leftover pending approval belonging to another pane's conversation is never
     // treated as this pane's (it's filtered out — its message isn't in `messages`).
     for (const id of pendingApprovalIdsInPane(toolCalls, messages))
       scrolledApprovalsRef.current.add(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [conversation, conversationId, messages])
 
   // A tool call that needs approval must grab the user's attention even if they've
   // scrolled up reading history — the streaming approval is injected at the TAIL of

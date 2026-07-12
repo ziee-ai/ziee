@@ -34,8 +34,12 @@ export async function openConversationWindow(
   try {
     const existing = await WebviewWindow.getByLabel(label)
     if (existing) {
-      await existing.setFocus()
+      // Unminimize BEFORE focusing: on several window managers `setFocus()` on a
+      // minimized window is a no-op / does not raise it, so re-triggering pop-out
+      // on a minimized conversation window would leave it unraised. Restore first,
+      // then focus.
       await existing.unminimize()
+      await existing.setFocus()
       return
     }
 

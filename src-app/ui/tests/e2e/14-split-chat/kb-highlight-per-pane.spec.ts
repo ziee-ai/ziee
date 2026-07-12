@@ -94,14 +94,19 @@ test.describe('Split chat — per-pane KB citation source panel', () => {
     await paneBInput.fill('What does the Quintal beacon read? Use the knowledge base.')
     await pane1.getByTestId('chat-input-send-btn').click()
 
-    // The model emits an inline `[n]` citation → a chip renders in pane B's answer.
-    // Pane B is a non-native-scroll split pane, so the freshly-streamed answer can
-    // sit below the fold (lazy-loaded, rendered-but-not-in-view); wait for the chip
-    // to EXIST, then scroll it into pane B's viewport before interacting.
+    // Wait for pane B's turn to FULLY complete (search_knowledge + the streamed
+    // answer with its inline `[n]` citation markers): the send button re-enables
+    // only when `isStreaming` clears, so this both waits for the citation to exist
+    // AND settles the DOM — no more mid-stream markdown re-highlight detaching the
+    // chip or a retry double-toggling the card. Then a single click is reliable.
+    await expect(pane1.getByTestId('chat-input-send-btn')).toBeEnabled({ timeout: 150_000 })
+
+    // The answer is final now. Pane B is a non-native-scroll split pane, so the
+    // chip can sit below the fold (lazy-loaded) — scroll it into view, then click
+    // ONCE to expand the transparency card + reveal the passages.
     const chip = pane1.locator('[data-testid^="kb-citation-chip-"]').first()
-    await expect(chip).toHaveCount(1, { timeout: 150_000 })
+    await expect(chip).toHaveCount(1, { timeout: 15_000 })
     await chip.scrollIntoViewIfNeeded()
-    await expect(chip).toBeVisible({ timeout: 10_000 })
     await chip.click()
     await expect(pane1.getByTestId('kb-tool-result-hits')).toBeVisible({ timeout: 10_000 })
 

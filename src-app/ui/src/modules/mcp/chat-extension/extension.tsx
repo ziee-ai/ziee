@@ -477,6 +477,14 @@ const mcpExtension: ChatExtension = createExtension({
         tool_use_id: data.tool_use_id,
         server: data.server,
         tool_name: data.tool_name,
+        // The owning streaming message id (best-effort). It may be undefined (a
+        // tool call leading the turn before any streamingMessage exists) or a
+        // synthetic `streaming-<ts>` placeholder — neither equals the real backend
+        // `message_id` a `notifications/progress` event carries, so `setToolCallProgress`
+        // treats only a REAL (non-placeholder) id as a usable discriminator and
+        // otherwise falls back to server-only matching (so the progress bar never
+        // stalls — the fix for the LEDGER round-9 single-pane regression — while
+        // still scoping per-pane when a real id IS present).
         message_id: get().streamingMessage?.id,
         status: 'started',
         input: data.input,
@@ -584,6 +592,14 @@ const mcpExtension: ChatExtension = createExtension({
         server: data.server,
         server_id: data.server_id,
         tool_name: data.tool_name,
+        // The owning streaming message id (best-effort). It may be undefined (a
+        // tool call leading the turn before any streamingMessage exists) or a
+        // synthetic `streaming-<ts>` placeholder — neither equals the real backend
+        // `message_id` a `notifications/progress` event carries, so `setToolCallProgress`
+        // treats only a REAL (non-placeholder) id as a usable discriminator and
+        // otherwise falls back to server-only matching (so the progress bar never
+        // stalls — the fix for the LEDGER round-9 single-pane regression — while
+        // still scoping per-pane when a real id IS present).
         message_id: get().streamingMessage?.id,
         status: 'pending_approval',
         input: data.input,
