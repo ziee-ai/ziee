@@ -1,11 +1,11 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import { defineStore } from '@/core/store-kit'
-import { PENDING_KB_KEY, kbKey } from './kbSelectionKey'
+import { kbKey, pendingKbKey } from './kbSelectionKey'
 
 enableMapSet()
 
-export { PENDING_KB_KEY, kbKey } from './kbSelectionKey'
+export { PENDING_KB_KEY, pendingKbKey, kbKey } from './kbSelectionKey'
 
 /**
  * Conversation-scoped composer selection of knowledge bases to ground on.
@@ -51,11 +51,13 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
       }
     },
 
-    /** Reset the pending (new-chat) buffer so a prior chat's selection never leaks. */
-    resetPending: (): void => {
+    /** Reset THIS pane's pending (new-chat) buffer so a prior chat's selection never
+     *  leaks — and, in split view, so one pane switching to a new chat does not wipe
+     *  ANOTHER pane's buffered new-chat selection (ITEM-51: per-pane pending key). */
+    resetPending: (paneId?: string | null): void => {
       set(draft => {
-        draft.selectionByConversation.set(PENDING_KB_KEY, new Set())
-        draft.inheritedByConversation.set(PENDING_KB_KEY, new Set())
+        draft.selectionByConversation.set(pendingKbKey(paneId), new Set())
+        draft.inheritedByConversation.set(pendingKbKey(paneId), new Set())
       })
     },
 
@@ -63,8 +65,9 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
     loadInheritedFor: async (
       conversationId: string | null,
       projectId: string | null,
+      paneId?: string | null,
     ): Promise<void> => {
-      const key = kbKey(conversationId)
+      const key = kbKey(conversationId, paneId)
       if (!projectId) {
         set(draft => {
           draft.inheritedByConversation.set(key, new Set())
@@ -81,36 +84,50 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
       }
     },
 
-    /** Attach a KB to a SPECIFIC conversation (persist if real; buffer if new-chat). */
-    attachFor: async (conversationId: string | null, kbId: string): Promise<void> => {
+    /** Attach a KB to a SPECIFIC conversation (persist if real; buffer under THIS
+     *  pane's pending key if new-chat, so split panes don't share the buffer). */
+    attachFor: async (
+      conversationId: string | null,
+      kbId: string,
+      paneId?: string | null,
+    ): Promise<void> => {
       if (conversationId) {
         await ApiClient.KnowledgeBase.attachConversation({ cid: conversationId, kb_id: kbId })
       }
       set(draft => {
-        const key = kbKey(conversationId)
+        const key = kbKey(conversationId, paneId)
         const s = draft.selectionByConversation.get(key) ?? new Set<string>()
         s.add(kbId)
         draft.selectionByConversation.set(key, s)
       })
     },
 
-    /** Detach a KB from a SPECIFIC conversation. */
-    detachFor: async (conversationId: string | null, kbId: string): Promise<void> => {
+    /** Detach a KB from a SPECIFIC conversation (or THIS pane's pending buffer). */
+    detachFor: async (
+      conversationId: string | null,
+      kbId: string,
+      paneId?: string | null,
+    ): Promise<void> => {
       if (conversationId) {
         await ApiClient.KnowledgeBase.detachConversation({ cid: conversationId, kb_id: kbId })
       }
       set(draft => {
-        const s = draft.selectionByConversation.get(kbKey(conversationId))
+        const s = draft.selectionByConversation.get(kbKey(conversationId, paneId))
         if (s) s.delete(kbId)
       })
     },
 
     /**
-     * Persist the pending (new-chat) selection to a freshly-created conversation,
-     * then move the buffer under the real id. Called from `onMessageSent`.
+     * Persist THIS pane's pending (new-chat) selection to a freshly-created
+     * conversation, then move the buffer under the real id. Called from
+     * `onMessageSent` with the SENDING pane's id (ITEM-51).
      */
-    transferPending: async (conversationId: string): Promise<void> => {
-      const pending = Array.from(get().selectionByConversation.get(PENDING_KB_KEY) ?? [])
+    transferPending: async (
+      conversationId: string,
+      paneId?: string | null,
+    ): Promise<void> => {
+      const pendingKey = pendingKbKey(paneId)
+      const pending = Array.from(get().selectionByConversation.get(pendingKey) ?? [])
       for (const kbId of pending) {
         try {
           await ApiClient.KnowledgeBase.attachConversation({
@@ -123,7 +140,7 @@ export const KnowledgeBaseComposer = defineStore('KnowledgeBaseComposer', {
       }
       set(draft => {
         draft.selectionByConversation.set(conversationId, new Set(pending))
-        draft.selectionByConversation.delete(PENDING_KB_KEY)
+        draft.selectionByConversation.delete(pendingKey)
       })
     },
   }),

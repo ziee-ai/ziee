@@ -64,7 +64,13 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
       ctx.chatStore.subscribe(
         (state: any) => state.conversation?.id,
         (id: string | undefined) => {
-          if (!id) Stores.KnowledgeBaseComposer.resetPending()
+          // Reset only THIS pane's pending buffer (ITEM-51) — keyed by the pane's
+          // own id — so one pane opening a new chat never wipes another pane's
+          // buffered new-chat KB selection.
+          if (!id) {
+            const paneId = (ctx.chatStore.getState() as { paneId?: string | null }).paneId ?? null
+            Stores.KnowledgeBaseComposer.resetPending(paneId)
+          }
         },
       ),
     )
@@ -101,7 +107,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
 
   onMessageSent: async ownerPaneId => {
     const { Stores } = await import('@/core/stores')
-    const { PENDING_KB_KEY } = await import('../stores/kbSelectionKey')
+    const { pendingKbKey } = await import('../stores/kbSelectionKey')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     const snap = Stores.KnowledgeBaseComposer.$
     // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
@@ -117,16 +123,17 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
       : undefined
     const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
     // A brand-new conversation (just minted, not yet hydrated into its own slot)
-    // with a non-empty pending buffer → move the pending selection under it.
-    // An existing conversation already owns a slot (via onConversationLoad), so
-    // this no-ops for it.
-    const pendingSize = snap.selectionByConversation.get(PENDING_KB_KEY)?.size ?? 0
+    // with a non-empty pending buffer → move THIS pane's pending selection under it
+    // (ITEM-51: read the SENDING pane's own pending key). An existing conversation
+    // already owns a slot (via onConversationLoad), so this no-ops for it.
+    const pendingSize =
+      snap.selectionByConversation.get(pendingKbKey(ownerPaneId))?.size ?? 0
     if (
       conversation?.id &&
       !snap.selectionByConversation.has(conversation.id) &&
       pendingSize > 0
     ) {
-      await Stores.KnowledgeBaseComposer.transferPending(conversation.id)
+      await Stores.KnowledgeBaseComposer.transferPending(conversation.id, ownerPaneId)
     }
     return {}
   },

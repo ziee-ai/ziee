@@ -4,6 +4,7 @@ import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { kbKey } from '@/modules/knowledge-base/stores/kbSelectionKey'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 const EMPTY_SET: ReadonlySet<string> = new Set()
 
@@ -12,17 +13,22 @@ const EMPTY_SET: ReadonlySet<string> = new Set()
  * shown in the composer status row. Each chip's × detaches (persists for a real
  * conversation, buffers otherwise). Mirrors McpStatusRow.
  *
- * Per-pane (ITEM-46): reads THIS pane's conversation's own selection (via the
- * per-conversation Maps, pane resolved through the reactive `Stores.Chat` bridge),
- * so two split panes don't show the same chips; detach edits that conversation.
+ * Per-pane (ITEM-46/51): reads THIS pane's own conversation's selection via its own
+ * store + paneId (the ConversationPage pattern), so two split panes don't show the
+ * same chips — and, for a NEW chat, each pane reads its OWN per-pane pending buffer
+ * (`kbKey(null, paneId)`), so a pending selection in one pane never appears in the
+ * other. Detach edits that same key.
  */
 export function KbStatusRow() {
   // Explicit permission gate (layer 4) — see KbMenuItem.
   const canUse = usePermission(Permissions.KnowledgeBaseUse)
   const { items } = Stores.KnowledgeBases
   const { selectionByConversation, inheritedByConversation } = Stores.KnowledgeBaseComposer
-  const convId = Stores.Chat.conversation?.id ?? null
-  const key = kbKey(convId)
+  const pane = useChatPaneOrNull()
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const paneId = pane?.paneId ?? null
+  const convId = chat.conversation?.id ?? null
+  const key = kbKey(convId, paneId)
   const selectedKbIds = selectionByConversation.get(key) ?? EMPTY_SET
   const inheritedKbIds = inheritedByConversation.get(key) ?? EMPTY_SET
 
@@ -60,7 +66,7 @@ export function KbStatusRow() {
             tone="info"
             icon={<BookOpen />}
             onClose={() =>
-              Stores.KnowledgeBaseComposer.detachFor(convId, id).catch((e: unknown) =>
+              Stores.KnowledgeBaseComposer.detachFor(convId, id, paneId).catch((e: unknown) =>
                 message.error(e instanceof Error ? e.message : 'Failed to detach'),
               )
             }
