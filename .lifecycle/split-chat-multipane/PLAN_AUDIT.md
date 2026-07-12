@@ -515,3 +515,50 @@ Auditing the plan against the codebase for this round surfaced that the ORIGINAL
 edge-drop half of ITEM-16 (the split view's edge cases already ship via ITEM-31's
 header=replace + seam=new-pane); ITEM-58 genuinely implements ITEM-17. This is recorded as
 FB-14 and DRIFT-10 rather than silently absorbed.
+
+## Independent completeness audit — the prior "9/9" was a PAPER-9/9 (recorded, not absorbed)
+
+An independent auditor found the prior 9/9 was a paper-9/9: real per-pane bugs shipping
+unfixed + HOLLOW tests (a passing test line that never exercised its claimed behavior).
+This is exactly the "prove by RUNNING, not reading; every test MUST exercise its item"
+discipline (rule B7). All 11 items fixed this round with REAL covering tests across two
+ACTIVE panes. Per-item verdicts:
+
+- **ITEM-59** — verdict: PASS — global `{open}` → `openConversationId`-keyed; both composer
+  slots read the pane's own conversation (`useChatPaneOrNull`, sibling McpMenuItem pattern);
+  detail sub-drawer gated to the open pane (no N copies). RUN by TEST-94 (count=1).
+- **ITEM-60** — verdict: PASS — the window keydown now returns early unless
+  `pane.paneId === SplitView.$.focusedPaneId` (single-pane `!pane` always focused). RUN by TEST-95.
+- **ITEM-61** — verdict: PASS — TitleEditor binds `useChatPaneOrNull()?.store`; save + read
+  are the pane's. RUN by TEST-96 (server-verified the RIGHT conversation renamed).
+- **ITEM-62** — verdict: PASS — hooks resolve `ownerChatState(ownerPaneId)` (Chat.store passes
+  `get().paneId`) + `PaneDraftKeys` per-pane capture; mirrors the e2e-tested File-extension
+  ownerPaneId pattern. RUN by TEST-97 (unit, clobber-safety).
+- **ITEM-63** — verdict: PASS — real two-pane approval e2e proves the resume routes to the
+  owning pane's conversation (captured send URL), tool call mocked at the SSE boundary. TEST-98.
+- **ITEM-64** — verdict: PASS — card was already pane-correct (ITEM-38 `useChatPaneOrNull`); the
+  phantom TEST-58 claim is corrected + the real export-per-pane e2e added. TEST-99.
+- **ITEM-65** — verdict: PASS — real per-pane view-state isolation e2e (canvas edit toggle). The
+  same-file-id-in-two-panes literal is prevented by the dedup guard; view-state is local `useState`
+  per FilePanel instance (documented). TEST-100.
+- **ITEM-66** — verdict: PASS — 3-pane close-during-record e2e (avoids the collapse-remount
+  confound). TEST-101.
+- **ITEM-67** — verdict: PASS — ConversationFindBar binds the pane store; search-scope e2e. TEST-102.
+- **ITEM-68** — verdict: PASS — EditingMessageBanner + CanvasSelectionPopover adopt the pane store;
+  the editing banner per-pane assertion folded into TEST-58 (TEST-103).
+- **ITEM-69** — verdict: PASS — two-simultaneous-streams bidirectional e2e (both panes active),
+  replacing the idle-empty-pane control. TEST-104.
+
+### Unproven-in-CI (marked explicitly, NOT claimed as CI-passing proof)
+
+- Cross-window snap-back (TEST-81/82/83/84) + desktop tear-off native-window positive (TEST-93):
+  pure-logic + spies + the WEB gate only. The Tauri emit/listen round-trip + a real
+  `WebviewWindow` open are DESKTOP-HOST-ONLY (externally verified), never exercised in this
+  Linux CI. Recorded in FB-15/FB-16; do not read these as CI-passing proof of the native path.
+
+### Architecture-vs-plan divergence — see DEC-30 amendment (impl-wins drift)
+
+DEC-30's "clean cut" (remove `useChatStore`, split registry into catalog + per-pane runtime)
+did NOT fully land: `useChatStore` still exists (~7 files) and `Stores.Chat` is a bridge/shim.
+It works (pane-rebound SSE + ownerPaneId hooks) but the plan overstated completion — amended
+honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't happen.

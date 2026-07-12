@@ -546,6 +546,52 @@ chrome — designed for the main window — mis-behaving in the new contexts. Tw
   limit as the pop-out cross-window tests (TEST-83), covered by the exec-glue +
   shared `openConversationWindow` desktop-seam tests.
 
+### Audit round (independent completeness audit — the prior "9/9" was a PAPER-9/9)
+
+An independent completeness audit found real per-pane bugs shipping unfixed + HOLLOW
+tests (a passing test line that never exercised its claimed behavior) under the prior
+9/9. Fixed ALL as one dedicated round; each ships a REAL covering test that RUNS the
+behavior across two ACTIVE panes (rule B7). Recorded honestly (FB-16, DRIFT-11,
+LEDGER) — not silently absorbed.
+
+- **ITEM-59**: (audit #1, HIGH) The skill "Skills in this chat" drawer was a global
+  `{open}` singleton; its host + menu item render once per pane, so opening it in one
+  pane rendered EVERY pane's dialog (stacked dialogs; contradicted the plan's
+  "main's new modules are already split-safe"). Key the store by `openConversationId`;
+  make both composer slots read the pane's own conversation (`useChatPaneOrNull`).
+- **ITEM-60**: (audit #2, HIGH) Cmd/Ctrl-F was a `window`-global keydown per pane with
+  no focus gate → opened the find bar in EVERY loaded pane. Gate on
+  `pane.paneId === SplitView.focusedPaneId`.
+- **ITEM-61**: (audit #3, HIGH) `TitleEditor` save routed through `Stores.Chat`
+  (focused) while showing the owning pane's title → renamed the wrong conversation.
+  Bind to `useChatPaneOrNull()?.store`.
+- **ITEM-62**: (audit #4, HIGH) The text extension's draft backup/clear/restore read
+  the FOCUSED pane's TextStore + a module-global `capturedDraftKey` (concurrent/late
+  hooks corrupt the wrong pane's draft). Resolve the OWNING pane via `ownerPaneId`
+  (`ownerChatState`) + a per-pane `PaneDraftKeys` capture (mirrors the File extension).
+- **ITEM-63**: (audit #5, MED) TEST-53 only asserted the MCP chip visible — the
+  wrong-pane approval-routing e2e was punted to a unit. Add a real two-pane approval
+  e2e: approving in pane B (pane A focused) resumes in pane B's conversation.
+- **ITEM-64**: (audit #6, MED) TEST-58 CLAIMED a workflow-card export leg that the
+  spec never ran (phantom). The card was already pane-correct (`useChatPaneOrNull`,
+  ITEM-38); add the missing export-per-pane e2e + correct the TEST-58 claim.
+- **ITEM-65**: (audit #7, MED) Right-panel "same file / independent view-state" +
+  literature-reason legs were piggybacked on open/close, never exercised. Add a real
+  per-pane view-state isolation e2e (canvas edit toggle in one pane doesn't change the
+  other). (Same-conversation-in-two-panes is prevented by the dedup guard; view-state
+  is local `useState` per FilePanel instance — this exercises that isolation.)
+- **ITEM-66**: (audit #8, MED) TEST-67's "closing a non-recording pane doesn't cancel
+  the recording pane" had NO close action. Add it (3-pane, close a non-recording pane).
+- **ITEM-67**: (audit #9, MED) `ConversationFindBar` searched + jumped via the focused
+  bridge. Bind to `useChatPaneOrNull()?.store`; add a search-scope e2e.
+- **ITEM-68**: (audit #10, LOW) `EditingMessageBanner` + `CanvasSelectionPopover` used
+  focus-dependent imperative paths. Adopt `useChatPaneOrNull()?.store`; assert the
+  editing banner is per-pane (folded into TEST-58).
+- **ITEM-69**: (audit #11, SYSTEMIC) The streaming/scroll "other pane unaffected"
+  assertions used an IDLE EMPTY pane as the control (only "A doesn't leak into a
+  quiescent B"). Add a TWO-SIMULTANEOUS-STREAMS bidirectional isolation test (both
+  panes active, each direction asserted).
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

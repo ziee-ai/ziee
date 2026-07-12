@@ -98,6 +98,21 @@ shim / incremental path.
 **Basis:** user — chose "ctx everywhere (clean cut) — no residual singleton
 coupling".
 
+**AMENDMENT (impl-wins drift, recorded per the independent completeness audit —
+DRIFT-11.1):** the clean cut was NOT fully realized and the original resolution
+OVERSTATED completion. In the shipped code `useChatStore` still exists and is
+still imported (~7 files, mostly extension `.subscribe()`/`.getState()` sites),
+and `Stores.Chat` is a **focused-pane bridge/shim** (`chatBridge.ts`) that ~many
+call sites still read through rather than a removed singleton. It WORKS — the SSE
+hot-path is pane-rebound (each pane owns a `ChatPaneStore` via the registry, and
+the extension hooks now thread `ownerPaneId`, e.g. the audit-#4 text-draft fix) —
+but `useChatStore` was NOT removed and the coupling was NOT fully eliminated. The
+honest current state is a **bridge-shim architecture**, not a clean cut. Not
+re-litigating the design (the bridge is deliberate and keeps ~40 consumers
+working); this amendment exists so the DEC/plan stops claiming a completed removal
+that did not happen. Finishing the cut (removing `useChatStore`) is future work,
+not part of this feature.
+
 ### DEC-31: Which stores hold composer state, and do they all go per-pane? (audit GAP-2)
 **Resolution:** Exactly FIVE composer/conversation-scoped stores go per-pane
 (consumer grep confirmed — no sixth): `TextStore` (the only one nested under

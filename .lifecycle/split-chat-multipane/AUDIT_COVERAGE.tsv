@@ -63,7 +63,7 @@ src-app/ui/src/modules/chat/core/utils/useStreamdownComponents.tsx	1	209	correct
 src-app/ui/src/modules/chat/extensions/keyboard/extension.tsx	1	189	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx	1	124	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/module.tsx	1	130	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1066	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1070	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/types.ts	1	44	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx	1	315	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/file/chat-extension/components/AttachedFileCard.tsx	1	87	correctness,state-management,error-handling
@@ -101,7 +101,7 @@ src-app/ui/tests/e2e/14-split-chat/independent-scroll.spec.ts	1	84	tests-quality
 src-app/ui/tests/e2e/14-split-chat/independent-streaming.spec.ts	1	76	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/keyboard-per-pane.spec.ts	1	60	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/mcp-per-pane.spec.ts	1	104	tests-quality,correctness,api-contract
-src-app/ui/tests/e2e/14-split-chat/message-actions-per-pane.spec.ts	1	96	tests-quality,correctness,api-contract
+src-app/ui/tests/e2e/14-split-chat/message-actions-per-pane.spec.ts	1	103	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/mobile-tabs.spec.ts	1	66	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/new-chat-adopt.spec.ts	1	77	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/open-in-split.spec.ts	1	58	tests-quality,correctness,api-contract
@@ -109,7 +109,7 @@ src-app/ui/tests/e2e/14-split-chat/pane-lifecycle.spec.ts	1	127	tests-quality,co
 src-app/ui/tests/e2e/14-split-chat/persistence.spec.ts	1	93	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/popout-new-tab.spec.ts	1	116	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/registry-runtime-per-pane.spec.ts	1	98	tests-quality,correctness,api-contract
-src-app/ui/tests/e2e/14-split-chat/right-panel-per-pane.spec.ts	1	106	tests-quality,correctness,api-contract
+src-app/ui/tests/e2e/14-split-chat/right-panel-per-pane.spec.ts	1	171	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/same-conversation-streaming.spec.ts	1	77	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/sidebar-reroute.spec.ts	1	74	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/workspace-persist-nav.spec.ts	1	88	tests-quality,correctness,api-contract
@@ -146,7 +146,7 @@ src-app/ui/src/modules/mcp/chat-extension/components/McpStatusRow.tsx	1	83	corre
 src-app/ui/tests/e2e/14-split-chat/kb-grounding-per-pane.spec.ts	1	78	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/kb-highlight-per-pane.spec.ts	1	129	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/mcp-grounding-per-pane.spec.ts	1	104	tests-quality,test-coverage,correctness
-src-app/ui/tests/e2e/14-split-chat/voice-per-pane.spec.ts	1	83	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/voice-per-pane.spec.ts	1	138	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/mcp/components/McpConfigModal.tsx	1	585	correctness,state-management,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/pending-selection-per-pane.spec.ts	1	120	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/mcp/chat-extension/components/McpInitializer.tsx	1	57	correctness,state-management,react-hooks
@@ -163,7 +163,7 @@ src-app/ui/src/modules/chat/core/popout/usePopoutSnapBack.ts	1	90	correctness,st
 src-app/ui/src/modules/chat/pages/PopoutConversationPage.tsx	1	20	correctness,state-management,react-hooks
 src-app/ui/tests/e2e/14-split-chat/popout-window-chat-only.spec.ts	1	60	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/layouts/app-layout/AppLayout.tsx	10	33	correctness,state-management,react-hooks
-src-app/ui/src/modules/chat/components/TitleEditor.tsx	1	165	correctness,state-management,react-hooks
+src-app/ui/src/modules/chat/components/TitleEditor.tsx	1	167	correctness,state-management,react-hooks
 src-app/ui/src/modules/chat/core/popout/useIsPopoutWindow.ts	1	15	correctness,patterns-conformance,react-hooks
 src-app/ui/tests/e2e/14-split-chat/header-back-visibility.spec.ts	1	73	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/message-actions-copy-and-popout.spec.ts	1	114	tests-quality,test-coverage,correctness
@@ -174,3 +174,19 @@ src-app/ui/src/modules/chat/core/popout/tearOff.test.ts	1	108	tests-quality,test
 src-app/ui/src/modules/chat/core/popout/useConversationTearOff.ts	1	56	correctness,state-management,react-hooks
 src-app/ui/tests/e2e/14-split-chat/single-pane-drop.spec.ts	1	98	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/tear-off-web-gate.spec.ts	1	121	tests-quality,test-coverage,correctness
+src-app/ui/src/dev/gallery/overlays.tsx	1	740	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/components/ConversationFindBar.tsx	1	342	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/components/EditingMessageBanner.tsx	1	47	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/extensions/text/extension.tsx	1	268	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/extensions/text/paneDraftKeys.ts	1	35	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/extensions/text/paneDraftKeys.test.ts	1	38	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/file/components/CanvasSelectionPopover.tsx	1	128	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/skill/chat-extension/SkillMenuItem.tsx	1	55	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/skill/components/SkillConversationDrawer.tsx	1	43	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/skill/stores/SkillConversationDrawer.store.ts	1	22	correctness,state-management,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/bidi-streams.spec.ts	1	75	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/find-scope-per-pane.spec.ts	1	74	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/focused-pane-routing.spec.ts	1	112	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/mcp-approval-per-pane.spec.ts	1	118	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/skill-drawer-per-pane.spec.ts	1	63	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/workflow-export-per-pane.spec.ts	1	87	tests-quality,test-coverage,correctness

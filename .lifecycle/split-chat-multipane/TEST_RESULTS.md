@@ -291,6 +291,25 @@ Also the genuine implementation of the paper-covered ITEM-16 (edge drop) / ITEM-
 - Residual desktop-webview edges (Esc-cancel, bogus (0,0) coord, MOVE-on-failed-open)
   tracked for desktop-host verification (FB-15) — same platform-guarantee limit as TEST-83.
 
+## Round 10 (audit round) — paper-9/9 correction (ITEM-59..69, FB-16)
+
+Independent completeness audit found real per-pane bugs + hollow tests under the prior
+9/9. Fixed ALL 11 items; each ships a REAL covering test that RUNS across two ACTIVE
+panes (rule B7). All green:
+
+- **TEST-94**: PASS — skill drawer per-pane (count=1) — `highfix-e2e-*.log`.
+- **TEST-95**: PASS — Cmd-F focus gate — `highfix-e2e-*.log`.
+- **TEST-96**: PASS — TitleEditor renames the owning pane (server-verified) — `highfix-e2e-*.log`.
+- **TEST-97**: PASS — `PaneDraftKeys` unit (clobber-safety), 4/4 (`npx tsx --test`).
+- **TEST-98**: PASS — MCP approval routes to the owning pane's conversation — `approval-e2e-*.log` (13.1s).
+- **TEST-99**: PASS — workflow-card export carries the owning pane's conversation_id — `wf-msg-e2e-*.log` (12.5s).
+- **TEST-100**: PASS — right-panel per-pane view-state (canvas edit toggle) — `realbatch-e2e-*.log`.
+- **TEST-101**: PASS — voice close-during-record (3-pane) — `realbatch-e2e-*.log`.
+- **TEST-102**: PASS — find search-scope per-pane — `realbatch-e2e-*.log` (13.7s).
+- **TEST-103**: PASS — editing-banner per-pane (folded into message-actions) — `wf-msg-e2e-*.log`.
+- **TEST-104**: PASS — two-simultaneous-streams bidirectional isolation — `realbatch-e2e-*.log` (14.7s).
+- `tsc --noEmit` (ui) exit 0 after all fixes.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
