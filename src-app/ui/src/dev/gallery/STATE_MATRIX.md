@@ -38,7 +38,7 @@ conversation page.
 
 | slot | module surface |
 |---|---|
-| `chatConversationHeaderTrailing` | `modules/chat/module`:119 |
+| `chatConversationHeaderTrailing` | `modules/chat/module`:132 |
 | `settingsAdminPages` | `modules/assistant/module`:79 |
 | `settingsAdminPages` | `modules/auth-providers/module`:43 |
 | `settingsAdminPages` | `modules/auth/module`:80 |
@@ -71,7 +71,7 @@ conversation page.
 | `settingsUserPages` | `modules/user-llm-providers/module`:40 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
 | `settingsUserPages` | `modules/workflow/module`:94 |
-| `sidebarContent` | `modules/chat/module`:104 |
+| `sidebarContent` | `modules/chat/module`:117 |
 
 ## Per-surface required states
 
@@ -2619,26 +2619,26 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `prevXsRef.current === windowMinSize.sm` | 205 |
-| branch | `e.touches.length !== 1` | 245 |
-| branch | `!panel` | 249 |
-| branch | `!s` | 255 |
-| branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 260 |
-| branch | `Math.abs(dy) > Math.abs(dx)` | 261 |
-| branch | `!s \|\| !s.active` | 275 |
-| branch | `!windowMinSize.sm \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 289 |
-| branch | `document.querySelector( '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]', )` | 293 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 311 |
-| branch | `!s` | 318 |
-| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 323 |
-| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 325 |
-| branch | `!mainContentElement` | 343 |
-| branch | `!window.visualViewport` | 382 |
-| branch | `!window.visualViewport` | 386 |
-| branch | `windowMinSize.sm` | 431 |
-| overlay | `<Sheet open>` | 432 |
-| branch | `!windowMinSize.sm` | 454 |
-| branch | `!isSidebarCollapsed` | 534 |
+| branch | `prevXsRef.current === windowMinSize.sm` | 210 |
+| branch | `e.touches.length !== 1` | 250 |
+| branch | `!panel` | 254 |
+| branch | `!s` | 260 |
+| branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 265 |
+| branch | `Math.abs(dy) > Math.abs(dx)` | 266 |
+| branch | `!s \|\| !s.active` | 280 |
+| branch | `!windowMinSize.sm \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 294 |
+| branch | `document.querySelector( '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]', )` | 298 |
+| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 316 |
+| branch | `!s` | 323 |
+| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 328 |
+| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 330 |
+| branch | `!mainContentElement` | 348 |
+| branch | `!window.visualViewport` | 387 |
+| branch | `!window.visualViewport` | 391 |
+| branch | `windowMinSize.sm` | 436 |
+| overlay | `<Sheet open>` | 437 |
+| branch | `!windowMinSize.sm` | 459 |
+| branch | `!isSidebarCollapsed` | 539 |
 
 ### `modules/layouts/app-layout/components/Drawer`
 

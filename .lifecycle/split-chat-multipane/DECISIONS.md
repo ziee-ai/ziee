@@ -642,3 +642,23 @@ single global `currentConversationId` pointer. The pure key helpers live in the 
 node-testable `kbSelectionKey.ts` / `approvalRouting.ts`.
 **Basis:** user — "key the pending/uncommitted selection BY PANE, and do the same for MCP
 in the same change so the two composers stay symmetric" (FB-11 cross-cutting fix directive).
+
+### DEC-68: How does the desktop pop-out render chat-only, and how do the two cross-window behaviors (focus-existing / snap-back) work?
+**Resolution:** Layout is route-controlled, so (a) chat-only = a NEW dedicated route
+`/chat-window/:conversationId` with NO `layout` (the router renders a layout-less route
+bare) → `ConversationPage` without the app shell; the desktop `.desktop.ts` override
+retargets the WebviewWindow url to it (web keeps `/chat/:id` = whole app, since the browser
+tab already covers the focused case). (b) focus-existing + snap-back are DESKTOP-only Tauri
+behaviors implemented as web/desktop SEAMS (web = no-op, so web behaviour is byte-identical):
+`focusPopoutWindowIfOpen` (checked at the top of the sole open path) and `popoutSnapBack`
+(a `POPOUT_CLOSED_EVENT` the pop-out window emits on close + a main-window listener). The
+decision logic is PURE + node-tested (`planPopoutSnapBack`/`handlePopoutClosed`); the Tauri
+control flow is unit-tested with the boundary mocked (the established TEST-75 seam pattern).
+The single `popoutWindowLabel` (`chat-<id>`) is the shared key for create/focus/dedup. The
+main-window listener mounts in `AppLayout` (which the layout-less pop-out route does NOT
+render, so it never self-registers → no close→emit→self-snap-back loop, asserted by TEST-79's
+shell-absent check).
+**Basis:** user — "on desktop it should open the chat interface only … focus that window …
+snap back as a pane … since layout is controlled by the route, we can just use the blank
+layout with a completely new route" (FB-12). Cross-window event is the only new primitive;
+everything else reuses existing route/layout + reconcile machinery.

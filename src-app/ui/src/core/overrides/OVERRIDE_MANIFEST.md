@@ -15,14 +15,16 @@ The living index of every desktop UI override. Regenerate with
 
 ## Whole-file overrides (`.desktop.{tsx,ts}` co-located in the core tree)
 
-12 co-located override files.
+14 co-located override files.
 
 | File | Core sibling |
 |---|---|
 | `src-app/ui/src/api-client/getBaseURL.desktop.ts` | ✓ |
 | `src-app/ui/src/modules/app/App.store.desktop.ts` | ✓ |
 | `src-app/ui/src/modules/auth/AuthGuard.desktop.tsx` | ✓ |
+| `src-app/ui/src/modules/chat/core/popout/focusPopoutWindow.desktop.ts` | ✓ |
 | `src-app/ui/src/modules/chat/core/popout/openConversationWindow.desktop.ts` | ✓ |
+| `src-app/ui/src/modules/chat/core/popout/popoutSnapBack.desktop.ts` | ✓ |
 | `src-app/ui/src/modules/layouts/app-layout/components/Drawer.desktop.tsx` | ✓ |
 | `src-app/ui/src/modules/layouts/app-layout/components/HeaderBarContainer.desktop.tsx` | ✓ |
 | `src-app/ui/src/modules/layouts/app-layout/components/LeftSidebar.desktop.tsx` | ✓ |
