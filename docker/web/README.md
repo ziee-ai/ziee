@@ -88,6 +88,68 @@ used verbatim (the template/env path is skipped). Base it on
 
 ---
 
+## Config as code (desired state) — zero-touch first boot
+
+The image ships **`config/desired-state.yaml`** at `/etc/ziee/desired-state.yaml`.
+On every boot — **after** migrations, **before** it serves — the server reconciles
+that file into the database, so a fresh deploy comes up **fully configured with no
+manual UI setup**: the org MCP servers registered, the root admin created, a
+regular user seeded, and the default group's permissions trimmed.
+
+| Env var | Fills | If unset |
+|---|---|---|
+| `RCPA_MCP_URL` | the `rcpa` system MCP server's URL | that server is skipped |
+| `DSCC_MCP_URL` | the `dscc` system MCP server's URL | that server is skipped |
+| `BIOGNOSIA_MCP_URL` | the `biognosia` system MCP server's URL | that server is skipped |
+| `ZIEE_ADMIN_PASSWORD` | the root `admin` account's password | no admin is created (the UI shows first-run setup) |
+| `ZIEE_DEFAULT_USER_PASSWORD` | the regular `user` account's password | that user is not created |
+| `ZIEE_DESIRED_STATE_FILE` | path of the file itself (default `/etc/ziee/desired-state.yaml`) | reconcile is skipped entirely |
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e ZIEE_DB_HOST=db.internal -e ZIEE_DB_USER=ziee -e ZIEE_DB_PASSWORD=secret -e ZIEE_DB_NAME=ziee \
+  -e ZIEE_JWT_SECRET='…' -e ZIEE_STORAGE_KEY='…' \
+  -e RCPA_MCP_URL=http://rcpa.internal:9000/mcp \
+  -e DSCC_MCP_URL=http://dscc.internal:9000/mcp \
+  -e BIOGNOSIA_MCP_URL=http://biognosia.internal:9000/mcp \
+  -e ZIEE_ADMIN_PASSWORD='…' -e ZIEE_DEFAULT_USER_PASSWORD='…' \
+  ziee-web:local
+```
+
+**Secrets are never in the file.** A password field must be exactly one
+`${ENV_VAR}` placeholder; an inline literal is rejected. Resolved values are
+never logged (the logs name the env var, never its value).
+
+**Overriding the file:** bind-mount your own at the same path —
+`-v ./my-desired-state.yaml:/etc/ziee/desired-state.yaml:ro` — or point
+`ZIEE_DESIRED_STATE_FILE` somewhere else.
+
+**Idempotent by design.** Re-deploying (or restarting) reconciles again and
+creates nothing twice: MCP servers dedup on `(name, is_system)`, the admin is
+created only when the deployment has **no** admin (its password is **never**
+reset on a later boot — rotate it in the UI and the rotation sticks), and users
+dedup on username/email.
+
+**Per-entry `mode`:**
+
+- `ensure` (default) — create when absent; if it already exists, leave it alone.
+  An admin's later UI edits survive a redeploy.
+- `enforce` — create when absent, else re-sync that entry's fields on every boot
+  (the file wins over UI edits).
+
+Group permissions have no mode: they are declarative and re-applied every boot.
+The shipped file removes `projects::*`, `hub::*` and `assistants::*` from the
+default **Users** group, which hides Projects, Hubs and the Settings→Assistants
+section for regular users (nav entry, settings tab and route share one gate),
+while General, Profile, LLM providers and MCP servers stay. Note the root admin
+**bypasses all permission checks** by design, so it still sees everything — the
+seeded regular user is the account that shows the trimmed UI.
+
+A malformed file, an unresolvable `${VAR}`, or a failing entry logs an error and
+is **skipped** — the server still boots.
+
+---
+
 ## External / managed Postgres (the deploy shape)
 
 The same image runs against any external Postgres by changing env only:

@@ -1,0 +1,98 @@
+# ziee desired state — config as code.
+#
+# The container reconciles this file into its database ON BOOT (after
+# migrations, before it serves), so a fresh deploy comes up fully configured
+# with no manual UI setup. Baked into the image at /etc/ziee/desired-state.yaml;
+# bind-mount over that path (or repoint ZIEE_DESIRED_STATE_FILE) to override.
+#
+# RULES
+#   - Secrets are NEVER written here. A password must be exactly one ${ENV_VAR}
+#     placeholder; an inline literal is rejected and the entry is skipped.
+#   - ${VAR} placeholders resolve from the container's environment at boot.
+#     A placeholder whose env var is unset/empty SKIPS that entry (with a log)
+#     and never blocks the boot — so a deploy that doesn't set RCPA_MCP_URL
+#     simply comes up without the RCPA server.
+#   - Everything here is IDEMPOTENT: re-deploying creates no duplicates.
+#
+# MODES (mcp_servers / admin / users)
+#   ensure  (default) — create when absent; if it already exists, leave it
+#                       alone, so an admin's later UI edits survive a redeploy.
+#   enforce           — create when absent, else re-sync the fields below on
+#                       every boot (the file wins over UI edits).
+# Group permissions have no mode: they are declarative and re-applied each boot.
+#
+# ENV VARS THIS FILE EXPECTS
+#   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
+#   ZIEE_ADMIN_PASSWORD                             — root admin password
+#   ZIEE_DEFAULT_USER_PASSWORD                      — the regular user's password
+
+# ── Admin system MCP servers ────────────────────────────────────────────────
+# Created as ADMIN system servers (is_system, no owner) and made available to
+# the Users group — a system server assigned to no group is unusable by
+# non-admin users.
+mcp_servers:
+  - name: rcpa
+    display_name: RCPA
+    description: RCPA analysis tools
+    url: ${RCPA_MCP_URL}
+    enabled: true
+    supports_sampling: false
+    timeout_seconds: 300
+    groups: [Users]
+    mode: ensure
+
+  - name: dscc
+    display_name: DSCC
+    description: DSCC analysis tools
+    url: ${DSCC_MCP_URL}
+    enabled: true
+    supports_sampling: false
+    timeout_seconds: 300
+    groups: [Users]
+    mode: ensure
+
+  - name: biognosia
+    display_name: Biognosia
+    description: Biognosia tools
+    url: ${BIOGNOSIA_MCP_URL}
+    enabled: true
+    # This server may ask the model for a completion (MCP sampling).
+    supports_sampling: true
+    groups: [Users]
+    mode: ensure
+
+# ── Root admin ──────────────────────────────────────────────────────────────
+# Created ONLY when the deployment has no admin yet. On every later boot this
+# is a no-op: the password is NEVER reset, so rotating it in the UI sticks.
+admin:
+  username: admin
+  email: admin@tinnguyen-lab.com
+  display_name: Administrator
+  password: ${ZIEE_ADMIN_PASSWORD}
+
+# ── Regular users ───────────────────────────────────────────────────────────
+# Non-admin accounts, placed in the default group. Root admins bypass ALL
+# permission checks, so this is the account that actually sees the reduced UI
+# configured below.
+users:
+  - username: user
+    email: user@tinnguyen-lab.com
+    display_name: User
+    password: ${ZIEE_DEFAULT_USER_PASSWORD}
+
+# ── Group permissions ───────────────────────────────────────────────────────
+# Hide Projects, Hubs and the Settings→Assistants section from regular users.
+# Removing the read permission hides the nav entry AND the settings tab AND
+# gates the route — they share one permission gate.
+#
+# KEPT for users: General (ungated by design), Profile, LLM providers, MCP
+# servers, plus chat/conversations/messages/files and the built-in tool grants.
+#
+# Re-applied on every boot, so a future migration that re-grants one of these
+# to the default group is self-correcting.
+groups:
+  - name: Users
+    remove:
+      - projects::*
+      - hub::*
+      - assistants::*

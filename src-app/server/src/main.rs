@@ -223,6 +223,13 @@ async fn main() {
             .and_then(|s| s.storage_key.clone()),
     );
 
+    // Config-as-code: reconcile the declarative desired-state file (located by
+    // ZIEE_DESIRED_STATE_FILE) into the DB, so a fresh deploy comes up fully
+    // configured. Runs AFTER migrations + Repos + the storage key are live, and
+    // BEFORE we serve. A no-op when the env var is unset / the file is missing,
+    // and it never fails the boot — see modules::desired_state.
+    modules::desired_state::reconcile(&pool).await;
+
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = core::app_builder::create_modules();

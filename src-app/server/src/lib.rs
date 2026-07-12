@@ -431,6 +431,13 @@ async fn setup_server(
             .and_then(|s| s.storage_key.clone()),
     );
 
+    // Config-as-code: reconcile the declarative desired-state file (located by
+    // ZIEE_DESIRED_STATE_FILE) into the DB, before anything is served. A no-op
+    // when the env var is unset / the file is missing — which is the case for
+    // the desktop app and every test that doesn't opt in. Mirrors the same call
+    // in main.rs (this path is the desktop / embedded one).
+    modules::desired_state::reconcile(&pool).await;
+
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), Arc::new(config.clone()));
     let mut modules = core::app_builder::create_modules();

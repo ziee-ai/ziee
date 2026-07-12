@@ -14,6 +14,7 @@ pub mod knowledge_base;
 pub mod lit_search;
 pub mod files_mcp;
 pub mod code_sandbox;
+pub mod desired_state;
 pub mod hardware;
 pub mod health;
 pub mod js_tool;
