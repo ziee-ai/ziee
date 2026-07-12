@@ -80,7 +80,7 @@ src-app/ui/src/modules/knowledge-base/chat-extension/extension.tsx	1	109	correct
 src-app/ui/src/modules/literature/components/LiteratureScreeningPanel.tsx	1	293	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/literature/components/LiteratureToolResultCard.tsx	1	97	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent.tsx	1	245	correctness,security,state-management
-src-app/ui/src/modules/mcp/chat-extension/extension.tsx	1	1195	correctness,security,state-management
+src-app/ui/src/modules/mcp/chat-extension/extension.tsx	1	1211	correctness,security,state-management
 src-app/ui/src/modules/mcp/stores/McpComposer.store.ts	1	1207	correctness,security,state-management
 src-app/ui/src/modules/mcp/stores/approvalRouting.test.ts	1	55	tests-quality,correctness,api-contract
 src-app/ui/src/modules/mcp/stores/approvalRouting.ts	1	47	correctness,security,state-management
