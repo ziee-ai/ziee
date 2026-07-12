@@ -257,6 +257,40 @@ running test.
   and edit restores the text into the window's own composer.
 - Log: `/data/pbya/ziee/tmp/lifecycle-logs/msgaudit-perm-*.log` (1 passed, 15.0s).
 
+## Round 9 (ITEM-57/58) — single-pane edge-drop + desktop tear-off (FB-14)
+
+Human-requested drag-drop additions, built test-first (behavior proven by RUNNING).
+Also the genuine implementation of the paper-covered ITEM-16 (edge drop) / ITEM-17
+(tear-off) — see PLAN_AUDIT plan-coverage correction + DRIFT-10.3.
+
+- **TEST-88**: PASS — `zoneForX` thirds + clamp + zero-width (node:test).
+- **TEST-89**: PASS — `planSinglePaneDrop` left/right/center + self/empty noop (node:test).
+- **TEST-90**: PASS — e2e single-pane edge-drop: right→[A|B], left→[C|A], center→replace
+  (real DnD, aimed clientX). Log `dnd-e2e-*.log` (single-pane-drop.spec 14.3s).
+- **TEST-91**: PASS — `isOutsideWindow` (incl. the degenerate/non-finite-rect guard,
+  blind-audit fix) + `planTearOff` (desktop-only, strict, pane MOVE).
+- **TEST-92**: PASS — `runTearOffPlan` exec glue with spied effects (open + closePane).
+- **TEST-93**: PASS — e2e tear-off wiring + gate (REWRITTEN after the blind audit — the
+  old version was a false-negative): a faked-`__TAURI__` positive control proves ALL
+  three sources (card/sidebar/grip) are wired to onDragEnd → open `/chat/<id>`, the grip
+  MOVE closes the pane, plus the web-off + strict-inside negatives. Log `dnd-e2e2-*.log`
+  (14.1s).
+- Regression: `drag-to-split.spec.ts` still green (2/2) after the new wiring.
+- Unit run: `npx tsx --test singlePaneDrop.test.ts tearOff.test.ts` → 17 pass / 0 fail.
+- `tsc --noEmit` (ui) + `tsc --noEmit` (desktop/ui): both exit 0 (pre- and post-fix).
+- **`npm run check (ui): PASS`** — full chain incl. testid-registry (new
+  `chat-single-drop-column`) + lint:colors (overlay uses only semantic tokens) + biome
+  + state-matrix (regenerated for the drop-hint render states).
+- **`npm run check (desktop/ui): PASS`** — same chain on the desktop workspace.
+
+### Round-8 blind audit (FIX_ROUND-17) — fixes verified by re-run
+
+3 blind reviewers, no HIGH, 4 confirmed MEDIUM fixed. Post-fix re-run:
+- `single-pane-drop.spec.ts` (now asserting URL tracks the dropped conversation) +
+  the rewritten `tear-off-web-gate.spec.ts` → **2 passed (48.5s)** (`dnd-e2e2-*.log`).
+- Residual desktop-webview edges (Esc-cancel, bogus (0,0) coord, MOVE-on-failed-open)
+  tracked for desktop-host verification (FB-15) — same platform-guarantee limit as TEST-83.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health

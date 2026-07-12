@@ -515,6 +515,37 @@ chrome — designed for the main window — mis-behaving in the new contexts. Tw
   `popoutActionVisible` false in a pop-out window) + TEST-85 (e2e — split + pop-out
   buttons absent in the pop-out window, conversation actions present).
 
+- **ITEM-57**: **Single-pane edge-directional drop** (human-requested; GENUINELY
+  implements the originally-deferred edge-drop half of ITEM-16 for the UNSPLIT view).
+  On the single-pane route, dragging a sidebar conversation over the chat column
+  surfaces the left/center/right thirds and highlights the one under the pointer;
+  dropping splits by side — **left → new pane on the LEFT `[dropped | current]`**,
+  **right → on the RIGHT `[current | dropped]`**, **center → REPLACE** the current
+  conversation (a plain open). Dropping a conversation onto its own view is a no-op.
+  Pure `zoneForX` + `planSinglePaneDrop` (unit-testable); `ConversationPage` mounts
+  the drop handlers + a token-styled hint overlay on the single-pane chat column
+  (`chat-single-drop-column`), executing via `SplitView.openPane` (split) /
+  `useOpenConversationInWorkspace` (replace). The split VIEW's edge cases already
+  ship via ITEM-31 (header = replace, seam = new pane); this fills the single-pane
+  gap the survey found. Human-picked model (DEC-69). Covered by TEST-88/89 (unit) +
+  TEST-90 (e2e — left/right/center by aimed clientX).
+- **ITEM-58**: **Desktop tear-off** (human-requested; GENUINELY implements ITEM-17,
+  which was previously mapped to TEST-28/`drag-to-split` — a spec that does NOT
+  exercise tear-off, i.e. paper-coverage now corrected). Dragging a conversation
+  from the sidebar (`RecentConversationsWidget` / `ConversationCard`) or a split
+  pane's grip and releasing it PAST the window edge opens it as its own native
+  desktop window, reusing the ITEM-P1 `openConversationWindow` seam. **Desktop only**
+  (DEC-70) — on web the release is ignored and the ⤢ button remains. **Strict**
+  trigger (DEC-71) — only a release genuinely outside the window bounds tears off.
+  A PANE source MOVES (the pane closes, mirroring the ⤢ button's ITEM-29). Pure
+  `isOutsideWindow` + `planTearOff` + `runTearOffPlan` (unit-testable); wired via a
+  `useConversationTearOff` hook on each source's `onDragEnd`. Covered by TEST-91/92
+  (unit — geometry, decision, exec glue with spies) + TEST-93 (e2e — the web
+  desktop-only GATE: a release past the edge opens nothing on web). The desktop
+  POSITIVE (a real OS window) can't be driven headlessly — same platform-guarantee
+  limit as the pop-out cross-window tests (TEST-83), covered by the exec-glue +
+  shared `openConversationWindow` desktop-seam tests.
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

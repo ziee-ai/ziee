@@ -487,3 +487,31 @@ existing composer/right-panel surfaces (no new surface, no permission).
   TEST-P5 desktop unit re-points its import to the `@/…desktop` alias (Drawer.test.ts
   convention). Gated by `gen-override-registry.mjs --check` (0 web-only) inside `npm run
   check` in BOTH workspaces. Covered by TEST-75.
+- **ITEM-57** — verdict: PASS — the drop handlers self-gate on `!pane` + a `conversation`
+  drag-kind, so they never fire in a split pane (each pane's ConversationPage has `pane != null`)
+  and never cross-fire with the composer's FILE drop (`dragKind` disambiguation, the same guard
+  ITEM-31 relies on). `openPane` is the exact store API `onSplit` already uses (appends,
+  dedups a same-conversation, caps at MAX_PANES); left/right just differ in seed order. Center
+  reuses the canonical `useOpenConversationInWorkspace` single-pane open. The testid is
+  conditional (`pane ? undefined : …`) so the testid-registry stays unique. No new migration/
+  OpenAPI. Pattern-conform: mirrors the existing pane-header drop handler shape in the SAME file.
+  RUN by TEST-88/89 (pure) + TEST-90 (e2e — aimed clientX per third).
+- **ITEM-58** — verdict: PASS — reuses the ITEM-P1 `openConversationWindow` seam (web
+  `window.open` / desktop `WebviewWindow`) and the ITEM-29 MOVE (`closePane`) exactly as the ⤢
+  button (`OpenInNewWindowAction`) does — no new window machinery. The desktop-only + strict
+  gate lives in the PURE `planTearOff` (open only when `isOutside && isDesktop`), so web is a
+  no-op (byte-identical to today). `onDragEnd` is additive on the existing drag sources (no
+  change to `onDragStart`/drag payloads). `isDesktop` uses the same `'__TAURI__' in window`
+  probe as `OpenInNewWindowAction`. No migration/OpenAPI. RUN by TEST-91/92 (pure geometry +
+  decision + exec glue with spies) + TEST-93 (e2e web desktop-only gate).
+
+## Plan-coverage correction (ITEM-16 / ITEM-17 were paper-covered)
+
+Auditing the plan against the codebase for this round surfaced that the ORIGINAL ITEM-16
+(in-tile edge drop-zones Split-left/Replace/Split-right) was reduced to only `reorderPanes`
+(TEST-27) with the edge-drop deferred, and ITEM-17 (desktop tear-off) was mapped to TEST-28
+(`drag-to-split.spec.ts`) which does NOT exercise tear-off at all — so both shipped as
+"covered on paper" but never genuinely built. ITEM-57 genuinely implements the single-pane
+edge-drop half of ITEM-16 (the split view's edge cases already ship via ITEM-31's
+header=replace + seam=new-pane); ITEM-58 genuinely implements ITEM-17. This is recorded as
+FB-14 and DRIFT-10 rather than silently absorbed.

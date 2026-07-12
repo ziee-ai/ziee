@@ -662,3 +662,30 @@ shell-absent check).
 snap back as a pane … since layout is controlled by the route, we can just use the blank
 layout with a completely new route" (FB-12). Cross-window event is the only new primitive;
 everything else reuses existing route/layout + reconcile machinery.
+
+### DEC-69: When a sidebar conversation is dropped on the UNSPLIT view, what happens (ITEM-57)?
+**Resolution:** Edge-directional split — LEFT third opens the dropped conversation as a
+new pane on the LEFT (`[dropped | current]`), RIGHT third on the RIGHT
+(`[current | dropped]`), CENTER replaces the current conversation with the dropped one
+(a plain single-pane open). Dropping a conversation onto its own view is a no-op.
+**Basis:** user — picked from an explicit AskUserQuestion option set (edge-directional vs
+always-split-right vs header-replaces/body-splits). Edge-directional mirrors VS Code /
+tiling-WM editor drag and is the most capable; it also reuses the split view's existing
+`openPane` ordering and the canonical `useOpenConversationInWorkspace` for the replace.
+
+### DEC-70: Which platforms enable the tear-off gesture (ITEM-58)?
+**Resolution:** Desktop only. A release past the window edge spawns a native OS window
+(`openConversationWindow` desktop seam); on web the release is ignored and the existing ⤢
+"Open in new window/tab" button remains the affordance. A pane source MOVES (the pane
+closes), mirroring the ⤢ button's ITEM-29 MOVE.
+**Basis:** user — picked from an explicit AskUserQuestion (desktop-only vs desktop+web).
+A native OS window is the only place a torn-off window is meaningful; the web browser's own
+tab affordance + the ⤢ button already cover web, so a drag-out-to-new-tab is redundant.
+
+### DEC-71: How strict is the tear-off "released outside" trigger (ITEM-58)?
+**Resolution:** Strict — only a `dragend` whose screen coords fall genuinely outside the
+window rect (`isOutsideWindow`) tears off; a release over empty in-window space does
+nothing. No accidental windows from a mis-aimed / aborted drag.
+**Basis:** user — picked from an explicit AskUserQuestion (strict-past-the-edge vs
+forgiving-dropped-on-no-target). Strict is accident-proof and needs no ghost-hint scaffolding;
+the in-app drop zones are inherently inside the window, so an in-app drop can never trip it.
