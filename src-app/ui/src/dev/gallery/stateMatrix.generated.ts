@@ -1885,7 +1885,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/hardware/HardwareMonitorButton",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!canMonitor", line: 25 },
+      { kind: "branch", condition: "!canMonitor", line: 34 },
     ],
   },
   "modules/hardware/HardwareSettings": {

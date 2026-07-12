@@ -548,6 +548,15 @@ or wasted many sessions.
   average — a high load average with idle CPU is fine. "Blocked" requires a
   SPECIFIC error (a port bind failure, a docker daemon down, a compile error),
   never a resource metric.
+- **B6 — a gate must survive the merge strip.** If your feature ADDS a check to
+  `npm run check` / CI / the build, that check must read its config /
+  source-of-truth from a PERMANENT committed path (a product-tree file), NEVER
+  from a `.lifecycle/` artifact — `.lifecycle/` is stripped at merge, so a gate
+  that reads it passes in your worktree and then fails `npm run check`
+  PERMANENTLY on main. Verify any new gate against a lifecycle-stripped tree
+  (temporarily move `.lifecycle/` aside, re-run the gate, confirm it still
+  passes) before declaring done. (Caught on the desktop-override gate, which
+  read its approval list from `.lifecycle/…/DECISIONS.md`.)
 - **B3 — never edit the SHARED test harness to route around YOUR feature's
   problem.** `tests/common/*`, the gallery cassette, `playwright.*.config`, the
   build DB helper are shared infrastructure. If your test needs them changed,

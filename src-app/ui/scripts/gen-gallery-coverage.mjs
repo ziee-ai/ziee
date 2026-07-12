@@ -39,7 +39,13 @@ function walk(dir, acc = []) {
     if (st.isDirectory()) {
       if (!['node_modules', 'dist', 'build', '.git', 'tests', '__tests__'].includes(e))
         walk(full, acc)
-    } else if (/\.tsx$/.test(e) && !/\.(test|stories)\.tsx$/.test(e)) {
+    } else if (
+      /\.tsx$/.test(e) &&
+      // Skip test/stories, and `.desktop.tsx` co-located overrides: those are
+      // desktop-only files (excluded from the web tsconfig/biome too) — they are
+      // never rendered in the WEB gallery, so they aren't web surfaces.
+      !/\.(test|stories|desktop)\.tsx$/.test(e)
+    ) {
       acc.push(full)
     }
   }

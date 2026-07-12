@@ -16,6 +16,12 @@ import { lazy } from 'react'
 import { Book } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
+// This module stays a TIER-1 desktop-tree module (NOT a `.desktop.tsx`
+// co-location): `module.tsx` files are discovered by `import.meta.glob`, which
+// bypasses the `@/` resolver — so a core-tree `module.desktop.tsx` would be
+// found by neither `desktop-loader.ts` (globs the desktop tree) nor the core
+// `loader.ts` (globs the literal `module.tsx`). It is glob-discovered here by
+// `desktop-loader.ts` and registers `memory-desktop`. See DRIFT-1.5.
 const MemoryCombinedPage = lazy(() =>
   import('./pages/MemoryCombinedPage').then((m) => ({
     default: m.MemoryCombinedPage,
