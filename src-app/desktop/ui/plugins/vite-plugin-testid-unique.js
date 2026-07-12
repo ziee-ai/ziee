@@ -13,9 +13,11 @@
  *  - desktop build: scan BOTH `src-app/desktop/ui/src` AND `src-app/ui/src` —
  *    the desktop app renders core-ui source via the localOverridePlugin
  *    (desktop-first, core-ui fallback), so a desktop bundle contains literals
- *    from both trees and a cross-tree collision is real. A desktop file that
- *    OVERRIDES a core file at the same `@/...` path is de-duplicated by
- *    relative path so the override (not a phantom collision) is what counts.
+ *    from both trees and a cross-tree collision is real. A file that OVERRIDES
+ *    a core file — either a desktop-tree file at the same `@/...` path (tier 1)
+ *    or a co-located core-tree `<path>.desktop.<ext>` (tier 2) — is collapsed
+ *    onto the base's import slot (see `collectTestids`) so the override (not a
+ *    phantom collision) is what counts.
  *
  * Exemptions:
  *  - Template-literal / expression testids (`data-testid={`${x}-row-${k}`}`)
@@ -34,7 +36,11 @@ import path from 'node:path'
 
 // Matches data-testid="literal" / data-testid='literal' (JSX) and the object
 // form "data-testid": "literal" (spread props). NOT data-testid={expr}.
-const TESTID_LITERAL = /data-testid\s*[=:]\s*["']([^"']+)["']/g
+// `(?<!\[)` skips CSS attribute SELECTORS — `querySelector('[data-testid="x"]')`
+// READS a testid, it does not DECLARE one, so it must not count as a second
+// declaration (that false-positived `kb-tool-result-*` as duplicates and broke
+// the desktop `vite build` — a PRE-EXISTING bug, unrelated to UI overrides).
+const TESTID_LITERAL = /(?<!\[)data-testid\s*[=:]\s*["']([^"']+)["']/g
 
 // The detector-acceptance fixture INTENTIONALLY reuses the real app testids the
 // detectors key on (e.g. K1 matches the literal `conversation-title`, so its
@@ -86,22 +92,50 @@ function extractTestids(content) {
   return ids
 }
 
+// A co-located `Foo.desktop.tsx` is the localOverridePlugin's tier-2 shadow of
+// its `Foo.tsx` sibling: in the desktop bundle the `@/…/Foo` import resolves to
+// the `.desktop` file and the base file is NOT bundled at that path. So the two
+// files occupy ONE import slot and must NOT collide on a shared testid — a
+// whole-file override legitimately keeps the SAME data-testid as the core file
+// it replaces so e2e selects it identically across web and desktop.
+const DESKTOP_SHADOW = /\.desktop\.(tsx|jsx|ts)$/
+
 /**
- * Scan one-or-more source roots, deduping override files by their `@/...`
- * relative path (desktop overrides shadow core), and return a Map<id, file[]>.
+ * Scan one-or-more source roots and resolve every file to the single import
+ * "slot" it occupies, so a testid shared between a base file and the file that
+ * SHADOWS it is counted once (not flagged as a false cross-file duplicate).
+ * Returns Map<id, Set<relPath>>.
+ *
+ * Two shadow mechanisms collapse to one slot, mirroring the localOverridePlugin
+ * resolver's precedence (highest wins):
+ *   - tier 1: a desktop-tree file (`desktop/ui/src/<path>.<ext>`) shadows the
+ *     core-tree file at the same relative path — expressed here as "a LATER
+ *     srcDir outranks an earlier one".
+ *   - tier 2: a co-located core-tree `<path>.desktop.<ext>` shadows its
+ *     `<path>.<ext>` base — expressed here as "within one srcDir a `.desktop.*`
+ *     variant outranks its plain base sibling" (both normalize to the base slot).
  */
 function collectTestids(srcDirs) {
-  // relPath -> { file, root } : a later root in the list wins (desktop override
-  // shadows core), so we walk roots in order and the LAST writer keeps the slot.
-  const byRel = new Map()
-  for (const root of srcDirs) {
+  // slot(relPathWithoutDesktopInfix) -> { rel, file, rank } : the highest-rank
+  // writer keeps the slot. rank = rootIndex*2 + (isDesktopShadow ? 1 : 0), a
+  // total order that reproduces the resolver precedence above.
+  const bySlot = new Map()
+  srcDirs.forEach((root, rootIndex) => {
     for (const file of findSourceFiles(root)) {
       const rel = path.relative(root, file)
-      byRel.set(rel, file)
+      const isDesktopShadow = DESKTOP_SHADOW.test(rel)
+      // `Foo.desktop.tsx` → `Foo.tsx`: collapse a tier-2 shadow onto its base's
+      // slot so the two share one slot instead of two distinct rel-path keys.
+      const slot = isDesktopShadow ? rel.replace(DESKTOP_SHADOW, '.$1') : rel
+      const rank = rootIndex * 2 + (isDesktopShadow ? 1 : 0)
+      const existing = bySlot.get(slot)
+      if (!existing || rank >= existing.rank) {
+        bySlot.set(slot, { rel, file, rank })
+      }
     }
-  }
-  const idMap = new Map() // id -> Set<relPath> (deduped per file)
-  for (const [rel, file] of byRel.entries()) {
+  })
+  const idMap = new Map() // id -> Set<relPath> (deduped per surviving slot file)
+  for (const { rel, file } of bySlot.values()) {
     const ids = extractTestids(fs.readFileSync(file, 'utf-8'))
     for (const id of ids) {
       if (!idMap.has(id)) idMap.set(id, new Set())

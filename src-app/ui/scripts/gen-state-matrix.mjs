@@ -261,6 +261,9 @@ let signalCount = 0
 for (const sf of files) {
   const abs = sf.getFilePath()
   const base = path.basename(abs)
+  // `.desktop.tsx` co-located overrides are desktop-only (excluded from the web
+  // tsconfig/biome + the coverage walker) — not web surfaces.
+  if (/\.desktop\.tsx$/.test(base)) continue
   const { signals, panels, slots } = extractSurface(sf)
   const id = surfaceId(abs)
   for (const p of panels) allPanels.push({ ...p, surface: id })

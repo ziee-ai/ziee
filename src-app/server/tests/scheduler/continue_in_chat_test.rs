@@ -54,7 +54,7 @@ async fn task_with_a_run(server: &TestServer, token: &str, model_id: &str) -> (S
             .json()
             .await
             .unwrap();
-        if let Some(first) = runs.as_array().and_then(|a| a.first()) {
+        if let Some(first) = runs["runs"].as_array().and_then(|a| a.first()) {
             return (id, first["id"].as_str().unwrap().to_string());
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -98,6 +98,85 @@ async fn continue_creates_a_seeded_conversation() {
         StatusCode::OK,
         "the seeded conversation is fetchable by its owner"
     );
+}
+
+// TEST-44 (ITEM-42): continuing a PROMPT run seeds the new conversation with the
+// run's REAL assistant text (carried as a synthesized assistant turn, DEC-23) —
+// not a status-only placeholder.
+#[tokio::test]
+async fn continue_prompt_run_seeds_real_assistant_text() {
+    let server = TestServer::start().await;
+    let user = create_user_with_permissions(&server, "seed", &["scheduler::use"]).await;
+    let (_stub, model) = crate::chat::helpers::create_stub_model(&server, &user.user_id).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let (_task_id, run_id) = task_with_a_run(&server, &user.token, model_id).await;
+
+    let body: Value = client()
+        .post(server.api_url(&format!("/scheduled-tasks/runs/{run_id}/continue")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let conv_id = body["conversation_id"].as_str().unwrap();
+    let conv_uuid = uuid::Uuid::parse_str(conv_id).unwrap();
+
+    let history =
+        crate::chat::helpers::get_conversation_history(&server, &user.token, conv_uuid).await;
+    let dump = history.to_string();
+    // The stub model's canned reply is "Hello from stub"; it must be carried into
+    // the seed (real result), and an assistant-role message must be present.
+    assert!(
+        dump.contains("Hello from stub"),
+        "the seed carries the run's real assistant text, got: {dump}"
+    );
+    assert!(dump.contains("\"assistant\""), "the result rides an assistant turn");
+}
+
+// TEST-46 (ITEM-43): the series follow-up seeds a conversation and is owner-scoped.
+#[tokio::test]
+async fn continue_series_seeds_and_is_owner_scoped() {
+    let server = TestServer::start().await;
+    let owner = create_user_with_permissions(&server, "sowner", &["scheduler::use"]).await;
+    let other = create_user_with_permissions(&server, "sother", &["scheduler::use"]).await;
+    let (_stub, model) = crate::chat::helpers::create_stub_model(&server, &owner.user_id).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let (task_id, _run_id) = task_with_a_run(&server, &owner.token, model_id).await;
+
+    // Owner: series continue → 201 + a fetchable conversation.
+    let res = client()
+        .post(server.api_url(&format!("/scheduled-tasks/{task_id}/continue-series")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&json!({ "limit": 5 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::CREATED, "series continue creates a conversation");
+    let conv_id = res.json::<Value>().await.unwrap()["conversation_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let conv = client()
+        .get(server.api_url(&format!("/conversations/{conv_id}")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(conv.status(), StatusCode::OK, "owner can open the seeded series conversation");
+
+    // A different user cannot seed a series from someone else's task.
+    let foreign = client()
+        .post(server.api_url(&format!("/scheduled-tasks/{task_id}/continue-series")))
+        .header("Authorization", format!("Bearer {}", other.token))
+        .json(&json!({ "limit": 5 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), StatusCode::NOT_FOUND, "cross-user series → 404");
 }
 
 #[tokio::test]

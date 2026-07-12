@@ -36,6 +36,10 @@ use super::models::ScheduledTask;
 
 /// Max characters of result text embedded in a notification body.
 const NOTIF_BODY_CAP: usize = 800;
+/// Round 2 / DEC-20 (fixed UX constant): max chars of the per-run `result_preview`
+/// digest surfaced in the runs timeline (J1). Named so it can be promoted to a
+/// configurable setting later without a rewrite.
+const PREVIEW_CHARS: usize = 280;
 /// How long to wait for a target to reach a terminal state.
 const TERMINAL_WAIT: Duration = Duration::from_secs(15 * 60);
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -54,6 +58,12 @@ pub struct DispatchOutcome {
     /// Tools skipped this firing because they weren't permitted unattended
     /// (ITEM-17 / DEC-17.5). Empty for workflow runs + un-gated paths.
     pub skipped_tools: Vec<super::models::SkippedTool>,
+    /// Round 2 (ITEM-40): a short digest of the result for the runs timeline;
+    /// `None` for a failed firing (no result).
+    pub result_preview: Option<String>,
+    /// Round 2 (ITEM-40): `{ changed, new_count, new_items }` from change-detection;
+    /// `None` for a failed firing.
+    pub change_summary: Option<serde_json::Value>,
 }
 
 /// A successful target run, before change-detection/notification.
@@ -103,6 +113,29 @@ pub(super) fn skipped_tools_note(skipped: &[super::models::SkippedTool]) -> Opti
         "\n\nNote: {n} {noun} skipped (not permitted unattended): {}. Pre-authorize on the task to allow.",
         names.join(", ")
     ))
+}
+
+/// Round 2 (ITEM-40): a char-safe, single-paragraph preview of the result text for
+/// the runs timeline. `None` for an empty result. Pure + unit-tested (TEST-41).
+pub(super) fn build_result_preview(text: &str) -> Option<String> {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    Some(collapsed.chars().take(PREVIEW_CHARS).collect())
+}
+
+/// Round 2 (ITEM-40): reduce a change-detection outcome to the run's persisted
+/// `change_summary_json` — `{ changed, new_count, new_items }` (new_items capped so a
+/// huge delta can't bloat the row). Pure + unit-tested (TEST-41).
+pub(super) fn build_change_summary(outcome: &super::change::ChangeOutcome) -> serde_json::Value {
+    const NEW_ITEMS_CAP: usize = 50;
+    let items: Vec<&String> = outcome.new_items.iter().take(NEW_ITEMS_CAP).collect();
+    serde_json::json!({
+        "changed": outcome.changed,
+        "new_count": outcome.new_items.len(),
+        "new_items": items,
+    })
 }
 
 /// ITEM-9/DEC-8: transient-failure tolerance is provided by the consecutive-
@@ -398,6 +431,10 @@ async fn finalize_success(
     let sig_json = serde_json::to_value(&sig).ok();
     let fingerprint = Some(sig.fingerprint.clone());
 
+    // Round 2 (ITEM-40): persist a preview + change summary on the run for the timeline.
+    let result_preview = build_result_preview(&raw.text);
+    let change_summary = Some(build_change_summary(&outcome));
+
     // on_change + nothing changed → record success, send NO notification —
     // UNLESS tools were skipped this firing. A skipped tool means the result is
     // degraded/incomplete, so it must not be silently swallowed as "no change"
@@ -414,6 +451,8 @@ async fn finalize_success(
             fingerprint,
             signature: sig_json,
             skipped_tools: raw.skipped_tools.clone(),
+            result_preview,
+            change_summary,
         };
     }
 
@@ -463,6 +502,8 @@ async fn finalize_success(
         fingerprint,
         signature: sig_json,
         skipped_tools: raw.skipped_tools.clone(),
+        result_preview,
+        change_summary,
     }
 }
 
@@ -506,6 +547,8 @@ async fn finalize_failure(
         fingerprint: None,
         signature: None,
         skipped_tools: Vec::new(),
+        result_preview: None,
+        change_summary: None,
     }
 }
 
@@ -518,9 +561,32 @@ fn truncate(s: &str, max: usize) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use super::super::change::ChangeOutcome;
     use super::super::models::{AllowedTool, SkippedTool};
-    use super::{build_unattended_mcp_servers, skipped_tools_note};
+    use super::{build_change_summary, build_result_preview, build_unattended_mcp_servers, skipped_tools_note};
     use uuid::Uuid;
+
+    // TEST-41 (ITEM-40): the preview truncates char-safely + collapses whitespace,
+    // and the change-summary maps a ChangeOutcome → {changed,new_count,new_items}.
+    #[test]
+    fn result_preview_and_change_summary_are_built() {
+        assert_eq!(build_result_preview("   "), None, "empty/whitespace → None");
+        let p = build_result_preview("Found 3 papers.\n\n  See  10.1000/x.").unwrap();
+        assert_eq!(p, "Found 3 papers. See 10.1000/x.", "whitespace collapsed");
+        let long: String = "x".repeat(500);
+        assert_eq!(build_result_preview(&long).unwrap().chars().count(), 280, "capped at PREVIEW_CHARS");
+
+        let unchanged = build_change_summary(&ChangeOutcome { changed: false, new_items: vec![] });
+        assert_eq!(unchanged["changed"], serde_json::json!(false));
+        assert_eq!(unchanged["new_count"], serde_json::json!(0));
+        let changed = build_change_summary(&ChangeOutcome {
+            changed: true,
+            new_items: vec!["doi:10.1/a".into(), "doi:10.2/b".into()],
+        });
+        assert_eq!(changed["changed"], serde_json::json!(true));
+        assert_eq!(changed["new_count"], serde_json::json!(2));
+        assert_eq!(changed["new_items"].as_array().unwrap().len(), 2);
+    }
 
     // TEST-27/TEST-26: the unattended mcp_config attach set = allow-listed servers.
     #[test]

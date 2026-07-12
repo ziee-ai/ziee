@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CORE_MODULE_BLOCKLIST, isBlocklisted, applyBlocklist } from './loader'
+import { CORE_MODULE_BLOCKLIST, isBlocklisted, applyBlocklist } from '@/modules/loader.desktop'
 
 describe('desktop CORE_MODULE_BLOCKLIST', () => {
   it('blocklists the web server-update + user-profile modules', () => {

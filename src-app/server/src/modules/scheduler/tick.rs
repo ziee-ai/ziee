@@ -113,6 +113,8 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
                 workflow_run_id: None,
                 conversation_id: None,
                 skipped_tools: Vec::new(),
+                result_preview: None,
+                change_summary: None,
                 fired_at: now,
             };
             if let Err(e) = repository::insert_run(pool, run).await {
@@ -228,6 +230,8 @@ pub async fn fire_task(
         workflow_run_id: outcome.workflow_run_id,
         conversation_id: outcome.conversation_id,
         skipped_tools: outcome.skipped_tools.clone(),
+        result_preview: outcome.result_preview.clone(),
+        change_summary: outcome.change_summary.clone(),
         fired_at: now,
     };
     if let Err(e) = repository::insert_run(pool, run).await {

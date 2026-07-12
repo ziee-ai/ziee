@@ -1,30 +1,21 @@
 /**
- * DELIBERATE DIVERGENCE from core's SidebarHeaderSpacer.
+ * Desktop override for seam `layout.sidebar-header-spacer`.
  *
- * Core renders a plain 50px spacer. Desktop wires it to the same
- * manual `startDragging()` mousedown handler used by
- * HeaderBarContainer — the spacer has no children, so a click here
- * is unambiguously a "drag the window" gesture (no buttons /
- * controls to compete with).
- *
- * Double-click toggles maximize, matching macOS titlebar behavior.
- *
- * Auto-detection via `data-tauri-drag-region` also works here
- * (immediate-target check passes since there are no children to
- * cover the spacer), but routing through the same manual API keeps
- * drag behavior consistent and trivially extensible (e.g., if we
- * ever overlay a control on this spacer, the INTERACTIVE_SEL
- * exemption already in the handler will protect it).
+ * Core renders a plain 50px spacer; the desktop wires it to the same manual
+ * `startDragging()` mousedown used by HeaderBarContainer — the spacer has no
+ * children, so a click here is unambiguously a "drag the window" gesture.
+ * Double-click toggles maximize (macOS titlebar behavior). The
+ * `INTERACTIVE_SEL` exemption future-proofs against overlaid controls.
  */
-
 import { useCallback } from 'react'
+import { registerOverride } from '@/core/overrides'
 import { isTauriView, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const INTERACTIVE_SEL =
   'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"]'
 
-export function SidebarHeaderSpacer() {
+function DesktopSidebarHeaderSpacer() {
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
@@ -57,4 +48,8 @@ export function SidebarHeaderSpacer() {
       onDoubleClick={handleDoubleClick}
     />
   )
+}
+
+export function register(): void {
+  registerOverride('layout.sidebar-header-spacer', DesktopSidebarHeaderSpacer)
 }

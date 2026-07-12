@@ -8,9 +8,13 @@ import {
   useVoiceConfigStore,
   useVoiceDownloadProgressStore,
   useVoiceInstanceStore,
+  useVoiceModelDownloadProgressStore,
   useVoiceModelStore,
+  useVoiceModelUpdateStore,
+  useVoiceModelUploadStore,
   useVoiceRuntimeVersionStore,
   useVoiceUpdateStore,
+  useVoiceUploadModelDrawerStore,
 } from './stores'
 import './types' // CRITICAL: enable store type declaration merging
 
@@ -44,6 +48,13 @@ export default createModule({
     { name: 'VoiceDownloadProgress', store: useVoiceDownloadProgressStore },
     { name: 'VoiceConfig', store: useVoiceConfigStore },
     { name: 'VoiceModel', store: useVoiceModelStore },
+    { name: 'VoiceModelUpdate', store: useVoiceModelUpdateStore },
+    {
+      name: 'VoiceModelDownloadProgress',
+      store: useVoiceModelDownloadProgressStore,
+    },
+    { name: 'VoiceModelUpload', store: useVoiceModelUploadStore },
+    { name: 'VoiceUploadModelDrawer', store: useVoiceUploadModelDrawerStore },
     { name: 'VoiceInstance', store: useVoiceInstanceStore },
   ],
   slots: {

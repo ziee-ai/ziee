@@ -126,6 +126,21 @@ skips them ships as a defect):
   index, fetch) must show the live status the user expects (%, thumbnails, index
   state, itemized errors), answering "what does the user want to SEE and DO
   here?" — a silent boolean spinner is a defect.
+- **Input economy** — never make the user type what the system can supply or pick.
+  Auto-detect client-known values (timezone via `Intl…`, locale) and show them
+  read-only, never as an input. Collect a structured value via a form generated
+  from the target's declared schema (one typed field per input), NEVER a raw-JSON
+  textarea (last-resort fallback only). Offer multi-select where a field naturally
+  takes multiple values (e.g. days-of-week), not single-select. (Entity references
+  → pickers is already covered above.)
+- **JTBD design (mandatory deliverable)** — write an explicit **jobs-to-be-done /
+  user-experience design** stating what a real human wants to DO with this feature,
+  enumerated across EVERY surface it exposes (list, detail, drawer/form,
+  notifications, thread/conversation, empty/error/loading, mobile). Reconcile each
+  surface against it before implementing. A code-mechanism description is NOT a UX
+  design. This feeds the checklist above; it is what caught a feature shipping a
+  bare `timestamp — status` row where the user actually wanted an evolving,
+  followable result stream.
 
 **P3 — conflict-surface scoping (BASE.md).** Also write a short
 `.lifecycle/<feature>/BASE.md` recording what CURRENT main touches that this
@@ -222,6 +237,14 @@ by existing convention and record the rationale; batch anything genuinely
 ambiguous into ONE `AskUserQuestion` at plan time. **Zero** `TBD`/`TODO`/`ASK`/
 `???` markers may remain (the gate greps for them).
 
+**Enumerate the full option space, and escalate genuine product choices as
+pickers.** Exhaustively list every decision the feature requires (surfaces,
+defaults, behaviors, tunables). Resolve by convention ONLY those with an
+unambiguous codebase precedent. For any decision that is a genuine product/human
+choice about WHAT to build or modify, present it as an explicit `AskUserQuestion`
+**option picker** for the human to choose — never silently pick a default and
+proceed, and never a bare "I recommend X, proceeding." Give the human the options.
+
 ```
 ### DEC-1: How is the search matched — prefix or substring?
 **Resolution:** case-insensitive substring (ILIKE '%q%')
@@ -249,6 +272,16 @@ validation in TESTS.md when configurable.
 Gate: `--phase 4`.
 
 ## Phase 5 — Implement + drift loop
+
+**Two mandatory walks per item, before/while implementing it** (record findings
+in an `INFRA_INTEGRATION.md` artifact): (1) a **user-experience walk** — how does a
+real user actually encounter, trigger, and live with this item end-to-end? (2) an
+**infrastructure-integration walk** — enumerate EVERY existing subsystem the item
+touches (chat pipeline, MCP tool-call + approval flow, permissions, notifications,
+sync, streaming, workflow runner, settings, …) and, for each, check whether it has
+specific behaviors/constraints that must be handled, not assumed. This is what
+surfaced the unattended-tool-approval gap that drove a safe-default policy rather
+than a silent security hole.
 
 Implement all items (only `cargo check` / `tsc` mid-flight; don't run the full
 suites yet — [[feedback_finish_all_before_testing]]). Then audit
@@ -515,6 +548,30 @@ or wasted many sessions.
   average — a high load average with idle CPU is fine. "Blocked" requires a
   SPECIFIC error (a port bind failure, a docker daemon down, a compile error),
   never a resource metric.
+- **B6 — a gate must survive the merge strip.** If your feature ADDS a check to
+  `npm run check` / CI / the build, that check must read its config /
+  source-of-truth from a PERMANENT committed path (a product-tree file), NEVER
+  from a `.lifecycle/` artifact — `.lifecycle/` is stripped at merge, so a gate
+  that reads it passes in your worktree and then fails `npm run check`
+  PERMANENTLY on main. Verify any new gate against a lifecycle-stripped tree
+  (temporarily move `.lifecycle/` aside, re-run the gate, confirm it still
+  passes) before declaring done. (Caught on the desktop-override gate, which
+  read its approval list from `.lifecycle/…/DECISIONS.md`.)
+- **B7 — verification means RUNNING it, never reading the code.** "I determined
+  this behaves correctly by reading the code" is a GUESS, not verification, and it
+  is a recurring miss. Every behavioral claim must be proven by a test that
+  actually EXERCISES the behavior. For UI/render behavior specifically: mount the
+  route/component and assert the DOM (e.g. "the pop-out route renders NO sidebar/
+  app-nav and DOES render the ConversationPane") — a mocked unit that covers the
+  window-API mechanics does NOT cover what actually renders. No item ships with
+  "0 tests" or a read-and-assert stand-in; the FB-7 coverage for a render/behavior
+  item must be a test that genuinely runs it.
+- **B8 — do not stop to ask about IMPLEMENTATION approach.** You are authorized to
+  implement. Once you have worked out the right approach, DO it and keep going —
+  never pause on "want me to start there?" / "should I proceed?". The only things
+  you escalate to the human are genuine PRODUCT choices about what the feature
+  should DO, surfaced as explicit option pickers (the Phase-4 rule). Implementation
+  decisions are resolved by precedent/convention and executed, not asked.
 - **B3 — never edit the SHARED test harness to route around YOUR feature's
   problem.** `tests/common/*`, the gallery cassette, `playwright.*.config`, the
   build DB helper are shared infrastructure. If your test needs them changed,

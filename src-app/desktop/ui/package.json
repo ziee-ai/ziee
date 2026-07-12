@@ -55,7 +55,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field && npm run lint:adjacent-inline && npm run lint:icon-action && npm run lint:logical-direction && npm run lint:tooltip-placement && npm run check:kit-manifest && npm run check:testid-registry && npm run check:design-spec && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix && npm run check:overlay-registry",
+    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field && npm run lint:adjacent-inline && npm run lint:icon-action && npm run lint:logical-direction && npm run lint:tooltip-placement && npm run check:kit-manifest && npm run check:testid-registry && npm run check:design-spec && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix && npm run check:overlay-registry && npm run check:override-registry",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "lint:colors": "node ../../ui/scripts/lint-hardcoded-colors.mjs",
     "lint:settings-field": "node ../../ui/scripts/lint-settings-field.mjs",
@@ -65,6 +65,7 @@
     "lint:tooltip-placement": "node ../../ui/scripts/lint-tooltip-placement.mjs",
     "check:kit-manifest": "node ../../ui/scripts/gen-kit-manifest.mjs --check",
     "check:testid-registry": "node ../../ui/scripts/gen-testid-registry.mjs --check",
+    "check:override-registry": "node ../../ui/scripts/gen-override-registry.mjs --check",
     "check:design-spec": "node ../../ui/scripts/gen-design-spec.mjs --check",
     "gallery:geometry": "node scripts/gallery-geometry-audit.mjs",
     "gallery:geometry:gate": "node scripts/gallery-geometry-audit.mjs --gate",

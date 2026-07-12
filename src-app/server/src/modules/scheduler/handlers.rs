@@ -3,8 +3,9 @@
 //! admin endpoints require `scheduler::admin::{read,manage}`.
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{Json, debug_handler, extract::{Path, Query}, http::StatusCode};
 use chrono::Utc;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::common::{ApiResult, AppError};
@@ -14,7 +15,7 @@ use crate::modules::sync::{SyncAction, SyncOrigin};
 
 use super::events::{emit_admin_settings, emit_task};
 use super::models::{
-    CreateScheduledTask, ScheduledTask, ScheduledTaskRun, UpdateScheduledTask, MAX_NAME_LEN,
+    CreateScheduledTask, RunsPage, ScheduledTask, UpdateScheduledTask, MAX_NAME_LEN,
     MAX_PROMPT_LEN,
 };
 use super::continue_chat::{self, ContinueResult};
@@ -440,20 +441,84 @@ pub fn run_now_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// GET /api/scheduled-tasks/{id}/runs — the task's firing history (Runs tab).
+/// Query params for the paged runs list (ITEM-41). Defaults mirror the
+/// `RUNS_PAGE_SIZE` UX constant (DEC-20).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RunsPageParams {
+    #[serde(default = "default_runs_page")]
+    pub page: i64,
+    #[serde(default = "default_runs_per_page")]
+    pub per_page: i64,
+}
+fn default_runs_page() -> i64 {
+    1
+}
+fn default_runs_per_page() -> i64 {
+    10
+}
+
 #[debug_handler]
 pub async fn list_task_runs(
     auth: RequirePermissions<(SchedulerUse,)>,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<Vec<ScheduledTaskRun>>> {
-    let runs = repository::list_runs_for_task(Repos.pool(), auth.user.id, id, 100).await?;
-    Ok((StatusCode::OK, Json(runs)))
+    Query(params): Query<RunsPageParams>,
+) -> ApiResult<Json<RunsPage>> {
+    let page = params.page.max(1);
+    let (runs, total) =
+        repository::list_runs_for_task(Repos.pool(), auth.user.id, id, page, params.per_page)
+            .await?;
+    Ok((
+        StatusCode::OK,
+        Json(RunsPage {
+            runs,
+            total,
+            page,
+            per_page: params.per_page.clamp(1, 200),
+        }),
+    ))
 }
 
 pub fn list_task_runs_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
         .id("ScheduledTask.listRuns")
-        .summary("List a scheduled task's run history")
-        .response::<200, Json<Vec<ScheduledTaskRun>>>()
+        .summary("List a scheduled task's run history (paged)")
+        .response::<200, Json<RunsPage>>()
+}
+
+/// Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the
+/// number of most-recent runs to fold into the seeded discussion (chooser
+/// {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client
+/// puts non-path args of a POST in the body, not the query).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ContinueSeriesBody {
+    #[serde(default = "default_series_limit")]
+    pub limit: i64,
+}
+fn default_series_limit() -> i64 {
+    5
+}
+
+/// POST /api/scheduled-tasks/{id}/continue-series — open a NEW conversation
+/// seeded with the last N runs' results + deltas so the user can ask
+/// series-level questions ("compare this week to last") (ITEM-43, J5).
+/// Owner-scoped (foreign task → 404).
+#[debug_handler]
+pub async fn continue_series(
+    auth: RequirePermissions<(SchedulerUse,)>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ContinueSeriesBody>,
+) -> ApiResult<Json<ContinueResult>> {
+    let conversation_id =
+        continue_chat::continue_series_in_chat(Repos.pool(), auth.user.id, id, body.limit).await?;
+    Ok((StatusCode::CREATED, Json(ContinueResult { conversation_id })))
+}
+
+pub fn continue_series_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(SchedulerUse,)>(op)
+        .id("ScheduledTask.continueSeries")
+        .summary("Discuss a scheduled task's recent runs in a new chat")
+        .description("Opens a new conversation seeded with the last N runs' results and deltas.")
+        .response::<201, Json<ContinueResult>>()
 }
 
 /// POST /api/scheduled-tasks/runs/{run_id}/continue — open a NEW conversation
