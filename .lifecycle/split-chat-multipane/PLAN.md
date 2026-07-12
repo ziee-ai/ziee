@@ -465,6 +465,34 @@ per-pane CORRECTNESS fixes of existing surfaces, so the Phase-1 UI-surface check
   TEST-76/77 (unit, both pending keys) + TEST-78 (e2e, pending selection in new-chat
   pane A absent from new-chat pane B). Resolves FB-11.
 
+## Round 6 — desktop pop-out UX (FB-12)
+
+- **ITEM-52**: Desktop pop-out renders the CHAT INTERFACE ONLY (not a whole second
+  app). Add a dedicated route `/chat-window/:conversationId` with NO `layout` (the
+  router renders a layout-less route bare — `route.layout || null`), element
+  `ConversationPage`, so the popped-out conversation shows header + messages +
+  composer WITHOUT the app shell (`app-sidebar`/nav). The desktop override
+  `openConversationWindow.desktop.ts` opens THIS route (was `/chat/:id`); web keeps
+  `/chat/:id` (whole app) since the browser tab already covers the focused case.
+  Covered by TEST-79 (e2e — real render: shell absent + ConversationPage present)
+  + TEST-75 updated (desktop override opens `/chat-window/:id`).
+- **ITEM-53**: Dedup-focus FROM the main window. When the user opens a conversation
+  in the MAIN window that is already live in a pop-out window, focus the existing
+  native window instead of opening it inline. A pure `shouldFocusExistingWindow`
+  decision + a desktop seam (`focusConversationWindowIfOpen(id)` checking
+  `WebviewWindow.getByLabel('chat-<id>')` → unminimize+setFocus, returns whether it
+  handled it) wired into the open-conversation path so it aborts the inline open.
+  Covered by TEST-80 (unit — decision + seam control-flow with the Tauri boundary
+  mocked: existing window → focus + handled=true → inline open skipped).
+- **ITEM-54**: Snap-back-as-pane on window CLOSE. Closing a pop-out window returns
+  its conversation to the main window as a pane (reverse of the pop-out-MOVES-out at
+  `OpenInNewWindowAction`). The pop-out window registers a Tauri close listener that
+  emits a cross-window `popout-closed` event with its conversationId; the main
+  window listens and calls `SplitView.openPane({ conversationId })` (bounded by
+  MAX_PANES). Pure `planSnapBack(conversationId, panes)` decision + the desktop
+  wiring. Covered by TEST-81 (unit — planSnapBack: a closed pop-out's conversation
+  becomes a pane; already-open/at-cap handled).
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

@@ -44,7 +44,11 @@ export async function openConversationWindow(
     }
 
     const win = new WebviewWindow(label, {
-      url: `/chat/${conversationId}`,
+      // The dedicated CHAT-ONLY route (FB-12 / ITEM-52) — a layout-less route so
+      // the native pop-out window shows just the conversation (header + messages +
+      // composer), NOT a whole second app (no LeftSidebar / nav). Web pop-out keeps
+      // /chat/:id (the browser tab already covers the focused case).
+      url: `/chat-window/${conversationId}`,
       title: opts?.title ?? 'Conversation',
       width: 900,
       height: 720,

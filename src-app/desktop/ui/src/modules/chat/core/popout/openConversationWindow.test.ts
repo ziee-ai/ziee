@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // TEST-P5 (split-chat pop-out, desktop override, ITEM-P1/P4): on the Tauri
 // desktop, opening a conversation in a new window spawns a NATIVE `WebviewWindow`
-// labelled `chat-<id>` at `/chat/<id>`; reopening the same id focuses the
+// labelled `chat-<id>` at the CHAT-ONLY `/chat-window/<id>` route (ITEM-52);
+// reopening the same id focuses the
 // existing labelled window instead of duplicating (the same dedup contract as the
 // web window-name). Re-scoped from a Tauri-GUI e2e (which needs a display) to a
 // unit of the desktop override — the window-API contract is exactly what this
@@ -41,11 +42,11 @@ beforeEach(() => {
 })
 
 describe('desktop openConversationWindow (TEST-P5)', () => {
-  it('opens a native WebviewWindow labelled chat-<id> at /chat/<id> when none exists', async () => {
+  it('opens a native WebviewWindow labelled chat-<id> at /chat-window/<id> when none exists', async () => {
     await openConversationWindow('c1', { title: 'My Chat' })
     expect(h.ctorCalls).toHaveLength(1)
     expect(h.ctorCalls[0].label).toBe('chat-c1')
-    expect(h.ctorCalls[0].options.url).toBe('/chat/c1')
+    expect(h.ctorCalls[0].options.url).toBe('/chat-window/c1')
     expect(h.ctorCalls[0].options.title).toBe('My Chat')
     expect(h.ctorCalls[0].options.resizable).toBe(true)
   })

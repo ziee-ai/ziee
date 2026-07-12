@@ -69,6 +69,16 @@ export default createModule({
       layout: AppLayoutDef,
     },
     {
+      // Desktop pop-out target (FB-12 / ITEM-52): a native WebviewWindow loads THIS
+      // route, which has NO `layout` — so `ConversationPage` renders WITHOUT the app
+      // shell (no LeftSidebar / nav), i.e. the chat interface only, not a whole
+      // second app. Same `:conversationId` param name so ConversationPage's
+      // `useParams()` is unchanged. Web pop-out keeps /chat/:id (the whole app).
+      path: '/chat-window/:conversationId',
+      element: ConversationPage,
+      requiresAuth: true,
+    },
+    {
       path: '/chats',
       element: ChatHistoryPage,
       requiresAuth: true,
