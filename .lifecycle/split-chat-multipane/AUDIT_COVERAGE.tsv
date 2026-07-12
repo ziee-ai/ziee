@@ -76,11 +76,11 @@ src-app/ui/src/modules/file/chat-extension/components/InlineFilePreview.tsx	1	35
 src-app/ui/src/modules/file/chat-extension/extension.tsx	1	438	correctness,state-management,error-handling
 src-app/ui/src/modules/file/stores/File.store.ts	1	1214	correctness,state-management,error-handling
 src-app/ui/src/modules/knowledge-base/chat-extension/components/SearchKnowledgeToolResultCard.tsx	1	120	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/knowledge-base/chat-extension/extension.tsx	1	109	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/knowledge-base/chat-extension/extension.tsx	1	142	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/literature/components/LiteratureScreeningPanel.tsx	1	293	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/literature/components/LiteratureToolResultCard.tsx	1	97	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent.tsx	1	245	correctness,security,state-management
-src-app/ui/src/modules/mcp/chat-extension/extension.tsx	1	1211	correctness,security,state-management
+src-app/ui/src/modules/mcp/chat-extension/extension.tsx	1	1222	correctness,security,state-management
 src-app/ui/src/modules/mcp/stores/McpComposer.store.ts	1	1207	correctness,security,state-management
 src-app/ui/src/modules/mcp/stores/approvalRouting.test.ts	1	55	tests-quality,correctness,api-contract
 src-app/ui/src/modules/mcp/stores/approvalRouting.ts	1	47	correctness,security,state-management
@@ -140,10 +140,12 @@ src-app/ui/src/modules/knowledge-base/chat-extension/components/KbSourcePanel.ts
 src-app/ui/src/modules/knowledge-base/chat-extension/components/KbStatusRow.tsx	1	82	correctness,state-management,react-hooks
 src-app/ui/src/modules/knowledge-base/stores/kbSelectionKey.test.ts	1	39	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/knowledge-base/stores/kbSelectionKey.ts	1	31	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/knowledge-base/stores/KnowledgeBaseComposer.store.ts	1	137	correctness,state-management,concurrency,patterns-conformance
+src-app/ui/src/modules/knowledge-base/stores/KnowledgeBaseComposer.store.ts	1	149	correctness,state-management,concurrency,patterns-conformance
 src-app/ui/src/modules/mcp/chat-extension/components/McpMenuItem.tsx	1	54	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/mcp/chat-extension/components/McpStatusRow.tsx	1	83	correctness,state-management,react-hooks
 src-app/ui/tests/e2e/14-split-chat/kb-grounding-per-pane.spec.ts	1	78	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/kb-highlight-per-pane.spec.ts	1	129	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/mcp-grounding-per-pane.spec.ts	1	104	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/voice-per-pane.spec.ts	1	83	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/mcp/components/McpConfigModal.tsx	1	585	correctness,state-management,patterns-conformance
+src-app/ui/tests/e2e/14-split-chat/pending-selection-per-pane.spec.ts	1	120	tests-quality,test-coverage,correctness
