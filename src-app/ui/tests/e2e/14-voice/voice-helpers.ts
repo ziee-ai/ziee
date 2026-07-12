@@ -3,9 +3,14 @@ import type {
   AvailableUpdatesResponse2,
   DownloadSnapshot2,
   RuntimeVersionResponse2,
+  SnapshotDto,
   TranscriptionResponse,
   VoiceCapability,
+  VoiceCatalogModel,
+  VoiceCatalogResponse,
   VoiceInstanceInfo,
+  VoiceLogsResponse,
+  VoiceModel,
   VoiceModelStatus,
   VoiceSettings,
 } from '../../../src/api-client/types'
@@ -64,7 +69,10 @@ export async function installVoiceBrowserMocks(
         // "Unsupported browser" posture: strip the capture APIs so
         // isRecordingSupported() is false and the mic hides.
         try {
-          const md = navigator.mediaDevices as unknown as Record<string, unknown>
+          const md = navigator.mediaDevices as unknown as Record<
+            string,
+            unknown
+          >
           if (md) md.getUserMedia = undefined
         } catch {
           /* ignore */
@@ -89,7 +97,8 @@ export async function installVoiceBrowserMocks(
         const buffer = new ArrayBuffer(44 + numSamples * 2)
         const view = new DataView(buffer)
         const w = (o: number, s: string) => {
-          for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i))
+          for (let i = 0; i < s.length; i++)
+            view.setUint8(o + i, s.charCodeAt(i))
         }
         w(0, 'RIFF')
         view.setUint32(4, 36 + numSamples * 2, true)
@@ -135,7 +144,8 @@ export async function installVoiceBrowserMocks(
           }
         }
         requestData() {
-          if (this.ondataavailable) this.ondataavailable({ data: makeWavBlob() })
+          if (this.ondataavailable)
+            this.ondataavailable({ data: makeWavBlob() })
         }
         stop() {
           if (this._sliceTimer) {
@@ -147,13 +157,22 @@ export async function installVoiceBrowserMocks(
             return
           }
           this.state = 'inactive'
-          if (this.ondataavailable) this.ondataavailable({ data: makeWavBlob() })
+          if (this.ondataavailable)
+            this.ondataavailable({ data: makeWavBlob() })
           if (this.onstop) this.onstop()
         }
-        pause() {}
-        resume() {}
-        addEventListener() {}
-        removeEventListener() {}
+        pause() {
+          /* noop */
+        }
+        resume() {
+          /* noop */
+        }
+        addEventListener() {
+          /* noop */
+        }
+        removeEventListener() {
+          /* noop */
+        }
         static isTypeSupported() {
           return true
         }
@@ -177,13 +196,22 @@ export async function installVoiceBrowserMocks(
         return {
           getTracks: () => [
             {
-              stop() {},
+              stop() {
+                /* noop */
+              },
               kind: 'audio',
               enabled: true,
               readyState: 'live',
             },
           ],
-          getAudioTracks: () => [{ stop() {}, kind: 'audio' }],
+          getAudioTracks: () => [
+            {
+              stop() {
+                /* noop */
+              },
+              kind: 'audio',
+            },
+          ],
         }
       }
 
@@ -230,6 +258,15 @@ export interface VoiceApiState {
   streamTranscribe: TranscriptionResponse
   /** How many times POST /transcribe/stream was called. */
   streamCount: number
+  // ── whisper-model management (download / upload / activate / delete) ─────────
+  /** Installed model library (GET /models). */
+  models: VoiceModel[]
+  /** Downloadable catalog (GET /models/catalog). */
+  catalog: VoiceCatalogResponse
+  /** In-flight/terminal model download snapshots (GET /models/downloads). */
+  modelDownloads: SnapshotDto[]
+  /** Captured whisper-server log lines (GET /instance/logs). */
+  instanceLogs: VoiceLogsResponse
 }
 
 export interface VoiceRouteController {
@@ -258,6 +295,67 @@ function mkVersion(
   }
 }
 
+/** Build a downloadable catalog model entry. */
+export function mkCatalogModel(
+  name: string,
+  over: Partial<VoiceCatalogModel> = {},
+): VoiceCatalogModel {
+  return {
+    name,
+    filename: `ggml-${name}.bin`,
+    english_only: name.endsWith('.en'),
+    installed: false,
+    quantization: undefined,
+    sha256: 'a'.repeat(64),
+    size_bytes: 100 * 1024 * 1024,
+    ...over,
+  }
+}
+
+/** Build an installed model-library row. */
+export function mkVoiceModel(
+  name: string,
+  over: Partial<VoiceModel> = {},
+): VoiceModel {
+  return {
+    id: `model-${name}`,
+    name,
+    filename: `ggml-${name}.bin`,
+    is_active: false,
+    size_bytes: 100 * 1024 * 1024,
+    source: 'catalog',
+    source_url: undefined,
+    sha256: 'a'.repeat(64),
+    update_available: false,
+    verified: true,
+    created_at: now(),
+    ...over,
+  }
+}
+
+/** A 12-entry catalog so the Available card paginates (PAGE_SIZE = 10). */
+export function bigCatalog(): VoiceCatalogResponse {
+  const names = [
+    'tiny',
+    'tiny.en',
+    'base',
+    'base.en',
+    'small',
+    'small.en',
+    'medium',
+    'medium.en',
+    'large-v1',
+    'large-v2',
+    'large-v3',
+    'large-v3-turbo',
+  ]
+  return {
+    models: names.map(n => mkCatalogModel(n)),
+    source_reachable: true,
+    source_repo: 'ggerganov/whisper.cpp',
+  }
+}
+
 export function readyCapability(
   over: Partial<VoiceCapability> = {},
 ): VoiceCapability {
@@ -282,6 +380,7 @@ export function defaultVoiceState(
     settings: {
       enabled: true,
       model: 'base',
+      model_source_repo: 'ggerganov/whisper.cpp',
       language: 'auto',
       streaming_enabled: true,
       stream_interval_ms: 1000,
@@ -323,7 +422,11 @@ export function defaultVoiceState(
       ],
     },
     downloads: [],
-    modelStatus: { model: 'base', present: true, size_bytes: 147 * 1024 * 1024 },
+    modelStatus: {
+      model: 'base',
+      present: true,
+      size_bytes: 147 * 1024 * 1024,
+    },
     instance: {
       status: 'running',
       state: 'healthy',
@@ -344,8 +447,28 @@ export function defaultVoiceState(
       duration_ms: 120,
     },
     streamCount: 0,
+    models: [],
+    catalog: bigCatalog(),
+    modelDownloads: [],
+    instanceLogs: {
+      lines: [
+        'whisper_init_from_file_with_params_no_state: loading model',
+        'whisper_model_load: model ctx = 147.00 MB',
+        'main: processing 16000 samples, 1.0 sec',
+      ],
+    },
     ...over,
   }
+}
+
+/** Pull a text field value out of a multipart/form-data body (best-effort). */
+function multipartField(body: string, field: string): string | undefined {
+  const re = new RegExp(
+    `name="${field}"\\r?\\n\\r?\\n([\\s\\S]*?)\\r?\\n--`,
+    'i',
+  )
+  const m = body.match(re)
+  return m ? m[1].trim() : undefined
 }
 
 async function fulfillJson(route: Route, body: unknown, status = 200) {
@@ -379,13 +502,56 @@ export async function routeVoice(
     if (method === 'GET') {
       if (seg === 'capability') return fulfillJson(route, state.capability)
       if (seg === 'settings') return fulfillJson(route, state.settings)
-      if (seg === 'versions') return fulfillJson(route, { versions: state.versions })
+      if (seg === 'versions')
+        return fulfillJson(route, { versions: state.versions })
       if (seg === 'versions/check-updates')
         return fulfillJson(route, state.updateCheck)
       if (seg === 'versions/downloads')
         return fulfillJson(route, { downloads: state.downloads })
       if (seg === 'model/status') return fulfillJson(route, state.modelStatus)
       if (seg === 'instance') return fulfillJson(route, state.instance)
+      if (seg === 'instance/logs') return fulfillJson(route, state.instanceLogs)
+      // ── whisper-model management GETs ────────────────────────────────────
+      if (seg === 'models') return fulfillJson(route, state.models)
+      if (seg === 'models/catalog') return fulfillJson(route, state.catalog)
+      if (seg === 'models/downloads')
+        return fulfillJson(route, state.modelDownloads)
+      // Model download SSE: connected → progress(50%) → complete. On complete
+      // the model is reflected as installed + the catalog entry flips, so the
+      // store's loadInstalled()/checkForUpdates() reload shows it.
+      const modelEv = seg.match(/^models\/downloads\/([^/]+)\/events$/)
+      if (modelEv) {
+        const key = decodeURIComponent(modelEv[1])
+        // key shape is `model@<name>` (see the POST below).
+        const name = key.split('@')[1] ?? key
+        const modelId = `model-${name}`
+        if (!state.models.some(m => m.name === name)) {
+          state.models = [...state.models, mkVoiceModel(name, { id: modelId })]
+        }
+        state.catalog = {
+          ...state.catalog,
+          models: state.catalog.models.map(m =>
+            m.name === name ? { ...m, installed: true } : m,
+          ),
+        }
+        const body =
+          `event: connected\ndata: ${JSON.stringify({ key })}\n\n` +
+          `event: progress\ndata: ${JSON.stringify({
+            status: 'downloading',
+            bytes_received: 524288,
+            total_bytes: 1048576,
+            percent: 50,
+          })}\n\n` +
+          `event: complete\ndata: ${JSON.stringify({
+            model_id: modelId,
+            bytes_downloaded: 1048576,
+          })}\n\n`
+        return route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body,
+        })
+      }
       // SSE download-events stream: connected → progress(50%) → complete.
       const evMatch = seg.match(/^versions\/downloads\/([^/]+)\/events$/)
       if (evMatch) {
@@ -454,6 +620,79 @@ export async function routeVoice(
         size_bytes: state.modelStatus.size_bytes ?? 147 * 1024 * 1024,
       }
       return fulfillJson(route, state.modelStatus)
+    }
+
+    // ── whisper-model management mutations ──────────────────────────────────
+    // Start a catalog/URL model download → returns the started snapshot; the
+    // store subscribes to the events_url SSE (handled in the GET block).
+    if (seg === 'models/download' && method === 'POST') {
+      let body: Record<string, unknown> = {}
+      try {
+        body = JSON.parse(request.postData() || '{}')
+      } catch {
+        /* ignore */
+      }
+      const name = (body.name as string) || 'large-v3'
+      const key = `model@${name}`
+      const snap: SnapshotDto = {
+        task_id: `model-task-${name}`,
+        key,
+        name,
+        status: 'downloading',
+        bytes_received: 0,
+        total_bytes: 1048576,
+      }
+      state.modelDownloads = [
+        ...state.modelDownloads.filter(d => d.key !== key),
+        snap,
+      ]
+      return fulfillJson(route, {
+        task_id: snap.task_id,
+        key,
+        name,
+        events_url: `/api/voice/models/downloads/${encodeURIComponent(key)}/events`,
+      })
+    }
+
+    // Cancel an in-flight model download.
+    const cancelModel = seg.match(/^models\/downloads\/([^/]+)\/cancel$/)
+    if (cancelModel && method === 'POST') {
+      const key = decodeURIComponent(cancelModel[1])
+      state.modelDownloads = state.modelDownloads.filter(d => d.key !== key)
+      return fulfillJson(route, {})
+    }
+
+    // Multipart model upload. Deliberately DELAYED so the drawer's progress
+    // card is observable before the response resolves; on success the uploaded
+    // model (source=upload, unverified) joins the installed library.
+    if (seg === 'models/upload' && method === 'POST') {
+      const raw = request.postData() || ''
+      const name = multipartField(raw, 'name') || 'uploaded-model'
+      const model = mkVoiceModel(name, {
+        id: `model-upload-${name}`,
+        source: 'upload',
+        verified: false,
+        sha256: undefined,
+      })
+      state.models = [...state.models, model]
+      // Hold the response so the drawer's in-progress card is observable.
+      await new Promise(r => setTimeout(r, 1200))
+      return fulfillJson(route, model)
+    }
+
+    const activate = seg.match(/^models\/([^/]+)\/activate$/)
+    if (activate && method === 'POST') {
+      const id = decodeURIComponent(activate[1])
+      state.models = state.models.map(m => ({ ...m, is_active: m.id === id }))
+      const target = state.models.find(m => m.id === id)
+      return fulfillJson(route, target ?? {})
+    }
+
+    const delModel = seg.match(/^models\/([^/]+)$/)
+    if (delModel && method === 'DELETE') {
+      const id = decodeURIComponent(delModel[1])
+      state.models = state.models.filter(m => m.id !== id)
+      return route.fulfill({ status: 204, body: '' })
     }
 
     if (seg === 'versions/download' && method === 'POST') {

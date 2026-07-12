@@ -23,7 +23,6 @@ export const STATE_COVERAGE = {
   "modules/host-mount/conversation-extension/components/ConversationMountsControl:open": { skip: true, reason: "static surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/host-mount/project-extension/components/ProjectMountsPanel:delayed": { skip: true, reason: "via surface — rendered within its page; 'delayed' branch proven by Part 2 runtime coverage" },
   "modules/host-mount/project-extension/components/ProjectMountsPanel:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
-  "modules/layouts/app-layout/components/Drawer:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/remote-access/pages/RemoteAccessPage:delayed": { via: 'page-state-mode' },
   "modules/remote-access/pages/RemoteAccessPage:error": { via: 'page-state-mode' },
   "modules/updater/components/UpdateBanner:error": { skip: true, reason: "via surface — rendered within its page; 'error' branch proven by Part 2 runtime coverage" },

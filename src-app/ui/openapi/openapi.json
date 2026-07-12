@@ -7707,6 +7707,56 @@
         ]
       }
     },
+    "/api/voice/versions/downloads/{key}": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Poll a single whisper runtime-version download snapshot",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getVersionDownload",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One entry returned by `GET /voice/versions/downloads`. Lists every download\n task currently held by the in-process registry (running OR\n terminal-but-not-replaced).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadSnapshot2"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/voice/versions/downloads/{key}/events": {
       "get": {
         "tags": [
@@ -7760,6 +7810,54 @@
       }
     },
     "/api/voice/versions/{id}": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Read a single whisper runtime version",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Whisper runtime version database entity (`voice_runtime_versions`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVersion"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
       "delete": {
         "tags": [
           "Voice"
@@ -8021,6 +8119,114 @@
         ]
       }
     },
+    "/api/voice/instance/logs": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Recent whisper-server log lines",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getInstanceLogs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lines",
+            "description": "How many trailing lines to return (default 200, capped at 1000).",
+            "schema": {
+              "description": "How many trailing lines to return (default 200, capped at 1000).",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "default": null,
+              "minimum": 0
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Recent captured whisper-server stdout/stderr (ring buffer). F8/ITEM-30.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceLogsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/instance/logs/stream": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "SSE stream of whisper-server logs",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.streamInstanceLogs",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/voice/model/status": {
       "get": {
         "tags": [
@@ -8071,16 +8277,119 @@
         ]
       }
     },
-    "/api/voice/model/download": {
+    "/api/voice/models": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "List installed whisper models",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.listModels",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VoiceModel"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/catalog": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "List downloadable whisper models from the configured source",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.listModelCatalog",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The catalog list response (+ a source-reachability signal for graceful degrade).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCatalogResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/download": {
       "post": {
         "tags": [
           "Voice"
         ],
-        "summary": "Download the configured (or a specified) whisper ggml model",
+        "summary": "Start a whisper model download (catalog / HF repo / URL)",
         "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
         "operationId": "Voice.downloadModel",
         "requestBody": {
-          "description": "Optional body for the model download endpoint. Absent `model` → the\n currently-configured settings model.",
+          "description": "POST body to start a model download.",
           "content": {
             "application/json": {
               "schema": {
@@ -8115,14 +8424,367 @@
             }
           },
           "200": {
-            "description": "Readiness of the configured (or a requested) ggml model on disk.",
+            "description": "Response echoing a started download + where to subscribe for progress.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VoiceModelStatus"
+                  "$ref": "#/components/schemas/DownloadModelStartedResponse"
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/upload": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Upload a whisper model file",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.uploadModel",
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One installed whisper model (a row in `voice_models`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceModel"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/downloads": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "List active whisper model downloads",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.listModelDownloads",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SnapshotDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/downloads/{key}": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Poll a single whisper model download snapshot",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.getModelDownload",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A non-SSE progress snapshot for a model download (poll fallback + active list).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/downloads/{key}/events": {
+      "get": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "SSE stream of whisper model download progress",
+        "description": "\n\n**Required Permission:** `voice::admin::read`\n\nRead voice dictation settings, runtime versions, model and instance state.",
+        "operationId": "Voice.subscribeModelDownloadEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read voice dictation settings, runtime versions, model and instance state.",
+                        "name": "VoiceAdminRead",
+                        "value": "voice::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/downloads/{key}/cancel": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Cancel an in-flight whisper model download",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.cancelModelDownload",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/{id}/activate": {
+      "post": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Set a model as the active whisper model",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.activateModel",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One installed whisper model (a row in `voice_models`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceModel"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/voice/models/{id}": {
+      "delete": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Delete an installed whisper model",
+        "description": "\n\n**Required Permission:** `voice::admin::manage`\n\nUpdate voice settings, manage whisper runtime versions and models, and control the instance.",
+        "operationId": "Voice.deleteModel",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ack_active",
+            "description": "Acknowledge deleting the currently-active model.",
+            "schema": {
+              "description": "Acknowledge deleting the currently-active model.",
+              "type": "boolean",
+              "default": false
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update voice settings, manage whisper runtime versions and models, and control the instance.",
+                        "name": "VoiceAdminManage",
+                        "value": "voice::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: voice::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
           }
         },
         "security": [
@@ -15801,233 +16463,6 @@
         }
       }
     },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/memories": {
       "get": {
         "tags": [
@@ -16974,6 +17409,233 @@
                     ]
                   },
                   "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -18231,162 +18893,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
           }
         },
         "security": [
@@ -20130,6 +20636,162 @@
         ]
       }
     },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -20666,182 +21328,6 @@
         ]
       }
     },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
-      }
-    },
-    "/api/js-tool/settings": {
-      "get": {
-        "tags": [
-          "Programmatic Tools"
-        ],
-        "summary": "Read the singleton run_js (js_tool) limits configuration",
-        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
-        "operationId": "JsTool.getSettings",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the run_js (js_tool) resource-limits configuration.",
-                        "name": "JsToolSettingsRead",
-                        "value": "js_tool::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: js_tool::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsToolSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Programmatic Tools"
-        ],
-        "summary": "Update the singleton run_js (js_tool) limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
-        "operationId": "JsTool.updateSettings",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateJsToolSettings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
-                        "name": "JsToolSettingsManage",
-                        "value": "js_tool::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: js_tool::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsToolSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/scheduled-tasks": {
       "get": {
         "summary": "List your scheduled tasks",
@@ -21196,9 +21682,31 @@
     },
     "/api/scheduled-tasks/{id}/runs": {
       "get": {
-        "summary": "List a scheduled task's run history",
+        "summary": "List a scheduled task's run history (paged)",
         "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
         "operationId": "ScheduledTask.listRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 10
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -21224,14 +21732,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "A page of run history (ITEM-41) — the paged envelope the runs panel consumes.\n Mirrors `mcp/tool_calls`' page shape.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ScheduledTaskRun"
-                  }
+                  "$ref": "#/components/schemas/RunsPage"
                 }
               }
             }
@@ -21274,7 +21779,65 @@
             }
           },
           "201": {
-            "description": "Response of the continue-in-chat endpoint: the id of the freshly-seeded\n conversation the client should navigate to.",
+            "description": "Response of the continue endpoints: the id of the freshly-seeded conversation\n the client should navigate to.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scheduled-tasks/{id}/continue-series": {
+      "post": {
+        "summary": "Discuss a scheduled task's recent runs in a new chat",
+        "description": "Opens a new conversation seeded with the last N runs' results and deltas.",
+        "operationId": "ScheduledTask.continueSeries",
+        "requestBody": {
+          "description": "Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the\n number of most-recent runs to fold into the seeded discussion (chooser\n {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client\n puts non-path args of a POST in the body, not the query).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueSeriesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, run, test, and manage your own scheduled/recurring tasks.",
+                        "name": "SchedulerUse",
+                        "value": "scheduler::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: scheduler::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response of the continue endpoints: the id of the freshly-seeded conversation\n the client should navigate to.",
             "content": {
               "application/json": {
                 "schema": {
@@ -21385,6 +21948,182 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
+      }
+    },
+    "/api/js-tool/settings": {
+      "get": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Read the singleton run_js (js_tool) limits configuration",
+        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
+        "operationId": "JsTool.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the run_js (js_tool) resource-limits configuration.",
+                        "name": "JsToolSettingsRead",
+                        "value": "js_tool::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Update the singleton run_js (js_tool) limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
+        "operationId": "JsTool.updateSettings",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateJsToolSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
+                        "name": "JsToolSettingsManage",
+                        "value": "js_tool::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
           }
         },
         "security": [
@@ -25218,7 +25957,7 @@
         ]
       },
       "ContinueResult": {
-        "description": "Response of the continue-in-chat endpoint: the id of the freshly-seeded\n conversation the client should navigate to.",
+        "description": "Response of the continue endpoints: the id of the freshly-seeded conversation\n the client should navigate to.",
         "type": "object",
         "properties": {
           "conversation_id": {
@@ -25229,6 +25968,17 @@
         "required": [
           "conversation_id"
         ]
+      },
+      "ContinueSeriesBody": {
+        "description": "Request body for the series follow-up (ITEM-43 / DEC-22). `limit` is the\n number of most-recent runs to fold into the seeded discussion (chooser\n {5,10,all-loaded}); server-clamped. Sent in the POST body (the api-client\n puts non-path args of a POST in the body, not the query).",
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "default": 5
+          }
+        }
       },
       "Conversation": {
         "description": "Conversation entity - Represents a chat conversation with an AI assistant",
@@ -26507,6 +27257,17 @@
           }
         }
       },
+      "DeleteModelQuery2": {
+        "description": "PATCH-ish activate/delete responses reuse `VoiceModel`; delete takes a query ack.",
+        "type": "object",
+        "properties": {
+          "ack_active": {
+            "description": "Acknowledge deleting the currently-active model.",
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "DeleteProviderResponse": {
         "type": "object",
         "properties": {
@@ -26922,17 +27683,66 @@
         ]
       },
       "DownloadModelRequest": {
-        "description": "Optional body for the model download endpoint. Absent `model` → the\n currently-configured settings model.",
+        "description": "POST body to start a model download.",
         "type": "object",
         "properties": {
-          "model": {
+          "filename": {
+            "description": "For an HF-repo download: the file within the repo.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "description": "Catalog: the model name (e.g. `large-v3`). URL/HF: the display name to store as.",
+            "type": "string"
+          },
+          "repository": {
+            "description": "For an HF-repo download: `owner/repo` (else the configured source repo).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "url": {
+            "description": "For a raw-URL download: the full https URL to the model file.",
             "type": [
               "string",
               "null"
             ],
             "default": null
           }
-        }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "DownloadModelStartedResponse": {
+        "description": "Response echoing a started download + where to subscribe for progress.",
+        "type": "object",
+        "properties": {
+          "events_url": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "name",
+          "events_url"
+        ]
       },
       "DownloadPaginationQuery": {
         "type": "object",
@@ -31652,6 +32462,21 @@
           "password"
         ]
       },
+      "LogsQuery": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "description": "How many trailing lines to return (default 200, capped at 1000).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "default": null,
+            "minimum": 0
+          }
+        }
+      },
       "LogsResponse": {
         "type": "object",
         "properties": {
@@ -35847,6 +36672,52 @@
           "run_id"
         ]
       },
+      "RunsPage": {
+        "description": "A page of run history (ITEM-41) — the paged envelope the runs panel consumes.\n Mirrors `mcp/tool_calls`' page shape.",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduledTaskRun"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "runs",
+          "total",
+          "page",
+          "per_page"
+        ]
+      },
+      "RunsPageParams": {
+        "description": "GET /api/scheduled-tasks/{id}/runs — the task's firing history (Runs tab).\n Query params for the paged runs list (ITEM-41). Defaults mirror the\n `RUNS_PAGE_SIZE` UX constant (DEC-20).",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 10
+          }
+        }
+      },
       "RuntimeSettings": {
         "type": "object",
         "properties": {
@@ -35877,6 +36748,48 @@
           "drain_timeout_secs",
           "created_at",
           "updated_at"
+        ]
+      },
+      "RuntimeVersion": {
+        "description": "Whisper runtime version database entity (`voice_runtime_versions`).",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "binary_path": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_system_default": {
+            "type": "boolean"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "platform",
+          "arch",
+          "backend",
+          "binary_path",
+          "is_system_default",
+          "created_at"
         ]
       },
       "RuntimeVersionListResponse": {
@@ -38004,6 +38917,9 @@
         "description": "A row of `scheduled_task_runs` — one per firing (the \"Runs\" history).",
         "type": "object",
         "properties": {
+          "change_summary_json": {
+            "description": "Round 2 (ITEM-40): `{ changed, new_count, new_items? }` from change-detection,\n driving the run row's what-changed badge; NULL when not applicable."
+          },
           "conversation_id": {
             "type": [
               "string",
@@ -38044,6 +38960,13 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "result_preview": {
+            "description": "Round 2 (ITEM-40): a short plain-text digest of the result for the runs\n timeline; NULL for pre-migration-155 rows + failed/pause rows.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scheduled_task_id": {
             "type": "string",
@@ -38583,6 +39506,58 @@
           "skills"
         ]
       },
+      "SnapshotDto": {
+        "description": "A non-SSE progress snapshot for a model download (poll fallback + active list).",
+        "type": "object",
+        "properties": {
+          "bytes_received": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "task_id",
+          "key",
+          "name",
+          "status",
+          "bytes_received"
+        ]
+      },
       "StartInstanceRequest": {
         "type": "object"
       },
@@ -39005,6 +39980,11 @@
             "description": "Voice whisper-server runtime version list changed (install/delete/set-default).\n Notify-only; delivered to holders of `voice::admin::read`.",
             "type": "string",
             "const": "voice_runtime_version"
+          },
+          {
+            "description": "Voice whisper-MODEL library changed (download-complete / upload / delete /\n activate). Notify-only; delivered to holders of `voice::admin::read` — the\n admin UI refetches `GET /api/voice/models`.",
+            "type": "string",
+            "const": "voice_model"
           },
           {
             "description": "Deployment-wide MCP user policy (singleton `mcp_user_policy`): which\n transports regular users may install + the enforced stdio sandbox\n flavor + tool-call retention. Delivered to holders of `mcp_servers::read`\n (the read-perm gating `GET /api/mcp/user-policy`); notify-only — each\n recipient refetches the sanitized policy. `id` is `Uuid::nil()`.",
@@ -41344,6 +42324,13 @@
             ],
             "default": null
           },
+          "model_source_repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
           "stream_interval_ms": {
             "type": [
               "integer",
@@ -42455,6 +43442,80 @@
           "stream_interval_ms"
         ]
       },
+      "VoiceCatalogModel": {
+        "description": "One entry in the runtime-fetched downloadable catalog.",
+        "type": "object",
+        "properties": {
+          "english_only": {
+            "description": "English-only variant (name ends in `.en`).",
+            "type": "boolean"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "installed": {
+            "description": "True when an installed model already covers this catalog entry.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Short model name (derived from the ggml filename).",
+            "type": "string"
+          },
+          "quantization": {
+            "description": "Quantization tag (e.g. `q5_1`, `q8_0`) if the filename carries one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "description": "The HF-advertised git-LFS oid (sha256) used to verify a download.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "description": "Advertised size in bytes (HF LFS metadata), if known.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        },
+        "required": [
+          "name",
+          "filename",
+          "installed",
+          "english_only"
+        ]
+      },
+      "VoiceCatalogResponse": {
+        "description": "The catalog list response (+ a source-reachability signal for graceful degrade).",
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoiceCatalogModel"
+            }
+          },
+          "source_reachable": {
+            "description": "False when the configured source was unreachable (models will be empty).",
+            "type": "boolean"
+          },
+          "source_repo": {
+            "description": "The source repo the list was fetched from.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "models",
+          "source_reachable",
+          "source_repo"
+        ]
+      },
       "VoiceInstanceInfo": {
         "description": "Snapshot of the single managed whisper-server instance (singleton row).",
         "type": "object",
@@ -42494,6 +43555,14 @@
             ],
             "format": "int32"
           },
+          "pid": {
+            "description": "Live OS pid of the running whisper-server (F10), if any.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "restart_attempts": {
             "type": "integer",
             "format": "int32"
@@ -42509,6 +43578,14 @@
           "status": {
             "description": "Coarse lifecycle: `stopped` | `running`.",
             "type": "string"
+          },
+          "uptime_seconds": {
+            "description": "Seconds since the running process started (F10), if any.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
           }
         },
         "required": [
@@ -42516,6 +43593,105 @@
           "state",
           "restart_attempts",
           "state_changed_at"
+        ]
+      },
+      "VoiceLogsResponse": {
+        "description": "Recent captured whisper-server stdout/stderr (ring buffer). F8/ITEM-30.",
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "lines"
+        ]
+      },
+      "VoiceModel": {
+        "description": "One installed whisper model (a row in `voice_models`).",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filename": {
+            "description": "On-disk filename under `voice-models/`.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_active": {
+            "description": "This model is the one the whisper-server is configured to serve.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Short model name (also the `settings.model` pointer value).",
+            "type": "string"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source": {
+            "$ref": "#/components/schemas/VoiceModelSource"
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "update_available": {
+            "description": "The upstream catalog now advertises a different digest → a newer file exists.",
+            "type": "boolean"
+          },
+          "verified": {
+            "description": "Bytes matched a source-of-truth digest (catalog/HF oid).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filename",
+          "source",
+          "size_bytes",
+          "verified",
+          "is_active",
+          "update_available",
+          "created_at"
+        ]
+      },
+      "VoiceModelSource": {
+        "description": "How an installed model was acquired.",
+        "oneOf": [
+          {
+            "description": "From the curated/runtime HF catalog (verified against the advertised oid).",
+            "type": "string",
+            "const": "catalog"
+          },
+          {
+            "description": "From an admin-supplied arbitrary URL / HF repo (sha256 computed, unverified).",
+            "type": "string",
+            "const": "url"
+          },
+          {
+            "description": "Uploaded by the admin (sha256 computed, unverified).",
+            "type": "string",
+            "const": "upload"
+          }
         ]
       },
       "VoiceModelStatus": {
@@ -42577,6 +43753,10 @@
             "description": "Selected whisper ggml model name (tiny | base | base.en | small).",
             "type": "string"
           },
+          "model_source_repo": {
+            "description": "Admin-configurable whisper-model source repo (default `ggerganov/whisper.cpp`).\n The runtime catalog fetch lists downloadable models from here; an operator\n repoints it to an internal mirror or a moved upstream with no code change.",
+            "type": "string"
+          },
           "stream_interval_ms": {
             "description": "Interim decode cadence in milliseconds for live captions.",
             "type": "integer",
@@ -42608,6 +43788,7 @@
           "streaming_enabled",
           "stream_interval_ms",
           "stream_max_decode_secs",
+          "model_source_repo",
           "updated_at"
         ]
       },

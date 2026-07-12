@@ -173,22 +173,8 @@ async fn flush_last_used() {
 }
 
 /// Wait up to `drain_timeout_secs` for in-flight transcriptions to finish, then
-/// SIGTERM the whisper-server.
+/// SIGTERM the whisper-server. Delegates to the shared drain (which also holds the
+/// `Draining` front-door flag so new transcriptions 503 during the drain).
 async fn drain_and_stop(drain_timeout_secs: i32) -> Result<(), AppError> {
-    let deadline =
-        tokio::time::Instant::now() + Duration::from_secs(drain_timeout_secs.max(1) as u64);
-    loop {
-        let inflight = auto_start::inflight_count();
-        if inflight == 0 {
-            break;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            tracing::warn!(
-                "voice::reaper: drain timeout with {inflight} in-flight transcriptions; SIGTERM anyway"
-            );
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
-    get_deployment_manager().local().stop().await
+    auto_start::drain_and_stop(drain_timeout_secs).await
 }

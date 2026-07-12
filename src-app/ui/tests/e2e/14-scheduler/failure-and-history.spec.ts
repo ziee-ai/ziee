@@ -52,25 +52,32 @@ test('a run offers "Continue in chat" which calls the continue endpoint', async 
   await page.route(/\/api\/scheduled-tasks$/, async route =>
     route.fulfill({ status: 200, json: [task] }),
   )
-  await page.route(/\/api\/scheduled-tasks\/[^/]+\/runs$/, async route =>
+  await page.route(/\/api\/scheduled-tasks\/[^/]+\/runs(\?.*)?$/, async route =>
     route.fulfill({
       status: 200,
-      json: [
-        {
-          id: RUN_ID,
-          scheduled_task_id: TASK_ID,
-          user_id: task.user_id,
-          trigger: 'schedule',
-          status: 'completed',
-          error_class: null,
-          error_message: null,
-          notification_id: null,
-          workflow_run_id: null,
-          conversation_id: null,
-          fired_at: '2026-07-09T09:00:00Z',
-          finished_at: '2026-07-09T09:00:05Z',
-        },
-      ],
+      json: {
+        runs: [
+          {
+            id: RUN_ID,
+            scheduled_task_id: TASK_ID,
+            user_id: task.user_id,
+            trigger: 'schedule',
+            status: 'completed',
+            error_class: null,
+            error_message: null,
+            notification_id: null,
+            workflow_run_id: null,
+            conversation_id: null,
+            result_preview: 'Sweep produced 2 items.',
+            change_summary_json: { changed: true, new_count: 2, new_items: [] },
+            fired_at: '2026-07-09T09:00:00Z',
+            finished_at: '2026-07-09T09:00:05Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        per_page: 10,
+      },
     }),
   )
   await page.route(/\/api\/scheduled-tasks\/runs\/[^/]+\/continue$/, async route => {
@@ -81,10 +88,11 @@ test('a run offers "Continue in chat" which calls the continue endpoint', async 
   await loginAsAdmin(page, baseURL)
   await page.goto(`${baseURL}/scheduled-tasks`)
 
-  // Expand the runs section, then click "Continue in chat" on the run.
+  // Expand the runs section, then click the per-run fork ("New side chat" for a
+  // prompt task) — it calls the continue endpoint (opening a seeded conversation).
   await byTestId(page, `task-runs-toggle-${TASK_ID}`).click()
-  await expect(byTestId(page, `run-continue-${RUN_ID}`)).toBeVisible({ timeout: 10000 })
-  await byTestId(page, `run-continue-${RUN_ID}`).click()
+  await expect(byTestId(page, `run-action-fork-${RUN_ID}`)).toBeVisible({ timeout: 10000 })
+  await byTestId(page, `run-action-fork-${RUN_ID}`).click()
 
   // The continue endpoint was invoked (opening the seeded conversation).
   await expect.poll(() => continueCalled, { timeout: 10000 }).toBe(true)
