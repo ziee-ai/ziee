@@ -8,7 +8,7 @@
 ## Summary
 
 - **367** surfaces carry at least one renderable-state signal.
-- **2177** signals total: 1720 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2182** signals total: 1725 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -946,12 +946,12 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isInSelectionMode && onSelect` | 60 |
-| branch | `e && e.button === 2` | 66 |
-| branch | `conversation.message_count > 0` | 140 |
-| branch | `canDelete && !isInSelectionMode` | 178 |
-| overlay | `<Confirm open>` | 202 |
-| branch | `onSelect` | 220 |
+| branch | `isInSelectionMode && onSelect` | 64 |
+| branch | `e && e.button === 2` | 70 |
+| branch | `conversation.message_count > 0` | 150 |
+| branch | `canDelete && !isInSelectionMode` | 188 |
+| overlay | `<Confirm open>` | 212 |
+| branch | `onSelect` | 230 |
 
 ### `modules/chat/components/ConversationFindBar`
 
@@ -1300,43 +1300,48 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversationId` | 62 |
-| branch | `sv.panes.length < 2` | 64 |
-| branch | `focused?.conversationId === conversationId` | 66 |
-| branch | `panes.length >= 2` | 70 |
-| branch | `!pane \|\| !isWorkspaceDrag(e.dataTransfer)` | 99 |
-| branch | `!pane` | 104 |
-| branch | `!sentinel` | 273 |
-| branch | `!el` | 293 |
-| branch | `!nativeScroll` | 308 |
-| branch | `y < 0 \|\| y > maxY` | 317 |
-| branch | `maxY - y <= 8` | 321 |
-| branch | `Math.abs(dy) < 6` | 327 |
-| branch | `!chat.$.conversation` | 347 |
-| branch | `!conversationId` | 389 |
-| branch | `didSeedApprovalsRef.current` | 445 |
-| branch | `conversation?.id !== conversationId` | 446 |
-| branch | `!hasNewApproval` | 481 |
-| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 485 |
-| branch | `!sentinel` | 513 |
-| branch | `!entries[0]?.isIntersecting` | 517 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 520 |
-| branch | `!sentinel` | 555 |
-| branch | `!entries[0]?.isIntersecting` | 559 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 560 |
-| loading | `!pending` | 575 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 578 |
-| branch | `!conversation?.id` | 587 |
-| branch | `!m` | 591 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 594 |
-| loading | `loading && !conversation` | 625 |
-| branch | `pane && !conversationId && !conversation` | 637 |
-| loading | `!loading && !conversation` | 644 |
-| error | `error` | 647 |
-| branch | `!isPopoutWindow` | 692 |
-| branch | `pane` | 715 |
-| error | `error` | 767 |
-| branch | `nativeScroll && !composerHidden` | 866 |
+| branch | `!conversationId` | 71 |
+| branch | `sv.panes.length < 2` | 73 |
+| branch | `focused?.conversationId === conversationId` | 75 |
+| branch | `panes.length >= 2` | 79 |
+| branch | `!pane \|\| !isWorkspaceDrag(e.dataTransfer)` | 112 |
+| branch | `!pane` | 117 |
+| branch | `pane \|\| !conversationId \|\| dragKind(e.dataTransfer) !== 'conversation'` | 153 |
+| branch | `pane \|\| !conversationId \|\| dragKind(e.dataTransfer) !== 'conversation'` | 164 |
+| branch | `!droppedId` | 166 |
+| branch | `!sentinel` | 316 |
+| branch | `!el` | 336 |
+| branch | `!nativeScroll` | 351 |
+| branch | `y < 0 \|\| y > maxY` | 360 |
+| branch | `maxY - y <= 8` | 364 |
+| branch | `Math.abs(dy) < 6` | 370 |
+| branch | `!chat.$.conversation` | 390 |
+| branch | `!conversationId` | 432 |
+| branch | `didSeedApprovalsRef.current` | 488 |
+| branch | `conversation?.id !== conversationId` | 489 |
+| branch | `!hasNewApproval` | 524 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 528 |
+| branch | `!sentinel` | 556 |
+| branch | `!entries[0]?.isIntersecting` | 560 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 563 |
+| branch | `!sentinel` | 598 |
+| branch | `!entries[0]?.isIntersecting` | 602 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 603 |
+| loading | `!pending` | 618 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 621 |
+| branch | `!conversation?.id` | 630 |
+| branch | `!m` | 634 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 637 |
+| loading | `loading && !conversation` | 668 |
+| branch | `pane && !conversationId && !conversation` | 680 |
+| loading | `!loading && !conversation` | 687 |
+| error | `error` | 690 |
+| branch | `!isPopoutWindow` | 735 |
+| branch | `pane` | 758 |
+| error | `error` | 821 |
+| branch | `!pane && singleDropZone` | 843 |
+| branch | `singleDropZone === z` | 855 |
+| branch | `nativeScroll && !composerHidden` | 952 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -1344,14 +1349,14 @@ Required states: `delayed`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!(e.metaKey \|\| e.ctrlKey \|\| e.button === 1)` | 51 |
-| branch | `!c` | 57 |
-| loading | `loading && !isInitialized` | 82 |
-| loading | `!loading && recentConversations.length === 0` | 93 |
-| branch | `!c` | 169 |
-| branch | `active?.closest('[role="menu"]')` | 174 |
-| overlay | `<Dropdown open>` | 281 |
-| branch | `!open && keepMenuOpen` | 288 |
+| branch | `!(e.metaKey \|\| e.ctrlKey \|\| e.button === 1)` | 55 |
+| branch | `!c` | 61 |
+| loading | `loading && !isInitialized` | 86 |
+| loading | `!loading && recentConversations.length === 0` | 97 |
+| branch | `!c` | 174 |
+| branch | `active?.closest('[role="menu"]')` | 179 |
+| overlay | `<Dropdown open>` | 286 |
+| branch | `!open && keepMenuOpen` | 293 |
 
 ### `modules/citations/components/CitationCard`
 
