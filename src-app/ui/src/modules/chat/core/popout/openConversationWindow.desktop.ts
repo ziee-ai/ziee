@@ -23,14 +23,13 @@
  * same dedup contract as the web window-name).
  */
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-
-const labelFor = (conversationId: string) => `chat-${conversationId}`
+import { popoutWindowLabel } from './popoutWindowLabel'
 
 export async function openConversationWindow(
   conversationId: string,
   opts?: { title?: string },
 ): Promise<void> {
-  const label = labelFor(conversationId)
+  const label = popoutWindowLabel(conversationId)
   try {
     const existing = await WebviewWindow.getByLabel(label)
     if (existing) {

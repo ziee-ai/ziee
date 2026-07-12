@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { dialog } from '@/components/ui'
 import { Stores } from '@/core'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
+import { focusPopoutWindowIfOpen } from '@/modules/chat/core/popout/focusPopoutWindow'
 import {
   needsOpenChoice,
   type ReconcileIntent,
@@ -43,6 +44,11 @@ export function useOpenConversationInWorkspace() {
         href?: string
       },
     ) => {
+      // ITEM-53 / FB-12: if this conversation is already live in a native pop-out
+      // WINDOW (desktop), focus that window instead of opening it a second time
+      // inline. No-op on web (returns false → open inline as usual).
+      if (await focusPopoutWindowIfOpen(conversationId)) return
+
       let intent = opts?.intent ?? 'auto'
       const sv = Stores.SplitView.$
 
