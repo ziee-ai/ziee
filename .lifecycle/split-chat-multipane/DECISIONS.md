@@ -612,15 +612,16 @@ cleanup scopes to that key.
 established pattern for per-pane file state on this branch.
 
 ### DEC-66: How is the desktop `openConversationWindow.ts` whole-file shadow handled vs live2's incoming override gate?
-**Resolution:** Deferred + inventoried as ITEM-50 [DESCOPED] this round. live2 is
-landing a desktop-override mechanism (element `<Seam>`/`useOverride` or co-located
-`*.desktop.tsx`) + an enforcing `gen-override-registry.mjs --check` gate (in
-`npm run check`, both workspaces) that fails on any unregistered whole-file desktop
-shadow. My branch's `desktop/ui/.../popout/openConversationWindow.ts` is exactly such
-a raw shadow. It CANNOT be migrated yet (the mechanism is not on main — gate-bug fix
-in progress). When the human signals live2 has landed, migrate it — probably a
-co-located `openConversationWindow.desktop.ts` (Tauri-`WebviewWindow`-specific → a
-whole-file `.desktop` override is the right granularity, not an element seam), else an
-approved shadow-exception carrying the Tauri-API structural reason.
-- DESCOPED: ITEM-50 — live2's desktop-override mechanism + gate are not yet on main, so the migration cannot be performed this round; inventoried now, to be implemented in this iteration once the human signals live2 has landed [approved: user@2026-07-11 · coordination FYI]
-**Basis:** user — coordination FYI directing inventory-now / handle-when-live2-lands.
+**Resolution:** ACTIVE ITEM-50 (live2 landed @3d58b011a — no longer deferred). live2's
+desktop-override mechanism (element `<Seam>`/`useOverride` or co-located
+`*.desktop.tsx`) + its enforcing `gen-override-registry.mjs --check` gate (in
+`npm run check`, both workspaces) + `desktop/ui/OVERRIDE_EXCEPTIONS.md` are now on main.
+My branch merged main at 6b56d0d14 (BEFORE this), so the gate isn't in my tree yet, but
+the next main-sync (needed anyway before merge-gate) picks it up and WILL flag my raw
+shadow `desktop/ui/.../popout/openConversationWindow.ts`. Migrate it to a co-located
+`src-app/ui/src/modules/chat/core/popout/openConversationWindow.desktop.ts` (whole-file
+`.desktop` override — the right granularity for Tauri-`WebviewWindow`-specific code, NOT
+an element seam), else an approved `OVERRIDE_EXCEPTIONS.md` shadow-exception with the
+Tauri-API structural reason. Covered by TEST-75. Sequencing (per the human): done at the
+NEXT main-sync, in the SAME checkpoint, AFTER the current per-pane items (45/46/47/49).
+**Basis:** user — coordination FYI (live2 merged @3d58b011a; migrate at next main-sync).

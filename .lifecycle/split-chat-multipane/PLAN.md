@@ -437,15 +437,17 @@ per-pane CORRECTNESS fixes of existing surfaces, so the Phase-1 UI-surface check
   `composerPaneKey` ownership); the pdf viewer body reads its own pane's key; cleanup
   scopes to the pane's key.
 
-- **ITEM-50**: [DESCOPED] Migrate the one raw desktop whole-file shadow
+- **ITEM-50**: Migrate the one raw desktop whole-file shadow
   `src-app/desktop/ui/src/modules/chat/core/popout/openConversationWindow.ts` (shadows
-  its `src-app/ui` sibling) to live2's incoming desktop-override mechanism — most
-  likely a co-located `openConversationWindow.desktop.ts` (it is Tauri-`WebviewWindow`-
-  specific, so a whole-file `.desktop` override is right, not an element seam), OR an
-  approved shadow-exception with the Tauri-API structural reason. BLOCKED: live2's
-  mechanism + enforcing gate (`gen-override-registry.mjs --check` in `npm run check`)
-  is NOT on main yet (gate-bug fix in progress). Inventoried now per the human's
-  coordination FYI; implement in this iteration when the human signals live2 has landed.
+  its `src-app/ui` sibling) to live2's desktop-override mechanism (MERGED to main
+  @3d58b011a). It is Tauri-`WebviewWindow`-API-specific, so a co-located
+  `src-app/ui/src/modules/chat/core/popout/openConversationWindow.desktop.ts` (whole-file
+  `.desktop` override) is the right granularity — NOT an element seam — OR an approved
+  `OVERRIDE_EXCEPTIONS.md` shadow-exception line carrying the Tauri-API structural reason.
+  Removes the raw shadow so live2's enforcing gate (`gen-override-registry.mjs --check`,
+  wired into `npm run check` in both workspaces) passes. Sequencing (per the human):
+  done at the NEXT main-sync (which picks up live2@3d58b011a + the gate) in the SAME
+  checkpoint, AFTER the current per-pane items (45/46/47/49).
 
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
