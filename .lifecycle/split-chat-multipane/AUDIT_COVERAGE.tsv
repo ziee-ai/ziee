@@ -149,3 +149,4 @@ src-app/ui/tests/e2e/14-split-chat/mcp-grounding-per-pane.spec.ts	1	104	tests-qu
 src-app/ui/tests/e2e/14-split-chat/voice-per-pane.spec.ts	1	83	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/mcp/components/McpConfigModal.tsx	1	585	correctness,state-management,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/pending-selection-per-pane.spec.ts	1	120	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/mcp/chat-extension/components/McpInitializer.tsx	1	57	correctness,state-management,react-hooks
