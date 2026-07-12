@@ -332,6 +332,20 @@ each traces to real rework that shipped despite a green gate):
   `[DESCOPED]` disposition is a finding (this is the human-judgment complement to
   the deterministic FB-7 gate — the gate catches missing dispositions; the audit
   catches an item "covered" on paper but absent in code).
+- **test-reality / paper-9/9 (do this every round)** — FB-7 only checks a TEST
+  *line* exists; a hollow test that passes trivially still satisfies it, so a
+  feature can be "covered on paper" yet never built. For EACH TEST, OPEN the spec
+  and confirm it actually exercises everything its TESTS.md line claims — mounts
+  the real surface, asserts real DOM/behavior, drives the real path. Flag:
+  (a) a spec whose assertions are NARROWER than its TESTS.md prose (a phantom
+  leg — the claim exceeds the code); (b) an **isolation/"other side unaffected"
+  test whose control is IDLE** (an empty quiescent pane/tab proves nothing — the
+  other side must be ACTIVELY doing the thing, e.g. two simultaneous streams,
+  both directions); (c) **one spec file mapped to many TEST-IDs** that share a
+  single assertion (coverage inflation — each TEST-ID must be a distinct exercised
+  assertion); (d) a mocked unit standing in for render/behavior that only the
+  real surface can prove. This is the systematic form of rule B7 — the human
+  keeps finding these when the audit doesn't.
 
 **Audit-vs-user-decision rule:** when an audit angle surfaces that a feature's
 cost/behavior conflicts with a decision the human explicitly made (e.g. a perf
