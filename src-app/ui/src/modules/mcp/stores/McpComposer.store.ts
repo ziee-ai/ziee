@@ -821,6 +821,22 @@ export const McpComposer = defineStore('McpComposer', {
       console.log('[MCP Store] Deselected server:', serverId)
     },
 
+    /** Per-pane (ITEM-47): deselect a server from a SPECIFIC conversation's config
+     *  rather than the single global-active one — so removing a chip in a
+     *  non-focused split pane edits THAT pane's conversation, never the focused
+     *  pane's. Still mirrors into the active `selectedServers` projection when the
+     *  target IS the currently-active conversation (keeps the active pane in sync). */
+    deselectServerForConversation: (conversationId: string | null, serverId: string) => {
+      set(state => {
+        const key = conversationId ?? PENDING_CONVERSATION_KEY
+        const config = state.conversationConfigs.get(key)
+        if (config) config.selectedServers.delete(serverId)
+        if (resolveConfigKey(state, state.currentConversationId) === key) {
+          state.selectedServers.delete(serverId)
+        }
+      })
+    },
+
     /**
      * Toggle a specific tool for a server
      */
