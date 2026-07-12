@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
+import { snapBackAsNewPane } from './planPopoutSnapBack'
 import {
   registerPopoutCloseEmitter,
   registerMainWindowSnapBackListener,
@@ -39,6 +41,13 @@ export function usePopoutCloseEmitter(conversationId: string | undefined): void 
  * conversation back into the workspace as a pane (ITEM-54). Web: no-op.
  */
 export function usePopoutSnapBackListener(): void {
+  // The listener registers ONCE (deps []) but must always use the CURRENT navigate,
+  // so hold it in a ref (React Router's navigate is stable, but the ref is safe
+  // regardless and keeps the effect from re-registering the Tauri listener).
+  const navigate = useNavigate()
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
+
   useEffect(() => {
     let un: (() => void) | undefined
     let cancelled = false
@@ -51,12 +60,17 @@ export function usePopoutSnapBackListener(): void {
       openAsNewPane: id => {
         const sv = Stores.SplitView.$
         const focused = sv.panes.find(p => p.paneId === sv.focusedPaneId)
-        const currentConversationId =
-          focused?.conversationId ??
-          conversationIdFromPath(window.location.pathname)
-        Stores.SplitView.openConversationInWorkspace(id, 'newPane', {
-          currentConversationId,
-          projectId: null,
+        // store-open THEN navigate (snapBackAsNewPane) — navigate is required so the
+        // main window mounts ConversationPage/SplitChatView even when it was on a
+        // non-chat route (blind-audit HIGH). Mirrors useOpenConversationInWorkspace.
+        snapBackAsNewPane(id, {
+          getCurrentConversationId: () =>
+            focused?.conversationId ??
+            conversationIdFromPath(window.location.pathname),
+          reconcileOpen: (cid, intent, ctx) => {
+            Stores.SplitView.openConversationInWorkspace(cid, intent, ctx)
+          },
+          navigate: path => navigateRef.current(path),
         })
       },
     }).then(u => {

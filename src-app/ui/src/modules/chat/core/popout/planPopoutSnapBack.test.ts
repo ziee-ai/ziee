@@ -1,6 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { planPopoutSnapBack, handlePopoutClosed } from './planPopoutSnapBack.ts'
+import {
+  planPopoutSnapBack,
+  handlePopoutClosed,
+  snapBackAsNewPane,
+} from './planPopoutSnapBack.ts'
 
 // TEST-81 (ITEM-54): the snap-back decision — a closed pop-out window's conversation
 // returns to the main window as a pane, but never duplicated and never past the cap.
@@ -93,4 +97,26 @@ test('handlePopoutClosed: atCap → does NOT re-open (workspace full)', () => {
   })
   handlePopoutClosed('c-closed', deps)
   assert.deepEqual(opened, [])
+})
+
+// TEST-84 (ITEM-54, blind-audit HIGH fix): the snap-back opener must BOTH add the
+// pane AND navigate — else `SplitChatView` (which only renders inside the /chat/:id
+// ConversationPage) never mounts the pane on a non-chat route → the conversation
+// would silently vanish.
+test('snapBackAsNewPane: opens the pane AND navigates to /chat/<id>', () => {
+  const reconcileCalls: Array<[string, string, unknown]> = []
+  const navigated: string[] = []
+  snapBackAsNewPane('c-closed', {
+    getCurrentConversationId: () => 'c-current',
+    reconcileOpen: (id, intent, ctx) => reconcileCalls.push([id, intent, ctx]),
+    navigate: path => navigated.push(path),
+  })
+  assert.deepEqual(reconcileCalls, [
+    ['c-closed', 'newPane', { currentConversationId: 'c-current', projectId: null }],
+  ])
+  assert.deepEqual(
+    navigated,
+    ['/chat/c-closed'],
+    'MUST navigate so the main window mounts ConversationPage/SplitChatView',
+  )
 })

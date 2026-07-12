@@ -67,3 +67,34 @@ export function handlePopoutClosed(
   })
   if (plan === 'add') deps.openAsNewPane(conversationId)
 }
+
+/**
+ * Open a snapped-back conversation as a new pane AND navigate to it. The navigate is
+ * NOT optional (blind-audit HIGH): `SplitChatView` renders only inside
+ * `ConversationPage` (the `/chat/:id` route), so mutating `SplitView` without
+ * navigating leaves the pane unrendered when the main window is on any non-chat
+ * route (new-chat / history / settings) — the conversation would silently vanish.
+ * Mirrors `useOpenConversationInWorkspace`, which store-opens then `navigate`s for
+ * the same reason. Dep-injected so it's unit-testable without the store/router.
+ */
+export interface SnapBackOpenDeps {
+  getCurrentConversationId: () => string | null
+  reconcileOpen: (
+    conversationId: string,
+    intent: 'newPane',
+    ctx: { currentConversationId: string | null; projectId: null },
+  ) => void
+  navigate: (path: string) => void
+}
+
+export function snapBackAsNewPane(
+  conversationId: string,
+  deps: SnapBackOpenDeps,
+): void {
+  deps.reconcileOpen(conversationId, 'newPane', {
+    currentConversationId: deps.getCurrentConversationId(),
+    projectId: null,
+  })
+  // Ensure the main window actually SHOWS the snapped-back pane (mount ConversationPage).
+  deps.navigate(`/chat/${conversationId}`)
+}
