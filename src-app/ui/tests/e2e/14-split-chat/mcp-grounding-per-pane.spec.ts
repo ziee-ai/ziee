@@ -8,16 +8,17 @@ import {
 } from '../../common/provider-helpers'
 
 /**
- * Split-chat E2E — per-pane MCP grounding chips (TEST-71, ITEM-47). Selecting an
- * MCP server for one split pane's conversation shows its chip in THAT pane only;
- * the other pane's status row reflects its OWN conversation (the chip display now
- * resolves the per-conversation config, not the single global-active selection).
- * No LLM.
+ * Split-chat E2E — per-pane MCP grounding chips (TEST-71, ITEM-47). An admin-enabled
+ * MCP server grounds BOTH conversations by default (its chip shows in both panes).
+ * REMOVING it from one pane's chip (×) must edit only THAT pane's conversation config
+ * — the other pane keeps its chip — proving the status row now resolves the
+ * per-conversation config and the × calls `deselectServerForConversation`, not the
+ * single global-active selection (which would strip the chip from both). No LLM.
  */
 test.describe('Split chat — per-pane MCP grounding chips', () => {
   test.describe.configure({ retries: 1 })
 
-  test('an MCP server selected for pane B shows its chip in pane B only', async ({
+  test('removing an MCP server in pane B leaves pane A’s chip intact', async ({
     page,
     testInfra,
   }) => {
@@ -65,7 +66,8 @@ test.describe('Split chat — per-pane MCP grounding chips', () => {
       pane1.locator('textarea[placeholder*="Type your message"]'),
     ).toBeVisible({ timeout: 15000 })
 
-    // Enable the server for pane B's conversation via its composer's MCP config.
+    // Enable the server via pane B's composer MCP config. An admin-enabled server
+    // grounds every conversation, so its chip then shows in BOTH panes.
     await pane1.click()
     await pane1.getByTestId('chat-input-add-btn').click()
     await byTestId(page, 'chat-mcp-menu-item').first().click()
@@ -75,13 +77,23 @@ test.describe('Split chat — per-pane MCP grounding chips', () => {
     await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 5000 })
     await byTestId(page, 'mcp-config-close-btn').click()
 
-    // The chip renders in pane B's status row ONLY — pane A shows its own (none).
+    // Grounded on both conversations → chip visible in both panes.
     await expect(pane1.getByTestId(`mcp-chip-${serverId}`)).toBeVisible({ timeout: 10000 })
-    await expect(pane0.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0)
+    await expect(pane0.getByTestId(`mcp-chip-${serverId}`)).toBeVisible({ timeout: 10000 })
 
-    // Focusing pane A does not surface B's server (per-conversation, not focus).
+    // Remove it from pane B ONLY via its chip's × (deselectServerForConversation).
+    await pane1
+      .getByTestId(`mcp-chip-${serverId}`)
+      .getByRole('button', { name: 'Remove' })
+      .click()
+
+    // Gone from pane B; STILL present in pane A (per-conversation, isolated write).
+    await expect(pane1.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0, { timeout: 10000 })
+    await expect(pane0.getByTestId(`mcp-chip-${serverId}`)).toBeVisible()
+
+    // Focusing pane A does not resurrect B's removal onto A (per-conversation, not focus).
     await pane0.click({ position: { x: 200, y: 80 } })
-    await expect(pane0.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0)
-    await expect(pane1.getByTestId(`mcp-chip-${serverId}`)).toBeVisible()
+    await expect(pane0.getByTestId(`mcp-chip-${serverId}`)).toBeVisible()
+    await expect(pane1.getByTestId(`mcp-chip-${serverId}`)).toHaveCount(0)
   })
 })
