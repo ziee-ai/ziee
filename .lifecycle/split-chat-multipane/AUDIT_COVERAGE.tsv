@@ -150,3 +150,16 @@ src-app/ui/tests/e2e/14-split-chat/voice-per-pane.spec.ts	1	83	tests-quality,tes
 src-app/ui/src/modules/mcp/components/McpConfigModal.tsx	1	585	correctness,state-management,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/pending-selection-per-pane.spec.ts	1	120	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/mcp/chat-extension/components/McpInitializer.tsx	1	57	correctness,state-management,react-hooks
+src-app/desktop/ui/src/modules/chat/core/popout/focusPopoutWindow.test.ts	1	65	tests-quality,test-coverage,correctness
+src-app/desktop/ui/src/modules/chat/core/popout/popoutSnapBack.test.ts	1	73	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/chat/core/popout/focusPopoutWindow.desktop.ts	1	38	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/core/popout/focusPopoutWindow.ts	1	20	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/core/popout/planPopoutSnapBack.test.ts	1	127	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/chat/core/popout/planPopoutSnapBack.ts	1	105	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/core/popout/popoutSnapBack.desktop.ts	1	52	correctness,concurrency,patterns-conformance
+src-app/ui/src/modules/chat/core/popout/popoutSnapBack.ts	1	28	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/core/popout/popoutWindowLabel.ts	1	13	correctness,patterns-conformance,api-contract
+src-app/ui/src/modules/chat/core/popout/usePopoutSnapBack.ts	1	90	correctness,state-management,react-hooks
+src-app/ui/src/modules/chat/pages/PopoutConversationPage.tsx	1	20	correctness,state-management,react-hooks
+src-app/ui/tests/e2e/14-split-chat/popout-window-chat-only.spec.ts	1	60	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/layouts/app-layout/AppLayout.tsx	10	33	correctness,state-management,react-hooks
