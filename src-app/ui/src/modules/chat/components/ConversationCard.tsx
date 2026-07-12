@@ -10,6 +10,7 @@ import type { ConversationResponse } from '@/api-client/types'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
 import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 
 dayjs.extend(relativeTime)
 
@@ -43,6 +44,9 @@ export function ConversationCard({
   trailing,
 }: ConversationCardProps) {
   const openConversation = useOpenConversationInWorkspace()
+  // Tear-off (ITEM-58): releasing a card drag past the window edge pops the
+  // conversation into its own desktop window (no-op on web / in-window release).
+  const tearOff = useConversationTearOff()
   const [popconfirmOpen, setPopconfirmOpen] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
   // Lazy-render the trailing area only after first hover so extensions
@@ -113,6 +117,12 @@ export function ConversationCard({
       onAuxClick={handleCardClick}
       draggable
       onDragStart={e => setConversationDragData(e.dataTransfer, conversation.id)}
+      onDragEnd={e =>
+        tearOff(e, {
+          conversationId: conversation.id,
+          title: conversation.title ?? undefined,
+        })
+      }
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()

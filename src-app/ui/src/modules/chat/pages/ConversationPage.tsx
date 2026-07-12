@@ -13,7 +13,10 @@ import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { ConversationPickerPane } from '@/modules/chat/components/ConversationPickerPane'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
-import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
+import {
+  useClosePane,
+  useOpenConversationInWorkspace,
+} from '@/modules/chat/core/pane/useOpenConversation'
 import {
   dragKind,
   isWorkspaceDrag,
@@ -22,6 +25,12 @@ import {
   reorderIndices,
   setPaneDragData,
 } from '@/modules/chat/core/pane/paneDnd'
+import {
+  type DropZone,
+  planSinglePaneDrop,
+  zoneForX,
+} from '@/modules/chat/core/pane/singlePaneDrop'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
@@ -86,6 +95,10 @@ export function ConversationPane() {
   }>()
   const pane = useChatPaneOrNull()
   const closePane = useClosePane()
+  const openConversationInWorkspace = useOpenConversationInWorkspace()
+  // Tear-off (ITEM-58): dragging this pane's grip past the window edge opens the
+  // conversation as its own desktop window (and MOVES the pane out). No-op on web.
+  const tearOff = useConversationTearOff()
   // The pop-out window is a focused single-conversation view — hide window-management
   // chrome (split, here; back + pop-out elsewhere) that only fits the main window
   // (ITEM-56 / FB-13).
@@ -130,6 +143,36 @@ export function ConversationPane() {
   // bridge (= primary) on the single-pane route. Both proxies expose the same
   // reactive-read / `.$` snapshot / action surface.
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  // Single-pane edge-directional drop (ITEM-57): on the UNSPLIT route a
+  // conversation dragged over the chat column highlights the left/center/right
+  // third; dropping splits by side (left → new pane on the left, right → on the
+  // right) or replaces (center). Only conversation drags participate — a file
+  // drag belongs to the composer, a pane drag can't exist in single-pane.
+  const [singleDropZone, setSingleDropZone] = useState<DropZone | null>(null)
+  const onSinglePaneDragOver = (e: React.DragEvent) => {
+    if (pane || !conversationId || dragKind(e.dataTransfer) !== 'conversation') return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    setSingleDropZone(zoneForX(e.clientX, rect.left, rect.width))
+  }
+  const onSinglePaneDragLeave = (e: React.DragEvent) => {
+    // Ignore leave events that cross into a child; only clear on a real exit.
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSingleDropZone(null)
+  }
+  const onSinglePaneDrop = (e: React.DragEvent) => {
+    setSingleDropZone(null)
+    if (pane || !conversationId || dragKind(e.dataTransfer) !== 'conversation') return
+    const droppedId = readConversationDragId(e.dataTransfer)
+    if (!droppedId) return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const plan = planSinglePaneDrop(zoneForX(e.clientX, rect.left, rect.width), conversationId, droppedId)
+    if (plan.kind === 'split') {
+      for (const cid of plan.order) Stores.SplitView.openPane({ conversationId: cid })
+    } else if (plan.kind === 'replace') {
+      void openConversationInWorkspace(plan.id)
+    }
+  }
 
   const { conversation, messages, loading, error, hasMoreBefore, hasMoreAfter } =
     chat
@@ -726,10 +769,21 @@ export function ConversationPane() {
           <div className="flex min-w-0 items-center gap-2">
             {/* Reorder handle (ITEM-31): drag this pane's header onto another
                 pane to reorder. A span (not a button) so it doesn't steal the
-                title's focus; keyboard reorder is out of scope for the handle. */}
+                title's focus; keyboard reorder is out of scope for the handle.
+                Tear-off (ITEM-58): releasing the same drag PAST the window edge
+                pops this pane's conversation into its own desktop window and
+                MOVES it out (no-op on web / in-window release). */}
             <span
               draggable
               onDragStart={e => setPaneDragData(e.dataTransfer, pane.paneId)}
+              onDragEnd={e => {
+                if (pane.conversationId)
+                  tearOff(e, {
+                    conversationId: pane.conversationId,
+                    paneId: pane.paneId,
+                    title: conversation?.title ?? undefined,
+                  })
+              }}
               data-testid="chat-pane-grip"
               aria-label="Drag to reorder pane"
               className="shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
@@ -774,7 +828,37 @@ export function ConversationPane() {
       <div ref={mainAreaRef} className={cn('relative flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Chat column. `relative` anchors the floating find bar (ITEM-1) and
             jump-to-latest button (ITEM-2). */}
-        <div className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
+        <div
+          className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}
+          onDragOver={onSinglePaneDragOver}
+          onDragLeave={onSinglePaneDragLeave}
+          onDrop={onSinglePaneDrop}
+        >
+          {/* Single-pane edge-directional drop hint (ITEM-57): while a conversation
+              is dragged over the unsplit column, show the three target thirds and
+              highlight the one under the pointer. Non-interactive overlay — the
+              drag events land on the column beneath it. */}
+          {!pane && singleDropZone && (
+            <div className="pointer-events-none absolute inset-0 z-40 flex" aria-hidden="true">
+              {(['left', 'center', 'right'] as const).map(z => (
+                <div
+                  key={z}
+                  className={cn(
+                    'flex flex-1 items-center justify-center border border-dashed border-primary/30 text-sm font-medium text-primary transition-colors',
+                    singleDropZone === z
+                      ? 'bg-primary/10 ring-2 ring-inset ring-primary'
+                      : 'opacity-40',
+                  )}
+                >
+                  {singleDropZone === z && (
+                    <span className="rounded-md bg-card/80 px-2 py-1 shadow-sm">
+                      {z === 'center' ? 'Replace' : z === 'left' ? 'Open on left' : 'Open on right'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {/* Floating find bar, top-right of the chat column. */}
           <div className="pointer-events-none absolute end-3 top-3 z-30 flex justify-end">
             <div className="pointer-events-auto">

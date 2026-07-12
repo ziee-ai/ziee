@@ -22,6 +22,7 @@ import {
 } from '@/modules/chat/core/extensions'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
 import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 
 const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 
@@ -38,6 +39,9 @@ const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 export function RecentConversationsWidget() {
   const location = useLocation()
   const openConversation = useOpenConversationInWorkspace()
+  // Tear-off (ITEM-58): releasing a sidebar drag past the window edge pops the
+  // conversation into its own desktop window (no-op on web / in-window).
+  const tearOff = useConversationTearOff()
   const { recentConversations, loading, isInitialized } = Stores.ChatHistory
 
   // Cmd/Ctrl/middle-click a row → open it in a NEW pane (ITEM-28) instead of the
@@ -138,6 +142,7 @@ export function RecentConversationsWidget() {
               title={title}
               draggable
               onDragStart={e => setConversationDragData(e.dataTransfer, c.id)}
+              onDragEnd={e => tearOff(e, { conversationId: c.id, title })}
             >
               {title}
             </span>
