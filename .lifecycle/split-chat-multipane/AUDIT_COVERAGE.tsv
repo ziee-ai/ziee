@@ -195,3 +195,4 @@ src-app/ui/src/modules/layouts/app-layout/hooks/useHeaderLeftInset.desktop.ts	1	
 src-app/ui/src/modules/layouts/app-layout/components/HeaderBarContainer.tsx	1	144	correctness,patterns-conformance,design-in-context
 src-app/ui/src/modules/layouts/app-layout/components/HeaderBarContainer.desktop.tsx	1	190	correctness,patterns-conformance,design-in-context
 src-app/ui/tests/e2e/14-split-chat/split-header-consistency.spec.ts	1	76	tests-quality,test-coverage,correctness
+src-app/ui/tests/e2e/14-split-chat/split-url-tracks-focused-pane.spec.ts	1	69	tests-quality,test-coverage,correctness

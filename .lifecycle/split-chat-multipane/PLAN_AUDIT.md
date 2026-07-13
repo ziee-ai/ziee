@@ -589,3 +589,12 @@ honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't h
   clickable. The new `.desktop.ts` hook is a registered override seam (OVERRIDE_MANIFEST
   regenerated, 15 .desktop files). RUN by TEST-108 (real click + computed-style asserts).
   npm run check green both workspaces.
+- **ITEM-72** — verdict: PASS — completes the URL↔workspace contract the ITEM-25 comment
+  already asserted but only half-built. The new effect is loop-SAFE: it only fires on
+  `[focusedConvId, panes.length]` changes (NOT `conversationId`), and its equality guard
+  makes it a strict no-op when the URL already matches, so it cannot ping-pong with the
+  URL→workspace reconcile (which, in turn, no-ops once focus matches). No new migration,
+  no OpenAPI/type change (pure client navigation). `focusedConvId` is derived from the
+  already-reactive `panes`/`focusedPaneId` — no store proxy read inside a loop/conditional.
+  Single-pane path (`panes.length < 2`) is an early-return no-op → zero behavior change to
+  the non-split view. Verified live before the covering spec; RUN by TEST-109.

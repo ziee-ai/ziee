@@ -334,6 +334,13 @@ toggle unclickable). Fixed by sharing HeaderBarContainer's conventions. All gree
 - **`npm run check` PASS** ui + desktop; `tsc` ui + desktop exit 0.
 - The z-index fix is proven by RUNNING (a synthetic dispatch could not catch a covered
   target); the height + inset by computed-style asserts.
+- **TEST-109**: PASS — e2e: with TWO active panes, the address bar tracks the FOCUSED
+  pane's conversation at every step — single-pane baseline `/chat/A`; picking convB into
+  the new pane navigates the URL to `/chat/B` (was stuck on `/chat/A` before the fix —
+  the "open in new tab reopens the current conversation" bug); clicking pane 0 returns the
+  URL to `/chat/A`; clicking pane 1 returns it to `/chat/B`. Ran together with TEST-108:
+  `2 passed (43.2s)` — `splitchat-url-e2e-*.log`. The fix was first proven live against the
+  dev server, then locked by this spec.
 
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
