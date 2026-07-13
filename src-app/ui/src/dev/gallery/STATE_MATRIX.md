@@ -8,7 +8,7 @@
 ## Summary
 
 - **366** surfaces carry at least one renderable-state signal.
-- **2152** signals total: 1696 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
+- **2154** signals total: 1698 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -3896,21 +3896,21 @@ Required states: `empty`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `open` | 119 |
-| branch | `badge` | 126 |
-| branch | `preview` | 132 |
-| branch | `open` | 180 |
-| error | `run.status === 'failed' && run.error_message` | 186 |
-| branch | `skip` | 192 |
-| error | `!preview && run.status !== 'failed'` | 200 |
-| branch | `task.paused_reason === 'completed'` | 286 |
-| branch | `task.paused_reason` | 291 |
-| branch | `task.target_kind === 'prompt'` | 320 |
-| overlay | `<Confirm open>` | 373 |
-| branch | `expanded` | 405 |
-| branch | `!runs` | 407 |
-| empty | `total === 0` | 409 |
-| branch | `total > perPage` | 425 |
+| branch | `open` | 128 |
+| branch | `badge` | 135 |
+| branch | `preview` | 141 |
+| branch | `open` | 189 |
+| error | `run.status === 'failed' && run.error_message` | 195 |
+| branch | `skip` | 201 |
+| error | `!preview && run.status !== 'failed'` | 209 |
+| branch | `task.target_kind === 'prompt'` | 330 |
+| overlay | `<Confirm open>` | 388 |
+| branch | `task.paused_reason === 'completed'` | 414 |
+| branch | `task.paused_reason` | 419 |
+| branch | `expanded` | 443 |
+| branch | `!runs` | 445 |
+| empty | `total === 0` | 447 |
+| branch | `total > perPage` | 463 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3923,16 +3923,18 @@ Required states: `open`
 | branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 238 |
 | branch | `values.target_kind !== 'workflow' \|\| !hasDeclaredInputs` | 293 |
 | branch | `dyn` | 305 |
-| branch | `!values.model_id.trim()` | 330 |
-| branch | `values.target_kind === 'workflow' && !values.workflow_id.trim()` | 334 |
-| branch | `values.target_kind === 'prompt' && !values.prompt.trim()` | 338 |
-| branch | `dyn` | 343 |
-| overlay | `<Drawer open>` | 377 |
-| branch | `canUse` | 402 |
-| branch | `targetKind === 'prompt'` | 449 |
-| branch | `hasDeclaredInputs` | 471 |
-| branch | `testing` | 545 |
-| branch | `testResult` | 550 |
+| branch | `values.target_kind === 'workflow' && !hasDeclaredInputs && !isValidJson(values.inputs_json)` | 310 |
+| branch | `!values.model_id.trim()` | 339 |
+| branch | `values.target_kind === 'workflow' && !values.workflow_id.trim()` | 343 |
+| branch | `values.target_kind === 'prompt' && !values.prompt.trim()` | 347 |
+| branch | `dyn` | 352 |
+| overlay | `<Drawer open>` | 386 |
+| branch | `canUse` | 411 |
+| branch | `targetKind === 'prompt'` | 458 |
+| branch | `hasDeclaredInputs` | 480 |
+| branch | `form.formState.errors.schedule?.message` | 532 |
+| branch | `testing` | 562 |
+| branch | `testResult` | 567 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
@@ -3940,10 +3942,10 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `tasks.length > 0` | 80 |
-| branch | `hasMore` | 117 |
-| loading | `loading` | 128 |
-| error | `error` | 132 |
+| branch | `tasks.length > 0` | 84 |
+| branch | `hasMore` | 121 |
+| loading | `loading` | 132 |
+| error | `error` | 136 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 

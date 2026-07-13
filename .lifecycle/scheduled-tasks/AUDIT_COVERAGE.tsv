@@ -55,3 +55,15 @@ src-app/ui/plugins/vite-plugin-testid-unique.js	1	99999	patterns-conformance,cor
 src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	99999	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	99999	patterns-conformance,correctness,tests-quality
 src-app/ui/tests/e2e/14-scheduler/failure-and-history.spec.ts	1	99999	tests-quality,correctness,api-contract
+src-app/ui/src/dev/gallery/overlay-allowlist.json	26	26	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/overlay-registry.generated.json	4	5	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/overlay-registry.generated.json	595	607	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/stateCoverage.ts	373	375	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/stateCoverage.ts	376	376	patterns-conformance,correctness,tests-quality
+src-app/ui/src/modules/scheduler/components/ScheduledTaskCard.tsx	1	446	correctness,state-management,a11y,precedent-fidelity,patterns-conformance,reactive-read-in-loop
+src-app/ui/src/modules/scheduler/module.tsx	7	7	correctness,patterns-conformance,precedent-fidelity
+src-app/ui/src/modules/scheduler/module.tsx	10	10	correctness,patterns-conformance,precedent-fidelity
+src-app/ui/src/modules/scheduler/module.tsx	12	12	correctness,patterns-conformance,precedent-fidelity
+src-app/ui/src/modules/scheduler/module.tsx	45	48	correctness,patterns-conformance,precedent-fidelity
+src-app/ui/tests/e2e/14-scheduler/precedent-form.spec.ts	1	95	tests-quality,test-reality,correctness
+src-app/ui/tests/e2e/14-scheduler/precedent-layout.spec.ts	1	192	tests-quality,test-reality,correctness

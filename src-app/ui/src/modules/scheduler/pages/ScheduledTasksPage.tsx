@@ -35,10 +35,14 @@ export function ScheduledTasksPage() {
     void Stores.ScheduledTasks.loadTasks()
   }, [])
 
-  // Mutation errors (a task already on screen) → toast; cold-load errors render
-  // in place below (mirrors the projects/knowledge-base error routing).
+  // Mutation errors (a task already on screen) → toast once, then clear so a
+  // later tasks.length change doesn't re-toast the stale error (mirrors the
+  // projects/knowledge-base error routing).
   useEffect(() => {
-    if (error && tasks.length > 0) message.error(error)
+    if (error && tasks.length > 0) {
+      message.error(error)
+      Stores.ScheduledTasks.clearError()
+    }
   }, [error, tasks.length])
 
   return (
@@ -90,7 +94,7 @@ export function ScheduledTasksPage() {
                 nativeScroll ? '' : 'h-full overflow-y-auto',
               )}
             >
-              <div className="max-w-4xl w-full self-center flex flex-col gap-2 px-3 pt-3">
+              <div className="max-w-4xl w-full self-center flex flex-col gap-3 px-3 pt-3">
                 {visibleTasks.map(t => (
                   <ScheduledTaskCard key={t.id} task={t} />
                 ))}
@@ -127,7 +131,7 @@ export function ScheduledTasksPage() {
           </div>
         ) : loading ? (
           <div className="m-auto flex justify-center py-12">
-            <Spin size="lg" label="Loading scheduled tasks" />
+            <Spin label="Loading scheduled tasks" />
           </div>
         ) : error ? (
           <div className="w-full max-w-4xl self-center px-3 pt-3">

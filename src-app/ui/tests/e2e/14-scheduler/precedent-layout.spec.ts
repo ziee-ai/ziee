@@ -129,12 +129,19 @@ test('TEST-60: card exposes hover actions (edit opens the drawer) with the enabl
   const card = byTestId(page, `task-card-${row.id}`)
   await expect(card).toBeVisible({ timeout: 10000 })
 
-  // Enable/disable Switch is STATE → always present.
+  // Enable/disable Switch is STATE → always present (not opacity-gated).
   await expect(byTestId(page, `task-enabled-${row.id}`)).toBeVisible()
 
-  // Actions are reachable (hover-revealed on desktop, always-on for touch): the
-  // Edit action opens the drawer seeded with this task.
+  // The action cluster is genuinely hover-revealed: opacity 0 at rest, 1 on
+  // hover (Playwright treats opacity:0 as "visible", so we read computed opacity
+  // — a plain toBeVisible would pass even if the gate were removed).
+  const actions = byTestId(page, `task-actions-${row.id}`)
+  const opacity = () => actions.evaluate(el => getComputedStyle(el).opacity)
+  expect(Number(await opacity())).toBeLessThan(0.5)
   await card.hover()
+  await expect.poll(async () => Number(await opacity())).toBe(1)
+
+  // And the revealed Edit action opens the drawer seeded with this task.
   await byTestId(page, `task-edit-${row.id}`).click()
   await expect(byTestId(page, 'task-form')).toBeVisible({ timeout: 10000 })
   await expect(byTestId(page, 'task-form-name')).toHaveValue('Card task')
@@ -158,8 +165,9 @@ test('TEST-61: the card title renders with the canonical list-item tokens (font-
     const s = getComputedStyle(el)
     return { weight: Number(s.fontWeight), size: s.fontSize }
   })
-  // Canonical list-item title: font-normal (400), text-sm (14px) — NOT medium/bold.
-  expect(weight).toBeLessThanOrEqual(400)
+  // Canonical list-item title: font-normal (exactly 400), text-sm (14px) — NOT
+  // medium/bold (a dropped !font-normal token → Title level-5's heavier default).
+  expect(weight).toBe(400)
   expect(size).toBe('14px')
 })
 
@@ -185,8 +193,13 @@ test('TEST-63: at 390px there is no horizontal page scroll and the header/action
   })
   expect(overflow).toBeLessThanOrEqual(1)
 
-  // The card's actions remain reachable at mobile width.
+  // The card's actions reveal (opacity → 1) and stay reachable at mobile width.
   const card = byTestId(page, `task-card-${row.id}`)
+  const actions = byTestId(page, `task-actions-${row.id}`)
   await card.hover()
-  await expect(byTestId(page, `task-edit-${row.id}`)).toBeVisible()
+  await expect
+    .poll(async () => Number(await actions.evaluate(el => getComputedStyle(el).opacity)))
+    .toBe(1)
+  await byTestId(page, `task-edit-${row.id}`).click()
+  await expect(byTestId(page, 'task-form')).toBeVisible({ timeout: 10000 })
 })

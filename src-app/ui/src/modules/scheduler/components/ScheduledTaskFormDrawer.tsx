@@ -18,7 +18,12 @@ import {
   useForm,
   zodResolver,
 } from '@/components/ui'
-import { Field, FieldContent, FieldTitle } from '@/components/ui/shadcn/field'
+import {
+  Field,
+  FieldContent,
+  FieldError,
+  FieldTitle,
+} from '@/components/ui/shadcn/field'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -131,16 +136,11 @@ const formSchema = z
         path: ['schedule'],
         message: 'A schedule is required',
       })
-    if (
-      v.target_kind === 'workflow' &&
-      v.inputs_json.trim() &&
-      !isValidJson(v.inputs_json)
-    )
-      ctx.addIssue({
-        code: 'custom',
-        path: ['inputs_json'],
-        message: 'Inputs must be valid JSON',
-      })
+    // NOTE: the raw inputs_json JSON-validity check is intentionally NOT here —
+    // it only applies in JSON-fallback mode (a workflow with no declared inputs),
+    // which the schema can't detect; it's enforced imperatively in onSubmit so a
+    // stale invalid inputs_json can't block a typed workflow whose JSON Textarea
+    // isn't even rendered (blind-audit fix).
   })
 
 const isValidJson = (s: string): boolean => {
@@ -304,6 +304,15 @@ export function ScheduledTaskFormDrawer() {
     const dyn = declaredInputError(values)
     if (dyn) {
       message.error(dyn)
+      return
+    }
+    // JSON-fallback mode only (no declared inputs): the raw inputs_json must parse.
+    if (
+      values.target_kind === 'workflow' &&
+      !hasDeclaredInputs &&
+      !isValidJson(values.inputs_json)
+    ) {
+      message.error('Inputs must be valid JSON')
       return
     }
     Stores.SchedulerDrawer.setLoading(true)
@@ -517,6 +526,14 @@ export function ScheduledTaskFormDrawer() {
             value={schedule}
             onChange={next => form.setValue('schedule', next)}
           />
+          {/* The Schedule control has no inline FieldError of its own, so a
+              zod schedule error (missing run-at / cron) is surfaced here — this
+              covers the Enter-to-submit path, not just the footer Save button. */}
+          {form.formState.errors.schedule?.message && (
+            <FieldError data-testid="field-error-schedule">
+              {String(form.formState.errors.schedule.message)}
+            </FieldError>
+          )}
         </Field>
 
         <Field orientation="horizontal">

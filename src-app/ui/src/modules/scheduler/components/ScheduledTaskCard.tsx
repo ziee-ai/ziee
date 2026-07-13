@@ -40,6 +40,11 @@ import {
 import { humanizeCron } from './scheduleCron'
 import { skippedToolsNote } from './skippedToolsNote'
 
+/** Store mutations don't surface their own errors (no error state), so the UI
+ *  layer toasts a rejected action rather than swallowing it. */
+const notifyError = (e: unknown, fallback: string) =>
+  message.error(e instanceof Error ? e.message : fallback)
+
 function targetSummary(t: ScheduledTask): string {
   return t.target_kind === 'workflow' ? 'Workflow' : 'Prompt'
 }
@@ -87,8 +92,12 @@ function runActionItems(
     key: 'fork',
     label: a.forkLabel,
     onClick: async () => {
-      const conversationId = await Stores.ScheduledTasks.continueRun(run.id)
-      if (conversationId) navigate(`/conversations/${conversationId}`)
+      try {
+        const conversationId = await Stores.ScheduledTasks.continueRun(run.id)
+        if (conversationId) navigate(`/conversations/${conversationId}`)
+      } catch (e) {
+        notifyError(e, 'Failed to open the conversation')
+      }
     },
   })
   return items
@@ -218,11 +227,15 @@ function SeriesChooser({
 }) {
   const navigate = useNavigate()
   const start = async (limit: number) => {
-    const conversationId = await Stores.ScheduledTasks.continueSeries(
-      task.id,
-      limit,
-    )
-    if (conversationId) navigate(`/conversations/${conversationId}`)
+    try {
+      const conversationId = await Stores.ScheduledTasks.continueSeries(
+        task.id,
+        limit,
+      )
+      if (conversationId) navigate(`/conversations/${conversationId}`)
+    } catch (e) {
+      notifyError(e, 'Failed to start the discussion')
+    }
   }
   const items = seriesChoices(loadedCount).map(c => ({
     key: String(c.value),
@@ -256,6 +269,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const runs = Stores.ScheduledTasks.runsByTask[task.id]
   const meta = Stores.ScheduledTasks.runsMetaByTask[task.id]
   const total = meta?.total ?? runs?.length ?? 0
@@ -274,6 +288,9 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
       data-testid={`task-card-${task.id}`}
       className="group"
       title={
+        // Only the name lives in the (truncating) CardTitle; the kind Tag +
+        // status Badge go in the card body so they never clip at narrow widths
+        // — mirrors KnowledgeBaseCard/ProjectCard.
         <div className="flex min-w-0 items-center gap-2">
           <Title
             level={5}
@@ -282,18 +299,6 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
           >
             {task.name}
           </Title>
-          <Tag data-testid={`task-kind-${task.id}`}>{targetSummary(task)}</Tag>
-          {task.paused_reason === 'completed' ? (
-            <Badge tone="success" data-testid={`task-completed-${task.id}`}>
-              Completed
-            </Badge>
-          ) : (
-            task.paused_reason && (
-              <Badge tone="error" data-testid={`task-paused-${task.id}`}>
-                Paused: {task.paused_reason}
-              </Badge>
-            )
-          )}
         </div>
       }
       extra={
@@ -304,12 +309,17 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
             data-testid={`task-enabled-${task.id}`}
             aria-label={task.enabled ? 'Disable task' : 'Enable task'}
             checked={task.enabled}
-            onCheckedChange={v =>
-              void Stores.ScheduledTasks.setEnabled(task.id, v)
-            }
+            onCheckedChange={async v => {
+              try {
+                await Stores.ScheduledTasks.setEnabled(task.id, v)
+              } catch (e) {
+                notifyError(e, 'Failed to update the task')
+              }
+            }}
           />
           {/* Actions (hover/focus-revealed, always-on for touch): mirror ProjectCard. */}
           <Flex
+            data-testid={`task-actions-${task.id}`}
             className={cn(
               'items-center gap-1 transition-opacity',
               deleteOpen
@@ -343,10 +353,14 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
                 icon={<Play />}
                 aria-label="Run now"
                 onClick={async () => {
-                  await Stores.ScheduledTasks.runNow(task.id)
-                  message.info(
-                    'Running now — result will land in your notifications',
-                  )
+                  try {
+                    await Stores.ScheduledTasks.runNow(task.id)
+                    message.info(
+                      'Running now — result will land in your notifications',
+                    )
+                  } catch (e) {
+                    notifyError(e, 'Failed to run the task')
+                  }
                 }}
               />
             </Tooltip>
@@ -367,6 +381,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
                 size="icon"
                 icon={<Trash2 />}
                 aria-label="Delete"
+                loading={deleting}
                 onClick={() => setDeleteOpen(true)}
               />
             </Tooltip>
@@ -379,12 +394,35 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
               okText="Delete"
               cancelText="Cancel"
               okButtonProps={{ danger: true }}
-              onConfirm={() => void Stores.ScheduledTasks.deleteTask(task.id)}
+              onConfirm={async () => {
+                setDeleting(true)
+                try {
+                  await Stores.ScheduledTasks.deleteTask(task.id)
+                  // success → the card unmounts (task removed from the list).
+                } catch (e) {
+                  notifyError(e, 'Failed to delete the task')
+                  setDeleting(false)
+                }
+              }}
             />
           </Flex>
         </Flex>
       }
     >
+      <Flex className="mb-1 flex-wrap items-center gap-2">
+        <Tag data-testid={`task-kind-${task.id}`}>{targetSummary(task)}</Tag>
+        {task.paused_reason === 'completed' ? (
+          <Badge tone="success" data-testid={`task-completed-${task.id}`}>
+            Completed
+          </Badge>
+        ) : (
+          task.paused_reason && (
+            <Badge tone="error" data-testid={`task-paused-${task.id}`}>
+              Paused: {task.paused_reason}
+            </Badge>
+          )
+        )}
+      </Flex>
       <Text className="text-muted-foreground block text-sm">
         {scheduleSummary(task)}
       </Text>
