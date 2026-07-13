@@ -457,6 +457,8 @@ export const STATE_COVERAGE = {
   "modules/file/components/FileVersionBar:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/ConversationPickerPane:empty": { skip: true, reason: "rendered within its parent page; 'empty' branch proven by Part 2 runtime coverage" },
   "modules/chat/pages/ConversationPage:empty": { via: 'page-state-mode' },
+  "modules/chat/components/PaneManagerDrawer:empty": { skip: true, reason: "via surface — rendered within its page; 'empty' branch proven by Part 2 runtime coverage" },
+  "modules/chat/components/PaneManagerDrawer:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

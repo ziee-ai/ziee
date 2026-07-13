@@ -5,7 +5,6 @@ import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScr
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatPaneProvider } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ConversationPane } from '@/modules/chat/pages/ConversationPage'
-import { PaneTabStrip } from '@/modules/chat/components/PaneTabStrip'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 
 /**
@@ -20,32 +19,48 @@ import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
  * stays on the plain `ConversationPane` path.
  */
 export function SplitChatView() {
-  // Split is a desktop layout — force the inner-scroll shell for the whole view.
-  useNativeScroll(false)
-  const { panes, focusedPaneId, dividerWidths } = Stores.SplitView
-  // At/below `md` (≤768px) there isn't room to tile columns → tab mode (ITEM-30):
-  // one visible pane + a tab strip. All panes stay MOUNTED (only the focused one is
-  // shown) so a background pane keeps streaming. `useWindowMinSize().md` is TRUE
-  // when the viewport is AT MOST 768px (mobile/tablet), so tab mode is `if (md)` —
-  // desktop (md === false) tiles columns.
   const { md } = useWindowMinSize()
+  // SplitChatView OWNS the native-scroll flag for the whole mobile split (FB-26):
+  // on a phone (`useNativeScroll` self-gates on `xs`, so `md` here only bites on a
+  // phone — tablet/desktop are no-ops) the single visible pane scrolls the WINDOW
+  // like a normal single-pane conversation (auto-hiding header). Owning it in ONE
+  // place — not per-pane — means switching the focused pane never races the global
+  // flag. We READ the flag back to relax this shell so the pane content can extend
+  // the document.
+  useNativeScroll(md)
+  const nativeScroll = Stores.AppLayout.nativeScroll
+  const { panes, focusedPaneId, dividerWidths } = Stores.SplitView
+  // At/below `md` (≤768px) there isn't room to tile columns → single-visible-pane
+  // mode (ITEM-30 / FB-26): ONE pane shows full-width; the others stay MOUNTED but
+  // `hidden` so a background pane keeps streaming. There is NO tab strip and NO
+  // drag chrome on small screens — switching / adding / closing panes happens in
+  // the `PaneManagerDrawer` (opened from the focused pane's "Panes" button), and
+  // the focused pane reads as a normal single-pane conversation. `useWindowMinSize().md`
+  // (read once above) is TRUE when the viewport is AT MOST 768px (mobile/tablet), so
+  // this branch is `if (md)`; desktop (md === false) tiles columns.
 
   // ONE tree for both modes (not two branches): crossing the `md` breakpoint must
   // NOT change a pane's element TYPE or its key, or React would unmount + remount
   // every `ChatPaneProvider` (recreating the per-pane store → tearing down live
   // streams). Each pane is always `<Fragment key=paneId><div key="pane">`; the
-  // divider (columns-only) and the tab strip (tabs-only) toggle around it, and the
-  // KEYED children keep the pane div reconciled by key regardless (DRIFT-2.14).
+  // divider (columns-only) toggles around it, and the KEYED children keep the pane
+  // div reconciled by key regardless (DRIFT-2.14).
   return (
     <div
       className={cn(
-        'flex h-full min-h-0 w-full overflow-hidden',
-        md && 'flex-col',
+        'flex w-full',
+        md
+          ? // Mobile: stack. When the focused pane is on native document-scroll,
+            // DON'T clip/fix-height — let its content scroll the window (auto-hide
+            // header, FB-26). Else (tablet, non-xs) keep the inner-scroll shell.
+            nativeScroll
+            ? 'flex-col'
+            : 'flex-col h-full min-h-0 overflow-hidden'
+          : 'h-full min-h-0 overflow-hidden',
       )}
       data-testid="split-chat-view"
       data-split-mode={md ? 'tabs' : 'columns'}
     >
-      {md && <PaneTabStrip />}
       {panes.map((p, i) => (
         <Fragment key={p.paneId}>
           {!md && i > 0 && <SplitDivider key="divider" leftPaneIndex={i - 1} />}
@@ -57,13 +72,17 @@ export function SplitChatView() {
             data-testid={`chat-pane-${i}`}
             role={md ? 'tabpanel' : undefined}
             className={cn(
-              'relative min-h-0 flex-col overflow-hidden',
+              'relative flex-col',
               md
                 ? p.paneId === focusedPaneId
-                  ? 'flex flex-1'
+                  ? // Focused mobile pane: on native scroll, flow (no clip) so its
+                    // content extends the document; else fill the inner shell.
+                    nativeScroll
+                    ? 'flex w-full'
+                    : 'flex flex-1 min-h-0 overflow-hidden'
                   : 'hidden'
                 : cn(
-                    'flex min-w-0 transition-opacity duration-200',
+                    'flex min-w-0 min-h-0 overflow-hidden transition-opacity duration-200',
                     // Subtle focus indicator (DEC-28 amended): NO ring on the
                     // focused pane. Instead DIM the non-focused panes so the active
                     // one reads at full strength. Pointer events are unaffected

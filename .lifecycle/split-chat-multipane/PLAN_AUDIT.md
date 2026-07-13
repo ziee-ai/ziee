@@ -627,3 +627,42 @@ honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't h
 - **ITEM-78** — verdict: PASS — a one-condition render gate on the already-reactive
   `splitViewPanes.length` + the imported `SPLIT_LIMITS.MAX_PANES`; single-pane (0 panes) and
   2 panes still show it, 3 hides it. RUN by TEST-113. No behavior change to `openPane`'s own cap.
+
+## FB-26 small-screen redesign (ITEM-79..83)
+
+- **ITEM-79** — verdict: PASS — `SplitChatView` drops the `{md && <PaneTabStrip />}` render
+  and the import; the keyed pane fragments (DRIFT-2.14) are untouched, so a pane's element
+  type/key is unchanged across the `md` breakpoint — no `ChatPaneProvider` remount, streams
+  survive. `PaneTabStrip.tsx` deleted; the only remaining references were the (rewritten)
+  spec + gallery-coverage entry, both updated. `data-split-mode` retained.
+- **ITEM-80** — verdict: PASS — the pane header is now ONE element adapted by `md` (keeps the
+  `chat-pane-header` testid literal unique — the testid-unique gate passed). Mobile branch:
+  `paddingLeft: md || isLeftmostPane ? headerLeftInset : 12` reserves the inset for every
+  focused pane (only one is visible on mobile); grip + ✕ + drag handlers wrapped in `!md`.
+  Mirrors the `!pane` HeaderBarContainer branch (TitleEditor + headerControls). RUN by TEST-114.
+- **ITEM-81** — verdict: PASS — grip `<span draggable>`, `onPaneAreaDrag*` on BOTH the header
+  and the chat column, and the drop-zone overlay are all gated `!md`. With no handler on
+  mobile, `dropZone` can never be set, so the overlay never renders (belt-and-suspenders: the
+  overlay is also `!md`-gated). Desktop drag paths unchanged (existing specs run at desktop
+  width). RUN by TEST-114 (grip count 0 at 390px).
+- **ITEM-82** — verdict: PASS — `headerControls`' split button branches on `md`: mobile →
+  `setPaneManagerOpen(true)` (always shown unless pop-out, `aria-haspopup="dialog"`); desktop →
+  the unchanged `onSplit` gated `< MAX_PANES`. Same `chat-split-btn` testid across both (one
+  literal). No desktop behavior change (DEC-75). RUN by TEST-114/115.
+- **ITEM-84** — verdict: PASS — the mobile split pane gets native document-scroll +
+  the single-pane auto-hiding header. `SplitChatView` owns the flag (`useNativeScroll(md)`,
+  self-gated on `xs`) so a focus-switch never races it; the shell + focused-pane div relax on
+  `nativeScroll` so content scrolls the window; the focused mobile pane renders the SAME
+  `HeaderBarContainer` as single-pane (DEC-78 — inherits `top:5`, the safe-area backdrop, and
+  relative-wipe; the re-derived `useScrollAwayHeader` was deleted). The store-proxy flag is read
+  UNCONDITIONALLY then branched on the value (the conditional-read hook-crash was found + fixed,
+  which also made the `<div>`↔`HeaderBarContainer` swap safe). Desktop is the `!md`/`!useMobileShell`
+  branch, byte-unchanged. RUN by TEST-118 (app-header-bar + scroll-away + no-crash-on-switch)
+  + the 16/16 live probe + the 6/6 auto-hide probe (pin at top:5, sticky).
+- **ITEM-83** — verdict: PASS — `PaneManagerDrawer` consumes the canonical `Drawer`
+  idiomatically (open/onClose/title/placement/testid), reuses ConversationPickerPane's
+  search/filter/exclude-open pattern, and routes close through `useClosePane` (collapse +
+  navigate) with a self-dismiss when the workspace collapses to single-pane. `paneManagerOpen`
+  is transient (absent from `snapshot()` + the `watch()` fingerprint — TEST-117). Rendered
+  once in the route brancher. Overlay allow-listed (responsive-only, e2e-covered — the
+  `ChatRightPanel` precedent). RUN by TEST-115/116 + TEST-117.

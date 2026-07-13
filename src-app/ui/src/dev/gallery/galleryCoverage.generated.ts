@@ -149,7 +149,7 @@ export const GALLERY_SURFACES = [
   "modules/chat/components/MessageList",
   "modules/chat/components/ModelSelector",
   "modules/chat/components/OpenInNewWindowAction",
-  "modules/chat/components/PaneTabStrip",
+  "modules/chat/components/PaneManagerDrawer",
   "modules/chat/components/PlusMenuItem",
   "modules/chat/components/SplitChatView",
   "modules/chat/components/TextContent",

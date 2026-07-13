@@ -199,3 +199,32 @@ test('setMode toggles split/tabs; reset clears the layout', () => {
   assert.deepEqual(s().dividerWidths, [])
   assert.equal(s().mode, 'split')
 })
+
+// TEST-117 (ITEM-83 / FB-26): the small-screen pane-manager Drawer open-state is a
+// TRANSIENT store field — `setPaneManagerOpen` toggles it, it defaults closed, and
+// toggling it must NOT perturb any of the fields that get persisted (panes /
+// focusedPaneId / dividerWidths / mode / direction — the `snapshot()` set). Proving
+// orthogonality here is the unit-level guard that the drawer state is never saved.
+test('setPaneManagerOpen toggles paneManagerOpen without touching the persisted layout', () => {
+  s().openPane({ conversationId: 'c1' })
+  s().openPane({ conversationId: 'c2' })
+  const persistedFields = () =>
+    JSON.stringify({
+      panes: s().panes,
+      focusedPaneId: s().focusedPaneId,
+      dividerWidths: s().dividerWidths,
+      mode: s().mode,
+      direction: s().direction,
+    })
+  const before = persistedFields()
+  assert.equal(s().paneManagerOpen, false, 'defaults closed')
+  s().setPaneManagerOpen(true)
+  assert.equal(s().paneManagerOpen, true, 'opens')
+  s().setPaneManagerOpen(false)
+  assert.equal(s().paneManagerOpen, false, 'closes')
+  assert.equal(
+    persistedFields(),
+    before,
+    'toggling paneManagerOpen leaves every persisted layout field unchanged (transient)',
+  )
+})

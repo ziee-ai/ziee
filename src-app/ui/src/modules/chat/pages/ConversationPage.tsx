@@ -34,6 +34,7 @@ import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeaderLeftInset'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Stores } from '@/core'
@@ -48,6 +49,7 @@ import { pendingApprovalIdsInPane } from '@/modules/chat/core/utils/toolCallPane
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { SplitChatView } from '@/modules/chat/components/SplitChatView'
+import { PaneManagerDrawer } from '@/modules/chat/components/PaneManagerDrawer'
 
 /**
  * Chat route element for `/chat/:conversationId`.
@@ -107,8 +109,15 @@ export default function ConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedConvId, panes.length])
 
-  if (panes.length >= 2) return <SplitChatView />
-  return <ConversationPane />
+  // The small-screen pane manager is mounted ONCE here (outside the pane subtrees)
+  // so it's reachable from both the single-pane header and every split pane header,
+  // and its global open-state survives the single-pane ⇄ split brancher swap below.
+  return (
+    <>
+      {panes.length >= 2 ? <SplitChatView /> : <ConversationPane />}
+      <PaneManagerDrawer />
+    </>
+  )
 }
 
 /**
@@ -156,11 +165,28 @@ export function ConversationPane() {
   // left inset (shared `useHeaderLeftInset` — web 48/12, macOS-desktop 118) so its
   // content clears the fixed sidebar-collapse toggle + the macOS traffic lights.
   const headerLeftInset = useHeaderLeftInset()
+  // Small screen (≤768px): a split pane can't tile columns, so it renders as a
+  // normal single-pane conversation (normal header, no grip, no drag, no per-pane
+  // ✕) and pane management moves to the `PaneManagerDrawer` (FB-26). `md === true`
+  // is the drawer/single-visible-pane mode; desktop (false) keeps the compact
+  // split header + drag-to-split + one-click split.
+  const { md } = useWindowMinSize()
   // Read `panes` UNCONDITIONALLY (reactive) then derive — never behind `&&`, so the
   // reactive-proxy hook it triggers isn't conditional (Rules of Hooks; the file's
   // convention is `.$` snapshots for hook-free reads, reactive reads only at top level).
-  const { panes: splitViewPanes } = Stores.SplitView
+  const { panes: splitViewPanes, focusedPaneId: splitFocusedPaneId } =
+    Stores.SplitView
   const isLeftmostPane = !!pane && splitViewPanes[0]?.paneId === pane.paneId
+  // On a small screen the FOCUSED pane is the only visible one; it should read like
+  // a normal single-pane conversation — native document-scroll + the SAME auto-hiding
+  // `HeaderBarContainer` (FB-28), so it inherits that header's real notch handling
+  // (sticky top:5, the safe-area backdrop, relative-wipe) instead of a re-derived
+  // approximation. `useMobileShell` marks that pane → it renders the
+  // `HeaderBarContainer` branch below; hidden + desktop panes keep the compact header.
+  // Safe to branch on because the store-proxy flag it depends on is read
+  // unconditionally (a conditional proxy read would be a conditional hook).
+  const isFocusedPane = !!pane && splitFocusedPaneId === pane.paneId
+  const useMobileShell = !!pane && md && isFocusedPane
   // Per-pane edge-directional drop (ITEM-57 single-pane + ITEM-70 split): a
   // conversation dragged over a pane's chat column highlights the left/center/
   // right third. SINGLE-pane: left/right create the split ([dropped|current] /
@@ -250,13 +276,20 @@ export function ConversationPane() {
     chat
   // Native document-scroll on mobile: the message history scrolls the WINDOW
   // (iOS toolbar collapses as you scroll up) while the composer stays pinned via
-  // position:sticky. Desktop keeps the fixed inner-scroll shell. A split pane
-  // always uses the inner-scroll shell (no window native-scroll); single-pane
-  // follows the app-layout native-scroll (main: the right panel is a fixed
-  // overlay on mobile, so the chat column is effectively full-width). `!pane`
-  // yields main's `true` on the single-pane route and `false` inside a pane.
+  // position:sticky. Desktop keeps the fixed inner-scroll shell.
+  //   • Single-pane route → THIS component owns the flag (`useNativeScroll(!pane)`).
+  //   • Split → `SplitChatView` owns it for the whole mobile split; a pane's own
+  //     `useNativeScroll(!pane)` is a no-op and just READS the flag.
+  // The focused MOBILE pane (`useMobileShell`) then follows the flag → native
+  // document scroll + auto-hide header, like single-pane; hidden + desktop panes
+  // stay on the inner shell.
   useNativeScroll(!pane)
-  const nativeScroll = pane ? false : Stores.AppLayout.nativeScroll
+  // Read the store flag UNCONDITIONALLY: a store-proxy read IS a subscription hook,
+  // so reading it only in one ternary branch would ADD/DROP a hook when
+  // `useMobileShell` flips on a focus-switch → a Rules-of-Hooks crash. Apply the
+  // condition to the VALUE, never to the read.
+  const appNativeScroll = Stores.AppLayout.nativeScroll
+  const nativeScroll = !pane || useMobileShell ? appNativeScroll : false
   // Live MCP tool-call statuses — subscribed reactively (proxy destructure) so a
   // newly-`pending_approval` tool triggers the scroll-to-approval effect below.
   // NOTE (split-awareness, Stage-2 candidate): `toolCalls` reads the McpComposer
@@ -804,24 +837,42 @@ export function ConversationPane() {
           onClick={() => (findOpen ? closeFind() : setFindOpen(true))}
         />
       </Tooltip>
-      {/* Split affordance — open this conversation beside another pane. Visually
-          distinct (columns icon) from the pop-out "new window" action, which the
-          trailing slot injects. Hidden inside the pop-out WINDOW (ITEM-56/FB-13): a
-          focused single-conversation window shouldn't spawn a split inside itself.
-          Also hidden once the workspace is at MAX_PANES — there's no room for
-          another pane, so the button would only produce a "cap reached" no-op. */}
-      {!isPopoutWindow && splitViewPanes.length < SPLIT_LIMITS.MAX_PANES && (
-        <Tooltip content="Open in split view">
-          <Button
-            data-testid="chat-split-btn"
-            variant="ghost"
-            size="icon"
-            icon={<Columns2 />}
-            aria-label="Open in split view"
-            onClick={onSplit}
-          />
-        </Tooltip>
-      )}
+      {/* Panes affordance — the columns icon, visually distinct from the pop-out
+          "new window" action that the trailing slot injects. Hidden inside the
+          pop-out WINDOW (ITEM-56/FB-13): a focused single-conversation window
+          shouldn't spawn a split inside itself.
+            • Desktop (columns): one-click "Open in split view" (onSplit), hidden at
+              MAX_PANES since another pane can't fit.
+            • Small screen (FB-26): there are no tiled columns, so the button opens
+              the `PaneManagerDrawer` (switch / add / close panes) instead — always
+              available (even at MAX_PANES, where it's still the way to switch/close). */}
+      {!isPopoutWindow &&
+        (md ? (
+          <Tooltip content="Panes">
+            <Button
+              data-testid="chat-split-btn"
+              variant="ghost"
+              size="icon"
+              icon={<Columns2 />}
+              aria-label="Open panes"
+              aria-haspopup="dialog"
+              onClick={() => Stores.SplitView.setPaneManagerOpen(true)}
+            />
+          </Tooltip>
+        ) : (
+          splitViewPanes.length < SPLIT_LIMITS.MAX_PANES && (
+            <Tooltip content="Open in split view">
+              <Button
+                data-testid="chat-split-btn"
+                variant="ghost"
+                size="icon"
+                icon={<Columns2 />}
+                aria-label="Open in split view"
+                onClick={onSplit}
+              />
+            </Tooltip>
+          )
+        ))}
       {/* Decoupled chip injection point — other modules register header
           decorations into `chatConversationHeaderTrailing` without chat
           compiling against them. */}
@@ -831,22 +882,35 @@ export function ConversationPane() {
 
   return (
     <div className={cn('flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full')}>
-      {/* Header — full width app header on the single-pane route; a compact
-          in-column header (title + controls + close-pane) inside a split pane. */}
-      {pane ? (
+      {/* Header — full width app header on the single-pane route; an in-column
+          header inside a split pane. On DESKTOP the pane header is compact (reorder
+          grip + close-pane ✕ + drag-to-split drop target). On SMALL SCREENS
+          (`md`, FB-26) the split can't tile columns, so the pane reads as a normal
+          single-pane conversation: normal left inset (clears the sidebar toggle for
+          EVERY focused pane, not just the leftmost — fixing the "2nd pane loses the
+          inset" bug), NO grip, NO per-pane ✕, and NO drag chrome (pane management
+          moves to the `PaneManagerDrawer`). One element, adapted by `md`, so the
+          `chat-pane-header` testid stays unique. The FOCUSED mobile pane
+          (`useMobileShell`) instead falls through to the `HeaderBarContainer` branch
+          below (same as single-pane) so it INHERITS the real auto-hide chrome —
+          sticky `top:5` (dodges iOS's under-notch latch), the `bg-card` backdrop that
+          fills the safe-area/notch gap, and the relative-wipe-on-scroll-down — rather
+          than a re-derived approximation (FB-28). The store-proxy flag is read
+          unconditionally above, so this branch flip does not change the hook tree. */}
+      {pane && !useMobileShell ? (
         <div
           className={cn(
             'flex h-[50px] shrink-0 items-center justify-between gap-2 border-b',
-            paneDropActive && 'bg-primary/10 ring-2 ring-primary ring-inset',
+            !md && paneDropActive && 'bg-primary/10 ring-2 ring-primary ring-inset',
           )}
-          // Match HeaderBarContainer: 50px tall; the leftmost pane reserves the
-          // toggle/traffic-light inset (else a plain 12px), so the collapse button
-          // + macOS window controls are never overlapped (FB-18).
-          style={{ paddingLeft: isLeftmostPane ? headerLeftInset : 12, paddingRight: 12 }}
+          // Match HeaderBarContainer: 50px tall. Small screen → always reserve the
+          // toggle inset (the focused pane is the ONLY visible one). Desktop → only
+          // the leftmost pane reserves it (else a plain 12px); FB-18.
+          style={{ paddingLeft: md || isLeftmostPane ? headerLeftInset : 12, paddingRight: 12 }}
           data-testid="chat-pane-header"
-          onDragOver={onPaneAreaDragOver}
-          onDragLeave={onPaneAreaDragLeave}
-          onDrop={onPaneAreaDrop}
+          onDragOver={md ? undefined : onPaneAreaDragOver}
+          onDragLeave={md ? undefined : onPaneAreaDragLeave}
+          onDrop={md ? undefined : onPaneAreaDrop}
         >
           <div className="flex min-w-0 items-center gap-2">
             {/* Reorder handle (ITEM-31): drag this pane's header onto another
@@ -854,38 +918,45 @@ export function ConversationPane() {
                 title's focus; keyboard reorder is out of scope for the handle.
                 Tear-off (ITEM-58): releasing the same drag PAST the window edge
                 pops this pane's conversation into its own desktop window and
-                MOVES it out (no-op on web / in-window release). */}
-            <span
-              draggable
-              onDragStart={e => setPaneDragData(e.dataTransfer, pane.paneId)}
-              onDragEnd={e => {
-                if (pane.conversationId)
-                  tearOff(e, {
-                    conversationId: pane.conversationId,
-                    paneId: pane.paneId,
-                    title: conversation?.title ?? undefined,
-                  })
-              }}
-              data-testid="chat-pane-grip"
-              aria-label="Drag to reorder pane"
-              className="shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
-            >
-              <GripVertical className="size-4" />
-            </span>
+                MOVES it out (no-op on web / in-window release). Desktop-only:
+                drag is meaningless on touch/narrow (FB-26). */}
+            {!md && (
+              <span
+                draggable
+                onDragStart={e => setPaneDragData(e.dataTransfer, pane.paneId)}
+                onDragEnd={e => {
+                  if (pane.conversationId)
+                    tearOff(e, {
+                      conversationId: pane.conversationId,
+                      paneId: pane.paneId,
+                      title: conversation?.title ?? undefined,
+                    })
+                }}
+                data-testid="chat-pane-grip"
+                aria-label="Drag to reorder pane"
+                className="shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+              >
+                <GripVertical className="size-4" />
+              </span>
+            )}
             <TitleEditor />
           </div>
           <div className="flex items-center gap-1">
             {headerControls}
-            <Tooltip content="Close pane">
-              <Button
-                data-testid="chat-pane-close"
-                variant="ghost"
-                size="icon"
-                icon={<X />}
-                aria-label="Close pane"
-                onClick={() => closePane(pane.paneId)}
-              />
-            </Tooltip>
+            {/* Per-pane close ✕ — desktop only; on small screens a pane is closed
+                from the PaneManagerDrawer's ✕ (FB-26). */}
+            {!md && (
+              <Tooltip content="Close pane">
+                <Button
+                  data-testid="chat-pane-close"
+                  variant="ghost"
+                  size="icon"
+                  icon={<X />}
+                  aria-label="Close pane"
+                  onClick={() => closePane(pane.paneId)}
+                />
+              </Tooltip>
+            )}
           </div>
         </div>
       ) : (
@@ -916,9 +987,11 @@ export function ConversationPane() {
           data-testid={pane ? undefined : 'chat-single-drop-column'}
           data-pane-drop-column="true"
           className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}
-          onDragOver={onPaneAreaDragOver}
-          onDragLeave={onPaneAreaDragLeave}
-          onDrop={onPaneAreaDrop}
+          // Drag-to-split / edge-drop is desktop-only (FB-26): meaningless on
+          // touch/narrow, where pane management lives in the PaneManagerDrawer.
+          onDragOver={md ? undefined : onPaneAreaDragOver}
+          onDragLeave={md ? undefined : onPaneAreaDragLeave}
+          onDrop={md ? undefined : onPaneAreaDrop}
         >
           {/* Edge-directional drop hint (ITEM-57 single-pane / ITEM-70 split): while
               a conversation is dragged over the column, show the three target thirds
@@ -926,7 +999,7 @@ export function ConversationPane() {
               drag events land on the column beneath it. Labels reflect the action:
               single-pane opens a split by side; a split pane inserts a new pane
               before/after (or replaces at the MAX_PANES cap). */}
-          {dropZone && (
+          {!md && dropZone && (
             <div className="pointer-events-none absolute inset-0 z-40 flex" aria-hidden="true">
               {(['left', 'center', 'right'] as const).map(z => {
                 // Snapshot read (`.$`) — NOT the reactive proxy — so this is a plain

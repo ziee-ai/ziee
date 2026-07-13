@@ -708,6 +708,56 @@ LEDGER) — not silently absorbed.
   `!isPopoutWindow && splitViewPanes.length < SPLIT_LIMITS.MAX_PANES`. Covered by TEST-113
   (e2e: present at 2 panes, `count 0` at 3).
 
+**Small-screen redesign (FB-26) — replace the mobile tab strip + drag chrome with a
+manager Drawer; a focused pane reads as a normal single-pane conversation. Desktop
+(columns / drag-to-split / grips / one-click split) is UNCHANGED (DEC-75/DEC-76).**
+
+- **ITEM-79**: **Remove the mobile tab strip** (FB-26; supersedes ITEM-30/ITEM-12's
+  `PaneTabStrip`). Below `md`, `SplitChatView` no longer renders a `PaneTabStrip`; it keeps
+  the single-visible-pane model (all panes MOUNTED, one shown). `PaneTabStrip.tsx` is
+  deleted. Its switch role moves to the `PaneManagerDrawer` (ITEM-83). Covered by TEST-114.
+- **ITEM-80**: **A mobile split pane reads as a normal single-pane conversation** (FB-26).
+  In `ConversationPage`, when `pane && md` the pane header drops the reorder grip + per-pane
+  close ✕ and reserves the normal left inset (`headerLeftInset`) for EVERY focused pane —
+  fixing the reported bug where a non-leftmost focused pane lost the sidebar-toggle inset
+  ("left padding does not apply for the second pane"). One `chat-pane-header` element,
+  adapted by `md` (keeps the testid unique). Covered by TEST-114.
+- **ITEM-81**: **No drag chrome on small screens** (FB-26). The reorder grip, the pane-area
+  drop handlers (`onPaneAreaDrag*` on both the header and the chat column) and the
+  edge-directional drop-zone overlay are gated `!md` — drag-to-split / reorder are
+  meaningless on touch/narrow. Covered by TEST-114 (grip absent) + the existing desktop
+  drag specs still green (unchanged at desktop width).
+- **ITEM-82**: **The pane button opens the manager on small screens** (FB-26 / DEC-75). In
+  `headerControls`, the `chat-split-btn`: on `md` it opens the `PaneManagerDrawer`
+  (`setPaneManagerOpen(true)`, always available, `aria-haspopup="dialog"`); on desktop it is
+  the unchanged one-click "Open in split view" (`onSplit`, gated `< MAX_PANES`). Covered by
+  TEST-114/115.
+- **ITEM-83**: **`PaneManagerDrawer` — the small-screen pane manager** (FB-26). A new
+  component using the canonical app `Drawer` with two sections: **Open panes** (the
+  workspace's panes; tap a row → `focusPane` + close; ✕ → `useClosePane`, collapsing to
+  single-pane dismisses the drawer) and **Open another** (searchable conversation list
+  excluding already-open ids + "New chat" → seed pane 0 from the single-pane conversation
+  then `openPane`). Open-state is a TRANSIENT `Stores.SplitView.paneManagerOpen`
+  (`setPaneManagerOpen`) — excluded from `snapshot()`/persist and the save `watch()`
+  fingerprint. Rendered once in the `ConversationPage` route brancher (reachable from both
+  single-pane and split headers). Covered by TEST-115/116 (+ TEST-117 unit for the store
+  field). Allow-listed in `overlay-allowlist.json` (responsive-only, e2e-covered — mirrors
+  `ChatRightPanel`).
+
+- **ITEM-84**: **Mobile split pane = native document-scroll + auto-hiding header**
+  (FB-28). On a phone the focused split pane must behave like a single-pane
+  conversation: `SplitChatView` OWNS the native-scroll flag for the whole mobile
+  split (`useNativeScroll(md)` — one owner, no per-pane race) and relaxes its shell
+  (no `h-full`/`overflow-hidden` clip) so the focused pane's content scrolls the
+  WINDOW; the focused pane (`useMobileShell`) then follows the flag. The focused
+  mobile pane renders the SAME `HeaderBarContainer` as single-pane (DEC-78), so it
+  INHERITS that header's real notch chrome — sticky `top:5` (dodges iOS's under-notch
+  latch), the `bg-card` safe-area backdrop, and the relative-wipe-on-scroll-down —
+  rather than a re-derived approximation. CRITICAL: the store-proxy flag is read
+  UNCONDITIONALLY then branched on the value (a conditional `Stores.X.field` read is a
+  hook → focus-switch crash; see DEC-78 / FB-28 / [[reference_proxy_read_is_a_hook]]).
+  Covered by TEST-118.
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

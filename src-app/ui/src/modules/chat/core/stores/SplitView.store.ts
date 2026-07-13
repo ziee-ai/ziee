@@ -47,6 +47,9 @@ export const SplitView = defineStore('SplitView', {
     dividerWidths: [] as number[],
     direction: SPLIT_LIMITS.DEFAULT_DIRECTION as SplitDirection,
     mode: 'split' as 'split' | 'tabs',
+    /** Small-screen pane-manager Drawer open-state (ITEM-83). TRANSIENT — deliberately
+     *  NOT in `snapshot()`/persist: it's ephemeral UI state, never restored on reload. */
+    paneManagerOpen: false,
   },
   actions: (set, get) => ({
     /** Open a new pane (optionally seeded with a conversation/project), focus it.
@@ -171,6 +174,12 @@ export const SplitView = defineStore('SplitView', {
     setMode: (mode: 'split' | 'tabs') =>
       set((d) => {
         d.mode = mode
+      }),
+
+    /** Open/close the small-screen pane-manager Drawer (ITEM-83). */
+    setPaneManagerOpen: (open: boolean) =>
+      set((d) => {
+        d.paneManagerOpen = open
       }),
 
     /**

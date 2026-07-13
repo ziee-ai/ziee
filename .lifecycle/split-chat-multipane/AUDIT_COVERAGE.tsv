@@ -200,3 +200,8 @@ src-app/ui/tests/e2e/14-split-chat/split-url-tracks-focused-pane.spec.ts	1	69	te
 src-app/ui/tests/e2e/14-split-chat/split-per-tab-isolation.spec.ts	1	135	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/conversation-delete-closes-pane.spec.ts	1	62	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/split-button-cap.spec.ts	1	56	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/chat/components/PaneManagerDrawer.tsx	1	300	correctness,state-management,patterns-conformance,a11y,affordance-parity
+src-app/ui/tests/e2e/14-split-chat/mobile-panes.spec.ts	1	200	tests-quality,correctness,patterns-conformance
+.claude/skills/feature-lifecycle/SKILL.md	280	300	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/overlay-allowlist.json	1	60	patterns-conformance,correctness,tests-quality
+src-app/ui/src/dev/gallery/overlay-registry.generated.json	1	200	patterns-conformance,correctness,tests-quality

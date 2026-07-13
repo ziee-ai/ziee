@@ -1,8 +1,8 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 85,
-    "hosts": 61,
+    "total": 86,
+    "hosts": 62,
     "triggers": 24,
     "wiredOpen": 37
   },
@@ -59,6 +59,19 @@
       "occurrences": [
         {
           "primitive": "Confirm",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/chat/components/PaneManagerDrawer",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Drawer",
           "mode": "controlled"
         }
       ]

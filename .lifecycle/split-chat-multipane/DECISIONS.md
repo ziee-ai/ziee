@@ -773,3 +773,54 @@ behavior. No change to `openConversationWindow` (the pop-out is a `navigate`, is
 automatically). Verified: unit TEST-110 (the gate + sessionStorage roundtrip) + e2e
 TEST-111 (the exact repro across real tabs) + the existing persistence/nav specs updated
 to the per-tab model.
+
+### DEC-75: On small screens, does the pane button open a manager (Dialog/Drawer), and does that also change desktop (FB-26 / ITEM-82)?
+**Resolution:** **Drawer on small screens ONLY.** Below `md` the pane button
+(`chat-split-btn`) opens the `PaneManagerDrawer` (switch / add / close panes) instead of a
+direct split; **desktop is UNCHANGED** — the button stays a one-click "Open in split view"
+(`onSplit`) and drag-to-split remains. No desktop Dialog is built.
+**Basis:** user — answered a 2-option `AskUserQuestion` "Dialog on mobile only" (over
+"Unified dialog everywhere"). Desktop's one-click split + drag ergonomics are preserved;
+the drawer solves the small-screen problem (no room for columns / a tab strip / drag).
+
+### DEC-76: On small screens, is the desktop drag machinery (grips + edge drop-zones) kept or removed (FB-26 / ITEM-81)?
+**Resolution:** **Removed on small screens ONLY** (reorder grip, pane-area drop handlers,
+edge-directional drop-zone overlay all gated `!md`). **Desktop keeps** drag-to-split +
+grip-reorder as the power-user fast path, alongside the drawer.
+**Basis:** user — answered a 2-option `AskUserQuestion` "Keep desktop drag" (over "Remove
+drag everywhere"). Drag is meaningless on touch/narrow (the reported "drag icons do not
+make sense"); on desktop it stays.
+
+### DEC-77: Where does the pane-manager Drawer's open-state live, and is it persisted (ITEM-83)?
+**Resolution:** a single **transient** boolean `Stores.SplitView.paneManagerOpen` +
+`setPaneManagerOpen(open)`, held on the existing SplitView store (global — reachable from
+both the single-pane and every split-pane header) and **excluded from persistence**: it is
+NOT in the store's `snapshot()` nor in the debounced-save `watch()` fingerprint, so toggling
+it neither persists nor schedules a save, and a reload never restores an open drawer.
+**Basis:** convention — mirrors other transient UI open-state (e.g. `ChatRightPanel`'s
+`mobileDrawerOpen`); ephemeral UI state is never persisted (contrast the persisted
+`panes`/`focusedPaneId`/`dividerWidths`). The Drawer is rendered once in the route brancher
+(like other always-present overlays) rather than per-pane.
+
+### DEC-78: How does the mobile split pane get the single-pane auto-hide header (ITEM-84 / FB-28)?
+**Resolution:** The focused mobile pane renders the SAME `HeaderBarContainer` as single-pane
+(the header condition becomes `pane && !useMobileShell ? <compact div> : <HeaderBarContainer>`,
+so `!pane` OR the focused mobile pane get it). This INHERITS the header's real notch chrome —
+sticky `top:5` (dodges Safari's under-notch latch at top:0–3), the `fixed bg-card` backdrop that
+fills the safe-area/notch gap so scrolling content doesn't bleed through, and the
+relative-wipe-when-hidden — instead of re-deriving them. `SplitChatView` owns the native-scroll
+flag for the whole split (one owner, no per-pane race), and every `Stores.AppLayout.nativeScroll`
+proxy read during render is UNCONDITIONAL (read into a const, branch on the value).
+**Basis:** human review + a debugged failure — and a REVERSAL. A first pass hand-rolled the
+auto-hide (a `useScrollAwayHeader` hook + `sticky top-0` + `-translate-y-full` on the pane div) to
+avoid swapping a `<div>` for a hook-bearing component. The human pointed out this threw away the
+deliberate `top:5` + backdrop (per [[feedback_match_existing_patterns]] / the FB-18 "understand the
+sibling's magic values, don't re-derive" rule): `top:0` latches under the iOS notch and content
+bleeds through the gap. The `<div>`↔`<HeaderBarContainer>` swap was originally BLAMED for the
+focus-switch crash, but the real cause was a **conditional store-proxy read**
+(`useMobileShell ? Stores.AppLayout.nativeScroll : false` — a store-kit proxy read is a
+subscription HOOK, so a conditional read adds/drops a hook when the condition flips → Rules-of-Hooks
+crash). Once that was fixed (read unconditionally), the component swap is safe (verified:
+switch/close 16/16, no crash), so we use the real `HeaderBarContainer` and deleted the re-derived
+hook. Auto-hide verified: header wipes away on scroll-down (y −395), pins back at `top:5`
+(`position: sticky`) on scroll-up, shows at top.

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 367 surfaces carry renderable-state signals; 2185 signals total.
+// 368 surfaces carry renderable-state signals; 2195 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -942,6 +942,19 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
       { kind: "branch", condition: "!popoutActionVisible(pane != null, isDesktop, isPopoutWindow)", line: 41 },
     ],
   },
+  "modules/chat/components/PaneManagerDrawer": {
+    surface: "modules/chat/components/PaneManagerDrawer",
+    requiredStates: ["empty","open"],
+    signals: [
+      { kind: "branch", condition: "Stores.SplitView.$.panes.length < 2", line: 64 },
+      { kind: "branch", condition: "openIds.has(c.id)", line: 119 },
+      { kind: "overlay", condition: "<Drawer open>", line: 161 },
+      { kind: "branch", condition: "e.active", line: 201 },
+      { kind: "branch", condition: "e.closable && e.paneId", line: 207 },
+      { kind: "branch", condition: "atCap", line: 250 },
+      { kind: "empty", condition: "filtered.length === 0", line: 256 },
+    ],
+  },
   "modules/chat/components/PlusMenuItem": {
     surface: "modules/chat/components/PlusMenuItem",
     requiredStates: [],
@@ -953,9 +966,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/SplitChatView",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "md", line: 48 },
-      { kind: "branch", condition: "!md && i > 0", line: 51 },
-      { kind: "branch", condition: "!d", line: 118 },
+      { kind: "branch", condition: "!md && i > 0", line: 66 },
+      { kind: "branch", condition: "!d", line: 137 },
     ],
   },
   "modules/chat/components/TextContent": {
@@ -1145,53 +1157,57 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ConversationPage",
     requiredStates: ["delayed","empty","error"],
     signals: [
-      { kind: "branch", condition: "!conversationId", line: 78 },
-      { kind: "branch", condition: "sv.panes.length < 2", line: 80 },
-      { kind: "branch", condition: "focused?.conversationId === conversationId", line: 82 },
-      { kind: "empty", condition: "panes.length === 0", line: 104 },
-      { kind: "branch", condition: "!focusedConvId || focusedConvId === conversationId", line: 105 },
-      { kind: "branch", condition: "panes.length >= 2", line: 110 },
-      { kind: "branch", condition: "!conversationId", line: 181 },
-      { kind: "branch", condition: "kind === 'pane'", line: 201 },
-      { kind: "branch", condition: "!pane", line: 202 },
-      { kind: "branch", condition: "kind !== 'conversation' || !conversationId", line: 211 },
-      { kind: "branch", condition: "!droppedId", line: 213 },
-      { kind: "branch", condition: "pane", line: 217 },
-      { kind: "branch", condition: "!droppedOnLeft", line: 241 },
-      { kind: "branch", condition: "!sentinel", line: 388 },
-      { kind: "branch", condition: "!el", line: 408 },
-      { kind: "branch", condition: "!nativeScroll", line: 423 },
-      { kind: "branch", condition: "y < 0 || y > maxY", line: 432 },
-      { kind: "branch", condition: "maxY - y <= 8", line: 436 },
-      { kind: "branch", condition: "Math.abs(dy) < 6", line: 442 },
-      { kind: "branch", condition: "!chat.$.conversation", line: 462 },
-      { kind: "branch", condition: "pane && pane.paneId !== Stores.SplitView.$.focusedPaneId", line: 466 },
-      { kind: "branch", condition: "!conversationId", line: 508 },
-      { kind: "branch", condition: "didSeedApprovalsRef.current", line: 564 },
-      { kind: "branch", condition: "conversation?.id !== conversationId", line: 565 },
-      { kind: "branch", condition: "!hasNewApproval", line: 600 },
-      { kind: "branch", condition: "pendingAnchorRef.current || hasMoreAfter || conversation?.id !== conversationId || initialScrollConvIdRef.current !== conversationId", line: 604 },
-      { kind: "branch", condition: "!sentinel", line: 632 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 636 },
-      { kind: "branch", condition: "!chat.$.hasMoreBefore || chat.$.loadingOlder", line: 639 },
-      { kind: "branch", condition: "!sentinel", line: 674 },
-      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 678 },
-      { kind: "branch", condition: "!chat.$.hasMoreAfter || chat.$.isStreaming", line: 679 },
-      { kind: "loading", condition: "!pending", line: 694 },
-      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 697 },
-      { kind: "branch", condition: "!conversation?.id", line: 706 },
-      { kind: "branch", condition: "!m", line: 710 },
-      { kind: "branch", condition: "!found || chat.$.conversation?.id !== conversation.id", line: 713 },
-      { kind: "loading", condition: "loading && !conversation", line: 744 },
-      { kind: "branch", condition: "pane && !conversationId && !conversation", line: 756 },
-      { kind: "loading", condition: "!loading && !conversation", line: 763 },
-      { kind: "error", condition: "error", line: 766 },
-      { kind: "branch", condition: "!isPopoutWindow && splitViewPanes.length < SPLIT_LIMITS.MAX_PANES", line: 813 },
-      { kind: "branch", condition: "pane", line: 836 },
-      { kind: "error", condition: "error", line: 903 },
-      { kind: "branch", condition: "dropZone", line: 929 },
-      { kind: "branch", condition: "dropZone === z", line: 958 },
-      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 1054 },
+      { kind: "branch", condition: "!conversationId", line: 80 },
+      { kind: "branch", condition: "sv.panes.length < 2", line: 82 },
+      { kind: "branch", condition: "focused?.conversationId === conversationId", line: 84 },
+      { kind: "empty", condition: "panes.length === 0", line: 106 },
+      { kind: "branch", condition: "!focusedConvId || focusedConvId === conversationId", line: 107 },
+      { kind: "branch", condition: "panes.length >= 2", line: 117 },
+      { kind: "branch", condition: "!conversationId", line: 207 },
+      { kind: "branch", condition: "kind === 'pane'", line: 227 },
+      { kind: "branch", condition: "!pane", line: 228 },
+      { kind: "branch", condition: "kind !== 'conversation' || !conversationId", line: 237 },
+      { kind: "branch", condition: "!droppedId", line: 239 },
+      { kind: "branch", condition: "pane", line: 243 },
+      { kind: "branch", condition: "!droppedOnLeft", line: 267 },
+      { kind: "branch", condition: "!sentinel", line: 421 },
+      { kind: "branch", condition: "!el", line: 441 },
+      { kind: "branch", condition: "!nativeScroll", line: 456 },
+      { kind: "branch", condition: "y < 0 || y > maxY", line: 465 },
+      { kind: "branch", condition: "maxY - y <= 8", line: 469 },
+      { kind: "branch", condition: "Math.abs(dy) < 6", line: 475 },
+      { kind: "branch", condition: "!chat.$.conversation", line: 495 },
+      { kind: "branch", condition: "pane && pane.paneId !== Stores.SplitView.$.focusedPaneId", line: 499 },
+      { kind: "branch", condition: "!conversationId", line: 541 },
+      { kind: "branch", condition: "didSeedApprovalsRef.current", line: 597 },
+      { kind: "branch", condition: "conversation?.id !== conversationId", line: 598 },
+      { kind: "branch", condition: "!hasNewApproval", line: 633 },
+      { kind: "branch", condition: "pendingAnchorRef.current || hasMoreAfter || conversation?.id !== conversationId || initialScrollConvIdRef.current !== conversationId", line: 637 },
+      { kind: "branch", condition: "!sentinel", line: 665 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 669 },
+      { kind: "branch", condition: "!chat.$.hasMoreBefore || chat.$.loadingOlder", line: 672 },
+      { kind: "branch", condition: "!sentinel", line: 707 },
+      { kind: "branch", condition: "!entries[0]?.isIntersecting", line: 711 },
+      { kind: "branch", condition: "!chat.$.hasMoreAfter || chat.$.isStreaming", line: 712 },
+      { kind: "loading", condition: "!pending", line: 727 },
+      { kind: "loading", condition: "!currentFirst || currentFirst === pending.prevFirstId", line: 730 },
+      { kind: "branch", condition: "!conversation?.id", line: 739 },
+      { kind: "branch", condition: "!m", line: 743 },
+      { kind: "branch", condition: "!found || chat.$.conversation?.id !== conversation.id", line: 746 },
+      { kind: "loading", condition: "loading && !conversation", line: 777 },
+      { kind: "branch", condition: "pane && !conversationId && !conversation", line: 789 },
+      { kind: "loading", condition: "!loading && !conversation", line: 796 },
+      { kind: "error", condition: "error", line: 799 },
+      { kind: "branch", condition: "!isPopoutWindow", line: 849 },
+      { kind: "branch", condition: "md", line: 850 },
+      { kind: "branch", condition: "splitViewPanes.length < SPLIT_LIMITS.MAX_PANES", line: 863 },
+      { kind: "branch", condition: "pane && !useMobileShell", line: 900 },
+      { kind: "branch", condition: "!md", line: 923 },
+      { kind: "branch", condition: "!md", line: 948 },
+      { kind: "error", condition: "error", line: 974 },
+      { kind: "branch", condition: "!md && dropZone", line: 1002 },
+      { kind: "branch", condition: "dropZone === z", line: 1031 },
+      { kind: "branch", condition: "nativeScroll && !composerHidden", line: 1127 },
     ],
   },
   "modules/chat/widgets/RecentConversationsWidget": {
@@ -4478,7 +4494,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 376 keys.
+ * 378 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4537,6 +4553,8 @@ export type RequiredState =
   | "modules/chat/components/ConversationPickerPane:empty"
   | "modules/chat/components/MessageList:delayed"
   | "modules/chat/components/MessageList:empty"
+  | "modules/chat/components/PaneManagerDrawer:empty"
+  | "modules/chat/components/PaneManagerDrawer:open"
   | "modules/chat/core/components/ChatRightPanel:empty"
   | "modules/chat/core/components/ChatRightPanel:open"
   | "modules/chat/core/extensions/registry:empty"
@@ -4916,6 +4934,8 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/components/ConversationPickerPane:empty",
   "modules/chat/components/MessageList:delayed",
   "modules/chat/components/MessageList:empty",
+  "modules/chat/components/PaneManagerDrawer:empty",
+  "modules/chat/components/PaneManagerDrawer:open",
   "modules/chat/core/components/ChatRightPanel:empty",
   "modules/chat/core/components/ChatRightPanel:open",
   "modules/chat/core/extensions/registry:empty",

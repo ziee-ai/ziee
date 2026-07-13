@@ -552,7 +552,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/core/pane/ChatPaneContext": { kind: 'via', reason: 'context provider — wraps a pane subtree, no standalone visual surface' },
   "modules/chat/components/SplitChatView": { kind: 'via', reason: 'split container — composes N live ConversationPane panes; needs multi-pane runtime state, exercised via the chat gallery surface + e2e, not a standalone story' },
   "modules/chat/components/ConversationPickerPane": { kind: 'via', reason: 'empty-pane picker — rendered inside a SplitChatView pane; exercised via the split gallery surface + the 14-split-chat e2e' },
-  "modules/chat/components/PaneTabStrip": { kind: 'via', reason: 'mobile tab-strip — rendered inside SplitChatView below the md breakpoint; exercised via the split gallery surface + the mobile-tabs e2e' },
+  "modules/chat/components/PaneManagerDrawer": { kind: 'via', reason: 'small-screen pane manager Drawer — opened from the pane header below the md breakpoint (replaced the mobile tab strip); needs multi-pane runtime + a Drawer overlay, exercised via the 14-split-chat mobile-panes e2e, not a standalone story' },
   "modules/chat/pages/PopoutConversationPage": { kind: 'via', reason: 'desktop pop-out route wrapper (ITEM-52) — renders ConversationPage without the app shell + registers the close-emitter; no standalone visual surface, exercised via the popout-window-chat-only e2e (TEST-79)' },
   // <<< scaffold-insert >>>
 } satisfies Record<GallerySurface, Coverage>

@@ -402,3 +402,41 @@ errors). This feature adds no gallery surfaces and no new gating runtime finding
   `kb-highlight-per-pane.spec.ts:33` (KB citation source-panel mount — a pre-existing,
   timing-sensitive spec unrelated to this batch; passed on the retry). No batch spec failed;
   the delete/cap/dim/separator/resize changes + the 17 `ring→opacity` updates all hold together.
+
+## FB-26 small-screen redesign + FB-27/FB-28 (ITEM-79..84) — 2026-07-13
+
+- **TEST-23 / TEST-114**: PASS — e2e `mobile-panes.spec.ts` (isolated harness `2 passed`,
+  re-run `2 passed`, `5 passed` incl. desktop specs): at 390px the pane button opens the
+  `pane-manager-drawer` (not a direct split); opening another conversation splits with NO tab
+  strip / grip / per-pane ✕; focused pane shows the opened conversation, pane 0 hidden.
+- **TEST-115 / TEST-116**: PASS — e2e (same runs): the drawer lists both panes + tap-to-focus
+  switches the visible pane; the ✕ closes a pane → collapse to single-pane survivor + URL follows.
+- **TEST-117**: PASS — unit (`SplitView.store.test.ts`, `16 pass 0 fail`): `setPaneManagerOpen`
+  toggles `paneManagerOpen` and leaves every persisted layout field byte-identical (transient).
+- **TEST-118**: PASS — e2e `mobile-panes.spec.ts` "auto-hiding header" (harness, after a
+  test-timing fix — scroll to TOP to avoid the 250ms direction-debounce): focused mobile pane on
+  `html.scroll-native`, header `position: sticky`, document scrollable, header slides up on
+  scroll-down (rect.y < 0) and reveals at the top. Live-instance auto-hide probe `5 passed`.
+- **TEST-75f / TEST-76d**: PASS — e2e `focused-pane-routing.spec.ts` + `persistence.spec.ts`
+  (green in the batch2 `62 passed` suite; `focused-pane-routing` + `open-in-split` re-verified
+  in the isolated harness with the FB-26/FB-28 changes: `5 passed`).
+- **Live-instance probe (dev :5173, 390px), 16/16 PASS** — the full drawer flow: open drawer,
+  "Open panes" shows current, open-another → split with no tab-strip/grip/✕, focus-switch, close
+  → collapse + URL follows. Re-passed after the FB-28 store-proxy-read-hook fix (the switch that
+  crashed now works).
+- **`npm run check (ui)`: PASS** — tsc + all lints + testid/overlay/state-matrix/gallery-coverage
+  registries green with the FB-26 + FB-28 changes (new `PaneManagerDrawer` overlay allow-listed,
+  `PaneTabStrip` removed, `useScrollAwayHeader` added).
+- **FB-27 (open-conversation-choice popup)**: NO code change — verified the logic + URL are correct
+  for all three options and that at MAX_PANES the "new pane" option is dropped; the reported
+  "nothing works" is dev-server SSE connection-starvation (production/harness load content fine:
+  `focused-pane-routing` + `open-in-split` `5 passed`).
+- **Blind multi-angle audit (3 fresh agents)**: 0 HIGH findings; actioned MED/LOW fixes recorded
+  in `LEDGER.jsonl` + DRIFT-16.5.
+
+<!-- per-TEST-ID lines (grep-parsed by the gate) -->
+- **TEST-75f**: PASS — `focused-pane-routing.spec.ts` green in the batch2 `62 passed` suite + re-verified in the isolated harness (`5 passed`).
+- **TEST-76d**: PASS — `persistence.spec.ts` green in the batch2 `62 passed` suite.
+- **TEST-114**: PASS — `mobile-panes.spec.ts` (harness `2/2` + `5/5`): drawer opens, split with no tab-strip/grip/✕.
+- **TEST-115**: PASS — `mobile-panes.spec.ts`: drawer lists both panes, tap-to-focus switches the visible pane.
+- **TEST-116**: PASS — `mobile-panes.spec.ts`: ✕ closes a pane → collapse to single-pane survivor + URL follows.
