@@ -8,7 +8,7 @@
 ## Summary
 
 - **367** surfaces carry at least one renderable-state signal.
-- **2158** signals total: 1702 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
+- **2161** signals total: 1705 branch, 138 empty, 113 error, 106 loading, 96 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,8 +16,8 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 95 |
-| `empty` | 107 |
+| `delayed` | 94 |
+| `empty` | 108 |
 | `error` | 89 |
 | `open` | 82 |
 | `panel-open` | 3 |
@@ -300,14 +300,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 72 |
-| branch | `'type' in it && it.type === 'group'` | 78 |
-| branch | `!collapsed` | 82 |
-| branch | `'type' in it && it.type === 'label'` | 90 |
-| branch | `!(collapsed)` | 91 |
-| branch | `item.icon != null` | 149 |
-| branch | `!collapsed` | 151 |
-| branch | `hasActions` | 153 |
+| branch | `'type' in it && it.type === 'divider'` | 164 |
+| branch | `'type' in it && it.type === 'group'` | 170 |
+| branch | `!collapsed` | 174 |
+| branch | `'type' in it && it.type === 'label'` | 182 |
+| branch | `!(collapsed)` | 183 |
+| branch | `item.icon != null` | 215 |
+| branch | `!collapsed` | 217 |
+| branch | `hasActions` | 219 |
 
 ### `components/ui/kit/multi-select`
 
@@ -981,14 +981,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 127 |
-| branch | `selectedIds.size > 0` | 134 |
-| branch | `canDelete` | 159 |
-| loading | `visibleConversations.length === 0 && !loading` | 183 |
-| error | `error` | 184 |
-| loading | `loading && !isInitialized` | 208 |
-| branch | `visibleConversations.length > 0` | 233 |
-| branch | `hasMore` | 241 |
+| branch | `!getSearchBoxContainer` | 126 |
+| branch | `selectedIds.size > 0` | 133 |
+| branch | `canDelete` | 158 |
+| loading | `visibleConversations.length === 0 && !loading` | 182 |
+| error | `error` | 183 |
+| loading | `loading && !isInitialized` | 207 |
+| branch | `visibleConversations.length > 0` | 232 |
+| branch | `hasMore` | 240 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1298,16 +1298,19 @@ Required states: `delayed`, `error`
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
-Required states: `delayed`, `open`
+Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && !isInitialized` | 58 |
-| loading | `!loading && recentConversations.length === 0` | 69 |
-| branch | `!c` | 134 |
-| branch | `active?.closest('[role="menu"]')` | 139 |
-| overlay | `<Dropdown open>` | 233 |
-| branch | `!open && keepMenuOpen` | 240 |
+| empty | `recentError && recentConversations.length === 0` | 134 |
+| branch | `!recentInitialized` | 151 |
+| empty | `recentConversations.length === 0` | 162 |
+| branch | `!c` | 213 |
+| branch | `active?.closest('[role="menu"]')` | 242 |
+| branch | `recentLoadingMore` | 258 |
+| branch | `recentError && !recentLoadingMore && recentConversations.length > 0` | 273 |
+| overlay | `<Dropdown open>` | 384 |
+| branch | `!open && keepMenuOpen` | 391 |
 
 ### `modules/citations/components/CitationCard`
 
