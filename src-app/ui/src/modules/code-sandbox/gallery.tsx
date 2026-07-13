@@ -8,6 +8,33 @@ import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed, whenTrue } from '@/dev/gallery/support'
 
 export const gallery: ModuleGallery = {
+  cassette: {
+    // The rootfs-versions section of `/settings/sandbox` reads this on mount.
+    // A `ready` sandbox with one available release + no installed artifacts →
+    // the section renders its available card (Download enabled).
+    'CodeSandbox.listRootfsVersions': {
+      availability: 'ready',
+      host_arch: 'x86_64',
+      host_package: 'squashfs',
+      conversation_count: 0,
+      mcp_server_workspace_count: 0,
+      pinned_version: '0.0.6-alpha',
+      installed: [],
+      draining: [],
+      available: [
+        {
+          version: '0.0.6-alpha',
+          published_at: '2026-01-02T00:00:00.000Z',
+          draft: false,
+          prerelease: true,
+          asset_names: [
+            'ziee-sandbox-rootfs-x86_64-full.squashfs',
+            'ziee-sandbox-rootfs-x86_64-minimal.squashfs',
+          ],
+        },
+      ],
+    },
+  },
   seeded: [
     // ── code_sandbox resource limits section (behind a non-default tab, so the
     // page pass never mounts it): rendered direct, limits loaded, then error. ────

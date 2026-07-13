@@ -93,6 +93,11 @@ const seedProjectFiles = async (patch: Record<string, unknown>) => {
 }
 
 export const gallery: ModuleGallery = {
+  cassette: {
+    // `/files/:fileId` (the standalone file viewer) reads the file entity by id.
+    'File.get': ctx =>
+      mkFile({ id: ctx.params.file_id, filename: 'report.pdf', mime_type: 'application/pdf' }),
+  },
   overlays: [
     // ── File preview drawer ──────────────────────────────────────────────────
     {

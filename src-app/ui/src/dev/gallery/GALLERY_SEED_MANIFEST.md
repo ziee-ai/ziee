@@ -8,7 +8,7 @@ A module with a user-facing surface (a non-skip route `path:` or a user-facing
 slot) MUST own a `src/modules/<X>/gallery.tsx` (`export const gallery`), or be
 listed in `GALLERY_SEED_EXCEPTIONS.md` with a structural reason + sign-off.
 
-39 modules · 31 with a gallery.tsx · 0 allow-listed.
+39 modules · 36 with a gallery.tsx · 0 allow-listed.
 
 | Module | User surface? | Seed status |
 |---|---|---|
@@ -25,8 +25,8 @@ listed in `GALLERY_SEED_EXCEPTIONS.md` with a structural reason + sign-off.
 | `file-rag` | yes | ✓ gallery.tsx |
 | `hardware` | yes | ✓ gallery.tsx |
 | `hub` | yes | ✓ gallery.tsx |
-| `js-tool` | yes | ❌ MISSING seed |
-| `knowledge-base` | yes | ❌ MISSING seed |
+| `js-tool` | yes | ✓ gallery.tsx |
+| `knowledge-base` | yes | ✓ gallery.tsx |
 | `layouts` | no | — no user surface |
 | `literature` | yes | ✓ gallery.tsx |
 | `llm-local-runtime` | yes | ✓ gallery.tsx |
@@ -34,12 +34,12 @@ listed in `GALLERY_SEED_EXCEPTIONS.md` with a structural reason + sign-off.
 | `llm-repository` | yes | ✓ gallery.tsx |
 | `mcp` | yes | ✓ gallery.tsx |
 | `memory` | yes | ✓ gallery.tsx |
-| `notification` | yes | ❌ MISSING seed |
+| `notification` | yes | ✓ gallery.tsx |
 | `onboarding` | yes | ✓ gallery.tsx |
 | `profile` | yes | ✓ gallery.tsx |
 | `projects` | yes | ✓ gallery.tsx |
 | `router` | no | — no user surface |
-| `scheduler` | yes | ❌ MISSING seed |
+| `scheduler` | yes | ✓ gallery.tsx |
 | `server-update` | yes | ✓ gallery.tsx |
 | `settings` | yes | ✓ gallery.tsx |
 | `settings-general` | yes | ✓ gallery.tsx |
@@ -48,6 +48,6 @@ listed in `GALLERY_SEED_EXCEPTIONS.md` with a structural reason + sign-off.
 | `user` | yes | ✓ gallery.tsx |
 | `user-llm-providers` | yes | ✓ gallery.tsx |
 | `user-profile` | yes | ✓ gallery.tsx |
-| `voice` | yes | ❌ MISSING seed |
+| `voice` | yes | ✓ gallery.tsx |
 | `web-search` | yes | ✓ gallery.tsx |
 | `workflow` | yes | ✓ gallery.tsx |
