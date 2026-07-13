@@ -98,7 +98,7 @@ the default group's permissions trimmed.
 
 > ### Where it is turned on
 > The deploy overlay **`docker-compose.deploy.yml`** carries the switch, the MCP
-> endpoint URLs and the seeded-account passwords (and the `host.docker.internal`
+> endpoint URLs and the admin password (and the `host.docker.internal`
 > mapping the org MCP servers need). The base `docker-compose.yml` is a local test
 > stack and deliberately does NOT enable any of it.
 >
