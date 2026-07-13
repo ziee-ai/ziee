@@ -562,3 +562,18 @@ DEC-30's "clean cut" (remove `useChatStore`, split registry into catalog + per-p
 did NOT fully land: `useChatStore` still exists (~7 files) and `Stores.Chat` is a bridge/shim.
 It works (pane-rebound SSE + ownerPaneId hooks) but the plan overstated completion — amended
 honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't happen.
+
+## ITEM-70 verdict (per-pane edge-directional drop in existing splits)
+
+- **ITEM-70** — verdict: PASS — generalizes the shipped single-pane edge-drop (ITEM-57)
+  to split panes, fulfilling the ORIGINAL DEC-25 edge-drop-zone intent that ITEM-31
+  under-delivered (DRIFT-12.1). Pure `planSplitPaneDrop` mirrors `planSinglePaneDrop`;
+  store `openPane({beforePaneId})` is symmetric with `afterPaneId` (unit-tested); the
+  column handler dispatches single-pane vs split by `pane` and dedups via the store's
+  one-conversation-per-workspace guard; the cap falls back to replace. The header handler
+  is narrowed to pane-reorder only and a conversation drag falls through to the column
+  (event bubbling; the column is the ancestor that preventDefaults dragover). The
+  Rules-of-Hooks regression (reactive `Stores.SplitView.panes` in the overlay `.map()`)
+  was caught by the human RUNNING the live app and fixed to a `.$` snapshot — verified by
+  the drag-to-split e2e that renders the overlay mid-drag (DRIFT-12.2). RUN by TEST-105/107
+  (unit) + TEST-106 (e2e). npm run check green both workspaces.
