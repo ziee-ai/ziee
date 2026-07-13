@@ -321,6 +321,20 @@ Human picked "unify on edge-directional" for drops when a split is already open.
 - Rules-of-Hooks fix verified: the overlay renders mid-drag in the split e2e without the "Rendered more hooks" crash (the human caught it live; fixed to a `.$` snapshot).
 - `tsc --noEmit` (ui) exit 0.
 
+## Round 12 (ITEM-71) — split header matches the app header (FB-18)
+
+Human hit regressions live (split pane header height/left-padding + the sidebar-collapse
+toggle unclickable). Fixed by sharing HeaderBarContainer's conventions. All green:
+
+- **TEST-108**: PASS — e2e: split pane header is 50px tall; a REAL `.click()` on the
+  `layout-sidebar-toggle-button` collapses+expands the sidebar with the LEFTMOST pane
+  focused (Playwright's actionability check would fail if the pane covered the toggle —
+  the pre-fix z-10 bug); leftmost pane header `paddingLeft` is 48px collapsed / 12px
+  expanded. `hdr-e2e-*.log` (also drag-to-split 3/3 + single-pane-drop regression green).
+- **`npm run check` PASS** ui + desktop; `tsc` ui + desktop exit 0.
+- The z-index fix is proven by RUNNING (a synthetic dispatch could not catch a covered
+  target); the height + inset by computed-style asserts.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health
