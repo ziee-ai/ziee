@@ -346,8 +346,9 @@ toggle unclickable). Fixed by sharing HeaderBarContainer's conventions. All gree
   migration, and the `isSameTabReload` gate table (reload→true; navigate/back_forward/
   prerender/unknown/null→false). Also confirmed the split IS written to sessionStorage via
   a live dev-server probe (`saved-in-sessionStorage=YES`).
-- **TEST-111**: PASS — e2e (`splitchat-fullsuite3`): the EXACT user repro across REAL
-  tabs — build `[A|B]`; reload the origin tab → split restored (per-tab reload); click
+- **TEST-111**: PASS — e2e (`drag-flow-*.log`, `1 passed (45.8s)`): the LITERAL user flow —
+  build `[A|B]` by DRAGGING convB onto the pane's right third (real HTML5 drop handler, not
+  the split-button+picker shortcut); reload the origin tab → split restored (per-tab reload); click
   pane B's ⤢ → `window.open('/chat/B')` (real sessionStorage copy of the saved split) →
   the new tab shows ONLY convB single-pane (`split-chat-view`=0, `chat-pane-1`=0, composer
   + title "Bravo"); origin collapses to single-pane A. First proven standalone (`legA-real

@@ -10,9 +10,12 @@ import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
  * localStorage key that every tab hydrated on boot. Fix: sessionStorage (per-tab) +
  * hydrate only on a same-tab reload.
  *
- * This spec drives the exact repro across REAL tabs (a real `window.open`, so the
- * new tab genuinely inherits a COPY of the opener's sessionStorage — split blob
- * included — rather than a `addInitScript` simulation, which mis-boots the app):
+ * This spec drives the LITERAL user flow across REAL tabs — the split is formed by
+ * DRAGGING convB onto the right third of the single pane (the app's real HTML5 drop
+ * handler, not the split-button+picker shortcut), and the new tab is opened by a real
+ * `window.open` (so it genuinely inherits a COPY of the opener's sessionStorage —
+ * split blob included — not an `addInitScript` simulation, which mis-boots the app):
+ *  build [A|B] by drag; then
  *  (C) reloading the ORIGINAL tab restores that tab's split (per-tab reload); then
  *  (A) clicking pane B's ⤢ pops it out via `window.open('/chat/B')` — and the new
  *      tab shows ONLY convB, single pane, NOT the inherited split (the reload gate
@@ -34,6 +37,36 @@ test.describe('Split chat — splits are per-tab; a new tab does not inherit the
     return (await res.json()).id as string
   }
 
+  // Build the split the LITERAL way the user does: DRAG a conversation onto the
+  // right third of the single pane (the app's real HTML5 drop handler, shared
+  // DataTransfer — same method as single-pane-drop.spec), NOT the split-button +
+  // picker shortcut. 0.85 = right third → [current | dropped].
+  const CONV_MIME = 'application/x-ziee-conversation'
+  const dragConvOntoRightThird = async (
+    page: import('@playwright/test').Page,
+    convId: string,
+  ) => {
+    const column = byTestId(page, 'chat-single-drop-column')
+    await expect(column).toBeVisible({ timeout: 15000 })
+    const box = await column.boundingBox()
+    if (!box) throw new Error('no drop-column box')
+    const clientX = box.x + box.width * 0.85
+    const clientY = box.y + box.height * 0.5
+    const dt = await page.evaluateHandle(
+      ({ mime, id }) => {
+        const d = new DataTransfer()
+        d.setData(mime, id)
+        return d
+      },
+      { mime: CONV_MIME, id: convId },
+    )
+    await column.dispatchEvent('dragover', { dataTransfer: dt, clientX, clientY })
+    await column.dispatchEvent('drop', { dataTransfer: dt, clientX, clientY })
+    await dt.dispose()
+    // The proof the DRAG worked is that the split actually forms below (chat-pane-1
+    // appears with the dropped conversation) — a no-op drop would leave single-pane.
+  }
+
   test('new tab shows one conversation even when it inherits the split blob; reload still restores', async ({
     page,
     context,
@@ -45,12 +78,13 @@ test.describe('Split chat — splits are per-tab; a new tab does not inherit the
     const convA = await mkConv(page, apiURL, token, 'Tab Alpha')
     const convB = await mkConv(page, apiURL, token, 'Tab Bravo')
 
-    // Tab 1: open A single-pane, then split with B on the right → [A|B].
+    // Tab 1: open A single-pane, then DRAG convB onto the RIGHT third of the pane to
+    // form [A|B] — the LITERAL user flow ("drag one onto the right pane").
     await page.goto(`${baseURL}/chat/${convA}`)
     await page.waitForLoadState('load')
-    await byTestId(page, 'chat-split-btn').click()
+    await dragConvOntoRightThird(page, convB)
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
-    await byTestId(page, 'chat-pane-1').getByTestId(`conversation-picker-item-${convB}`).click()
+    await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText('Alpha')
     await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText('Bravo', { timeout: 15000 })
     // The per-tab blob is written once panes>=2 (250ms debounce) — settle first.
     await page.waitForTimeout(600)
