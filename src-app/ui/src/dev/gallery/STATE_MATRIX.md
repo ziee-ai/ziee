@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **366** surfaces carry at least one renderable-state signal.
-- **2158** signals total: 1702 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
+- **367** surfaces carry at least one renderable-state signal.
+- **2164** signals total: 1708 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -974,14 +974,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 127 |
-| branch | `selectedIds.size > 0` | 134 |
-| branch | `canDelete` | 159 |
-| loading | `visibleConversations.length === 0 && !loading` | 183 |
-| error | `error` | 184 |
-| loading | `loading && !isInitialized` | 208 |
-| branch | `visibleConversations.length > 0` | 233 |
-| branch | `hasMore` | 241 |
+| branch | `!getSearchBoxContainer` | 142 |
+| branch | `selectedIds.size > 0` | 149 |
+| branch | `canDelete` | 174 |
+| loading | `visibleConversations.length === 0 && !loading` | 203 |
+| error | `error` | 204 |
+| loading | `loading && !isInitialized` | 228 |
+| branch | `visibleConversations.length > 0` | 255 |
+| branch | `hasMore` | 263 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1073,6 +1073,19 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `isEditing` | 74 |
+
+### `modules/chat/components/VirtualizedConversationList`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!vw \|\| vw <= 0` | 93 |
+| branch | `w <= 0` | 95 |
+| branch | `!el` | 102 |
+| branch | `!import.meta.env.DEV` | 186 |
+| branch | `!virtualize` | 196 |
+| branch | `!conversation` | 232 |
 
 ### `modules/chat/core/components/ChatRightPanel`
 

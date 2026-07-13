@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
+import { VirtualizedConversationList } from '@/modules/chat/components/VirtualizedConversationList'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
@@ -27,6 +29,19 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const canDelete = usePermission(Permissions.ConversationsDelete)
   const { nativeScroll } = Stores.AppLayout
+
+  // Row virtualization (chats-page-virtualization ITEM-4): the card list scrolls
+  // inside this OverlayScrollbars viewport on desktop. Resolve its root element
+  // for the virtualizer and flip `scrollerReady` once the OS instance mounts so
+  // the virtualizer re-observes the real viewport (mirrors ConversationPage). On
+  // the mobile native-scroll path DivScrollY renders a plain flow div (no OS
+  // instance) → `getScrollElement` returns null and the list renders plainly.
+  const scrollerRef = useRef<OverlayScrollbarsComponentRef>(null)
+  const [scrollerReady, setScrollerReady] = useState(false)
+  const getScrollElement = useCallback((): HTMLElement | null => {
+    const os = scrollerRef.current?.osInstance()
+    return (os?.elements().viewport as HTMLElement | undefined) ?? null
+  }, [])
 
   const {
     conversations,
@@ -178,7 +193,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         )}
 
         {/* Conversation list */}
-        <DivScrollY nativeFlow className="flex-1 w-full flex-col !py-3 overflow-x-visible">
+        <DivScrollY
+          nativeFlow
+          className="flex-1 w-full flex-col !py-3 overflow-x-visible"
+          ref={scrollerRef}
+          events={{ initialized: () => setScrollerReady(true) }}
+        >
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
             {visibleConversations.length === 0 && !loading ? (
               error ? (
@@ -210,42 +230,45 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
                   </div>
                 ) : (
-                  // Plain div instead of DivScrollY: the outer
-                  // DivScrollY already handles scroll. DivScrollY
-                  // wraps its children in an internal flex-col
-                  // container, so any `gap-*` on it lands on the
-                  // OverlayScrollbars wrapper and never reaches the
-                  // card siblings — that's why cards had no gap.
-                  <div className="flex flex-col gap-3 w-full flex-1 overflow-x-visible">
-                    {visibleConversations.map((conversation: ConversationResponse) => (
-                      <div key={conversation.id} className="px-3">
-                        <ConversationCard
-                          conversation={conversation}
-                          isSelected={selectedIds.has(conversation.id)}
-                          isInSelectionMode={isSelectionMode}
-                          onSelect={handleToggleSelection}
-                          onDelete={handleDeleteConversation}
-                        />
-                      </div>
-                    ))}
-
-                    {/* Pagination info — plain text (no card). */}
-                    {visibleConversations.length > 0 && (
-                      <div
-                        data-testid="chat-history-pagination-card"
-                        className="text-center px-3 py-2 flex flex-col items-center gap-2"
-                      >
-                        <Text type="secondary" aria-live="polite" role="status">
-                          Showing {visibleConversations.length} of {total} conversations
-                        </Text>
-                        {hasMore && (
-                          <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
-                            Load More
-                          </Button>
-                        )}
-                      </div>
+                  // Row-virtualized on desktop (inner OverlayScrollbars viewport);
+                  // plain render on the mobile native-scroll path. Only the visible
+                  // window of ConversationCards is mounted regardless of how many
+                  // pages have been loaded (chats-page-virtualization ITEM-3/5). The
+                  // "Showing N of M" + Load-More block is a NON-virtualized footer
+                  // sibling below the rows so its testids + aria-live status stay
+                  // exactly as before.
+                  <VirtualizedConversationList
+                    conversations={visibleConversations}
+                    virtualize={!nativeScroll}
+                    getScrollElement={getScrollElement}
+                    scrollerReady={scrollerReady}
+                    renderCard={(conversation: ConversationResponse) => (
+                      <ConversationCard
+                        conversation={conversation}
+                        isSelected={selectedIds.has(conversation.id)}
+                        isInSelectionMode={isSelectionMode}
+                        onSelect={handleToggleSelection}
+                        onDelete={handleDeleteConversation}
+                      />
                     )}
-                  </div>
+                    footer={
+                      visibleConversations.length > 0 ? (
+                        <div
+                          data-testid="chat-history-pagination-card"
+                          className="text-center px-3 py-2 flex flex-col items-center gap-2"
+                        >
+                          <Text type="secondary" aria-live="polite" role="status">
+                            Showing {visibleConversations.length} of {total} conversations
+                          </Text>
+                          {hasMore && (
+                            <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
+                              Load More
+                            </Button>
+                          )}
+                        </div>
+                      ) : null
+                    }
+                  />
                 )}
               </div>
             )}

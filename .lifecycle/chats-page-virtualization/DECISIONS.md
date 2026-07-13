@@ -49,14 +49,20 @@ NOT assumed (see DEC-9).
 must be internalized when virtualized.
 
 ### DEC-6: Handle the transient content above the virtual rows (bulk-actions bar / padding)?
-**Resolution:** Set the virtualizer `scrollMargin` to the virtual container's
-measured offset within the scroll viewport (via the container ref's
-`offsetTop`), re-measured on `scrollerReady`/resize. The bulk-actions bar already
-lives ABOVE the `DivScrollY` scroller (ConversationList:134, outside it), so in
-practice the only in-scroller offset is the `py-3` padding — `scrollMargin`
-covers it precisely so item offsets never skew.
-**Basis:** codebase — `@tanstack/react-virtual`'s documented `scrollMargin` option
-for content preceding the virtual list inside the scroll element.
+**Resolution (amended at impl — DRIFT-1.1, impl-wins):** NO `scrollMargin` — the
+virtual container sits at the scroll viewport's content top (offset M ≈ 0), so it
+is unnecessary. The `DivScrollY` `!py-3` is HOST padding OUTSIDE the
+OverlayScrollbars viewport; the bulk-actions bar is ABOVE the scroller
+(ConversationList:134, outside it); and the in-viewport wrappers
+(`flex-col` → `max-w-4xl` → `space-y-3`) add no top padding to the first child.
+This EXACTLY mirrors `MessageList.tsx`, which likewise sets no `scrollMargin` and
+tolerates its small `pt-4` offset via overscan. The pagination footer is a
+sibling BELOW the container, so it never offsets item geometry. (Originally
+planned `scrollMargin`; dropped because M≈0 makes it a no-op and a mis-measured
+margin would be riskier than omitting it — faithful-precedent + lower risk.)
+**Basis:** codebase — MessageList precedent (no `scrollMargin`); verified the
+in-viewport wrapper chain adds no top offset. The window-correctness is RUN-proven
+by the e2e (TEST-4/5 assert the right rows mount at the right scroll offsets).
 
 ### DEC-7: Keep the existing Load-More button, or switch to sentinel infinite-scroll?
 **Resolution:** **Keep the existing Load-More button + "Showing N of M" footer**

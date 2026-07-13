@@ -218,6 +218,7 @@ export const GALLERY_COVERAGE = {
   "modules/chat/components/PlusMenuItem": { kind: 'via', reason: 'shared row rendered as items in the chat composer + dropdown' },
   "modules/chat/components/TextContent": { kind: 'via', reason: 'rendered within the chat module page' },
   "modules/chat/components/TitleEditor": { kind: 'via', reason: 'rendered within the chat module page' },
+  "modules/chat/components/VirtualizedConversationList": { kind: 'via', reason: 'driven directly by the seeded-conversation-list-long gallery surface (window/scroll/no-jank)' },
   "modules/chat/core/MessageContext": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
   "modules/chat/core/ToolStatusIcon": { kind: 'via', reason: 'rendered within the deep-chat tool-call cards' },
   "modules/chat/core/components/ChatRightPanel": { kind: 'via', reason: 'rendered within the chat module page' },

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 366 surfaces carry renderable-state signals; 2158 signals total.
+// 367 surfaces carry renderable-state signals; 2164 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -853,14 +853,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ConversationList",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!getSearchBoxContainer", line: 127 },
-      { kind: "branch", condition: "selectedIds.size > 0", line: 134 },
-      { kind: "branch", condition: "canDelete", line: 159 },
-      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 183 },
-      { kind: "error", condition: "error", line: 184 },
-      { kind: "loading", condition: "loading && !isInitialized", line: 208 },
-      { kind: "branch", condition: "visibleConversations.length > 0", line: 233 },
-      { kind: "branch", condition: "hasMore", line: 241 },
+      { kind: "branch", condition: "!getSearchBoxContainer", line: 142 },
+      { kind: "branch", condition: "selectedIds.size > 0", line: 149 },
+      { kind: "branch", condition: "canDelete", line: 174 },
+      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 203 },
+      { kind: "error", condition: "error", line: 204 },
+      { kind: "loading", condition: "loading && !isInitialized", line: 228 },
+      { kind: "branch", condition: "visibleConversations.length > 0", line: 255 },
+      { kind: "branch", condition: "hasMore", line: 263 },
     ],
   },
   "modules/chat/components/EditingMessageBanner": {
@@ -944,6 +944,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     requiredStates: [],
     signals: [
       { kind: "branch", condition: "isEditing", line: 74 },
+    ],
+  },
+  "modules/chat/components/VirtualizedConversationList": {
+    surface: "modules/chat/components/VirtualizedConversationList",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!vw || vw <= 0", line: 93 },
+      { kind: "branch", condition: "w <= 0", line: 95 },
+      { kind: "branch", condition: "!el", line: 102 },
+      { kind: "branch", condition: "!import.meta.env.DEV", line: 186 },
+      { kind: "branch", condition: "!virtualize", line: 196 },
+      { kind: "branch", condition: "!conversation", line: 232 },
     ],
   },
   "modules/chat/core/components/ChatRightPanel": {

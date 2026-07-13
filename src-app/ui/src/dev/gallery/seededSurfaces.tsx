@@ -1196,6 +1196,34 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       'MessageListLongDemo',
     ),
   },
+  // ── ConversationListLongDemo: ≈200 conversations driving the REAL virtualized
+  //    ConversationList in a fixed-height scroll box → the chats-page
+  //    virtualization window / scroll / no-jank surface (chats-page-virtualization
+  //    ITEM-7). Backend-free synthetic rows. ─────────────────────────────────────
+  {
+    slug: 'seeded-conversation-list-long',
+    title: 'Chats list — long virtualized conversation list (interactive)',
+    note: '≈200 mixed-height conversation cards → row-virtualization window/scroll/no-jank surface',
+    path: '/',
+    initialPath: '/',
+    component: lazyProps(
+      () => import('./ConversationListLongDemo'),
+      'ConversationListLongDemo',
+      { count: 200 },
+    ),
+  },
+  {
+    slug: 'seeded-conversation-list-long-narrow',
+    title: 'Chats list — virtualized list at narrow (390px) width',
+    note: '≈200 conversation cards constrained to a 390px mobile-width column (responsive-fidelity)',
+    path: '/',
+    initialPath: '/',
+    component: lazyProps(
+      () => import('./ConversationListLongDemo'),
+      'ConversationListLongDemo',
+      { count: 200, narrow: true },
+    ),
+  },
   // ── McpToolCallsTab: LOADED with tool-call rows (kit-Table sort/filter). The
   //    grid refetches on mount, so holdPatch re-asserts the seeded rows against
   //    the (empty) cassette. Drives the F1 data-grid sort/filter e2e. ──────────
