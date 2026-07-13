@@ -716,9 +716,9 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/AuthPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isAuthenticated", line: 20 },
-      { kind: "branch", condition: "mode === 'login'", line: 33 },
-      { kind: "branch", condition: "mode === 'register'", line: 37 },
+      { kind: "branch", condition: "isAuthenticated", line: 19 },
+      { kind: "branch", condition: "mode === 'login'", line: 26 },
+      { kind: "branch", condition: "mode === 'register'", line: 30 },
     ],
   },
   "modules/auth/AuthThemeToggle": {
@@ -740,8 +740,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/LoginForm",
     requiredStates: ["error"],
     signals: [
-      { kind: "error", condition: "error", line: 52 },
-      { kind: "branch", condition: "onSwitchToRegister", line: 109 },
+      { kind: "error", condition: "error", line: 57 },
+      { kind: "branch", condition: "onSwitchToRegister", line: 114 },
     ],
   },
   "modules/auth/ProviderButtons": {

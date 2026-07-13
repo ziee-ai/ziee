@@ -66,3 +66,12 @@ surface at the screen edges"; here that surface is the backdrop.
 **Resolution:** Plain component composed inside the two page components — NOT a router layout entry.
 **Basis:** convention — `BlankLayout` is likewise consumed as a component (`BlankLayoutComponent`),
 not a nested route element, for these two standalone pages.
+
+### DEC-10: (iteration round 1, FB-5) Where does the login/register heading live?
+**Resolution:** INSIDE the card (each form owns its header), mirroring SetupPage's in-card
+`Title level={2}`. Login gets a new in-card "Welcome back"; register keeps its existing in-card
+title (level aligned to 2); AuthPage's external above-card title is removed. `LoginForm`/
+`RegisterForm` are used only by AuthPage + the gallery (no reauth-dialog reuse), so an in-card
+header is safe everywhere they render.
+**Basis:** user — explicit follow-up "header placement should be in the card"; matches the
+SetupPage precedent and makes all three unauthenticated screens twins.

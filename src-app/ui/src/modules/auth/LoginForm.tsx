@@ -8,6 +8,7 @@ import {
   Input,
   PasswordInput,
   Text,
+  Title,
   useForm,
   zodResolver,
   dialog,
@@ -49,6 +50,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
   return (
     <Card data-testid="auth-login-card" className="w-full max-w-md mx-auto">
+      <div className="text-center mb-6">
+        <Title level={2}>Welcome back</Title>
+      </div>
+
       {error && (
         <div className="py-4" role="alert" aria-live="assertive">
           <Alert

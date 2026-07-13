@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Title } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LoginForm } from '@/modules/auth/LoginForm'
 import { RegisterForm } from '@/modules/auth/RegisterForm'
@@ -24,12 +23,6 @@ export const AuthPage: React.FC = () => {
   return (
     <AuthScreenLayout>
       <div data-testid="auth-page-content" className="w-full">
-        <div className="text-center mb-8">
-          <Title level={2}>
-            {mode === 'login' ? 'Welcome back' : 'Create your account'}
-          </Title>
-        </div>
-
         {mode === 'login' && (
           <LoginForm onSwitchToRegister={handleSwitchToRegister} />
         )}

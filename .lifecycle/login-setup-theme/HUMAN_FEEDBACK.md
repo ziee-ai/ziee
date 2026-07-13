@@ -10,7 +10,9 @@ be appended as new `FB-N` (verbatim, `open`) and resolved before merge.
 - **FB-3** [status: resolved] — "check the setup page" — the first-run setup page `src-app/ui/src/modules/app/SetupPage.tsx`; audit it for the SAME issues (dark-mode toggle, themed background) AND for precedent/layout/responsive consistency, and fix. → Audit found setup already had a page-local toggle+backdrop but LACKED the `main` landmark + `meta[theme-color]` and DUPLICATED the chrome; refactored it onto the shared `AuthScreenLayout` (gains landmark + themed meta-color, drops duplication, stays a twin of login; removed the router `layout: BlankLayout` that would have doubled the landmark). Proven by TEST-3 (setup toggle real-click flips theme) + TEST-4 (setup backdrop + single `main` landmark + all 16 existing setup specs still green) + TEST-6 (setup responsive at 390px) — all PASS. [generalizable: yes — when asked to "check X for the same issues", audit X against its sibling for MISSING shared infrastructure (landmark, meta-color, single-source chrome) too, not only the named symptom]
 - **FB-4** [status: resolved] — (plan-time picker) login themed-background visual direction. → Human chose "Twin of setup (shared backdrop)" (2026-07-13); recorded as DEC-1 and drives the whole plan shape (one shared `AuthScreenLayout`). [generalizable: no]
 
-## Awaiting human review
-The feature is implemented, 24/24 e2e green, `npm run check` + touched-surface runtime-health
-clean. NOT pushed (the human merges via the merge-gate). No review feedback received yet — this
-section will hold any new `FB-N` from the human's look at the running login/setup screens.
+## Review round 1 (2026-07-13)
+- **FB-5** [status: resolved] — "for 1: unify them, header placement should be in the card" (re: the flagged divergence where login rendered its heading ABOVE the card while setup rendered it INSIDE the card). → Moved the login heading INSIDE `LoginForm`'s card (`Title level={2}` "Welcome back", mirroring SetupPage's in-card header); aligned `RegisterForm`'s existing in-card title to `level={2}`; removed `AuthPage`'s external title block (which also eliminated the pre-existing DOUBLE header on register — external "Create your account" + in-card "Create Account"). Now all three screens (login/register/setup) place the heading inside the card = true twins. Covered by ITEM-7 / TEST-8 (heading is a descendant of the card, not a sibling above it) — PASS. [generalizable: yes — "header/title placement lives INSIDE the card, consistent across sibling auth-style screens" is a precedent-fidelity convention]
+
+## Awaiting further human review
+The feature is implemented, all e2e green, `npm run check` + touched-surface runtime-health
+clean. NOT pushed (the human merges via the merge-gate).

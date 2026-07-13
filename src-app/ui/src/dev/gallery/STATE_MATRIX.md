@@ -823,9 +823,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isAuthenticated` | 20 |
-| branch | `mode === 'login'` | 33 |
-| branch | `mode === 'register'` | 37 |
+| branch | `isAuthenticated` | 19 |
+| branch | `mode === 'login'` | 26 |
+| branch | `mode === 'register'` | 30 |
 
 ### `modules/auth/AuthThemeToggle`
 
@@ -850,8 +850,8 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error` | 52 |
-| branch | `onSwitchToRegister` | 109 |
+| error | `error` | 57 |
+| branch | `onSwitchToRegister` | 114 |
 
 ### `modules/auth/ProviderButtons`
 

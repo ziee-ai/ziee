@@ -58,6 +58,11 @@ Same path `ThemeSettings.tsx` uses. (Human ask #1 explicitly: do NOT hand-roll.)
   `gen:design-spec`. Result: the screen-edge color follows the theme, and card/text
   contrast over the backdrop passes AA in both themes. (Human ask #2: "render correctly
   and follow the theme")
+- **ITEM-7**: (iteration round 1, FB-5) Unify header placement — the login/register heading is
+  rendered INSIDE its card (mirroring SetupPage's in-card header), NOT as a sibling above the
+  card. Removes `AuthPage`'s external title block; adds an in-card `Title` to `LoginForm`; aligns
+  `RegisterForm`'s existing in-card title level. Also eliminates the pre-existing register
+  double-header.
 - **ITEM-6**: Responsive fidelity — both pages verified at ~390px / tablet / desktop: no
   horizontal page scroll, card `w-full max-w-md`, backdrop full-bleed, toggle tap target
   ≥ 40px, toggle never overlaps the card. Add a narrow-viewport (390px) gallery state so
