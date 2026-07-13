@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **365** surfaces carry at least one renderable-state signal.
-- **2150** signals total: 1694 branch, 137 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **366** surfaces carry at least one renderable-state signal.
+- **2158** signals total: 1702 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -18,8 +18,8 @@
 |---|---|
 | `delayed` | 95 |
 | `empty` | 107 |
-| `error` | 88 |
-| `open` | 81 |
+| `error` | 89 |
+| `open` | 82 |
 | `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -51,7 +51,7 @@ conversation page.
 | `settingsAdminPages` | `modules/llm-repository/module`:56 |
 | `settingsAdminPages` | `modules/mcp/module`:147 |
 | `settingsAdminPages` | `modules/memory/module`:71 |
-| `settingsAdminPages` | `modules/scheduler/module`:78 |
+| `settingsAdminPages` | `modules/scheduler/module`:82 |
 | `settingsAdminPages` | `modules/server-update/module`:35 |
 | `settingsAdminPages` | `modules/skill/module`:105 |
 | `settingsAdminPages` | `modules/summarization/module`:41 |
@@ -3886,13 +3886,35 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `days.size === 1` | 104 |
-| branch | `value.schedule_kind === 'once'` | 156 |
-| branch | `!raw` | 165 |
-| branch | `preset !== 'custom'` | 192 |
-| branch | `preset === 'weekly'` | 208 |
-| branch | `preset === 'monthly'` | 236 |
-| branch | `preset === 'custom'` | 249 |
+| branch | `days.size === 1` | 108 |
+| branch | `value.schedule_kind === 'once'` | 167 |
+| branch | `!raw` | 177 |
+| branch | `preset !== 'custom'` | 204 |
+| branch | `preset === 'weekly'` | 221 |
+| branch | `preset === 'monthly'` | 249 |
+| branch | `preset === 'custom'` | 265 |
+
+### `modules/scheduler/components/ScheduledTaskCard`
+
+Required states: `empty`, `error`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `open` | 128 |
+| branch | `badge` | 135 |
+| branch | `preview` | 141 |
+| branch | `open` | 189 |
+| error | `run.status === 'failed' && run.error_message` | 195 |
+| branch | `skip` | 201 |
+| error | `!preview && run.status !== 'failed'` | 209 |
+| branch | `task.target_kind === 'prompt'` | 331 |
+| overlay | `<Confirm open>` | 389 |
+| branch | `task.paused_reason === 'completed'` | 415 |
+| branch | `task.paused_reason` | 420 |
+| branch | `expanded` | 444 |
+| branch | `!runs` | 446 |
+| empty | `total === 0` | 448 |
+| branch | `total > perPage` | 464 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3900,41 +3922,34 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 104 |
-| branch | `!open` | 112 |
-| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 159 |
-| branch | `err` | 249 |
-| branch | `err` | 273 |
-| overlay | `<Drawer open>` | 307 |
-| branch | `canUse` | 332 |
-| branch | `targetKind === 'prompt'` | 371 |
-| branch | `hasDeclaredInputs` | 393 |
-| branch | `testing` | 459 |
-| branch | `testResult` | 464 |
+| branch | `!open` | 183 |
+| branch | `!open` | 191 |
+| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 238 |
+| branch | `values.target_kind !== 'workflow' \|\| !hasDeclaredInputs` | 293 |
+| branch | `dyn` | 305 |
+| branch | `values.target_kind === 'workflow' && !hasDeclaredInputs && !isValidJson(values.inputs_json)` | 310 |
+| branch | `!values.model_id.trim()` | 339 |
+| branch | `values.target_kind === 'workflow' && !values.workflow_id.trim()` | 343 |
+| branch | `values.target_kind === 'prompt' && !values.prompt.trim()` | 347 |
+| branch | `dyn` | 352 |
+| overlay | `<Drawer open>` | 386 |
+| branch | `canUse` | 411 |
+| branch | `targetKind === 'prompt'` | 462 |
+| branch | `hasDeclaredInputs` | 484 |
+| branch | `form.formState.errors.schedule?.message` | 543 |
+| branch | `testing` | 573 |
+| branch | `testResult` | 578 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
-Required states: `delayed`, `empty`, `error`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `open` | 118 |
-| branch | `badge` | 125 |
-| branch | `preview` | 131 |
-| branch | `open` | 176 |
-| error | `run.status === 'failed' && run.error_message` | 178 |
-| branch | `skip` | 184 |
-| error | `!preview && run.status !== 'failed'` | 192 |
-| branch | `task.paused_reason === 'completed'` | 260 |
-| branch | `task.paused_reason` | 265 |
-| branch | `expanded` | 289 |
-| branch | `!runs` | 291 |
-| empty | `total === 0` | 293 |
-| branch | `total > perPage` | 309 |
-| branch | `task.target_kind === 'prompt'` | 330 |
-| loading | `loading && tasks.length === 0` | 411 |
-| error | `error && tasks.length === 0` | 415 |
-| empty | `tasks.length === 0` | 423 |
+| branch | `tasks.length > 0` | 84 |
+| branch | `hasMore` | 121 |
+| loading | `loading` | 132 |
+| error | `error` | 136 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 

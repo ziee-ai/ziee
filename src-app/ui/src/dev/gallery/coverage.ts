@@ -468,6 +468,7 @@ export const GALLERY_COVERAGE = {
   "modules/scheduler/components/ScheduleBuilder": { kind: 'via', reason: 'rendered inside ScheduledTaskFormDrawer' },
   "modules/scheduler/components/TaskTargetPickers": { kind: 'via', reason: 'controlled Assistant/Workflow/Model/allow-list pickers rendered inside ScheduledTaskFormDrawer; verified via the e2e interaction suite' },
   "modules/scheduler/components/ScheduledTaskFormDrawer": { kind: 'static', reason: 'scheduled-task create/edit drawer — open-state needs the SchedulerDrawer store seeded + a live open-trigger; verified via the e2e interaction suite' },
+  "modules/scheduler/components/ScheduledTaskCard": { kind: 'via', reason: 'single scheduled-task card rendered inside the ScheduledTasksPage list; its expanded-runs states need loaded run history — verified via the scheduler e2e (precedent-layout.spec.ts + paused-and-runs.spec.ts)' },
   "modules/scheduler/pages/ScheduledTasksPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/scheduler/pages/SchedulerAdminPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/settings-general/GeneralSettings": { kind: 'static', reason: 'no primary data load — Appearance (theme + accent) is client-side ConfigClient state, not a fetch; :loaded/:empty/:error render identically, so the :error combo is N/A' },
