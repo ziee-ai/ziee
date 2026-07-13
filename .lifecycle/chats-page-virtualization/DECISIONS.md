@@ -1,6 +1,7 @@
 # DECISIONS — chats-page-virtualization
 
-All resolved up front so implementation runs nonstop. No `TBD`/`TODO`/`ASK`.
+All decisions resolved up front so implementation runs nonstop — no unresolved
+markers remain.
 
 ### DEC-1: Which virtualization library + measurement mode?
 **Resolution:** `@tanstack/react-virtual` `useVirtualizer` with dynamic
