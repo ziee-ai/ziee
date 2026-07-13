@@ -93,8 +93,8 @@ used verbatim (the template/env path is skipped). Base it on
 The image ships **`config/desired-state.yaml`** at `/etc/ziee/desired-state.yaml`.
 When enabled, the server reconciles that file into the database on boot — **after**
 migrations, **before** it serves — so a fresh deploy comes up **fully configured with
-no manual UI setup**: the org MCP servers registered, the root admin created, a
-regular user seeded, and the default group's permissions trimmed.
+no manual UI setup**: the org MCP servers registered, the root admin created, and
+the default group's permissions trimmed.
 
 > ### Where it is turned on
 > The deploy overlay **`docker-compose.deploy.yml`** carries the switch, the MCP
@@ -112,9 +112,9 @@ regular user seeded, and the default group's permissions trimmed.
 
 | Env var | Fills | If unset |
 |---|---|---|
-| `RCPA_MCP_URL` | the `rcpa-user` system MCP server's URL | that server is skipped |
-| `DSCC_MCP_URL` | the `dscc-user` system MCP server's URL | that server is skipped |
-| `BIOGNOSIA_MCP_URL` | the `biognosia-user` system MCP server's URL | that server is skipped |
+| `RCPA_MCP_URL` | the `rcpa` system MCP server's URL | that server is skipped |
+| `DSCC_MCP_URL` | the `dscc` system MCP server's URL | that server is skipped |
+| `BIOGNOSIA_MCP_URL` | the `biognosia` system MCP server's URL | that server is skipped |
 | `ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD` | **the first administrator — env only.** Applied ONLY to a database with **no account at all** (the very first deploy). Afterwards it is a no-op, so a password the admin changes in the UI is **never reverted** by a redeploy. | no admin is created (the UI shows first-run setup) |
 | `ZIEE_APPLY_DESIRED_STATE` | **the switch** — `1` applies the file | **nothing is applied at all** (the local-dev default) |
 | `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |

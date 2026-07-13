@@ -65,7 +65,7 @@
 # The cost: an admin who deliberately disables one of these in the UI will see it
 # re-enabled by the next deploy — change it here, not in the UI.
 mcp_servers:
-  - name: rcpa-user
+  - name: rcpa
     display_name: RCPA
     description: RCPA analysis tools
     url: ${RCPA_MCP_URL}
@@ -75,7 +75,7 @@ mcp_servers:
     groups: [Users]
     mode: enforce
 
-  - name: dscc-user
+  - name: dscc
     display_name: DSCC
     description: DSCC analysis tools
     url: ${DSCC_MCP_URL}
@@ -85,7 +85,7 @@ mcp_servers:
     groups: [Users]
     mode: enforce
 
-  - name: biognosia-user
+  - name: biognosia
     display_name: Biognosia
     description: Biognosia tools
     url: ${BIOGNOSIA_MCP_URL}
