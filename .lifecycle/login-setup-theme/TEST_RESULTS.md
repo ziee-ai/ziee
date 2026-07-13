@@ -33,5 +33,13 @@ Diff touches ONE frontend workspace (`src-app/ui`); no backend/desktop. Logs:
 - **TEST-5**: PASS — `auth-backdrop-theme.spec.ts` — login + setup: `--auth-backdrop` & meta[theme-color] differ light↔dark, axe AA passes both themes.
 - **TEST-6**: PASS — `auth-responsive.spec.ts` — login + setup at 390px: no horizontal scroll, card visible, toggle ≥40×40px (the 44px fix) and NOT intersecting the card.
 - **TEST-7**: PASS — `src/index.css.auth-backdrop.test.ts` — `--auth-backdrop` declared in both `:root` and `.dark`, values differ (node --test, 3/3).
+- **TEST-8**: PASS — `auth-header-in-card.spec.ts` — the "Welcome back" heading is a descendant of `auth-login-card` and the "Create Account" heading a descendant of `auth-register-card` (in-card, not above); exactly one heading per screen; the old external "Create your account" is gone (iteration r1 / FB-5).
 
-E2E aggregate: **24 passed (8.6m), 0 failed** (PLAYWRIGHT_WORKERS=2). Full log tee'd per P4.
+E2E aggregate (initial run): **24 passed (8.6m), 0 failed** (PLAYWRIGHT_WORKERS=2).
+
+## Iteration round 1 (FB-5 — header inside the card)
+- **TEST-8** run standalone on a fresh e2e build: **1 passed (24.8s)**.
+- Regression re-run of the auth specs affected by the header move (TEST-1/2/5/6 + TEST-8) on the
+  post-change build: **all PASS** (`login-setup-theme-e2e-authregress.log`). TEST-3/4/7 (setup +
+  unit) are unaffected by FB-5 (no setup/css change) and remain PASS from the initial run.
+Full logs tee'd per P4 (`login-setup-theme-e2e{,-test8,-authregress}.log`).

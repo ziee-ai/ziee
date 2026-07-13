@@ -17,3 +17,6 @@ src-app/ui/tests/e2e/auth/login-backdrop.spec.ts	1	9999	tests-quality,a11y,corre
 src-app/ui/tests/e2e/auth/login-theme-toggle.spec.ts	1	9999	tests-quality,test-reality,correctness
 src-app/ui/tests/e2e/setup/setup-theme-toggle.spec.ts	1	9999	tests-quality,test-reality,correctness
 src-app/ui/tests/e2e/setup/setup.spec.ts	1	9999	tests-quality,a11y,correctness
+src-app/ui/src/modules/auth/LoginForm.tsx	1	9999	correctness,precedent-fidelity,a11y,patterns-conformance
+src-app/ui/src/modules/auth/RegisterForm.tsx	1	9999	correctness,precedent-fidelity,a11y
+src-app/ui/tests/e2e/auth/auth-header-in-card.spec.ts	1	9999	tests-quality,test-reality,a11y,correctness
