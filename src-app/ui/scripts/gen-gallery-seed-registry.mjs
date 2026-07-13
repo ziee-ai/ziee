@@ -23,12 +23,18 @@ import path from 'node:path'
 import fs from 'node:fs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const MODULES_DIR = path.resolve(HERE, '../src/modules')
-const OUT = path.resolve(HERE, '../src/dev/gallery/GALLERY_SEED_MANIFEST.md')
-const EXCEPTIONS_PATH = path.resolve(
-  HERE,
-  '../src/dev/gallery/GALLERY_SEED_EXCEPTIONS.md',
-)
+// The workspace `src` dir to gate. Defaults to this (ui) workspace; the desktop
+// workspace runs the SAME script over its own tree via `--src <dir>` (a portable
+// arg — an inline `VAR=` env prefix is not Windows-npm portable). Resolved from
+// the invoking package's CWD. Keeps ONE gate, no copy/drift.
+const srcArgIdx = process.argv.indexOf('--src')
+const SRC =
+  srcArgIdx !== -1 && process.argv[srcArgIdx + 1]
+    ? path.resolve(process.argv[srcArgIdx + 1])
+    : path.resolve(HERE, '../src')
+const MODULES_DIR = path.join(SRC, 'modules')
+const OUT = path.join(SRC, 'dev/gallery/GALLERY_SEED_MANIFEST.md')
+const EXCEPTIONS_PATH = path.join(SRC, 'dev/gallery/GALLERY_SEED_EXCEPTIONS.md')
 
 /** Routes that are not reviewable page CONTENT (mirrors pages.tsx SKIP_PATHS). */
 const SKIP_PATHS = new Set(['/', '/dev/gallery', '/auth/callback'])
@@ -47,12 +53,21 @@ const USER_SLOT_KEYS = [
   'registerPanelRenderer',
 ]
 
+/** Strip block + line comments so a COMMENTED-OUT `path:`/slot (e.g. a disabled
+ *  route) isn't miscounted as a live surface. Naive but safe here. */
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+}
+
 /**
  * Does this module.tsx source declare a user-facing surface? True if it declares
  * a route `path:` literal not in the skip-set, OR references a user-facing slot
- * key. Pure — exported for TEST-3.
+ * key. Comments are stripped first. Pure — exported for TEST-3.
  */
-export function hasUserSurface(moduleSrc) {
+export function hasUserSurface(moduleSrcRaw) {
+  const moduleSrc = stripComments(moduleSrcRaw)
   const paths = [...moduleSrc.matchAll(/path:\s*['"]([^'"]+)['"]/g)].map(m => m[1])
   const hasReviewableRoute = paths.some(p => !SKIP_PATHS.has(p))
   const hasSlot = USER_SLOT_KEYS.some(k => new RegExp(`\\b${k}\\b`).test(moduleSrc))

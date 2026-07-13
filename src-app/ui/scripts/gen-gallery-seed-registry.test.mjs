@@ -81,6 +81,11 @@ test('TEST-3: an infra module (no route, no slot) is NOT a surface', () => {
   assert.equal(hasUserSurface(`export default createModule({ metadata: { name: 'router' } })`), false)
 })
 
+test('TEST-3: a COMMENTED-OUT route is NOT a surface (comments stripped)', () => {
+  assert.equal(hasUserSurface(`  //   path: '/settings/window',\n  routes: []`), false)
+  assert.equal(hasUserSurface(`/* path: '/x' */ routes: []`), false)
+})
+
 // ── TEST-4: parseSeedExceptions — reason + sign-off required ─────────────────
 test('TEST-4: a well-formed NO-SEED line is parsed', () => {
   const set = parseSeedExceptions(

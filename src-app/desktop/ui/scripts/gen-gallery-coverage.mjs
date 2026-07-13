@@ -39,7 +39,12 @@ function walk(dir, acc = []) {
     if (st.isDirectory()) {
       if (!['node_modules', 'dist', 'build', '.git', 'tests', '__tests__'].includes(e))
         walk(full, acc)
-    } else if (/\.tsx$/.test(e) && !/\.(test|stories)\.tsx$/.test(e)) {
+    } else if (
+      /\.tsx$/.test(e) &&
+      !/\.(test|stories)\.tsx$/.test(e) &&
+      // Per-module gallery.tsx seed files are authoring metadata, not surfaces.
+      e !== 'gallery.tsx'
+    ) {
       acc.push(full)
     }
   }

@@ -1,18 +1,16 @@
 /**
- * Desktop gallery cassette — recorded from the same backend, validated against
- * the DESKTOP api-client types + openapi.json. Desktop reuses the web core via
- * the `@/` override plugin, so most surfaces + endpoints overlap; the crawl is
- * filtered to the desktop client's known endpoints.
+ * Desktop gallery cassette. Layers the per-module seed (shared web modules +
+ * desktop-only modules, assembled by `module-seed.ts`) over the recorded crawl
+ * BASE, module entries winning. The crawl remains shared infra (recorded from the
+ * same backend, validated against the DESKTOP api-client types + openapi.json).
  */
 import type { Cassette } from '../mockApi'
-import { authCassette } from './auth'
-import { citationsCassette } from './citations'
+import { MODULE_CASSETTE } from '../module-seed'
 import { crawlCassette } from './crawl.generated'
 
 export { adminUser, adminMe, adminPermissions } from './auth'
 
 export const GALLERY_CASSETTE: Cassette = {
   ...crawlCassette,
-  ...authCassette,
-  ...citationsCassette,
+  ...MODULE_CASSETTE,
 }
