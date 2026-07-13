@@ -29,15 +29,18 @@ test.describe('Split chat — per-pane edge-directional drop (existing split)', 
     return (await res.json()).id as string
   }
 
-  // Drop a conversation onto a pane's drop column at a horizontal fraction
-  // (0.15 = left third, 0.5 = center, 0.85 = right third).
+  // Drop a conversation onto a pane sub-element at a horizontal fraction
+  // (0.15 = left third, 0.5 = center, 0.85 = right third). `sel` picks the column
+  // (default) or the header — both are live conversation drop targets (blind-audit
+  // fix: the header is a SIBLING of the column, so it needs its own handler).
   const dropOnPane = async (
     page: import('@playwright/test').Page,
     paneTestId: string,
     convId: string,
     frac: number,
+    sel = '[data-pane-drop-column]',
   ) => {
-    const col = byTestId(page, paneTestId).locator('[data-pane-drop-column]')
+    const col = sel === 'header' ? byTestId(page, paneTestId).getByTestId('chat-pane-header') : byTestId(page, paneTestId).locator(sel)
     await expect(col).toBeVisible({ timeout: 15000 })
     const box = await col.boundingBox()
     if (!box) throw new Error('no column box')
@@ -108,6 +111,14 @@ test.describe('Split chat — per-pane edge-directional drop (existing split)', 
     await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText('Charlie', { timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText('Alpha')
     await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0) // no new pane — replaced
+
+    // --- Dropping on a pane's HEADER also works (it's a sibling of the column,
+    // so it has its own unified handler): center of pane 1's header → REPLACE B
+    // with C → [A, C]. Pre-fix the header ignored conversation drags (no-op). ---
+    await openAB(page, baseURL, convA, convB)
+    await dropOnPane(page, 'chat-pane-1', convC, 0.5, 'header')
+    await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText('Charlie', { timeout: 15000 })
+    await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText('Alpha')
 
     // --- FILE dropped on a pane is IGNORED (dragKind→'file') ---
     await openAB(page, baseURL, convA, convB)

@@ -108,29 +108,10 @@ export function ConversationPane() {
   // this pane; a pane-header drag dropped here reorders. File drags are ignored
   // (they belong to the composer) — the header is not over the composer, so they
   // never cross-fire. `paneDropActive` drives the drop highlight.
+  // `paneDropActive` = a pane-REORDER drag is over this pane's header (ring
+  // highlight). The unified `onPaneArea*` handlers (defined below, after
+  // `conversationId`) drive both this and the conversation edge-directional drop.
   const [paneDropActive, setPaneDropActive] = useState(false)
-  // The header handles ONLY a pane-REORDER drag (grip → header). A CONVERSATION
-  // drag is handled by the chat column's edge-directional drop (ITEM-70) — the
-  // header ignores it so it falls through to the column (which highlights the
-  // left/center/right third under the pointer).
-  const onPaneHeaderDragOver = (e: React.DragEvent) => {
-    if (!pane || dragKind(e.dataTransfer) !== 'pane') return
-    e.preventDefault()
-    setPaneDropActive(true)
-  }
-  const onPaneHeaderDrop = (e: React.DragEvent) => {
-    if (!pane) return
-    setPaneDropActive(false)
-    if (dragKind(e.dataTransfer) !== 'pane') return
-    const from = readPaneDragId(e.dataTransfer)
-    const idx = from
-      ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId)
-      : null
-    if (idx) {
-      e.preventDefault()
-      Stores.SplitView.reorderPanes(idx.from, idx.to)
-    }
-  }
   // In a pane the provider owns the target conversation id (the URL param is the
   // route's, not this pane's); on the single-pane route it's the URL param.
   const conversationId = pane
@@ -148,19 +129,46 @@ export function ConversationPane() {
   // MAX_PANES the edges fall back to replace. Only conversation drags participate
   // — a file drag belongs to the composer; a pane-reorder drag is the header's.
   const [dropZone, setDropZone] = useState<DropZone | null>(null)
-  const onColumnDragOver = (e: React.DragEvent) => {
-    if (!conversationId || dragKind(e.dataTransfer) !== 'conversation') return
-    e.preventDefault()
-    const rect = e.currentTarget.getBoundingClientRect()
-    setDropZone(zoneForX(e.clientX, rect.left, rect.width))
+  // Unified pane-area drop, attached to BOTH the pane HEADER and the chat COLUMN
+  // (they're SIBLINGS, so a header drop can't bubble to the column — blind-audit
+  // fix). Dispatches by drag kind: a CONVERSATION drag drives the edge-directional
+  // L/C/R zone (the whole pane is one target); a pane-REORDER drag highlights the
+  // header + reorders. Both use `e.currentTarget`'s rect — header + column share
+  // the pane's full width, so the x-fraction is consistent wherever you drop.
+  const onPaneAreaDragOver = (e: React.DragEvent) => {
+    const kind = dragKind(e.dataTransfer)
+    if (kind === 'conversation') {
+      if (!conversationId) return
+      e.preventDefault()
+      const rect = e.currentTarget.getBoundingClientRect()
+      setDropZone(zoneForX(e.clientX, rect.left, rect.width))
+    } else if (kind === 'pane' && pane) {
+      e.preventDefault()
+      setPaneDropActive(true)
+    }
   }
-  const onColumnDragLeave = (e: React.DragEvent) => {
+  const onPaneAreaDragLeave = (e: React.DragEvent) => {
     // Ignore leave events that cross into a child; only clear on a real exit.
-    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropZone(null)
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setDropZone(null)
+      setPaneDropActive(false)
+    }
   }
-  const onColumnDrop = (e: React.DragEvent) => {
+  const onPaneAreaDrop = (e: React.DragEvent) => {
     setDropZone(null)
-    if (!conversationId || dragKind(e.dataTransfer) !== 'conversation') return
+    setPaneDropActive(false)
+    const kind = dragKind(e.dataTransfer)
+    if (kind === 'pane') {
+      if (!pane) return
+      const from = readPaneDragId(e.dataTransfer)
+      const idx = from ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId) : null
+      if (idx) {
+        e.preventDefault()
+        Stores.SplitView.reorderPanes(idx.from, idx.to)
+      }
+      return
+    }
+    if (kind !== 'conversation' || !conversationId) return
     const droppedId = readConversationDragId(e.dataTransfer)
     if (!droppedId) return
     e.preventDefault()
@@ -790,9 +798,9 @@ export function ConversationPane() {
             paneDropActive && 'bg-primary/10 ring-2 ring-primary ring-inset',
           )}
           data-testid="chat-pane-header"
-          onDragOver={onPaneHeaderDragOver}
-          onDragLeave={() => setPaneDropActive(false)}
-          onDrop={onPaneHeaderDrop}
+          onDragOver={onPaneAreaDragOver}
+          onDragLeave={onPaneAreaDragLeave}
+          onDrop={onPaneAreaDrop}
         >
           <div className="flex min-w-0 items-center gap-2">
             {/* Reorder handle (ITEM-31): drag this pane's header onto another
@@ -862,9 +870,9 @@ export function ConversationPane() {
           data-testid={pane ? undefined : 'chat-single-drop-column'}
           data-pane-drop-column="true"
           className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}
-          onDragOver={onColumnDragOver}
-          onDragLeave={onColumnDragLeave}
-          onDrop={onColumnDrop}
+          onDragOver={onPaneAreaDragOver}
+          onDragLeave={onPaneAreaDragLeave}
+          onDrop={onPaneAreaDrop}
         >
           {/* Edge-directional drop hint (ITEM-57 single-pane / ITEM-70 split): while
               a conversation is dragged over the column, show the three target thirds

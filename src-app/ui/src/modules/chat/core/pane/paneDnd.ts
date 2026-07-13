@@ -4,10 +4,11 @@
  * Two custom drag types keep the workspace drop-zones from ever cross-firing
  * with the composer's OS-**file** drop: a conversation/pane drop-zone only acts
  * on ITS type and explicitly yields to a `Files` drag (which belongs to the
- * composer as an attachment). The zones themselves live on the pane HEADER + the
- * inter-pane SEAM — never over the composer — so the two never physically
- * overlap either. `dragKind` reads `dataTransfer.types` (the only thing readable
- * during `dragover`; `getData` is blocked until `drop`).
+ * composer as an attachment). As of ITEM-70 the conversation drop-zone is the
+ * whole pane AREA (header + chat column, each with the unified `onPaneArea*`
+ * handler) using edge-directional left/center/right zones; the pane-REORDER drag
+ * is handled by the same area. `dragKind` reads `dataTransfer.types` (the only
+ * thing readable during `dragover`; `getData` is blocked until `drop`).
  */
 
 export const CONVERSATION_DND_TYPE = 'application/x-ziee-conversation'
