@@ -26,7 +26,7 @@ src-app/ui/src/modules/chat/components/ConversationList.tsx	123	123	correctness,
 src-app/ui/src/modules/chat/components/ConversationList.tsx	207	212	correctness,affordance-parity,patterns-conformance,reactive-read-in-loop,new-rendering-context,i18n,a11y,state-management
 src-app/ui/src/modules/chat/components/ConversationList.tsx	244	263	correctness,affordance-parity,patterns-conformance,reactive-read-in-loop,new-rendering-context,i18n,a11y,state-management
 src-app/ui/src/modules/chat/components/ConversationList.tsx	265	283	correctness,affordance-parity,patterns-conformance,reactive-read-in-loop,new-rendering-context,i18n,a11y,state-management
-src-app/ui/src/modules/chat/components/VirtualizedConversationList.tsx	1	270	correctness,perf,concurrency,state-management,patterns-conformance,a11y,reactive-read-in-loop,error-handling
+src-app/ui/src/modules/chat/components/VirtualizedConversationList.tsx	1	298	correctness,perf,concurrency,state-management,patterns-conformance,a11y,reactive-read-in-loop,error-handling
 src-app/ui/src/modules/chat/core/utils/chatListMetrics.test.ts	1	31	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/utils/chatListMetrics.ts	1	42	correctness,concurrency,tests-quality
 src-app/ui/src/modules/chat/core/utils/estimateConversationHeight.test.ts	1	102	tests-quality,correctness,error-handling
