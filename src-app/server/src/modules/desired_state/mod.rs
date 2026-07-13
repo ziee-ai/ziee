@@ -1072,11 +1072,6 @@ mcp_servers:
     url: ${BIOGNOSIA_MCP_URL}
     supports_sampling: true
     mode: enforce
-admin:
-  username: admin
-  email: admin@tinnguyen-lab.com
-  password: ${ZIEE_ADMIN_PASSWORD}
-  mode: ensure
 users:
   - username: user
     email: user@tinnguyen-lab.com
@@ -1100,9 +1095,8 @@ groups:
         assert!(bio.supports_sampling);
         assert_eq!(bio.mode, Mode::Enforce);
 
-        // `mode` on admin/users parses (it is accepted-but-inert). Without the
-        // field, `deny_unknown_fields` would fail the WHOLE document.
-        assert_eq!(ds.admin.as_ref().unwrap().username, "admin");
+        // `mode` on a user entry parses (accepted-but-inert). Without the field,
+        // `deny_unknown_fields` would fail the WHOLE document.
         assert_eq!(ds.users.len(), 1);
         assert_eq!(ds.groups[0].remove.len(), 2);
         assert!(ds.groups[0].add.is_empty());
@@ -1112,7 +1106,6 @@ groups:
     fn empty_document_is_a_legal_no_op() {
         let ds: DesiredState = serde_norway::from_str("{}").unwrap();
         assert!(ds.mcp_servers.is_empty());
-        assert!(ds.admin.is_none());
         assert!(ds.users.is_empty());
         assert!(ds.groups.is_empty());
     }
@@ -1202,15 +1195,13 @@ mcp_servers:
                 user.username
             );
         }
-        if let Some(admin) = &ds.admin {
-            assert!(
-                !matches!(
-                    resolve_secret_with(&admin.password, &empty),
-                    Err(TemplateError::InlineSecret)
-                ),
-                "the admin has an INLINE password in the shipped file"
-            );
-        }
+        // The admin is env-only: the committed manifest must carry no admin
+        // identity or credential whatsoever. `deny_unknown_fields` already makes
+        // an `admin:` key fail to parse — this pins the intent in the file text.
+        assert!(
+            !raw.lines().any(|l| l.trim_start().starts_with("admin:")),
+            "the shipped file must not carry an `admin:` block — the first admin is env-only"
+        );
 
         // The three org servers are declared, each reachable by the Users group,
         // and each `enforce` — the boot health check auto-disables an unreachable
