@@ -107,6 +107,7 @@ beforeEach(() => {
     recentLoadingMore: false,
     recentInitialized: false,
     recentError: null,
+    recentLoadSeq: 0,
     searchQuery: '',
     sort: 'recent',
     selectedIds: new Set(),
@@ -341,6 +342,48 @@ describe('ChatHistory recent paging (TEST-1..5)', () => {
     await store().deleteConversation('only')
     expect(apiMock.Conversation.list).not.toHaveBeenCalled()
     expect(store().recentConversations).toHaveLength(0)
+  })
+
+  it('TEST-14c: an in-flight loadMore whose list is reset mid-flight is discarded (epoch)', async () => {
+    // Page 1 loaded, more server-side.
+    useChatHistoryStore.setState({
+      recentConversations: Array.from({ length: 20 }, (_, i) => convo({ id: `r${i}` })),
+      recentInitialized: true,
+      recentTotal: 45,
+      recentHasMore: true,
+      recentPage: 1,
+    })
+
+    // Kick off a page-2 loadMore whose response we control (deferred).
+    let resolvePage2: (v: unknown) => void = () => {}
+    const page2 = new Promise(res => {
+      resolvePage2 = res
+    })
+    apiMock.Conversation.list.mockReturnValueOnce(page2 as any)
+    const morePromise = store().loadMoreRecent() // do NOT await — in flight now
+    expect(store().recentLoadingMore).toBe(true)
+
+    // While it's in flight, a delete drains the list to empty → refill bumps the
+    // epoch, clears the flags, and reloads page 1 (fresh rows).
+    useChatHistoryStore.setState({ recentConversations: [] })
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: Array.from({ length: 20 }, (_, i) => convo({ id: `fresh${i}` })),
+      total: 44,
+    })
+    await store().refillRecentIfEmptied()
+    expect(store().recentConversations[0].id).toBe('fresh0')
+
+    // NOW the stale page-2 resolves — it must be DISCARDED (epoch changed), not
+    // appended onto the freshly-reloaded list.
+    resolvePage2({
+      conversations: Array.from({ length: 20 }, (_, i) => convo({ id: `stale${i}` })),
+      total: 45,
+    })
+    await morePromise
+
+    const ids = store().recentConversations.map(c => c.id)
+    expect(ids).toContain('fresh0')
+    expect(ids.some(id => id.startsWith('stale'))).toBe(false) // stale page dropped
   })
 
   it('TEST-5c: syncRecentFront re-anchors recentPage so paging keeps reaching older rows', async () => {

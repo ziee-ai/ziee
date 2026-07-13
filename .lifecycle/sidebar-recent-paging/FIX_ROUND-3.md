@@ -32,4 +32,5 @@ set is always a contiguous server prefix).
 
 - `npm run check` (ui): PASS. `tsc`: clean. Unit tests: 14/14 PASS.
 
-**New confirmed findings:** 0 (verified by the round-3 re-audit)
+**New confirmed findings:** 1 (the round-3 re-audit found one narrow in-flight
+race — see FIX_ROUND-4)

@@ -58,13 +58,49 @@ async function domRowCount(page: Page) {
   return page.getByTestId(ROW).count()
 }
 
+/** Scroll the sidebar list viewport back to the top. */
+async function scrollToTop(page: Page) {
+  await page.evaluate(listId => {
+    const ul = document.querySelector(`[data-testid="${listId}"]`)
+    let n = ul?.parentElement as HTMLElement | null
+    while (n) {
+      const s = getComputedStyle(n)
+      if (
+        (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+        n.scrollHeight > n.clientHeight
+      ) {
+        n.scrollTop = 0
+        return
+      }
+      n = n.parentElement
+    }
+  }, LIST)
+}
+
+/** Scroll to the bottom and wait for the next-page fetch it triggers to settle
+ *  (deterministic — a fixed sleep races the fetch + re-measure cycle). Resolves
+ *  after a page response or a short settle when there's nothing more to load. */
+async function scrollStep(page: Page) {
+  const resp = page
+    .waitForResponse(r => /\/api\/conversations\?[^ ]*page=\d/.test(r.url()), {
+      timeout: 5000,
+    })
+    .catch(() => null)
+  await scrollToBottom(page)
+  await resp
+  await page.waitForTimeout(250)
+}
+
 test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     const token = await getAdminToken(apiURL)
     await seedConversations(apiURL, token, N)
     await loginAsAdmin(page, baseURL)
-    await page.setViewportSize({ width: 1280, height: 900 })
+    // A SHORT viewport so the sidebar list can't fit a whole page of rows — this
+    // keeps the initial load to page 1 (no eager multi-page fill) so the
+    // scroll-to-load-more behaviour is actually observable. Width stays desktop.
+    await page.setViewportSize({ width: 1280, height: 480 })
     await page.goto(`${baseURL}/chats`)
     await expect(byTestId(page, LIST)).toBeVisible({ timeout: 30000 })
   })
@@ -95,10 +131,9 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     page,
   }) => {
     // Scroll to the very bottom so ALL 45 rows are loaded.
-    for (let i = 0; i < 8; i++) {
-      await scrollToBottom(page)
-      await page.waitForTimeout(400)
+    for (let i = 0; i < 12; i++) {
       if (await page.getByTestId(ROW).filter({ hasText: pad(0) }).count()) break
+      await scrollStep(page)
     }
     // The oldest (bottom) row is now on-screen…
     await expect(
@@ -124,41 +159,45 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
       await route.continue()
     })
 
+    // Page 2 (SBP-024, the 21st-newest) is NOT loaded initially (short viewport).
+    await expect(
+      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
+    ).toHaveCount(0)
+
     const pageTwo = page.waitForResponse(
       r => /\/api\/conversations\?[^ ]*page=2\b/.test(r.url()) && r.ok(),
+      { timeout: 15000 },
     )
     await scrollToBottom(page)
 
-    // The loading-more indicator shows during the (delayed) fetch...
+    // The loading-more indicator shows during the (delayed) fetch — the load
+    // happens on scroll, with NO manual button.
     await expect(byTestId(page, 'chat-recent-loading-more')).toBeVisible({
       timeout: 5000,
     })
-    await pageTwo // ...and the next page really is fetched on scroll (no button).
-    await expect(byTestId(page, 'chat-recent-loading-more')).toHaveCount(0, {
-      timeout: 5000,
-    })
-
-    // A page-2 conversation (SBP-024, the 21st-newest) is now reachable.
+    await pageTwo
+    // A page-2 conversation is now reachable, and the indicator clears.
     await expect(
       page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
     ).toBeVisible({ timeout: 10000 })
+    await expect(byTestId(page, 'chat-recent-loading-more')).toHaveCount(0, {
+      timeout: 5000,
+    })
   })
 
   test('TEST-8: scrolling to the end reaches the oldest and then stops', async ({
     page,
   }) => {
-    // Scroll page-by-page until the oldest row is reachable (≤ 6 scrolls covers
-    // 3 pages with margin).
-    for (let i = 0; i < 6; i++) {
-      await scrollToBottom(page)
-      await page.waitForTimeout(400)
+    // Scroll page-by-page until the oldest row is reachable.
+    for (let i = 0; i < 12; i++) {
       if (await page.getByTestId(ROW).filter({ hasText: pad(0) }).count()) break
+      await scrollStep(page)
     }
     await expect(
       page.getByTestId(ROW).filter({ hasText: pad(0) }),
     ).toBeVisible({ timeout: 10000 })
 
-    // End of list: no loading indicator, and a further scroll fires NO new fetch
+    // End of list: no loading indicator, and further scrolling fires NO new fetch
     // (recentHasMore is false).
     await expect(byTestId(page, 'chat-recent-loading-more')).toHaveCount(0)
     let fetched = false
@@ -167,7 +206,9 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
       await route.continue()
     })
     await scrollToBottom(page)
-    await page.waitForTimeout(800)
+    await page.waitForTimeout(1000)
+    await scrollToBottom(page)
+    await page.waitForTimeout(1000)
     expect(fetched).toBe(false)
   })
 
@@ -175,13 +216,12 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     page,
     testInfra,
   }) => {
-    // Load a couple more pages first.
-    await scrollToBottom(page)
-    await page.waitForTimeout(500)
-    await scrollToBottom(page)
-    await page.waitForTimeout(500)
-    // A page-2 row is loaded now.
+    // Load a couple more pages first (scroll until a page-2 row exists).
     const olderRow = page.getByTestId(ROW).filter({ hasText: pad(N - 22) })
+    for (let i = 0; i < 12; i++) {
+      if (await olderRow.count()) break
+      await scrollStep(page)
+    }
     await expect(olderRow).toBeVisible({ timeout: 10000 })
 
     // Create a brand-new conversation (cross-device path → SSE sync).
@@ -196,14 +236,21 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     })
     expect(res.ok).toBeTruthy()
 
-    // It appears at the TOP of the sidebar…
+    // It appears at the TOP of the sidebar (scroll back up — it's virtualized
+    // away while we're scrolled to the bottom).
     const newest = page.getByTestId(ROW).filter({ hasText: 'SBP-NEWEST' })
-    await expect(newest).toBeVisible({ timeout: 15000 })
-    // …and the previously-loaded older page was NOT dropped/reset.
-    await scrollToBottom(page)
-    await expect(
-      page.getByTestId(ROW).filter({ hasText: pad(N - 22) }),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(async () => {
+      await scrollToTop(page)
+      await expect(newest).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
+
+    // …and the previously-loaded older page was NOT dropped/reset (scroll back
+    // down and it still resolves).
+    for (let i = 0; i < 12; i++) {
+      if (await olderRow.count()) break
+      await scrollStep(page)
+    }
+    await expect(olderRow).toBeVisible({ timeout: 10000 })
   })
 
   test('TEST-13: a persistent load-more failure does NOT hammer the API in a loop', async ({
@@ -226,16 +273,16 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
       await scrollToBottom(page)
       await page.waitForTimeout(500)
     }
-    // The list still shows page 1 (the older pages never loaded) and the number
-    // of failed attempts is bounded — no tight retry loop.
+    // Page 2 never loaded, and the failed attempts are BOUNDED — no tight loop.
     await expect(
-      page.getByTestId(ROW).filter({ hasText: pad(N - 1) }),
-    ).toBeVisible()
-    expect(pageFetches).toBeLessThanOrEqual(5)
+      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
+    ).toHaveCount(0)
+    expect(pageFetches).toBeGreaterThan(0)
+    expect(pageFetches).toBeLessThanOrEqual(4)
 
     // A visible retry affordance is shown (recoverable even if the page fits the
-    // viewport and can't be scrolled). Let the next page succeed, click Retry,
-    // and confirm paging resumes.
+    // viewport and can't be scrolled). Restore the route, click Retry, confirm
+    // paging resumes.
     await expect(byTestId(page, 'chat-recent-loadmore-error')).toBeVisible()
     await page.unroute('**/api/conversations?**')
     await byTestId(page, 'chat-recent-loadmore-retry').click()
@@ -247,21 +294,18 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
   test('TEST-10: virtual rows keep menu-row fidelity (aria-current + row actions)', async ({
     page,
   }) => {
-    // Selecting a row navigates and marks it current.
+    // The row testid is ON the navigation <button> (MenuRowButton). Selecting it
+    // navigates and marks it current.
     const row = page.getByTestId(ROW).filter({ hasText: pad(N - 1) })
+    const id = (await row.getAttribute('data-testid'))!.replace(
+      'chat-recent-conversations-menu-item-',
+      '',
+    )
     await row.click()
     await expect(page).toHaveURL(/\/chat\//)
-    await expect(row.locator('button').first()).toHaveAttribute(
-      'aria-current',
-      'page',
-    )
+    await expect(row).toHaveAttribute('aria-current', 'page')
 
     // Hover-reveal kebab + Delete still works under virtualization.
-    const id = await row
-      .locator('button')
-      .first()
-      .getAttribute('data-testid')
-      .then(v => (v ?? '').replace('chat-recent-conversations-menu-item-', ''))
     await row.hover()
     const kebab = byTestId(page, `chat-recent-row-actions-btn-${id}`)
     await kebab.click()

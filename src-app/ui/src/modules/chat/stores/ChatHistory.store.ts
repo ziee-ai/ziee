@@ -43,6 +43,11 @@ export const ChatHistory = defineStore('ChatHistory', {
     recentLoadingMore: false,
     recentInitialized: false,
     recentError: null as string | null,
+    // Monotonic epoch bumped when the recent list is structurally reset (e.g. a
+    // delete drains it to empty). An in-flight load captures the epoch and
+    // discards its result if it changed underneath — so a stale page-N response
+    // can't append onto a list that was reset mid-flight.
+    recentLoadSeq: 0,
     // Search + sort state (both applied server-side).
     searchQuery: '',
     sort: 'recent' as ConversationSort,
@@ -131,6 +136,9 @@ export const ChatHistory = defineStore('ChatHistory', {
       const state = get()
       const targetPage = page ?? state.recentPage
       if (state.recentLoading || state.recentLoadingMore) return
+      // Capture the epoch so a reset (delete-drains-to-empty) that happens while
+      // this fetch is in flight causes us to discard the now-stale result.
+      const seq = state.recentLoadSeq
       set({
         recentLoading: targetPage === 1,
         recentLoadingMore: targetPage > 1,
@@ -143,6 +151,9 @@ export const ChatHistory = defineStore('ChatHistory', {
           // No `search`, no `sort`: the server defaults to `recent`, so page 1 is
           // byte-identical to the pre-feature unfiltered request.
         })
+        // Superseded by a mid-flight reset → drop this result entirely (don't
+        // append a stale page onto a list that was drained + is being refilled).
+        if (get().recentLoadSeq !== seq) return
         const pageItems = response.conversations
         set(draft => {
           let added: number
@@ -174,6 +185,8 @@ export const ChatHistory = defineStore('ChatHistory', {
           draft.recentInitialized = true
         })
       } catch (error) {
+        // A superseded (reset mid-flight) failure is not this view's error.
+        if (get().recentLoadSeq !== seq) return
         console.error('[ChatHistory] Failed to load recent conversations:', error)
         // Surface a retryable error instead of wedging on the spinner. The widget
         // shows an error+retry when the list is empty; a failed load-MORE (list
@@ -232,6 +245,14 @@ export const ChatHistory = defineStore('ChatHistory', {
     const refillRecentIfEmptied = async () => {
       const s = get()
       if (s.recentConversations.length === 0 && s.recentHasMore) {
+        // Bump the epoch (invalidating any in-flight loadMore so its stale page-N
+        // result is discarded) and clear the in-flight flags so the page-1 reload
+        // below isn't blocked by the load guard.
+        set(draft => {
+          draft.recentLoadSeq = draft.recentLoadSeq + 1
+          draft.recentLoading = false
+          draft.recentLoadingMore = false
+        })
         await loadRecentConversations(1)
       }
     }
