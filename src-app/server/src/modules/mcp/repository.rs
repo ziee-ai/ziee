@@ -580,23 +580,6 @@ impl McpRepository {
         delete_system_mcp_server(&self.pool, id).await
     }
 
-    /// Look a SYSTEM server up by its `name`. `mcp_servers.name` has no unique
-    /// index, so this is a "first match" lookup — it exists for the boot-time
-    /// desired-state reconciler, whose idempotency key is the name (it must not
-    /// re-create a server a previous deploy already made).
-    pub async fn get_system_server_by_name(
-        &self,
-        name: &str,
-    ) -> Result<Option<Uuid>, AppError> {
-        sqlx::query_scalar!(
-            "SELECT id FROM mcp_servers WHERE name = $1 AND is_system = true LIMIT 1",
-            name
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::database_error)
-    }
-
     // Group assignment operations
     pub async fn get_system_servers_for_group(
         &self,
