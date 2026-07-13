@@ -1,0 +1,264 @@
+/**
+ * TEST-1..5 — ChatHistory sidebar "recent chats" infinite-scroll paging.
+ *
+ * Asserts the DEDICATED `recent*` paging cursor (decoupled from the /chats
+ * history query):
+ *   - TEST-1  loadRecentConversations(1) populates the first page + flags
+ *   - TEST-2  loadMoreRecent() appends the next page, dedups a boundary id,
+ *             no-ops while a load is in flight
+ *   - TEST-3  paging to the last page sets recentHasMore=false + a further
+ *             loadMoreRecent() is a no-op
+ *   - TEST-4  the history query (loadConversations) does NOT mutate the sidebar
+ *             list (decoupled)
+ *   - TEST-5  conversation.created prepends WITHOUT the old 20-cap + bumps
+ *             recentTotal; a sync delete removes the row + decrements recentTotal
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ConversationResponse } from '@/api-client/types'
+
+const apiMock = vi.hoisted(() => ({
+  Conversation: {
+    list: vi.fn(),
+    delete: vi.fn(() => Promise.resolve({})),
+    update: vi.fn(() => Promise.resolve({})),
+  },
+}))
+
+const perm = vi.hoisted(() => ({ allow: true }))
+
+const bus = vi.hoisted(() => {
+  const map = new Map<string, Set<(p?: unknown) => void>>()
+  return {
+    on: (event: string, handler: (p?: unknown) => void) => {
+      let s = map.get(event)
+      if (!s) {
+        s = new Set()
+        map.set(event, s)
+      }
+      s.add(handler)
+      return () => s?.delete(handler)
+    },
+    removeGroupListeners: () => {},
+    emit: (event: string, payload?: unknown) =>
+      map.get(event)?.forEach(fn => fn(payload)),
+    clear: () => map.clear(),
+  }
+})
+
+vi.mock('@/api-client', () => ({ ApiClient: apiMock }))
+vi.mock('@/core/permissions', () => ({
+  hasPermissionNow: () => perm.allow,
+  Permissions: {},
+}))
+vi.mock('@/core/stores', () => ({
+  Stores: { EventBus: { emit: vi.fn(() => Promise.resolve()) } },
+  createStoreProxy: () => ({}),
+}))
+vi.mock('@/core/events', () => ({
+  useEventBusStore: {
+    getState: () => ({
+      on: bus.on,
+      removeGroupListeners: bus.removeGroupListeners,
+    }),
+  },
+}))
+
+import { useChatHistoryStore } from './ChatHistory.store'
+
+const store = () => useChatHistoryStore.getState()
+
+function convo(over: Partial<ConversationResponse> = {}): ConversationResponse {
+  return {
+    id: 'c1',
+    title: 'Conversation',
+    user_id: 'u1',
+    created_at: '2026-07-11T00:00:00Z',
+    updated_at: '2026-07-11T00:00:00Z',
+    message_count: 0,
+    ...over,
+  }
+}
+
+// Page factory: a page of `count` conversations id-prefixed `p<page>-<i>`.
+function page(pageNo: number, count: number, total: number) {
+  return {
+    conversations: Array.from({ length: count }, (_, i) =>
+      convo({ id: `p${pageNo}-${i}`, title: `chat ${pageNo}-${i}` }),
+    ),
+    total,
+  }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  perm.allow = true
+  bus.clear()
+  useChatHistoryStore.setState({
+    conversations: [],
+    recentConversations: [],
+    page: 1,
+    limit: 20,
+    total: 0,
+    hasMore: false,
+    recentPage: 1,
+    recentTotal: 0,
+    recentHasMore: false,
+    recentLoading: false,
+    recentLoadingMore: false,
+    recentInitialized: false,
+    searchQuery: '',
+    sort: 'recent',
+    selectedIds: new Set(),
+    loading: false,
+    loadingMore: false,
+    reloadQueued: false,
+  })
+})
+
+describe('ChatHistory recent paging (TEST-1..5)', () => {
+  it('TEST-1: loadRecentConversations(1) loads the first page unfiltered', async () => {
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 45))
+
+    await store().loadRecentConversations(1)
+
+    expect(apiMock.Conversation.list).toHaveBeenCalledWith({ page: 1, limit: 20 })
+    const s = store()
+    expect(s.recentConversations).toHaveLength(20)
+    expect(s.recentTotal).toBe(45)
+    expect(s.recentHasMore).toBe(true)
+    expect(s.recentInitialized).toBe(true)
+    expect(s.recentPage).toBe(1)
+    expect(s.recentLoading).toBe(false)
+  })
+
+  it('TEST-1b: self-gates on ConversationsRead (no perm → no request)', async () => {
+    perm.allow = false
+    await store().loadRecentConversations(1)
+    expect(apiMock.Conversation.list).not.toHaveBeenCalled()
+    expect(store().recentInitialized).toBe(false)
+  })
+
+  it('TEST-2: loadMoreRecent() appends the next page and dedups a boundary id', async () => {
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 45))
+    await store().loadRecentConversations(1)
+
+    // Page 2 includes a duplicate of a page-1 row (`p1-19`) at its head.
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: [
+        convo({ id: 'p1-19', title: 'dup' }),
+        ...Array.from({ length: 20 }, (_, i) => convo({ id: `p2-${i}` })),
+      ],
+      total: 45,
+    })
+
+    await store().loadMoreRecent()
+
+    const s = store()
+    // 20 + 20 new (the duplicate is dropped, not 21).
+    expect(s.recentConversations).toHaveLength(40)
+    expect(s.recentConversations.filter(c => c.id === 'p1-19')).toHaveLength(1)
+    expect(s.recentPage).toBe(2)
+    expect(s.recentHasMore).toBe(true)
+    expect(apiMock.Conversation.list).toHaveBeenLastCalledWith({ page: 2, limit: 20 })
+  })
+
+  it('TEST-2b: loadMoreRecent() is a no-op while a load is in flight', async () => {
+    useChatHistoryStore.setState({
+      recentConversations: [convo({ id: 'x' })],
+      recentHasMore: true,
+      recentLoadingMore: true,
+    })
+    await store().loadMoreRecent()
+    expect(apiMock.Conversation.list).not.toHaveBeenCalled()
+  })
+
+  it('TEST-3: reaching the last page clears recentHasMore and stops', async () => {
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 40))
+    await store().loadRecentConversations(1)
+    apiMock.Conversation.list.mockResolvedValueOnce(page(2, 20, 40))
+    await store().loadMoreRecent()
+
+    expect(store().recentConversations).toHaveLength(40)
+    expect(store().recentHasMore).toBe(false)
+
+    // A further loadMoreRecent must NOT fetch (end-of-list).
+    apiMock.Conversation.list.mockClear()
+    await store().loadMoreRecent()
+    expect(apiMock.Conversation.list).not.toHaveBeenCalled()
+  })
+
+  it('TEST-4: the history query does NOT mutate the sidebar recent list', async () => {
+    const seeded = [convo({ id: 'r0' }), convo({ id: 'r1' }), convo({ id: 'r2' })]
+    useChatHistoryStore.setState({
+      recentConversations: seeded,
+      recentInitialized: true,
+      recentTotal: 3,
+    })
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 99))
+
+    await store().loadConversations(1)
+
+    expect(store().conversations).toHaveLength(20)
+    expect(store().total).toBe(99)
+    // Decoupled: the accumulated sidebar list survives a /chats reload untouched.
+    expect(store().recentConversations).toEqual(seeded)
+    expect(store().recentTotal).toBe(3)
+  })
+
+  it('TEST-5: conversation.created prepends without a 20-cap; sync delete prunes + counts', () => {
+    store().__init__.__store__() // wire init event handlers
+
+    const forty = Array.from({ length: 40 }, (_, i) => convo({ id: `r${i}` }))
+    useChatHistoryStore.setState({
+      recentConversations: forty,
+      recentInitialized: true,
+      recentTotal: 40,
+    })
+
+    bus.emit('conversation.created', {
+      data: { conversation: convo({ id: 'brand-new', title: 'New chat' }) },
+    })
+
+    let s = store()
+    expect(s.recentConversations).toHaveLength(41) // NOT truncated to 20
+    expect(s.recentConversations[0].id).toBe('brand-new')
+    expect(s.recentTotal).toBe(41)
+
+    // A cross-device delete of a loaded row prunes it and decrements the counter.
+    bus.emit('sync:conversation', { data: { action: 'delete', id: 'r5' } })
+    s = store()
+    expect(s.recentConversations.some(c => c.id === 'r5')).toBe(false)
+    expect(s.recentConversations).toHaveLength(40)
+    expect(s.recentTotal).toBe(40)
+  })
+
+  it('TEST-5b: syncRecentFront() merge-prepends without resetting loaded pages', async () => {
+    // A 40-row accumulated sidebar (2 pages scrolled in).
+    const forty = Array.from({ length: 40 }, (_, i) => convo({ id: `r${i}` }))
+    useChatHistoryStore.setState({
+      recentConversations: forty,
+      recentInitialized: true,
+      recentTotal: 45,
+      recentHasMore: true,
+      recentPage: 2,
+    })
+
+    // Page 1 refetch: a brand-new row `n0` on top of the existing page-1 rows.
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: [
+        convo({ id: 'n0', title: 'from other device' }),
+        ...Array.from({ length: 19 }, (_, i) => convo({ id: `r${i}` })),
+      ],
+      total: 46,
+    })
+
+    await store().syncRecentFront()
+
+    const s = store()
+    // The new row is prepended; the accumulated older pages are NOT dropped.
+    expect(s.recentConversations[0].id).toBe('n0')
+    expect(s.recentConversations).toHaveLength(41)
+    expect(s.recentConversations.some(c => c.id === 'r39')).toBe(true) // page-2 row survives
+    expect(s.recentTotal).toBe(46)
+  })
+})

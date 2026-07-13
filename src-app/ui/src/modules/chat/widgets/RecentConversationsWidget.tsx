@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import {
   Button,
   Dropdown,
@@ -7,6 +9,7 @@ import {
   Text,
   Tooltip,
   dialog,
+  menuRowClasses,
 } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
 import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
@@ -14,48 +17,88 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { Menu } from '@/components/ui'
-import type { MenuItem } from '@/components/ui'
+import { cn } from '@/lib/utils'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
 
+// Estimated pitch of one recent-chat row: the Menu row button is `px-3 py-1.5
+// text-sm` (~32px) + the inter-row rhythm ≈ 34px. Rows are single-line
+// (truncated title), so a fixed estimate is sufficient — no dynamic measurement.
+const ROW_H = 34
+
 /**
  * Sidebar list of the user's recent conversations, backed by
- * `Stores.ChatHistory.recentConversations`. Renders as a kit
- * `<Menu>` so hover / selected / focus styling matches the
- * Navigation + Tools menus above it in the sidebar.
+ * `Stores.ChatHistory.recentConversations`. INFINITE-SCROLL + VIRTUALIZED: the
+ * first page loads on mount and the next page auto-loads as the last virtual row
+ * nears the end (a nav-feed idiom); only the visible window is ever in the DOM,
+ * so a user with thousands of chats scrolls in O(viewport). Row styling is shared
+ * with the kit `<Menu>` (`menuRowClasses`) so it stays pixel-faithful to the
+ * Navigation + Tools menus above it; rows are a `role="list"` of navigation
+ * buttons (a virtualized `role="menu"` can't honor the ARIA menu keyboard
+ * contract across non-rendered items).
  *
- * Click navigation routes through the `conversationHref` extension
- * hook so any cross-cutting feature can override URL resolution
- * per conversation without this widget knowing about it.
+ * Click navigation routes through the `conversationHref` extension hook so any
+ * cross-cutting feature can override URL resolution per conversation.
  */
 export function RecentConversationsWidget() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { recentConversations, loading, isInitialized } = Stores.ChatHistory
+  const {
+    recentConversations,
+    recentInitialized,
+    recentTotal,
+    recentHasMore,
+    recentLoadingMore,
+  } = Stores.ChatHistory
 
   useEffect(() => {
-    if (!isInitialized) {
-      Stores.ChatHistory.loadConversations()
+    if (!recentInitialized) {
+      Stores.ChatHistory.loadRecentConversations()
     }
-  }, [isInitialized])
+  }, [recentInitialized])
 
-  // Section header for the empty + loading states. Rendered as a standalone
-  // styled heading (NOT a Menu) — an empty Menu group produces a
-  // `role="menu"` with no children, which fails axe-core's
-  // `aria-required-children`. The classes mirror the Menu group-title
-  // typography so it reads identically.
+  // OverlayScrollbars viewport is the virtualizer's scroll root. `initialized`
+  // flips `scrollReady` so the virtualizer re-reads `getScrollElement` once the
+  // (deferred) viewport exists — mirrors `kit/table.tsx::VirtualTable`.
+  const osRef = useRef<OverlayScrollbarsComponentRef>(null)
+  const [, setScrollReady] = useState(false)
+  const getScrollElement = useCallback(
+    () => osRef.current?.osInstance()?.elements().viewport ?? null,
+    [],
+  )
+  const virt = useVirtualizer({
+    count: recentConversations.length,
+    getScrollElement,
+    estimateSize: () => ROW_H,
+    overscan: 8,
+  })
+  const virtualItems = virt.getVirtualItems()
+
+  // Auto-load the next page when the last rendered virtual row reaches the end of
+  // the loaded set (the tanstack-virtual infinite-scroll idiom).
+  const lastIndex =
+    virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1
+  useEffect(() => {
+    if (
+      lastIndex >= recentConversations.length - 1 &&
+      recentHasMore &&
+      !recentLoadingMore
+    ) {
+      void Stores.ChatHistory.loadMoreRecent()
+    }
+  }, [lastIndex, recentConversations.length, recentHasMore, recentLoadingMore])
+
+  // Section header (standalone, above the scroll area) — its typography mirrors
+  // the Menu group-title so it reads identically to the sections above.
   const headerOnly = (
-    <div
-      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground"
-    >
+    <div className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground">
       Recent chats
     </div>
   )
 
-  if (loading && !isInitialized) {
+  if (!recentInitialized) {
     return (
       <div className="flex flex-col h-full">
         {headerOnly}
@@ -66,7 +109,7 @@ export function RecentConversationsWidget() {
     )
   }
 
-  if (!loading && recentConversations.length === 0) {
+  if (recentConversations.length === 0) {
     return (
       <div className="flex flex-col h-full">
         {headerOnly}
@@ -85,61 +128,91 @@ export function RecentConversationsWidget() {
     )
   }
 
-  // Conversation href is owned by the extension registry — same call
-  // the row click handler uses below, so the selected-key derivation
-  // stays in lockstep with what navigation actually does.
+  // Conversation href is owned by the extension registry — same call the row
+  // click handler uses, so the selected derivation stays in lockstep with nav.
   const hrefFor = (c: ConversationResponse) =>
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
-
-  // The currently-open conversation gets the Menu's `selected`
-  // treatment (bg-accent + font-medium).
-  const selectedKey = recentConversations.find(
+  const selectedId = recentConversations.find(
     c => location.pathname === hrefFor(c),
   )?.id
-
-  const items: MenuItem[] = [
-    {
-      type: 'group',
-      label: 'Recent chats',
-      children: recentConversations.map(c => {
-        const title = c.title || 'Untitled Conversation'
-        return {
-          key: c.id,
-          title,
-          label: (
-            <span className="truncate" title={title}>
-              {title}
-            </span>
-          ),
-          // Actions render as a SIBLING of the row button (see Menu `actions`) —
-          // a <button> may not contain the dropdown's own <button>.
-          actions: <ConversationRowActions conversation={c} />,
-        }
-      }),
-    },
-  ]
+  const setSize = recentTotal || recentConversations.length
 
   return (
     <div className="flex flex-col h-full min-h-0 text-foreground">
-      <DivScrollY className="flex-col flex-1 min-h-0">
-        <Menu
-          data-testid="chat-recent-conversations-menu"
-          mode="vertical"
+      {headerOnly}
+      <DivScrollY
+        ref={osRef}
+        className="flex-col flex-1 min-h-0 px-2"
+        events={{ initialized: () => setScrollReady(true) }}
+      >
+        {/* role="list" (not menu): the window is virtualized, so the ARIA menu
+            keyboard contract across non-rendered items can't be honored. Rows are
+            navigation buttons; aria-setsize/posinset restore list position. */}
+        <ul
+          role="list"
           aria-label="Recent conversations"
-          className="px-2"
-          items={items}
-          selectedKey={selectedKey}
-          onSelect={key => {
-            const c = recentConversations.find(x => x.id === key)
-            if (!c) return
-            // Defensive: bail if the click originated inside a floating
-            // dropdown menu (body-level portal), in case event routing
-            // ever changes.
-            const active = document.activeElement as HTMLElement | null
-            if (active?.closest('[role="menu"]')) return
-            navigate(hrefFor(c))
-          }}
-        />
+          data-testid="chat-recent-conversations-list"
+          className="relative w-full m-0 p-0 list-none"
+          style={{ height: virt.getTotalSize() }}
+        >
+          {virtualItems.map(vi => {
+            const c = recentConversations[vi.index]
+            if (!c) return null
+            const title = c.title || 'Untitled Conversation'
+            const selected = c.id === selectedId
+            const cls = menuRowClasses({ selected, hasActions: true })
+            return (
+              <li
+                key={c.id}
+                className="absolute left-0 w-full"
+                style={{
+                  top: 0,
+                  height: ROW_H,
+                  transform: `translateY(${vi.start}px)`,
+                }}
+                aria-setsize={setSize}
+                aria-posinset={vi.index + 1}
+              >
+                {/* The row-style container carries `relative group/menu-row` so the
+                    trailing actions overlay anchors here (the <li> is positioned by
+                    the virtualizer). */}
+                <div className={cn(cls.row, 'h-full')}>
+                  <button
+                    type="button"
+                    data-testid={`chat-recent-conversations-menu-item-${c.id}`}
+                    aria-current={selected ? 'page' : undefined}
+                    title={title}
+                    onClick={() => {
+                      // Bail if the click originated inside a floating dropdown
+                      // (body-level portal), in case event routing ever changes.
+                      const active = document.activeElement as HTMLElement | null
+                      if (active?.closest('[role="menu"]')) return
+                      navigate(hrefFor(c))
+                    }}
+                    className={cn(cls.button, 'h-full')}
+                  >
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {title}
+                    </span>
+                  </button>
+                  <div className={cls.actions}>
+                    <ConversationRowActions conversation={c} />
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+        {recentLoadingMore && (
+          <div
+            data-testid="chat-recent-loading-more"
+            role="status"
+            aria-live="polite"
+            className="flex justify-center items-center py-3"
+          >
+            <Spin label="Loading more" />
+          </div>
+        )}
       </DivScrollY>
     </div>
   )

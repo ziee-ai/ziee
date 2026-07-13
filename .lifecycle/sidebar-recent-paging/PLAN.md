@@ -94,9 +94,16 @@ is a management view, the sidebar is a feed).
   `conversation.created` prepends (dedup by id, **no** `.slice(0,20)`) and bumps
   `recentTotal`; `conversation.titleUpdated` unchanged (title map already covers
   `recentConversations`); `sync:conversation` delete decrements `recentTotal`
-  when the row was in `recentConversations`; `sync:reconnect` reloads recent
-  page 1 (`loadRecentConversations(1)`); `deleteConversation` + `bulkDelete`
-  decrement `recentTotal` by the count actually removed from `recentConversations`.
+  when the row was in `recentConversations`; `sync:conversation` CREATE/UPDATE
+  merge-prepends the new page-1 rows via a dedicated `syncRecentFront()` action
+  (fetch page 1, prepend only the not-yet-seen ids, recompute
+  `recentTotal`/`recentHasMore`) — a page-1 REPLACE would collapse an
+  infinite-scrolled sidebar back to one page and jump the scroll, so the sync
+  path must PRESERVE the accumulated pages (amended from the original "reload
+  page 1"; see DRIFT-1); `sync:reconnect` still does a full page-1 replace
+  (`loadRecentConversations(1)` — a fresh view after an offline gap is correct);
+  `deleteConversation` + `bulkDelete` decrement `recentTotal` by the count
+  actually removed from `recentConversations`.
 - **ITEM-6**: `RecentConversationsWidget.tsx` — VIRTUALIZED infinite scroll
   (mirror `kit/table.tsx::VirtualTable`):
   - switch the mount effect to `if (!recentInitialized)

@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2150 signals total.
+// 365 surfaces carry renderable-state signals; 2151 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -239,14 +239,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/menu",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 72 },
-      { kind: "branch", condition: "'type' in it && it.type === 'group'", line: 78 },
-      { kind: "branch", condition: "!collapsed", line: 82 },
-      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 90 },
-      { kind: "branch", condition: "!(collapsed)", line: 91 },
-      { kind: "branch", condition: "item.icon != null", line: 149 },
-      { kind: "branch", condition: "!collapsed", line: 151 },
-      { kind: "branch", condition: "hasActions", line: 153 },
+      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 120 },
+      { kind: "branch", condition: "'type' in it && it.type === 'group'", line: 126 },
+      { kind: "branch", condition: "!collapsed", line: 130 },
+      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 138 },
+      { kind: "branch", condition: "!(collapsed)", line: 139 },
+      { kind: "branch", condition: "item.icon != null", line: 171 },
+      { kind: "branch", condition: "!collapsed", line: 173 },
+      { kind: "branch", condition: "hasActions", line: 175 },
     ],
   },
   "components/ui/kit/multi-select": {
@@ -1144,14 +1144,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/widgets/RecentConversationsWidget": {
     surface: "modules/chat/widgets/RecentConversationsWidget",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["empty","open"],
     signals: [
-      { kind: "loading", condition: "loading && !isInitialized", line: 58 },
-      { kind: "loading", condition: "!loading && recentConversations.length === 0", line: 69 },
-      { kind: "branch", condition: "!c", line: 134 },
-      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 139 },
-      { kind: "overlay", condition: "<Dropdown open>", line: 233 },
-      { kind: "branch", condition: "!open && keepMenuOpen", line: 240 },
+      { kind: "branch", condition: "!recentInitialized", line: 101 },
+      { kind: "empty", condition: "recentConversations.length === 0", line: 112 },
+      { kind: "branch", condition: "!c", line: 160 },
+      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 189 },
+      { kind: "branch", condition: "recentLoadingMore", line: 206 },
+      { kind: "overlay", condition: "<Dropdown open>", line: 306 },
+      { kind: "branch", condition: "!open && keepMenuOpen", line: 313 },
     ],
   },
   "modules/citations/components/CitationCard": {
@@ -4500,7 +4501,7 @@ export type RequiredState =
   | "modules/chat/pages/ChatHistoryPage:error"
   | "modules/chat/pages/ConversationPage:delayed"
   | "modules/chat/pages/ConversationPage:error"
-  | "modules/chat/widgets/RecentConversationsWidget:delayed"
+  | "modules/chat/widgets/RecentConversationsWidget:empty"
   | "modules/chat/widgets/RecentConversationsWidget:open"
   | "modules/citations/components/ImportCitationsModal:empty"
   | "modules/citations/components/ImportCitationsModal:open"
@@ -4877,7 +4878,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/pages/ChatHistoryPage:error",
   "modules/chat/pages/ConversationPage:delayed",
   "modules/chat/pages/ConversationPage:error",
-  "modules/chat/widgets/RecentConversationsWidget:delayed",
+  "modules/chat/widgets/RecentConversationsWidget:empty",
   "modules/chat/widgets/RecentConversationsWidget:open",
   "modules/citations/components/ImportCitationsModal:empty",
   "modules/citations/components/ImportCitationsModal:open",

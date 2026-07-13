@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2150** signals total: 1694 branch, 137 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2151** signals total: 1696 branch, 138 empty, 113 error, 106 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,8 +16,8 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 95 |
-| `empty` | 107 |
+| `delayed` | 94 |
+| `empty` | 108 |
 | `error` | 88 |
 | `open` | 81 |
 | `panel-open` | 3 |
@@ -300,14 +300,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 72 |
-| branch | `'type' in it && it.type === 'group'` | 78 |
-| branch | `!collapsed` | 82 |
-| branch | `'type' in it && it.type === 'label'` | 90 |
-| branch | `!(collapsed)` | 91 |
-| branch | `item.icon != null` | 149 |
-| branch | `!collapsed` | 151 |
-| branch | `hasActions` | 153 |
+| branch | `'type' in it && it.type === 'divider'` | 120 |
+| branch | `'type' in it && it.type === 'group'` | 126 |
+| branch | `!collapsed` | 130 |
+| branch | `'type' in it && it.type === 'label'` | 138 |
+| branch | `!(collapsed)` | 139 |
+| branch | `item.icon != null` | 171 |
+| branch | `!collapsed` | 173 |
+| branch | `hasActions` | 175 |
 
 ### `components/ui/kit/multi-select`
 
@@ -1291,16 +1291,17 @@ Required states: `delayed`, `error`
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
-Required states: `delayed`, `open`
+Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && !isInitialized` | 58 |
-| loading | `!loading && recentConversations.length === 0` | 69 |
-| branch | `!c` | 134 |
-| branch | `active?.closest('[role="menu"]')` | 139 |
-| overlay | `<Dropdown open>` | 233 |
-| branch | `!open && keepMenuOpen` | 240 |
+| branch | `!recentInitialized` | 101 |
+| empty | `recentConversations.length === 0` | 112 |
+| branch | `!c` | 160 |
+| branch | `active?.closest('[role="menu"]')` | 189 |
+| branch | `recentLoadingMore` | 206 |
+| overlay | `<Dropdown open>` | 306 |
+| branch | `!open && keepMenuOpen` | 313 |
 
 ### `modules/citations/components/CitationCard`
 

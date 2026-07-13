@@ -62,6 +62,23 @@ import { shard5Seeded } from './seeded/shard5'
 export type { SeededSurfaceEntry }
 
 /**
+ * Build N mock recent conversations for the sidebar RecentConversationsWidget
+ * seeds (loaded / loading-more). Enough rows that the virtualized list actually
+ * windows (only a subset renders into the DOM).
+ */
+function mkRecentConvos(n: number) {
+  const now = Date.now()
+  return Array.from({ length: n }, (_, i) => ({
+    id: `gallery-recent-${i}`,
+    title: `Recent conversation ${i + 1}`,
+    user_id: 'u1',
+    created_at: new Date(now - i * 60_000).toISOString(),
+    updated_at: new Date(now - i * 60_000).toISOString(),
+    message_count: (i % 7) + 1,
+  }))
+}
+
+/**
  * Seed the ProjectDetail + ProjectFiles stores for the full-page
  * `ProjectDetailPage` surface. `loadProject` fires on mount (setting loading +
  * loading conversations from the thin cassette); `holdPatch` re-asserts the rich
@@ -472,31 +489,11 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       )
     },
   },
-  // ── RecentConversationsWidget: loading (loading && !isInitialized). ──────────
+  // ── RecentConversationsWidget: loading (!recentInitialized → spinner). ───────
   {
     slug: 'seeded-recent-convos-loading',
     title: 'Recent chats widget — loading',
-    note: 'loading && !isInitialized → the loading spinner',
-    path: '/',
-    initialPath: '/',
-    component: lazyNamed(
-      () => import('@/modules/chat/widgets/RecentConversationsWidget'),
-      'RecentConversationsWidget',
-    ),
-    setup: async () => {
-      const { ChatHistory } = await import(
-        '@/modules/chat/stores/ChatHistory.store'
-      )
-      await holdPatch(() =>
-        ChatHistory.store.setState({ loading: true, isInitialized: false } as any),
-      )
-    },
-  },
-  // ── RecentConversationsWidget: empty (!loading && no conversations). ─────────
-  {
-    slug: 'seeded-recent-convos-empty',
-    title: 'Recent chats widget — empty',
-    note: '!loading && recentConversations.length===0 → the empty state',
+    note: '!recentInitialized → the loading spinner',
     path: '/',
     initialPath: '/',
     component: lazyNamed(
@@ -509,9 +506,88 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       )
       await holdPatch(() =>
         ChatHistory.store.setState({
-          loading: false,
-          isInitialized: true,
+          recentLoading: true,
+          recentInitialized: false,
+        } as any),
+      )
+    },
+  },
+  // ── RecentConversationsWidget: empty (recentInitialized && no rows). ─────────
+  {
+    slug: 'seeded-recent-convos-empty',
+    title: 'Recent chats widget — empty',
+    note: 'recentInitialized && recentConversations.length===0 → empty state',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/chat/widgets/RecentConversationsWidget'),
+      'RecentConversationsWidget',
+    ),
+    setup: async () => {
+      const { ChatHistory } = await import(
+        '@/modules/chat/stores/ChatHistory.store'
+      )
+      await holdPatch(() =>
+        ChatHistory.store.setState({
+          recentInitialized: true,
+          recentLoading: false,
           recentConversations: [],
+        } as any),
+      )
+    },
+  },
+  // ── RecentConversationsWidget: loaded (many, has more → virtualized list). ───
+  {
+    slug: 'seeded-recent-convos-loaded',
+    title: 'Recent chats widget — loaded (many)',
+    note: 'recentInitialized + 40 rows of 45 → virtualized infinite-scroll list',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/chat/widgets/RecentConversationsWidget'),
+      'RecentConversationsWidget',
+    ),
+    setup: async () => {
+      const { ChatHistory } = await import(
+        '@/modules/chat/stores/ChatHistory.store'
+      )
+      await holdPatch(() =>
+        ChatHistory.store.setState({
+          recentInitialized: true,
+          recentLoading: false,
+          recentLoadingMore: false,
+          recentConversations: mkRecentConvos(40),
+          recentTotal: 45,
+          recentHasMore: true,
+          recentPage: 2,
+        } as any),
+      )
+    },
+  },
+  // ── RecentConversationsWidget: loading a further page (bottom spinner). ──────
+  {
+    slug: 'seeded-recent-convos-loading-more',
+    title: 'Recent chats widget — loading more',
+    note: 'recentLoadingMore → the bottom "Loading more" indicator',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/chat/widgets/RecentConversationsWidget'),
+      'RecentConversationsWidget',
+    ),
+    setup: async () => {
+      const { ChatHistory } = await import(
+        '@/modules/chat/stores/ChatHistory.store'
+      )
+      await holdPatch(() =>
+        ChatHistory.store.setState({
+          recentInitialized: true,
+          recentLoading: false,
+          recentLoadingMore: true,
+          recentConversations: mkRecentConvos(20),
+          recentTotal: 45,
+          recentHasMore: true,
+          recentPage: 1,
         } as any),
       )
     },

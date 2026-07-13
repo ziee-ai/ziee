@@ -53,6 +53,54 @@ function labelText(label: React.ReactNode): string | undefined {
   return typeof label === 'string' ? label : undefined
 }
 
+/**
+ * Row style tokens for a single Menu row, so a VIRTUALIZED list that must render
+ * pixel-faithful menu rows (the sidebar Recent-chats list) shares ONE source of
+ * truth with the kit `<Menu>` instead of re-deriving the classes (which would
+ * silently drift). Returns the three class strings the row is composed of:
+ *  - `row`     — the highlight/hover container (was the `<li>` className). Sets the
+ *                `relative` positioning context + `group/menu-row` hover group when
+ *                `hasActions`, and the selected/ancestor/hover colours.
+ *  - `button`  — the transparent full-width row button.
+ *  - `actions` — the trailing actions overlay (absolute, right-aligned, masked).
+ * The kit `<Menu>` puts `row` on the `<li>`; the virtualized list puts it on an
+ * inner `<div>` (the `<li>` itself is absolutely positioned by the virtualizer).
+ */
+export function menuRowClasses(opts: {
+  selected?: boolean
+  ancestor?: boolean
+  hasActions?: boolean
+  collapsed?: boolean
+}): { row: string; button: string; actions: string } {
+  const { selected, ancestor, hasActions, collapsed } = opts
+  return {
+    row: cn(
+      'rounded-md',
+      // relative anchors the absolutely-overlaid actions (see `actions`).
+      hasActions && 'group/menu-row relative',
+      // Row-LEVEL highlight (not button-level) so it spans the whole row incl.
+      // the trailing actions. Hover is OPAQUE (not /60) so the actions'
+      // `bg-inherit` mask paints the same colour without double-darkening.
+      selected
+        ? 'bg-primary text-primary-foreground font-medium'
+        : ancestor
+          ? 'bg-accent text-accent-foreground font-medium'
+          : 'hover:bg-accent',
+    ),
+    button: cn(
+      // Transparent: the visible highlight lives on the row container above.
+      'flex w-full min-w-0 items-center gap-2 rounded-md text-sm bg-transparent',
+      collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
+      // Inset focus ring: menu rows live in scrollable rails flush to the viewport
+      // edge, where an OUTSET ring gets clipped by the scroll container.
+      'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 disabled:opacity-50',
+    ),
+    // ps-1: the mask is ~the kebab's own width — it must NOT eat a wide strip of label.
+    actions:
+      'absolute inset-y-0 end-0 flex items-center pe-1 ps-1 rounded-e-md bg-inherit pointer-events-none',
+  }
+}
+
 function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, itemTestid, groupTestid }: {
   items: MenuItem[]
   selectedSet: Set<string>
@@ -105,25 +153,10 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
         // interactive control). `group/menu-row` on the <li> lets those actions reveal
         // on row hover/focus. Suppressed on the collapsed icon rail.
         const hasActions = item.actions != null && !collapsed
+        // Shared row style tokens (also used by the virtualized sidebar list).
+        const rowCls = menuRowClasses({ selected, ancestor, hasActions, collapsed })
         return (
-          <li
-            key={item.key}
-            className={cn(
-              'rounded-md',
-              // relative anchors the absolutely-overlaid actions (see below).
-              hasActions && 'group/menu-row relative',
-              // Row-LEVEL highlight (not button-level) so it spans the whole row
-              // incl. the trailing actions — the kebab sits INSIDE the highlighted
-              // row and hovering anywhere on the row (kebab included) lights it up.
-              // Hover is OPAQUE (not /60) so the actions' `bg-inherit` mask paints
-              // the same colour without double-darkening the overlap.
-              selected
-                ? 'bg-primary text-primary-foreground font-medium'
-                : ancestor
-                  ? 'bg-accent text-accent-foreground font-medium'
-                  : 'hover:bg-accent',
-            )}
-          >
+          <li key={item.key} className={rowCls.row}>
             <button
               type="button"
               disabled={item.disabled || locked}
@@ -133,18 +166,7 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
               aria-label={collapsed ? name : undefined}
               title={collapsed ? name : undefined}
               onClick={() => onSelect?.(item.key)}
-              className={cn(
-                // Transparent: the visible highlight lives on the <li> above. Always
-                // w-full so the label uses the FULL row width and ellipsizes UNDER
-                // the overlaid actions rather than reserving a gap beside them.
-                'flex w-full min-w-0 items-center gap-2 rounded-md text-sm bg-transparent',
-                collapsed ? 'justify-center px-2 py-1.5' : 'px-3 py-1.5',
-                // Inset focus ring: menu items live in scrollable rails (settings
-                // nav, sidebar) and sit flush to the viewport edge, where an OUTSET
-                // ring gets clipped by the scroll container's overflow. Drawing the
-                // ring inside the border-box keeps it fully visible everywhere.
-                'focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 disabled:opacity-50',
-              )}
+              className={rowCls.button}
             >
               {item.icon != null && <span aria-hidden className="shrink-0 [&_svg]:size-4">{item.icon}</span>}
               {/* truncate long labels instead of overflowing the rail. */}
@@ -152,14 +174,9 @@ function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, i
             </button>
             {hasActions && (
               // Overlay the trailing actions on the row's right edge. bg-inherit
-              // paints the row's own highlight over the label's tail so it
-              // dissolves cleanly under the kebab; pointer-events-none lets clicks
-              // on the masked strip fall through to the row button below (the kebab
-              // re-enables its own pointer events when revealed). ps-1: the mask is
-              // only ~the kebab's own width — it must NOT eat a wide strip of label.
-              <div className="absolute inset-y-0 end-0 flex items-center pe-1 ps-1 rounded-e-md bg-inherit pointer-events-none">
-                {item.actions}
-              </div>
+              // paints the row's own highlight over the label's tail; pointer-events-none
+              // lets clicks on the masked strip fall through to the row button below.
+              <div className={rowCls.actions}>{item.actions}</div>
             )}
           </li>
         )
