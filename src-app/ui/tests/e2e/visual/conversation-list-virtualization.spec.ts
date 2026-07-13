@@ -126,3 +126,48 @@ test.describe('chats-page-virtualization', () => {
     expect(pageErrors, pageErrors.join('\n')).toEqual([])
   })
 })
+
+// TEST-12: the NARROW (390px) surface — where ConversationCard stacks its meta
+// below the title — must virtualize AND stay jank-free too (the estimator models
+// the stacked layout at < sm width). Separate describe so it navigates the narrow
+// surface in its own beforeEach.
+const NARROW_SURFACE =
+  '/gallery.html?surface=seeded-conversation-list-long-narrow&theme=light&accent=blue'
+
+test.describe('chats-page-virtualization (narrow 390px)', () => {
+  let consoleErrors: string[]
+  test.beforeEach(async ({ page }) => {
+    consoleErrors = []
+    page.on('console', m => {
+      if (m.type() === 'error') consoleErrors.push(m.text())
+    })
+    await page.goto(NARROW_SURFACE)
+    await expect(
+      page.getByText('Showing 200 of 200 conversations'),
+    ).toBeVisible({ timeout: 30000 })
+    await expect(page.locator(CARD).first()).toBeVisible()
+  })
+
+  test('TEST-12: narrow surface windows rows AND stays jank-free at rest', async ({
+    page,
+  }) => {
+    // Windowed (far fewer than 200 mounted).
+    const mounted = await mountedCardCount(page)
+    expect(mounted).toBeGreaterThan(3)
+    expect(mounted).toBeLessThan(40)
+
+    // No corrections while idle after a cold scroll — the stacked-meta estimate is
+    // close enough at narrow width (guards the under-estimation the audit flagged).
+    await scrollTo(page, 0)
+    await page.evaluate(() => window.__CHATLIST_METRICS__?.reset())
+    await scrollTo(page, 8000)
+    await page.waitForTimeout(400)
+    const c1 = await corrections(page)
+    const s1 = await totalSize(page)
+    await page.waitForTimeout(900)
+    expect((await corrections(page)) - c1).toBeLessThanOrEqual(1)
+    expect(await totalSize(page)).toBe(s1)
+    expect(c1).toBeLessThan(50)
+    expect(consoleErrors, consoleErrors.join('\n')).toEqual([])
+  })
+})

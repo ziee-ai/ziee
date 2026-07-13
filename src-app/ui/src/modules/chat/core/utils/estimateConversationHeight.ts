@@ -38,21 +38,43 @@ const PX_PER_CHAR = 7.5
 const META_TIME_RESERVE = 88
 /** Extra reserve when a message-count chip + separator is present. */
 const META_COUNT_RESERVE = 84
+/**
+ * Tailwind `sm` breakpoint. `ConversationCard` is `flex-col sm:flex-row`, so
+ * BELOW this content width the meta row (count + relative time) STACKS on its own
+ * line under the title instead of sitting inline — the title then gets the FULL
+ * width and the card is one meta-row taller. Above it, the meta is inline and
+ * only RESERVES horizontal space (narrowing the title's wrap point).
+ */
+const SM_BREAKPOINT = 640
+/** Height the stacked meta row adds below the title (`text-xs` line + gap). */
+const META_ROW_HEIGHT = 18
 
 /** Chars that fit on one title line given the width available to the title. */
 function charsPerLine(availWidth: number): number {
   return Math.max(12, Math.floor(availWidth / PX_PER_CHAR))
 }
 
+function titleLines(title: string, availWidth: number): number {
+  const raw = Math.ceil(title.length / charsPerLine(availWidth))
+  return Math.min(MAX_TITLE_LINES, Math.max(1, raw))
+}
+
 function computeEstimate(conv: ConversationResponse, width: number): number {
   const title = conv.title?.trim()
   if (!title) return FLOOR
+  if (width < SM_BREAKPOINT) {
+    // Stacked layout: title spans the FULL width; the meta occupies its own row
+    // below (so message_count doesn't narrow the title here — it only toggles
+    // whether the meta row is a bit wider, which doesn't change the row height).
+    const lines = titleLines(title, Math.max(80, width))
+    return CARD_BASE + lines * TITLE_LINE_HEIGHT + META_ROW_HEIGHT
+  }
+  // Inline layout: the meta reserves horizontal space next to the title, so a
+  // borderline title wraps sooner when a message-count chip is present.
   const metaReserve =
     META_TIME_RESERVE + (conv.message_count > 0 ? META_COUNT_RESERVE : 0)
   const availWidth = Math.max(80, width - metaReserve)
-  const rawLines = Math.ceil(title.length / charsPerLine(availWidth))
-  const lines = Math.min(MAX_TITLE_LINES, Math.max(1, rawLines))
-  return CARD_BASE + lines * TITLE_LINE_HEIGHT
+  return CARD_BASE + titleLines(title, availWidth) * TITLE_LINE_HEIGHT
 }
 
 // Per-conversation memo (weak keys → no leak): a ConversationResponse object is

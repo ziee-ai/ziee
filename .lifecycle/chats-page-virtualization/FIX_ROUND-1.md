@@ -72,8 +72,11 @@ bugs the RUNNING visual e2e caught, and fixed every confirmed finding.
 
 ## Re-audit
 
-A full second blind round (fresh diff-only agent over the FIXED diff:
-correctness/perf/patterns/tests) was run after these fixes; its result is
-recorded here.
+A full second blind round (fresh diff-only agent over the FIXED diff) found
+**3 new confirmed findings** (all low): the estimator modeled the meta as
+inline-only and under-estimated the STACKED narrow-width layout (< sm); and two
+estimator unit tests used the LONG title which saturates the 2-line cap at both
+widths, so their width-ordering assertions passed by equality. These are carried
+into FIX_ROUND-2.
 
-**New confirmed findings:** 0
+**New confirmed findings:** 3
