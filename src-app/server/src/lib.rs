@@ -6,6 +6,11 @@ mod modules;
 mod openapi;
 mod utils;
 
+// Core macros moved to `ziee-core` in Chunk B1; re-exported at the crate root
+// so existing `crate::sse_event_enum!` / `crate::impl_string_to_enum!` /
+// `crate::impl_json_from!` call sites resolve unchanged (decision N2).
+pub use ziee_core::{impl_json_from, impl_string_to_enum, sse_event_enum};
+
 /// Rust port of the former `ui/openapi/generate-endpoints.ts`. Re-exported so
 /// the desktop crate can emit its own `types.ts` from the combined OpenAPI spec
 /// without the Node/tsx codegen step.

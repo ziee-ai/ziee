@@ -6,6 +6,11 @@ mod modules;
 mod openapi;
 mod utils;
 
+// Core macros moved to `ziee-core` in Chunk B1; re-exported at the crate root
+// so existing `crate::sse_event_enum!` / `crate::impl_string_to_enum!` /
+// `crate::impl_json_from!` call sites resolve unchanged (decision N2).
+pub use ziee_core::{impl_json_from, impl_string_to_enum, sse_event_enum};
+
 use clap::Parser;
 use module_api::ModuleContext;
 use tokio::signal;

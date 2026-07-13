@@ -14,6 +14,11 @@ workspace = true
 # Local proc-macro crates
 macros = { path = "./macros" }
 
+# SDK foundation crate (git submodule at sdk/). Holds AppError/ApiResult, the
+# core macros (sse_event_enum! etc.), and base app-state globals — consumed
+# here via equivalence-preserving re-export shims (decision N2).
+ziee-core = { path = "../../sdk/crates/ziee-core" }
+
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"
 
