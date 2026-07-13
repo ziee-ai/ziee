@@ -78,6 +78,7 @@ use uuid::Uuid;
 
 use crate::core::Repos;
 use crate::modules::auth::password;
+use crate::modules::auth::providers::repository as provider_repo;
 use crate::modules::mcp::{
     CreateMcpServerRequest, TransportType, UpdateMcpServerRequest, UsageMode,
 };
@@ -136,6 +137,9 @@ pub struct DesiredState {
     /// Declarative group-permission reconcile.
     #[serde(default)]
     pub groups: Vec<GroupEntry>,
+    /// Pre-seeded auth providers to configure + enable from env (e.g. `google`).
+    #[serde(default)]
+    pub auth_providers: Vec<AuthProviderEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +199,34 @@ pub struct GroupEntry {
     /// Permissions to add if absent (exact strings).
     #[serde(default)]
     pub add: Vec<String>,
+}
+
+/// A pre-seeded auth provider (migration 47 seeds `google`) to be configured +
+/// enabled from the environment on deploy. The reconciler only UPDATES an
+/// existing row's fields (client_id / client_secret / enabled) — it never
+/// creates or deletes a provider (the row + its `provider_type` / issuer /
+/// scopes / attribute_mapping come from a seed migration). Generic by name so a
+/// future `microsoft` / `apple` provider (each seeded by its own migration) can
+/// be enabled the same way.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthProviderEntry {
+    /// Natural key = `auth_providers.name` (e.g. `google`). Idempotency key.
+    pub name: String,
+    /// OAuth/OIDC client id; typically an env placeholder, e.g.
+    /// `${GOOGLE_CLIENT_ID}`. Not a secret, but an unset/empty placeholder
+    /// SKIPS the whole entry (like an unset MCP url).
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// OAuth/OIDC client secret. MUST be a single `${VAR}` placeholder — an
+    /// inline literal is rejected. Unset/empty SKIPS the whole entry. Stored
+    /// encrypted at rest via the auth-provider repository (never inline).
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub mode: Mode,
 }
 
 fn default_true() -> bool {
@@ -515,6 +547,9 @@ async fn reconcile_entries(desired: &DesiredState) -> Result<(), String> {
     }
     for server in &desired.mcp_servers {
         reconcile_mcp_server(server).await;
+    }
+    for provider in &desired.auth_providers {
+        reconcile_auth_provider(provider).await;
     }
 
     tracing::info!("desired_state: reconcile complete");
@@ -860,6 +895,147 @@ async fn assign_groups(server_id: Uuid, entry: &McpServerEntry) {
     }
 }
 
+// ─────────────────────────── auth providers ───────────────────────────
+
+/// The outcome of resolving an [`AuthProviderEntry`] against the environment and
+/// the provider's existing (seeded) config — pure, so it is unit-testable
+/// without a database.
+#[derive(Debug)]
+enum AuthPlan {
+    /// The entry is not configured (an env var is unset/empty, or the secret is
+    /// an inline literal). Log the reason and leave the row untouched.
+    Skip(String),
+    /// The entry is fully resolved: stamp this merged `config` (client_id +
+    /// encrypted-at-rest client_secret) and set `enabled` on the existing row.
+    Stamp {
+        config: serde_json::Value,
+        enabled: bool,
+    },
+}
+
+/// Resolve an auth-provider entry's `client_id` / `client_secret` from the
+/// environment and merge them onto the provider's EXISTING config (preserving
+/// the seeded issuer / scopes / attribute_mapping / display_name). Pure: the DB
+/// read + encrypted write happen in [`reconcile_auth_provider`].
+///
+/// - `client_id` is not a secret but an unset/empty `${VAR}` still SKIPS the
+///   whole entry (a half-configured provider is worse than a disabled one).
+/// - `client_secret` MUST be a single `${VAR}` placeholder (an inline literal is
+///   rejected) — the same rule `reconcile_user` enforces on a password.
+/// - The returned `config` carries the client_secret in PLAINTEXT; the caller's
+///   `update_provider` encrypts it into `client_secret_encrypted` and blanks the
+///   plaintext copy (the admin-CRUD at-rest path).
+fn plan_auth_provider(
+    entry: &AuthProviderEntry,
+    existing_config: &serde_json::Value,
+    lookup: Lookup<'_>,
+) -> AuthPlan {
+    let (Some(client_id_raw), Some(client_secret_raw)) =
+        (entry.client_id.as_deref(), entry.client_secret.as_deref())
+    else {
+        return AuthPlan::Skip(format!(
+            "{}: client_id and client_secret are both required",
+            entry.name
+        ));
+    };
+
+    // client_id: non-secret placeholder; unset/empty → skip.
+    let client_id = match resolve_with(client_id_raw, lookup) {
+        Ok(v) => v,
+        Err(e) => return AuthPlan::Skip(format!("{}: {e}", entry.name)),
+    };
+
+    // client_secret: single ${VAR} only (inline literal rejected); unset → skip.
+    let client_secret = match resolve_secret_with(client_secret_raw, lookup) {
+        Ok(v) => v,
+        Err(e) => return AuthPlan::Skip(format!("{}: {e}", entry.name)),
+    };
+
+    // Merge onto the existing (seeded) config: only client_id + client_secret
+    // change; issuer_url / scopes / attribute_mapping / display_name are kept.
+    let mut config = existing_config.clone();
+    if let serde_json::Value::Object(map) = &mut config {
+        map.insert("client_id".to_string(), serde_json::Value::String(client_id));
+        map.insert(
+            "client_secret".to_string(),
+            serde_json::Value::String(client_secret),
+        );
+    } else {
+        return AuthPlan::Skip(format!(
+            "{}: existing provider config is not a JSON object",
+            entry.name
+        ));
+    }
+
+    AuthPlan::Stamp {
+        config,
+        enabled: entry.enabled,
+    }
+}
+
+/// Configure + enable a PRE-SEEDED auth provider from the environment. Only
+/// UPDATES an existing row (never creates or deletes): the row, its
+/// `provider_type`, and its issuer / scopes / attribute_mapping come from a seed
+/// migration (`google` = migration 47). With the entry's env vars unset the row
+/// is left exactly as seeded (disabled) — so local dev, and any deploy that
+/// omits the creds, is a clean no-op.
+async fn reconcile_auth_provider(entry: &AuthProviderEntry) {
+    let pool = Repos.pool();
+
+    let existing = match provider_repo::get_provider_by_name(pool, &entry.name).await {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            // Never create — an auth provider needs a seed migration for its
+            // type + config shape. A missing row means the manifest names a
+            // provider this build does not seed.
+            tracing::warn!(
+                provider = %entry.name,
+                "desired_state: auth provider not seeded (no such row); skipping"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::error!(error = ?e, provider = %entry.name, "desired_state: auth provider lookup failed; skipping");
+            return;
+        }
+    };
+
+    // `ensure` on an existing row leaves its fields untouched (mirrors the MCP
+    // branch). A pre-seeded provider therefore needs `enforce` to actually be
+    // configured + enabled — google ships `enforce`.
+    if entry.mode == Mode::Ensure {
+        tracing::debug!(provider = %entry.name, "desired_state: auth provider already present; fields untouched (ensure)");
+        return;
+    }
+
+    match plan_auth_provider(entry, &existing.config, &env_lookup) {
+        AuthPlan::Skip(reason) => {
+            tracing::warn!(
+                provider = %entry.name,
+                reason = %reason,
+                "desired_state: auth provider skipped (set its client_id + client_secret env vars to enable it)"
+            );
+        }
+        AuthPlan::Stamp { config, enabled } => {
+            // Goes through the repository's at-rest secret path
+            // (`prepare_config_for_write` → encrypt into
+            // `client_secret_encrypted`, blank the plaintext copy in `config`);
+            // NOT a raw SQL insert of the plaintext secret.
+            match provider_repo::update_provider(pool, existing.id, None, Some(enabled), Some(&config)).await
+            {
+                Ok(p) => tracing::info!(
+                    provider = %entry.name,
+                    enabled = p.enabled,
+                    "desired_state: auth provider configured + enabled from env"
+                ),
+                Err(e) => {
+                    tracing::error!(error = ?e, provider = %entry.name, "desired_state: auth provider update failed")
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1166,6 +1342,158 @@ mcp_servers:
         }
     }
 
+    // ── TEST-1/2/3/4: auth providers (env-driven enablement) ──
+
+    /// The `google` row as migration 47 seeds it (disabled, creds blank, issuer /
+    /// scopes / attribute_mapping / display_name filled).
+    fn seeded_google_config() -> serde_json::Value {
+        serde_json::json!({
+            "client_id": "",
+            "client_secret": "",
+            "issuer_url": "https://accounts.google.com",
+            "scopes": ["openid", "email", "profile"],
+            "attribute_mapping": {
+                "user_id": "sub",
+                "username": "email",
+                "email": "email",
+                "display_name": "name",
+                "first_name": "given_name",
+                "last_name": "family_name"
+            },
+            "display_name": "Sign in with Google"
+        })
+    }
+
+    fn google_entry(
+        client_id: Option<&str>,
+        client_secret: Option<&str>,
+        mode: Mode,
+    ) -> AuthProviderEntry {
+        AuthProviderEntry {
+            name: "google".to_string(),
+            client_id: client_id.map(str::to_string),
+            client_secret: client_secret.map(str::to_string),
+            enabled: true,
+            mode,
+        }
+    }
+
+    // TEST-1: an auth_providers block parses; an unknown field is rejected.
+    #[test]
+    fn parses_an_auth_providers_block() {
+        let yaml = r#"
+auth_providers:
+  - name: google
+    enabled: true
+    client_id: ${GOOGLE_CLIENT_ID}
+    client_secret: ${GOOGLE_CLIENT_SECRET}
+    mode: enforce
+"#;
+        let ds: DesiredState = serde_norway::from_str(yaml).unwrap();
+        assert_eq!(ds.auth_providers.len(), 1);
+        let g = &ds.auth_providers[0];
+        assert_eq!(g.name, "google");
+        assert!(g.enabled);
+        assert_eq!(g.mode, Mode::Enforce);
+        assert_eq!(g.client_id.as_deref(), Some("${GOOGLE_CLIENT_ID}"));
+        assert_eq!(g.client_secret.as_deref(), Some("${GOOGLE_CLIENT_SECRET}"));
+
+        // A name-only entry is legal (defaults apply); a typo'd field is not.
+        let ok: DesiredState =
+            serde_norway::from_str("auth_providers:\n  - name: google\n").unwrap();
+        assert!(ok.auth_providers[0].enabled, "enabled defaults to true");
+        assert_eq!(ok.auth_providers[0].mode, Mode::Ensure, "mode defaults to ensure");
+        assert!(serde_norway::from_str::<DesiredState>(
+            "auth_providers:\n  - name: google\n    clientid: x\n"
+        )
+        .is_err());
+    }
+
+    // TEST-2: an unset (or half-set) env skips the entry — never a partial write.
+    #[test]
+    fn plan_auth_provider_skips_when_env_unset() {
+        let cfg = seeded_google_config();
+
+        // Both unset.
+        let empty = map_lookup(&[]);
+        let entry = google_entry(Some("${GOOGLE_CLIENT_ID}"), Some("${GOOGLE_CLIENT_SECRET}"), Mode::Enforce);
+        assert!(matches!(
+            plan_auth_provider(&entry, &cfg, &empty),
+            AuthPlan::Skip(_)
+        ));
+
+        // Only the id is set — still a skip (a half-configured provider is worse
+        // than a disabled one).
+        let only_id = map_lookup(&[("GOOGLE_CLIENT_ID", "id-123")]);
+        assert!(matches!(
+            plan_auth_provider(&entry, &cfg, &only_id),
+            AuthPlan::Skip(_)
+        ));
+
+        // The field itself absent (None) — skip.
+        let both = map_lookup(&[("GOOGLE_CLIENT_ID", "id-123"), ("GOOGLE_CLIENT_SECRET", "sec")]);
+        let missing = google_entry(None, Some("${GOOGLE_CLIENT_SECRET}"), Mode::Enforce);
+        assert!(matches!(
+            plan_auth_provider(&missing, &cfg, &both),
+            AuthPlan::Skip(_)
+        ));
+    }
+
+    // TEST-3: an inline-literal client_secret is rejected (never stamped).
+    #[test]
+    fn plan_auth_provider_rejects_an_inline_secret() {
+        let cfg = seeded_google_config();
+        let lookup = map_lookup(&[("GOOGLE_CLIENT_ID", "id-123")]);
+        // client_secret is a literal, not a ${VAR} placeholder.
+        let entry = google_entry(Some("${GOOGLE_CLIENT_ID}"), Some("hunter2"), Mode::Enforce);
+        assert!(matches!(
+            plan_auth_provider(&entry, &cfg, &lookup),
+            AuthPlan::Skip(_)
+        ));
+    }
+
+    // TEST-4: both set → Stamp merges client_id + client_secret and PRESERVES the
+    // seeded issuer / scopes / attribute_mapping / display_name; enabled honored.
+    #[test]
+    fn plan_auth_provider_stamps_and_preserves_seeded_fields() {
+        let cfg = seeded_google_config();
+        let lookup = map_lookup(&[
+            ("GOOGLE_CLIENT_ID", "id-123.apps.googleusercontent.com"),
+            ("GOOGLE_CLIENT_SECRET", "top-secret-value"),
+        ]);
+        let entry = google_entry(Some("${GOOGLE_CLIENT_ID}"), Some("${GOOGLE_CLIENT_SECRET}"), Mode::Enforce);
+
+        let AuthPlan::Stamp { config, enabled } = plan_auth_provider(&entry, &cfg, &lookup) else {
+            panic!("expected Stamp");
+        };
+        assert!(enabled);
+        assert_eq!(config["client_id"], "id-123.apps.googleusercontent.com");
+        // The plaintext secret rides in config; the repository encrypts it on write.
+        assert_eq!(config["client_secret"], "top-secret-value");
+        // Seeded fields untouched.
+        assert_eq!(config["issuer_url"], "https://accounts.google.com");
+        assert_eq!(config["scopes"], serde_json::json!(["openid", "email", "profile"]));
+        assert_eq!(config["attribute_mapping"]["user_id"], "sub");
+        assert_eq!(config["display_name"], "Sign in with Google");
+    }
+
+    // TEST-9: the shipped deploy compose passes BOTH Google env vars through so a
+    // future edit can't silently drop the deploy wiring.
+    #[test]
+    fn shipped_deploy_compose_passes_google_env_through() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docker-compose.deploy.yml");
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        for var in ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] {
+            // Empty-default passthrough: `GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"`.
+            assert!(
+                raw.contains(&format!("{var}: \"${{{var}:-}}\"")),
+                "docker-compose.deploy.yml must pass {var} through with an empty default"
+            );
+        }
+    }
+
     // ── TEST-17: the file we actually ship ──
 
     /// The manifest baked into the container image must parse, keep every secret
@@ -1207,7 +1535,7 @@ mcp_servers:
         // and each `enforce` — the boot health check auto-disables an unreachable
         // MCP server, so `ensure` would never re-enable it on a later deploy.
         let names: Vec<&str> = ds.mcp_servers.iter().map(|s| s.name.as_str()).collect();
-        for expected in ["rcpa-user", "dscc-user", "biognosia-user"] {
+        for expected in ["rcpa", "dscc", "biognosia"] {
             assert!(names.contains(&expected), "{expected} missing from the file");
         }
         for server in &ds.mcp_servers {
@@ -1241,6 +1569,31 @@ mcp_servers:
         assert!(
             users_group.add.is_empty(),
             "the shipped file must not GRANT permissions"
+        );
+
+        // TEST-8: the `google` auth provider is declared, `enforce`, ships
+        // enabled, and its client_secret is an env placeholder (never inline).
+        let google = ds
+            .auth_providers
+            .iter()
+            .find(|p| p.name == "google")
+            .expect("the shipped file must declare the `google` auth provider");
+        assert_eq!(
+            google.mode,
+            Mode::Enforce,
+            "google must be `enforce` so a disabled provider is re-enabled on the next deploy"
+        );
+        assert!(google.enabled, "google must ship enabled");
+        let secret = google
+            .client_secret
+            .as_deref()
+            .expect("google must declare a client_secret placeholder");
+        assert!(
+            !matches!(
+                resolve_secret_with(secret, &empty),
+                Err(TemplateError::InlineSecret)
+            ),
+            "google has an INLINE client_secret in the shipped file"
         );
     }
 }

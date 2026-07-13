@@ -24,6 +24,30 @@ const DSCC_URL: &str = "http://host.docker.internal:18122/mcp";
 const BIOGNOSIA_URL: &str = "http://host.docker.internal:18100/mcp";
 const ADMIN_PASSWORD: &str = "ds-admin-pw-1";
 const USER_PASSWORD: &str = "ds-user-pw-1";
+// Dummy Google OIDC creds for the auth_providers reconcile tests (not real).
+const GOOGLE_CLIENT_ID: &str = "ds-test-google-id.apps.googleusercontent.com";
+const GOOGLE_CLIENT_SECRET: &str = "ds-test-google-secret-xyz";
+/// Must match the harness's `secrets.storage_key` (common/harness_inner.rs) so
+/// the reboot process — whose config we build in `reboot()` — encrypts with the
+/// SAME key the main `TestServer` used; otherwise the second boot would run
+/// keyless and write the secret in plaintext.
+const STORAGE_KEY: &str = "test-storage-key-for-pgcrypto-min-32-chars-long";
+
+/// A manifest carrying ONLY the `google` auth-provider entry (the org MCP
+/// servers are covered by `manifest()`); `mode` is templated so a test can flip
+/// ensure/enforce.
+fn google_manifest(mode: &str) -> String {
+    format!(
+        r#"
+auth_providers:
+  - name: google
+    enabled: true
+    client_id: ${{GOOGLE_CLIENT_ID}}
+    client_secret: ${{GOOGLE_CLIENT_SECRET}}
+    mode: {mode}
+"#
+    )
+}
 
 /// The shape of the file we ship, kept in one place so each test can tweak it.
 fn manifest(mode: &str) -> String {
@@ -109,6 +133,10 @@ fn env_for(yaml: &str, admin_pw: &str, user_pw: &str) -> (tempfile::TempDir, Vec
         ("ZIEE_ADMIN_EMAIL".to_string(), "admin@tinnguyen-lab.com".to_string()),
         ("ZIEE_ADMIN_PASSWORD".to_string(), admin_pw.to_string()),
         ("ZIEE_DEFAULT_USER_PASSWORD".to_string(), user_pw.to_string()),
+        // The google auth_providers entry resolves these; harmless to the
+        // MCP-only manifests (which carry no `auth_providers` block).
+        ("GOOGLE_CLIENT_ID".to_string(), GOOGLE_CLIENT_ID.to_string()),
+        ("GOOGLE_CLIENT_SECRET".to_string(), GOOGLE_CLIENT_SECRET.to_string()),
     ];
     (dir, env)
 }
@@ -186,10 +214,15 @@ jwt:
   audience: "ziee-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
+# Same at-rest key the main TestServer harness uses, so the re-deploy process
+# encrypts auth-provider secrets (not keyless/plaintext) — see STORAGE_KEY.
+secrets:
+  storage_key: "{storage_key}"
 update_check:
   enabled: false
 "#,
         data = data_dir.path().display(),
+        storage_key = STORAGE_KEY,
     );
 
     let config_path = data_dir.path().join("reboot.yaml");
@@ -973,4 +1006,146 @@ async fn test_file_present_but_flag_unset_is_a_no_op() {
             && perms.iter().any(|p| p.starts_with("hub::")),
         "the default group's permissions must NOT be trimmed without the deploy flag: {perms:?}"
     );
+}
+
+// ───────────────────────── Auth providers (Google OIDC) ─────────────────────
+
+/// Helper: read the `google` auth_providers row's key columns.
+async fn google_row(
+    pool: &sqlx::PgPool,
+) -> (bool, Option<String>, Option<String>, bool) {
+    // enabled, config->>'client_id', decrypted client_secret, has_encrypted_blob
+    let row = sqlx::query!(
+        r#"SELECT enabled,
+                  config->>'client_id'      as client_id,
+                  config->>'client_secret'  as config_secret,
+                  client_secret_encrypted   as enc,
+                  pgp_sym_decrypt(client_secret_encrypted, $1) as decrypted
+           FROM auth_providers WHERE name = 'google'"#,
+        STORAGE_KEY
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    // config plaintext must be blanked once encrypted at rest.
+    assert!(
+        row.config_secret.as_deref().unwrap_or("").is_empty(),
+        "config->>'client_secret' must be BLANK when encrypted at rest, got {:?}",
+        row.config_secret
+    );
+    (row.enabled, row.client_id, row.decrypted, row.enc.is_some())
+}
+
+/// TEST-5 — with the two env vars set, boot stamps client_id + an ENCRYPTED
+/// client_secret onto the pre-seeded `google` row and enables it. The plaintext
+/// copy in `config` is blanked; the ciphertext decrypts to the real secret.
+#[tokio::test]
+async fn test_google_provider_configured_and_enabled_from_env() {
+    let (server, _dir) = server_with(&google_manifest("enforce")).await;
+    let pool = pool_of(&server).await;
+
+    let (enabled, client_id, decrypted, has_blob) = google_row(&pool).await;
+    assert!(enabled, "google must be ENABLED after reconcile");
+    assert_eq!(
+        client_id.as_deref(),
+        Some(GOOGLE_CLIENT_ID),
+        "client_id must be stamped from GOOGLE_CLIENT_ID"
+    );
+    assert!(has_blob, "client_secret_encrypted must be populated");
+    assert_eq!(
+        decrypted.as_deref(),
+        Some(GOOGLE_CLIENT_SECRET),
+        "the encrypted secret must decrypt to GOOGLE_CLIENT_SECRET"
+    );
+
+    // The seeded fields survive the merge (issuer / scopes / mapping).
+    let issuer = sqlx::query_scalar!(
+        r#"SELECT config->>'issuer_url' FROM auth_providers WHERE name = 'google'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(issuer.as_deref(), Some("https://accounts.google.com"));
+
+    // Exactly one google row — never duplicated.
+    let count = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM auth_providers WHERE name = 'google'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+}
+
+/// TEST-6 — with the env vars UNSET, the google entry is skipped: the seeded row
+/// stays disabled with empty client_id and NO encrypted secret. Google stays off
+/// (and the server still boots — a skipped entry never crashes the boot).
+#[tokio::test]
+async fn test_google_provider_skipped_when_env_unset() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("desired-state.yaml");
+    std::fs::write(&path, google_manifest("enforce")).unwrap();
+
+    // Deploy flag ON, storage key present, but the two GOOGLE_* vars ABSENT.
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("ZIEE_APPLY_DESIRED_STATE".to_string(), "1".to_string()),
+            (
+                "ZIEE_DESIRED_STATE_FILE".to_string(),
+                path.to_string_lossy().to_string(),
+            ),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let pool = pool_of(&server).await;
+
+    let row = sqlx::query!(
+        r#"SELECT enabled, config->>'client_id' as client_id, client_secret_encrypted as enc
+           FROM auth_providers WHERE name = 'google'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!row.enabled, "google must stay DISABLED when creds are unset");
+    assert_eq!(
+        row.client_id.as_deref().unwrap_or(""),
+        "",
+        "client_id must stay blank when the entry is skipped"
+    );
+    assert!(
+        row.enc.is_none(),
+        "no secret may be written when the entry is skipped"
+    );
+}
+
+/// TEST-7 — a second deploy (same DB) is idempotent: still exactly one google
+/// row, still enabled, client_id stable, and the secret still decrypts (no
+/// duplicate, no plaintext leak on the re-stamp).
+#[tokio::test]
+async fn test_google_provider_reconcile_is_idempotent() {
+    let (server, _dir) = server_with(&google_manifest("enforce")).await;
+    let pool = pool_of(&server).await;
+
+    // Positive control: an admin disables it after the first deploy. `enforce`
+    // must re-enable it on the next boot — proving the second reconcile ran.
+    sqlx::query!("UPDATE auth_providers SET enabled = false WHERE name = 'google'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    reboot(&server, &google_manifest("enforce"), ADMIN_PASSWORD, USER_PASSWORD).await;
+
+    let (enabled, client_id, decrypted, has_blob) = google_row(&pool).await;
+    assert!(enabled, "enforce must re-enable google on the re-deploy");
+    assert_eq!(client_id.as_deref(), Some(GOOGLE_CLIENT_ID), "client_id stable");
+    assert!(has_blob && decrypted.as_deref() == Some(GOOGLE_CLIENT_SECRET));
+
+    let count = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM auth_providers WHERE name = 'google'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "the re-deploy must not duplicate the google row");
 }
