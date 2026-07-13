@@ -1086,7 +1086,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `md` | 48 |
 | branch | `!md && i > 0` | 51 |
-| branch | `!drag.current` | 111 |
+| branch | `!drag.current` | 116 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1297,51 +1297,51 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversationId` | 72 |
-| branch | `sv.panes.length < 2` | 74 |
-| branch | `focused?.conversationId === conversationId` | 76 |
-| branch | `panes.length >= 2` | 80 |
-| branch | `!conversationId` | 141 |
-| branch | `kind === 'pane'` | 161 |
-| branch | `!pane` | 162 |
-| branch | `kind !== 'conversation' \|\| !conversationId` | 171 |
-| branch | `!droppedId` | 173 |
-| branch | `pane` | 177 |
-| branch | `!droppedOnLeft` | 201 |
-| branch | `!sentinel` | 348 |
-| branch | `!el` | 368 |
-| branch | `!nativeScroll` | 383 |
-| branch | `y < 0 \|\| y > maxY` | 392 |
-| branch | `maxY - y <= 8` | 396 |
-| branch | `Math.abs(dy) < 6` | 402 |
-| branch | `!chat.$.conversation` | 422 |
-| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 426 |
-| branch | `!conversationId` | 468 |
-| branch | `didSeedApprovalsRef.current` | 524 |
-| branch | `conversation?.id !== conversationId` | 525 |
-| branch | `!hasNewApproval` | 560 |
-| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 564 |
-| branch | `!sentinel` | 592 |
-| branch | `!entries[0]?.isIntersecting` | 596 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 599 |
-| branch | `!sentinel` | 634 |
-| branch | `!entries[0]?.isIntersecting` | 638 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 639 |
-| loading | `!pending` | 654 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 657 |
-| branch | `!conversation?.id` | 666 |
-| branch | `!m` | 670 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 673 |
-| loading | `loading && !conversation` | 704 |
-| branch | `pane && !conversationId && !conversation` | 716 |
-| loading | `!loading && !conversation` | 723 |
-| error | `error` | 726 |
-| branch | `!isPopoutWindow` | 771 |
-| branch | `pane` | 794 |
-| error | `error` | 857 |
-| branch | `dropZone` | 883 |
-| branch | `dropZone === z` | 912 |
-| branch | `nativeScroll && !composerHidden` | 1008 |
+| branch | `!conversationId` | 73 |
+| branch | `sv.panes.length < 2` | 75 |
+| branch | `focused?.conversationId === conversationId` | 77 |
+| branch | `panes.length >= 2` | 81 |
+| branch | `!conversationId` | 148 |
+| branch | `kind === 'pane'` | 168 |
+| branch | `!pane` | 169 |
+| branch | `kind !== 'conversation' \|\| !conversationId` | 178 |
+| branch | `!droppedId` | 180 |
+| branch | `pane` | 184 |
+| branch | `!droppedOnLeft` | 208 |
+| branch | `!sentinel` | 355 |
+| branch | `!el` | 375 |
+| branch | `!nativeScroll` | 390 |
+| branch | `y < 0 \|\| y > maxY` | 399 |
+| branch | `maxY - y <= 8` | 403 |
+| branch | `Math.abs(dy) < 6` | 409 |
+| branch | `!chat.$.conversation` | 429 |
+| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 433 |
+| branch | `!conversationId` | 475 |
+| branch | `didSeedApprovalsRef.current` | 531 |
+| branch | `conversation?.id !== conversationId` | 532 |
+| branch | `!hasNewApproval` | 567 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 571 |
+| branch | `!sentinel` | 599 |
+| branch | `!entries[0]?.isIntersecting` | 603 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 606 |
+| branch | `!sentinel` | 641 |
+| branch | `!entries[0]?.isIntersecting` | 645 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 646 |
+| loading | `!pending` | 661 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 664 |
+| branch | `!conversation?.id` | 673 |
+| branch | `!m` | 677 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 680 |
+| loading | `loading && !conversation` | 711 |
+| branch | `pane && !conversationId && !conversation` | 723 |
+| loading | `!loading && !conversation` | 730 |
+| error | `error` | 733 |
+| branch | `!isPopoutWindow` | 778 |
+| branch | `pane` | 801 |
+| error | `error` | 868 |
+| branch | `dropZone` | 894 |
+| branch | `dropZone === z` | 923 |
+| branch | `nativeScroll && !composerHidden` | 1019 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -2676,12 +2676,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!nativeScroll` | 38 |
-| branch | `now - lastToggle < TOGGLE_COOLDOWN_MS` | 51 |
-| branch | `y < 0 \|\| y > maxY` | 62 |
-| branch | `y <= HIDE_THRESHOLD` | 66 |
-| branch | `Math.abs(dy) < DIRECTION_DELTA` | 73 |
-| branch | `nativeScroll && pinned` | 89 |
+| branch | `!nativeScroll` | 40 |
+| branch | `now - lastToggle < TOGGLE_COOLDOWN_MS` | 53 |
+| branch | `y < 0 \|\| y > maxY` | 64 |
+| branch | `y <= HIDE_THRESHOLD` | 68 |
+| branch | `Math.abs(dy) < DIRECTION_DELTA` | 75 |
+| branch | `nativeScroll && pinned` | 91 |
 
 ### `modules/layouts/app-layout/components/LeftSidebar`
 
