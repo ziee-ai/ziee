@@ -33,4 +33,19 @@ survived a create by scrolling all the way to the oldest.
 - `npm run check` (ui): PASS. `tsc`: clean. Unit tests: 16/16 PASS.
 - e2e: 6/7 passed on the prior run (TEST-9 assertion fixed here); full re-run recorded in TEST_RESULTS.md.
 
+## Accepted residual limitation (NOT a confirmed defect)
+
+The round-6 re-audit found **0 MEDIUM+ confirmed defects** and explicitly cleared
+correctness / state-management / concurrency. It noted ONE residual, *speculative*
+hole it could not make deterministic: under HTTP/2 request reordering, if a
+delete's response is served *before* an already-in-flight `loadMore(page N)` GET
+that was dispatched earlier, the shifted server offset could skip a row →
+`noProgress` → `recentHasMore` wrongly false, stranding the tail until a page-1
+reload. This is **inherent to offset (page/limit) pagination** — the backend
+exposes only page/limit, not cursors — and is shared by the sibling `/chats`
+list and every offset-paginated surface in the app. It self-heals on any page-1
+replace (`sync:reconnect`, a fresh navigation, a refresh). Fully eliminating it
+would require backend cursor pagination, which is out of scope for this feature.
+Recorded as an accepted limitation, not a blocking defect.
+
 **New confirmed findings:** 0 (verified by the round-6 re-audit)
