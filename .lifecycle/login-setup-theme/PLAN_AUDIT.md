@@ -53,4 +53,10 @@
 - **ITEM-6** — verdict: PASS — responsive is CSS-only (`max-w-md`, `p-4`, full-bleed backdrop);
   enforced by a 390px gallery state + TEST-6.
 
+- **ITEM-7** — verdict: PASS — (iteration r1) moving the login/register heading inside the card
+  mirrors the SetupPage precedent; `LoginForm`/`RegisterForm` are used only by AuthPage + the
+  gallery (no reauth reuse), so an in-card header is safe; also removes a pre-existing register
+  double-header. No new caller broken; no migration/OpenAPI. Verified by TEST-8 + the auth
+  regression re-run.
+
 No `BLOCKED` verdicts.
