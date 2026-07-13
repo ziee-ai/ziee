@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2152 signals total.
+// 365 surfaces carry renderable-state signals; 2153 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -1146,14 +1146,15 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/widgets/RecentConversationsWidget",
     requiredStates: ["empty","open"],
     signals: [
-      { kind: "empty", condition: "recentError && recentConversations.length === 0", line: 121 },
-      { kind: "branch", condition: "!recentInitialized", line: 138 },
-      { kind: "empty", condition: "recentConversations.length === 0", line: 149 },
-      { kind: "branch", condition: "!c", line: 195 },
-      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 224 },
-      { kind: "branch", condition: "recentLoadingMore", line: 240 },
-      { kind: "overlay", condition: "<Dropdown open>", line: 345 },
-      { kind: "branch", condition: "!open && keepMenuOpen", line: 352 },
+      { kind: "branch", condition: "atEnd", line: 92 },
+      { kind: "empty", condition: "recentError && recentConversations.length === 0", line: 136 },
+      { kind: "branch", condition: "!recentInitialized", line: 153 },
+      { kind: "empty", condition: "recentConversations.length === 0", line: 164 },
+      { kind: "branch", condition: "!c", line: 210 },
+      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 239 },
+      { kind: "branch", condition: "recentLoadingMore", line: 255 },
+      { kind: "overlay", condition: "<Dropdown open>", line: 360 },
+      { kind: "branch", condition: "!open && keepMenuOpen", line: 367 },
     ],
   },
   "modules/citations/components/CitationCard": {

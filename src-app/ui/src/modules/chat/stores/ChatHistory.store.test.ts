@@ -307,4 +307,33 @@ describe('ChatHistory recent paging (TEST-1..5)', () => {
     expect(s.recentConversations.some(c => c.id === 'r39')).toBe(true) // page-2 row survives
     expect(s.recentTotal).toBe(46)
   })
+
+  it('TEST-5c: syncRecentFront re-anchors recentPage so paging keeps reaching older rows', async () => {
+    // One page loaded (recentPage=1), then a big cross-device burst prepends a
+    // full page of new rows.
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 45))
+    await store().loadRecentConversations(1)
+
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: Array.from({ length: 20 }, (_, i) => convo({ id: `n${i}` })),
+      total: 65,
+    })
+    await store().syncRecentFront()
+
+    // Cursor re-anchored to the grown length (40/20 = 2), NOT left at 1.
+    expect(store().recentConversations).toHaveLength(40)
+    expect(store().recentPage).toBe(2)
+    expect(store().recentHasMore).toBe(true)
+
+    // The next loadMore fetches page 3 (older, unseen) and PROGRESSES — it does
+    // not dead-end on an all-overlap page.
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: Array.from({ length: 20 }, (_, i) => convo({ id: `old${i}` })),
+      total: 65,
+    })
+    await store().loadMoreRecent()
+    expect(apiMock.Conversation.list).toHaveBeenLastCalledWith({ page: 3, limit: 20 })
+    expect(store().recentConversations).toHaveLength(60)
+    expect(store().recentHasMore).toBe(true)
+  })
 })

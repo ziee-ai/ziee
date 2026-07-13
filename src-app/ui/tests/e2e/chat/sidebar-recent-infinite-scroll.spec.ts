@@ -206,6 +206,34 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     ).toBeVisible({ timeout: 10000 })
   })
 
+  test('TEST-13: a persistent load-more failure does NOT hammer the API in a loop', async ({
+    page,
+  }) => {
+    // Force every next-page (>=2) request to fail, and count them.
+    let pageFetches = 0
+    await page.route('**/api/conversations?**', async route => {
+      if (/[?&]page=(?:[2-9]|\d\d)\b/.test(route.request().url())) {
+        pageFetches++
+        await route.fulfill({ status: 500, body: 'boom' })
+        return
+      }
+      await route.continue()
+    })
+
+    // Scroll to the bottom repeatedly; without the failure gate the effect would
+    // re-fire on every recentLoadingMore flip and issue dozens of requests.
+    for (let i = 0; i < 5; i++) {
+      await scrollToBottom(page)
+      await page.waitForTimeout(500)
+    }
+    // The list still shows page 1 (the older pages never loaded) and the number
+    // of failed attempts is bounded — no tight retry loop.
+    await expect(
+      page.getByTestId(ROW).filter({ hasText: pad(N - 1) }),
+    ).toBeVisible()
+    expect(pageFetches).toBeLessThanOrEqual(5)
+  })
+
   test('TEST-10: virtual rows keep menu-row fidelity (aria-current + row actions)', async ({
     page,
   }) => {

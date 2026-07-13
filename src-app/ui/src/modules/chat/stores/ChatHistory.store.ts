@@ -210,6 +210,14 @@ export const ChatHistory = defineStore('ChatHistory', {
             response.total,
             draft.recentConversations.length,
           )
+          // Re-anchor the page cursor to the grown length (same as the delete
+          // paths). Without this, once accumulated front-prepends reach `limit`
+          // the next loadMoreRecent(recentPage+1) fetches a server page fully
+          // overlapping already-loaded rows → added===0 → the no-progress guard
+          // would wrongly mark recentHasMore=false and strand the older pages.
+          draft.recentPage = Math.floor(
+            draft.recentConversations.length / draft.limit,
+          )
           draft.recentHasMore =
             draft.recentConversations.length < draft.recentTotal
         })
@@ -228,6 +236,10 @@ export const ChatHistory = defineStore('ChatHistory', {
           return
         await loadRecentConversations(state.recentPage + 1)
       },
+      // Clear a lingering load-MORE error (the widget calls this when the user
+      // scrolls away from the failed bottom, so returning retries once instead
+      // of a tight loop while pinned at the end).
+      clearRecentError: () => set({ recentError: null }),
       loadNextPage: async () => {
         const state = get()
         if (!state.hasMore || state.loadingMore) return

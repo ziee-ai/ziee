@@ -42,4 +42,5 @@ i18n, security-authz). See LEDGER.jsonl.
 - `npm run check` (ui): PASS. `tsc --noEmit`: clean. Unit tests: 11/11 PASS.
 - menuRowClasses extraction confirmed byte-identical by the blind patterns reviewer.
 
-**New confirmed findings:** 0 (see FIX_ROUND-2 for the re-audit round result)
+**New confirmed findings:** 2 (the re-audit round after these fixes surfaced two
+NEW interaction bugs — see FIX_ROUND-2)

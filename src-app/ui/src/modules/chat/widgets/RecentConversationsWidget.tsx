@@ -81,18 +81,33 @@ export function RecentConversationsWidget() {
   const virtualItems = virt.getVirtualItems()
 
   // Auto-load the next page when the last rendered virtual row reaches the end of
-  // the loaded set (the tanstack-virtual infinite-scroll idiom).
+  // the loaded set (the tanstack-virtual infinite-scroll idiom). The `!recentError`
+  // gate is load-bearing: on a persistent load-MORE failure the store leaves
+  // recentHasMore=true, so WITHOUT this gate the effect would re-fire the instant
+  // recentLoadingMore flips back to false and hammer the API in a tight loop.
   const lastIndex =
     virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1
   useEffect(() => {
-    if (
-      lastIndex >= recentConversations.length - 1 &&
-      recentHasMore &&
-      !recentLoadingMore
-    ) {
-      void Stores.ChatHistory.loadMoreRecent()
+    const atEnd = lastIndex >= 0 && lastIndex >= recentConversations.length - 1
+    if (atEnd) {
+      if (recentHasMore && !recentLoadingMore && !recentError) {
+        void Stores.ChatHistory.loadMoreRecent()
+      }
+      return
     }
-  }, [lastIndex, recentConversations.length, recentHasMore, recentLoadingMore])
+    // Scrolled away from a failed bottom (non-empty list): clear the load-more
+    // error so returning to the end retries once. The first-load error (empty
+    // list) is left intact — its retry is the ErrorState button below.
+    if (recentError && recentConversations.length > 0) {
+      Stores.ChatHistory.clearRecentError()
+    }
+  }, [
+    lastIndex,
+    recentConversations.length,
+    recentHasMore,
+    recentLoadingMore,
+    recentError,
+  ])
 
   // The currently-open conversation (for the `aria-current` selected row).
   // Memoized so the virtualizer's per-scroll-frame re-renders don't re-run this

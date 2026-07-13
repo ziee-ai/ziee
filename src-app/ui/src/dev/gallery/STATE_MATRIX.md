@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2152** signals total: 1696 branch, 139 empty, 113 error, 106 loading, 95 overlay, 3 panel.
+- **2153** signals total: 1697 branch, 139 empty, 113 error, 106 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -1295,14 +1295,15 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `recentError && recentConversations.length === 0` | 121 |
-| branch | `!recentInitialized` | 138 |
-| empty | `recentConversations.length === 0` | 149 |
-| branch | `!c` | 195 |
-| branch | `active?.closest('[role="menu"]')` | 224 |
-| branch | `recentLoadingMore` | 240 |
-| overlay | `<Dropdown open>` | 345 |
-| branch | `!open && keepMenuOpen` | 352 |
+| branch | `atEnd` | 92 |
+| empty | `recentError && recentConversations.length === 0` | 136 |
+| branch | `!recentInitialized` | 153 |
+| empty | `recentConversations.length === 0` | 164 |
+| branch | `!c` | 210 |
+| branch | `active?.closest('[role="menu"]')` | 239 |
+| branch | `recentLoadingMore` | 255 |
+| overlay | `<Dropdown open>` | 360 |
+| branch | `!open && keepMenuOpen` | 367 |
 
 ### `modules/citations/components/CitationCard`
 
