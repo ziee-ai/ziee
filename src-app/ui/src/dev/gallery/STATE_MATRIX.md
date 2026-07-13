@@ -910,13 +910,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 55 |
-| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 77 |
-| branch | `attachmentBlocks.length > 0` | 167 |
-| branch | `bubbleBlocks.length > 0` | 196 |
-| branch | `offerCollapse` | 222 |
-| branch | `showEmptyCompletionNotice` | 242 |
-| branch | `isUser` | 261 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 60 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 88 |
+| branch | `attachmentBlocks.length > 0` | 178 |
+| branch | `bubbleBlocks.length > 0` | 207 |
+| branch | `offerCollapse` | 233 |
+| branch | `showEmptyCompletionNotice` | 253 |
+| branch | `isUser` | 272 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1014,28 +1014,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 117 |
-| branch | `w <= 0` | 119 |
-| branch | `!el` | 130 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 264 |
-| branch | `!import.meta.env.DEV` | 296 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 370 |
-| branch | `!el` | 379 |
-| empty | `count === 0` | 386 |
-| branch | `!el` | 404 |
-| branch | `!item` | 407 |
-| branch | `!msg` | 409 |
-| branch | `!c` | 415 |
-| branch | `virtualize` | 420 |
-| branch | `idx < 0` | 422 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 434 |
-| branch | `!c` | 449 |
-| branch | `top == null` | 452 |
-| loading | `!loading && count === 0` | 475 |
-| branch | `loadingOlder` | 501 |
-| branch | `virtualize` | 511 |
-| branch | `!msg` | 526 |
-| loading | `(loading \|\| isStreaming)` | 582 |
+| branch | `!vw \|\| vw <= 0` | 123 |
+| branch | `w <= 0` | 125 |
+| branch | `!el` | 136 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 270 |
+| branch | `!import.meta.env.DEV` | 302 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 376 |
+| branch | `!el` | 385 |
+| empty | `count === 0` | 392 |
+| branch | `!el` | 410 |
+| branch | `!item` | 413 |
+| branch | `!msg` | 415 |
+| branch | `!c` | 421 |
+| branch | `virtualize` | 426 |
+| branch | `idx < 0` | 428 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 440 |
+| branch | `!c` | 455 |
+| branch | `top == null` | 458 |
+| loading | `!loading && count === 0` | 481 |
+| branch | `loadingOlder` | 507 |
+| branch | `virtualize` | 517 |
+| branch | `!msg` | 532 |
+| loading | `(loading \|\| isStreaming)` | 596 |
 
 ### `modules/chat/components/ModelSelector`
 

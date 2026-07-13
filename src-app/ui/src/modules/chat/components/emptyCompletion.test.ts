@@ -60,6 +60,7 @@ test('shouldShowEmptyCompletionNotice: shows for a finalised, non-interrupted, a
       isUser: false,
       isStreaming: false,
       interrupted: false,
+      finalizing: false,
       message: thinkingOnly,
     }),
     true,
@@ -70,6 +71,7 @@ test('shouldShowEmptyCompletionNotice: shows for a finalised, non-interrupted, a
       isUser: false,
       isStreaming: false,
       interrupted: false,
+      finalizing: false,
       message: assistant([]),
     }),
     true,
@@ -79,22 +81,42 @@ test('shouldShowEmptyCompletionNotice: shows for a finalised, non-interrupted, a
 test('shouldShowEmptyCompletionNotice: suppressed while streaming, for users, when interrupted, or when an answer exists', () => {
   // Live streaming turn (momentarily thinking-only) must not flash the notice.
   assert.equal(
-    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: true, interrupted: false, message: thinkingOnly }),
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: true, interrupted: false, finalizing: false, message: thinkingOnly }),
     false,
   )
   // User messages never show it.
   assert.equal(
-    shouldShowEmptyCompletionNotice({ isUser: true, isStreaming: false, interrupted: false, message: thinkingOnly }),
+    shouldShowEmptyCompletionNotice({ isUser: true, isStreaming: false, interrupted: false, finalizing: false, message: thinkingOnly }),
     false,
   )
   // Cancelled / errored / aborted turns are partials, not empty completions.
   assert.equal(
-    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: true, message: thinkingOnly }),
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: true, finalizing: false, message: thinkingOnly }),
     false,
   )
   // A turn that produced an answer never shows it.
   assert.equal(
-    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: false, message: withAnswer }),
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: false, finalizing: false, message: withAnswer }),
     false,
+  )
+})
+
+test('shouldShowEmptyCompletionNotice: suppressed during the streaming→persisted handoff (finalizing)', () => {
+  // The sub-second handoff window: isStreaming has flipped false but the
+  // persisted tail may not be swapped in yet — a transient empty assistant frame
+  // must NOT flash the notice.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: false, finalizing: true, message: thinkingOnly }),
+    false,
+  )
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: false, finalizing: true, message: assistant([]) }),
+    false,
+  )
+  // Once the turn is finalised (finalizing back to false) a GENUINELY-empty turn
+  // still surfaces the notice — the handoff gate must not permanently hide it.
+  assert.equal(
+    shouldShowEmptyCompletionNotice({ isUser: false, isStreaming: false, interrupted: false, finalizing: false, message: thinkingOnly }),
+    true,
   )
 })

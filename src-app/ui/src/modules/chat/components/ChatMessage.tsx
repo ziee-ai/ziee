@@ -21,6 +21,7 @@ export const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming = false,
   interrupted = false,
+  finalizing = false,
 }: {
   message: MessageWithContent
   /** True only for the message currently streaming — it is never collapsed. */
@@ -28,6 +29,10 @@ export const ChatMessage = memo(function ChatMessage({
   /** True when this turn was cancelled / errored / aborted (a partial, not a
    *  genuine empty completion) — suppresses the empty-completion notice. */
   interrupted?: boolean
+  /** True during the sub-second streaming→persisted handoff for this turn — the
+   *  persisted tail may not be swapped in yet, so a transient empty assistant
+   *  frame must not flash the empty-completion notice. */
+  finalizing?: boolean
 }) {
   const isUser = message.role === 'user'
   const { activeMatchId } = useConversationFind()
@@ -68,8 +73,14 @@ export const ChatMessage = memo(function ChatMessage({
   const contents = message.contents ?? []
   const showEmptyCompletionNotice = useMemo(
     () =>
-      shouldShowEmptyCompletionNotice({ isUser, isStreaming, interrupted, message }),
-    [isUser, isStreaming, interrupted, message],
+      shouldShowEmptyCompletionNotice({
+        isUser,
+        isStreaming,
+        interrupted,
+        finalizing,
+        message,
+      }),
+    [isUser, isStreaming, interrupted, finalizing, message],
   )
 
   // Check if message has any content to render. A finalised, empty assistant

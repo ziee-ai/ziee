@@ -37,13 +37,23 @@ export function hasVisibleAnswer(message: MessageWithContent): boolean {
 // no visible answer — AND was not `interrupted` (a user-cancelled / stream-
 // errored / aborted turn is a partial, not a genuine empty completion, so the
 // notice would misattribute the cause; the caller passes the store's
-// per-turn interruption signal).
+// per-turn interruption signal) — AND is not `finalizing` (the sub-second
+// streaming→persisted handoff window: `isStreaming` has flipped false but the
+// persisted tail may not be swapped in yet, so a transient empty assistant frame
+// must not flash the notice; the caller passes the store's `finalizingTurn`).
 export function shouldShowEmptyCompletionNotice(opts: {
   isUser: boolean
   isStreaming: boolean
   interrupted: boolean
+  finalizing: boolean
   message: MessageWithContent
 }): boolean {
-  const { isUser, isStreaming, interrupted, message } = opts
-  return !isUser && !isStreaming && !interrupted && !hasVisibleAnswer(message)
+  const { isUser, isStreaming, interrupted, finalizing, message } = opts
+  return (
+    !isUser &&
+    !isStreaming &&
+    !interrupted &&
+    !finalizing &&
+    !hasVisibleAnswer(message)
+  )
 }
