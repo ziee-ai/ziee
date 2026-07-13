@@ -31,7 +31,7 @@
  *      node scripts/gen-overlay-registry.mjs --check    (gate: fail on un-rendered)
  *      node scripts/gen-overlay-registry.mjs --list      (human summary to stdout)
  */
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -166,14 +166,37 @@ function collect() {
   return surfaces.sort((a, b) => a.surface.localeCompare(b.surface))
 }
 
-/** Surfaces wired OPEN in overlays.tsx (regex the `surface:` fields). */
-function wiredSurfaces() {
-  const src = fs.existsSync(OVERLAYS_TS) ? fs.readFileSync(OVERLAYS_TS, 'utf-8') : ''
+/** Surfaces wired OPEN as gallery overlay entries (regex the `surface:` fields).
+ *  Overlay entries are OWNED per-module in `src/modules/<X>/gallery.tsx`
+ *  (`gallery.overlays`), auto-discovered by the gallery's runtime registry — so
+ *  scan every module `gallery.tsx` (plus the residual central `overlays.tsx` for
+ *  back-compat). Reading only `overlays.tsx` (now a thin aggregator with no
+ *  `surface:` fields) would false-fail every host overlay. */
+/** Pure: extract every `surface: '…'`/`surface: "…"` id from source texts (TEST-5). */
+export function extractWiredSurfaces(srcTexts) {
   const set = new Set()
-  const re = /surface:\s*'([^']+)'/g
-  let m
-  while ((m = re.exec(src))) set.add(m[1])
+  const re = /surface:\s*['"]([^'"]+)['"]/g
+  for (const src of srcTexts) {
+    let m
+    re.lastIndex = 0
+    while ((m = re.exec(src))) set.add(m[1])
+  }
   return set
+}
+
+function wiredSurfaces() {
+  const files = []
+  if (fs.existsSync(OVERLAYS_TS)) files.push(OVERLAYS_TS)
+  const modulesDir = path.join(SRC, 'modules')
+  if (fs.existsSync(modulesDir)) {
+    for (const m of fs.readdirSync(modulesDir)) {
+      for (const name of ['gallery.tsx', 'gallery.ts']) {
+        const p = path.join(modulesDir, m, name)
+        if (fs.existsSync(p)) files.push(p)
+      }
+    }
+  }
+  return extractWiredSurfaces(files.map(f => fs.readFileSync(f, 'utf-8')))
 }
 
 function loadAllowlist() {
@@ -182,6 +205,10 @@ function loadAllowlist() {
   return { hosts: j.hosts ?? {}, triggers: j.triggers ?? {} }
 }
 
+// Portable main-module check (the naive `file://${argv[1]}` is false on Windows
+// + on spaced paths, silently disabling the gate).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href
+if (isMain) {
 const surfaces = collect()
 const wired = wiredSurfaces()
 const allow = loadAllowlist()
@@ -285,4 +312,5 @@ if (mode === 'write') {
       `${registry.counts.wiredOpen} wired open, ` +
       `${surfaces.length - registry.counts.wiredOpen} allow-listed.`,
   )
+}
 }

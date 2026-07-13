@@ -40,6 +40,58 @@ export const RUNTIME_BASELINE = [
     match: 'oklch(0.556 0 0)',
     note: 'Muted-foreground token (--muted-foreground) as 12px text on the light muted surface (bg ~rgb(245,245,245)) computes to 4.35:1, marginally under AA 4.5:1. Raising --muted-foreground contrast is an app-wide token decision (owner: design); appears across onboarding loaded/empty/error (same token, same surface).',
   },
+  // ── Pre-existing product-component findings (NOT introduced by the
+  //    modular-seed feature). Verified to fail IDENTICALLY on origin/main
+  //    (e2b5bba) — these surfaces are migrated VERBATIM and render through
+  //    unchanged frames, so the defect is in the product component, not the
+  //    gallery seed. Scoped by `match` so a DIFFERENT crash on the same surface
+  //    still gates. Owner: the respective module.
+  // overlay-provider-api-key-modal: useNavigate outside a Router — the crash AND
+  // its console-error twin (React logs the boundary-caught error to console).
+  {
+    category: 'crash',
+    surface: 'overlay-provider-api-key-modal',
+    match: 'useNavigate() may be used only in the context of a <Router>',
+    note: 'ProviderApiKeyModal (user-llm-providers) calls useNavigate but the gallery OverlayFrame renders it without a Router context. Pre-existing (fails identically on origin/main e2b5bba). Owner: user-llm-providers — drop the useNavigate or wrap the modal in a router at its call site.',
+  },
+  {
+    category: 'console-error',
+    surface: 'overlay-provider-api-key-modal',
+    match: 'useNavigate() may be used only',
+    note: 'Console-error twin of the useNavigate crash above (React logs the boundary-caught error). Pre-existing (origin/main e2b5bba).',
+  },
+  // seeded-llm-models-loading: Rules-of-Hooks violation — the crash + its two
+  // console-error twins (the throw + React\'s hook-order-change warning).
+  {
+    category: 'crash',
+    surface: 'seeded-llm-models-loading',
+    match: 'Rendered more hooks than during the previous render',
+    note: 'The llm-models list component varies its hook count between the loading and loaded renders (a Rules-of-Hooks violation surfaced by the loading-state seed). Pre-existing (fails identically on origin/main e2b5bba). Owner: llm-provider.',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-llm-models-loading',
+    match: 'Rendered more hooks than during the previous render',
+    note: 'Console-error twin of the hooks-count crash above. Pre-existing (origin/main e2b5bba).',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-llm-models-loading',
+    match: 'change in the order of Hooks',
+    note: 'React\'s hook-order-change warning — same Rules-of-Hooks root cause as the crash above. Pre-existing (origin/main e2b5bba).',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-s3-group-widget-error',
+    match: '/api/groups/',
+    note: 'This surface DELIBERATELY installs a one-time window.fetch shim that 500s GET /api/groups/:id/providers to exercise the LLMProviderGroupWidget error state — the console-error is the intended, seeded failure. Pre-existing (fails identically on origin/main e2b5bba).',
+  },
+  {
+    category: 'contrast',
+    surface: 'deep-chat-right-panel-file',
+    match: 'rgba(0, 0, 0, 0)',
+    note: 'A transparent-foreground (alpha-0) text node computes a 1.00:1 ratio on the chat right-panel file view (an empty/placeholder text span). Pre-existing (fails identically on origin/main e2b5bba). Owner: chat right-panel.',
+  },
 ]
 
 /** True when a finding is a documented, baselined pre-existing item. */

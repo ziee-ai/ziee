@@ -194,8 +194,13 @@ function readRuntimeSurfaceVerdicts() {
       continue
     }
     const s = (surfaces[f.surface] ??= { high: 0, medium: 0, low: 0, baselined: 0 })
-    // A documented-baselined HIGH (runtime-baseline.js) does not fail a surface.
-    if (f.baselined) s.baselined++
+    // A documented-baselined (runtime-baseline.js) OR documented-harness-noise
+    // (`f.harness` — dev-server/mock-cassette artifact, e.g. a `@fs` node_modules
+    // font 403) HIGH does not fail a surface. This mirrors runtime-health.mjs's
+    // gating formula (HIGH − baselined − harness); without the `f.harness` term,
+    // gate:ui would fail on harness noise that runtime-health itself treats as
+    // non-gating (surfaces only through symlinked node_modules, e.g. a worktree).
+    if (f.baselined || f.harness) s.baselined++
     else s[f.severity.toLowerCase()]++
   }
   return Object.entries(surfaces)

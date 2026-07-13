@@ -41,10 +41,12 @@ function walk(dir, acc = []) {
         walk(full, acc)
     } else if (
       /\.tsx$/.test(e) &&
-      // Skip test/stories, and `.desktop.tsx` co-located overrides: those are
-      // desktop-only files (excluded from the web tsconfig/biome too) — they are
-      // never rendered in the WEB gallery, so they aren't web surfaces.
-      !/\.(test|stories|desktop)\.tsx$/.test(e)
+      // Skip test/stories, `.desktop.tsx` co-located overrides, and per-module
+      // `gallery.tsx` seed files: those are never rendered AS a surface (the
+      // gallery seed is authoring metadata, not a reviewable page/component).
+      !/\.(test|stories|desktop)\.tsx$/.test(e) &&
+      e !== 'gallery.tsx' &&
+      e !== 'gallery.ts'
     ) {
       acc.push(full)
     }
