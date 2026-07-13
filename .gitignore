@@ -77,9 +77,8 @@ src-app/server/test-logs/
 src-app/ui/docs/antd-diagnostics/
 src-app/target
 
-# Environment-specific deploy config lives ONLY on the `deploy` branch — never on
-# this generic, published source. Ignored here so it can't be re-committed to main.
-# (On the `deploy` branch these are TRACKED; that branch must NOT list them here.)
-config/desired-state.yaml
-docker-compose.deploy.yml
-DEPLOY.md
+# NOTE: `docker-compose.deploy.yml`, `deploy/seed/`, and `DEPLOY.md` are the
+# deploy-only files that live (TRACKED) on the `deploy` branch. They are ignored on
+# every OTHER branch (see the copy of this rule on `main`) so they can't leak into
+# the published source, but on THIS branch they must be tracked — do NOT re-add them
+# to this .gitignore.
