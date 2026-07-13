@@ -169,6 +169,12 @@ COPY --from=ui-build     /webroot            /srv/www
 COPY --from=config-check /app/docker/web/nginx.conf /etc/nginx/nginx.conf
 COPY docker/web/config.template.yaml  /etc/ziee/config.template.yaml
 COPY docker/web/entrypoint.sh         /usr/local/bin/entrypoint.sh
+# Config-as-code: the declarative desired state the server reconciles into the DB
+# at boot (system MCP servers, the root admin, users, group permissions).
+# NOTE: shipping the file does NOT apply it — the reconciler is OFF unless the
+# deploy sets ZIEE_APPLY_DESIRED_STATE=1. Bind-mount over this path (or repoint
+# ZIEE_DESIRED_STATE_FILE) to override the contents.
+COPY config/desired-state.yaml        /etc/ziee/desired-state.yaml
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/ziee
 
 # Config defaults (override at `docker run`/compose time). DB creds default to
@@ -187,7 +193,9 @@ ENV HOME=/var/lib/ziee \
     ZIEE_CODE_SANDBOX_ENABLED=false \
     ZIEE_LOG_LEVEL=info \
     ZIEE_LOG_FORMAT=json \
-    ZIEE_MAX_FILE_UPLOAD_MB=128
+    ZIEE_MAX_FILE_UPLOAD_MB=128 \
+    ZIEE_DESIRED_STATE_FILE=/etc/ziee/desired-state.yaml \
+    ZIEE_APPLY_DESIRED_STATE=
 
 USER ziee
 WORKDIR /var/lib/ziee

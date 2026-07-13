@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2146** signals total: 1690 branch, 137 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2150** signals total: 1694 branch, 137 empty, 113 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -679,9 +679,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `selectedAssistantId` | 27 |
-| empty | `availableAssistants.length === 0` | 36 |
-| branch | `dividerAfter` | 126 |
+| branch | `!canRead` | 27 |
+| branch | `selectedAssistantId` | 36 |
+| empty | `availableAssistants.length === 0` | 45 |
+| branch | `dividerAfter` | 135 |
 
 ### `modules/assistant/chat-extension/components/AssistantSelector`
 
@@ -689,7 +690,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `availableAssistants.length === 0` | 27 |
+| branch | `!canRead` | 19 |
+| empty | `availableAssistants.length === 0` | 33 |
 
 ### `modules/assistant/chat-extension/components/AssistantStatusChip`
 
@@ -697,8 +699,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!selectedAssistantId` | 13 |
-| branch | `!assistant` | 18 |
+| branch | `!canRead` | 17 |
+| branch | `!selectedAssistantId` | 18 |
+| branch | `!assistant` | 23 |
 
 ### `modules/assistant/chat-extension/extension`
 
@@ -3446,11 +3449,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation?.id` | 36 |
-| branch | `!conversation?.id` | 58 |
-| branch | `adminSettings?.enabled === false` | 59 |
-| branch | `!conversation?.id` | 62 |
-| branch | `mode === 'off'` | 122 |
+| branch | `!conversation?.id` | 44 |
+| branch | `!canUse` | 68 |
+| branch | `!conversation?.id` | 69 |
+| branch | `adminSettings?.enabled === false` | 70 |
+| branch | `!conversation?.id` | 73 |
+| branch | `mode === 'off'` | 133 |
 
 ### `modules/memory/components/CoreMemoryBlocksEditor`
 

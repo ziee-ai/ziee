@@ -79,8 +79,9 @@ test.describe('MCP Chip Row — persistence and visibility', () => {
     const { baseURL, apiURL } = testInfra
     const token = await getAdminToken(page)
 
-    // Filesystem Access is a built-in system server from the migrations.
-    const builtIn = await findServerByName(page, apiURL, token, 'Filesystem Access')
+    // Web Fetch is a built-in system server from the migrations. (Its seeded
+    // siblings filesystem/browser/git were removed by migration 157.)
+    const builtIn = await findServerByName(page, apiURL, token, 'Web Fetch')
     expect(builtIn.is_built_in).toBe(true)
 
     // Force it into user defaults — McpStatusRow must STILL filter it out.

@@ -1,0 +1,157 @@
+# ziee desired state — config as code.
+#
+# The container reconciles this file into its database ON BOOT (after
+# migrations, before it serves), so a fresh deploy comes up fully configured
+# with no manual UI setup. Baked into the image at /etc/ziee/desired-state.yaml;
+# bind-mount over that path (or repoint ZIEE_DESIRED_STATE_FILE) to override.
+#
+# ⚠ DEPLOY-ONLY, OPT-IN, DEFAULT OFF. This file is version control, NOT a trigger:
+# checking it in — or baking it into the image — applies NOTHING. The reconciler
+# runs only when the deploy sets ZIEE_APPLY_DESIRED_STATE=1 (TeamCity does this on
+# the deploy configs). Without it the server logs "desired-state reconcile:
+# disabled" and writes nothing, so a local developer's own models, MCP servers,
+# admin and permissions are never touched, enforced or duplicated.
+#
+# RULES
+#   - Secrets are NEVER written here. A password must be exactly one ${ENV_VAR}
+#     placeholder; an inline literal is rejected and the entry is skipped.
+#   - ${VAR} placeholders resolve from the container's environment at boot.
+#     A placeholder whose env var is unset/empty SKIPS that entry (with a log)
+#     and never blocks the boot — so a deploy that doesn't set RCPA_MCP_URL
+#     simply comes up without the RCPA server.
+#   - Everything here is IDEMPOTENT: re-deploying creates no duplicates.
+#   - The idempotency KEY for a server is its `name`, and this file only ever
+#     ADDS or UPDATES — it never deletes. So RENAMING an entry (or deleting one)
+#     leaves the old row behind: the reconciler creates the new name and has no
+#     way to know the old one is obsolete. After a rename, remove the stale
+#     server once in Settings -> MCP Servers (admin). Same for a removed entry.
+#
+# MODES (mcp_servers; accepted-but-inert on admin/users)
+#   ensure  (default) — create when absent; if it already exists, leave its
+#                       fields alone, so an admin's later UI edits survive.
+#   enforce           — create when absent, else re-sync the fields DECLARED
+#                       BELOW on every boot (a field this file omits keeps its
+#                       current DB value).
+# A server's `groups:` list is re-applied every boot in BOTH modes (assignment is
+# additive — removing a group here does not revoke it), because a server in no
+# group is unusable by non-admin users.
+# Group permissions have no mode: they are declarative and re-applied each boot.
+# `add:` may not contain a wildcard — a manifest can never grant `*`.
+#
+# ENV VARS THIS FILE EXPECTS
+#   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
+#   ZIEE_ADMIN_USERNAME / _EMAIL / _PASSWORD        — the first admin (env ONLY;
+#                                                     first deploy only — see below)
+#   ZIEE_DEFAULT_USER_PASSWORD                      — the regular user's password
+#
+# On the deploy host the three servers are published on the HOST and reached over
+# host.docker.internal (that host only allows ports 18000-19000):
+#   BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp
+#   RCPA_MCP_URL=http://host.docker.internal:18120/mcp
+#   DSCC_MCP_URL=http://host.docker.internal:18122/mcp
+# That REQUIRES ziee's compose to map `extra_hosts: host.docker.internal:host-gateway`
+# (the bundled compose files here already do). Local dev uses different values
+# (e.g. http://172.21.0.1:9004/mcp) — which is exactly why these are env-templated.
+
+# ── Admin system MCP servers ────────────────────────────────────────────────
+# Created as ADMIN system servers (is_system, no owner) and made available to
+# the Users group — a system server assigned to no group is unusable by
+# non-admin users. `usage_mode` is always `auto`: the model decides when to call
+# these tools.
+#
+# They are `enforce` on purpose. ziee's boot health check probes every enabled
+# MCP server and AUTO-DISABLES the unreachable ones, so if an org endpoint is
+# down when ziee starts it gets flipped to enabled=false; `enforce` re-asserts
+# `enabled: true` on the next deploy, where `ensure` would leave it off forever.
+# The cost: an admin who deliberately disables one of these in the UI will see it
+# re-enabled by the next deploy — change it here, not in the UI.
+mcp_servers:
+  - name: rcpa-user
+    display_name: RCPA
+    description: RCPA analysis tools
+    url: ${RCPA_MCP_URL}
+    enabled: true
+    supports_sampling: false
+    timeout_seconds: 300
+    groups: [Users]
+    mode: enforce
+
+  - name: dscc-user
+    display_name: DSCC
+    description: DSCC analysis tools
+    url: ${DSCC_MCP_URL}
+    enabled: true
+    supports_sampling: false
+    timeout_seconds: 300
+    groups: [Users]
+    mode: enforce
+
+  - name: biognosia-user
+    display_name: Biognosia
+    description: Biognosia tools
+    url: ${BIOGNOSIA_MCP_URL}
+    enabled: true
+    # This server may ask the model for a completion (MCP sampling).
+    supports_sampling: true
+    groups: [Users]
+    mode: enforce
+
+# ── Root admin: NOT HERE, BY DESIGN ─────────────────────────────────────────
+# The first administrator is created from the ENVIRONMENT ONLY — this file must
+# never carry an admin identity or credential:
+#   ZIEE_ADMIN_USERNAME, ZIEE_ADMIN_EMAIL, ZIEE_ADMIN_PASSWORD
+#
+# It is created ONLY on a database that has NO account at all. On every later
+# boot — including every rebuild/redeploy of the container — the DB already has
+# accounts, so this is a no-op: an admin password you change in the UI is NEVER
+# reverted by a redeploy. The env values are the very-first-deploy seed, nothing
+# more.
+
+# ── Regular users ───────────────────────────────────────────────────────────
+# Non-admin accounts, placed in the default group. Root admins bypass ALL
+# permission checks, so this is the account that actually sees the reduced UI
+# configured below.
+users:
+  - username: user
+    email: user@tinnguyen-lab.com
+    display_name: User
+    password: ${ZIEE_DEFAULT_USER_PASSWORD}
+
+# ── Group permissions ───────────────────────────────────────────────────────
+# Limit what regular users can see. Nothing is removed from the product — these
+# are permissions set false for the default group, exactly like any other feature:
+# the permission gates the nav entry, the settings tab AND the route together, so
+# dropping it hides the whole surface for that group. Admins are unaffected.
+#
+# NOTE: the `*::use` permissions (web_search, lit_search, citations,
+# knowledge_base, scheduler) ALSO gate the matching built-in tool endpoints, so a
+# user in this group does not get those tools in chat either. That is intended:
+# without the feature's UI they cannot configure it anyway.
+#
+# `notifications::read` is deliberately KEPT (migration 142 grants it alongside
+# scheduler; users still need their notifications).
+#
+# (`projects::*` is a no-op today: migration 54 grants it only to Administrators,
+# so the default group never had it. It is declared anyway, so a future migration
+# that grants Projects to the default group cannot silently un-hide it.)
+#
+# KEPT for users: General (ungated by design), Profile, LLM providers, MCP
+# servers, plus chat/conversations/messages/files and the built-in tool grants.
+#
+# Re-applied on every boot, so a future migration that re-grants one of these
+# to the default group is self-correcting.
+groups:
+  - name: Users
+    remove:
+      # Left nav
+      - projects::*
+      - hub::*
+      - knowledge_base::*      # "Knowledge"
+      - scheduler::*           # "Scheduled Tasks"
+      # Settings sections
+      - assistants::*          # Settings -> Assistants
+      - web_search::*          # Settings -> Web Search Keys
+      - lit_search::*          # Settings -> Literature Keys
+      - workflows::*           # Settings -> Workflows
+      - memory::*              # Settings -> Memory (incl. memory::core::*)
+      - citations::*           # Settings -> Citations
