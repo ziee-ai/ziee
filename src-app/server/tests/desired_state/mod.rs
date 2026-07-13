@@ -1149,3 +1149,35 @@ async fn test_google_provider_reconcile_is_idempotent() {
     .unwrap();
     assert_eq!(count, 1, "the re-deploy must not duplicate the google row");
 }
+
+/// TEST-10 (audit fix, FIX-1) — `ensure` mode leaves a pre-seeded provider's
+/// fields UNTOUCHED even when the creds ARE set: an existing row is a no-op under
+/// `ensure` (only `enforce` stamps + enables). Guards the `Mode::Ensure`
+/// early-return branch of `reconcile_auth_provider`.
+#[tokio::test]
+async fn test_google_provider_ensure_mode_leaves_row_untouched() {
+    // Creds ARE present (env_for sets them), but the manifest says `ensure`.
+    let (server, _dir) = server_with(&google_manifest("ensure")).await;
+    let pool = pool_of(&server).await;
+
+    let row = sqlx::query!(
+        r#"SELECT enabled, config->>'client_id' as client_id, client_secret_encrypted as enc
+           FROM auth_providers WHERE name = 'google'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        !row.enabled,
+        "ensure must NOT enable a pre-seeded provider (only enforce stamps)"
+    );
+    assert_eq!(
+        row.client_id.as_deref().unwrap_or(""),
+        "",
+        "ensure must leave client_id untouched on an existing row"
+    );
+    assert!(
+        row.enc.is_none(),
+        "ensure must not write a secret onto an existing row"
+    );
+}

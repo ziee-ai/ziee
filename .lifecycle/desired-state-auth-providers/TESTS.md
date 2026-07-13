@@ -18,11 +18,12 @@ storage) and no frontend workspace is touched → no `[negative-perm]` e2e and n
 - **TEST-5** (tier: integration) [covers: ITEM-3, ITEM-4] file: `src-app/server/tests/desired_state/mod.rs` — asserts: with `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set (dummy values) and the shipped-shape `google` entry in the manifest, after boot the `google` row has `enabled=true`, `config->>'client_id'` = the dummy id, `config->>'client_secret'` is BLANK, and `pgp_sym_decrypt(client_secret_encrypted, <harness storage_key>)` = the dummy secret (mirrors `admin_providers_test.rs:165-215`).
 - **TEST-6** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/desired_state/mod.rs` — asserts: with `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` UNSET, after boot the `google` row is still `enabled=false` with empty `config->>'client_id'` and NULL `client_secret_encrypted` (the entry was skipped — Google stays disabled).
 - **TEST-7** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/desired_state/mod.rs` — asserts: a second boot (`reboot()`, same DB, storage_key present) is idempotent — still exactly one `google` row, `enabled=true`, `config->>'client_id'` stable, and the decrypted secret still matches (no dupes, no plaintext leak).
+- **TEST-10** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/desired_state/mod.rs` — asserts: with the creds SET but `mode: ensure`, the pre-seeded `google` row is left untouched (still `enabled=false`, empty `client_id`, NULL `client_secret_encrypted`) — guards the `Mode::Ensure` no-op branch (audit FIX-1).
 
 ## Item → test coverage
 
 - ITEM-1 → TEST-1
 - ITEM-2 → TEST-2, TEST-3, TEST-4
-- ITEM-3 → TEST-5, TEST-6, TEST-7
+- ITEM-3 → TEST-5, TEST-6, TEST-7, TEST-10
 - ITEM-4 → TEST-5, TEST-8
 - ITEM-5 → TEST-9
