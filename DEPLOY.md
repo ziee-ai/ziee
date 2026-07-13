@@ -33,7 +33,7 @@ Build steps: `docker compose build` → `mkdir -p "${ZIEE_DATA_ROOT:-/data/ziee}
 | `ZIEE_ADMIN_USERNAME` | `admin` |
 | `ZIEE_ADMIN_EMAIL` | `admin@tinnguyen-lab.com` |
 | `ZIEE_WEB_PORT` | `18130` |
-| `ZIEE_PUBLIC_FILE_ORIGIN` | `http://host.docker.internal:18130` |
+| `ZIEE_PUBLIC_FILE_ORIGIN` | `https://biognosia.tinnguyen-lab.com` — file-link origin handed to ALL MCP servers, incl. **user-added/remote** ones, so it MUST be public (single value). Co-located servers fetch via the edge (verify the deploy host can reach the public URL). |
 | `ZIEE_CORS_ALLOW_ORIGIN` | `https://biognosia.tinnguyen-lab.com` (the public origin) |
 | `ZIEE_MAX_FILE_UPLOAD_MB` | `128` |
 | *(Google sign-in — set BOTH to enable, omit to leave Google off)* `GOOGLE_CLIENT_ID` | Google OAuth **production** client ID |
