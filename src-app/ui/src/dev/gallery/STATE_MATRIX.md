@@ -7,7 +7,7 @@
 
 ## Summary
 
-- **366** surfaces carry at least one renderable-state signal.
+- **367** surfaces carry at least one renderable-state signal.
 - **2158** signals total: 1702 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
@@ -670,8 +670,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isDarkMode` | 77 |
-| branch | `setupError` | 164 |
+| branch | `setupError` | 119 |
 
 ### `modules/assistant/chat-extension/components/AssistantMenuItem`
 
@@ -824,9 +823,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isAuthenticated` | 22 |
-| branch | `mode === 'login'` | 37 |
-| branch | `mode === 'register'` | 41 |
+| branch | `isAuthenticated` | 19 |
+| branch | `mode === 'login'` | 26 |
+| branch | `mode === 'register'` | 30 |
+
+### `modules/auth/AuthThemeToggle`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `isDarkMode` | 28 |
 
 ### `modules/auth/LinkAccountPage`
 
@@ -843,8 +850,8 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error` | 52 |
-| branch | `onSwitchToRegister` | 109 |
+| error | `error` | 57 |
+| branch | `onSwitchToRegister` | 114 |
 
 ### `modules/auth/ProviderButtons`
 
