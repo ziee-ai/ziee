@@ -70,6 +70,9 @@ Same path `ThemeSettings.tsx` uses. (Human ask #1 explicitly: do NOT hand-roll.)
 - `src-app/ui/src/modules/auth/auth-clouds.webp` — NEW (git-mv of `modules/app/setup-clouds.webp`; ITEM-2/5)
 - `src-app/ui/src/modules/auth/AuthPage.tsx` — EDIT (ITEM-3)
 - `src-app/ui/src/modules/app/SetupPage.tsx` — EDIT (ITEM-4)
+- `src-app/ui/src/modules/app/module.tsx` — EDIT: remove `layout: BlankLayout` from the `/setup`
+  route so `AuthScreenLayout` is the sole chrome (else two `main` landmarks + two meta-color
+  hooks). Discovered by the Phase-5 infra-integration walk. (ITEM-4)
 - `src-app/ui/src/index.css` — EDIT: add `--auth-backdrop` token, light + dark (ITEM-5)
 - `DESIGN_SYSTEM.md` — REGEN via `npm run gen:design-spec` (ITEM-5)
 - `src-app/ui/src/dev/gallery/coverage.ts` — EDIT: coverage entries for the 2 new components + narrow-viewport state note (ITEM-2/6); plus any `*.generated.ts` regen from `gen:gallery-coverage`/`gen:state-matrix`

@@ -1,12 +1,10 @@
 import React from 'react'
 import { z } from 'zod'
-import { Sun, Moon } from 'lucide-react'
 import { Card, Form, FormField, useForm, zodResolver, Input, Button, Alert, Title, Paragraph } from '@/components/ui'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core'
-import { useTheme } from '@/hooks/useTheme'
+import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'
 import { EMAIL_RE } from '@/lib/validation'
-import setupCloudsUrl from './setup-clouds.webp'
 
 const setupSchema = z
   .object({
@@ -37,47 +35,6 @@ const setupSchema = z
   })
 
 type SetupValues = z.infer<typeof setupSchema>
-
-// Paper-cut cloudy backdrop — one raster illustration (exact source palette:
-// navy sky → slate layers → white front cloud). Raster, not vector: no
-// stair-steps, scales cheaply on resize. Dark mode reuses the SAME image and
-// just lays a darkening mask over it.
-function SetupBackdrop() {
-  return (
-    <>
-      <div
-        aria-hidden
-        data-allow-custom-color
-        className="pointer-events-none absolute inset-0 -z-0 bg-cover bg-bottom bg-no-repeat"
-        style={{ backgroundColor: '#02365b', backgroundImage: `url(${setupCloudsUrl})` }}
-      />
-      {/* dark-mode darkening mask */}
-      <div
-        aria-hidden
-        data-allow-custom-color
-        className="pointer-events-none absolute inset-0 -z-0 hidden bg-[#020a12]/55 dark:block"
-      />
-    </>
-  )
-}
-
-// Theme toggle pinned to the top-right of the setup page — a ghost icon button
-// flipping between light and dark.
-function SetupThemeSwitcher() {
-  const { isDarkMode, setTheme } = useTheme()
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
-      data-testid="app-setup-theme-toggle"
-      className="absolute right-4 top-4 z-20"
-      onClick={() => setTheme(isDarkMode ? 'light' : 'dark')}
-    >
-      {isDarkMode ? <Sun className="size-5" /> : <Moon className="size-5" />}
-    </Button>
-  )
-}
 
 export default function SetupPage() {
   const { needsSetup, isSettingUpAdmin, setupError } = Stores.App
@@ -133,11 +90,9 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="relative min-h-dvh flex items-center justify-center overflow-hidden p-4">
-      <SetupBackdrop />
-      <SetupThemeSwitcher />
+    <AuthScreenLayout themeToggleTestId="app-setup-theme-toggle">
       <Card
-        className="relative z-10 w-full max-w-md"
+        className="w-full"
         data-testid="app-setup-card"
         footer={
           <Button
@@ -232,6 +187,6 @@ export default function SetupPage() {
           </FormField>
         </Form>
       </Card>
-    </div>
+    </AuthScreenLayout>
   )
 }

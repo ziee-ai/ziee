@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { Layout, Title } from '@/components/ui'
+import { Title } from '@/components/ui'
 import { Stores } from '@/core/stores'
 import { LoginForm } from '@/modules/auth/LoginForm'
 import { RegisterForm } from '@/modules/auth/RegisterForm'
-import { BlankLayoutComponent } from '@/modules/layouts/blank'
-
-const { Content } = Layout
+import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'
 
 type AuthMode = 'login' | 'register'
 
@@ -24,26 +22,27 @@ export const AuthPage: React.FC = () => {
   }
 
   return (
-    <BlankLayoutComponent>
-      <Layout data-testid="auth-page-layout" className="min-h-dvh">
-        <Content data-testid="auth-page-content" className="flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
-            <div className="text-center mb-8">
-              <Title level={2}>
-                {mode === 'login' ? 'Welcome back' : 'Create your account'}
-              </Title>
-            </div>
+    <AuthScreenLayout themeToggleTestId="auth-theme-toggle">
+      <div data-testid="auth-page-content" className="w-full">
+        <div className="text-center mb-8">
+          <Title level={2}>
+            {mode === 'login' ? 'Welcome back' : 'Create your account'}
+          </Title>
+        </div>
 
-            {mode === 'login' && (
-              <LoginForm onSwitchToRegister={handleSwitchToRegister} />
-            )}
+        {mode === 'login' && (
+          <LoginForm onSwitchToRegister={handleSwitchToRegister} />
+        )}
 
-            {mode === 'register' && (
-              <RegisterForm onSwitchToLogin={() => { Stores.Auth.clearAuthenticationError(); setMode('login') }} />
-            )}
-          </div>
-        </Content>
-      </Layout>
-    </BlankLayoutComponent>
+        {mode === 'register' && (
+          <RegisterForm
+            onSwitchToLogin={() => {
+              Stores.Auth.clearAuthenticationError()
+              setMode('login')
+            }}
+          />
+        )}
+      </div>
+    </AuthScreenLayout>
   )
 }

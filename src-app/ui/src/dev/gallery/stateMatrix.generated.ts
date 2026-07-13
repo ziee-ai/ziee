@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2150 signals total.
+// 366 surfaces carry renderable-state signals; 2150 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -575,8 +575,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/app/SetupPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isDarkMode", line: 77 },
-      { kind: "branch", condition: "setupError", line: 164 },
+      { kind: "branch", condition: "setupError", line: 119 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantMenuItem": {
@@ -717,9 +716,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/AuthPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isAuthenticated", line: 22 },
-      { kind: "branch", condition: "mode === 'login'", line: 37 },
-      { kind: "branch", condition: "mode === 'register'", line: 41 },
+      { kind: "branch", condition: "isAuthenticated", line: 20 },
+      { kind: "branch", condition: "mode === 'login'", line: 33 },
+      { kind: "branch", condition: "mode === 'register'", line: 37 },
+    ],
+  },
+  "modules/auth/AuthThemeToggle": {
+    surface: "modules/auth/AuthThemeToggle",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "isDarkMode", line: 35 },
     ],
   },
   "modules/auth/LinkAccountPage": {
