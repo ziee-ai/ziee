@@ -55,7 +55,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
-    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field && npm run lint:adjacent-inline && npm run lint:icon-action && npm run lint:logical-direction && npm run lint:tooltip-placement && npm run check:kit-manifest && npm run check:testid-registry && npm run check:design-spec && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix && npm run check:overlay-registry && npm run check:override-registry",
+    "check": "tsc && npm run lint:guardrails && npm run lint:colors && npm run lint:settings-field && npm run lint:adjacent-inline && npm run lint:icon-action && npm run lint:logical-direction && npm run lint:tooltip-placement && npm run check:kit-manifest && npm run check:testid-registry && npm run check:design-spec && npm run check:gallery-coverage && npm run check:gallery-crawl && npm run gallery:check-fixtures && npm run check:state-matrix && npm run check:overlay-registry && npm run check:override-registry && npm run check:gallery-seed-registry",
     "lint:guardrails": "biome lint --only=style/noRestrictedImports src",
     "lint:colors": "node ../../ui/scripts/lint-hardcoded-colors.mjs",
     "lint:settings-field": "node ../../ui/scripts/lint-settings-field.mjs",
@@ -99,7 +99,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:tauri-driver": "node tests/tauri-driver/smoke.mjs",
     "test:unit": "vitest run --config vitest.config.ts",
-    "test:unit:watch": "vitest --config vitest.config.ts"
+    "test:unit:watch": "vitest --config vitest.config.ts",
+    "check:gallery-seed-registry": "node ../../ui/scripts/gen-gallery-seed-registry.mjs --src src --check",
+    "gen:gallery-seed-registry": "node ../../ui/scripts/gen-gallery-seed-registry.mjs --src src"
   },
   "type": "module"
 }
