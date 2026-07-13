@@ -96,7 +96,12 @@ export default function ConversationPage() {
   // — NOT conversationId — so an external URL change (deep link) is handled by the
   // reconcile above rather than fought by this effect.
   useEffect(() => {
-    if (panes.length < 2) return // single-pane: the URL already drives the view
+    // `=== 0` (not `< 2`): a PURE single-pane view (no SplitView pane) is URL-driven,
+    // so skip. But a workspace COLLAPSING to a single surviving pane (e.g. the other
+    // pane's conversation was deleted — FB-25) must still point the URL at the
+    // survivor, or the single-pane view keeps loading the now-gone URL conversation
+    // and toasts "conversation does not exist".
+    if (panes.length === 0) return
     if (!focusedConvId || focusedConvId === conversationId) return
     navigate(`/chat/${focusedConvId}`, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -802,8 +807,10 @@ export function ConversationPane() {
       {/* Split affordance — open this conversation beside another pane. Visually
           distinct (columns icon) from the pop-out "new window" action, which the
           trailing slot injects. Hidden inside the pop-out WINDOW (ITEM-56/FB-13): a
-          focused single-conversation window shouldn't spawn a split inside itself. */}
-      {!isPopoutWindow && (
+          focused single-conversation window shouldn't spawn a split inside itself.
+          Also hidden once the workspace is at MAX_PANES — there's no room for
+          another pane, so the button would only produce a "cap reached" no-op. */}
+      {!isPopoutWindow && splitViewPanes.length < SPLIT_LIMITS.MAX_PANES && (
         <Tooltip content="Open in split view">
           <Button
             data-testid="chat-split-btn"

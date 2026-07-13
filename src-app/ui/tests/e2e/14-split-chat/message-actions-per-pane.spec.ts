@@ -63,7 +63,7 @@ test.describe('Split chat — message actions per-pane', () => {
     // Focus pane 0 (so focusedPaneId = pane 0), then act on pane 1's messages —
     // proving the actions bind to the RENDER pane (pane 1), not the focused pane.
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
 
     // REGENERATE pane 1's assistant reply FIRST (before the destructive edit): a
     // fresh assistant stream appears in pane 1 and forks a 2nd branch; pane 0

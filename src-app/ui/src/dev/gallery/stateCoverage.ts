@@ -456,6 +456,7 @@ export const STATE_COVERAGE = {
   "modules/file/viewers/shared/RawCodeView:empty": { skip: true, reason: "unreachable — the flagged chunks.length===0 is an IntersectionObserver effect guard, not a render branch, and chunkLineArray always yields ≥1 chunk (even empty text → one empty-line chunk); the viewer's real render (windowed chunks + highlight) is covered by the seeded-rawcode-large gallery surface + the large-text-viewer e2e" },
   "modules/file/components/FileVersionBar:open": { skip: true, reason: "via surface — rendered within its page; 'open' branch proven by Part 2 runtime coverage" },
   "modules/chat/components/ConversationPickerPane:empty": { skip: true, reason: "rendered within its parent page; 'empty' branch proven by Part 2 runtime coverage" },
+  "modules/chat/pages/ConversationPage:empty": { via: 'page-state-mode' },
   // <<< state-scaffold-insert >>>
 } satisfies Record<RequiredState, StateCoverageEntry>
 

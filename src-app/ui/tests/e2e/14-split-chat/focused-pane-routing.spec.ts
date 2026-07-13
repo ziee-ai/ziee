@@ -59,7 +59,7 @@ test.describe('Split chat — focused-pane routing fixes', () => {
 
     // Focus pane 0, press Ctrl-F → find bar in pane 0 ONLY.
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
     await page.keyboard.press('Control+f')
     await expect(pane0.getByTestId('conversation-find-bar')).toBeVisible({ timeout: 5000 })
     await expect(pane1.getByTestId('conversation-find-bar')).toHaveCount(0)
@@ -68,7 +68,7 @@ test.describe('Split chat — focused-pane routing fixes', () => {
     await page.keyboard.press('Escape')
     await expect(pane0.getByTestId('conversation-find-bar')).toHaveCount(0, { timeout: 5000 })
     await pane1.click()
-    await expect(pane1).toHaveClass(/ring-primary/)
+    await expect(pane1).toHaveClass(/opacity-100/)
     await page.keyboard.press('Control+f')
     await expect(pane1.getByTestId('conversation-find-bar')).toBeVisible({ timeout: 5000 })
     await expect(pane0.getByTestId('conversation-find-bar')).toHaveCount(0)
@@ -89,7 +89,7 @@ test.describe('Split chat — focused-pane routing fixes', () => {
 
     // Focus pane 0 (so the focused-pane bridge points at A), then rename pane B.
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
 
     await pane1.getByTestId('chat-title-edit-btn').click()
     const input = pane1.getByTestId('chat-title-input')

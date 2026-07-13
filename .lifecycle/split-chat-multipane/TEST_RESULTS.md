@@ -375,3 +375,30 @@ with the origin/main merge (kb + voice + scheduled-tasks + UI, DRIFT-2.8). Run
 against a fresh `GALLERY_PORT`, the gate is 0-gating for this diff. The split-chat
 surfaces themselves are verified by the 28 green e2e specs (real app, zero console
 errors). This feature adds no gallery surfaces and no new gating runtime findings.
+
+## FB-23/FB-24 batch (ITEM-74..78) — 2026-07-13
+
+- **Full 14-split-chat suite (rebuild): 62/62 PASS** (`batch-fullsuite-*.log`, `62 passed
+  (7.5m)`, workers=2 retries=1). Covers ITEM-74 (delete), ITEM-78 (cap), the ITEM-75 focus
+  restyle (17 `ring-primary`→`opacity-100` assertions), and ITEM-76/77 (persistence.spec
+  divider drag still green).
+- **TEST-112**: PASS — e2e (`delete-harness-*.log`, `1 passed (25.6s)`): deleting convB from
+  the sidebar ⋯ menu closes pane B → single-pane A. The fix was masked on the dev server by
+  the store-init HMR trap (vite served a stale `SplitView.store.ts`); confirmed in the
+  harness (fresh build) — restarted vite for the dev instance too.
+- **TEST-113**: PASS — e2e (in the 62/62 run): `chat-split-btn` present at 2 panes, `count 0`
+  at 3 (MAX_PANES). Live-probe-confirmed too (2→2 buttons, 3→0).
+- **ITEM-77 (resize perf)**: verified by a live drag probe — the pane resizes DURING the drag
+  (imperative DOM write) with `dividerWidths` committed to the store ONCE on pointer-up
+  (`dividerWidths=[420]`), so the per-frame `SplitChatView` re-render (the 95ms React-profiler
+  finding) is gone.
+- **FB-25 fix (URL follows to survivor on collapse)**: PASS — TEST-112 STRENGTHENED with
+  `toHaveURL(/chat/A/)` after deleting the focused pane's conversation; re-run in the harness
+  (`delete-fix-harness-*.log`, `1 passed (24.4s)`). Confirms deleting the focused pane's conv
+  closes the pane AND navigates to the survivor (no stale `/chat/B` → no "does not exist" toast).
+  `npm run check (ui)`: PASS (state-matrix re-scaffolded for the new `ConversationPage:empty` key).
+- **Consolidated re-run with the FB-25 fix in the tree**: `batch2-fullsuite-115355.log` — `62
+  passed (7.8m)`, `1 flaky`, **0 failed** (workers=2, retries=1). The one flake was
+  `kb-highlight-per-pane.spec.ts:33` (KB citation source-panel mount — a pre-existing,
+  timing-sensitive spec unrelated to this batch; passed on the retry). No batch spec failed;
+  the delete/cap/dim/separator/resize changes + the 17 `ring→opacity` updates all hold together.

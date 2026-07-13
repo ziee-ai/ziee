@@ -51,7 +51,7 @@ test.describe('Split chat — open existing conversation in split', () => {
     await expect(byTestId(page, 'split-chat-view')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-0')).toBeVisible()
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible()
-    await expect(byTestId(page, 'chat-pane-1')).toHaveClass(/ring-primary/)
+    await expect(byTestId(page, 'chat-pane-1')).toHaveClass(/opacity-100/)
     // The URL tracks the focused (new) pane → conversation B.
     await expect(page).toHaveURL(new RegExp(`/chat/${convB}$`))
   })

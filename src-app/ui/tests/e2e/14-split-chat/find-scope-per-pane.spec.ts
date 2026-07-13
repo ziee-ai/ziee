@@ -57,7 +57,7 @@ test.describe('Split chat — find bar searches its own pane', () => {
 
     // Focus pane B, then open find in pane A and search for A's unique word.
     await pane1.click()
-    await expect(pane1).toHaveClass(/ring-primary/)
+    await expect(pane1).toHaveClass(/opacity-100/)
     await pane0.getByTestId('conversation-find-toggle-btn').click()
     await expect(pane0.getByTestId('conversation-find-bar')).toBeVisible({ timeout: 5000 })
     await pane0.getByTestId('conversation-find-input').fill('ZEBRAWORD')

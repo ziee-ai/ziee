@@ -73,7 +73,7 @@ test.describe('Split chat — copy per-pane + pop-out-window message actions', (
     // clipboard must carry PANE 1's text (the button reads its own message), and
     // pane 0 must still hold no message (isolation).
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
     await expect(pane0.locator('[data-role="user"]')).toHaveCount(0)
 
     const userMsgB = pane1.locator('[data-role="user"]').first()

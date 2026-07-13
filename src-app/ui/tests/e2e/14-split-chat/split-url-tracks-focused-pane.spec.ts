@@ -58,12 +58,12 @@ test.describe('Split chat — the URL tracks the focused pane', () => {
     // This is the regression crux: a URL-based "open in new tab" here now targets
     // the conversation the user is actually looking at, not a stale first one.
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
     await expect(page).toHaveURL(new RegExp(`/chat/${convA}$`), { timeout: 10000 })
 
     // Focus the RIGHT pane (convB) again → the URL follows to convB.
     await pane1.click()
-    await expect(pane1).toHaveClass(/ring-primary/)
+    await expect(pane1).toHaveClass(/opacity-100/)
     await expect(page).toHaveURL(new RegExp(`/chat/${convB}$`), { timeout: 10000 })
   })
 })

@@ -608,3 +608,22 @@ honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't h
   sessionStorage-copy-on-window.open (the sole reason sessionStorage alone is insufficient).
   `clearWorkspace` on the fresh-nav path is required so a reloaded pop-out tab can't resurrect a
   copied split. RUN by unit TEST-110 + e2e TEST-111 + the updated persistence/nav specs.
+- **ITEM-74** — verdict: PASS — mirrors the existing `sync:conversation` delete handler exactly
+  (shared `closePaneForConversation` helper), so the local-delete path now matches the tested
+  cross-device path. `conversation.deleted` is an established EventBus event (already consumed by
+  `ProjectDetail.store`), tsc-clean. No new migration/type. The store-init HMR trap (dev server
+  served stale) masked it initially — VERIFIED in the harness (fresh build) via TEST-112.
+- **ITEM-75** — verdict: PASS — pure `SplitChatView` className change (ring → opacity); removing
+  the ring also removes the FB-18 z-competition, so it's strictly simpler. Reverses DEC-28 by
+  explicit human direction (amendment + DRIFT-15). The 17 focus assertions updated in lockstep.
+- **ITEM-76** — verdict: PASS — divider is now a 1px line in a wider grab area; drag handlers
+  unchanged (onPointerDown/onKeyDown intact), `previousElementSibling` still resolves the left
+  pane. `persistence.spec` proves the resize still works.
+- **ITEM-77** — verdict: PASS — the imperative resize clamps identically to the store
+  (`setDividerWidth`) and commits once on pointer-up, so the store/persistence hold the final
+  width and React reconciles the inline style (no jump — verified: pane shrank during drag,
+  `dividerWidths=[420]` committed once). Correctly eliminates the per-frame `SplitChatView`
+  re-render (the 95ms profiler finding).
+- **ITEM-78** — verdict: PASS — a one-condition render gate on the already-reactive
+  `splitViewPanes.length` + the imported `SPLIT_LIMITS.MAX_PANES`; single-pane (0 panes) and
+  2 panes still show it, 3 hides it. RUN by TEST-113. No behavior change to `openPane`'s own cap.

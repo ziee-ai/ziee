@@ -53,7 +53,7 @@ test.describe('Split chat — per-pane header matches the app header', () => {
     // Focus the LEFTMOST pane (pane 0) — that's the pane whose focus-ring z used to
     // cover the fixed toggle at the top-left.
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
 
     const toggle = byTestId(page, 'layout-sidebar-toggle-button')
     await expect(toggle).toBeVisible()

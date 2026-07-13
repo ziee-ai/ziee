@@ -8,7 +8,7 @@
 ## Summary
 
 - **367** surfaces carry at least one renderable-state signal.
-- **2185** signals total: 1728 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2185** signals total: 1727 branch, 139 empty, 113 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -17,7 +17,7 @@
 | state | surfaces |
 |---|---|
 | `delayed` | 95 |
-| `empty` | 108 |
+| `empty` | 109 |
 | `error` | 88 |
 | `open` | 81 |
 | `panel-open` | 3 |
@@ -1086,7 +1086,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `md` | 48 |
 | branch | `!md && i > 0` | 51 |
-| branch | `!drag.current` | 116 |
+| branch | `!d` | 118 |
 
 ### `modules/chat/components/TextContent`
 
@@ -1293,57 +1293,57 @@ Required states: `delayed`, `error`
 
 ### `modules/chat/pages/ConversationPage`
 
-Required states: `delayed`, `error`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
 | branch | `!conversationId` | 78 |
 | branch | `sv.panes.length < 2` | 80 |
 | branch | `focused?.conversationId === conversationId` | 82 |
-| branch | `panes.length < 2` | 99 |
-| branch | `!focusedConvId \|\| focusedConvId === conversationId` | 100 |
-| branch | `panes.length >= 2` | 105 |
-| branch | `!conversationId` | 176 |
-| branch | `kind === 'pane'` | 196 |
-| branch | `!pane` | 197 |
-| branch | `kind !== 'conversation' \|\| !conversationId` | 206 |
-| branch | `!droppedId` | 208 |
-| branch | `pane` | 212 |
-| branch | `!droppedOnLeft` | 236 |
-| branch | `!sentinel` | 383 |
-| branch | `!el` | 403 |
-| branch | `!nativeScroll` | 418 |
-| branch | `y < 0 \|\| y > maxY` | 427 |
-| branch | `maxY - y <= 8` | 431 |
-| branch | `Math.abs(dy) < 6` | 437 |
-| branch | `!chat.$.conversation` | 457 |
-| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 461 |
-| branch | `!conversationId` | 503 |
-| branch | `didSeedApprovalsRef.current` | 559 |
-| branch | `conversation?.id !== conversationId` | 560 |
-| branch | `!hasNewApproval` | 595 |
-| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 599 |
-| branch | `!sentinel` | 627 |
-| branch | `!entries[0]?.isIntersecting` | 631 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 634 |
-| branch | `!sentinel` | 669 |
-| branch | `!entries[0]?.isIntersecting` | 673 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 674 |
-| loading | `!pending` | 689 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 692 |
-| branch | `!conversation?.id` | 701 |
-| branch | `!m` | 705 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 708 |
-| loading | `loading && !conversation` | 739 |
-| branch | `pane && !conversationId && !conversation` | 751 |
-| loading | `!loading && !conversation` | 758 |
-| error | `error` | 761 |
-| branch | `!isPopoutWindow` | 806 |
-| branch | `pane` | 829 |
-| error | `error` | 896 |
-| branch | `dropZone` | 922 |
-| branch | `dropZone === z` | 951 |
-| branch | `nativeScroll && !composerHidden` | 1047 |
+| empty | `panes.length === 0` | 104 |
+| branch | `!focusedConvId \|\| focusedConvId === conversationId` | 105 |
+| branch | `panes.length >= 2` | 110 |
+| branch | `!conversationId` | 181 |
+| branch | `kind === 'pane'` | 201 |
+| branch | `!pane` | 202 |
+| branch | `kind !== 'conversation' \|\| !conversationId` | 211 |
+| branch | `!droppedId` | 213 |
+| branch | `pane` | 217 |
+| branch | `!droppedOnLeft` | 241 |
+| branch | `!sentinel` | 388 |
+| branch | `!el` | 408 |
+| branch | `!nativeScroll` | 423 |
+| branch | `y < 0 \|\| y > maxY` | 432 |
+| branch | `maxY - y <= 8` | 436 |
+| branch | `Math.abs(dy) < 6` | 442 |
+| branch | `!chat.$.conversation` | 462 |
+| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 466 |
+| branch | `!conversationId` | 508 |
+| branch | `didSeedApprovalsRef.current` | 564 |
+| branch | `conversation?.id !== conversationId` | 565 |
+| branch | `!hasNewApproval` | 600 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 604 |
+| branch | `!sentinel` | 632 |
+| branch | `!entries[0]?.isIntersecting` | 636 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 639 |
+| branch | `!sentinel` | 674 |
+| branch | `!entries[0]?.isIntersecting` | 678 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 679 |
+| loading | `!pending` | 694 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 697 |
+| branch | `!conversation?.id` | 706 |
+| branch | `!m` | 710 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 713 |
+| loading | `loading && !conversation` | 744 |
+| branch | `pane && !conversationId && !conversation` | 756 |
+| loading | `!loading && !conversation` | 763 |
+| error | `error` | 766 |
+| branch | `!isPopoutWindow && splitViewPanes.length < SPLIT_LIMITS.MAX_PANES` | 813 |
+| branch | `pane` | 836 |
+| error | `error` | 903 |
+| branch | `dropZone` | 929 |
+| branch | `dropZone === z` | 958 |
+| branch | `nativeScroll && !composerHidden` | 1054 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 

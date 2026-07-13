@@ -82,6 +82,16 @@ tab in the strip carries the same accent underline.
 **Basis:** design — clear focus without harming legibility of the unfocused pane
 (concretizes DEC-16's focus model into the winning chrome).
 
+**AMENDMENT (FB-24 / ITEM-75 / DRIFT-15 — human-directed):** the human, reviewing the
+live panes, asked to make the focus indicator MORE SUBTLE: **remove the ring entirely**
+and instead **DIM the non-focused panes** (`opacity-45` + a 200ms fade; the focused pane
+at full strength). This REVERSES the original "the other pane is NOT dimmed" clause — a
+deliberate product-taste choice by the human (shown a screenshot before finalizing), not
+a correctness change. The legibility tradeoff the original clause guarded (reading both
+streams) is accepted by the human in favour of the subtler look. The 17 focus e2e
+assertions moved `ring-primary` → `opacity-100`. Dropping the ring also removed the FB-18
+z-index competition with the sidebar toggle (no `z-[5]` lift needed).
+
 ### DEC-29: Mobile fallback shape? (concretizes DEC-11)
 **Resolution:** On small screens the **pane-tab strip becomes the mobile tab
 nav** — one visible pane at a time, switch by tab; no side-by-side columns and no

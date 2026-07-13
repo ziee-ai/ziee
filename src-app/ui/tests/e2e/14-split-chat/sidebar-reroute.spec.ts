@@ -50,7 +50,7 @@ test.describe('Split chat — sidebar reroute', () => {
     // Focus pane 0 (conv A), then plain-click C (not open) → the 3-way choice
     // prompt (ITEM-43/FB-8); pick "Replace the active pane" → pane 0 becomes C.
     await byTestId(page, 'chat-pane-0').click()
-    await expect(byTestId(page, 'chat-pane-0')).toHaveClass(/ring-primary/)
+    await expect(byTestId(page, 'chat-pane-0')).toHaveClass(/opacity-100/)
     await byTestId(page, `chat-recent-conversations-menu-item-${convC}`).click()
     await byTestId(page, 'open-conversation-choice-opt-replace').click()
     // Still exactly 2 panes (split NOT collapsed); focused pane 0 now shows C.
@@ -62,7 +62,7 @@ test.describe('Split chat — sidebar reroute', () => {
 
     // Plain-click B (open in pane 1) → FOCUS pane 1 (dedupe, no third pane).
     await byTestId(page, `chat-recent-conversations-menu-item-${convB}`).click()
-    await expect(byTestId(page, 'chat-pane-1')).toHaveClass(/ring-primary/)
+    await expect(byTestId(page, 'chat-pane-1')).toHaveClass(/opacity-100/)
     await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0)
 
     // Cmd/Ctrl-click A (not currently open — pane 0 holds C now) → NEW pane (3rd).

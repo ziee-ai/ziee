@@ -63,14 +63,15 @@ export function SplitChatView() {
                   ? 'flex flex-1'
                   : 'hidden'
                 : cn(
-                    'flex min-w-0',
-                    // `z-[5]` (not z-10): lift the focused pane's inset ring ABOVE
-                    // its neighbours, but stay BELOW the fixed `z-10` sidebar-toggle
-                    // button so the collapse control remains clickable (FB-18 — the
-                    // main-content area is z-auto, so a pane `z-10` competed with the
-                    // toggle and, being later in the DOM, covered it).
-                    focusedPaneId === p.paneId &&
-                      'z-[5] ring-2 ring-primary ring-inset',
+                    'flex min-w-0 transition-opacity duration-200',
+                    // Subtle focus indicator (DEC-28 amended): NO ring on the
+                    // focused pane. Instead DIM the non-focused panes so the active
+                    // one reads at full strength. Pointer events are unaffected
+                    // (clicking a dimmed pane still focuses it via the
+                    // pointer-down-capture below). Dropping the ring also removes
+                    // the FB-18 z-index competition with the sidebar toggle, so no
+                    // `z-[5]` lift is needed anymore.
+                    focusedPaneId === p.paneId ? 'opacity-100' : 'opacity-45',
                   ),
             )}
             style={
@@ -98,7 +99,7 @@ export function SplitChatView() {
  */
 function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
   const ref = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ x: number; w: number } | null>(null)
+  const drag = useRef<{ x: number; w: number; last: number } | null>(null)
   // The seam is a pure resize handle now (ITEM-70): dropping a conversation to
   // insert a pane is handled by the per-pane edge-directional zones (a pane's
   // left/right third), so the divider no longer owns a conversation drop-zone.
@@ -113,13 +114,30 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
   // divider unmounts mid-drag (a pane is closed/reordered during a resize).
   const handlers = useRef({
     move: (e: PointerEvent) => {
-      if (!drag.current) return
-      Stores.SplitView.setDividerWidth(
-        idxRef.current,
-        drag.current.w + (e.clientX - drag.current.x),
+      const d = drag.current
+      if (!d) return
+      // IMPERATIVE resize (perf): a drag writes the LEFT pane's flex-basis STRAIGHT
+      // to the DOM — it does NOT touch the SplitView store per frame. Otherwise
+      // every pointermove sets `dividerWidths`, which `SplitChatView` reads
+      // reactively, re-rendering the WHOLE tree (both full chat panes, ~95ms/frame
+      // → the reported lag). Clamped identically to the store; committed ONCE on
+      // pointer-up so the store + persistence hold the final width.
+      const w = Math.max(
+        SPLIT_LIMITS.MIN_PANE_WIDTH,
+        Math.min(
+          SPLIT_LIMITS.MAX_PANE_WIDTH,
+          Math.round(d.w + (e.clientX - d.x)),
+        ),
       )
+      d.last = w
+      const leftEl = ref.current?.previousElementSibling as HTMLElement | null
+      if (leftEl) leftEl.style.flex = `0 0 ${w}px`
     },
     up: () => {
+      const d = drag.current
+      // Commit the final width once — React then reconciles the pane's inline
+      // style to the same clamped value (no visual jump).
+      if (d) Stores.SplitView.setDividerWidth(idxRef.current, d.last)
       drag.current = null
       window.removeEventListener('pointermove', handlers.current.move)
       window.removeEventListener('pointerup', handlers.current.up)
@@ -144,7 +162,8 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
   }
 
   const onDown = (e: React.PointerEvent) => {
-    drag.current = { x: e.clientX, w: currentLeftWidth() }
+    const w = currentLeftWidth()
+    drag.current = { x: e.clientX, w, last: w }
     window.addEventListener('pointermove', handlers.current.move)
     window.addEventListener('pointerup', handlers.current.up)
   }
@@ -175,8 +194,16 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
       onPointerDown={onDown}
       onKeyDown={onKeyDown}
       className={cn(
-        'shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none w-1',
+        // Reads as a normal 1px border: the VISIBLE line is the `w-px` child; the
+        // outer element is a wider INVISIBLE grab area, pulled back with negative
+        // margins so its net layout footprint stays 1px (panes sit flush). `z-[1]`
+        // lifts the grab area above both neighbour panes but below the fixed z-10
+        // sidebar toggle (FB-18).
+        'group relative z-[1] flex shrink-0 cursor-col-resize justify-center',
+        'w-[9px] -mx-1 focus-visible:outline-none',
       )}
-    />
+    >
+      <div className="h-full w-px bg-border transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary" />
+    </div>
   )
 }

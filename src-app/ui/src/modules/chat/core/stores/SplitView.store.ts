@@ -340,12 +340,26 @@ export const SplitView = defineStore('SplitView', {
     })
 
     // Cross-device delete → drop the pane holding that conversation (ITEM-26).
-    on('sync:conversation', (event) => {
-      if (event.data.action !== 'delete') return
+    // A conversation held by a pane was deleted / lost → close that pane so it
+    // doesn't sit stale. TWO events cover the two origins (self-echo of the SSE
+    // sync stream is suppressed, so the cross-device handler never fires for THIS
+    // device's own delete — the local `conversation.deleted` handler covers that):
+    const closePaneForConversation = (conversationId: string) => {
       const paneId = get().panes.find(
-        (p) => p.conversationId === event.data.id,
+        (p) => p.conversationId === conversationId,
       )?.paneId
       if (paneId) actions.closePane(paneId)
+    }
+    // Cross-device / cross-session delete (arrives via the SSE sync stream).
+    on('sync:conversation', (event) => {
+      if (event.data.action !== 'delete') return
+      closePaneForConversation(event.data.id)
+    })
+    // LOCAL delete on THIS device (sidebar ⋯ → Delete, project detach, etc.) — the
+    // store's `deleteConversation` emits this after the API 200; the SSE echo is
+    // self-suppressed, so without this the pane holding it would go stale (FB-23).
+    on('conversation.deleted', (event) => {
+      closePaneForConversation(event.data.conversationId)
     })
   },
 })

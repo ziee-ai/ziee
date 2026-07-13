@@ -101,7 +101,7 @@ test.describe('Split chat — per-pane MCP tool approval routing', () => {
 
     // Focus pane A, THEN approve in pane B (the bug's trigger: focused ≠ owner).
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
     await pane1.getByTestId('tool-approval-approve-once').click()
 
     // CRUX: the resume send routed to pane B's conversation, not the focused A's.

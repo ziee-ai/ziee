@@ -60,7 +60,7 @@ test.describe('Split chat — same-conversation guard + frame routing', () => {
     // GUARD: opening A (already in pane 0) via the sidebar FOCUSES pane 0 — it does
     // NOT create a second pane holding the same conversation.
     await byTestId(page, `chat-recent-conversations-menu-item-${convA}`).click()
-    await expect(pane0).toHaveClass(/ring-primary/, { timeout: 15000 })
+    await expect(pane0).toHaveClass(/opacity-100/, { timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0)
 
     // FRAME ROUTING: send in pane 0 (A). The reply streams into pane 0 only; pane 1

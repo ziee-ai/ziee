@@ -77,7 +77,7 @@ test.describe('Split chat — per-pane workflow-workspace export', () => {
 
     // Focus pane A, THEN download from pane B's card.
     await pane0.click()
-    await expect(pane0).toHaveClass(/ring-primary/)
+    await expect(pane0).toHaveClass(/opacity-100/)
     await pane1.getByTestId('workflow-download-targz').click()
 
     // CRUX: the export targeted pane B's conversation, not the focused pane A's.

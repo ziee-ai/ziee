@@ -42,7 +42,7 @@ test.describe('Split chat — open-conversation choice prompt', () => {
     await byTestId(page, `chat-recent-row-menu-${convB}-item-open-in-split`).click()
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
     await byTestId(page, 'chat-pane-0').click() // focus pane 0 (conv A)
-    await expect(byTestId(page, 'chat-pane-0')).toHaveClass(/ring-primary/)
+    await expect(byTestId(page, 'chat-pane-0')).toHaveClass(/opacity-100/)
     return { convA, convB, convC }
   }
 
@@ -133,7 +133,7 @@ test.describe('Split chat — open-conversation choice prompt', () => {
     // Pane 0 is focused; plain-click B (already in pane 1) → focus pane 1, NO prompt.
     await byTestId(page, `chat-recent-conversations-menu-item-${convB}`).click()
     await expect(byTestId(page, 'open-conversation-choice')).toHaveCount(0)
-    await expect(byTestId(page, 'chat-pane-1')).toHaveClass(/ring-primary/)
+    await expect(byTestId(page, 'chat-pane-1')).toHaveClass(/opacity-100/)
     await expect(byTestId(page, 'chat-pane-2')).toHaveCount(0)
   })
 })

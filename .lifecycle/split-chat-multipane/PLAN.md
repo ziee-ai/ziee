@@ -674,6 +674,40 @@ LEDGER) — not silently absorbed.
   the reload gate + sessionStorage roundtrip) + TEST-111 (e2e — the exact repro: split →
   new tab shows single-pane, reload restores, cross-tab isolation).
 
+- **ITEM-74**: **Deleting a conversation open in a pane closes that pane** (FB-23). The
+  cross-device `sync:conversation` delete handler already closed the pane, but a LOCAL
+  same-session delete (sidebar ⋯ → Delete) emits `conversation.deleted` (self-echo of the
+  SSE stream is suppressed), which `SplitView` didn't listen to → the pane went stale.
+  `SplitView.init` now also subscribes to `conversation.deleted` (shared
+  `closePaneForConversation` helper with the sync handler). **FB-25 follow-on:** when the
+  deleted conversation was the FOCUSED pane, closing it collapsed the split to one pane
+  but the ITEM-72 URL-sync skipped single-pane, leaving the URL on the deleted conv → a
+  "does not exist" toast; fixed by relaxing that effect's guard `panes.length < 2` →
+  `=== 0` so a collapse-to-one navigates to the survivor. Covered by TEST-112 (e2e — now
+  also asserts the URL follows to the surviving conversation).
+- **ITEM-75**: **Focus indicator = DIM the unfocused panes, not a ring** (FB-24; amends
+  DEC-28/DRIFT-15). Removed the focused pane's `ring-2 ring-primary ring-inset` (+ its
+  `z-[5]` lift, no longer needed without a ring) in `SplitChatView`; the non-focused panes
+  now get `opacity-45` with a 200ms `transition-opacity`. More subtle; the focused pane
+  reads at full strength. Covered by the 17 focus assertions across the split specs
+  (updated `ring-primary` → `opacity-100`, e.g. `focused-pane-routing`, `sidebar-reroute`,
+  `split-url-tracks-focused-pane`).
+- **ITEM-76**: **The pane separator is a 1px border, not a 4px bar** (FB-24). `SplitDivider`
+  renders a `w-px bg-border` line (normal-border look) inside a wider invisible grab area
+  (`w-[9px] -mx-1` → net 1px layout, `z-[1]`), hover/focus highlight moved to the line via
+  `group-hover`/`group-focus-visible`. Divider drag still covered by `persistence.spec`.
+- **ITEM-77**: **Resize is imperative — no per-frame re-render** (FB-24, perf). A divider
+  drag wrote `dividerWidths` to the store on every `pointermove`, which `SplitChatView`
+  reads reactively → the WHOLE tree (both full chat panes, ~95ms/frame) re-rendered → lag.
+  Now the drag writes the left pane's `flex-basis` STRAIGHT to the DOM and commits to the
+  store ONCE on pointer-up (same clamp). Functional resize covered by `persistence.spec`
+  (drag → width persists across reload); the no-re-render property verified via the React
+  profiler + a live probe (pane shrank during drag, `dividerWidths` committed once on up).
+- **ITEM-78**: **Hide the "Open in split view" button at MAX_PANES** (FB-24). At the cap
+  there's no room for another pane, so the button (`ConversationPage` pane header) is gated
+  `!isPopoutWindow && splitViewPanes.length < SPLIT_LIMITS.MAX_PANES`. Covered by TEST-113
+  (e2e: present at 2 panes, `count 0` at 3).
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp
