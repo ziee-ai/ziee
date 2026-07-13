@@ -25,7 +25,7 @@ so no `[negative-perm]` spec is required (A10 N/A).
 
 - **TEST-8** (tier: e2e) [covers: ITEM-5] file: `src-app/ui/tests/e2e/chat/conversation-list-virtualization.spec.ts` — asserts: (REAL production path) seed ~120 conversations via `POST /api/conversations`, `goto('/chats')`, Load-More until "Showing 120 of 120", then assert the DOM `chat-conversation-card-*` count is still a bounded window (far < 120) — virtualization holds on the real page, and Load-More paging composes with it (composability with paged data). Mirrors `conversation-list-load-more.spec.ts` seeding.
 
-- **TEST-12** (tier: e2e) [covers: ITEM-1, ITEM-7] file: `src-app/ui/tests/e2e/visual/conversation-list-virtualization.spec.ts` — asserts: the NARROW (390px) gallery surface — where `ConversationCard` stacks its meta below the title — also windows rows (mounted ≪ 200) AND stays jank-free at rest (idle corrections ~0, `totalSize` stable, `c1 < 50`), proving the estimator models the stacked-meta layout at `< sm` width (closes the re-audit under-estimation finding).
+- **TEST-12** (tier: e2e) [covers: ITEM-1, ITEM-7] file: `src-app/ui/tests/e2e/visual/conversation-list-virtualization.spec.ts` — asserts: the NARROW (390px content-column) gallery surface also windows rows (mounted ≪ 200) AND stays jank-free at rest (idle corrections ~0, `totalSize` stable, `c1 < 50`) — responsive-fidelity that a constrained column still virtualizes and settles.
 
 ## Regression guard (existing specs must still pass — enumerated so A5 tracks them)
 

@@ -1114,12 +1114,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ChatHistoryPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!isNarrow", line: 96 },
-      { kind: "branch", condition: "isNarrow", line: 106 },
-      { kind: "loading", condition: "(conversations.length > 0 || loading)", line: 126 },
-      { kind: "branch", condition: "isNarrow && searchOpenInNarrow", line: 147 },
-      { kind: "error", condition: "(conversations.length > 0 || loading || error || hasSearch)", line: 156 },
-      { kind: "error", condition: "!loading && conversations.length === 0 && !error && !hasSearch", line: 168 },
+      { kind: "branch", condition: "!isNarrow", line: 95 },
+      { kind: "branch", condition: "isNarrow", line: 105 },
+      { kind: "loading", condition: "(conversations.length > 0 || loading)", line: 125 },
+      { kind: "branch", condition: "isNarrow && searchOpenInNarrow", line: 146 },
+      { kind: "error", condition: "(conversations.length > 0 || loading || error || hasSearch)", line: 155 },
+      { kind: "error", condition: "!loading && conversations.length === 0 && !error && !hasSearch", line: 175 },
     ],
   },
   "modules/chat/pages/ConversationPage": {

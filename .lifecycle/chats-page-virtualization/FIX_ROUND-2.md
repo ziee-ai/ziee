@@ -32,7 +32,13 @@ Fixed the 3 findings the FIX_ROUND-1 re-audit surfaced.
 
 ## Re-audit
 
-A THIRD full blind round (fresh diff-only agent over the FIXED diff) was run.
-Result recorded below.
+A THIRD full blind round found **3 new confirmed findings**: (1) the stacked/
+inline estimator branch tested the passed CONTENT width against the `sm`
+breakpoint, but `ConversationCard`'s `sm:` is a VIEWPORT media query — the
+virtualized path only runs at a ≥ sm viewport (a narrow viewport → `nativeScroll`
+→ the plain path, which never calls the estimator), so the branch was based on a
+false premise and over-estimated the narrow gallery surface; (2)+(3) TEST-12's
+premise ("stacks its meta") was consequently false, and its idle-jank check
+passed regardless of estimate accuracy. Carried into FIX_ROUND-3.
 
-**New confirmed findings:** 0
+**New confirmed findings:** 3

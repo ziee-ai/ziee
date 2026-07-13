@@ -130,6 +130,10 @@ New:
 Edit (surgical):
 - `src-app/ui/src/modules/chat/components/ConversationList.tsx` (ITEM-5 — swap the
   inner card map + scroller ref wiring; keep everything else)
+- `src-app/ui/src/modules/chat/pages/ChatHistoryPage.tsx` (ITEM-4 — remove the
+  REDUNDANT outer `DivScrollY` so ConversationList's inner scroller is the single
+  bounded viewport the virtualizer windows against; added in FIX_ROUND-3 after the
+  real-path e2e showed the nested scroller made virtualization a no-op)
 - `src-app/ui/src/modules/chat/core/utils/measuredHeightCache.ts` (ITEM-2 — generalize
   keys OR add a sibling; decided in DECISIONS)
 - `src-app/ui/src/dev/gallery/seededSurfaces.tsx` + gallery coverage/state registration

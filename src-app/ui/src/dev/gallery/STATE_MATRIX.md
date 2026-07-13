@@ -1262,12 +1262,12 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isNarrow` | 96 |
-| branch | `isNarrow` | 106 |
-| loading | `(conversations.length > 0 \|\| loading)` | 126 |
-| branch | `isNarrow && searchOpenInNarrow` | 147 |
-| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 156 |
-| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 168 |
+| branch | `!isNarrow` | 95 |
+| branch | `isNarrow` | 105 |
+| loading | `(conversations.length > 0 \|\| loading)` | 125 |
+| branch | `isNarrow && searchOpenInNarrow` | 146 |
+| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 155 |
+| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 175 |
 
 ### `modules/chat/pages/ConversationPage`
 

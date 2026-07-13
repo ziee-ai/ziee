@@ -127,9 +127,11 @@ test.describe('chats-page-virtualization', () => {
   })
 })
 
-// TEST-12: the NARROW (390px) surface — where ConversationCard stacks its meta
-// below the title — must virtualize AND stay jank-free too (the estimator models
-// the stacked layout at < sm width). Separate describe so it navigates the narrow
+// TEST-12: the NARROW (390px content column) surface must virtualize AND stay
+// jank-free too — responsive-fidelity for a constrained column. (At the gallery's
+// desktop VIEWPORT the card's `sm:` media query keeps the meta inline even in the
+// 390px container, so the inline estimator applies; this guards that a narrow
+// column still windows + settles.) Separate describe so it navigates the narrow
 // surface in its own beforeEach.
 const NARROW_SURFACE =
   '/gallery.html?surface=seeded-conversation-list-long-narrow&theme=light&accent=blue'
@@ -156,8 +158,8 @@ test.describe('chats-page-virtualization (narrow 390px)', () => {
     expect(mounted).toBeGreaterThan(3)
     expect(mounted).toBeLessThan(40)
 
-    // No corrections while idle after a cold scroll — the stacked-meta estimate is
-    // close enough at narrow width (guards the under-estimation the audit flagged).
+    // No corrections while idle after a cold scroll — the estimate is close enough
+    // at a narrow content column that the row geometry holds steady at rest.
     await scrollTo(page, 0)
     await page.evaluate(() => window.__CHATLIST_METRICS__?.reset())
     await scrollTo(page, 8000)
