@@ -564,6 +564,31 @@ const integratorSeeded: SeededSurfaceEntry[] = [
       )
     },
   },
+  // ── RecentConversationsWidget: first-load error (retryable). ────────────────
+  {
+    slug: 'seeded-recent-convos-error',
+    title: 'Recent chats widget — error',
+    note: 'recentError && no rows → the retryable error state',
+    path: '/',
+    initialPath: '/',
+    component: lazyNamed(
+      () => import('@/modules/chat/widgets/RecentConversationsWidget'),
+      'RecentConversationsWidget',
+    ),
+    setup: async () => {
+      const { ChatHistory } = await import(
+        '@/modules/chat/stores/ChatHistory.store'
+      )
+      await holdPatch(() =>
+        ChatHistory.store.setState({
+          recentInitialized: false,
+          recentLoading: false,
+          recentConversations: [],
+          recentError: 'Failed to load conversations',
+        } as any),
+      )
+    },
+  },
   // ── RecentConversationsWidget: loading a further page (bottom spinner). ──────
   {
     slug: 'seeded-recent-convos-loading-more',

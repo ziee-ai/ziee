@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2151 signals total.
+// 365 surfaces carry renderable-state signals; 2152 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -853,14 +853,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ConversationList",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!getSearchBoxContainer", line: 127 },
-      { kind: "branch", condition: "selectedIds.size > 0", line: 134 },
-      { kind: "branch", condition: "canDelete", line: 159 },
-      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 183 },
-      { kind: "error", condition: "error", line: 184 },
-      { kind: "loading", condition: "loading && !isInitialized", line: 208 },
-      { kind: "branch", condition: "visibleConversations.length > 0", line: 233 },
-      { kind: "branch", condition: "hasMore", line: 241 },
+      { kind: "branch", condition: "!getSearchBoxContainer", line: 126 },
+      { kind: "branch", condition: "selectedIds.size > 0", line: 133 },
+      { kind: "branch", condition: "canDelete", line: 158 },
+      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 182 },
+      { kind: "error", condition: "error", line: 183 },
+      { kind: "loading", condition: "loading && !isInitialized", line: 207 },
+      { kind: "branch", condition: "visibleConversations.length > 0", line: 232 },
+      { kind: "branch", condition: "hasMore", line: 240 },
     ],
   },
   "modules/chat/components/EditingMessageBanner": {
@@ -1146,13 +1146,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/widgets/RecentConversationsWidget",
     requiredStates: ["empty","open"],
     signals: [
-      { kind: "branch", condition: "!recentInitialized", line: 102 },
-      { kind: "empty", condition: "recentConversations.length === 0", line: 113 },
-      { kind: "branch", condition: "!c", line: 161 },
-      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 189 },
-      { kind: "branch", condition: "recentLoadingMore", line: 206 },
-      { kind: "overlay", condition: "<Dropdown open>", line: 306 },
-      { kind: "branch", condition: "!open && keepMenuOpen", line: 313 },
+      { kind: "empty", condition: "recentError && recentConversations.length === 0", line: 121 },
+      { kind: "branch", condition: "!recentInitialized", line: 138 },
+      { kind: "empty", condition: "recentConversations.length === 0", line: 149 },
+      { kind: "branch", condition: "!c", line: 195 },
+      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 224 },
+      { kind: "branch", condition: "recentLoadingMore", line: 240 },
+      { kind: "overlay", condition: "<Dropdown open>", line: 345 },
+      { kind: "branch", condition: "!open && keepMenuOpen", line: 352 },
     ],
   },
   "modules/citations/components/CitationCard": {

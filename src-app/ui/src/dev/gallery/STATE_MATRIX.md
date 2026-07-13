@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2151** signals total: 1696 branch, 138 empty, 113 error, 106 loading, 95 overlay, 3 panel.
+- **2152** signals total: 1696 branch, 139 empty, 113 error, 106 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -974,14 +974,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 127 |
-| branch | `selectedIds.size > 0` | 134 |
-| branch | `canDelete` | 159 |
-| loading | `visibleConversations.length === 0 && !loading` | 183 |
-| error | `error` | 184 |
-| loading | `loading && !isInitialized` | 208 |
-| branch | `visibleConversations.length > 0` | 233 |
-| branch | `hasMore` | 241 |
+| branch | `!getSearchBoxContainer` | 126 |
+| branch | `selectedIds.size > 0` | 133 |
+| branch | `canDelete` | 158 |
+| loading | `visibleConversations.length === 0 && !loading` | 182 |
+| error | `error` | 183 |
+| loading | `loading && !isInitialized` | 207 |
+| branch | `visibleConversations.length > 0` | 232 |
+| branch | `hasMore` | 240 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1295,13 +1295,14 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!recentInitialized` | 102 |
-| empty | `recentConversations.length === 0` | 113 |
-| branch | `!c` | 161 |
-| branch | `active?.closest('[role="menu"]')` | 189 |
-| branch | `recentLoadingMore` | 206 |
-| overlay | `<Dropdown open>` | 306 |
-| branch | `!open && keepMenuOpen` | 313 |
+| empty | `recentError && recentConversations.length === 0` | 121 |
+| branch | `!recentInitialized` | 138 |
+| empty | `recentConversations.length === 0` | 149 |
+| branch | `!c` | 195 |
+| branch | `active?.closest('[role="menu"]')` | 224 |
+| branch | `recentLoadingMore` | 240 |
+| overlay | `<Dropdown open>` | 345 |
+| branch | `!open && keepMenuOpen` | 352 |
 
 ### `modules/citations/components/CitationCard`
 

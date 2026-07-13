@@ -42,6 +42,7 @@ export const ChatHistory = defineStore('ChatHistory', {
     recentLoading: false,
     recentLoadingMore: false,
     recentInitialized: false,
+    recentError: null as string | null,
     // Search + sort state (both applied server-side).
     searchQuery: '',
     sort: 'recent' as ConversationSort,
@@ -133,6 +134,7 @@ export const ChatHistory = defineStore('ChatHistory', {
       set({
         recentLoading: targetPage === 1,
         recentLoadingMore: targetPage > 1,
+        recentError: null,
       })
       try {
         const response = await ApiClient.Conversation.list({
@@ -143,25 +145,44 @@ export const ChatHistory = defineStore('ChatHistory', {
         })
         const pageItems = response.conversations
         set(draft => {
+          let added: number
           if (targetPage === 1) {
             draft.recentConversations = pageItems
+            added = pageItems.length
           } else {
             const seen = new Set(draft.recentConversations.map(c => c.id))
-            draft.recentConversations = [
-              ...draft.recentConversations,
-              ...pageItems.filter(c => !seen.has(c.id)),
-            ]
+            const fresh = pageItems.filter(c => !seen.has(c.id))
+            draft.recentConversations = [...draft.recentConversations, ...fresh]
+            added = fresh.length
           }
           draft.recentPage = targetPage
           draft.recentTotal = response.total
-          draft.recentHasMore = draft.recentConversations.length < response.total
+          // End-detection is anchored on the SERVER page size, not just the
+          // length<total heuristic — otherwise a drifted `recentTotal` (a
+          // cross-device delete of an unloaded row, or a boundary row dropped by
+          // dedup) would keep `recentHasMore` true forever and the widget's
+          // last-item effect would hammer the API with empty tail pages. A short
+          // page, or a later page that adds nothing new, means we've hit the end.
+          const serverEnd = pageItems.length < state.limit
+          const noProgress = targetPage > 1 && added === 0
+          draft.recentHasMore =
+            !serverEnd &&
+            !noProgress &&
+            draft.recentConversations.length < response.total
           draft.recentLoading = false
           draft.recentLoadingMore = false
           draft.recentInitialized = true
         })
       } catch (error) {
         console.error('[ChatHistory] Failed to load recent conversations:', error)
-        set({ recentLoading: false, recentLoadingMore: false })
+        // Surface a retryable error instead of wedging on the spinner. The widget
+        // shows an error+retry when the list is empty; a failed load-MORE (list
+        // already populated) just clears the flag and keeps the loaded rows.
+        set({
+          recentLoading: false,
+          recentLoadingMore: false,
+          recentError: 'Failed to load conversations',
+        })
       }
     }
 
@@ -243,8 +264,16 @@ export const ChatHistory = defineStore('ChatHistory', {
             draft.selectedIds.delete(id)
             if (wasPresent) draft.total = Math.max(0, draft.total - 1)
             // Keep the sidebar's paging counter honest so `recentHasMore` doesn't
-            // desync after a row is removed from the accumulated recent list.
-            if (wasInRecent) draft.recentTotal = Math.max(0, draft.recentTotal - 1)
+            // desync after a row is removed from the accumulated recent list, and
+            // re-anchor the page cursor to the shrunk length so the next
+            // loadMoreRecent re-fetches from a limit-aligned boundary and dedup
+            // recovers the row that would otherwise be skipped past the offset.
+            if (wasInRecent) {
+              draft.recentTotal = Math.max(0, draft.recentTotal - 1)
+              draft.recentPage = Math.floor(
+                draft.recentConversations.length / draft.limit,
+              )
+            }
             draft.deleting = false
           })
           // Broadcast deletion so other widgets drop the row (closes audit F5).
@@ -280,6 +309,11 @@ export const ChatHistory = defineStore('ChatHistory', {
             const removedRecent = beforeRecent - draft.recentConversations.length
             draft.total = Math.max(0, draft.total - removed)
             draft.recentTotal = Math.max(0, draft.recentTotal - removedRecent)
+            if (removedRecent > 0) {
+              draft.recentPage = Math.floor(
+                draft.recentConversations.length / draft.limit,
+              )
+            }
             draft.selectedIds.clear()
             draft.deleting = false
           })
@@ -388,7 +422,12 @@ export const ChatHistory = defineStore('ChatHistory', {
           // double-counted by a later bulkDelete after a cross-device delete.
           draft.selectedIds.delete(id)
           if (wasPresent) draft.total = Math.max(0, draft.total - 1)
-          if (wasInRecent) draft.recentTotal = Math.max(0, draft.recentTotal - 1)
+          if (wasInRecent) {
+            draft.recentTotal = Math.max(0, draft.recentTotal - 1)
+            draft.recentPage = Math.floor(
+              draft.recentConversations.length / draft.limit,
+            )
+          }
         })
       } else {
         // Refetch the history list (page 1) and MERGE-prepend the sidebar's new

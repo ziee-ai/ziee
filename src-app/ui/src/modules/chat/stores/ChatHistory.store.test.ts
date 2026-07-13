@@ -106,6 +106,7 @@ beforeEach(() => {
     recentLoading: false,
     recentLoadingMore: false,
     recentInitialized: false,
+    recentError: null,
     searchQuery: '',
     sort: 'recent',
     selectedIds: new Set(),
@@ -230,6 +231,51 @@ describe('ChatHistory recent paging (TEST-1..5)', () => {
     expect(s.recentConversations.some(c => c.id === 'r5')).toBe(false)
     expect(s.recentConversations).toHaveLength(40)
     expect(s.recentTotal).toBe(40)
+  })
+
+  it('TEST-3b: a short server page ends paging even if recentTotal is drifted high', async () => {
+    // total claims 45 but the server actually returns a short last page (proof
+    // the end-detection is anchored on the page size, not the length<total math).
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 45))
+    await store().loadRecentConversations(1)
+    // Page 2 comes back SHORT (5 < limit 20) — no more data — while total still 45.
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: Array.from({ length: 5 }, (_, i) => convo({ id: `p2-${i}` })),
+      total: 45,
+    })
+    await store().loadMoreRecent()
+
+    expect(store().recentConversations).toHaveLength(25)
+    // Even though 25 < 45, the short page proves the end → no runaway loadMore.
+    expect(store().recentHasMore).toBe(false)
+    apiMock.Conversation.list.mockClear()
+    await store().loadMoreRecent()
+    expect(apiMock.Conversation.list).not.toHaveBeenCalled()
+  })
+
+  it('TEST-3c: a next page that adds nothing new (all dups) also stops paging', async () => {
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 45))
+    await store().loadRecentConversations(1)
+    // Page 2 is a full page but every id is already loaded (pure overlap).
+    apiMock.Conversation.list.mockResolvedValueOnce({
+      conversations: Array.from({ length: 20 }, (_, i) => convo({ id: `p1-${i}` })),
+      total: 45,
+    })
+    await store().loadMoreRecent()
+    expect(store().recentConversations).toHaveLength(20) // nothing appended
+    expect(store().recentHasMore).toBe(false) // no-progress → stop, no runaway
+  })
+
+  it('TEST-3d: a first-load failure sets recentError and does not wedge on the spinner', async () => {
+    apiMock.Conversation.list.mockRejectedValueOnce(new Error('network'))
+    await store().loadRecentConversations(1)
+    expect(store().recentError).toBe('Failed to load conversations')
+    expect(store().recentLoading).toBe(false)
+    // A retry after recovery clears the error and loads.
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 10, 10))
+    await store().loadRecentConversations(1)
+    expect(store().recentError).toBeNull()
+    expect(store().recentConversations).toHaveLength(10)
   })
 
   it('TEST-5b: syncRecentFront() merge-prepends without resetting loaded pages', async () => {

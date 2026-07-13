@@ -69,23 +69,19 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     await expect(byTestId(page, LIST)).toBeVisible({ timeout: 30000 })
   })
 
-  test('TEST-6/TEST-11: first page + virtualized window (not all rows in DOM)', async ({
+  test('TEST-6: first page renders, older pages absent, list semantics present', async ({
     page,
   }) => {
     // Newest conversation is present on the first page.
     await expect(
       page.getByTestId(ROW).filter({ hasText: pad(N - 1) }),
     ).toBeVisible()
-    // The oldest is NOT rendered initially (page 1 only + windowed).
+    // The oldest is NOT rendered initially (only page 1 is loaded).
     await expect(
       page.getByTestId(ROW).filter({ hasText: pad(0) }),
     ).toHaveCount(0)
-
-    // TEST-11 — virtualization: the DOM holds only a window, materially fewer
-    // than the 45 total (a non-virtualized list would render all loaded rows).
-    const count = await domRowCount(page)
-    expect(count).toBeGreaterThan(0)
-    expect(count).toBeLessThan(30)
+    // Only the first page is loaded, so the DOM holds at most ~one page of rows.
+    expect(await domRowCount(page)).toBeLessThanOrEqual(20)
 
     // List semantics + position exposed for AT under virtualization.
     const list = byTestId(page, LIST)
@@ -93,6 +89,28 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     const firstRow = list.locator('li').first()
     await expect(firstRow).toHaveAttribute('aria-posinset', /\d+/)
     await expect(firstRow).toHaveAttribute('aria-setsize', /\d+/)
+  })
+
+  test('TEST-11: virtualization windows the DOM — off-screen rows unmount', async ({
+    page,
+  }) => {
+    // Scroll to the very bottom so ALL 45 rows are loaded.
+    for (let i = 0; i < 8; i++) {
+      await scrollToBottom(page)
+      await page.waitForTimeout(400)
+      if (await page.getByTestId(ROW).filter({ hasText: pad(0) }).count()) break
+    }
+    // The oldest (bottom) row is now on-screen…
+    await expect(
+      page.getByTestId(ROW).filter({ hasText: pad(0) }),
+    ).toBeVisible({ timeout: 10000 })
+    // …and the newest (top) row is UNMOUNTED — the decisive virtualization proof.
+    // A non-virtualized list keeps all 45 rows in the DOM; a windowed one does not.
+    await expect(
+      page.getByTestId(ROW).filter({ hasText: pad(N - 1) }),
+    ).toHaveCount(0)
+    // The whole 45-item set is never all in the DOM at once.
+    expect(await domRowCount(page)).toBeLessThan(N)
   })
 
   test('TEST-7: scrolling auto-loads the next page with a loading indicator', async ({

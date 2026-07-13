@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import {
   Button,
   Dropdown,
   Empty,
+  ErrorState,
   Spin,
   Text,
   Tooltip,
@@ -18,15 +19,16 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { cn } from '@/lib/utils'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
 
-// Estimated pitch of one recent-chat row: the Menu row button is `px-3 py-1.5
-// text-sm` (~32px) + the inter-row rhythm ≈ 34px. Rows are single-line
-// (truncated title), so a fixed estimate is sufficient — no dynamic measurement.
+// INITIAL height estimate for one recent-chat row: the Menu row button is
+// `px-3 py-1.5 text-sm` (~32px) + a 2px inter-row gap ≈ 34px. This is only the
+// pre-measure guess — each row is measured via `virt.measureElement`, so text
+// zoom / a large OS font / a wrapped title grows the row correctly instead of
+// clipping against a rigid grid.
 const ROW_H = 34
 
 /**
@@ -52,6 +54,7 @@ export function RecentConversationsWidget() {
     recentTotal,
     recentHasMore,
     recentLoadingMore,
+    recentError,
   } = Stores.ChatHistory
 
   useEffect(() => {
@@ -91,6 +94,19 @@ export function RecentConversationsWidget() {
     }
   }, [lastIndex, recentConversations.length, recentHasMore, recentLoadingMore])
 
+  // The currently-open conversation (for the `aria-current` selected row).
+  // Memoized so the virtualizer's per-scroll-frame re-renders don't re-run this
+  // O(loaded-rows) scan (which calls the `conversationHref` extension hook per
+  // row) — it only recomputes when the list or the URL actually changes.
+  const selectedId = useMemo(() => {
+    const path = location.pathname
+    for (const c of recentConversations) {
+      const href = chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
+      if (path === href) return c.id
+    }
+    return undefined
+  }, [recentConversations, location.pathname])
+
   // Section header (standalone, above the scroll area) — its typography mirrors
   // the Menu group-title so it reads identically to the sections above.
   const headerOnly = (
@@ -98,6 +114,26 @@ export function RecentConversationsWidget() {
       Recent chats
     </div>
   )
+
+  // First-load failure (nothing loaded yet): show a retryable error, never wedge
+  // on the spinner. A failed load-MORE (list already populated) is handled in the
+  // store by just clearing the flag, so the loaded rows stay and we fall through.
+  if (recentError && recentConversations.length === 0) {
+    return (
+      <div className="flex flex-col h-full">
+        {headerOnly}
+        <div className="px-2 py-4">
+          <ErrorState
+            data-testid="chat-recent-error"
+            resource="recent chats"
+            description="Your recent chats couldn't be loaded."
+            details={recentError}
+            onRetry={() => Stores.ChatHistory.loadRecentConversations(1)}
+          />
+        </div>
+      </div>
+    )
+  }
 
   if (!recentInitialized) {
     return (
@@ -129,13 +165,11 @@ export function RecentConversationsWidget() {
     )
   }
 
-  // Conversation href is owned by the extension registry — same call the row
-  // click handler uses, so the selected derivation stays in lockstep with nav.
+  // Conversation href is owned by the extension registry — the SAME resolution
+  // the memoized `selectedId` above uses, so the selected row stays in lockstep
+  // with where a click actually navigates.
   const hrefFor = (c: ConversationResponse) =>
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
-  const selectedId = recentConversations.find(
-    c => location.pathname === hrefFor(c),
-  )?.id
   const setSize = recentTotal || recentConversations.length
 
   return (
@@ -165,19 +199,20 @@ export function RecentConversationsWidget() {
             return (
               <li
                 key={c.id}
-                className="absolute start-0 w-full"
-                style={{
-                  top: 0,
-                  height: ROW_H,
-                  transform: `translateY(${vi.start}px)`,
-                }}
+                ref={virt.measureElement}
+                data-index={vi.index}
+                // pb-0.5 reproduces the kit Menu's 2px inter-row gap; the row is
+                // content-height (measured), not forced to a rigid ROW_H, so it
+                // grows with text zoom instead of clipping.
+                className="absolute start-0 w-full pb-0.5"
+                style={{ top: 0, transform: `translateY(${vi.start}px)` }}
                 aria-setsize={setSize}
                 aria-posinset={vi.index + 1}
               >
                 {/* The row-style container carries `relative group/menu-row` so the
                     trailing actions overlay anchors here (the <li> is positioned by
                     the virtualizer). */}
-                <div className={cn(cls.row, 'h-full')}>
+                <div className={cls.row}>
                   <MenuRowButton
                     selected={selected}
                     data-testid={`chat-recent-conversations-menu-item-${c.id}`}
@@ -189,7 +224,6 @@ export function RecentConversationsWidget() {
                       if (active?.closest('[role="menu"]')) return
                       navigate(hrefFor(c))
                     }}
-                    className="h-full"
                   >
                     <span className="min-w-0 flex-1 truncate text-start">
                       {title}
@@ -204,13 +238,18 @@ export function RecentConversationsWidget() {
           })}
         </ul>
         {recentLoadingMore && (
+          // The Spin's inner Spinner is the single role="status" live region (no
+          // outer aria-live here → no duplicate announcement); `description` gives
+          // sighted users a visible caption, not just a bare icon.
           <div
             data-testid="chat-recent-loading-more"
-            role="status"
-            aria-live="polite"
             className="flex justify-center items-center py-3"
           >
-            <Spin label="Loading more" />
+            <Spin
+              size="sm"
+              label="Loading more conversations"
+              description="Loading more…"
+            />
           </div>
         )}
       </DivScrollY>
