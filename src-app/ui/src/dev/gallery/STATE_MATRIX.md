@@ -974,14 +974,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 142 |
-| branch | `selectedIds.size > 0` | 149 |
-| branch | `canDelete` | 174 |
-| loading | `visibleConversations.length === 0 && !loading` | 203 |
-| error | `error` | 204 |
-| loading | `loading && !isInitialized` | 228 |
-| branch | `visibleConversations.length > 0` | 255 |
-| branch | `hasMore` | 263 |
+| branch | `!getSearchBoxContainer` | 154 |
+| branch | `selectedIds.size > 0` | 161 |
+| branch | `canDelete` | 186 |
+| loading | `visibleConversations.length === 0 && !loading` | 215 |
+| error | `error` | 216 |
+| loading | `loading && !isInitialized` | 240 |
+| branch | `visibleConversations.length > 0` | 267 |
+| branch | `hasMore` | 276 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1080,12 +1080,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 93 |
-| branch | `w <= 0` | 95 |
-| branch | `!el` | 102 |
-| branch | `!import.meta.env.DEV` | 186 |
-| branch | `!virtualize` | 196 |
-| branch | `!conversation` | 232 |
+| branch | `!vw \|\| vw <= 0` | 107 |
+| branch | `w <= 0` | 109 |
+| branch | `!el` | 116 |
+| branch | `!import.meta.env.DEV` | 202 |
+| branch | `!virtualize` | 212 |
+| branch | `!conversation` | 248 |
 
 ### `modules/chat/core/components/ChatRightPanel`
 

@@ -85,10 +85,10 @@ export function ConversationListLongDemo({
               />
             )}
             footer={
-              <div
-                data-testid="chat-history-pagination-card"
-                className="text-center px-3 py-2 flex flex-col items-center gap-2"
-              >
+              <div className="text-center px-3 py-2 flex flex-col items-center gap-2">
+                {/* No testid here — `chat-history-pagination-card` is the REAL
+                    ConversationList footer's id (must stay globally unique); this
+                    demo footer is asserted by its visible text instead. */}
                 <Text type="secondary" aria-live="polite" role="status">
                   Showing {conversations.length} of {conversations.length}{' '}
                   conversations

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
@@ -19,6 +19,16 @@ interface ConversationListProps {
    */
   getSearchBoxContainer?: () => HTMLElement | null
 }
+
+/**
+ * Memoized row card: with stable `onSelect`/`onDelete` callbacks and a stable
+ * per-row `conversation` reference, a scroll-driven virtualizer re-render skips
+ * re-rendering rows whose selection didn't change (so `dayjs.fromNow` /
+ * `usePermission` / `useNavigate` aren't recomputed for every visible row on
+ * every scroll frame). ConversationCard itself is left untouched so its other
+ * consumers (project page, recent widget) are unaffected (DEC-9).
+ */
+const MemoConversationCard = memo(ConversationCard)
 
 /**
  * ConversationList Component
@@ -103,13 +113,15 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     }
   }
 
-  const handleToggleSelection = (id: string) => {
+  // Stable across renders so the memoized row card (MemoConversationCard) can
+  // skip re-rendering unchanged rows on every scroll-driven virtualizer update.
+  const handleToggleSelection = useCallback((id: string) => {
     Stores.ChatHistory.toggleSelection(id)
-  }
+  }, [])
 
-  const handleDeleteConversation = async (id: string) => {
+  const handleDeleteConversation = useCallback(async (id: string) => {
     await Stores.ChatHistory.deleteConversation(id)
-  }
+  }, [])
 
   // The list is the server-filtered/sorted result set directly.
   const visibleConversations = conversations
@@ -243,7 +255,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     getScrollElement={getScrollElement}
                     scrollerReady={scrollerReady}
                     renderCard={(conversation: ConversationResponse) => (
-                      <ConversationCard
+                      <MemoConversationCard
                         conversation={conversation}
                         isSelected={selectedIds.has(conversation.id)}
                         isInSelectionMode={isSelectionMode}
@@ -258,7 +270,8 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                           className="text-center px-3 py-2 flex flex-col items-center gap-2"
                         >
                           <Text type="secondary" aria-live="polite" role="status">
-                            Showing {visibleConversations.length} of {total} conversations
+                            Showing {visibleConversations.length} of {total}{' '}
+                            {total === 1 ? 'conversation' : 'conversations'}
                           </Text>
                           {hasMore && (
                             <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>

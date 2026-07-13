@@ -60,15 +60,17 @@ function computeEstimate(conv: ConversationResponse, width: number): number {
 const memo = new WeakMap<ConversationResponse, Map<number, number>>()
 
 /**
- * Estimate the rendered height (px) of a conversation row at the given content
- * width. `width` is the scroll viewport's inner content width; the default
- * matches the app content column (`max-w-4xl` 896px − the 32px `px-4` gutters =
- * 864), so a caller relying on the default buckets at the SAME width the row is
+ * Estimate the rendered CARD height (px) at the given content width — the card
+ * body only; the virtualized Row wrapper adds its own `py-1.5` padding, which
+ * `VirtualizedConversationList` adds to the size estimate at the measured-element
+ * boundary. `width` is the scroll viewport's inner content width; the default
+ * matches the app content column (`max-w-4xl` 896px − the 24px `px-3` row gutters
+ * = 872), so a caller relying on the default buckets at the SAME width the row is
  * measured/seeded at.
  */
 export function estimateConversationHeight(
   conv: ConversationResponse | undefined,
-  width = 864,
+  width = 872,
 ): number {
   if (!conv) return FLOOR
   const bucket = Math.round(width / 120)

@@ -1,6 +1,5 @@
 import {
   type ReactNode,
-  memo,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -46,6 +45,14 @@ import {
 const MAX_CONTENT_WIDTH = 896
 const CONTENT_GUTTER = 24
 const OVERSCAN = 8
+/**
+ * Vertical padding the Row wrapper (`py-1.5` = 6px top + 6px bottom) adds AROUND
+ * the card. `measureElement` measures the wrapper, so the size estimate must
+ * include it or every row corrects by ~12px on first measure (a systematic
+ * estimate→measured jump). The pure card estimator stays card-only; the wrapper
+ * padding is added HERE, at the single measured-element boundary.
+ */
+const ROW_VERTICAL_PADDING = 12
 /** Stable empty seed identity (so an empty window doesn't churn the option). */
 const EMPTY_SEED: VirtualItem[] = []
 
@@ -65,10 +72,17 @@ interface VirtualizedConversationListProps {
   footer?: ReactNode
 }
 
-/** Memoized row wrapper so scrolling doesn't re-render off-window rows (DEC-9). */
-const Row = memo(function Row({ children }: { children: ReactNode }) {
+/**
+ * Row layout wrapper — the horizontal gutter (`px-3`) + inter-row spacing
+ * (`py-1.5`, internalized because a flex gap is lost under absolute positioning,
+ * DEC-5). This element is what `measureElement` measures (hence
+ * `ROW_VERTICAL_PADDING` in the size estimate). Scroll-render cost is avoided by
+ * the CALLER passing a MEMOIZED card whose props are stable (DEC-9) — memoizing
+ * this wrapper is futile since `children` is a fresh element each render.
+ */
+function Row({ children }: { children: ReactNode }) {
   return <div className="px-3 py-1.5">{children}</div>
-})
+}
 
 export function VirtualizedConversationList({
   conversations,
@@ -151,7 +165,9 @@ export function VirtualizedConversationList({
   const virt = useVirtualizer({
     count,
     getScrollElement,
-    estimateSize: i => estimateConversationHeight(conversations[i], widthRef.current),
+    estimateSize: i =>
+      estimateConversationHeight(conversations[i], widthRef.current) +
+      ROW_VERTICAL_PADDING,
     overscan: OVERSCAN,
     initialMeasurementsCache,
     onChange: (_instance, sync) => {

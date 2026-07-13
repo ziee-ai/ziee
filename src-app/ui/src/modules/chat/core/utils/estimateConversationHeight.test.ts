@@ -46,16 +46,20 @@ test('estimateConversationHeight: long (2-line) title taller than short', () => 
   assert.equal(shortH, FLOOR) // a 2-char title is always one line
 })
 
-test('estimateConversationHeight: message_count>0 never decreases (monotonic)', () => {
-  const title =
-    'A borderline-length conversation title around the one-line wrap boundary'
+test('estimateConversationHeight: message_count>0 makes a boundary title wrap → taller', () => {
+  // A 50-char title at width 520: without the count meta the title fits on ONE
+  // line (avail ≈432px, ≈57 chars/line); WITH the count chip the reserved meta
+  // narrows the title to ≈348px (≈46 chars/line) so it wraps to TWO lines. The
+  // estimate must therefore be STRICTLY taller with the count — proving the
+  // meta-widening logic actually contributes (not a trivial 96>=96).
+  const title = 'x'.repeat(50)
   const w = 520
   const without = estimateConversationHeight(conv({ title, message_count: 0 }), w)
   const withCount = estimateConversationHeight(
     conv({ title, message_count: 12 }),
     w,
   )
-  assert.ok(withCount >= without, `expected ${withCount} >= ${without}`)
+  assert.ok(withCount > without, `expected ${withCount} > ${without}`)
 })
 
 test('estimateConversationHeight: width-sensitive (narrower ≥ wider)', () => {
@@ -71,10 +75,20 @@ test('estimateConversationHeight: caps at two lines (line-clamp-2)', () => {
   assert.equal(huge, twoLine)
 })
 
-test('estimateConversationHeight: memoized per (conv, width bucket)', () => {
+test('estimateConversationHeight: stable per (conv, width bucket); buckets independent', () => {
   const c = conv({ title: LONG })
-  const a = estimateConversationHeight(c, 864)
-  const b = estimateConversationHeight(c, 864)
-  assert.equal(b, a)
-  assert.equal(typeof estimateConversationHeight(c, 300), 'number')
+  // Repeated calls at the same width are stable (the memo returns a consistent
+  // value; a broken cache that returned a stale wrong value would be caught by
+  // the cross-bucket check below, since 300 and 864 must differ for a 2-line
+  // title).
+  const wide = estimateConversationHeight(c, 864)
+  assert.equal(estimateConversationHeight(c, 864), wide)
+  const narrow = estimateConversationHeight(c, 300)
+  assert.equal(estimateConversationHeight(c, 300), narrow)
+  // Different buckets are computed independently and correctly ordered — the
+  // memo does NOT collapse them to one cached value.
+  assert.ok(narrow >= wide, `narrow ${narrow} >= wide ${wide}`)
+  // A different object with the same title keys the WeakMap per-object (no
+  // cross-object leak) and yields the same value.
+  assert.equal(estimateConversationHeight(conv({ title: LONG }), 864), wide)
 })
