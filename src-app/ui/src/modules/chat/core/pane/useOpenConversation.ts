@@ -136,14 +136,26 @@ export function useClosePane() {
   const navigate = useNavigate()
   return useCallback(
     (paneId: string) => {
-      const survivors = Stores.SplitView.$.panes.filter(
-        (p) => p.paneId !== paneId,
-      )
       Stores.SplitView.closePane(paneId)
-      if (survivors.length === 1) {
-        const only = survivors[0]
+      const sv = Stores.SplitView.$
+      if (sv.panes.length <= 1) {
+        const only = sv.panes[0]
         Stores.SplitView.reset() // collapse to single-pane (URL-driven)
-        navigate(only.conversationId ? `/chat/${only.conversationId}` : '/chat')
+        navigate(only?.conversationId ? `/chat/${only.conversationId}` : '/chat')
+        return
+      }
+      // ≥2 panes remain: PIN the URL to the focused survivor. Clicking a pane's ✕
+      // first focuses THAT pane (pointer-down capture), so with the URL-tracks-
+      // focused-pane model (ITEM-72) the address bar briefly lands on the pane being
+      // closed; once it's gone, the URL→workspace reconcile (ITEM-25) would see a URL
+      // pointing at a conversation no longer in any pane and REPLACE the focused
+      // survivor with it (re-adding the just-closed conversation — the voice-per-pane
+      // [A|C] regression). Navigating to the focused survivor here closes that race.
+      // `replace` so a close doesn't push a history entry.
+      const focused =
+        sv.panes.find((p) => p.paneId === sv.focusedPaneId) ?? sv.panes[0]
+      if (focused?.conversationId) {
+        navigate(`/chat/${focused.conversationId}`, { replace: true })
       }
     },
     [navigate],

@@ -65,8 +65,16 @@ test.describe('Split chat — new-chat pane adopt (no window hijack)', () => {
     // The new-chat greeting is gone — the pane adopted the conversation in place.
     await expect(pane1.getByTestId('pane-new-chat-greeting')).toHaveCount(0)
 
-    // (a) TEST-37: the WINDOW did not navigate away — still on conv A's URL.
-    expect(page.url()).toBe(primaryUrl)
+    // (a) TEST-37: the WINDOW did not navigate AWAY (no `conversation.created`
+    // window-hijack) — the SPLIT is intact, both panes still present. Under the
+    // URL-tracks-focused-pane model (ITEM-72), the address bar DOES follow the
+    // focused pane (pane 1) to its newly-adopted conversation — that is correct, not
+    // a hijack (the split is preserved), so the "no hijack" proof is the surviving
+    // split + the undisturbed other pane below, NOT a frozen URL.
+    await expect(byTestId(page, 'split-chat-view')).toBeVisible()
+    await expect(pane0).toBeVisible()
+    await expect(pane1).toBeVisible()
+    expect(page.url()).not.toBe(primaryUrl) // it tracks the focused (adopting) pane now
 
     // (c) TEST-45: pane 0 (conv A) is completely undisturbed — no messages leaked
     // in from pane 1's new conversation.

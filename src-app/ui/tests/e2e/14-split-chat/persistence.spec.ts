@@ -10,10 +10,11 @@ import {
 /**
  * Split-chat E2E — layout persistence across reload (TEST-2 / TEST-21).
  *
- * The SplitView workspace persists to localStorage
- * (`ziee-split-workspace-v2:<userId>`; the `?pane=` URL mirroring was dropped per
+ * The SplitView workspace persists to sessionStorage (per-tab, ITEM-73/DEC-74;
+ * `ziee-split-workspace-v2:<userId>`; the `?pane=` URL mirroring was dropped per
  * DRIFT-1.9). After opening a split of TWO EXISTING conversations and resizing a
- * divider, a full reload restores both panes and the divider width. (Two existing
+ * divider, a same-tab RELOAD restores both panes and the divider width (reload is
+ * the ONE navigation type that restores a per-tab split). (Two existing
  * conversations — not a new-chat pane — because v2 hydrate PRUNES empty panes, so
  * an unfilled picker pane would not survive the reload.) No LLM needed.
  */

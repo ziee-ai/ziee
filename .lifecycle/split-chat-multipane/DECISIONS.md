@@ -735,3 +735,31 @@ This completes the URL↔workspace contract the ITEM-25 comment already ASSERTED
 always tracks the focused pane") but only half-implemented (only the sidebar-open hook
 navigated). `replace` matches how the existing sidebar-open + close-pane hooks already
 navigate within the workspace. Verified live before writing the covering spec.
+
+### DEC-74: How should a split relate to browser tabs (per-tab vs shared), and how is a pop-out isolated (ITEM-73 / FB-20)?
+**Resolution:** BOTH per-tab AND isolated pop-out (the human's explicit pick from a
+3-option AskUserQuestion). Two mechanisms:
+1. The split workspace persists to **sessionStorage** (per-tab), NOT localStorage
+   (per-user, shared by every tab). Key stays `ziee-split-workspace-v2:<userId>` for
+   same-tab-user-switch isolation. **Accepted trade-off:** closing the browser drops the
+   split (no cross-session restore) — a split is per-window working state, which the human
+   accepted by choosing "Both".
+2. Hydrate the saved split **only on a same-tab RELOAD** (`isSameTabReload()` = the
+   Performance navigation entry `type === 'reload'`). Any fresh full-load navigation — a
+   new tab, the ⤢ pop-out (`window.open` COPIES the opener's sessionStorage, split and
+   all), a deep link, an address-bar navigation — does `reset()` + `clearWorkspace()` and
+   starts single-pane from the URL. This is REQUIRED because sessionStorage alone doesn't
+   isolate a `window.open` child (it inherits a copy); the reload gate defeats the copy
+   with NO URL flag and covers EVERY new-tab path (not just the ⤢ button — also Ctrl+click
+   a sidebar link, a bookmarked deep link, etc.), so the split can never leak across tabs.
+**Basis:** user — picked "Both (per-tab + isolated pop-out)". The reload gate was chosen
+over a per-URL `?window=1` pop-out flag because the flag leaves holes (Ctrl+click / any
+copied-session new tab without the flag still inherits the split), and the human's whole
+complaint was that new tabs must NEVER inherit the split. Consequence recorded as an
+impl-wins DRIFT (below): the ITEM-25/26 URL→workspace reconcile now runs only for an
+IN-MEMORY split (SPA nav), never resurrected by a full-load deep-link — a full-load
+navigation is URL-authoritative (single-pane), which is also the more intuitive deep-link
+behavior. No change to `openConversationWindow` (the pop-out is a `navigate`, isolated
+automatically). Verified: unit TEST-110 (the gate + sessionStorage roundtrip) + e2e
+TEST-111 (the exact repro across real tabs) + the existing persistence/nav specs updated
+to the per-tab model.

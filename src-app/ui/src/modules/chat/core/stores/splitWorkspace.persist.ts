@@ -2,19 +2,67 @@ import type { Pane } from '@/modules/chat/core/stores/SplitView.store'
 import type { SplitDirection } from '@/modules/chat/core/split/limits'
 
 /**
- * Per-user workspace persistence (ITEM-26 / DEC-42/51) — a CUSTOM localStorage
- * layer, NOT store-kit's `persist` middleware, because the split workspace must
- * be keyed by the logged-in user (`ziee-split-workspace-v2:<userId>`): a shared
- * browser must never restore the previous user's open conversations (localStorage
- * survives logout), mirroring `chatDrafts.makeDraftKey`'s per-user namespacing.
+ * Per-TAB workspace persistence (ITEM-26 / DEC-42/51/74) — a CUSTOM
+ * **sessionStorage** layer, NOT store-kit's `persist` middleware.
  *
- * The pure `pruneWorkspace` + `migrateV1toV2` helpers are unit-tested directly
- * (TEST-48); the `SplitView` store's `init` wires them to the auth lifecycle.
+ * WHY sessionStorage, not localStorage (DEC-74, FB-20): a split layout is a
+ * per-WINDOW/TAB working state, not a per-user-global one. localStorage is shared
+ * across every tab, so a per-user split blob was hydrated into EVERY tab on boot —
+ * "open a conversation in a new tab" restored the whole split (both conversations),
+ * so two tabs rendered the same thing. sessionStorage scopes the layout to one tab.
+ *
+ * TWO parts make "each tab independent + isolated pop-out" robust (the store's
+ * `init` owns part 2):
+ *  1. sessionStorage → the layout lives in ONE tab; closing the tab drops it.
+ *  2. hydrate ONLY on a same-tab RELOAD (`isSameTabReload`), never on a fresh
+ *     navigation. This matters because `window.open`/link-opened tabs receive a
+ *     COPY of the opener's sessionStorage — so the pop-out tab would otherwise
+ *     still see the split. Gating hydration on reload means a pop-out / new tab /
+ *     deep-link starts single-pane from the URL and CLEARS its copied blob, while
+ *     F5 on the SAME tab still restores that tab's split.
+ *
+ * The key stays per-user (`ziee-split-workspace-v2:<userId>`) as defensive
+ * isolation for a same-tab user switch. The pure `pruneWorkspace` +
+ * `migrateV1toV2` + `isSameTabReload` helpers are unit-tested directly
+ * (TEST-48 / TEST-110); the `SplitView` store's `init` wires them to the auth +
+ * boot lifecycle.
  */
 
 const PREFIX = 'ziee-split-workspace-v2:'
 /** The v1 store-kit-persist key this module migrates from (single, un-namespaced). */
 const V1_KEY = 'ziee-split-view-v1'
+
+/**
+ * Per-tab storage backend. sessionStorage is per-browsing-context (per tab): it
+ * survives a reload of the SAME tab but is NOT shared with other tabs, and a
+ * window.open child gets an independent COPY (which part 2 above clears).
+ */
+function store(): Storage {
+  return sessionStorage
+}
+
+/**
+ * True only when this page load is a RELOAD of the same tab (F5 / location.reload),
+ * as opposed to a fresh navigation (new tab, window.open pop-out, deep link,
+ * bookmark). Drives the "restore the split only on a same-tab reload" gate so a
+ * pop-out / new tab never resurrects a split copied into its sessionStorage. Pure
+ * over an injected nav entry for unit testing; defaults to the live Performance
+ * navigation entry. Unknown / missing → treated as NOT a reload (safe: start fresh).
+ */
+export function isSameTabReload(
+  nav?: { type?: string } | null,
+): boolean {
+  try {
+    const entry =
+      nav ??
+      (performance.getEntriesByType('navigation')[0] as
+        | PerformanceNavigationTiming
+        | undefined)
+    return entry?.type === 'reload'
+  } catch {
+    return false
+  }
+}
 
 /** The persisted slice of the workspace (the `SplitView` partialize shape). */
 export interface PersistedWorkspace {
@@ -25,7 +73,7 @@ export interface PersistedWorkspace {
   mode: 'split' | 'tabs'
 }
 
-/** localStorage key for a user's workspace. `anon` is a defensive fallback. */
+/** sessionStorage key for a user's per-tab workspace. `anon` is a defensive fallback. */
 export function workspaceStorageKey(userId: string | null | undefined): string {
   return `${PREFIX}${userId ?? 'anon'}`
 }
@@ -41,7 +89,7 @@ function emptyWorkspace(base?: Partial<PersistedWorkspace>): PersistedWorkspace 
   }
 }
 
-/** Best-effort shape guard for a parsed localStorage blob. */
+/** Best-effort shape guard for a parsed persisted-workspace blob. */
 function isWorkspaceLike(v: unknown): v is PersistedWorkspace {
   return (
     typeof v === 'object' &&
@@ -55,7 +103,7 @@ export function loadWorkspace(
   userId: string | null | undefined,
 ): PersistedWorkspace | null {
   try {
-    const raw = localStorage.getItem(workspaceStorageKey(userId))
+    const raw = store().getItem(workspaceStorageKey(userId))
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!isWorkspaceLike(parsed)) return null
@@ -84,19 +132,19 @@ export function saveWorkspace(
 ): void {
   try {
     if (ws.panes.length < 2) {
-      localStorage.removeItem(workspaceStorageKey(userId))
+      store().removeItem(workspaceStorageKey(userId))
       return
     }
-    localStorage.setItem(workspaceStorageKey(userId), JSON.stringify(ws))
+    store().setItem(workspaceStorageKey(userId), JSON.stringify(ws))
   } catch {
     // best-effort — private mode / quota degrade to no persistence.
   }
 }
 
-/** Remove a user's persisted workspace. */
+/** Remove a user's persisted workspace (this tab's sessionStorage). */
 export function clearWorkspace(userId: string | null | undefined): void {
   try {
-    localStorage.removeItem(workspaceStorageKey(userId))
+    store().removeItem(workspaceStorageKey(userId))
   } catch {
     // ignore
   }

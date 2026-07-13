@@ -598,3 +598,13 @@ honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't h
   already-reactive `panes`/`focusedPaneId` — no store proxy read inside a loop/conditional.
   Single-pane path (`panes.length < 2`) is an early-return no-op → zero behavior change to
   the non-split view. Verified live before the covering spec; RUN by TEST-109.
+- **ITEM-73** — verdict: PASS — the root cause (per-user shared-localStorage hydration) was
+  confirmed by reproduction (captured the `ziee-split-workspace-v2:<userId>` split blob). The
+  fix is localized to `splitWorkspace.persist.ts` (storage backend + the pure `isSameTabReload`
+  helper) + `SplitView.init.hydrateFor` (the reload gate). No new migration, no OpenAPI/type
+  change. The behavior-model change (full-load nav → single-pane; per-tab; reload-restores) is a
+  DELIBERATE DEC-74 choice recorded as impl-wins DRIFT-14 against ITEM-25/26, with the three
+  affected specs updated to match (not deleted). The reload gate correctly defeats the
+  sessionStorage-copy-on-window.open (the sole reason sessionStorage alone is insufficient).
+  `clearWorkspace` on the fresh-nav path is required so a reloaded pop-out tab can't resurrect a
+  copied split. RUN by unit TEST-110 + e2e TEST-111 + the updated persistence/nav specs.

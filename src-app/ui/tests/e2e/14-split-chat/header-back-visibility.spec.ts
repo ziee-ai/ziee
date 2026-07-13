@@ -48,11 +48,14 @@ test.describe('Split chat — header chrome scoped per context (back / split / p
     // POP-OUT WINDOW route (chat-only): it's a focused single-conversation view, so
     // ALL window-management chrome is hidden — back, split, AND pop-out (ITEM-55/56).
     // The conversation actions (title, find, composer) remain. Reset the split
-    // workspace first so this is a clean single-conversation window (like a real one).
+    // workspace first so this is a clean single-conversation window (like a real
+    // one). The workspace is per-tab in sessionStorage now (ITEM-73/DEC-74); the
+    // fresh `goto` below ALSO clears it (a non-reload nav starts single-pane), so
+    // this is belt-and-suspenders.
     await page.evaluate(() =>
-      Object.keys(localStorage)
+      Object.keys(sessionStorage)
         .filter(k => k.toLowerCase().includes('split'))
-        .forEach(k => localStorage.removeItem(k)),
+        .forEach(k => sessionStorage.removeItem(k)),
     )
     await page.goto(`${baseURL}/chat-window/${convA}`)
     await page.reload()

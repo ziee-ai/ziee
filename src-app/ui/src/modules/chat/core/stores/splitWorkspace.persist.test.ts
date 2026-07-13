@@ -7,15 +7,19 @@ import {
   clearWorkspace,
   pruneWorkspace,
   migrateV1toV2,
+  isSameTabReload,
   type PersistedWorkspace,
 } from './splitWorkspace.persist.ts'
 import type { Pane } from './SplitView.store'
 
-// TEST-48 (split-chat ITEM-26): per-user workspace persistence — save/load
-// round-trip under `ziee-split-workspace-v2:<userId>`, hydrate-time prune (drop
-// inaccessible + empty panes, collapse <2 to single-pane), and the v1→v2
-// one-time migration. Runs against an in-memory `localStorage` shim (the browser
-// boundary the module targets — the storage is mocked, the behaviour is real).
+// TEST-48 (split-chat ITEM-26) + TEST-110 (ITEM-73 / DEC-74): per-TAB workspace
+// persistence — save/load round-trip under `ziee-split-workspace-v2:<userId>` in
+// SESSIONstorage now (per-tab, DEC-74), hydrate-time prune (drop inaccessible +
+// empty panes, collapse <2 to single-pane), the v1→v2 one-time migration (reads
+// the old LOCALstorage v1 key, writes the sessionStorage v2 key), and the
+// `isSameTabReload` gate that keeps a fresh navigation / pop-out from resurrecting
+// a split. Runs against in-memory storage shims (the storage is mocked, the
+// behaviour is real).
 
 class MemStorage {
   private m = new Map<string, string>()
@@ -36,10 +40,15 @@ class MemStorage {
   }
 }
 
-let mem: MemStorage
+// The module writes the v2 workspace to sessionStorage (per-tab) and reads the
+// old v1 blob from localStorage (one-time migration) — so mock BOTH.
+let mem: MemStorage // sessionStorage (v2, per-tab)
+let memLocal: MemStorage // localStorage (v1 migration source)
 beforeEach(() => {
   mem = new MemStorage()
-  ;(globalThis as { localStorage?: unknown }).localStorage = mem
+  memLocal = new MemStorage()
+  ;(globalThis as { sessionStorage?: unknown }).sessionStorage = mem
+  ;(globalThis as { localStorage?: unknown }).localStorage = memLocal
 })
 
 const pane = (paneId: string, conversationId: string | null): Pane => ({
@@ -117,9 +126,9 @@ test('pruneWorkspace keeps a valid split, drops empty picker panes, re-homes foc
   )
 })
 
-test('migrateV1toV2 reads the old key exactly once, writes v2, clears v1', () => {
-  // store-kit persist wraps the payload as { state, version }.
-  mem.setItem(
+test('migrateV1toV2 reads the old LOCALstorage key once, writes sessionStorage v2, clears v1', () => {
+  // store-kit persist wrote the v1 payload to LOCALstorage as { state, version }.
+  memLocal.setItem(
     'ziee-split-view-v1',
     JSON.stringify({
       state: {
@@ -134,12 +143,23 @@ test('migrateV1toV2 reads the old key exactly once, writes v2, clears v1', () =>
   )
   const migrated = migrateV1toV2('u1')
   assert.deepEqual(migrated?.panes.map((p) => p.conversationId), ['a', 'b'])
-  assert.equal(mem.getItem('ziee-split-view-v1'), null, 'v1 key is cleared')
-  assert.ok(loadWorkspace('u1'), 'the workspace now lives under the v2 per-user key')
+  assert.equal(memLocal.getItem('ziee-split-view-v1'), null, 'v1 localStorage key is cleared')
+  assert.ok(loadWorkspace('u1'), 'the workspace now lives under the v2 sessionStorage key')
   // A second call finds nothing to migrate (idempotent).
   assert.equal(migrateV1toV2('u1'), null, 'migration runs exactly once')
 })
 
 test('migrateV1toV2 with no v1 key returns null', () => {
   assert.equal(migrateV1toV2('u1'), null)
+})
+
+// TEST-110 (ITEM-73 / DEC-74): the reload gate. Restore a split ONLY on a same-tab
+// reload; a fresh navigation (new tab / ⤢ pop-out / deep link) must NOT restore.
+test('isSameTabReload is true ONLY for a reload navigation entry', () => {
+  assert.equal(isSameTabReload({ type: 'reload' }), true, 'F5 / location.reload → restore')
+  assert.equal(isSameTabReload({ type: 'navigate' }), false, 'new tab / pop-out / deep link → fresh')
+  assert.equal(isSameTabReload({ type: 'back_forward' }), false, 'history nav → fresh')
+  assert.equal(isSameTabReload({ type: 'prerender' }), false)
+  assert.equal(isSameTabReload({}), false, 'unknown type → fresh (safe default)')
+  assert.equal(isSameTabReload(null), false, 'no entry → fresh (safe default)')
 })

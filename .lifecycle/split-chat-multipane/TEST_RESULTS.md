@@ -341,6 +341,26 @@ toggle unclickable). Fixed by sharing HeaderBarContainer's conventions. All gree
   URL to `/chat/A`; clicking pane 1 returns it to `/chat/B`. Ran together with TEST-108:
   `2 passed (43.2s)` — `splitchat-url-e2e-*.log`. The fix was first proven live against the
   dev server, then locked by this spec.
+- **TEST-110**: PASS — unit (`npx tsx --test splitWorkspace.persist.test.ts`): 25/25 —
+  sessionStorage save/load/clear roundtrip (per-tab), v1(localStorage)→v2(sessionStorage)
+  migration, and the `isSameTabReload` gate table (reload→true; navigate/back_forward/
+  prerender/unknown/null→false). Also confirmed the split IS written to sessionStorage via
+  a live dev-server probe (`saved-in-sessionStorage=YES`).
+- **TEST-111**: PASS — e2e (`splitchat-fullsuite3`): the EXACT user repro across REAL
+  tabs — build `[A|B]`; reload the origin tab → split restored (per-tab reload); click
+  pane B's ⤢ → `window.open('/chat/B')` (real sessionStorage copy of the saved split) →
+  the new tab shows ONLY convB single-pane (`split-chat-view`=0, `chat-pane-1`=0, composer
+  + title "Bravo"); origin collapses to single-pane A. First proven standalone (`legA-real
+  *.log`, 34.5s). NOTE: an earlier `addInitScript` SIMULATION of the copy mis-booted the
+  app to a blank shell — a TEST artifact, not a fix bug; the real `window.open` path is
+  correct (this is [[feedback_reproduce_reported_symptom]] — reproduce the LITERAL flow).
+- **Full 14-split-chat suite (rebuild): 60/60 PASS** (`splitchat-fullsuite3-*.log`,
+  `60 passed (7.0m)`, workers=2). The rebuild included the ITEM-72b `useClosePane` fix and
+  ITEM-73 persistence change. Two intermediate runs caught real regressions the isolated
+  TEST-109 could not (voice-per-pane [A|C] close×reconcile; new-chat-adopt URL model),
+  all fixed + green — see FIX_ROUND-25.
+- **`npm run check` (ui): PASS** — re-run after the ITEM-72b/73 changes (tsc + all lints +
+  state-matrix + overlay + override registry). Exit 0.
 
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 

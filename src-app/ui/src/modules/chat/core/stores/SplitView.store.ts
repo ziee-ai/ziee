@@ -7,6 +7,8 @@ import {
 } from '@/modules/chat/core/split/reconcile'
 import {
   type PersistedWorkspace,
+  clearWorkspace,
+  isSameTabReload,
   loadWorkspace,
   migrateV1toV2,
   pruneWorkspace,
@@ -284,13 +286,21 @@ export const SplitView = defineStore('SplitView', {
     const hydrateFor = (userId: string | undefined) => {
       const migrated = migrateV1toV2(userId)
       const loaded = migrated ?? loadWorkspace(userId)
-      if (loaded) {
+      // Restore a split ONLY on a same-tab RELOAD (F5). A fresh navigation — a new
+      // tab, the ⤢ pop-out (whose sessionStorage is a COPY of the opener's, split
+      // and all), a deep link — must start single-pane from the URL, never
+      // resurrect that copied/stale split (FB-20 / DEC-74: "open in new tab shows
+      // the SAME conversation as the other tab"). Clearing on the fresh-nav path
+      // drops the copied blob so a LATER reload of this tab can't restore a foreign
+      // split either.
+      if (loaded && isSameTabReload()) {
         // Boot prune: drop empty picker panes + collapse <2 to single-pane. The
         // accessibility prune (deleted / no-access conversations) happens on
         // `sync:conversation` delete here + the per-pane 404 auto-close (ITEM-29).
         applyWorkspace(pruneWorkspace(loaded, () => true))
       } else {
         actions.reset()
+        clearWorkspace(userId)
       }
     }
 

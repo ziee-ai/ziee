@@ -644,6 +644,35 @@ LEDGER) — not silently absorbed.
   Verified live against the dev server before writing the spec (STEP2/3/4 all track
   focus). Covered by TEST-109 (e2e — two active panes; asserts the URL follows the
   focused conversation on pick + on each pane focus).
+  - **ITEM-72b (close-reconcile fix, found by the full suite):** clicking a pane's ✕
+    focuses that pane first (`onPointerDownCapture`), so with URL-tracks-focus the
+    address bar briefly lands on the pane being closed; once `closePane` removes it,
+    the ITEM-25 URL→workspace reconcile saw a URL pointing at a conversation no longer
+    in any pane and REPLACED the focused survivor with it — re-adding the just-closed
+    conversation (the `voice-per-pane` [A|C] regression, caught by the full 14-split
+    suite, not TEST-109). Fix: `useClosePane` now navigates (`replace`) to the focused
+    SURVIVOR on every close with ≥2 panes remaining (not only when collapsing to 1),
+    pinning the URL so the reconcile converges to [B|C]. Covered by `voice-per-pane`
+    TEST-101 (closing a non-recording pane leaves the recording pane intact = [B|C]).
+
+- **ITEM-73**: **Splits are per-TAB + the pop-out opens an isolated conversation**
+  (FB-20 regression fix; user picked "Both"). ROOT CAUSE of "open a conversation in a
+  new tab → both tabs render the same split": a split (≥2 panes) was persisted to a
+  per-USER **localStorage** key shared by every tab, and `SplitView.init` hydrated it on
+  every boot — so any new tab restored the whole split. Fix, two parts:
+  (a) **Storage → `sessionStorage`** (`splitWorkspace.persist.ts` `store()`): the layout
+  is per-tab; closing the tab drops it; cross-session restore is intentionally dropped
+  (accepted trade-off). Key stays `:<userId>` as defensive same-tab-user-switch isolation.
+  (b) **Hydrate ONLY on a same-tab reload** (`isSameTabReload()` = the Performance
+  navigation entry `type === 'reload'`), wired in `SplitView.init.hydrateFor`: a fresh
+  navigation (new tab, ⤢ pop-out, deep link) does `reset()` + `clearWorkspace()` →
+  single-pane from the URL. This is REQUIRED because `window.open`/link-opened tabs get a
+  COPY of the opener's sessionStorage (split and all); gating on reload defeats that copy
+  with no URL flag, and covers every new-tab path (not just the ⤢ button). F5 on the same
+  tab still restores that tab's split. No change needed to `openConversationWindow` (the
+  pop-out is a `navigate`, so it's isolated automatically). Covered by TEST-110 (unit —
+  the reload gate + sessionStorage roundtrip) + TEST-111 (e2e — the exact repro: split →
+  new tab shows single-pane, reload restores, cross-tab isolation).
 
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
