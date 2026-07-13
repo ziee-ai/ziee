@@ -6,7 +6,6 @@ import { Stores } from '@/core/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { ChatHistorySortControl } from '@/modules/chat/components/ChatHistorySortControl'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
-import { DivScrollY } from '@/components/common/DivScrollY'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { cn } from '@/lib/utils'
@@ -154,12 +153,20 @@ export default function ChatHistoryPage() {
          * ErrorState, so it must mount on error even when the list is empty
          * (otherwise a failed load silently falls through to the empty state). */}
         {(conversations.length > 0 || loading || error || hasSearch) && (
-          <div className={cn('flex flex-1 flex-col w-full', nativeScroll ? '' : 'overflow-hidden')}>
-            <DivScrollY nativeFlow className={cn('flex flex-col', nativeScroll ? '' : 'h-full')}>
-              <ConversationList
-                getSearchBoxContainer={getSearchBoxContainer}
-              />
-            </DivScrollY>
+          // NOTE: no scroller here. ConversationList owns its OWN inner scroll
+          // viewport (the one the row virtualizer attaches to). Wrapping it in a
+          // second DivScrollY made a NESTED scroller whose inner viewport was
+          // never height-bounded, so react-virtual saw the whole list as visible
+          // and rendered every row (virtualization silently no-op'd on the real
+          // page — caught by the real-path e2e). A plain bounded flex container
+          // lets ConversationList's inner scroller be the single, bounded one.
+          <div
+            className={cn(
+              'flex flex-1 flex-col w-full',
+              nativeScroll ? '' : 'overflow-hidden',
+            )}
+          >
+            <ConversationList getSearchBoxContainer={getSearchBoxContainer} />
           </div>
         )}
 

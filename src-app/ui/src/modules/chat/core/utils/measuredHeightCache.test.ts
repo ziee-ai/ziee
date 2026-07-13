@@ -73,3 +73,32 @@ test('evicts nothing under the cap; keeps a re-set entry fresh', () => {
   setMeasuredHeight('x', 736, 100) // unchanged — refreshes recency, no dup
   assert.equal(getMeasuredHeight('x', 736), 100)
 })
+
+// ── ITEM-2 (chats-page-virtualization): the SAME id-generic cache is reused for
+// conversation rows (DEC-2). Conversation ids are UUIDs — an opaque string key,
+// disjoint from message ids — so no message-path change is needed. These cases
+// exercise the cache through conversation-UUID keys to prove the reuse.
+
+const CONV_A = '11111111-1111-1111-1111-111111111111'
+const CONV_B = '22222222-2222-2222-2222-222222222222'
+
+test('reuse: round-trips conversation-UUID keys at a width bucket', () => {
+  setMeasuredHeight(CONV_A, 864, 76)
+  assert.equal(getMeasuredHeight(CONV_A, 864), 76)
+})
+
+test('reuse: buildInitialMeasurementsCache seeds conv ids with heights, omits uncached', () => {
+  setMeasuredHeight(CONV_A, 864, 76)
+  setMeasuredHeight(CONV_B, 864, 96)
+  const seed = buildInitialMeasurementsCache([CONV_A, 'uncached-conv', CONV_B], 864)
+  assert.deepEqual(
+    seed.map(s => s.key),
+    [CONV_A, CONV_B],
+  )
+  assert.equal(seed.find(s => s.key === CONV_B)!.size, 96)
+})
+
+test('reuse: a different width bucket misses stale conversation heights', () => {
+  setMeasuredHeight(CONV_A, 864, 76) // 864 → bucket 7
+  assert.equal(getMeasuredHeight(CONV_A, 320), undefined) // 320 → bucket 3
+})

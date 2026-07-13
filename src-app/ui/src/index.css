@@ -148,6 +148,13 @@
   --warning-foreground: hsl(0 0% 100%);
   --info: hsl(199 80% 34%);
   --info-foreground: hsl(0 0% 100%);
+
+  /* Decorative backdrop color for the unauthenticated screens (login + setup).
+   * = the navy sky edge color of the cloud illustration; drives the backdrop
+   * solid fallback AND the iOS status/nav-bar tint (via useMetaThemeColor), so
+   * the screen-edge color follows the theme. Not a semantic UI token (kept out
+   * of @theme inline) — text never sits on it (cards are opaque --card). */
+  --auth-backdrop: hsl(205 96% 18%);
 }
 
 .dark {
@@ -191,6 +198,10 @@
   --warning-foreground: hsl(38 60% 10%);
   --info: hsl(199 75% 60%);
   --info-foreground: hsl(199 60% 9%);
+
+  /* Dark: a very dark navy so the darkening layer over the cloud image reads as
+   * "night sky" and the iOS bars match the darkened backdrop edge. */
+  --auth-backdrop: hsl(205 78% 7%);
 }
 
 @layer base {

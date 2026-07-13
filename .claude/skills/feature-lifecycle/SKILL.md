@@ -122,6 +122,12 @@ skips them ships as a defect):
   breakpoint behavior does it mirror? A surface that only works at desktop width
   is a defect. Its gallery coverage MUST include a narrow-viewport (390px) state
   (enforced at Phase 8 / `gate:ui`), not only the desktop state.
+- **Populated-render review** — the visual DoD is NOT met until a POPULATED
+  (seeded, representative-data) render of every list/card surface has been through
+  the design-critic vision pass, at each viewport. An empty/loading state hides
+  real-data layout bugs (a control stranded far from its title once the card has
+  content, text overflow, a count pushing a button off-screen). Every gallery
+  surface needs a loaded-with-data state, not just empty/error — review THAT.
 - **User-visible progress** — any surface that ingests or produces work (upload,
   index, fetch) must show the live status the user expects (%, thumbnails, index
   state, itemized errors), answering "what does the user want to SEE and DO
@@ -153,6 +159,19 @@ skips them ships as a defect):
   that reaches across modules. A "context-aware bridge" that only covers reactive
   READS does NOT isolate a multi-instance surface: actions, `.$`/getState,
   subscribe must bind to the INSTANCE, or state silently leaks to the focused one.
+  **Per-window layout state must NOT be per-user `localStorage`** — that is shared
+  across ALL tabs, so "restore my layout" replays into every window. Scope
+  per-window state to the tab (`sessionStorage`); and note a `window.open`/
+  link-opened tab receives a COPY of the opener's `sessionStorage`, so per-tab
+  storage alone doesn't isolate a pop-out — gate restore to a real reload
+  (`navigation.type === 'reload'`) to defeat the copy.
+- **URL-as-view-into-focus** — when a URL reflects some focused entity, EVERY way
+  of changing that focus (sidebar click, focus-click, programmatic open) must
+  reconcile the URL; otherwise any URL-consuming action (open-in-new-tab,
+  deep-link copy, back/forward) silently operates on the wrong entity. A
+  bidirectional "X always tracks Y" invariant asserted in a comment must be
+  verified in BOTH directions — the common bug is wiring only the happy-path
+  direction and leaving the others stale.
 - **Platform-provided affordances** — do not ship in-app chrome the platform
   itself already provides (a web browser's native "open in new tab"); gate such
   redundant affordances by platform (runtime `__TAURI__` check) via a pure
@@ -297,7 +316,14 @@ touches (chat pipeline, MCP tool-call + approval flow, permissions, notification
 sync, streaming, workflow runner, settings, …) and, for each, check whether it has
 specific behaviors/constraints that must be handled, not assumed. This is what
 surfaced the unattended-tool-approval gap that drove a safe-default policy rather
-than a silent security hole.
+than a silent security hole. (3) an **entity-lifecycle walk** — enumerate every
+entity the surface holds (a conversation in a pane, an attached file, a selected
+item) and, for EACH, prove add / remove / **delete** / mutate / access-loss is
+handled from BOTH paths: the LOCAL mutation and the SYNC/SSE path (they are
+separate handlers — the originating device's own echo is suppressed, so a
+`sync:X` handler that only covers the cross-device case misses the local delete).
+"What happens when it's deleted / access is revoked?" must be ANSWERED BY RUNNING
+it (delete it, watch the surface), never inferred from a handler.
 
 Implement all items (only `cargo check` / `tsc` mid-flight; don't run the full
 suites yet — [[feedback_finish_all_before_testing]]). Then audit
@@ -362,6 +388,11 @@ each traces to real rework that shipped despite a green gate):
   React crashes. Pure unit tests can't catch this; only a live render / an e2e
   that actually shows the component does. Flag any reactive proxy access under a
   `.map()`/conditional.
+- **high-frequency write to reactively-read state** — a store field read reactively
+  by a large subtree must NOT be written on every `pointermove` of a drag/resize
+  (the whole subtree re-renders per frame). Write to the DOM imperatively during
+  the gesture and commit to the store ONCE on release. Flag any per-frame/
+  per-pointermove store write of a field a big tree subscribes to.
 - **plan-coverage / scope-drift** — reconcile EVERY PLAN ITEM against shipped code
   with file:line evidence. An item with no implementation and no approved
   `[DESCOPED]` disposition is a finding (this is the human-judgment complement to
@@ -621,6 +652,17 @@ or wasted many sessions.
   you escalate to the human are genuine PRODUCT choices about what the feature
   should DO, surfaced as explicit option pickers (the Phase-4 rule). Implementation
   decisions are resolved by precedent/convention and executed, not asked.
+- **B9 — reproduce a reported bug LITERALLY before fixing it.** When the human
+  hands you a concrete step-by-step repro, reproduce that EXACT sequence and watch
+  what happens before designing a fix — do not fix a plausible-adjacent symptom
+  (a stale URL) when the real mechanism is different (shared hydration). The
+  regression test must be EXACTLY the reported sequence and nothing more: every
+  extra step you add (a reload, a wait, a nav) is a chance to diverge from the
+  repro and mask the real behavior; test unrelated features in their OWN tests.
+  And when the human asks "what renders?", SCREENSHOT it and LOOK — a green
+  assertion (esp. one that waits up to 30s for an element) can mask a
+  hangs-on-a-spinner defect. Trust the human's causal diagnosis over your first
+  unproven hypothesis, and PROVE the real cause by running.
 - **B3 — never edit the SHARED test harness to route around YOUR feature's
   problem.** `tests/common/*`, the gallery cassette, `playwright.*.config`, the
   build DB helper are shared infrastructure. If your test needs them changed,

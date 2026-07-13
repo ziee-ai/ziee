@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { z } from 'zod'
 
 import type { CreateScheduledTask, TestFireResult } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
@@ -9,23 +10,29 @@ import {
   Form,
   FormField,
   Input,
+  message,
   Segmented,
   Spin,
   Switch,
-  Text,
   Textarea,
   useForm,
-  message,
+  zodResolver,
 } from '@/components/ui'
+import {
+  Field,
+  FieldContent,
+  FieldError,
+  FieldTitle,
+} from '@/components/ui/shadcn/field'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 import { chooseInputMode, selectDeclaredInputs } from './inputMode'
-import { type ScheduleValue, ScheduleBuilder } from './ScheduleBuilder'
+import { ScheduleBuilder, type ScheduleValue } from './ScheduleBuilder'
 import {
-  type AllowedUnattendedTool,
   AllowedToolsField,
+  type AllowedUnattendedTool,
   AssistantField,
   ModelField,
   WorkflowField,
@@ -76,11 +83,83 @@ const blank = (): FormValues => ({
   },
 })
 
+// zod schema drives resolver-based validation (mirrors ProjectFormDrawer). The
+// static fields validate here; the DYNAMIC "required declared workflow inputs"
+// check stays imperative in onSubmit because the workflow IR isn't part of the
+// form value (zod can't see it). `z.custom<AllowedUnattendedTool>()` keeps the
+// inferred type assignable to FormValues so `useForm<FormValues>` needs no cast.
+const formSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required'),
+    target_kind: z.enum(['workflow', 'prompt']),
+    workflow_id: z.string(),
+    inputs_json: z.string(),
+    inputs: z.record(z.string(), z.string()),
+    assistant_id: z.string(),
+    prompt: z.string(),
+    model_id: z.string().trim().min(1, 'A model is required'),
+    notify_mode: z.boolean(),
+    notify_on_change: z.boolean(),
+    allowed_unattended_tools: z.array(z.custom<AllowedUnattendedTool>()),
+    schedule: z.object({
+      schedule_kind: z.enum(['once', 'recurring']),
+      run_at: z.string().optional(),
+      cron_expr: z.string().optional(),
+      timezone: z.string().min(1, 'A timezone is required'),
+    }),
+  })
+  .superRefine((v, ctx) => {
+    if (v.target_kind === 'workflow' && !v.workflow_id.trim())
+      ctx.addIssue({
+        code: 'custom',
+        path: ['workflow_id'],
+        message: 'Workflow is required',
+      })
+    if (v.target_kind === 'prompt' && !v.prompt.trim())
+      ctx.addIssue({
+        code: 'custom',
+        path: ['prompt'],
+        message: 'Prompt is required',
+      })
+    if (v.schedule.schedule_kind === 'once' && !v.schedule.run_at)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['schedule'],
+        message: 'A run date/time is required',
+      })
+    if (
+      v.schedule.schedule_kind === 'recurring' &&
+      !v.schedule.cron_expr?.trim()
+    )
+      ctx.addIssue({
+        code: 'custom',
+        path: ['schedule'],
+        message: 'A schedule is required',
+      })
+    // NOTE: the raw inputs_json JSON-validity check is intentionally NOT here —
+    // it only applies in JSON-fallback mode (a workflow with no declared inputs),
+    // which the schema can't detect; it's enforced imperatively in onSubmit so a
+    // stale invalid inputs_json can't block a typed workflow whose JSON Textarea
+    // isn't even rendered (blind-audit fix).
+  })
+
+const isValidJson = (s: string): boolean => {
+  try {
+    JSON.parse(s || '{}')
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function ScheduledTaskFormDrawer() {
   const { open, editing, loading } = Stores.SchedulerDrawer
   const { workflows } = Stores.Workflow
   const canUse = usePermission(Permissions.SchedulerUse)
-  const form = useForm<FormValues>({ defaultValues: blank() })
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: blank(),
+  })
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestFireResult | null>(null)
 
@@ -207,47 +286,33 @@ export function ScheduledTaskFormDrawer() {
     allowed_unattended_tools: values.allowed_unattended_tools,
   })
 
-  const validate = (values: FormValues): string | null => {
-    if (!values.name.trim()) return 'Name is required'
-    if (!values.model_id.trim()) return 'A model is required'
-    if (values.target_kind === 'workflow' && !values.workflow_id.trim())
-      return 'Workflow is required'
-    if (values.target_kind === 'prompt' && !values.prompt.trim())
-      return 'Prompt is required'
-    if (values.schedule.schedule_kind === 'once' && !values.schedule.run_at)
-      return 'A run date/time is required'
-    if (
-      values.schedule.schedule_kind === 'recurring' &&
-      !values.schedule.cron_expr?.trim()
-    )
-      return 'A schedule is required'
-    if (!values.schedule.timezone.trim()) return 'A timezone is required'
-    if (values.target_kind === 'workflow') {
-      if (hasDeclaredInputs) {
-        // Typed-input mode: every REQUIRED declared input must be non-empty
-        // (blind-audit fix: FormField `required` is only decorative here — there's
-        // no RHF resolver — so the rule must be enforced explicitly).
-        for (const i of declaredInputs) {
-          if (i.required && !String(values.inputs?.[i.name] ?? '').trim()) {
-            return `${i.name} is required`
-          }
-        }
-      } else {
-        try {
-          JSON.parse(values.inputs_json || '{}')
-        } catch {
-          return 'Inputs must be valid JSON'
-        }
-      }
+  // Dynamic validation zod can't perform: every REQUIRED declared workflow input
+  // must be non-empty (the workflow IR isn't part of the form value, so it can't
+  // live in the schema). Reused by save + test.
+  const declaredInputError = (values: FormValues): string | null => {
+    if (values.target_kind !== 'workflow' || !hasDeclaredInputs) return null
+    for (const i of declaredInputs) {
+      if (i.required && !String(values.inputs?.[i.name] ?? '').trim())
+        return `${i.name} is required`
     }
     return null
   }
 
-  const handleSave = async () => {
-    const values = form.getValues()
-    const err = validate(values)
-    if (err) {
-      message.error(err)
+  // Fires ONLY after zodResolver validates the static fields (Form onSubmit +
+  // the footer Save via form.handleSubmit), so this handles the dynamic check.
+  const onSubmit = async (values: FormValues) => {
+    const dyn = declaredInputError(values)
+    if (dyn) {
+      message.error(dyn)
+      return
+    }
+    // JSON-fallback mode only (no declared inputs): the raw inputs_json must parse.
+    if (
+      values.target_kind === 'workflow' &&
+      !hasDeclaredInputs &&
+      !isValidJson(values.inputs_json)
+    ) {
+      message.error('Inputs must be valid JSON')
       return
     }
     Stores.SchedulerDrawer.setLoading(true)
@@ -268,10 +333,24 @@ export function ScheduledTaskFormDrawer() {
   }
 
   const handleTest = async () => {
+    // Test-fire runs immediately (schedule is irrelevant), so it validates only
+    // the fields it actually sends rather than the whole save schema.
     const values = form.getValues()
-    const err = validate(values)
-    if (err) {
-      message.error(err)
+    if (!values.model_id.trim()) {
+      message.error('A model is required')
+      return
+    }
+    if (values.target_kind === 'workflow' && !values.workflow_id.trim()) {
+      message.error('Workflow is required')
+      return
+    }
+    if (values.target_kind === 'prompt' && !values.prompt.trim()) {
+      message.error('Prompt is required')
+      return
+    }
+    const dyn = declaredInputError(values)
+    if (dyn) {
+      message.error(dyn)
       return
     }
     setTesting(true)
@@ -332,7 +411,17 @@ export function ScheduledTaskFormDrawer() {
           {canUse && (
             <Button
               data-testid="task-form-save"
-              onClick={() => void handleSave()}
+              onClick={form.handleSubmit(onSubmit, errors => {
+                // Surface the first validation error for controls without an
+                // inline FieldError (e.g. the Schedule block).
+                for (const e of Object.values(errors)) {
+                  const m = (e as { message?: string } | undefined)?.message
+                  if (m) {
+                    message.error(m)
+                    break
+                  }
+                }
+              })}
               loading={loading}
             >
               {editing ? 'Save' : 'Create'}
@@ -346,7 +435,7 @@ export function ScheduledTaskFormDrawer() {
         form={form}
         layout="vertical"
         disabled={!canUse}
-        onSubmit={() => void handleSave()}
+        onSubmit={onSubmit}
       >
         <FormField name="name" label="Name" required>
           <Input
@@ -356,17 +445,19 @@ export function ScheduledTaskFormDrawer() {
           />
         </FormField>
 
-        <Segmented
-          data-testid="task-form-target-kind"
-          value={targetKind}
-          onChange={v =>
-            form.setValue('target_kind', v as 'workflow' | 'prompt')
-          }
-          options={[
-            { label: 'Prompt', value: 'prompt' },
-            { label: 'Workflow', value: 'workflow' },
-          ]}
-        />
+        <FormField name="target_kind" label="Type">
+          {/* aria-label is set explicitly: the kit Segmented forwards aria-label
+              but not the aria-labelledby FormField injects, so without this the
+              segmented group would have no accessible name. */}
+          <Segmented
+            data-testid="task-form-target-kind"
+            aria-label="Type"
+            options={[
+              { label: 'Prompt', value: 'prompt' },
+              { label: 'Workflow', value: 'workflow' },
+            ]}
+          />
+        </FormField>
 
         {targetKind === 'prompt' ? (
           <>
@@ -429,32 +520,55 @@ export function ScheduledTaskFormDrawer() {
           <AllowedToolsField />
         </FormField>
 
-        <div>
-          <Text className="mb-1 text-sm">Schedule</Text>
+        {/* Schedule is a compound control with required value/onChange props, so
+            it can't be cloned by FormField (which injects those) — wrap it in a
+            labelled Field instead. zod validates it; the footer's onInvalid
+            surfaces a missing run-at/cron. */}
+        <Field>
+          <FieldTitle>Schedule</FieldTitle>
           <ScheduleBuilder
             value={schedule}
-            onChange={next => form.setValue('schedule', next)}
+            // ScheduleBuilder isn't an RHF-registered field, so re-validate on
+            // change (once the form has been submitted) — otherwise the inline
+            // schedule error below would stay stale after the user corrects it.
+            onChange={next =>
+              form.setValue('schedule', next, {
+                shouldValidate: form.formState.isSubmitted,
+              })
+            }
           />
-        </div>
+          {/* The Schedule control has no inline FieldError of its own, so a
+              zod schedule error (missing run-at / cron) is surfaced here — this
+              covers the Enter-to-submit path, not just the footer Save button. */}
+          {form.formState.errors.schedule?.message && (
+            <FieldError data-testid="field-error-schedule">
+              {String(form.formState.errors.schedule.message)}
+            </FieldError>
+          )}
+        </Field>
 
-        <Flex className="items-center justify-between">
-          <Text className="text-sm">Show a toast when it runs</Text>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>Show a toast when it runs</FieldTitle>
+          </FieldContent>
           <Switch
             data-testid="task-form-notify-mode"
             aria-label="Show a toast when the task runs"
             checked={notifyMode}
             onCheckedChange={v => form.setValue('notify_mode', v)}
           />
-        </Flex>
-        <Flex className="items-center justify-between">
-          <Text className="text-sm">Only notify when results change</Text>
+        </Field>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>Only notify when results change</FieldTitle>
+          </FieldContent>
           <Switch
             data-testid="task-form-notify-on-change"
             aria-label="Only notify when results change"
             checked={notifyOnChange}
             onCheckedChange={v => form.setValue('notify_on_change', v)}
           />
-        </Flex>
+        </Field>
 
         {testing && (
           <Flex className="justify-center py-4">
