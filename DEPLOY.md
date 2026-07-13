@@ -34,7 +34,7 @@ Build steps: `docker compose build` → `mkdir -p "${ZIEE_DATA_ROOT:-/data/ziee}
 | `ZIEE_ADMIN_EMAIL` | `admin@tinnguyen-lab.com` |
 | `ZIEE_WEB_PORT` | `18130` |
 | `ZIEE_PUBLIC_FILE_ORIGIN` | `http://host.docker.internal:18130` |
-| `ZIEE_CORS_ALLOW_ORIGIN` | public origin (e.g. `https://ziee.<domain>`) |
+| `ZIEE_CORS_ALLOW_ORIGIN` | `https://biognosia.tinnguyen-lab.com` (the public origin) |
 | `ZIEE_MAX_FILE_UPLOAD_MB` | `128` |
 | *(Google sign-in — set BOTH to enable, omit to leave Google off)* `GOOGLE_CLIENT_ID` | Google OAuth **production** client ID |
 | `GOOGLE_CLIENT_SECRET` 🔐 | Google OAuth production client secret (in TeamCity) |
@@ -46,7 +46,7 @@ Build steps: `docker compose build` → `mkdir -p "${ZIEE_DATA_ROOT:-/data/ziee}
 
 **Google sign-in (optional):** with `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` set,
 boot reconcile (desired_state) stamps them onto the pre-seeded `google` provider and
-enables it — no admin-UI step. Register **`<public-origin>/api/auth/oauth/google/callback`**
+enables it — no admin-UI step. Register **`https://biognosia.tinnguyen-lab.com/api/auth/oauth/google/callback`**
 as an Authorized redirect URI in the Google Cloud OAuth (production) client. The redirect
 URI is derived from `X-Forwarded-Proto`/`Host`, so the ingress edge MUST forward
 `X-Forwarded-Proto: https` and the real public Host or Google rejects the callback
