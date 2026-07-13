@@ -53,6 +53,23 @@ impl AuthUserTrait for User {
     }
 }
 
+// Chunk B1b: ziee's concrete `User` implements the framework's pluggable
+// identity interface (decision #1). Framework enforcement (the
+// `RequirePermissions` extractor, which moves in B3) depends only on
+// `ziee_identity::Principal`, never on this table type. Groups are threaded
+// through `check_permission_union(user, groups, ..)` at every call site today,
+// so this impl exposes the user's DIRECT permissions + admin flag; the active
+// group dimension is wired into `Principal` when the extractor moves in B3.
+impl ziee_identity::Principal for User {
+    fn is_admin(&self) -> bool {
+        self.is_admin
+    }
+
+    fn direct_permissions(&self) -> &[String] {
+        &self.permissions
+    }
+}
+
 // =====================================================
 // Group Model
 // =====================================================

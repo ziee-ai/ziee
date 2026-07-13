@@ -362,6 +362,26 @@ impl JwtService {
     }
 }
 
+// Chunk B1b: the concrete `JwtService` (HMAC keys, issuer/audience config,
+// jsonwebtoken decode + leeway, AppError mapping) STAYS in ziee and implements
+// the framework's JWT-verify INTERFACE. Framework enforcement depends only on
+// `ziee_identity::TokenVerifier`, never on this concrete service or on
+// jsonwebtoken/AppError; the associated types carry ziee's concrete `Claims`
+// and `AppError`. This is a thin delegation to the existing methods — the
+// validation logic is unchanged.
+impl ziee_identity::TokenVerifier for JwtService {
+    type Claims = Claims;
+    type Error = AppError;
+
+    fn verify_access_token(&self, token: &str) -> Result<Self::Claims, Self::Error> {
+        self.validate_access_token(token)
+    }
+
+    fn verify_refresh_token(&self, token: &str) -> Result<Self::Claims, Self::Error> {
+        self.validate_refresh_token(token)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

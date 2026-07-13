@@ -19,6 +19,13 @@ macros = { path = "./macros" }
 # here via equivalence-preserving re-export shims (decision N2).
 ziee-core = { path = "../../sdk/crates/ziee-core" }
 
+# SDK identity ABSTRACTIONS (Chunk B1b): the PermissionCheck/PermissionList
+# traits, the generic RBAC evaluator (check_permissions_array), and the
+# Principal + TokenVerifier interfaces — consumed here via equivalence-preserving
+# re-export shims + trait impls (decision N2). Concrete User/Group/JwtService
+# stay in ziee and implement the traits.
+ziee-identity = { path = "../../sdk/crates/ziee-identity" }
+
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"
 

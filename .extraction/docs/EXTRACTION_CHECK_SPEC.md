@@ -127,3 +127,12 @@ and MUST be spiked first.)
 `extraction-check.mjs` + the baseline snapshot + the `skeleton-server` are **prerequisites of Chunk 0**
 (the gate must exist before it can gate). They are Phase-1 tooling tasks (see
 `PHASE1_EXECUTION_PLAN.md`).
+
+---
+## E8 REFINEMENT (from B1 — orchestrator decision)
+openapi.json is NOT byte-reproducible: top-level key ORDER is a deterministic function of the
+linkme route-registration/dependency graph, so any dep-graph change (even semantically neutral,
+e.g. adding a path-dep) reorders keys. Therefore E8 compares:
+- **types.ts -> BYTE-IDENTITY** (deterministic; the real client contract).
+- **openapi.json -> CANONICAL SET-EQUALITY** (`jq -S` sorted equality; same paths/schemas, order ignored).
+Verified on B1: types.ts byte-identical; openapi.json canonically-equal (1118 order-only lines).
