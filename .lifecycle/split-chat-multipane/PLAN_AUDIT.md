@@ -577,3 +577,15 @@ honestly at DEC-30 as impl-wins drift, not left claiming a removal that didn't h
   was caught by the human RUNNING the live app and fixed to a `.$` snapshot — verified by
   the drag-to-split e2e that renders the overlay mid-drag (DRIFT-12.2). RUN by TEST-105/107
   (unit) + TEST-106 (e2e). npm run check green both workspaces.
+
+## ITEM-71 verdict (split header matches the app header)
+
+- **ITEM-71** — verdict: PASS — the fix REUSES/shares the sibling's logic rather than
+  re-deriving it: `useHeaderLeftInset()` (core web 48/12 + `.desktop` 118/48/12 macOS)
+  is the single source of truth now consumed by `HeaderBarContainer` core + desktop AND
+  the split leftmost pane header, so the inset can't drift. Pane header height set to
+  50px to match. The `z-10`→`z-[5]` focus-ring change keeps the ring above sibling panes
+  (z-auto) while dropping below the fixed `z-10` toggle, making the collapse button
+  clickable. The new `.desktop.ts` hook is a registered override seam (OVERRIDE_MANIFEST
+  regenerated, 15 .desktop files). RUN by TEST-108 (real click + computed-style asserts).
+  npm run check green both workspaces.

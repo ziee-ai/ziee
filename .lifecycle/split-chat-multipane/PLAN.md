@@ -612,6 +612,21 @@ LEDGER) — not silently absorbed.
   app and fixed to a `.$` snapshot read — recorded FB-17/LEDGER (a hooks-count bug the
   unit tests couldn't see; only a live render / the overlay-showing e2e exposes it).
 
+- **ITEM-71**: **Split per-pane header must match the single-pane app header** (FB-18
+  regression fix). The hand-rolled compact header diverged from `HeaderBarContainer`:
+  (a) height `h-11`(44px) vs 50px; (b) static `px-3` with no left-inset reserve vs the
+  app header's `paddingLeft: isSidebarCollapsed ? (macOS-desktop 118 / web 48) : 12`
+  that clears the fixed sidebar-collapse toggle + macOS traffic lights; (c) the toggle
+  was UNCLICKABLE in split — the focused pane's `z-10` (focus-ring lift) equalled the
+  fixed `z-10` toggle and, since the main-content area is z-auto (no stacking context)
+  and the pane is later in the DOM, it covered the toggle. Fix: a shared
+  `useHeaderLeftInset()` hook (core + `.desktop`) as the SINGLE source of truth used by
+  BOTH `HeaderBarContainer(.desktop)` and the leftmost pane header; 50px pane header
+  height; focus-ring lowered to `z-[5]` (above siblings, below the toggle). Covered by
+  TEST-108 (e2e — real `.click()` catches the z-intercept; asserts 50px height + 48/12
+  inset). The lesson is [[feedback_match_existing_patterns]]: reuse/share the sibling's
+  logic, never hand-roll a parallel one that drops its encoded constraints.
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp
