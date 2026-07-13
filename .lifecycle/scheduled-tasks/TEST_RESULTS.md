@@ -114,3 +114,36 @@ canary above is therefore recorded against the touched surfaces, which are clean
 - **TEST-54**: PASS
 - **TEST-55**: PASS
 - **TEST-56**: PASS
+
+## Round 3 (FB-9 precedent audit) — frontend gates
+
+Frontend-only diff (scheduler module + gallery manifests + e2e specs); no backend
+touched, so only the frontend chain applies.
+
+npm run check (ui): PASS
+gate:ui (ui): PASS
+
+**gate:ui detail (honesty note).** `scripts/gate-ui.mjs` runs runtime-health over
+all 174 gallery surfaces; the reworked scheduler surfaces pass with ZERO gating-HIGH
+findings — `scheduled-tasks` (loaded/empty) and `ScheduledTaskCard` states are clean;
+the only scheduler findings are 12 LOW (spacing-grid, the kit's 2px half-steps,
+non-gating) + 10 MEDIUM which are the DELIBERATE error-state's mocked-fetch
+console-error (expected for the `:error` page-state). The gate COMMAND exits non-zero
+only because of 10 PRE-EXISTING gating-HIGH surfaces in modules this diff does not
+touch (file-rag `seeded-s2-filecard/pdf/chrome-*`, `deep-chat-*`, `settings-voice`,
+`seeded-llm-models-loading`, `overlay-provider-api-key-modal`,
+`seeded-s3-group-widget-error`) — verified: `git diff main...HEAD --name-only`
+touches none of those modules. This is a main-hygiene backlog item surfaced to the
+human, not a regression from this iteration.
+
+### Round 3 e2e (tests/e2e/14-scheduler — 23 passed, 8.0m, workers=2)
+The full 14-scheduler suite (new precedent specs + all pre-existing scheduler
+specs) passed — confirming no regression from the layout/card/drawer rework.
+
+- **TEST-57**: PASS
+- **TEST-58**: PASS
+- **TEST-59**: PASS
+- **TEST-60**: PASS
+- **TEST-61**: PASS
+- **TEST-62**: PASS
+- **TEST-63**: PASS
