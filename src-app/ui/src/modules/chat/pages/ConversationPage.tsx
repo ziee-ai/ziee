@@ -19,7 +19,6 @@ import {
 } from '@/modules/chat/core/pane/useOpenConversation'
 import {
   dragKind,
-  isWorkspaceDrag,
   readConversationDragId,
   readPaneDragId,
   reorderIndices,
@@ -28,8 +27,10 @@ import {
 import {
   type DropZone,
   planSinglePaneDrop,
+  planSplitPaneDrop,
   zoneForX,
 } from '@/modules/chat/core/pane/singlePaneDrop'
+import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
@@ -108,30 +109,26 @@ export function ConversationPane() {
   // (they belong to the composer) — the header is not over the composer, so they
   // never cross-fire. `paneDropActive` drives the drop highlight.
   const [paneDropActive, setPaneDropActive] = useState(false)
+  // The header handles ONLY a pane-REORDER drag (grip → header). A CONVERSATION
+  // drag is handled by the chat column's edge-directional drop (ITEM-70) — the
+  // header ignores it so it falls through to the column (which highlights the
+  // left/center/right third under the pointer).
   const onPaneHeaderDragOver = (e: React.DragEvent) => {
-    if (!pane || !isWorkspaceDrag(e.dataTransfer)) return
+    if (!pane || dragKind(e.dataTransfer) !== 'pane') return
     e.preventDefault()
     setPaneDropActive(true)
   }
   const onPaneHeaderDrop = (e: React.DragEvent) => {
     if (!pane) return
     setPaneDropActive(false)
-    const kind = dragKind(e.dataTransfer)
-    if (kind === 'conversation') {
-      const cid = readConversationDragId(e.dataTransfer)
-      if (cid) {
-        e.preventDefault()
-        Stores.SplitView.setPaneConversation(pane.paneId, cid)
-      }
-    } else if (kind === 'pane') {
-      const from = readPaneDragId(e.dataTransfer)
-      const idx = from
-        ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId)
-        : null
-      if (idx) {
-        e.preventDefault()
-        Stores.SplitView.reorderPanes(idx.from, idx.to)
-      }
+    if (dragKind(e.dataTransfer) !== 'pane') return
+    const from = readPaneDragId(e.dataTransfer)
+    const idx = from
+      ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId)
+      : null
+    if (idx) {
+      e.preventDefault()
+      Stores.SplitView.reorderPanes(idx.from, idx.to)
     }
   }
   // In a pane the provider owns the target conversation id (the URL param is the
@@ -143,39 +140,54 @@ export function ConversationPane() {
   // bridge (= primary) on the single-pane route. Both proxies expose the same
   // reactive-read / `.$` snapshot / action surface.
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
-  // Single-pane edge-directional drop (ITEM-57): on the UNSPLIT route a
-  // conversation dragged over the chat column highlights the left/center/right
-  // third; dropping splits by side (left → new pane on the left, right → on the
-  // right) or replaces (center). Only conversation drags participate — a file
-  // drag belongs to the composer, a pane drag can't exist in single-pane.
-  const [singleDropZone, setSingleDropZone] = useState<DropZone | null>(null)
-  const onSinglePaneDragOver = (e: React.DragEvent) => {
-    if (pane || !conversationId || dragKind(e.dataTransfer) !== 'conversation') return
+  // Per-pane edge-directional drop (ITEM-57 single-pane + ITEM-70 split): a
+  // conversation dragged over a pane's chat column highlights the left/center/
+  // right third. SINGLE-pane: left/right create the split ([dropped|current] /
+  // [current|dropped]), center replaces in place. SPLIT: left/right insert a NEW
+  // pane immediately before/after THIS pane, center replaces THIS pane; at
+  // MAX_PANES the edges fall back to replace. Only conversation drags participate
+  // — a file drag belongs to the composer; a pane-reorder drag is the header's.
+  const [dropZone, setDropZone] = useState<DropZone | null>(null)
+  const onColumnDragOver = (e: React.DragEvent) => {
+    if (!conversationId || dragKind(e.dataTransfer) !== 'conversation') return
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
-    setSingleDropZone(zoneForX(e.clientX, rect.left, rect.width))
+    setDropZone(zoneForX(e.clientX, rect.left, rect.width))
   }
-  const onSinglePaneDragLeave = (e: React.DragEvent) => {
+  const onColumnDragLeave = (e: React.DragEvent) => {
     // Ignore leave events that cross into a child; only clear on a real exit.
-    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSingleDropZone(null)
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropZone(null)
   }
-  const onSinglePaneDrop = (e: React.DragEvent) => {
-    setSingleDropZone(null)
-    if (pane || !conversationId || dragKind(e.dataTransfer) !== 'conversation') return
+  const onColumnDrop = (e: React.DragEvent) => {
+    setDropZone(null)
+    if (!conversationId || dragKind(e.dataTransfer) !== 'conversation') return
     const droppedId = readConversationDragId(e.dataTransfer)
     if (!droppedId) return
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
-    const plan = planSinglePaneDrop(zoneForX(e.clientX, rect.left, rect.width), conversationId, droppedId)
+    const zone = zoneForX(e.clientX, rect.left, rect.width)
+    if (pane) {
+      // Existing split: insert before/after THIS pane, or replace it.
+      const atCap = Stores.SplitView.$.panes.length >= SPLIT_LIMITS.MAX_PANES
+      const plan = planSplitPaneDrop(zone, conversationId, droppedId, atCap)
+      if (plan.kind === 'replace') {
+        Stores.SplitView.setPaneConversation(pane.paneId, droppedId)
+      } else if (plan.kind === 'insertBefore') {
+        Stores.SplitView.openPane({ conversationId: droppedId, beforePaneId: pane.paneId })
+      } else if (plan.kind === 'insertAfter') {
+        Stores.SplitView.openPane({ conversationId: droppedId, afterPaneId: pane.paneId })
+      }
+      return
+    }
+    // Single-pane: create the split (or replace in place). Route BOTH edges
+    // through the canonical reconcile open (blind-audit fixes): `newPane` seeds
+    // `[current | dropped]`, navigates to + focuses the DROPPED conversation, and
+    // dedups a conversation already live in a pop-out WINDOW. A left drop then
+    // reorders the dropped pane to the front.
+    const plan = planSinglePaneDrop(zone, conversationId, droppedId)
     if (plan.kind === 'replace') {
       void openConversationInWorkspace(plan.id)
     } else if (plan.kind === 'split') {
-      // Route BOTH edges through the canonical reconcile open (blind-audit fixes):
-      // `newPane` seeds `[current | dropped]`, navigates to + focuses the DROPPED
-      // conversation (so URL == focused pane, symmetric for both sides), and
-      // dedups a conversation already live in a pop-out WINDOW instead of
-      // duplicating it (`focusPopoutWindowIfOpen`, which the raw `openPane` loop
-      // skipped). A left drop then reorders the dropped pane to the front.
       const droppedOnLeft = plan.order[0] === droppedId
       void openConversationInWorkspace(droppedId, { intent: 'newPane' }).then(() => {
         if (!droppedOnLeft) return
@@ -845,36 +857,56 @@ export function ConversationPane() {
         {/* Chat column. `relative` anchors the floating find bar (ITEM-1) and
             jump-to-latest button (ITEM-2). */}
         <div
-          // Testid only in single-pane (kept unique — split panes have `pane`).
+          // Testid only in single-pane (kept unique — split panes have `pane`); a
+          // plain data attr marks the per-pane drop column for split e2e targeting.
           data-testid={pane ? undefined : 'chat-single-drop-column'}
+          data-pane-drop-column="true"
           className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}
-          onDragOver={onSinglePaneDragOver}
-          onDragLeave={onSinglePaneDragLeave}
-          onDrop={onSinglePaneDrop}
+          onDragOver={onColumnDragOver}
+          onDragLeave={onColumnDragLeave}
+          onDrop={onColumnDrop}
         >
-          {/* Single-pane edge-directional drop hint (ITEM-57): while a conversation
-              is dragged over the unsplit column, show the three target thirds and
-              highlight the one under the pointer. Non-interactive overlay — the
-              drag events land on the column beneath it. */}
-          {!pane && singleDropZone && (
+          {/* Edge-directional drop hint (ITEM-57 single-pane / ITEM-70 split): while
+              a conversation is dragged over the column, show the three target thirds
+              and highlight the one under the pointer. Non-interactive overlay — the
+              drag events land on the column beneath it. Labels reflect the action:
+              single-pane opens a split by side; a split pane inserts a new pane
+              before/after (or replaces at the MAX_PANES cap). */}
+          {dropZone && (
             <div className="pointer-events-none absolute inset-0 z-40 flex" aria-hidden="true">
-              {(['left', 'center', 'right'] as const).map(z => (
-                <div
-                  key={z}
-                  className={cn(
-                    'flex flex-1 items-center justify-center border border-dashed border-primary/30 text-sm font-medium text-primary transition-colors',
-                    singleDropZone === z
-                      ? 'bg-primary/10 ring-2 ring-inset ring-primary'
-                      : 'opacity-40',
-                  )}
-                >
-                  {singleDropZone === z && (
-                    <span className="rounded-md bg-card/80 px-2 py-1 shadow-sm">
-                      {z === 'center' ? 'Replace' : z === 'left' ? 'Open on left' : 'Open on right'}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {(['left', 'center', 'right'] as const).map(z => {
+                // Snapshot read (`.$`) — NOT the reactive proxy — so this is a plain
+                // value read, not a hook call inside a loop/conditional (Rules of Hooks).
+                const atCap =
+                  !!pane && Stores.SplitView.$.panes.length >= SPLIT_LIMITS.MAX_PANES
+                const label =
+                  z === 'center'
+                    ? 'Replace'
+                    : pane
+                      ? atCap
+                        ? 'Replace'
+                        : z === 'left'
+                          ? 'Insert left'
+                          : 'Insert right'
+                      : z === 'left'
+                        ? 'Open on left'
+                        : 'Open on right'
+                return (
+                  <div
+                    key={z}
+                    className={cn(
+                      'flex flex-1 items-center justify-center border border-dashed border-primary/30 text-sm font-medium text-primary transition-colors',
+                      dropZone === z
+                        ? 'bg-primary/10 ring-2 ring-inset ring-primary'
+                        : 'opacity-40',
+                    )}
+                  >
+                    {dropZone === z && (
+                      <span className="rounded-md bg-card/80 px-2 py-1 shadow-sm">{label}</span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
           {/* Floating find bar, top-right of the chat column. */}

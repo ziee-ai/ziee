@@ -53,6 +53,9 @@ export const SplitView = defineStore('SplitView', {
       conversationId?: string | null
       projectId?: string | null
       afterPaneId?: string
+      /** Insert the new pane immediately BEFORE this pane (ITEM-70 edge-drop
+       *  insert-left). Ignored if `afterPaneId` is also set. */
+      beforePaneId?: string
     }): string | null => {
       // One conversation per workspace (ITEM-24): opening a conversation already
       // in a pane focuses that pane instead of creating a duplicate.
@@ -75,11 +78,17 @@ export const SplitView = defineStore('SplitView', {
         projectId: opts?.projectId ?? null,
       }
       set((d) => {
-        const idx = opts?.afterPaneId
-          ? d.panes.findIndex((p) => p.paneId === opts.afterPaneId)
-          : -1
-        if (idx >= 0) d.panes.splice(idx + 1, 0, pane)
-        else d.panes.push(pane)
+        if (opts?.afterPaneId) {
+          const idx = d.panes.findIndex((p) => p.paneId === opts.afterPaneId)
+          if (idx >= 0) d.panes.splice(idx + 1, 0, pane)
+          else d.panes.push(pane)
+        } else if (opts?.beforePaneId) {
+          const idx = d.panes.findIndex((p) => p.paneId === opts.beforePaneId)
+          if (idx >= 0) d.panes.splice(idx, 0, pane)
+          else d.panes.push(pane)
+        } else {
+          d.panes.push(pane)
+        }
         d.focusedPaneId = paneId
       })
       return paneId

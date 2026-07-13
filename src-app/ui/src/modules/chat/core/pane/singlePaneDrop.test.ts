@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { zoneForX, planSinglePaneDrop } from './singlePaneDrop.ts'
+import { zoneForX, planSinglePaneDrop, planSplitPaneDrop } from './singlePaneDrop.ts'
 
 // TEST-88/89 (split-chat ITEM-57): the pure geometry + placement for single-pane
 // edge-directional drop. `zoneForX` maps a pointer x into left/center/right
@@ -57,4 +57,24 @@ test('dropping a conversation onto its OWN view is a no-op in every zone', () =>
 
 test('an empty dropped id is a no-op (defensive)', () => {
   assert.deepEqual(planSinglePaneDrop('left', 'X', ''), { kind: 'noop' })
+})
+
+// --- planSplitPaneDrop: dropping Z onto a pane holding A, in an existing split ---
+test('split pane: left → insertBefore, right → insertAfter, center → replace', () => {
+  assert.deepEqual(planSplitPaneDrop('left', 'A', 'Z', false), { kind: 'insertBefore' })
+  assert.deepEqual(planSplitPaneDrop('right', 'A', 'Z', false), { kind: 'insertAfter' })
+  assert.deepEqual(planSplitPaneDrop('center', 'A', 'Z', false), { kind: 'replace' })
+})
+
+test('split pane: at MAX_PANES cap, the insert edges fall back to replace', () => {
+  assert.deepEqual(planSplitPaneDrop('left', 'A', 'Z', true), { kind: 'replace' })
+  assert.deepEqual(planSplitPaneDrop('right', 'A', 'Z', true), { kind: 'replace' })
+  assert.deepEqual(planSplitPaneDrop('center', 'A', 'Z', true), { kind: 'replace' })
+})
+
+test('split pane: dropping a conversation onto its OWN pane is a no-op', () => {
+  for (const z of ['left', 'center', 'right'] as const) {
+    assert.deepEqual(planSplitPaneDrop(z, 'A', 'A', false), { kind: 'noop' })
+  }
+  assert.deepEqual(planSplitPaneDrop('left', 'A', '', false), { kind: 'noop' })
 })

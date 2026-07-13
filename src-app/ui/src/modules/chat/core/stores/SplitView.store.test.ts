@@ -52,6 +52,28 @@ test('openPane with afterPaneId inserts after that pane', () => {
   assert.ok(c)
 })
 
+test('openPane beforePaneId inserts before a MIDDLE pane (ITEM-70 insert-left)', () => {
+  const a = s().openPane({ conversationId: 'a' })
+  const b = s().openPane({ conversationId: 'b' })
+  const z = s().openPane({ conversationId: 'z', beforePaneId: b! })
+  assert.deepEqual(
+    s().panes.map((p) => p.conversationId),
+    ['a', 'z', 'b'],
+    'the new pane is spliced directly BEFORE beforePaneId',
+  )
+  assert.equal(s().focusedPaneId, z)
+  assert.ok(a)
+})
+
+test('openPane beforePaneId before the FIRST pane prepends', () => {
+  const a = s().openPane({ conversationId: 'a' })
+  const b = s().openPane({ conversationId: 'b' })
+  const z = s().openPane({ conversationId: 'z', beforePaneId: a! })
+  assert.deepEqual(s().panes.map((p) => p.conversationId), ['z', 'a', 'b'])
+  assert.equal(s().focusedPaneId, z)
+  assert.ok(b)
+})
+
 test('closePane atomically reassigns focus to a surviving neighbour', () => {
   s().openPane({ conversationId: 'a' })
   const b = s().openPane({ conversationId: 'b' })

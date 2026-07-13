@@ -48,3 +48,28 @@ export function planSinglePaneDrop(
   if (zone === 'left') return { kind: 'split', order: [droppedId, currentId] }
   return { kind: 'split', order: [currentId, droppedId] }
 }
+
+export type SplitPaneDropPlan =
+  | { kind: 'noop' }
+  | { kind: 'replace' }
+  | { kind: 'insertBefore' }
+  | { kind: 'insertAfter' }
+
+/**
+ * Resolve the action for dropping `droppedId` onto a pane of an EXISTING split
+ * that holds `thisPaneConvId`, by zone (ITEM-70 — the per-pane edge-directional
+ * model, unified with single-pane): LEFT third → insert a new pane immediately
+ * BEFORE this one; RIGHT third → insert AFTER; CENTER → replace this pane. At the
+ * `MAX_PANES` cap there's no room for a new pane, so the insert edges fall back to
+ * REPLACE. Dropping a conversation onto its OWN pane is a no-op.
+ */
+export function planSplitPaneDrop(
+  zone: DropZone,
+  thisPaneConvId: string | null | undefined,
+  droppedId: string,
+  atCap: boolean,
+): SplitPaneDropPlan {
+  if (!droppedId || droppedId === thisPaneConvId) return { kind: 'noop' }
+  if (zone === 'center' || atCap) return { kind: 'replace' }
+  return zone === 'left' ? { kind: 'insertBefore' } : { kind: 'insertAfter' }
+}
