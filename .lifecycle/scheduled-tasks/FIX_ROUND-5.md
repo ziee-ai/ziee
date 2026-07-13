@@ -37,4 +37,4 @@ Merged the 3 blind-audit angles (correctness · UI-precedent · contract/tests/s
   slice; the task set is bounded by the admin `max_active_tasks_per_user` cap. Not
   a defect; mirroring the sibling was the explicit instruction (DEC-24).
 
-**New confirmed findings:** 0
+**New confirmed findings:** 2 (a follow-up blind round surfaced 2 more — see FIX_ROUND-6)

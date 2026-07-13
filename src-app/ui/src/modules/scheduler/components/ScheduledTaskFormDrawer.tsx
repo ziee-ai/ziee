@@ -446,8 +446,12 @@ export function ScheduledTaskFormDrawer() {
         </FormField>
 
         <FormField name="target_kind" label="Type">
+          {/* aria-label is set explicitly: the kit Segmented forwards aria-label
+              but not the aria-labelledby FormField injects, so without this the
+              segmented group would have no accessible name. */}
           <Segmented
             data-testid="task-form-target-kind"
+            aria-label="Type"
             options={[
               { label: 'Prompt', value: 'prompt' },
               { label: 'Workflow', value: 'workflow' },
@@ -524,7 +528,14 @@ export function ScheduledTaskFormDrawer() {
           <FieldTitle>Schedule</FieldTitle>
           <ScheduleBuilder
             value={schedule}
-            onChange={next => form.setValue('schedule', next)}
+            // ScheduleBuilder isn't an RHF-registered field, so re-validate on
+            // change (once the form has been submitted) — otherwise the inline
+            // schedule error below would stay stale after the user corrects it.
+            onChange={next =>
+              form.setValue('schedule', next, {
+                shouldValidate: form.formState.isSubmitted,
+              })
+            }
           />
           {/* The Schedule control has no inline FieldError of its own, so a
               zod schedule error (missing run-at / cron) is surfaced here — this
