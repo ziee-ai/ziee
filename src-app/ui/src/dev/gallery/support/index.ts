@@ -13,12 +13,5 @@ export type {
   SeededSurfaceEntry,
 } from './types'
 
-export {
-  holdForever,
-  holdPatch,
-  lazyBound,
-  lazyCompose,
-  lazyNamed,
-  lazyProps,
-  whenTrue,
-} from './helpers'
+export { holdForever, holdPatch, whenTrue } from './hold'
+export { lazyBound, lazyCompose, lazyNamed, lazyProps } from './lazy'
