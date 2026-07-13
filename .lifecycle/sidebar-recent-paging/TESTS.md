@@ -18,6 +18,7 @@ Tiers: `unit` = vitest store test; `e2e` = Playwright. No backend change → no
 - **TEST-9** (tier: e2e) [covers: ITEM-5, ITEM-6] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: after scrolling past page 1, creating a new conversation makes it appear at the TOP of the sidebar list while a previously-loaded older row still resolves (the accumulated list is not reset to 20).
 - **TEST-14** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: deleting the last loaded row while the server still has more (`recentHasMore`) auto-refills page 1 (the widget's empty render has no virtual rows to trigger auto-load), so the sidebar doesn't strand on "no conversations".
 - **TEST-14b** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: deleting the last loaded row when nothing more exists (`!recentHasMore`) does NOT refetch (stays correctly empty).
+- **TEST-14d** (tier: unit) [covers: ITEM-3, ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: a delete that runs while a `loadMore` is in flight causes the resolving append to re-anchor `recentPage` to the loaded length (floor(59/20)=2), NOT the stale fetched page (3), so the next fetch overlaps the tail instead of skipping a server row.
 - **TEST-14c** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: a `loadMore` in flight when the list is reset (delete-drains → `refillRecentIfEmptied` bumps the load epoch) is DISCARDED on resolve — the fresh page-1 rows survive and the stale page-N rows are not appended.
 - **TEST-5c** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: `syncRecentFront()` re-anchors `recentPage` to the grown length after a full-page cross-device prepend, so the next `loadMoreRecent()` fetches the correct older page and paging keeps progressing (does not dead-end on an all-overlap page).
 - **TEST-13** (tier: e2e) [covers: ITEM-3, ITEM-6, ITEM-7] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: with every next-page request forced to 500, repeated scroll-to-bottom does NOT hammer the API — failed page fetches stay bounded (≤5) and the list keeps page 1 (the `!recentError` auto-load gate); then a visible `chat-recent-loadmore-error` + Retry appears, and clicking Retry (with the route restored) resumes paging (a page-2 row appears).
@@ -29,7 +30,7 @@ Tiers: `unit` = vitest store test; `e2e` = Playwright. No backend change → no
 
 - ITEM-1 → TEST-1
 - ITEM-2 → TEST-1, TEST-3b, TEST-3d, TEST-6
-- ITEM-3 → TEST-2, TEST-3, TEST-3b, TEST-3c, TEST-7, TEST-8, TEST-13
+- ITEM-3 → TEST-2, TEST-3, TEST-3b, TEST-3c, TEST-7, TEST-8, TEST-13, TEST-14d
 - ITEM-4 → TEST-4
 - ITEM-5 → TEST-5, TEST-5b, TEST-5c, TEST-9, TEST-14, TEST-14b, TEST-14c
 - ITEM-6 → TEST-6, TEST-7, TEST-9, TEST-11, TEST-13

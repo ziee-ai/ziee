@@ -17,4 +17,4 @@ consistency bug:
 
 - `npm run check` (ui): PASS. `tsc`: clean. Unit tests: 15/15 PASS.
 
-**New confirmed findings:** 0 (verified by the round-5 re-audit)
+**New confirmed findings:** 1 (the round-5 re-audit found a delete-vs-in-flight-loadMore skip — see FIX_ROUND-6)

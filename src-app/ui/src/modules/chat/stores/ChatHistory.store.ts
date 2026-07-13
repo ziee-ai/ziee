@@ -166,7 +166,17 @@ export const ChatHistory = defineStore('ChatHistory', {
             draft.recentConversations = [...draft.recentConversations, ...fresh]
             added = fresh.length
           }
-          draft.recentPage = targetPage
+          // Re-anchor to the loaded length rather than the fetched targetPage —
+          // unifies this append path with every other mutation (syncRecentFront /
+          // deletes / created) on the floor(length/limit) invariant. Critical for
+          // the delete-concurrent-with-an-in-flight-loadMore race: the delete
+          // shrinks the list + re-anchors recentPage, and this resolve must NOT
+          // stomp it back to the stale targetPage (which would skip a row on the
+          // next fetch). floor(length/limit) always keeps offset ≤ length, so
+          // consecutive fetches overlap (dedup) with no gap.
+          draft.recentPage = Math.floor(
+            draft.recentConversations.length / draft.limit,
+          )
           draft.recentTotal = response.total
           // End-detection is anchored on the SERVER page size, not just the
           // length<total heuristic — otherwise a drifted `recentTotal` (a

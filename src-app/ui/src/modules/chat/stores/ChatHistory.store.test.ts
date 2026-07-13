@@ -389,6 +389,42 @@ describe('ChatHistory recent paging (TEST-1..5)', () => {
     expect(ids.some(id => id.startsWith('stale'))).toBe(false) // stale page dropped
   })
 
+  it('TEST-14d: a delete concurrent with an in-flight loadMore re-anchors recentPage (no skip)', async () => {
+    useChatHistoryStore.setState({
+      recentConversations: Array.from({ length: 40 }, (_, i) => convo({ id: `r${i}` })),
+      recentInitialized: true,
+      recentTotal: 100,
+      recentHasMore: true,
+      recentPage: 2,
+    })
+
+    // loadMore(page 3) in flight (deferred response).
+    let resolveP3: (v: unknown) => void = () => {}
+    const p3 = new Promise(res => {
+      resolveP3 = res
+    })
+    apiMock.Conversation.list.mockReturnValueOnce(p3 as any)
+    const morePromise = store().loadMoreRecent()
+    expect(store().recentLoadingMore).toBe(true)
+
+    // A delete of a loaded row (list NOT drained to empty) runs mid-flight.
+    apiMock.Conversation.delete.mockResolvedValueOnce({})
+    await store().deleteConversation('r5')
+    expect(store().recentConversations).toHaveLength(39)
+    expect(store().recentPage).toBe(1) // floor(39/20)
+
+    // The in-flight page 3 resolves → appends, re-anchoring recentPage to the
+    // loaded length, NOT the stale targetPage(3) — so the next loadMore overlaps
+    // the tail (dedup) instead of skipping a server row.
+    resolveP3({
+      conversations: Array.from({ length: 20 }, (_, i) => convo({ id: `n${i}` })),
+      total: 99,
+    })
+    await morePromise
+    expect(store().recentConversations).toHaveLength(59)
+    expect(store().recentPage).toBe(2) // floor(59/20) = 2, NOT the stale 3
+  })
+
   it('TEST-5c: syncRecentFront re-anchors recentPage so paging keeps reaching older rows', async () => {
     // One page loaded (recentPage=1), then a big cross-device burst prepends a
     // full page of new rows.

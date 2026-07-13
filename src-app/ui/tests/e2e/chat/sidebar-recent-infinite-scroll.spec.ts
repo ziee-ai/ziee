@@ -239,13 +239,16 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
       await expect(newest).toBeVisible({ timeout: 2000 })
     }).toPass({ timeout: 15000 })
 
-    // …and the previously-loaded older page was NOT dropped/reset (scroll back
-    // down and it still resolves).
-    for (let i = 0; i < 12; i++) {
-      if (await olderRow.count()) break
+    // …and the accumulated pages were NOT reset to page 1: paging still marches
+    // on past the create, all the way to the oldest conversation. (A reset would
+    // strand the older pages and this could never reach SBP-000.)
+    for (let i = 0; i < 14; i++) {
+      if (await page.getByTestId(ROW).filter({ hasText: pad(0) }).count()) break
       await scrollStep(page)
     }
-    await expect(olderRow).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.getByTestId(ROW).filter({ hasText: pad(0) }),
+    ).toBeVisible({ timeout: 10000 })
   })
 
   test('TEST-13: a persistent load-more failure does NOT hammer the API in a loop', async ({
