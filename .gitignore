@@ -76,3 +76,10 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 src-app/server/test-logs/
 src-app/ui/docs/antd-diagnostics/
 src-app/target
+
+# Environment-specific deploy config lives ONLY on the `deploy` branch — never on
+# this generic, published source. Ignored here so it can't be re-committed to main.
+# (On the `deploy` branch these are TRACKED; that branch must NOT list them here.)
+config/desired-state.yaml
+docker-compose.deploy.yml
+DEPLOY.md

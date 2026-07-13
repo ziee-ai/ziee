@@ -10,7 +10,6 @@ mod citations;
 mod code_sandbox;
 mod control_mcp;
 mod common;
-mod desired_state;
 mod elicitation_mcp;
 mod file;
 mod file_rag;
