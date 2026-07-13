@@ -42,7 +42,6 @@
 #   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
 #   ZIEE_ADMIN_USERNAME / _EMAIL / _PASSWORD        — the first admin (env ONLY;
 #                                                     first deploy only — see below)
-#   ZIEE_DEFAULT_USER_PASSWORD                      — the regular user's password
 #
 # On the deploy host the three servers are published on the HOST and reached over
 # host.docker.internal (that host only allows ports 18000-19000):
@@ -108,14 +107,10 @@ mcp_servers:
 # more.
 
 # ── Regular users ───────────────────────────────────────────────────────────
-# Non-admin accounts, placed in the default group. Root admins bypass ALL
-# permission checks, so this is the account that actually sees the reduced UI
-# configured below.
-users:
-  - username: user
-    email: user@tinnguyen-lab.com
-    display_name: User
-    password: ${ZIEE_DEFAULT_USER_PASSWORD}
+# No users are seeded — the admin creates non-admin accounts in the UI. New
+# accounts land in the default `Users` group and get the reduced UI configured
+# below. (The reconciler still supports a `users:` list if you ever want to seed
+# one, but we ship none, so no account or credential lives in this file.)
 
 # ── Group permissions ───────────────────────────────────────────────────────
 # Limit what regular users can see. Nothing is removed from the product — these

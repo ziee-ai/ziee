@@ -47,8 +47,6 @@ services:
       ZIEE_ADMIN_USERNAME: "${ZIEE_ADMIN_USERNAME:-}"
       ZIEE_ADMIN_EMAIL: "${ZIEE_ADMIN_EMAIL:-}"
       ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:-}"
-      # The seeded regular user (the account that actually shows the reduced UI).
-      ZIEE_DEFAULT_USER_PASSWORD: "${ZIEE_DEFAULT_USER_PASSWORD:-}"
     # Lets ziee reach the host-published MCP servers at host.docker.internal:18xxx
     # (same pattern biognosia-mcp / cpa-website use).
     extra_hosts:
