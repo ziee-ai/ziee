@@ -11,8 +11,11 @@ UI setup:
 - **3 org system MCP servers** (`rcpa-user` / `dscc-user` / `biognosia-user`) from `${RCPA_MCP_URL}` / `${DSCC_MCP_URL}` /
   `${BIOGNOSIA_MCP_URL}`, `usage_mode: auto`, assigned to the **Users** group (without which
   non-admin users cannot use them).
-- **Root admin** (`admin` / `admin@tinnguyen-lab.com`, `${ZIEE_ADMIN_PASSWORD}`) — created only when
-  the deployment has no admin; **never** password-reset on a later boot.
+- **Root admin — ENV ONLY, nothing admin-related in the repo file** (`ZIEE_ADMIN_USERNAME` /
+  `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD`). Created ONLY on a database with **no account at all**
+  (the very first deploy). Any later boot — every rebuild/redeploy — is a no-op, so **an admin
+  password changed in the UI is never reverted**. Pinned by
+  `test_admin_is_bootstrapped_from_env_and_never_reverted`.
 - **A regular user** (`${ZIEE_DEFAULT_USER_PASSWORD}`) — root admins bypass every permission check,
   so this is the account that actually exercises the reduced UI.
 - **Default-group trim** (permissions set false; nothing removed from the product). Hidden for

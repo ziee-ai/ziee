@@ -24,8 +24,10 @@
 //!   is rejected. Resolved values are never logged; logs name the env VAR only.
 //!   (Other fields — names, descriptions, emails — are taken verbatim.)
 //! - **Idempotent.** Every entry is existence-checked against its natural key
-//!   before writing (server → `(name, is_system)`; admin → "an admin exists";
-//!   user → username/email; group → name). Re-running on the next deploy
+//!   before writing (server → `(name, is_system)`; user → username/email; group →
+//!   name). The ADMIN is separate: it comes from the environment, not the file,
+//!   and is created ONLY on a database with NO account at all — so a redeploy can
+//!   never overwrite it or revert a password the operator changed in the UI. Re-running on the next deploy
 //!   creates nothing and clobbers nothing. The whole reconcile additionally runs
 //!   under a Postgres ADVISORY LOCK, so two containers booting against one
 //!   database (a rolling redeploy, `--scale`) serialize instead of racing the
@@ -36,9 +38,8 @@
 //!   `modules/auth/session_settings.rs`); `enforce` additionally re-syncs the
 //!   fields the file DECLARES on every boot (a field the file omits keeps its DB
 //!   value — the update is COALESCE-based). `mode` is accepted on `admin` /
-//!   `users` but inert: both are pure create-if-absent (the admin password is
-//!   never reset). `groups` carry no mode: a permission set has no create/update
-//!   distinction, so it is always reconciled.
+//!   `users` but inert: both are pure create-if-absent. `groups` carry no mode: a
+//!   permission set has no create/update distinction, so it is always reconciled.
 //! - **Group availability always converges.** The `groups:` list on a server is
 //!   re-applied on every boot even in `ensure` mode (assignment is additive and
 //!   idempotent), because a server assigned to no group is unusable by non-admin
@@ -52,8 +53,8 @@
 //!   file that is simply ABSENT is not an error: that is how every
 //!   non-config-as-code deployment (dev, desktop, tests) runs.
 //!
-//!   Note the deliberate asymmetry: an UNSET `${ZIEE_ADMIN_PASSWORD}` skips the
-//!   admin entry (loudly) rather than aborting. That leaves the deployment in
+//!   Note the deliberate asymmetry: an unset admin env triple skips the admin
+//!   bootstrap (loudly) rather than aborting. That leaves the deployment in
 //!   ziee's ORDINARY fresh-install state — no admin, so the unauthenticated
 //!   first-run setup page is open, exactly as for any stock `docker compose up`.
 //!   It is not a state this module introduces, and making it fatal would break
@@ -87,6 +88,12 @@ use crate::modules::mcp::{
 /// state seeded, enforced, or duplicated just because the repo happens to carry
 /// a desired-state file. Only a deploy (TeamCity) turns it on.
 pub const APPLY_ENV: &str = "ZIEE_APPLY_DESIRED_STATE";
+
+/// The admin bootstrap is FULLY env-driven — deliberately NOT in the committed
+/// file, which must never carry an admin identity or credential.
+pub const ADMIN_USERNAME_ENV: &str = "ZIEE_ADMIN_USERNAME";
+pub const ADMIN_EMAIL_ENV: &str = "ZIEE_ADMIN_EMAIL";
+pub const ADMIN_PASSWORD_ENV: &str = "ZIEE_ADMIN_PASSWORD";
 
 /// Env var holding the absolute path of the desired-state file. Only consulted
 /// once [`APPLY_ENV`] has opted in — the file's mere presence never applies it.
@@ -123,9 +130,6 @@ pub struct DesiredState {
     /// Admin system MCP servers (`is_system = true`, no owner).
     #[serde(default)]
     pub mcp_servers: Vec<McpServerEntry>,
-    /// The root admin account, created only when NO admin exists yet.
-    #[serde(default)]
-    pub admin: Option<AdminEntry>,
     /// Regular (non-admin) accounts, placed in the default group.
     #[serde(default)]
     pub users: Vec<UserEntry>,
@@ -157,23 +161,6 @@ pub struct McpServerEntry {
     /// wired). Applied on create, and on every boot in `enforce` mode.
     #[serde(default)]
     pub groups: Vec<String>,
-    #[serde(default)]
-    pub mode: Mode,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AdminEntry {
-    pub username: String,
-    pub email: String,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    /// MUST be a single `${VAR}` placeholder — an inline literal is rejected.
-    pub password: String,
-    /// Accepted for symmetry with `mcp_servers`, but INERT: an account is
-    /// created only when absent, and its password is never reset. Present so a
-    /// manifest that spells out `mode: ensure` here still parses (the structs
-    /// are `deny_unknown_fields`, so an unknown key would fail the WHOLE file).
     #[serde(default)]
     pub mode: Mode,
 }
@@ -516,13 +503,10 @@ pub async fn reconcile(pool: &PgPool) -> Result<(), String> {
 
 /// The per-entry work, under the advisory lock. Each entry soft-fails.
 async fn reconcile_entries(desired: &DesiredState) -> Result<(), String> {
-    // Admin first: `create_admin_user` also joins the Administrators + Users
-    // groups, so it must run before the group-permission pass has any bearing
-    // on it (it doesn't — root admins bypass permission checks — but the
-    // ordering keeps the log narrative honest).
-    if let Some(admin) = &desired.admin {
-        reconcile_admin(admin).await;
-    }
+    // Admin FIRST — and from the environment, never from the file. It may only
+    // run on a virgin database, so it must go before the `users:` entries below
+    // (which would otherwise populate the table and block it).
+    bootstrap_admin_from_env().await;
     for user in &desired.users {
         reconcile_user(user).await;
     }
@@ -537,50 +521,49 @@ async fn reconcile_entries(desired: &DesiredState) -> Result<(), String> {
     Ok(())
 }
 
-/// Create the root admin ONLY when no admin exists. A later boot never resets
-/// the password — the account is the operator's after first boot.
-async fn reconcile_admin(entry: &AdminEntry) {
-    if entry.mode == Mode::Enforce {
-        tracing::warn!(
-            username = %entry.username,
-            "desired_state: `mode: enforce` is INERT on an account — an existing admin is never \
-             re-written and its password is never reset. Remove the key or use `ensure`."
+/// Bootstrap the root admin from the ENVIRONMENT (`ZIEE_ADMIN_USERNAME` /
+/// `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD`) — never from the committed file,
+/// which must not carry an admin identity or credential.
+///
+/// It runs ONLY on a database with NO account at all. That is deliberately
+/// stricter than "no admin": on any deployment that already has users, this is a
+/// no-op, so it can never overwrite an account or reset a password — an operator
+/// who rotates the admin password in the UI keeps their rotation forever.
+async fn bootstrap_admin_from_env() {
+    let username = std::env::var(ADMIN_USERNAME_ENV).unwrap_or_default();
+    let email = std::env::var(ADMIN_EMAIL_ENV).unwrap_or_default();
+    let password = std::env::var(ADMIN_PASSWORD_ENV).unwrap_or_default();
+
+    if username.trim().is_empty() || email.trim().is_empty() || password.is_empty() {
+        tracing::info!(
+            "desired_state: admin bootstrap skipped — set {ADMIN_USERNAME_ENV}, {ADMIN_EMAIL_ENV} \
+             and {ADMIN_PASSWORD_ENV} to create the first administrator. (With no admin, the \
+             unauthenticated first-run setup page stays open.)"
         );
+        return;
     }
 
-    match Repos.user.has_admin().await {
+    match Repos.user.has_any_user().await {
+        // The virgin-DB guard: ANY existing account (admin or not) means this
+        // deployment is already bootstrapped. Never touch it.
         Ok(true) => {
             tracing::info!(
-                "desired_state: an admin already exists; leaving it untouched (password is never reset)"
+                "desired_state: admin bootstrap skipped — this database already has accounts \
+                 (nothing is overwritten, no password is ever reset)"
             );
             return;
         }
         Ok(false) => {}
         Err(e) => {
-            tracing::error!(error = ?e, "desired_state: admin check failed; skipping admin");
+            tracing::error!(error = ?e, "desired_state: account check failed; admin bootstrap skipped");
             return;
         }
     }
 
-    let password = match resolve_secret_with(&entry.password, &env_lookup) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(
-                username = %entry.username,
-                reason = %e,
-                "desired_state: NO ADMIN CREATED — this deployment now has no administrator, so \
-                 the unauthenticated first-run setup page is open to whoever reaches it first. \
-                 Set the admin password env var and redeploy."
-            );
-            return;
-        }
-    };
-
     if let Err(reason) = password::validate_password_strength(&password) {
         tracing::error!(
-            username = %entry.username,
             reason = %reason,
-            "desired_state: admin password rejected; NO ADMIN CREATED (the first-run setup page is open)"
+            "desired_state: {ADMIN_PASSWORD_ENV} rejected; NO ADMIN CREATED (the first-run setup page is open)"
         );
         return;
     }
@@ -595,19 +578,16 @@ async fn reconcile_admin(entry: &AdminEntry) {
 
     match Repos
         .app
-        .create_admin_user(
-            &entry.username,
-            &entry.email,
-            &hash,
-            entry.display_name.clone(),
-        )
+        .create_admin_user(username.trim(), email.trim(), &hash, None)
         .await
     {
         Ok(user) => tracing::info!(
             username = %user.username,
-            "desired_state: created root admin (Administrators + Users)"
+            "desired_state: bootstrapped the root admin from the environment (Administrators + Users)"
         ),
-        Err(e) => tracing::error!(error = ?e, username = %entry.username, "desired_state: admin creation failed"),
+        Err(e) => {
+            tracing::error!(error = ?e, "desired_state: admin creation failed")
+        }
     }
 }
 

@@ -40,9 +40,14 @@ services:
       BIOGNOSIA_MCP_URL: "${BIOGNOSIA_MCP_URL:-http://host.docker.internal:18100/mcp}"
       RCPA_MCP_URL: "${RCPA_MCP_URL:-http://host.docker.internal:18120/mcp}"
       DSCC_MCP_URL: "${DSCC_MCP_URL:-http://host.docker.internal:18122/mcp}"
-      # Seeded accounts. Unset ⇒ that account is simply not created (the server
-      # logs it); it never blocks the boot.
+      # The FIRST administrator — env only; the committed manifest carries no admin
+      # identity or credential. Applied ONLY to a database with no account at all,
+      # i.e. the very first deploy: afterwards this is a no-op, so a password the
+      # admin changes in the UI is never reverted by a rebuild/redeploy.
+      ZIEE_ADMIN_USERNAME: "${ZIEE_ADMIN_USERNAME:-}"
+      ZIEE_ADMIN_EMAIL: "${ZIEE_ADMIN_EMAIL:-}"
       ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:-}"
+      # The seeded regular user (the account that actually shows the reduced UI).
       ZIEE_DEFAULT_USER_PASSWORD: "${ZIEE_DEFAULT_USER_PASSWORD:-}"
     # Lets ziee reach the host-published MCP servers at host.docker.internal:18xxx
     # (same pattern biognosia-mcp / cpa-website use).

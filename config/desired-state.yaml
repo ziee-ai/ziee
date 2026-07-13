@@ -40,7 +40,8 @@
 #
 # ENV VARS THIS FILE EXPECTS
 #   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
-#   ZIEE_ADMIN_PASSWORD                             — root admin password
+#   ZIEE_ADMIN_USERNAME / _EMAIL / _PASSWORD        — the first admin (env ONLY;
+#                                                     first deploy only — see below)
 #   ZIEE_DEFAULT_USER_PASSWORD                      — the regular user's password
 #
 # On the deploy host the three servers are published on the HOST and reached over
@@ -95,14 +96,16 @@ mcp_servers:
     groups: [Users]
     mode: enforce
 
-# ── Root admin ──────────────────────────────────────────────────────────────
-# Created ONLY when the deployment has no admin yet. On every later boot this
-# is a no-op: the password is NEVER reset, so rotating it in the UI sticks.
-admin:
-  username: admin
-  email: admin@tinnguyen-lab.com
-  display_name: Administrator
-  password: ${ZIEE_ADMIN_PASSWORD}
+# ── Root admin: NOT HERE, BY DESIGN ─────────────────────────────────────────
+# The first administrator is created from the ENVIRONMENT ONLY — this file must
+# never carry an admin identity or credential:
+#   ZIEE_ADMIN_USERNAME, ZIEE_ADMIN_EMAIL, ZIEE_ADMIN_PASSWORD
+#
+# It is created ONLY on a database that has NO account at all. On every later
+# boot — including every rebuild/redeploy of the container — the DB already has
+# accounts, so this is a no-op: an admin password you change in the UI is NEVER
+# reverted by a redeploy. The env values are the very-first-deploy seed, nothing
+# more.
 
 # ── Regular users ───────────────────────────────────────────────────────────
 # Non-admin accounts, placed in the default group. Root admins bypass ALL

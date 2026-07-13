@@ -55,11 +55,6 @@ mcp_servers:
     groups: [Users]
     mode: {mode}
 
-admin:
-  username: admin
-  email: admin@tinnguyen-lab.com
-  display_name: Administrator
-  password: ${{ZIEE_ADMIN_PASSWORD}}
 
 users:
   - username: user
@@ -110,6 +105,8 @@ fn env_for(yaml: &str, admin_pw: &str, user_pw: &str) -> (tempfile::TempDir, Vec
         ("RCPA_MCP_URL".to_string(), RCPA_URL.to_string()),
         ("DSCC_MCP_URL".to_string(), DSCC_URL.to_string()),
         ("BIOGNOSIA_MCP_URL".to_string(), BIOGNOSIA_URL.to_string()),
+        ("ZIEE_ADMIN_USERNAME".to_string(), "admin".to_string()),
+        ("ZIEE_ADMIN_EMAIL".to_string(), "admin@tinnguyen-lab.com".to_string()),
         ("ZIEE_ADMIN_PASSWORD".to_string(), admin_pw.to_string()),
         ("ZIEE_DEFAULT_USER_PASSWORD".to_string(), user_pw.to_string()),
     ];
@@ -512,10 +509,13 @@ users:
 
 // ───────────────────────────── TEST-8 ─────────────────────────────
 
-/// TEST-8 — the admin is created on a fresh deploy, and a later deploy NEVER
-/// resets its password (the operator's rotation must stick).
+/// TEST-8 — the admin is bootstrapped from the ENV on a virgin database, and a
+/// later deploy NEVER reverts it. Specifically: the operator changes the admin
+/// password in the running app, the container is redeployed (with the ORIGINAL
+/// env password still set), and the CHANGED password must still be the one that
+/// works — the env triple is a first-deploy seed, nothing more.
 #[tokio::test]
-async fn test_admin_is_ensured_once_and_password_is_never_reset() {
+async fn test_admin_is_bootstrapped_from_env_and_never_reverted() {
     let (server, _dir) = server_with(&manifest("ensure")).await;
     let pool = pool_of(&server).await;
 
@@ -525,9 +525,12 @@ async fn test_admin_is_ensured_once_and_password_is_never_reset() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert!(admin.is_admin, "the seeded admin must be the root admin");
+    assert!(admin.is_admin, "the env-seeded admin must be the root admin");
     assert!(admin.is_active);
-    assert_eq!(admin.email, "admin@tinnguyen-lab.com");
+    assert_eq!(
+        admin.email, "admin@tinnguyen-lab.com",
+        "username/email come from the env, not the file"
+    );
 
     // …and it is in BOTH Administrators and Users (create_admin_user's contract).
     let groups: Vec<String> = sqlx::query_scalar!(
@@ -540,47 +543,45 @@ async fn test_admin_is_ensured_once_and_password_is_never_reset() {
     .await
     .unwrap();
     assert_eq!(groups, vec!["Administrators".to_string(), "Users".to_string()]);
-
-    // It can log in with the password from the env.
     assert_eq!(login(&server, "admin", ADMIN_PASSWORD).await.status(), 200);
 
-    // Positive control for THIS test: delete the seeded regular user, so the
-    // re-deploy has something it must visibly re-create. Otherwise "the password
-    // was not reset" would also pass if the second process reconciled NOTHING
-    // (e.g. the env plumbing to it silently broke) — a vacuous green.
-    sqlx::query!("DELETE FROM users WHERE username = 'user'")
-        .execute(&pool)
+    // ── the operator CHANGES the admin password in the running app ──
+    const ROTATED: &str = "operator-rotated-pw-9";
+    let token = login_token(&server, "admin", ADMIN_PASSWORD).await;
+    let res = reqwest::Client::new()
+        .post(server.api_url("/auth/password"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "current_password": ADMIN_PASSWORD,
+            "new_password": ROTATED,
+        }))
+        .send()
         .await
-        .unwrap();
-
-    // ── re-deploy with a DIFFERENT admin password ──
-    reboot(&server, &manifest("ensure"), "totally-different-pw-2", USER_PASSWORD).await;
-
-    let user_back = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!" FROM users WHERE username = 'user'"#
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        user_back, 1,
-        "the re-deploy did not reconcile accounts at all — the admin assertions below would be vacuous"
+        .expect("change-password request");
+    assert!(
+        res.status().is_success(),
+        "the admin must be able to rotate their own password: {}",
+        res.status()
     );
+    assert_eq!(login(&server, "admin", ROTATED).await.status(), 200);
 
-    // The ORIGINAL password still works …
+    // ── redeploy: same image, same env (ORIGINAL password still in the env) ──
+    reboot(&server, &manifest("ensure"), ADMIN_PASSWORD, USER_PASSWORD).await;
+
+    // The ROTATED password still works …
+    assert_eq!(
+        login(&server, "admin", ROTATED).await.status(),
+        200,
+        "a redeploy must NOT revert an admin password the operator changed"
+    );
+    // … and the env's original password does NOT come back.
     assert_eq!(
         login(&server, "admin", ADMIN_PASSWORD).await.status(),
-        200,
-        "a re-deploy must NOT reset the admin password"
-    );
-    // … and the new one does not.
-    assert_eq!(
-        login(&server, "admin", "totally-different-pw-2").await.status(),
         401,
-        "the re-deploy's password must never have been applied"
+        "the env password must not be re-applied on a redeploy"
     );
 
-    // Exactly one admin, still.
+    // Still exactly one admin, and no second account was minted.
     let admins = sqlx::query_scalar!(
         r#"SELECT COUNT(*) as "count!" FROM users WHERE is_admin = true"#
     )
@@ -588,6 +589,66 @@ async fn test_admin_is_ensured_once_and_password_is_never_reset() {
     .await
     .unwrap();
     assert_eq!(admins, 1);
+}
+
+/// The virgin-DB rule: if the database already has ANY account (even a non-admin
+/// one), the env admin bootstrap does nothing at all.
+#[tokio::test]
+async fn test_admin_bootstrap_skipped_when_any_account_exists() {
+    // A server with NO admin env — so the DB comes up empty of accounts …
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("desired-state.yaml");
+    std::fs::write(&path, manifest("ensure")).unwrap();
+
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            ("ZIEE_APPLY_DESIRED_STATE".to_string(), "1".to_string()),
+            ("ZIEE_DISABLE_MCP_HEALTH_CHECK".to_string(), "1".to_string()),
+            (
+                "ZIEE_DESIRED_STATE_FILE".to_string(),
+                path.to_string_lossy().to_string(),
+            ),
+            // No ZIEE_ADMIN_* triple → no admin. The manifest's `users:` entry
+            // still runs, so the table ends up NON-empty.
+            (
+                "ZIEE_DEFAULT_USER_PASSWORD".to_string(),
+                USER_PASSWORD.to_string(),
+            ),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let pool = pool_of(&server).await;
+
+    let admins = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM users WHERE is_admin = true"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(admins, 0, "no admin env ⇒ no admin");
+    let seeded = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM users WHERE username = 'user'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(seeded, 1, "the non-admin user still got seeded");
+
+    // ── now redeploy WITH the admin env: the table is no longer empty, so the
+    //    bootstrap must stay a no-op (it may only ever run on a virgin DB) ──
+    reboot(&server, &manifest("ensure"), ADMIN_PASSWORD, USER_PASSWORD).await;
+
+    let admins = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM users WHERE is_admin = true"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        admins, 0,
+        "an existing account must block the admin bootstrap entirely"
+    );
 }
 
 // ───────────────────────────── TEST-9 ─────────────────────────────
@@ -863,6 +924,8 @@ async fn test_file_present_but_flag_unset_is_a_no_op() {
             ("RCPA_MCP_URL".to_string(), RCPA_URL.to_string()),
             ("DSCC_MCP_URL".to_string(), DSCC_URL.to_string()),
             ("BIOGNOSIA_MCP_URL".to_string(), BIOGNOSIA_URL.to_string()),
+            ("ZIEE_ADMIN_USERNAME".to_string(), "admin".to_string()),
+            ("ZIEE_ADMIN_EMAIL".to_string(), "admin@tinnguyen-lab.com".to_string()),
             ("ZIEE_ADMIN_PASSWORD".to_string(), ADMIN_PASSWORD.to_string()),
             (
                 "ZIEE_DEFAULT_USER_PASSWORD".to_string(),

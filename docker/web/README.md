@@ -115,7 +115,7 @@ regular user seeded, and the default group's permissions trimmed.
 | `RCPA_MCP_URL` | the `rcpa-user` system MCP server's URL | that server is skipped |
 | `DSCC_MCP_URL` | the `dscc-user` system MCP server's URL | that server is skipped |
 | `BIOGNOSIA_MCP_URL` | the `biognosia-user` system MCP server's URL | that server is skipped |
-| `ZIEE_ADMIN_PASSWORD` | the root `admin` account's password | no admin is created (the UI shows first-run setup) |
+| `ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD` | **the first administrator — env only.** Applied ONLY to a database with **no account at all** (the very first deploy). Afterwards it is a no-op, so a password the admin changes in the UI is **never reverted** by a redeploy. | no admin is created (the UI shows first-run setup) |
 | `ZIEE_DEFAULT_USER_PASSWORD` | the regular `user` account's password | that user is not created |
 | `ZIEE_APPLY_DESIRED_STATE` | **the switch** — `1` applies the file | **nothing is applied at all** (the local-dev default) |
 | `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |
@@ -132,7 +132,8 @@ docker run --rm -p 8080:8080 \
   -e BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp \
   -e RCPA_MCP_URL=http://host.docker.internal:18120/mcp \
   -e DSCC_MCP_URL=http://host.docker.internal:18122/mcp \
-  -e ZIEE_ADMIN_PASSWORD='…' -e ZIEE_DEFAULT_USER_PASSWORD='…' \
+  -e ZIEE_ADMIN_USERNAME='admin' -e ZIEE_ADMIN_EMAIL='admin@example.com' -e ZIEE_ADMIN_PASSWORD='…' \
+  -e ZIEE_DEFAULT_USER_PASSWORD='…' \
   ziee-web:local
 ```
 
@@ -149,8 +150,11 @@ docker run --rm -p 8080:8080 \
 > exactly why they are env-templated rather than baked into the manifest.
 
 **Secrets are never in the file.** A password field must be exactly one
-`${ENV_VAR}` placeholder; an inline literal is rejected. Resolved values are
-never logged (the logs name the env var, never its value).
+`${ENV_VAR}` placeholder; an inline literal is rejected. Resolved values are never
+logged (the logs name the env var, never its value). The **administrator is not in
+the file at all** — not even its username or email: it comes purely from
+`ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD`, and is created
+only on a database with no accounts.
 
 **Overriding the file:** bind-mount your own at the same path —
 `-v ./my-desired-state.yaml:/etc/ziee/desired-state.yaml:ro` — or point
