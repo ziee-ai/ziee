@@ -317,6 +317,7 @@ Human picked "unify on edge-directional" for drops when a split is already open.
 - **TEST-105**: PASS — `planSplitPaneDrop` (insertBefore/After/replace + cap-fallback + noop), unit.
 - **TEST-107**: PASS — `openPane({beforePaneId})` splices before / prepends, unit. (26/26 in the two unit files.)
 - **TEST-106**: PASS — e2e (3 tests): right-edge inserts AFTER, left-edge BEFORE, center REPLACES, file ignored; at the MAX_PANES cap an edge drop REPLACES (no 4th pane); grip→header REORDER kept. `splitdrop-e2e-*.log` (4/4 incl. single-pane regression).
+- Blind-audit fix (FIX_ROUND-21): the pane HEADER is now a live conversation drop target (unified onPaneArea handlers on header+column) — TEST-106 header-drop leg green; e2e 4/4 after fix.
 - Rules-of-Hooks fix verified: the overlay renders mid-drag in the split e2e without the "Rendered more hooks" crash (the human caught it live; fixed to a `.$` snapshot).
 - `tsc --noEmit` (ui) exit 0.
 

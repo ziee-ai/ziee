@@ -63,7 +63,7 @@ src-app/ui/src/modules/chat/core/utils/useStreamdownComponents.tsx	1	209	correct
 src-app/ui/src/modules/chat/extensions/keyboard/extension.tsx	1	189	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx	1	124	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/module.tsx	1	130	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1102	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1110	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/types.ts	1	44	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx	1	315	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/file/chat-extension/components/AttachedFileCard.tsx	1	87	correctness,state-management,error-handling
@@ -91,7 +91,7 @@ src-app/ui/src/modules/user-llm-providers/chat-extension/extension.tsx	1	110	cor
 src-app/ui/src/modules/workflow/chat-extension/components/WorkflowWorkspaceRunCard.tsx	1	136	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/workflow/components/WorkflowRunDialog.tsx	1	252	correctness,state-management,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/composer-isolation.spec.ts	1	80	tests-quality,correctness,api-contract
-src-app/ui/tests/e2e/14-split-chat/drag-to-split.spec.ts	1	175	tests-quality,correctness,api-contract
+src-app/ui/tests/e2e/14-split-chat/drag-to-split.spec.ts	1	186	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/empty-pane-picker.spec.ts	1	96	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/find-per-pane.spec.ts	1	55	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/focused-affordances.spec.ts	1	67	tests-quality,correctness,api-contract
