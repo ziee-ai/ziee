@@ -34,6 +34,19 @@ test.describe('App Setup', () => {
     await assertNoAccessibilityViolations(page)
   })
 
+  // TEST-4 (covers ITEM-4): after the shared-layout refactor the setup page
+  // renders the shared themed backdrop and exposes exactly ONE `main` landmark
+  // (the router no longer wraps it in BlankLayout — AuthScreenLayout is the sole
+  // chrome). The light+dark a11y checks above are the regression backstop.
+  test('renders the shared backdrop and a single main landmark', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await page.goto(`${baseURL}/setup`)
+    await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
+
+    await expect(byTestId(page, 'auth-screen-backdrop')).toBeVisible()
+    await expect(page.getByRole('main')).toHaveCount(1)
+  })
+
   test('should display setup page when no admin exists', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     // Navigate directly to setup page

@@ -4,12 +4,12 @@ import { Permissions } from '@/api-client/types'
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-
+import { useScheduledTasksStore } from './stores/ScheduledTasks.store'
 import { useSchedulerAdminStore } from './stores/SchedulerAdmin.store'
 import { useSchedulerDrawerStore } from './stores/SchedulerDrawer.store'
-import { useScheduledTasksStore } from './stores/ScheduledTasks.store'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)
 import '@/modules/settings/types/SettingsSlots'
 
@@ -42,6 +42,10 @@ export default createModule({
       element: ScheduledTasksPage,
       requiresAuth: true,
       permission: Permissions.SchedulerUse,
+      // Top-level nav destination → render inside the app shell (left sidebar +
+      // header bar), matching every other top-level page (chat/projects/
+      // knowledge-base). Without this the page renders bare (no sidebar/header).
+      layout: AppLayoutDef,
     },
     {
       path: '/settings/scheduler',

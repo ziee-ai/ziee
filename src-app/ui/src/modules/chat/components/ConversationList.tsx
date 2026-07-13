@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
+import { VirtualizedConversationList } from '@/modules/chat/components/VirtualizedConversationList'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
@@ -19,6 +21,16 @@ interface ConversationListProps {
 }
 
 /**
+ * Memoized row card: with stable `onSelect`/`onDelete` callbacks and a stable
+ * per-row `conversation` reference, a scroll-driven virtualizer re-render skips
+ * re-rendering rows whose selection didn't change (so `dayjs.fromNow` /
+ * `usePermission` / `useNavigate` aren't recomputed for every visible row on
+ * every scroll frame). ConversationCard itself is left untouched so its other
+ * consumers (project page, recent widget) are unaffected (DEC-9).
+ */
+const MemoConversationCard = memo(ConversationCard)
+
+/**
  * ConversationList Component
  * Displays a searchable, paginated list of conversations with bulk operations
  */
@@ -27,6 +39,19 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const canDelete = usePermission(Permissions.ConversationsDelete)
   const { nativeScroll } = Stores.AppLayout
+
+  // Row virtualization (chats-page-virtualization ITEM-4): the card list scrolls
+  // inside this OverlayScrollbars viewport on desktop. Resolve its root element
+  // for the virtualizer and flip `scrollerReady` once the OS instance mounts so
+  // the virtualizer re-observes the real viewport (mirrors ConversationPage). On
+  // the mobile native-scroll path DivScrollY renders a plain flow div (no OS
+  // instance) → `getScrollElement` returns null and the list renders plainly.
+  const scrollerRef = useRef<OverlayScrollbarsComponentRef>(null)
+  const [scrollerReady, setScrollerReady] = useState(false)
+  const getScrollElement = useCallback((): HTMLElement | null => {
+    const os = scrollerRef.current?.osInstance()
+    return (os?.elements().viewport as HTMLElement | undefined) ?? null
+  }, [])
 
   const {
     conversations,
@@ -58,15 +83,14 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   }, [localSearchQuery])
 
   // Load conversations on mount — always re-fetch, not guarded by
-  // `isInitialized`. The sidebar's RecentConversationsWidget calls
-  // `loadConversations()` at login and flips `isInitialized=true`
-  // with whatever conversations existed at that moment. If
-  // conversations are created later (by another tab, an MCP tool,
-  // or — in the E2E suite — a test that seeds before navigating
-  // here), the dedicated `/chats` page must show them.
-  // `loadConversations` already dedupes concurrent calls via its
-  // internal `loading/loadingMore` in-flight check, so unconditional
-  // refetch is safe.
+  // `isInitialized`. This `/chats` list owns its own `conversations` fetch
+  // (the sidebar's RecentConversationsWidget now loads a SEPARATE
+  // `recentConversations` cursor, so it no longer seeds this list). If
+  // conversations are created later (by another tab, an MCP tool, or — in the
+  // E2E suite — a test that seeds before navigating here), the dedicated
+  // `/chats` page must show them. `loadConversations` already dedupes
+  // concurrent calls via its internal `loading/loadingMore` in-flight check,
+  // so an unconditional refetch is safe.
   useEffect(() => {
     Stores.ChatHistory.loadConversations()
   }, [])
@@ -88,13 +112,15 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     }
   }
 
-  const handleToggleSelection = (id: string) => {
+  // Stable across renders so the memoized row card (MemoConversationCard) can
+  // skip re-rendering unchanged rows on every scroll-driven virtualizer update.
+  const handleToggleSelection = useCallback((id: string) => {
     Stores.ChatHistory.toggleSelection(id)
-  }
+  }, [])
 
-  const handleDeleteConversation = async (id: string) => {
+  const handleDeleteConversation = useCallback(async (id: string) => {
     await Stores.ChatHistory.deleteConversation(id)
-  }
+  }, [])
 
   // The list is the server-filtered/sorted result set directly.
   const visibleConversations = conversations
@@ -178,7 +204,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
         )}
 
         {/* Conversation list */}
-        <DivScrollY nativeFlow className="flex-1 w-full flex-col !py-3 overflow-x-visible">
+        <DivScrollY
+          nativeFlow
+          className="flex-1 w-full flex-col !py-3 overflow-x-visible"
+          ref={scrollerRef}
+          events={{ initialized: () => setScrollerReady(true) }}
+        >
           <div className="gap-2 max-w-4xl w-full self-center overflow-x-visible">
             {visibleConversations.length === 0 && !loading ? (
               error ? (
@@ -210,42 +241,46 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
                   </div>
                 ) : (
-                  // Plain div instead of DivScrollY: the outer
-                  // DivScrollY already handles scroll. DivScrollY
-                  // wraps its children in an internal flex-col
-                  // container, so any `gap-*` on it lands on the
-                  // OverlayScrollbars wrapper and never reaches the
-                  // card siblings — that's why cards had no gap.
-                  <div className="flex flex-col gap-3 w-full flex-1 overflow-x-visible">
-                    {visibleConversations.map((conversation: ConversationResponse) => (
-                      <div key={conversation.id} className="px-3">
-                        <ConversationCard
-                          conversation={conversation}
-                          isSelected={selectedIds.has(conversation.id)}
-                          isInSelectionMode={isSelectionMode}
-                          onSelect={handleToggleSelection}
-                          onDelete={handleDeleteConversation}
-                        />
-                      </div>
-                    ))}
-
-                    {/* Pagination info — plain text (no card). */}
-                    {visibleConversations.length > 0 && (
-                      <div
-                        data-testid="chat-history-pagination-card"
-                        className="text-center px-3 py-2 flex flex-col items-center gap-2"
-                      >
-                        <Text type="secondary" aria-live="polite" role="status">
-                          Showing {visibleConversations.length} of {total} conversations
-                        </Text>
-                        {hasMore && (
-                          <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
-                            Load More
-                          </Button>
-                        )}
-                      </div>
+                  // Row-virtualized on desktop (inner OverlayScrollbars viewport);
+                  // plain render on the mobile native-scroll path. Only the visible
+                  // window of ConversationCards is mounted regardless of how many
+                  // pages have been loaded (chats-page-virtualization ITEM-3/5). The
+                  // "Showing N of M" + Load-More block is a NON-virtualized footer
+                  // sibling below the rows so its testids + aria-live status stay
+                  // exactly as before.
+                  <VirtualizedConversationList
+                    conversations={visibleConversations}
+                    virtualize={!nativeScroll}
+                    getScrollElement={getScrollElement}
+                    scrollerReady={scrollerReady}
+                    renderCard={(conversation: ConversationResponse) => (
+                      <MemoConversationCard
+                        conversation={conversation}
+                        isSelected={selectedIds.has(conversation.id)}
+                        isInSelectionMode={isSelectionMode}
+                        onSelect={handleToggleSelection}
+                        onDelete={handleDeleteConversation}
+                      />
                     )}
-                  </div>
+                    footer={
+                      visibleConversations.length > 0 ? (
+                        <div
+                          data-testid="chat-history-pagination-card"
+                          className="text-center px-3 py-2 flex flex-col items-center gap-2"
+                        >
+                          <Text type="secondary" aria-live="polite" role="status">
+                            Showing {visibleConversations.length} of {total}{' '}
+                            {total === 1 ? 'conversation' : 'conversations'}
+                          </Text>
+                          {hasMore && (
+                            <Button data-testid="chat-history-load-more-btn" onClick={handleLoadMore} loading={loadingMore}>
+                              Load More
+                            </Button>
+                          )}
+                        </div>
+                      ) : null
+                    }
+                  />
                 )}
               </div>
             )}
