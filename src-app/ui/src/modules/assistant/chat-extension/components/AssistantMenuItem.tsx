@@ -1,5 +1,7 @@
 import { Popover } from '@/components/ui'
 import { Bot, ChevronRight } from 'lucide-react'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
@@ -9,6 +11,11 @@ import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
  * Opens a submenu to the right showing available assistants.
  */
 export function AssistantMenuItem() {
+  // Permission gate (layer 4) — mirrors KbMenuItem. Without `assistants::read`
+  // the picker's store never loads anything (it self-gates), so an ungated menu
+  // item would render forever as a dead end ("No assistants available") for a
+  // user who also has no Settings -> Assistants page to populate it from.
+  const canRead = usePermission(Permissions.AssistantsRead)
   const { availableAssistants, selectedAssistantId, selectAssistant, loading } =
     Stores.AssistantPicker
   const { close } = usePlusDropdown()
@@ -16,6 +23,8 @@ export function AssistantMenuItem() {
   const selectedAssistant = availableAssistants.find(
     (a: any) => a.id === selectedAssistantId,
   )
+
+  if (!canRead) return null
 
   const handleSelect = (id: string | null) => {
     selectAssistant(id as any)

@@ -88,6 +88,145 @@ used verbatim (the template/env path is skipped). Base it on
 
 ---
 
+## Config as code (desired state) — zero-touch first boot
+
+The image ships **`config/desired-state.yaml`** at `/etc/ziee/desired-state.yaml`.
+When enabled, the server reconciles that file into the database on boot — **after**
+migrations, **before** it serves — so a fresh deploy comes up **fully configured with
+no manual UI setup**: the org MCP servers registered, the root admin created, and
+the default group's permissions trimmed.
+
+> ### Where it is turned on
+> The deploy overlay **`docker-compose.deploy.yml`** carries the switch, the MCP
+> endpoint URLs and the admin password (and the `host.docker.internal`
+> mapping the org MCP servers need). The base `docker-compose.yml` is a local test
+> stack and deliberately does NOT enable any of it.
+>
+> ### ⚠ It is OFF unless the deploy turns it on
+> **`ZIEE_APPLY_DESIRED_STATE=1` is the switch, and it defaults to OFF.** Shipping
+> the file — in the repo or baked into the image — applies **nothing**. Without the
+> flag the server logs `desired-state reconcile: disabled` and writes nothing: no
+> seeding, no enforce, no MCP/admin/permission writes. That is what keeps a local
+> developer's hand-configured models, MCP servers, admin and permissions from ever
+> being touched or duplicated. TeamCity sets the flag **only** on the deploy configs.
+
+| Env var | Fills | If unset |
+|---|---|---|
+| `RCPA_MCP_URL` | the `rcpa` system MCP server's URL | that server is skipped |
+| `DSCC_MCP_URL` | the `dscc` system MCP server's URL | that server is skipped |
+| `BIOGNOSIA_MCP_URL` | the `biognosia` system MCP server's URL | that server is skipped |
+| `ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD` | **the first administrator — env only.** Applied ONLY to a database with **no account at all** (the very first deploy). Afterwards it is a no-op, so a password the admin changes in the UI is **never reverted** by a redeploy. | no admin is created (the UI shows first-run setup) |
+| `ZIEE_APPLY_DESIRED_STATE` | **the switch** — `1` applies the file | **nothing is applied at all** (the local-dev default) |
+| `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |
+
+On the **deploy host** the three MCP servers are published on the HOST (that host
+only allows ports `18000-19000`) and reached over `host.docker.internal`:
+
+```bash
+docker run --rm -p 8080:8080 \
+  --add-host host.docker.internal:host-gateway \
+  -e ZIEE_APPLY_DESIRED_STATE=1 \
+  -e ZIEE_DB_HOST=db.internal -e ZIEE_DB_USER=ziee -e ZIEE_DB_PASSWORD=secret -e ZIEE_DB_NAME=ziee \
+  -e ZIEE_JWT_SECRET='…' -e ZIEE_STORAGE_KEY='…' \
+  -e BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp \
+  -e RCPA_MCP_URL=http://host.docker.internal:18120/mcp \
+  -e DSCC_MCP_URL=http://host.docker.internal:18122/mcp \
+  -e ZIEE_ADMIN_USERNAME='admin' -e ZIEE_ADMIN_EMAIL='admin@example.com' -e ZIEE_ADMIN_PASSWORD='…' \
+  ziee-web:local
+```
+
+> **Required compose change (deploy dependency).** Reaching those host-published
+> ports needs the container to resolve `host.docker.internal`, so ziee's compose
+> **must** carry
+> ```yaml
+> extra_hosts:
+>   - "host.docker.internal:host-gateway"
+> ```
+> — the same mapping `biognosia-mcp` and `cpa-website` already use. **`docker-compose.deploy.yml`
+> already sets it**; a hand-rolled `docker run` needs `--add-host` as above. Local dev points the same
+> env vars somewhere else entirely (e.g. `http://172.21.0.1:9004/mcp`) — which is
+> exactly why they are env-templated rather than baked into the manifest.
+
+**Secrets are never in the file.** A password field must be exactly one
+`${ENV_VAR}` placeholder; an inline literal is rejected. Resolved values are never
+logged (the logs name the env var, never its value). The **administrator is not in
+the file at all** — not even its username or email: it comes purely from
+`ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD`, and is created
+only on a database with no accounts.
+
+**Overriding the file:** bind-mount your own at the same path —
+`-v ./my-desired-state.yaml:/etc/ziee/desired-state.yaml:ro` — or point
+`ZIEE_DESIRED_STATE_FILE` somewhere else.
+
+**Idempotent by design.** Re-deploying (or restarting) reconciles again and
+creates nothing twice: MCP servers dedup on `(name, is_system)`, the admin is
+created only when the deployment has **no** admin (its password is **never**
+reset on a later boot — rotate it in the UI and the rotation sticks), and users
+dedup on username/email. Concurrently-booting containers (a rolling redeploy)
+serialize on a Postgres advisory lock, so they cannot race into duplicate rows.
+
+**A bad entry is skipped; a bad FILE fails the boot.** An unresolvable `${VAR}`,
+an inline secret, or a DB error on one entry logs an error and skips just that
+entry. But an unreadable or invalid desired-state file **aborts startup** — a
+publicly-served container that is silently unconfigured (no admin ⇒ the
+unauthenticated first-run setup page is open to whoever finds it) is worse than
+one that refuses to start. Note that bind-mounting a host path that does not
+exist makes Docker create a *directory* there; that is caught and reported.
+
+**The file only adds and updates — it never deletes.** A server's identity is its
+`name`, so renaming (or removing) an entry leaves the OLD row in the database: the
+reconciler creates the new name and cannot know the old one is obsolete. After a
+rename, delete the stale server once in **Settings → MCP Servers**. (Accounts and
+group permissions are unaffected — those are keyed by username/group name.)
+
+**Per-entry `mode`:**
+
+- `ensure` (default) — create when absent; if it already exists, leave its
+  fields alone. An admin's later UI edits survive a redeploy.
+- `enforce` — create when absent, else re-sync the fields the file **declares**
+  on every boot (a field the file omits keeps its current DB value).
+
+The three org MCP servers ship as `enforce` deliberately: ziee's boot health
+check probes every enabled MCP server and **auto-disables the unreachable ones**,
+so an endpoint that is down when ziee starts gets flipped to `enabled: false` —
+`enforce` re-asserts `enabled: true` on the next deploy, where `ensure` would
+leave it off forever. The trade-off is that an admin who deliberately disables
+one in the UI will see it re-enabled by the next deploy: change it in the file,
+not the UI. A server's `groups:` list is re-applied in **both** modes (assignment
+is additive; removing a group from the file does not revoke it), because a server
+in no group is unusable by non-admin users. Their `usage_mode` is `auto` — the
+model decides when to call them.
+
+Group permissions have no mode: they are declarative and re-applied every boot.
+Nothing is removed from the product — the file just sets permissions false for the
+default **Users** group, and a permission gates the nav entry, the settings tab and
+the route together. The shipped file hides, for regular users:
+
+| Surface | Permission dropped |
+|---|---|
+| Projects (nav) | `projects::*` |
+| Hubs (nav) | `hub::*` |
+| Knowledge (nav) | `knowledge_base::*` |
+| Scheduled Tasks (nav) | `scheduler::*` |
+| Settings → Assistants | `assistants::*` |
+| Settings → Web Search Keys | `web_search::*` |
+| Settings → Literature Keys | `lit_search::*` |
+| Settings → Workflows | `workflows::*` |
+| Settings → Memory | `memory::*` |
+| Settings → Citations | `citations::*` |
+
+General, Profile, LLM providers, MCP servers, chat/files and `notifications::read`
+all stay. Note the `*::use` permissions also gate the matching built-in chat tools,
+so a user in this group does not get web-search / literature / citations /
+knowledge-base tools in chat either — intended, since they cannot configure them. (`projects::*` is a no-op today —
+the default group was never granted it — and is declared so a future migration
+cannot silently un-hide Projects.) An `add:` list may **not** contain a wildcard:
+a manifest can never grant `*`. Note the root admin **bypasses all permission
+checks** by design, so it still sees everything — a non-admin account (created by
+the admin in the UI) is what shows the trimmed UI.
+
+---
+
 ## External / managed Postgres (the deploy shape)
 
 The same image runs against any external Postgres by changing env only:

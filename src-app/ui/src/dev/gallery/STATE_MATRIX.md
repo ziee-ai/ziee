@@ -8,7 +8,7 @@
 ## Summary
 
 - **365** surfaces carry at least one renderable-state signal.
-- **2146** signals total: 1690 branch, 137 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2150** signals total: 1694 branch, 137 empty, 113 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -679,9 +679,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `selectedAssistantId` | 27 |
-| empty | `availableAssistants.length === 0` | 36 |
-| branch | `dividerAfter` | 126 |
+| branch | `!canRead` | 27 |
+| branch | `selectedAssistantId` | 36 |
+| empty | `availableAssistants.length === 0` | 45 |
+| branch | `dividerAfter` | 135 |
 
 ### `modules/assistant/chat-extension/components/AssistantSelector`
 
@@ -689,7 +690,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `availableAssistants.length === 0` | 27 |
+| branch | `!canRead` | 19 |
+| empty | `availableAssistants.length === 0` | 33 |
 
 ### `modules/assistant/chat-extension/components/AssistantStatusChip`
 
@@ -697,8 +699,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!selectedAssistantId` | 13 |
-| branch | `!assistant` | 18 |
+| branch | `!canRead` | 17 |
+| branch | `!selectedAssistantId` | 18 |
+| branch | `!assistant` | 23 |
 
 ### `modules/assistant/chat-extension/extension`
 
@@ -910,13 +913,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 55 |
-| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 77 |
-| branch | `attachmentBlocks.length > 0` | 167 |
-| branch | `bubbleBlocks.length > 0` | 196 |
-| branch | `offerCollapse` | 222 |
-| branch | `showEmptyCompletionNotice` | 242 |
-| branch | `isUser` | 261 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 60 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 88 |
+| branch | `attachmentBlocks.length > 0` | 178 |
+| branch | `bubbleBlocks.length > 0` | 207 |
+| branch | `offerCollapse` | 233 |
+| branch | `showEmptyCompletionNotice` | 253 |
+| branch | `isUser` | 272 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -1014,28 +1017,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 117 |
-| branch | `w <= 0` | 119 |
-| branch | `!el` | 130 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 264 |
-| branch | `!import.meta.env.DEV` | 296 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 370 |
-| branch | `!el` | 379 |
-| empty | `count === 0` | 386 |
-| branch | `!el` | 404 |
-| branch | `!item` | 407 |
-| branch | `!msg` | 409 |
-| branch | `!c` | 415 |
-| branch | `virtualize` | 420 |
-| branch | `idx < 0` | 422 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 434 |
-| branch | `!c` | 449 |
-| branch | `top == null` | 452 |
-| loading | `!loading && count === 0` | 475 |
-| branch | `loadingOlder` | 501 |
-| branch | `virtualize` | 511 |
-| branch | `!msg` | 526 |
-| loading | `(loading \|\| isStreaming)` | 582 |
+| branch | `!vw \|\| vw <= 0` | 123 |
+| branch | `w <= 0` | 125 |
+| branch | `!el` | 136 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 270 |
+| branch | `!import.meta.env.DEV` | 302 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 376 |
+| branch | `!el` | 385 |
+| empty | `count === 0` | 392 |
+| branch | `!el` | 410 |
+| branch | `!item` | 413 |
+| branch | `!msg` | 415 |
+| branch | `!c` | 421 |
+| branch | `virtualize` | 426 |
+| branch | `idx < 0` | 428 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 440 |
+| branch | `!c` | 455 |
+| branch | `top == null` | 458 |
+| loading | `!loading && count === 0` | 481 |
+| branch | `loadingOlder` | 507 |
+| branch | `virtualize` | 517 |
+| branch | `!msg` | 532 |
+| loading | `(loading \|\| isStreaming)` | 596 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -3446,11 +3449,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation?.id` | 36 |
-| branch | `!conversation?.id` | 58 |
-| branch | `adminSettings?.enabled === false` | 59 |
-| branch | `!conversation?.id` | 62 |
-| branch | `mode === 'off'` | 122 |
+| branch | `!conversation?.id` | 44 |
+| branch | `!canUse` | 68 |
+| branch | `!conversation?.id` | 69 |
+| branch | `adminSettings?.enabled === false` | 70 |
+| branch | `!conversation?.id` | 73 |
+| branch | `mode === 'off'` | 133 |
 
 ### `modules/memory/components/CoreMemoryBlocksEditor`
 

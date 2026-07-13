@@ -15,7 +15,7 @@
 //!    server startup; failures flip to `enabled: false` automatically
 //!    so users don't see broken servers in their tool lists.
 //!
-//! Built-in servers (filesystem, memory, code_sandbox, memory_mcp)
+//! Built-in servers (files, memory, code_sandbox, memory_mcp)
 //! are SKIPPED — they're owned by the platform, not by user config,
 //! and their reachability is the platform's responsibility.
 
@@ -293,7 +293,7 @@ pub async fn probe(pool: &PgPool, server: &McpServer) -> Result<(), ProbeFailure
 ///
 /// Runs as a fire-and-forget background task spawned from `mcp::init`
 /// — should NOT block boot. Built-in servers are owned by their
-/// respective modules (filesystem, memory_mcp, code_sandbox) and
+/// respective modules (files_mcp, memory_mcp, code_sandbox) and
 /// don't go through this path.
 ///
 /// No event emission here: the `EventBus` is built AFTER module
@@ -304,6 +304,21 @@ pub async fn probe(pool: &PgPool, server: &McpServer) -> Result<(), ProbeFailure
 /// opens the MCP servers list — no event channel needed for the
 /// boot path specifically.
 pub async fn run_startup_health_check(pool: PgPool) {
+    // Test-only escape hatch (debug builds) — the SAME seam `enforce_on_create` /
+    // `enforce_on_update` already honor. A test that seeds a fake-URL MCP server
+    // and expects it to stay `enabled` was still having it auto-disabled by THIS
+    // boot sweep, because the sweep did not check the flag its own name promises.
+    // Compiled out of release builds via `cfg!(debug_assertions)`, so production
+    // can never skip the probe.
+    if cfg!(debug_assertions)
+        && std::env::var("ZIEE_DISABLE_MCP_HEALTH_CHECK").as_deref() == Ok("1")
+    {
+        tracing::warn!(
+            "mcp::health: ZIEE_DISABLE_MCP_HEALTH_CHECK=1 — skipping the startup health sweep"
+        );
+        return;
+    }
+
     // Use the passed `pool` for every DB op (list / record / disable) rather
     // than the process-global `Repos`. In production the two are the same pool
     // (`init_repositories` runs once at boot), but `run_startup_health_check`

@@ -165,6 +165,19 @@ impl UserRepository {
     }
 
     /// Check if an admin user exists
+    /// Does the deployment have ANY account at all? The desired-state admin
+    /// bootstrap keys off this (NOT `has_admin`): it may only run on a virgin
+    /// database, so it can never overwrite or reset anything an operator made.
+    pub async fn has_any_user(&self) -> Result<bool, AppError> {
+        let result =
+            sqlx::query_scalar!(r#"SELECT EXISTS(SELECT 1 FROM users) as "exists!""#)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(AppError::database_error)?;
+
+        Ok(result)
+    }
+
     pub async fn has_admin(&self) -> Result<bool, AppError> {
         let result = sqlx::query_scalar!(
             r#"SELECT EXISTS(SELECT 1 FROM users WHERE is_admin = true) as "exists!""#

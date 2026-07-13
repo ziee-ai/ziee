@@ -4,6 +4,8 @@ import { message } from '@/components/ui'
 import { EyeOff, Lightbulb } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 
 type Mode = 'inherit' | 'on' | 'off'
 
@@ -19,6 +21,12 @@ type Mode = 'inherit' | 'on' | 'off'
  * the Conversation type (chat no longer knows memory's vocabulary).
  */
 export function MemoryStatusPill() {
+  // Permission gate (layer 4) — hooks first, early return AFTER every store read
+  // (see the note below). Without `memory::read` the user has no Memory settings
+  // page either, so an ungated pill would be a dead control.
+  const canUse = usePermission({
+    anyOf: [Permissions.MemoryRead, Permissions.CoreMemoryRead],
+  })
   // CRITICAL: read every Stores.X.field at the TOP, before any early
   // return. Each proxy access fires a useEffect; reading conditionally
   // after a guard triggers "Rendered more hooks than during the
@@ -55,6 +63,9 @@ export function MemoryStatusPill() {
   // Don't show the pill on the empty /chat landing, or when memory is
   // globally disabled by the admin (audit R6-#17 — pill is meaningless
   // when the deployment-wide setting is off).
+  // Safe here: every hook + store read above has already run (see the CRITICAL
+  // note at the top of this component).
+  if (!canUse) return null
   if (!conversation?.id) return null
   if (adminSettings?.enabled === false) return null
 

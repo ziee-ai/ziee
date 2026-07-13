@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { byTestId } from '../testid'
 import {
   goToMcpAdminPage,
@@ -19,8 +19,28 @@ import {
 
 test.describe('MCP - Admin System Servers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
+    const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
+
+    // A DISABLED system server to exercise the toggle / status-filter / search
+    // paths. Migration 157 deleted the seeded `filesystem` row these tests used
+    // to rely on for "a system server that starts disabled"; the one seeded
+    // server that survives (`fetch` / "Web Fetch") ships ENABLED. Each test gets
+    // its own database, so this fixture is fresh per test.
+    const token = await getAdminToken(apiURL)
+    const res = await page.request.post(`${apiURL}/api/mcp/system-servers`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        name: 'disabled-fixture',
+        display_name: 'Disabled Fixture',
+        description: 'A system server that starts disabled',
+        transport_type: 'http',
+        url: 'http://127.0.0.1:9/mcp',
+        enabled: false,
+      },
+    })
+    expect(res.ok()).toBe(true)
+
     await goToMcpAdminPage(page, baseURL)
     await waitForMcpAdminPageLoad(page)
   })
@@ -43,7 +63,7 @@ test.describe('MCP - Admin System Servers', () => {
   test('should display existing system servers', async ({ page }) => {
     // Default system servers from migration should be visible. `.first()`
     // matched by the system-server-card testid filtered by name.
-    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Disabled Fixture' }).first()).toBeVisible()
     await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).toBeVisible()
   })
 
@@ -116,22 +136,22 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should toggle system server enabled state', async ({ page }) => {
-    // Toggle Filesystem Access server (starts disabled)
-    await toggleServerEnabled(page, 'Filesystem Access')
+    // Toggle the fixture server (starts disabled)
+    await toggleServerEnabled(page, 'Disabled Fixture')
 
     // Verify success message
     await expect(byTestId(page, 'mcp-drawer-form')).toHaveCount(0, { timeout: 5000 })
 
     // Verify switch state changed
-    await verifyServerEnabled(page, 'Filesystem Access', true)
+    await verifyServerEnabled(page, 'Disabled Fixture', true)
   })
 
   test('should filter system servers by search term', async ({ page }) => {
     const searchInput = byTestId(page, 'mcp-system-search-input')
-    await searchInput.fill('Filesystem')
+    await searchInput.fill('Disabled')
 
-    // Should show Filesystem server
-    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).toBeVisible()
+    // Should show the disabled fixture server
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Disabled Fixture' }).first()).toBeVisible()
 
     // Should not show Web Fetch server
     await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).not.toBeVisible()
@@ -148,7 +168,7 @@ test.describe('MCP - Admin System Servers', () => {
     await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).toBeVisible()
 
     // Should not show disabled servers
-    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).not.toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Disabled Fixture' }).first()).not.toBeVisible()
   })
 
   test('should filter by disabled status', async ({ page }) => {
@@ -159,7 +179,7 @@ test.describe('MCP - Admin System Servers', () => {
     await byTestId(page, 'mcp-system-status-select-opt-disabled').click()
 
     // Should show only disabled servers
-    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()).toBeVisible()
+    await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Disabled Fixture' }).first()).toBeVisible()
 
     // Should not show enabled servers
     await expect(page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()).not.toBeVisible()
@@ -448,11 +468,9 @@ test.describe('MCP - Admin System Servers', () => {
     expect(seedRes.ok()).toBe(true)
     const created = await seedRes.json()
 
-    // Force is_built_in via direct DB-like API (using the server's update endpoint
-    // with a raw field is the only path — the migration script normally sets this
-    // for filesystem/web-fetch servers). For the test, we use a system server already
-    // marked built-in by migration (Filesystem Access or Web Fetch).
-    const builtInCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Filesystem Access' }).first()
+    // The API doesn't accept is_built_in, so we assert against a system server
+    // that migration 7+25 already marks built-in: `Web Fetch`.
+    const builtInCard = page.getByTestId(/^mcp-system-server-card-/).filter({ hasText: 'Web Fetch' }).first()
     await expect(builtInCard).toBeVisible()
     await expect(builtInCard.locator('[data-testid="mcp-server-edit-btn"]')).toBeVisible()
     await expect(builtInCard.locator('[data-testid="mcp-server-delete-btn"]')).not.toBeVisible()
@@ -565,6 +583,7 @@ test.describe('MCP - Admin System Servers: sandbox flavor + command tiers', () =
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
+
     await goToMcpAdminPage(page, baseURL)
     await waitForMcpAdminPageLoad(page)
   })

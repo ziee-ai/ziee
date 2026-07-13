@@ -1,4 +1,6 @@
 import { Combobox, Tooltip } from '@/components/ui'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 
 interface AssistantSelectorProps {
@@ -8,9 +10,13 @@ interface AssistantSelectorProps {
 export function AssistantSelector({
   disabled = false,
 }: AssistantSelectorProps) {
+  // Permission gate (layer 4) — see AssistantMenuItem.
+  const canRead = usePermission(Permissions.AssistantsRead)
   // Access assistant store directly - reactive via store proxy
   const { availableAssistants, selectedAssistantId, selectAssistant } =
     Stores.AssistantPicker
+
+  if (!canRead) return null
 
   const handleChange = (assistantId: string) => {
     selectAssistant(assistantId)
