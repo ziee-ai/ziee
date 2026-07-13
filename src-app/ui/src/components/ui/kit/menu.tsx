@@ -101,6 +101,50 @@ export function menuRowClasses(opts: {
   }
 }
 
+/**
+ * The interactive row button of a menu row, as a kit component so consumers
+ * outside `components/ui` (e.g. the virtualized sidebar Recent-chats list) get
+ * the EXACT same button element + `menuRowClasses().button` styling without a
+ * raw `<button>` (which the noRestrictedInteractive guardrail forbids in module
+ * code, and which would drift from this styling). Selected marks `aria-current`
+ * (the row-level colour highlight lives on the wrapping `menuRowClasses().row`
+ * element, applied by the caller).
+ */
+export function MenuRowButton({
+  selected,
+  disabled,
+  title,
+  onClick,
+  className,
+  children,
+  'data-testid': testid,
+  'aria-label': ariaLabel,
+}: {
+  selected?: boolean
+  disabled?: boolean
+  title?: string
+  onClick?: () => void
+  className?: string
+  children: React.ReactNode
+  'data-testid'?: string
+  'aria-label'?: string
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      data-testid={testid}
+      aria-current={selected ? 'page' : undefined}
+      aria-label={ariaLabel}
+      title={title}
+      onClick={onClick}
+      className={cn(menuRowClasses({}).button, className)}
+    >
+      {children}
+    </button>
+  )
+}
+
 function Items({ items, selectedSet, ancestorSet, onSelect, locked, collapsed, itemTestid, groupTestid }: {
   items: MenuItem[]
   selectedSet: Set<string>

@@ -300,14 +300,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 120 |
-| branch | `'type' in it && it.type === 'group'` | 126 |
-| branch | `!collapsed` | 130 |
-| branch | `'type' in it && it.type === 'label'` | 138 |
-| branch | `!(collapsed)` | 139 |
-| branch | `item.icon != null` | 171 |
-| branch | `!collapsed` | 173 |
-| branch | `hasActions` | 175 |
+| branch | `'type' in it && it.type === 'divider'` | 164 |
+| branch | `'type' in it && it.type === 'group'` | 170 |
+| branch | `!collapsed` | 174 |
+| branch | `'type' in it && it.type === 'label'` | 182 |
+| branch | `!(collapsed)` | 183 |
+| branch | `item.icon != null` | 215 |
+| branch | `!collapsed` | 217 |
+| branch | `hasActions` | 219 |
 
 ### `components/ui/kit/multi-select`
 
@@ -1295,9 +1295,9 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!recentInitialized` | 101 |
-| empty | `recentConversations.length === 0` | 112 |
-| branch | `!c` | 160 |
+| branch | `!recentInitialized` | 102 |
+| empty | `recentConversations.length === 0` | 113 |
+| branch | `!c` | 161 |
 | branch | `active?.closest('[role="menu"]')` | 189 |
 | branch | `recentLoadingMore` | 206 |
 | overlay | `<Dropdown open>` | 306 |

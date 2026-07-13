@@ -10,6 +10,7 @@ import {
   Tooltip,
   dialog,
   menuRowClasses,
+  MenuRowButton,
 } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
 import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
@@ -164,7 +165,7 @@ export function RecentConversationsWidget() {
             return (
               <li
                 key={c.id}
-                className="absolute left-0 w-full"
+                className="absolute start-0 w-full"
                 style={{
                   top: 0,
                   height: ROW_H,
@@ -177,10 +178,9 @@ export function RecentConversationsWidget() {
                     trailing actions overlay anchors here (the <li> is positioned by
                     the virtualizer). */}
                 <div className={cn(cls.row, 'h-full')}>
-                  <button
-                    type="button"
+                  <MenuRowButton
+                    selected={selected}
                     data-testid={`chat-recent-conversations-menu-item-${c.id}`}
-                    aria-current={selected ? 'page' : undefined}
                     title={title}
                     onClick={() => {
                       // Bail if the click originated inside a floating dropdown
@@ -189,12 +189,12 @@ export function RecentConversationsWidget() {
                       if (active?.closest('[role="menu"]')) return
                       navigate(hrefFor(c))
                     }}
-                    className={cn(cls.button, 'h-full')}
+                    className="h-full"
                   >
-                    <span className="min-w-0 flex-1 truncate text-left">
+                    <span className="min-w-0 flex-1 truncate text-start">
                       {title}
                     </span>
-                  </button>
+                  </MenuRowButton>
                   <div className={cls.actions}>
                     <ConversationRowActions conversation={c} />
                   </div>
