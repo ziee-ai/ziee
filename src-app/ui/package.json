@@ -145,6 +145,7 @@
     "check:gallery-seed-registry": "node scripts/gen-gallery-seed-registry.mjs --check",
     "gen:gallery-seed-registry": "node scripts/gen-gallery-seed-registry.mjs",
     "test:gallery-seed-registry": "node --test scripts/gen-gallery-seed-registry.test.mjs scripts/gen-overlay-registry.test.mjs",
+    "check:gallery-prod-exclusion": "node scripts/check-gallery-prod-exclusion.mjs --build",
     "seam": "node scripts/seam-codemod.mjs",
     "test:seam-codemod": "node --test scripts/seam-codemod.test.mjs",
     "check:design-spec": "node scripts/gen-design-spec.mjs --check",

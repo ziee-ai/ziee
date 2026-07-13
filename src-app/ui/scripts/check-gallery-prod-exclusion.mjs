@@ -18,7 +18,8 @@ import fs from 'node:fs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const UI = path.resolve(HERE, '..')
-const DIST = path.resolve(UI, '../../dist/ui')
+// vite `root: 'src'` + `outDir: '../../dist/ui'` → src-app/dist/ui.
+const DIST = path.resolve(UI, '../dist/ui')
 const MARKER = 'ZIEE_GALLERY_SEED_MARKER'
 
 if (process.argv.includes('--build')) {
