@@ -8,7 +8,7 @@
 ## Summary
 
 - **367** surfaces carry at least one renderable-state signal.
-- **2184** signals total: 1727 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
+- **2183** signals total: 1726 branch, 138 empty, 113 error, 108 loading, 95 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -1301,48 +1301,47 @@ Required states: `delayed`, `error`
 | branch | `sv.panes.length < 2` | 74 |
 | branch | `focused?.conversationId === conversationId` | 76 |
 | branch | `panes.length >= 2` | 80 |
-| branch | `!pane \|\| dragKind(e.dataTransfer) !== 'pane'` | 117 |
-| branch | `!pane` | 122 |
-| branch | `dragKind(e.dataTransfer) !== 'pane'` | 124 |
-| branch | `!conversationId \|\| dragKind(e.dataTransfer) !== 'conversation'` | 152 |
-| branch | `!conversationId \|\| dragKind(e.dataTransfer) !== 'conversation'` | 163 |
-| branch | `!droppedId` | 165 |
-| branch | `pane` | 169 |
-| branch | `!droppedOnLeft` | 193 |
-| branch | `!sentinel` | 340 |
-| branch | `!el` | 360 |
-| branch | `!nativeScroll` | 375 |
-| branch | `y < 0 \|\| y > maxY` | 384 |
-| branch | `maxY - y <= 8` | 388 |
-| branch | `Math.abs(dy) < 6` | 394 |
-| branch | `!chat.$.conversation` | 414 |
-| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 418 |
-| branch | `!conversationId` | 460 |
-| branch | `didSeedApprovalsRef.current` | 516 |
-| branch | `conversation?.id !== conversationId` | 517 |
-| branch | `!hasNewApproval` | 552 |
-| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 556 |
-| branch | `!sentinel` | 584 |
-| branch | `!entries[0]?.isIntersecting` | 588 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 591 |
-| branch | `!sentinel` | 626 |
-| branch | `!entries[0]?.isIntersecting` | 630 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 631 |
-| loading | `!pending` | 646 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 649 |
-| branch | `!conversation?.id` | 658 |
-| branch | `!m` | 662 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 665 |
-| loading | `loading && !conversation` | 696 |
-| branch | `pane && !conversationId && !conversation` | 708 |
-| loading | `!loading && !conversation` | 715 |
-| error | `error` | 718 |
-| branch | `!isPopoutWindow` | 763 |
-| branch | `pane` | 786 |
-| error | `error` | 849 |
-| branch | `dropZone` | 875 |
-| branch | `dropZone === z` | 904 |
-| branch | `nativeScroll && !composerHidden` | 1000 |
+| branch | `!conversationId` | 141 |
+| branch | `kind === 'pane'` | 161 |
+| branch | `!pane` | 162 |
+| branch | `kind !== 'conversation' \|\| !conversationId` | 171 |
+| branch | `!droppedId` | 173 |
+| branch | `pane` | 177 |
+| branch | `!droppedOnLeft` | 201 |
+| branch | `!sentinel` | 348 |
+| branch | `!el` | 368 |
+| branch | `!nativeScroll` | 383 |
+| branch | `y < 0 \|\| y > maxY` | 392 |
+| branch | `maxY - y <= 8` | 396 |
+| branch | `Math.abs(dy) < 6` | 402 |
+| branch | `!chat.$.conversation` | 422 |
+| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 426 |
+| branch | `!conversationId` | 468 |
+| branch | `didSeedApprovalsRef.current` | 524 |
+| branch | `conversation?.id !== conversationId` | 525 |
+| branch | `!hasNewApproval` | 560 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 564 |
+| branch | `!sentinel` | 592 |
+| branch | `!entries[0]?.isIntersecting` | 596 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 599 |
+| branch | `!sentinel` | 634 |
+| branch | `!entries[0]?.isIntersecting` | 638 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 639 |
+| loading | `!pending` | 654 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 657 |
+| branch | `!conversation?.id` | 666 |
+| branch | `!m` | 670 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 673 |
+| loading | `loading && !conversation` | 704 |
+| branch | `pane && !conversationId && !conversation` | 716 |
+| loading | `!loading && !conversation` | 723 |
+| error | `error` | 726 |
+| branch | `!isPopoutWindow` | 771 |
+| branch | `pane` | 794 |
+| error | `error` | 857 |
+| branch | `dropZone` | 883 |
+| branch | `dropZone === z` | 912 |
+| branch | `nativeScroll && !composerHidden` | 1008 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
