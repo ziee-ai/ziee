@@ -147,3 +147,9 @@ specs) passed — confirming no regression from the layout/card/drawer rework.
 - **TEST-61**: PASS
 - **TEST-62**: PASS
 - **TEST-63**: PASS
+
+### FB-10 re-verification (switch adjacency)
+TEST-60 gained a bounding-box proximity assertion (enable Switch within 200px of
+the title, not stranded far-right) and PASSES on a fresh dist-e2e rebuild
+(precedent-layout.spec.ts + capture — 7 passed). `npm run check`: PASS.
+- **TEST-60**: PASS

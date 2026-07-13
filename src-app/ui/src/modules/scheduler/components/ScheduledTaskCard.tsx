@@ -288,25 +288,22 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
       data-testid={`task-card-${task.id}`}
       className="group"
       title={
-        // Only the name lives in the (truncating) CardTitle; the kind Tag +
-        // status Badge go in the card body so they never clip at narrow widths
-        // — mirrors KnowledgeBaseCard/ProjectCard.
+        // The name + its enable Switch form one unit at the left — the Switch is
+        // STATE and belongs beside the task it governs, not stranded at the far
+        // right of the header. The kind Tag + status Badge live in the card body
+        // (they'd clip in the truncating CardTitle) — mirrors KnowledgeBaseCard.
         <div className="flex min-w-0 items-center gap-2">
           <Title
             level={5}
             data-testid={`task-name-${task.id}`}
-            className="!m-0 !text-sm !font-normal line-clamp-2 [overflow-wrap:anywhere]"
+            className="!m-0 min-w-0 truncate !text-sm !font-normal [overflow-wrap:anywhere]"
           >
             {task.name}
           </Title>
-        </div>
-      }
-      extra={
-        <Flex className="items-center gap-1">
-          {/* State (always visible): whether the task is on. */}
           <Switch
             data-standalone-control
             data-testid={`task-enabled-${task.id}`}
+            className="shrink-0"
             aria-label={task.enabled ? 'Disable task' : 'Enable task'}
             checked={task.enabled}
             onCheckedChange={async v => {
@@ -317,6 +314,10 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
               }
             }}
           />
+        </div>
+      }
+      extra={
+        <>
           {/* Actions (hover/focus-revealed, always-on for touch): mirror ProjectCard. */}
           <Flex
             data-testid={`task-actions-${task.id}`}
@@ -406,7 +407,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
               }}
             />
           </Flex>
-        </Flex>
+        </>
       }
     >
       <Flex className="mb-1 flex-wrap items-center gap-2">

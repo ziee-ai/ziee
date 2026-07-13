@@ -129,8 +129,16 @@ test('TEST-60: card exposes hover actions (edit opens the drawer) with the enabl
   const card = byTestId(page, `task-card-${row.id}`)
   await expect(card).toBeVisible({ timeout: 10000 })
 
-  // Enable/disable Switch is STATE → always present (not opacity-gated).
-  await expect(byTestId(page, `task-enabled-${row.id}`)).toBeVisible()
+  // Enable/disable Switch is STATE → always present (not opacity-gated) AND sits
+  // ADJACENT to the title, not stranded at the far-right of the header (FB-10).
+  const enableSwitch = byTestId(page, `task-enabled-${row.id}`)
+  await expect(enableSwitch).toBeVisible()
+  const titleBox = await byTestId(page, `task-name-${row.id}`).boundingBox()
+  const switchBox = await enableSwitch.boundingBox()
+  if (!titleBox || !switchBox) throw new Error('missing title/switch box')
+  // The switch's left edge is right after the title's right edge (adjacent),
+  // not ~760px away at the card's far-right gutter.
+  expect(switchBox.x - (titleBox.x + titleBox.width)).toBeLessThan(200)
 
   // The action cluster is genuinely hover-revealed: opacity 0 at rest, 1 on
   // hover (Playwright treats opacity:0 as "visible", so we read computed opacity

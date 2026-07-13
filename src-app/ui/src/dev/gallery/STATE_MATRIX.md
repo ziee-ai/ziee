@@ -3903,14 +3903,14 @@ Required states: `empty`, `error`, `open`
 | error | `run.status === 'failed' && run.error_message` | 195 |
 | branch | `skip` | 201 |
 | error | `!preview && run.status !== 'failed'` | 209 |
-| branch | `task.target_kind === 'prompt'` | 330 |
-| overlay | `<Confirm open>` | 388 |
-| branch | `task.paused_reason === 'completed'` | 414 |
-| branch | `task.paused_reason` | 419 |
-| branch | `expanded` | 443 |
-| branch | `!runs` | 445 |
-| empty | `total === 0` | 447 |
-| branch | `total > perPage` | 463 |
+| branch | `task.target_kind === 'prompt'` | 331 |
+| overlay | `<Confirm open>` | 389 |
+| branch | `task.paused_reason === 'completed'` | 415 |
+| branch | `task.paused_reason` | 420 |
+| branch | `expanded` | 444 |
+| branch | `!runs` | 446 |
+| empty | `total === 0` | 448 |
+| branch | `total > perPage` | 464 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
