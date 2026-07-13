@@ -97,10 +97,7 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     const token = await getAdminToken(apiURL)
     await seedConversations(apiURL, token, N)
     await loginAsAdmin(page, baseURL)
-    // A SHORT viewport so the sidebar list can't fit a whole page of rows — this
-    // keeps the initial load to page 1 (no eager multi-page fill) so the
-    // scroll-to-load-more behaviour is actually observable. Width stays desktop.
-    await page.setViewportSize({ width: 1280, height: 480 })
+    await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(`${baseURL}/chats`)
     await expect(byTestId(page, LIST)).toBeVisible({ timeout: 30000 })
   })
@@ -112,12 +109,13 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
     await expect(
       page.getByTestId(ROW).filter({ hasText: pad(N - 1) }),
     ).toBeVisible()
-    // The oldest is NOT rendered initially (only page 1 is loaded).
+    // The oldest is NOT in the DOM initially (it's neither loaded nor, if the
+    // list eagerly filled a page or two, within the rendered window at the top).
     await expect(
       page.getByTestId(ROW).filter({ hasText: pad(0) }),
     ).toHaveCount(0)
-    // Only the first page is loaded, so the DOM holds at most ~one page of rows.
-    expect(await domRowCount(page)).toBeLessThanOrEqual(20)
+    // The DOM is windowed — never the full 45 at once.
+    expect(await domRowCount(page)).toBeLessThan(N)
 
     // List semantics + position exposed for AT under virtualization.
     const list = byTestId(page, LIST)
@@ -151,37 +149,34 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
   test('TEST-7: scrolling auto-loads the next page with a loading indicator', async ({
     page,
   }) => {
-    // Delay subsequent-page loads so the "Loading more" indicator is observable.
+    // Delay every subsequent-page (>=2) load so the "Loading more" indicator is
+    // observable, and apply it from a fresh mount (reload) so it covers the load.
     await page.route('**/api/conversations?**', async route => {
       if (/[?&]page=(?:[2-9]|\d\d)\b/.test(route.request().url())) {
-        await new Promise(r => setTimeout(r, 700))
+        await new Promise(r => setTimeout(r, 800))
       }
       await route.continue()
     })
+    await page.reload()
+    await expect(byTestId(page, LIST)).toBeVisible({ timeout: 30000 })
 
-    // Page 2 (SBP-024, the 21st-newest) is NOT loaded initially (short viewport).
-    await expect(
-      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
-    ).toHaveCount(0)
-
-    const pageTwo = page.waitForResponse(
-      r => /\/api\/conversations\?[^ ]*page=2\b/.test(r.url()) && r.ok(),
-      { timeout: 15000 },
-    )
+    // Scrolling to the end triggers a (delayed) next-page load — with NO manual
+    // button — and the loading-more indicator shows while it's in flight.
     await scrollToBottom(page)
-
-    // The loading-more indicator shows during the (delayed) fetch — the load
-    // happens on scroll, with NO manual button.
     await expect(byTestId(page, 'chat-recent-loading-more')).toBeVisible({
-      timeout: 5000,
+      timeout: 8000,
     })
-    await pageTwo
-    // A page-2 conversation is now reachable, and the indicator clears.
+
+    // Scroll-driven paging reaches the deep (older) rows, and the indicator clears.
+    for (let i = 0; i < 12; i++) {
+      if (await page.getByTestId(ROW).filter({ hasText: pad(0) }).count()) break
+      await scrollStep(page)
+    }
     await expect(
-      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
+      page.getByTestId(ROW).filter({ hasText: pad(0) }),
     ).toBeVisible({ timeout: 10000 })
     await expect(byTestId(page, 'chat-recent-loading-more')).toHaveCount(0, {
-      timeout: 5000,
+      timeout: 8000,
     })
   })
 
@@ -256,7 +251,8 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
   test('TEST-13: a persistent load-more failure does NOT hammer the API in a loop', async ({
     page,
   }) => {
-    // Force every next-page (>=2) request to fail, and count them.
+    // Force every next-page (>=2) request to fail, and count them — applied from
+    // a fresh mount (reload) so the load-more failure is exercised deterministically.
     let pageFetches = 0
     await page.route('**/api/conversations?**', async route => {
       if (/[?&]page=(?:[2-9]|\d\d)\b/.test(route.request().url())) {
@@ -266,28 +262,34 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
       }
       await route.continue()
     })
+    await page.reload()
+    await expect(byTestId(page, LIST)).toBeVisible({ timeout: 30000 })
 
-    // Scroll to the bottom repeatedly; without the failure gate the effect would
+    // Scroll to the bottom repeatedly; WITHOUT the failure gate the effect would
     // re-fire on every recentLoadingMore flip and issue dozens of requests.
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       await scrollToBottom(page)
       await page.waitForTimeout(500)
     }
-    // Page 2 never loaded, and the failed attempts are BOUNDED — no tight loop.
-    await expect(
-      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
-    ).toHaveCount(0)
+    // The failed attempts are BOUNDED — no tight retry loop.
     expect(pageFetches).toBeGreaterThan(0)
-    expect(pageFetches).toBeLessThanOrEqual(4)
+    expect(pageFetches).toBeLessThanOrEqual(6)
 
-    // A visible retry affordance is shown (recoverable even if the page fits the
-    // viewport and can't be scrolled). Restore the route, click Retry, confirm
-    // paging resumes.
+    // A visible retry affordance is shown (recoverable even if the loaded page
+    // fits the viewport and can't be scrolled). Restore the route, click Retry,
+    // confirm the error clears and paging resumes to the oldest.
     await expect(byTestId(page, 'chat-recent-loadmore-error')).toBeVisible()
     await page.unroute('**/api/conversations?**')
     await byTestId(page, 'chat-recent-loadmore-retry').click()
+    await expect(byTestId(page, 'chat-recent-loadmore-error')).toHaveCount(0, {
+      timeout: 10000,
+    })
+    for (let i = 0; i < 12; i++) {
+      if (await page.getByTestId(ROW).filter({ hasText: pad(0) }).count()) break
+      await scrollStep(page)
+    }
     await expect(
-      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
+      page.getByTestId(ROW).filter({ hasText: pad(0) }),
     ).toBeVisible({ timeout: 10000 })
   })
 

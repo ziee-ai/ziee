@@ -430,7 +430,17 @@ export const ChatHistory = defineStore('ChatHistory', {
           conversationResponse,
           ...draft.recentConversations.filter(c => c.id !== conversation.id),
         ]
-        if (!alreadyInRecent) draft.recentTotal = draft.recentTotal + 1
+        if (!alreadyInRecent) {
+          draft.recentTotal = draft.recentTotal + 1
+          // Re-anchor the page cursor to the grown length (same as syncRecentFront
+          // and the delete paths). A front-prepend shifts the server offsets, so
+          // WITHOUT this, ≥limit accumulated local creates would make the next
+          // loadMoreRecent fetch a fully-overlapping page → noProgress → older
+          // pages wrongly stranded.
+          draft.recentPage = Math.floor(
+            draft.recentConversations.length / draft.limit,
+          )
+        }
         // The main `conversations` list may be a FILTERED (search) or non-recent
         // SORTED view. A brand-new empty conversation won't match a content
         // search and has no defined position under a non-recent sort, so only

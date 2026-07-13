@@ -36,4 +36,4 @@ sleeps, and TEST-10's selector (the row testid is ON the `<button>`, so assert
 - `npm run check` (ui): PASS. `tsc`: clean. Unit tests: 15/15 PASS.
 - e2e: re-run after the spec fixes (see TEST_RESULTS.md).
 
-**New confirmed findings:** 0 (verified by the round-4 re-audit)
+**New confirmed findings:** 1 (the round-4 re-audit found the createConversation re-anchor omission — see FIX_ROUND-5)

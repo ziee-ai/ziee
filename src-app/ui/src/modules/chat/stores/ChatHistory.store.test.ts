@@ -225,6 +225,9 @@ describe('ChatHistory recent paging (TEST-1..5)', () => {
     expect(s.recentConversations).toHaveLength(41) // NOT truncated to 20
     expect(s.recentConversations[0].id).toBe('brand-new')
     expect(s.recentTotal).toBe(41)
+    // Cursor re-anchored to the grown length so accumulated local creates don't
+    // strand older pages (floor(41/20) = 2).
+    expect(s.recentPage).toBe(2)
 
     // A cross-device delete of a loaded row prunes it and decrements the counter.
     bus.emit('sync:conversation', { data: { action: 'delete', id: 'r5' } })
