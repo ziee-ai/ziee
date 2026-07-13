@@ -87,8 +87,7 @@ impl AppModule for WebSearchModule {
         // `web_search: { enabled: false }` so query terms never egress; an
         // admin cannot re-enable it (distinct from the runtime
         // `web_search_settings.enabled` toggle). Mirrors lit_search.
-        let enabled = ctx
-            .config
+        let enabled = crate::module_api::app_config(ctx)
             .web_search
             .as_ref()
             .map(|c| c.enabled)

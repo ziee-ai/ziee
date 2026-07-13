@@ -58,7 +58,7 @@ impl AppModule for ServerUpdateModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
-        let enabled = ctx.config.update_check.enabled;
+        let enabled = crate::module_api::app_config(ctx).update_check.enabled;
         checker::set_enabled(enabled);
         if !enabled {
             tracing::info!(

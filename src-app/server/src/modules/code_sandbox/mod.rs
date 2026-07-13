@@ -186,7 +186,10 @@ impl AppModule for CodeSandboxModule {
             }
         }
 
-        let cfg = ctx.config.code_sandbox.clone().unwrap_or_default();
+        let cfg = crate::module_api::app_config(ctx)
+            .code_sandbox
+            .clone()
+            .unwrap_or_default();
         if !cfg.enabled {
             config::set_init_status(config::SandboxAvailability::DisabledInConfig);
             tracing::info!(

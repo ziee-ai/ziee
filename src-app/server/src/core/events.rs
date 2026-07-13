@@ -6,11 +6,15 @@
 //
 // Event infrastructure - currently unused but part of the core architecture
 
-use async_trait::async_trait;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::common::AppError;
+// The domain-free `EventHandler` trait moved to `ziee-framework` (Chunk B2) —
+// its `handle` takes the event type-erased (`&dyn Any`) so the framework stays
+// app-agnostic. Re-exported here so `crate::core::events::EventHandler` /
+// `crate::core::EventHandler` call sites are unchanged. The domain-coupled
+// `AppEvent` enum + the `EventBus` dispatcher stay app-side (they move in B5).
+pub use ziee_framework::EventHandler;
 
 /// Main application event enum
 /// Each module contributes a variant containing its module-specific events
@@ -68,18 +72,6 @@ pub enum AppEvent {
     // Add new module events here as the application grows
 }
 
-/// Trait for handling application events
-/// Modules implement this to react to events they care about
-#[async_trait]
-pub trait EventHandler: Send + Sync {
-    /// Handle an event
-    /// Return error to log it, but won't stop other handlers from running
-    async fn handle(&self, event: &AppEvent, pool: &PgPool) -> Result<(), AppError>;
-
-    /// Name for logging and debugging
-    fn handler_name(&self) -> &'static str;
-}
-
 /// Hard cap on concurrent in-flight emit_async tasks. Closes
 /// 14-core F-15 (Medium): the original `emit_async` spawned an
 /// unbounded tokio task per emission. Under burst load (a chat storm
@@ -119,7 +111,12 @@ impl EventBus {
         tracing::debug!("Emitting event: {:?}", event);
 
         for handler in &self.handlers {
-            if let Err(e) = handler.handle(&event, &self.pool).await {
+            // `&AppEvent` erases to the framework handler's `&dyn Any` param;
+            // each handler downcasts back to `AppEvent`.
+            if let Err(e) = handler
+                .handle(&event as &(dyn std::any::Any + Send + Sync), &self.pool)
+                .await
+            {
                 tracing::error!(
                     "Event handler '{}' failed for event {:?}: {}",
                     handler.handler_name(),
@@ -161,7 +158,10 @@ impl EventBus {
 
         tokio::spawn(async move {
             for handler in handlers {
-                if let Err(e) = handler.handle(&event, &pool).await {
+                if let Err(e) = handler
+                    .handle(&event as &(dyn std::any::Any + Send + Sync), &pool)
+                    .await
+                {
                     tracing::error!(
                         "Event handler '{}' failed for event {:?}: {}",
                         handler.handler_name(),

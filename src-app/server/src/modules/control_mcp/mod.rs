@@ -44,7 +44,7 @@ pub fn control_mcp_server_id() -> Uuid {
 /// True when the deploy-level kill-switch permits the control surface. Absent
 /// config section means enabled.
 fn is_enabled(ctx: &ModuleContext) -> bool {
-    ctx.config
+    crate::module_api::app_config(ctx)
         .control_mcp
         .as_ref()
         .map(|c| c.enabled)

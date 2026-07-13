@@ -102,8 +102,7 @@ impl AppModule for LitSearchModule {
         // `lit_search: { enabled: false }` so query terms never egress; an
         // admin cannot re-enable it (distinct from the runtime
         // `lit_search_settings.enabled` toggle).
-        let enabled = ctx
-            .config
+        let enabled = crate::module_api::app_config(ctx)
             .lit_search
             .as_ref()
             .map(|c| c.enabled)

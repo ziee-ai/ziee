@@ -77,9 +77,9 @@ impl AppModule for SchedulerModule {
         // next_run_at (coalesced catch-up on the first tick). Fire-and-forget,
         // like the memory reaper. Runs only while the process is up (on desktop:
         // while the app is open — DEC-8).
-        let _ = SCHEDULER_CONFIG.set(ctx.config.clone());
+        let _ = SCHEDULER_CONFIG.set(crate::module_api::app_config(ctx));
         let pool = (*ctx.db_pool).clone();
-        let config = ctx.config.clone();
+        let config = crate::module_api::app_config(ctx);
         tokio::spawn(async move { tick::run_tick_loop(pool, config).await });
         // Boot-spawned run-history retention prune (ITEM-8/DEC-7): reuses the
         // admin `notification_retention_days` window; 0 = keep forever.

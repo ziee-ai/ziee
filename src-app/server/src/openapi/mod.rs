@@ -50,7 +50,12 @@ pub async fn generate_openapi_spec(
     crate::core::set_caches_config(config.caches.clone());
 
     // Initialize modules using shared builder functions
-    let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
+    // ServerConfig into the framework context; full Config via the opaque slot.
+    let module_context = ModuleContext::new(
+        pool.clone(),
+        std::sync::Arc::new(config.server_config.clone()),
+        std::sync::Arc::new(config.clone()),
+    );
     let mut modules = app_builder::create_modules();
 
     // Initialize all modules. OpenAPI generation only walks the

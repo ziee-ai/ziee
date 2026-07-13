@@ -437,7 +437,14 @@ async fn setup_server(
     );
 
     // Initialize modules
-    let module_context = ModuleContext::new(pool.clone(), Arc::new(config.clone()));
+    // The framework `ModuleContext` carries the app-agnostic `ServerConfig`;
+    // the full monolithic `Config` is injected through the opaque `app_config`
+    // slot (modules recover it via `module_api::app_config(ctx)`).
+    let module_context = ModuleContext::new(
+        pool.clone(),
+        Arc::new(config.server_config.clone()),
+        Arc::new(config.clone()),
+    );
     let mut modules = core::app_builder::create_modules();
 
     // Initialize all modules

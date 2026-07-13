@@ -229,7 +229,12 @@ async fn main() {
     );
 
     // Initialize modules
-    let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
+    // ServerConfig into the framework context; full Config via the opaque slot.
+    let module_context = ModuleContext::new(
+        pool.clone(),
+        std::sync::Arc::new(config.server_config.clone()),
+        std::sync::Arc::new(config.clone()),
+    );
     let mut modules = core::app_builder::create_modules();
 
     // Initialize all modules
@@ -265,7 +270,7 @@ async fn main() {
 
     // Set up MCP session manager
     let mcp_session_manager = std::sync::Arc::new(modules::mcp::client::McpSessionManager::new(
-        module_context.config.clone(),
+        module_api::app_config(&module_context),
     ));
     // Make it reachable from the event-bus path (`McpSessionCleanupHandler`)
     // — module event handlers are registered before this point and can't

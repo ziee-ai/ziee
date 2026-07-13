@@ -50,7 +50,12 @@ pub async fn generate_openapi_spec(
     // + continue, because the routes are already registered via the
     // distributed-slice ModuleEntry list. Mirrors the server-side
     // openapi-gen path.
-    let module_context = ziee::ServerContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
+    // ServerConfig into the framework context; full Config via the opaque slot.
+    let module_context = ziee::ServerContext::new(
+        pool.clone(),
+        std::sync::Arc::new(config.server_config.clone()),
+        std::sync::Arc::new(config.clone()),
+    );
     let mut server_modules = ziee::create_modules();
     for module in server_modules.iter_mut() {
         if let Err(e) = module.init(&module_context) {

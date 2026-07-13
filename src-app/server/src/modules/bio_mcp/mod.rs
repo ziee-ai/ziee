@@ -82,8 +82,7 @@ impl AppModule for BioMcpModule {
         // config section means enabled). Operators opt OUT with
         // `bio_mcp: { enabled: false }`. The module still self-disables
         // below when the embedded binary is a build stub.
-        let enabled = ctx
-            .config
+        let enabled = crate::module_api::app_config(ctx)
             .bio_mcp
             .as_ref()
             .map(|c| c.enabled)
