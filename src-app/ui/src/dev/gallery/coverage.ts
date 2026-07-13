@@ -200,6 +200,8 @@ export const GALLERY_COVERAGE = {
   "modules/auth/AuthCallbackPage": { kind: 'flow', reason: 'auth/setup flow (no data grid)' },
   "modules/auth/AuthGuard": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
   "modules/auth/AuthPage": { kind: 'flow', reason: 'auth/setup flow (no data grid)' },
+  "modules/auth/AuthScreenLayout": { kind: 'via', reason: 'shared unauthenticated-screen chrome rendered within the auth + setup pages' },
+  "modules/auth/AuthThemeToggle": { kind: 'via', reason: 'theme toggle rendered within AuthScreenLayout' },
   "modules/auth/LinkAccountPage": { kind: 'flow', reason: 'auth/setup flow (no data grid)' },
   "modules/auth/LoginForm": { kind: 'via', reason: 'rendered within the auth module page' },
   "modules/auth/ProviderButtons": { kind: 'via', reason: 'rendered within the auth module page' },

@@ -47,6 +47,11 @@ services:
       ZIEE_ADMIN_USERNAME: "${ZIEE_ADMIN_USERNAME:-}"
       ZIEE_ADMIN_EMAIL: "${ZIEE_ADMIN_EMAIL:-}"
       ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:-}"
+      # Google sign-in creds for the pre-seeded `google` auth provider (the
+      # manifest's auth_providers block stamps + enables it). Empty default: with
+      # both unset the entry is skipped and Google stays disabled — a clean no-op.
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
     # Lets ziee reach the host-published MCP servers at host.docker.internal:18xxx
     # (same pattern biognosia-mcp / cpa-website use).
     extra_hosts:

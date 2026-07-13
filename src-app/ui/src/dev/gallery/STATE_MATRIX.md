@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **367** surfaces carry at least one renderable-state signal.
-- **2164** signals total: 1708 branch, 136 empty, 113 error, 108 loading, 96 overlay, 3 panel.
+- **368** surfaces carry at least one renderable-state signal.
+- **2167** signals total: 1711 branch, 138 empty, 113 error, 106 loading, 96 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **33** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,8 +16,8 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 95 |
-| `empty` | 107 |
+| `delayed` | 94 |
+| `empty` | 108 |
 | `error` | 89 |
 | `open` | 82 |
 | `panel-open` | 3 |
@@ -300,14 +300,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 72 |
-| branch | `'type' in it && it.type === 'group'` | 78 |
-| branch | `!collapsed` | 82 |
-| branch | `'type' in it && it.type === 'label'` | 90 |
-| branch | `!(collapsed)` | 91 |
-| branch | `item.icon != null` | 149 |
-| branch | `!collapsed` | 151 |
-| branch | `hasActions` | 153 |
+| branch | `'type' in it && it.type === 'divider'` | 164 |
+| branch | `'type' in it && it.type === 'group'` | 170 |
+| branch | `!collapsed` | 174 |
+| branch | `'type' in it && it.type === 'label'` | 182 |
+| branch | `!(collapsed)` | 183 |
+| branch | `item.icon != null` | 215 |
+| branch | `!collapsed` | 217 |
+| branch | `hasActions` | 219 |
 
 ### `components/ui/kit/multi-select`
 
@@ -670,8 +670,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isDarkMode` | 77 |
-| branch | `setupError` | 164 |
+| branch | `setupError` | 119 |
 
 ### `modules/assistant/chat-extension/components/AssistantMenuItem`
 
@@ -824,9 +823,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isAuthenticated` | 22 |
-| branch | `mode === 'login'` | 37 |
-| branch | `mode === 'register'` | 41 |
+| branch | `isAuthenticated` | 19 |
+| branch | `mode === 'login'` | 26 |
+| branch | `mode === 'register'` | 30 |
+
+### `modules/auth/AuthThemeToggle`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `isDarkMode` | 28 |
 
 ### `modules/auth/LinkAccountPage`
 
@@ -843,8 +850,8 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error` | 52 |
-| branch | `onSwitchToRegister` | 109 |
+| error | `error` | 57 |
+| branch | `onSwitchToRegister` | 114 |
 
 ### `modules/auth/ProviderButtons`
 
@@ -974,14 +981,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 154 |
-| branch | `selectedIds.size > 0` | 161 |
-| branch | `canDelete` | 186 |
-| loading | `visibleConversations.length === 0 && !loading` | 215 |
-| error | `error` | 216 |
-| loading | `loading && !isInitialized` | 240 |
-| branch | `visibleConversations.length > 0` | 267 |
-| branch | `hasMore` | 276 |
+| branch | `!getSearchBoxContainer` | 153 |
+| branch | `selectedIds.size > 0` | 160 |
+| branch | `canDelete` | 185 |
+| loading | `visibleConversations.length === 0 && !loading` | 214 |
+| error | `error` | 215 |
+| loading | `loading && !isInitialized` | 239 |
+| branch | `visibleConversations.length > 0` | 266 |
+| branch | `hasMore` | 275 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1304,16 +1311,19 @@ Required states: `delayed`, `error`
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
-Required states: `delayed`, `open`
+Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| loading | `loading && !isInitialized` | 58 |
-| loading | `!loading && recentConversations.length === 0` | 69 |
-| branch | `!c` | 134 |
-| branch | `active?.closest('[role="menu"]')` | 139 |
-| overlay | `<Dropdown open>` | 233 |
-| branch | `!open && keepMenuOpen` | 240 |
+| empty | `recentError && recentConversations.length === 0` | 134 |
+| branch | `!recentInitialized` | 151 |
+| empty | `recentConversations.length === 0` | 162 |
+| branch | `!c` | 213 |
+| branch | `active?.closest('[role="menu"]')` | 242 |
+| branch | `recentLoadingMore` | 258 |
+| branch | `recentError && !recentLoadingMore && recentConversations.length > 0` | 273 |
+| overlay | `<Dropdown open>` | 384 |
+| branch | `!open && keepMenuOpen` | 391 |
 
 ### `modules/citations/components/CitationCard`
 

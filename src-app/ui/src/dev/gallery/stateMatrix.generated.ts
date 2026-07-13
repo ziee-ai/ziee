@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 367 surfaces carry renderable-state signals; 2164 signals total.
+// 368 surfaces carry renderable-state signals; 2167 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -239,14 +239,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/menu",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 72 },
-      { kind: "branch", condition: "'type' in it && it.type === 'group'", line: 78 },
-      { kind: "branch", condition: "!collapsed", line: 82 },
-      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 90 },
-      { kind: "branch", condition: "!(collapsed)", line: 91 },
-      { kind: "branch", condition: "item.icon != null", line: 149 },
-      { kind: "branch", condition: "!collapsed", line: 151 },
-      { kind: "branch", condition: "hasActions", line: 153 },
+      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 164 },
+      { kind: "branch", condition: "'type' in it && it.type === 'group'", line: 170 },
+      { kind: "branch", condition: "!collapsed", line: 174 },
+      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 182 },
+      { kind: "branch", condition: "!(collapsed)", line: 183 },
+      { kind: "branch", condition: "item.icon != null", line: 215 },
+      { kind: "branch", condition: "!collapsed", line: 217 },
+      { kind: "branch", condition: "hasActions", line: 219 },
     ],
   },
   "components/ui/kit/multi-select": {
@@ -575,8 +575,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/app/SetupPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isDarkMode", line: 77 },
-      { kind: "branch", condition: "setupError", line: 164 },
+      { kind: "branch", condition: "setupError", line: 119 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantMenuItem": {
@@ -717,9 +716,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/AuthPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isAuthenticated", line: 22 },
-      { kind: "branch", condition: "mode === 'login'", line: 37 },
-      { kind: "branch", condition: "mode === 'register'", line: 41 },
+      { kind: "branch", condition: "isAuthenticated", line: 19 },
+      { kind: "branch", condition: "mode === 'login'", line: 26 },
+      { kind: "branch", condition: "mode === 'register'", line: 30 },
+    ],
+  },
+  "modules/auth/AuthThemeToggle": {
+    surface: "modules/auth/AuthThemeToggle",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "isDarkMode", line: 28 },
     ],
   },
   "modules/auth/LinkAccountPage": {
@@ -734,8 +740,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/LoginForm",
     requiredStates: ["error"],
     signals: [
-      { kind: "error", condition: "error", line: 52 },
-      { kind: "branch", condition: "onSwitchToRegister", line: 109 },
+      { kind: "error", condition: "error", line: 57 },
+      { kind: "branch", condition: "onSwitchToRegister", line: 114 },
     ],
   },
   "modules/auth/ProviderButtons": {
@@ -853,14 +859,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ConversationList",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!getSearchBoxContainer", line: 154 },
-      { kind: "branch", condition: "selectedIds.size > 0", line: 161 },
-      { kind: "branch", condition: "canDelete", line: 186 },
-      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 215 },
-      { kind: "error", condition: "error", line: 216 },
-      { kind: "loading", condition: "loading && !isInitialized", line: 240 },
-      { kind: "branch", condition: "visibleConversations.length > 0", line: 267 },
-      { kind: "branch", condition: "hasMore", line: 276 },
+      { kind: "branch", condition: "!getSearchBoxContainer", line: 153 },
+      { kind: "branch", condition: "selectedIds.size > 0", line: 160 },
+      { kind: "branch", condition: "canDelete", line: 185 },
+      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 214 },
+      { kind: "error", condition: "error", line: 215 },
+      { kind: "loading", condition: "loading && !isInitialized", line: 239 },
+      { kind: "branch", condition: "visibleConversations.length > 0", line: 266 },
+      { kind: "branch", condition: "hasMore", line: 275 },
     ],
   },
   "modules/chat/components/EditingMessageBanner": {
@@ -1156,14 +1162,17 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/widgets/RecentConversationsWidget": {
     surface: "modules/chat/widgets/RecentConversationsWidget",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["empty","open"],
     signals: [
-      { kind: "loading", condition: "loading && !isInitialized", line: 58 },
-      { kind: "loading", condition: "!loading && recentConversations.length === 0", line: 69 },
-      { kind: "branch", condition: "!c", line: 134 },
-      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 139 },
-      { kind: "overlay", condition: "<Dropdown open>", line: 233 },
-      { kind: "branch", condition: "!open && keepMenuOpen", line: 240 },
+      { kind: "empty", condition: "recentError && recentConversations.length === 0", line: 134 },
+      { kind: "branch", condition: "!recentInitialized", line: 151 },
+      { kind: "empty", condition: "recentConversations.length === 0", line: 162 },
+      { kind: "branch", condition: "!c", line: 213 },
+      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 242 },
+      { kind: "branch", condition: "recentLoadingMore", line: 258 },
+      { kind: "branch", condition: "recentError && !recentLoadingMore && recentConversations.length > 0", line: 273 },
+      { kind: "overlay", condition: "<Dropdown open>", line: 384 },
+      { kind: "branch", condition: "!open && keepMenuOpen", line: 391 },
     ],
   },
   "modules/citations/components/CitationCard": {
@@ -4526,7 +4535,7 @@ export type RequiredState =
   | "modules/chat/pages/ChatHistoryPage:error"
   | "modules/chat/pages/ConversationPage:delayed"
   | "modules/chat/pages/ConversationPage:error"
-  | "modules/chat/widgets/RecentConversationsWidget:delayed"
+  | "modules/chat/widgets/RecentConversationsWidget:empty"
   | "modules/chat/widgets/RecentConversationsWidget:open"
   | "modules/citations/components/ImportCitationsModal:empty"
   | "modules/citations/components/ImportCitationsModal:open"
@@ -4905,7 +4914,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/pages/ChatHistoryPage:error",
   "modules/chat/pages/ConversationPage:delayed",
   "modules/chat/pages/ConversationPage:error",
-  "modules/chat/widgets/RecentConversationsWidget:delayed",
+  "modules/chat/widgets/RecentConversationsWidget:empty",
   "modules/chat/widgets/RecentConversationsWidget:open",
   "modules/citations/components/ImportCitationsModal:empty",
   "modules/citations/components/ImportCitationsModal:open",

@@ -84,7 +84,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   return (
     <Card data-testid="auth-register-card" className="w-full max-w-md mx-auto">
       <div className="text-center mb-6">
-        <Title level={3}>Create Account</Title>
+        <Title level={2}>Create Account</Title>
       </div>
 
       {error && (
