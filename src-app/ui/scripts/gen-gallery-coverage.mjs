@@ -45,7 +45,8 @@ function walk(dir, acc = []) {
       // `gallery.tsx` seed files: those are never rendered AS a surface (the
       // gallery seed is authoring metadata, not a reviewable page/component).
       !/\.(test|stories|desktop)\.tsx$/.test(e) &&
-      e !== 'gallery.tsx'
+      e !== 'gallery.tsx' &&
+      e !== 'gallery.ts'
     ) {
       acc.push(full)
     }

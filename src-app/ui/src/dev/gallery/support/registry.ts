@@ -7,9 +7,12 @@
  * directory over, EAGER so the cassette is fully assembled synchronously at
  * module-eval — BEFORE `seed.ts` calls `installMockApi()` then `loadModules()`.
  *
- * The sentinel comment above is asserted-absent from the prod app bundle by
- * `scripts/check-gallery-prod-exclusion.mjs`: this module (and everything it
- * eager-imports) is reachable ONLY from the dev-gallery chunk, never app-main.
+ * This module (and everything it eager-imports) is reachable ONLY from the
+ * DEV-gated dev-gallery chunk, never app-main — so it is tree-shaken out of prod.
+ * `scripts/check-gallery-prod-exclusion.mjs` proves that by grepping the prod
+ * bundle for the RUNTIME marker string `ZIEE_GALLERY_SEED_MARKER` — emitted as a
+ * `data-gallery-build-marker` attribute in `GalleryPage.tsx` (a JSDoc comment
+ * like this one would be stripped by the minifier and is NOT the marker).
  *
  * Pure logic (merge/assert) lives in `registry-core.ts` so it unit-tests without
  * vite; this file only adds the `import.meta.glob` discovery on top.

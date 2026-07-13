@@ -80,6 +80,13 @@ export function GalleryPage({
   return (
     <div
       data-testid="gallery-root"
+      // A RUNTIME string marker (not a comment — minifiers strip comments) that
+      // `scripts/check-gallery-prod-exclusion.mjs` greps for in the prod bundle.
+      // Reachable only via the DEV-gated dev-gallery lazy import, so it is
+      // tree-shaken out of prod; if the gallery ever leaked, this attribute
+      // value (a used JSX string literal) survives minification and the check
+      // catches it. NOT a `data-test-*` attr (those are stripped in prod).
+      data-gallery-build-marker="ZIEE_GALLERY_SEED_MARKER"
       // overflow-x-hidden: the canvas chrome must not itself scroll horizontally
       // (a stress component overflowing its OWN box is still captured per-section
       // by Layer A's childOverflow + the Layer B section screenshot).

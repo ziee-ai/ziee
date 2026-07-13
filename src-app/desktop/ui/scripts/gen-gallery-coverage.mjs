@@ -43,7 +43,8 @@ function walk(dir, acc = []) {
       /\.tsx$/.test(e) &&
       !/\.(test|stories)\.tsx$/.test(e) &&
       // Per-module gallery.tsx seed files are authoring metadata, not surfaces.
-      e !== 'gallery.tsx'
+      e !== 'gallery.tsx' &&
+      e !== 'gallery.ts'
     ) {
       acc.push(full)
     }

@@ -23,7 +23,11 @@ const DIST = path.resolve(UI, '../dist/ui')
 const MARKER = 'ZIEE_GALLERY_SEED_MARKER'
 
 if (process.argv.includes('--build')) {
-  console.log('building prod bundle (vite build)…')
+  // Clean first — vite does NOT auto-empty an outDir that lives outside its root
+  // (`dist/ui` is outside `src/`), so stale chunks from a prior (e.g. dev) build
+  // would give a false verdict either way.
+  console.log('cleaning dist/ui + building prod bundle (vite build)…')
+  fs.rmSync(DIST, { recursive: true, force: true })
   execSync('npm run build:nocheck', { cwd: UI, stdio: 'inherit' })
 }
 

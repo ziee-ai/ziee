@@ -21,8 +21,10 @@ async function assertRenders(page: Page, slug: string, extra = '') {
   await frame.waitFor({ timeout: 15000 })
   await page.waitForTimeout(1200)
   await expect(frame.getByTestId('gallery-crash')).toHaveCount(0)
-  const text = (await frame.innerText()).trim()
-  expect(text.length, `"${slug}" rendered only chrome`).toBeGreaterThan(40)
+  // Measure the RENDERED-COMPONENT subtree, not the section (which always has
+  // ~50 chars of gallery chrome — measuring it passes on an empty seed).
+  const text = (await frame.locator('[data-gallery-frame]').innerText()).trim()
+  expect(text.length, `"${slug}" rendered empty (only chrome)`).toBeGreaterThan(20)
   expect(errors, `console/page errors on ${slug}: ${errors.join(' | ')}`).toEqual([])
 }
 

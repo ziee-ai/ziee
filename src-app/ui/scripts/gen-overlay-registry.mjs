@@ -31,7 +31,7 @@
  *      node scripts/gen-overlay-registry.mjs --check    (gate: fail on un-rendered)
  *      node scripts/gen-overlay-registry.mjs --list      (human summary to stdout)
  */
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -172,10 +172,10 @@ function collect() {
  *  scan every module `gallery.tsx` (plus the residual central `overlays.tsx` for
  *  back-compat). Reading only `overlays.tsx` (now a thin aggregator with no
  *  `surface:` fields) would false-fail every host overlay. */
-/** Pure: extract every `surface: '…'` id from a list of source texts (TEST-5). */
+/** Pure: extract every `surface: '…'`/`surface: "…"` id from source texts (TEST-5). */
 export function extractWiredSurfaces(srcTexts) {
   const set = new Set()
-  const re = /surface:\s*'([^']+)'/g
+  const re = /surface:\s*['"]([^'"]+)['"]/g
   for (const src of srcTexts) {
     let m
     re.lastIndex = 0
@@ -205,7 +205,9 @@ function loadAllowlist() {
   return { hosts: j.hosts ?? {}, triggers: j.triggers ?? {} }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`
+// Portable main-module check (the naive `file://${argv[1]}` is false on Windows
+// + on spaced paths, silently disabling the gate).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
 const surfaces = collect()
 const wired = wiredSurfaces()

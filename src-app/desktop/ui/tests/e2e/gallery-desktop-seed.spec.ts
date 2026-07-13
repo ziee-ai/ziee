@@ -24,8 +24,10 @@ async function renders(page: Page, slug: string) {
   await frame.waitFor({ timeout: 15000 })
   await page.waitForTimeout(1200)
   await expect(frame.getByTestId('gallery-crash')).toHaveCount(0)
-  const text = (await frame.innerText()).trim()
-  expect(text.length, `"${slug}" rendered only chrome`).toBeGreaterThan(40)
+  // Measure the RENDERED-COMPONENT subtree, not the section (which always has
+  // ~50 chars of gallery chrome).
+  const text = (await frame.locator('[data-gallery-frame]').innerText()).trim()
+  expect(text.length, `"${slug}" rendered empty (only chrome)`).toBeGreaterThan(20)
   expect(errors, `console/page errors on ${slug}: ${errors.join(' | ')}`).toEqual([])
 }
 
@@ -36,9 +38,12 @@ test('TEST-17: desktop-only settings-host-mount renders populated (own seed)', a
   await renders(page, 'settings-host-mount')
 })
 
-// 2. Shared web module, seeded via the cross-workspace MODULE_CASSETTE.
-test('TEST-17: shared settings-users renders populated in the desktop gallery', async ({
+// 2. Shared web module whose data comes ONLY from a web `gallery.tsx` cassette
+//    (`JsTool.getSettings`) — it is NOT in the desktop crawl base, so this
+//    genuinely proves the cross-workspace `MODULE_CASSETTE` inheritance (a
+//    crawl-covered page like settings-users would pass even if it were broken).
+test('TEST-17: shared settings-js-tool renders populated via cross-workspace cassette', async ({
   page,
 }) => {
-  await renders(page, 'settings-users')
+  await renders(page, 'settings-js-tool')
 })

@@ -18,7 +18,7 @@
  * Run: node scripts/gen-gallery-seed-registry.mjs        (write manifest)
  *      node scripts/gen-gallery-seed-registry.mjs --check (drift + missing-seed gate)
  */
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -88,7 +88,9 @@ export function hasSeed(moduleDir) {
  *  `- NO-SEED: <module> — <reason> [approved: <who/when>]` (reason + sign-off required). */
 export function parseSeedExceptions(text) {
   const set = new Set()
-  const re = /^-\s*NO-SEED:\s*(\S+)\s+[—-]\s.*\[approved:/gim
+  // Require a reason AND a CLOSED `[approved: … ]` token (an unterminated
+  // `[approved:` is a malformed sign-off and must not count).
+  const re = /^-\s*NO-SEED:\s*(\S+)\s+[—-]\s.*\[approved:[^\]]*\]/gim
   let m
   while ((m = re.exec(text || '')) !== null) set.add(m[1].trim())
   return set
@@ -127,7 +129,10 @@ export function enumerateModules(modulesDir = MODULES_DIR) {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`
+// Portable main-module check (the naive `file://${argv[1]}` is false on Windows
+// — `file:///C:/…` vs `C:\…` — and on paths with spaces, which would silently
+// disable the gate).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   const modules = enumerateModules()
   const exceptionsText = fs.existsSync(EXCEPTIONS_PATH)

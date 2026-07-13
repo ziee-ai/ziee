@@ -10,15 +10,9 @@ import { holdPatch, lazyNamed, lazyProps } from '@/dev/gallery/support'
 import { authCassette } from '@/dev/gallery/fixtures/auth'
 
 export const gallery: ModuleGallery = {
-  cassette: {
-    ...authCassette,
-    // `/settings/sessions` admin page reads the token-lifetime settings on mount.
-    'Auth.getSessionSettings': {
-      access_token_expiry_hours: 24,
-      refresh_token_expiry_days: 30,
-      updated_at: '2026-01-01T00:00:00.000Z',
-    },
-  },
+  // `authCassette` already seeds `Auth.getSessionSettings` (for the
+  // `/settings/sessions` admin page) + `Auth.me` etc. — no inline override needed.
+  cassette: authCassette,
   seeded: [
     {
       slug: 'seeded-provider-buttons-loading',

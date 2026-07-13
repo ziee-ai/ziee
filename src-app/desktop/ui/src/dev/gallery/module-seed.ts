@@ -12,17 +12,14 @@
  * the shared `registry-core`.
  */
 import type { Cassette } from './mockApi'
-import type { ModuleGallery, OverlayEntry } from '@/dev/gallery/support'
+import type { ModuleGallery } from '@/dev/gallery/support'
 import {
   type DiscoveredGallery,
   assertUniqueSlugs,
   mergeModuleCassettes,
   moduleNameFromPath,
 } from '@/dev/gallery/support/registry-core'
-import {
-  MODULE_CASSETTE as SHARED_CASSETTE,
-  OVERLAY_ENTRIES as SHARED_OVERLAYS,
-} from '@/dev/gallery/support/registry'
+import { MODULE_CASSETTE as SHARED_CASSETTE } from '@/dev/gallery/support/registry'
 
 // Desktop-only module seeds (same-workspace glob).
 const desktopMods = import.meta.glob<{ gallery?: ModuleGallery }>(
@@ -37,12 +34,10 @@ const DESKTOP_GALLERIES: DiscoveredGallery[] = Object.entries(desktopMods)
 assertUniqueSlugs(DESKTOP_GALLERIES)
 
 // Shared web cassette first; desktop-only entries win on any (rare) key overlap.
+// NOTE: the desktop gallery is PAGE-focused — it does not enumerate the web
+// overlay/deep/seeded classes — so only the CASSETTE is inherited (shared pages
+// render populated); the web overlay ENTRIES are intentionally not pulled in.
 export const MODULE_CASSETTE: Cassette = {
   ...(SHARED_CASSETTE as Cassette),
   ...(mergeModuleCassettes(DESKTOP_GALLERIES) as Cassette),
 }
-
-export const OVERLAY_ENTRIES: OverlayEntry[] = [
-  ...SHARED_OVERLAYS,
-  ...DESKTOP_GALLERIES.flatMap(g => g.gallery.overlays ?? []),
-]

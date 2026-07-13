@@ -44,10 +44,12 @@ for (const slug of NEW_PAGES) {
     // No error-boundary crash marker anywhere on the surface.
     await expect(frame.getByTestId('gallery-crash')).toHaveCount(0)
 
-    // The frame has real rendered content (more than just the gallery chrome
-    // label) — a heading, a control, or a data row.
-    const text = (await frame.innerText()).trim()
-    expect(text.length, `"${slug}" rendered only chrome`).toBeGreaterThan(40)
+    // Assert on the RENDERED-COMPONENT subtree (`[data-gallery-frame]`), NOT the
+    // whole section — the section always carries ~50 chars of gallery chrome
+    // (title + caption), so measuring it would pass even on an empty seed.
+    const body = frame.locator('[data-gallery-frame]')
+    const text = (await body.innerText()).trim()
+    expect(text.length, `"${slug}" rendered empty (only chrome)`).toBeGreaterThan(20)
 
     // No runtime console/page errors on this surface.
     expect(errors, `console/page errors on ${slug}: ${errors.join(' | ')}`).toEqual(

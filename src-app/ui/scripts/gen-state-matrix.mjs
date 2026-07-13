@@ -264,7 +264,8 @@ for (const sf of files) {
   // `.desktop.tsx` co-located overrides are desktop-only (excluded from the web
   // tsconfig/biome + the coverage walker) — not web surfaces. Per-module
   // `gallery.tsx` seed files are authoring metadata, not surfaces either.
-  if (/\.desktop\.tsx$/.test(base) || base === 'gallery.tsx') continue
+  if (/\.desktop\.tsx$/.test(base) || base === 'gallery.tsx' || base === 'gallery.ts')
+    continue
   const { signals, panels, slots } = extractSurface(sf)
   const id = surfaceId(abs)
   for (const p of panels) allPanels.push({ ...p, surface: id })
