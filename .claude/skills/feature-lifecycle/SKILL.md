@@ -122,6 +122,12 @@ skips them ships as a defect):
   breakpoint behavior does it mirror? A surface that only works at desktop width
   is a defect. Its gallery coverage MUST include a narrow-viewport (390px) state
   (enforced at Phase 8 / `gate:ui`), not only the desktop state.
+- **Populated-render review** — the visual DoD is NOT met until a POPULATED
+  (seeded, representative-data) render of every list/card surface has been through
+  the design-critic vision pass, at each viewport. An empty/loading state hides
+  real-data layout bugs (a control stranded far from its title once the card has
+  content, text overflow, a count pushing a button off-screen). Every gallery
+  surface needs a loaded-with-data state, not just empty/error — review THAT.
 - **User-visible progress** — any surface that ingests or produces work (upload,
   index, fetch) must show the live status the user expects (%, thumbnails, index
   state, itemized errors), answering "what does the user want to SEE and DO
