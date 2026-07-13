@@ -42,6 +42,8 @@
 #   RCPA_MCP_URL, DSCC_MCP_URL, BIOGNOSIA_MCP_URL   — the org MCP endpoints
 #   ZIEE_ADMIN_USERNAME / _EMAIL / _PASSWORD        — the first admin (env ONLY;
 #                                                     first deploy only — see below)
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET         — Google sign-in creds (both
+#                                                     unset → Google stays off)
 #
 # On the deploy host the three servers are published on the HOST and reached over
 # host.docker.internal (that host only allows ports 18000-19000):
@@ -93,6 +95,36 @@ mcp_servers:
     # This server may ask the model for a completion (MCP sampling).
     supports_sampling: true
     groups: [Users]
+    mode: enforce
+
+# ── Auth providers (env-driven sign-in) ─────────────────────────────────────
+# Configure + enable a PRE-SEEDED external sign-in provider from the environment.
+# The `google` row is seeded by migration 47 (disabled, with issuer / scopes /
+# attribute_mapping already filled), so this ONLY stamps client_id + client_secret
+# and flips `enabled` — it never creates or deletes a provider row.
+#
+# Same discipline as the servers above:
+#   - Creds are env-only. client_secret must be one ${ENV_VAR} placeholder (an
+#     inline literal is rejected). Neither value is ever logged.
+#   - If GOOGLE_CLIENT_ID *or* GOOGLE_CLIENT_SECRET is unset/empty the whole entry
+#     is SKIPPED (logged) and Google stays disabled — so local dev, and any deploy
+#     that omits the creds, is a clean no-op that never clobbers a hand-configured
+#     provider.
+#   - `enforce` re-asserts client_id / client_secret / enabled=true on every boot
+#     (like the servers: an admin toggle or a failed test can disable it; the next
+#     deploy re-enables it — change it here, not in the UI).
+#
+# ENV VARS: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (Google Cloud OAuth *production*
+# client). Register this redirect URI on that client or Google rejects the
+# callback (redirect_uri_mismatch):
+#   <public-origin>/api/auth/oauth/google/callback
+# The origin is derived from X-Forwarded-Proto / Host, so the ingress edge MUST
+# forward X-Forwarded-Proto: https and the real public Host (see DEPLOY.md).
+auth_providers:
+  - name: google
+    enabled: true
+    client_id: ${GOOGLE_CLIENT_ID}
+    client_secret: ${GOOGLE_CLIENT_SECRET}
     mode: enforce
 
 # ── Root admin: NOT HERE, BY DESIGN ─────────────────────────────────────────

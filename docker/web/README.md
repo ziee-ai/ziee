@@ -116,6 +116,7 @@ the default group's permissions trimmed.
 | `DSCC_MCP_URL` | the `dscc` system MCP server's URL | that server is skipped |
 | `BIOGNOSIA_MCP_URL` | the `biognosia` system MCP server's URL | that server is skipped |
 | `ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD` | **the first administrator — env only.** Applied ONLY to a database with **no account at all** (the very first deploy). Afterwards it is a no-op, so a password the admin changes in the UI is **never reverted** by a redeploy. | no admin is created (the UI shows first-run setup) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | the pre-seeded **`google`** auth provider's creds — the `auth_providers` block stamps them onto the row (secret encrypted at rest) and **enables** Google sign-in. Set **both**. | the entry is skipped and **Google stays disabled** — a clean no-op |
 | `ZIEE_APPLY_DESIRED_STATE` | **the switch** — `1` applies the file | **nothing is applied at all** (the local-dev default) |
 | `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |
 
@@ -153,6 +154,32 @@ logged (the logs name the env var, never its value). The **administrator is not 
 the file at all** — not even its username or email: it comes purely from
 `ZIEE_ADMIN_USERNAME` / `ZIEE_ADMIN_EMAIL` / `ZIEE_ADMIN_PASSWORD`, and is created
 only on a database with no accounts.
+
+**Auth providers (`auth_providers:` — env-driven Google sign-in).** The manifest's
+`auth_providers` block configures + enables a **pre-seeded** external sign-in
+provider from the environment. The `google` row is seeded by a migration (disabled,
+with issuer / scopes / attribute-mapping already filled), so the block only ever
+**stamps `client_id` + `client_secret` and flips `enabled`** — it never creates or
+deletes a provider:
+
+```yaml
+auth_providers:
+  - name: google
+    enabled: true
+    client_id: ${GOOGLE_CLIENT_ID}
+    client_secret: ${GOOGLE_CLIENT_SECRET}
+    mode: enforce
+```
+
+Same discipline as the MCP servers: the `client_secret` must be a single
+`${ENV_VAR}` placeholder (an inline literal is rejected), the value is stored
+**encrypted at rest** and never logged, and if either `GOOGLE_CLIENT_ID` or
+`GOOGLE_CLIENT_SECRET` is unset the whole entry is **skipped** (Google stays
+disabled — a clean no-op that never clobbers a hand-configured provider). `enforce`
+re-asserts the creds + `enabled: true` on every boot. Register the redirect URI
+`<public-origin>/api/auth/oauth/google/callback` on the Google Cloud OAuth
+production client, and make sure the ingress edge forwards `X-Forwarded-Proto: https`
+and the real public `Host` (the origin is derived from them) — see `DEPLOY.md`.
 
 **Overriding the file:** bind-mount your own at the same path —
 `-v ./my-desired-state.yaml:/etc/ziee/desired-state.yaml:ro` — or point
