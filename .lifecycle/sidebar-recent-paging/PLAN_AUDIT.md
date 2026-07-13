@@ -18,17 +18,33 @@
   already mutate `recentConversations`; the edits change the truncation/total
   bookkeeping only, preserving the existing filter/dedup guards. No new event
   keys. Risk: LOW.
-- **IntersectionObserver on OS viewport (ITEM-6)** — the exact pattern is proven
-  in `RawCodeView.tsx`; the OverlayScrollbars `defer` null-viewport race is
-  handled by the RAF retry. In the dev gallery `Stores.AppLayout` may be
-  undefined (DivScrollY already guards that). Risk: LOW.
+- **Virtualization over OS viewport (ITEM-6)** — the exact pattern is proven in
+  `kit/table.tsx::VirtualTable`; the OverlayScrollbars `defer` null-viewport race
+  is handled by the `events={{ initialized }}` re-render (a state flip forces the
+  virtualizer to re-read `getScrollElement`). In the dev gallery
+  `Stores.AppLayout` may be undefined (DivScrollY already guards that). Risk: LOW.
+- **Shared kit `menu.tsx` edit (ITEM-9)** — extracting the row style into an
+  exported class/helper that `Items` then consumes is OUTPUT-IDENTICAL, so the
+  Navigation/Tools menus render byte-for-byte the same; their existing gallery +
+  e2e coverage is the regression net. This is a sanctioned reuse extraction
+  (affordance-parity: "share its logic; never re-derive"), NOT a shared-test-
+  harness workaround (B3 N/A — B3 covers `tests/common`/gallery cassette/configs).
+  Risk: LOW-MEDIUM (shared component; mitigated by output-identity + coverage).
+- **ARIA role change (ITEM-9 / DEC-8)** — switching the sidebar list from
+  `role="menu"` to `role="list"` + `aria-setsize`/`posinset` is a deliberate,
+  recorded a11y decision (virtualized menu can't honor the menu keyboard
+  contract). The a11y audit angle + `gate:ui` axe pass verify no AA/role
+  regression. Risk: LOW (correctness IMPROVES for the virtualized case).
 
 ## Pattern conformance
 
 - Store `recent*` fields + `loadRecentConversations`/`loadMoreRecent` are a
   1:1 namespaced mirror of the file's existing `page`/`hasMore`/`loadingMore` +
   `loadConversations`/`loadNextPage`. Conforms to [[feedback_match_existing_patterns]].
-- Sentinel/observer mirrors `RawCodeView.tsx` + `ConversationPage.tsx`. Conforms.
+- Virtualizer mirrors `kit/table.tsx::VirtualTable` (OS-viewport `getScrollElement`
+  + `initialized` ready-trigger + fixed `estimateSize` + `overscan`). Conforms.
+- Row-style extraction from `menu.tsx` keeps ONE source of truth for the row look
+  (affordance-parity/reuse). Conforms.
 - Gallery entries mirror `seeded-recent-convos-loading`. Conforms.
 - Unit test mirrors `VoiceModel.store.test.ts`; e2e mirrors
   `conversation-list-search.spec.ts` + `sidebar-menu.spec.ts`. Conforms.
@@ -50,6 +66,7 @@
 - **ITEM-3** — verdict: PASS — new action mirrors `loadNextPage`; append+dedup guards match existing idioms.
 - **ITEM-4** — verdict: PASS — removes a side-effect whose only consumer is migrated in ITEM-6; `/chats` list unaffected (reads `conversations`).
 - **ITEM-5** — verdict: PASS — bookkeeping edits preserve existing filter/dedup guards; drops only the now-wrong 20-cap.
-- **ITEM-6** — verdict: PASS — sentinel + OS-viewport-root observer is an established repo pattern (`RawCodeView`); RAF-retry covers the defer race.
+- **ITEM-6** — verdict: PASS — virtualizer over the OS viewport is an established repo pattern (`kit/table.tsx`); `initialized` re-render covers the defer race; last-item watcher is the standard tanstack infinite-scroll trigger.
 - **ITEM-7** — verdict: PASS — reuses the existing `Spin`; end-state = render nothing (idiomatic infinite scroll).
 - **ITEM-8** — verdict: CONCERN — new render states MUST get gallery cells or `check:state-matrix` fails phase 8; budgeted as its own ITEM + regen step, so tracked, not blocking.
+- **ITEM-9** — verdict: CONCERN — touches shared `menu.tsx`; safe only if the extraction is output-identical (verify the Navigation/Tools menu gallery snapshots are unchanged). The `role="menu"`→`role="list"` switch is a recorded a11y decision (DEC-8), verified by the axe/a11y gate. Tracked, not blocking.

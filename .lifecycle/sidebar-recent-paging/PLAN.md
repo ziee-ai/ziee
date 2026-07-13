@@ -37,18 +37,30 @@ is a management view, the sidebar is a feed).
    decoupled from the history query (otherwise a history-page unfiltered page-1
    reload would silently reset the accumulated sidebar back to 20 and jump the
    scroll — a real bug). See DEC-1.
-4. **Scroll-sentinel precedent exists**: `RawCodeView.tsx:295-333` (and
-   `pdf/body.tsx`, `kit/table.tsx`) get the OverlayScrollbars viewport via
-   `osRef.current?.osInstance()?.elements().viewport`, RAF-retry until it exists
-   (OverlayScrollbars `defer`), and use it as the `IntersectionObserver` `root`
-   with a `rootMargin` prefetch band. `ConversationPage.tsx:147-160` is the
-   bottom-sentinel form. MIRROR these for the sidebar.
-5. **Desktop needs no separate edit**: `src-app/desktop/ui` has no override of
+4. **Virtualization precedent exists**: `kit/table.tsx::VirtualTable`
+   (`useVirtualizer` from `@tanstack/react-virtual`, already a dep) virtualizes
+   rows INSIDE an OverlayScrollbars viewport — `getScrollElement: () =>
+   osRef.current?.osInstance()?.elements().viewport ?? null`,
+   `events={{ initialized: () => setScrollReady(true) }}` to re-render once the OS
+   viewport exists (the `defer` race), fixed `estimateSize`, `overscan`. This is
+   the primary precedent to MIRROR (`MessageList.tsx` + `kit/multi-select.tsx` are
+   secondary). The infinite-scroll TRIGGER with a virtualizer is idiomatic: watch
+   the LAST virtual item and fetch when it nears the end (no IntersectionObserver
+   sentinel needed).
+5. **The kit `<Menu items>` materializes ALL rows** (`menu.tsx::Items` maps every
+   item) — incompatible with virtualization. So the virtualized sidebar list must
+   render its own windowed rows, REUSING the Menu row's visual styling (shared
+   class/helper extracted from `menu.tsx`, not re-derived) so it stays pixel-
+   faithful to the nav/tools menus above it. Row SEMANTICS become a list of
+   navigation buttons (`role="list"`), not a virtualized `role="menu"` — a
+   virtualized menu can't honor the ARIA menu keyboard contract across
+   non-rendered items (see DEC-8).
+6. **Desktop needs no separate edit**: `src-app/desktop/ui` has no override of
    `RecentConversationsWidget.tsx`/`ChatHistory.store.ts`; its `localOverridePlugin`
    falls back to core `../../ui/src`, so the core change applies to desktop
    automatically. The diff will NOT touch `src-app/desktop/ui/**` (no R2-3 desktop
    override to diff).
-6. **No new permission, no new migration.** The widget reuses the existing
+7. **No new permission, no new migration.** The widget reuses the existing
    `ConversationsRead` gate (already on the store fetch + the slot). So A9/A10
    (permission deny tests) do NOT apply.
 
@@ -85,23 +97,40 @@ is a management view, the sidebar is a feed).
   when the row was in `recentConversations`; `sync:reconnect` reloads recent
   page 1 (`loadRecentConversations(1)`); `deleteConversation` + `bulkDelete`
   decrement `recentTotal` by the count actually removed from `recentConversations`.
-- **ITEM-6**: `RecentConversationsWidget.tsx` — wire infinite scroll:
+- **ITEM-6**: `RecentConversationsWidget.tsx` — VIRTUALIZED infinite scroll
+  (mirror `kit/table.tsx::VirtualTable`):
   - switch the mount effect to `if (!recentInitialized)
     Stores.ChatHistory.loadRecentConversations()`, and gate loading/empty on
     `recentLoading`/`recentInitialized` (was `loading`/`isInitialized`);
-  - capture the `DivScrollY` ref, resolve its OverlayScrollbars viewport
-    (`osInstance().elements().viewport`, RAF-retry per RawCodeView), and attach an
-    `IntersectionObserver(root=viewport, rootMargin:'200px 0px')` on a bottom
-    **sentinel** `<div>` rendered after the `Menu`; on intersect call
-    `Stores.ChatHistory.loadMoreRecent()`. Re-attach when `recentConversations`
-    first becomes non-empty (sentinel only mounts once rows exist) and disconnect
-    on unmount.
-- **ITEM-7**: Loading-more + end affordance in the widget — while
-  `recentLoadingMore`, render a centered `<Spin label="Loading more" />` row
-  (with `aria-live="polite"`/`role="status"` so it's announced) below the Menu;
-  when `!recentHasMore` the list simply ends (no sentinel, no chrome — standard
-  infinite-scroll idiom; the `/chats` page keeps the numeric "Showing N of M",
-  the feed does not — DEC-5).
+  - render the "Recent chats" caption as a standalone header ABOVE the scroll
+    area (not inside the virtual list);
+  - capture the `DivScrollY` OverlayScrollbars ref; pass
+    `events={{ initialized: () => setScrollReady(true) }}` so the virtualizer
+    re-measures once the viewport exists; `getScrollElement = () =>
+    osRef.current?.osInstance()?.elements().viewport ?? null`;
+  - `useVirtualizer({ count: recentConversations.length, getScrollElement,
+    estimateSize: () => ROW_H, overscan: 8 })`; render ONLY
+    `virt.getVirtualItems()` as absolutely-positioned rows inside a
+    `height: virt.getTotalSize()` spacer;
+  - **auto-load trigger**: an effect watching the last virtual item — when
+    `lastItem.index >= recentConversations.length - 1 && recentHasMore &&
+    !recentLoadingMore` call `Stores.ChatHistory.loadMoreRecent()` (the
+    tanstack-virtual infinite-scroll idiom; replaces an IntersectionObserver
+    sentinel).
+- **ITEM-7**: Loading-more + end affordance — while `recentLoadingMore`, render a
+  centered `<Spin label="Loading more" />` row (`aria-live="polite"`/`role="status"`)
+  pinned just below the virtualized rows (offset by `getTotalSize()`); when
+  `!recentHasMore` the list simply ends (no indicator, no chrome — the `/chats`
+  page keeps the numeric "Showing N of M", the feed does not — DEC-5).
+- **ITEM-9**: Virtual row rendering, faithful to the kit Menu row — reuse the
+  Menu row's visual styling by extracting a shared class/helper from `menu.tsx`
+  (one source of truth; NO re-derivation), used by both `menu.tsx::Items` and the
+  sidebar virtual row. Each row preserves: truncated title, the hover-reveal
+  `ConversationRowActions` kebab (the existing `group/menu-row` reveal), and the
+  selected treatment via `aria-current="page"` for the open conversation. Row
+  semantics = `role="list"` + navigation `<button>` rows (DEC-8), keyboard = Tab +
+  click; per-row `aria-setsize={recentTotal}`/`aria-posinset={index+1}` so the
+  virtualized window still exposes list position to assistive tech.
 - **ITEM-8**: Gallery coverage for the widget's NEW conditional render states so
   `check:state-matrix` (inside `npm run check`) stays green: add seeded gallery
   surfaces "Recent chats — loaded (many, has more)" and "Recent chats — loading
@@ -111,8 +140,12 @@ is a management view, the sidebar is a feed).
 ## Files to touch
 
 - `src-app/ui/src/modules/chat/stores/ChatHistory.store.ts` — ITEM-1..5.
-- `src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx` — ITEM-6,7.
-- `src-app/ui/src/dev/gallery/seededSurfaces.tsx` — ITEM-8 (new seeded states).
+- `src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx` — ITEM-6,7,9.
+- `src-app/ui/src/components/ui/kit/menu.tsx` — ITEM-9 (extract + export the row
+  visual-style class/helper; `Items` uses it — output-identical refactor so the
+  nav/tools menus are unchanged).
+- `src-app/ui/src/dev/gallery/seededSurfaces.tsx` — ITEM-8 (new seeded states,
+  seeded with ENOUGH rows — ~40 — that windowing is observable).
 - `src-app/ui/src/dev/gallery/*.generated.ts` + coverage/state files — ITEM-8
   (regenerated via the gallery gen script, not hand-edited).
 - `src-app/ui/src/components/ui/testIds.generated.ts` — regenerated if a new kit
@@ -127,14 +160,18 @@ is a management view, the sidebar is a feed).
 - **Store paging** → mirror the SAME FILE's existing `loadConversations` /
   `loadNextPage` / `hasMore` / `loadingMore` / in-flight-guard / dedup idioms.
   The `recent*` fields and actions are a namespaced parallel of them.
-- **Scroll sentinel / OverlayScrollbars root** → mirror
-  `src/modules/file/viewers/shared/RawCodeView.tsx:295-333`
-  (`osInstance().elements().viewport` + RAF-retry + `IntersectionObserver` with a
-  `rootMargin` band) and the bottom-sentinel form in
-  `src/modules/chat/pages/ConversationPage.tsx:147-160`.
+- **Virtualization inside an OverlayScrollbars viewport** → mirror
+  `src/components/ui/kit/table.tsx::VirtualTable` (`useVirtualizer` +
+  `getScrollElement` from `osInstance().elements().viewport` +
+  `events={{ initialized }}` ready-trigger + fixed `estimateSize` + `overscan`).
+  Infinite-scroll trigger = watch the last virtual item (tanstack idiom).
+  Secondary refs: `src/modules/chat/components/MessageList.tsx`,
+  `src/components/ui/kit/multi-select.tsx`.
 - **Widget structure** → the sidebar widget is its OWN precedent (a unique
-  surface — no sibling to twin). Keep its `Menu` + `DivScrollY` structure and
-  reuse the existing `<Spin label="Loading" />` for the loading-more row.
+  surface — no sibling to twin). Keep its `DivScrollY` scroll container and reuse
+  the existing `<Spin label="Loading" />` for the loading-more row. The virtual
+  rows reuse the kit Menu ROW styling (ITEM-9) so they stay pixel-faithful to the
+  Navigation/Tools menus above them.
 - **Gallery seeding** → mirror the existing `seeded-recent-convos-loading` /
   `seeded-recent-convos-empty` entries in `seededSurfaces.tsx`.
 - **Store unit test** → mirror `src/modules/voice/stores/VoiceModel.store.test.ts`
@@ -155,12 +192,12 @@ is a management view, the sidebar is a feed).
   not the settings `ListPagination` and not the history-page manual button.
 - **Scale / cardinality** — MAX size = the user's total conversation count
   (unbounded; a heavy user could have thousands). Initial load is bounded to ONE
-  page (`limit: 20`). Growth is by 20-row pages on scroll. No virtualization —
-  mirrors the `/chats` `ConversationList` (which also renders accumulated rows
-  un-virtualized); acceptable because rows are lightweight `Menu` items and the
-  sidebar viewport shows a small window. (If a future heavy-user perf issue
-  appears, virtualization is the follow-up — recorded as a candidate, not built
-  now, to match precedent — see the audit's scale-performance angle.)
+  page (`limit: 20`); server paging fetches 20-row pages on scroll. The rendered
+  DOM is bounded by **row virtualization** (`@tanstack/react-virtual`, mirror
+  `kit/table.tsx`): only the visible window + overscan is in the DOM regardless of
+  how many pages have loaded, so scrolling a thousand-conversation history stays
+  O(viewport). This is the two-layer bound the checklist requires: bounded
+  network (paging) AND bounded DOM (virtualization).
 - **Device size / responsive** — the widget lives in the sidebar, which the
   app-layout already hides/collapses on mobile (the sidebar is a drawer/off-canvas
   at ~390px). Within the sidebar the list is `min-h-0 flex-1` inside `DivScrollY`,
