@@ -725,7 +725,7 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/AuthThemeToggle",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isDarkMode", line: 35 },
+      { kind: "branch", condition: "isDarkMode", line: 28 },
     ],
   },
   "modules/auth/LinkAccountPage": {

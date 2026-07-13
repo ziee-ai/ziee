@@ -38,11 +38,16 @@ in both themes as the backstop. `meta[theme-color]` = `--auth-backdrop`.
 text contrast; axe is the enforcement.
 
 ### DEC-6: Toggle testid — one shared id or per-host?
-**Resolution:** The shared `AuthThemeToggle` takes a `data-testid` prop. Login passes
-`auth-theme-toggle`; setup passes `app-setup-theme-toggle` (preserving the id the existing setup
-e2e + testid-registry already know). Default = `auth-theme-toggle`.
-**Basis:** convention + A5 — never drop an existing enumerated testid; per-host ids keep both e2e
-suites unambiguous.
+**Resolution (amended in Phase-7 after the blind audit — see DRIFT-2):** ONE shared literal id
+`auth-theme-toggle` rendered directly on the `AuthThemeToggle` element (no `data-testid` prop).
+A page only ever shows one toggle, so `byTestId(page,'auth-theme-toggle')` is unambiguous per
+page. The earlier per-host dynamic-prop scheme was dropped because a dynamic `data-testid={prop}`
+is invisible to the regex-based testid-registry generator, so BOTH toggle ids fell out of the
+typed registry (audit finding, two angles). `app-setup-theme-toggle` was a fresh id (added with
+the setup backdrop; NO test in origin/main referenced it — verified via `git grep`), so
+retiring it is safe.
+**Basis:** convention + audit — a static literal keeps the toggle in the typed registry (the
+codebase pattern); no existing test depended on the old setup-specific id.
 
 ### DEC-7: Does `AuthScreenLayout` keep BlankLayout's `main` landmark + meta-color + flash guard?
 **Resolution:** Yes — fold all three (`display:contents` main landmark, `useMetaThemeColor`, the

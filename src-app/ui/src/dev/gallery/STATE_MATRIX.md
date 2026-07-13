@@ -833,7 +833,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isDarkMode` | 35 |
+| branch | `isDarkMode` | 28 |
 
 ### `modules/auth/LinkAccountPage`
 

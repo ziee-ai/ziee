@@ -5,8 +5,6 @@ import authCloudsUrl from './auth-clouds.webp'
 
 interface AuthScreenLayoutProps {
   children: React.ReactNode
-  /** Testid for the theme toggle — differs per host page (see AuthThemeToggle). */
-  themeToggleTestId?: string
 }
 
 // Paper-cut cloudy backdrop — one raster illustration (navy sky → slate layers →
@@ -53,10 +51,7 @@ function AuthBackdrop() {
  * Folds in what `BlankLayout` used to provide for these routes (main landmark +
  * meta-color + flash guard) so neither page needs a separate layout wrapper.
  */
-export function AuthScreenLayout({
-  children,
-  themeToggleTestId,
-}: AuthScreenLayoutProps) {
+export function AuthScreenLayout({ children }: AuthScreenLayoutProps) {
   // The backdrop paints --auth-backdrop to the edges → match the iOS bars to it.
   useMetaThemeColor('--auth-backdrop')
 
@@ -75,7 +70,7 @@ export function AuthScreenLayout({
   return (
     <main className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4">
       <AuthBackdrop />
-      <AuthThemeToggle data-testid={themeToggleTestId} />
+      <AuthThemeToggle />
       <div className="relative z-10 w-full max-w-md">{children}</div>
     </main>
   )

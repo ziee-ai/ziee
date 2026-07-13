@@ -22,7 +22,7 @@ export const AuthPage: React.FC = () => {
   }
 
   return (
-    <AuthScreenLayout themeToggleTestId="auth-theme-toggle">
+    <AuthScreenLayout>
       <div data-testid="auth-page-content" className="w-full">
         <div className="text-center mb-8">
           <Title level={2}>

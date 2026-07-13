@@ -90,7 +90,7 @@ export default function SetupPage() {
   }
 
   return (
-    <AuthScreenLayout themeToggleTestId="app-setup-theme-toggle">
+    <AuthScreenLayout>
       <Card
         className="w-full"
         data-testid="app-setup-card"

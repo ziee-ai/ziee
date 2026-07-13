@@ -60,7 +60,7 @@ test.describe('Auth pages at 390px (mobile)', () => {
     await assertNoHorizontalScroll(page)
     await expect(byTestId(page, 'app-setup-card')).toBeVisible()
     await assertToggleTapTargetClearOfCard(
-      byTestId(page, 'app-setup-theme-toggle'),
+      byTestId(page, 'auth-theme-toggle'),
       byTestId(page, 'app-setup-card'),
     )
   })

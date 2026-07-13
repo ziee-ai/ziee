@@ -3,7 +3,7 @@ import { byTestId } from '../testid'
 import { isDarkMode } from '../../utils/theme'
 
 // TEST-3 (covers ITEM-1, ITEM-4): the SAME shared AuthThemeToggle works in the
-// setup context. A REAL click on `app-setup-theme-toggle` flips the `<html>`
+// setup context. A REAL click on `auth-theme-toggle` flips the `<html>`
 // dark class, and the setup form/card survive the flip.
 test.describe('Setup theme toggle', () => {
   test('a real click flips the theme and keeps the form', async ({
@@ -14,7 +14,7 @@ test.describe('Setup theme toggle', () => {
     await page.goto(`${baseURL}/setup`)
     await byTestId(page, 'app-setup-username-input').waitFor({ timeout: 30000 })
 
-    const toggle = byTestId(page, 'app-setup-theme-toggle')
+    const toggle = byTestId(page, 'auth-theme-toggle')
     await expect(toggle).toBeVisible()
 
     const before = await isDarkMode(page)
