@@ -310,6 +310,16 @@ panes (rule B7). All green:
 - **TEST-104**: PASS — two-simultaneous-streams bidirectional isolation — `realbatch-e2e-*.log` (14.7s).
 - `tsc --noEmit` (ui) exit 0 after all fixes.
 
+## Round 11 (ITEM-70) — per-pane edge-directional drop in existing splits (DEC-72, FB-17)
+
+Human picked "unify on edge-directional" for drops when a split is already open. All green:
+
+- **TEST-105**: PASS — `planSplitPaneDrop` (insertBefore/After/replace + cap-fallback + noop), unit.
+- **TEST-107**: PASS — `openPane({beforePaneId})` splices before / prepends, unit. (26/26 in the two unit files.)
+- **TEST-106**: PASS — e2e (3 tests): right-edge inserts AFTER, left-edge BEFORE, center REPLACES, file ignored; at the MAX_PANES cap an edge drop REPLACES (no 4th pane); grip→header REORDER kept. `splitdrop-e2e-*.log` (4/4 incl. single-pane regression).
+- Rules-of-Hooks fix verified: the overlay renders mid-drag in the split e2e without the "Rendered more hooks" crash (the human caught it live; fixed to a `.$` snapshot).
+- `tsc --noEmit` (ui) exit 0.
+
 ## Note — gate:ui runtime-health findings are main-inherited (not this diff)
 
 On a stale/shared gallery server, `npm run gate:ui` reports HIGH runtime-health

@@ -33,7 +33,7 @@ src-app/ui/src/modules/chat/components/ConversationPickerPane.tsx	1	166	correctn
 src-app/ui/src/modules/chat/components/MessageActions.tsx	1	130	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/components/OpenInNewWindowAction.tsx	1	66	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/components/PaneTabStrip.tsx	1	91	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/components/SplitChatView.tsx	1	199	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/components/SplitChatView.tsx	1	177	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/components/ChatRightPanel.tsx	1	239	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/extensions/PaneExtensionRuntime.ts	1	54	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/extensions/events.ts	1	34	correctness,state-management,concurrency
@@ -53,8 +53,8 @@ src-app/ui/src/modules/chat/core/split/reconcile.ts	1	195	correctness,state-mana
 src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2344	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	86	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts	1	86	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	179	tests-quality,correctness,api-contract
-src-app/ui/src/modules/chat/core/stores/SplitView.store.ts	1	334	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	201	tests-quality,correctness,api-contract
+src-app/ui/src/modules/chat/core/stores/SplitView.store.ts	1	343	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/chatBridge.ts	1	78	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/splitWorkspace.persist.test.ts	1	145	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/splitWorkspace.persist.ts	1	169	correctness,state-management,patterns-conformance
@@ -63,7 +63,7 @@ src-app/ui/src/modules/chat/core/utils/useStreamdownComponents.tsx	1	209	correct
 src-app/ui/src/modules/chat/extensions/keyboard/extension.tsx	1	189	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx	1	124	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/module.tsx	1	130	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1070	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1102	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/types.ts	1	44	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx	1	315	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/file/chat-extension/components/AttachedFileCard.tsx	1	87	correctness,state-management,error-handling
@@ -91,7 +91,7 @@ src-app/ui/src/modules/user-llm-providers/chat-extension/extension.tsx	1	110	cor
 src-app/ui/src/modules/workflow/chat-extension/components/WorkflowWorkspaceRunCard.tsx	1	136	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/workflow/components/WorkflowRunDialog.tsx	1	252	correctness,state-management,patterns-conformance
 src-app/ui/tests/e2e/14-split-chat/composer-isolation.spec.ts	1	80	tests-quality,correctness,api-contract
-src-app/ui/tests/e2e/14-split-chat/drag-to-split.spec.ts	1	147	tests-quality,correctness,api-contract
+src-app/ui/tests/e2e/14-split-chat/drag-to-split.spec.ts	1	175	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/empty-pane-picker.spec.ts	1	96	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/find-per-pane.spec.ts	1	55	tests-quality,correctness,api-contract
 src-app/ui/tests/e2e/14-split-chat/focused-affordances.spec.ts	1	67	tests-quality,correctness,api-contract
@@ -167,8 +167,8 @@ src-app/ui/src/modules/chat/components/TitleEditor.tsx	1	167	correctness,state-m
 src-app/ui/src/modules/chat/core/popout/useIsPopoutWindow.ts	1	15	correctness,patterns-conformance,react-hooks
 src-app/ui/tests/e2e/14-split-chat/header-back-visibility.spec.ts	1	73	tests-quality,test-coverage,correctness
 src-app/ui/tests/e2e/14-split-chat/message-actions-copy-and-popout.spec.ts	1	114	tests-quality,test-coverage,correctness
-src-app/ui/src/modules/chat/core/pane/singlePaneDrop.ts	1	50	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/core/pane/singlePaneDrop.test.ts	1	60	tests-quality,test-coverage,correctness
+src-app/ui/src/modules/chat/core/pane/singlePaneDrop.ts	1	75	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/core/pane/singlePaneDrop.test.ts	1	80	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/chat/core/popout/tearOff.ts	1	109	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/popout/tearOff.test.ts	1	108	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/chat/core/popout/useConversationTearOff.ts	1	56	correctness,state-management,react-hooks

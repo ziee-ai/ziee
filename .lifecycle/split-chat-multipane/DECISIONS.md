@@ -704,3 +704,17 @@ nothing. No accidental windows from a mis-aimed / aborted drag.
 **Basis:** user — picked from an explicit AskUserQuestion (strict-past-the-edge vs
 forgiving-dropped-on-no-target). Strict is accident-proof and needs no ghost-hint scaffolding;
 the in-app drop zones are inherently inside the window, so an in-app drop can never trip it.
+
+### DEC-72: When a split is ALREADY open, how does dropping a conversation behave (ITEM-70)?
+**Resolution:** Per-pane edge-directional — UNIFY with the single-pane model. Every pane
+shows the same left/center/right thirds + hint overlay: LEFT edge inserts a new pane
+immediately BEFORE that pane, RIGHT edge AFTER, CENTER replaces that pane. At the
+`MAX_PANES(3)` cap the insert edges fall back to REPLACE. The old discrete model (drop on
+header = replace, drop on seam = new pane) is retired for conversation drops; pane-grip →
+header REORDER is kept.
+**Basis:** user — picked from an explicit AskUserQuestion (per-pane edge-directional vs
+keep-zones-add-hint vs whole-pane-replace) after noticing, while live-testing, that the
+single-pane edge gesture didn't carry into the split. Edge-directional is the most
+consistent: one gesture + one hint overlay in both single-pane and split, and it
+generalizes the single-pane case (single-pane = the N=1 case of "insert before/after/
+replace this pane").

@@ -592,6 +592,26 @@ LEDGER) — not silently absorbed.
   quiescent B"). Add a TWO-SIMULTANEOUS-STREAMS bidirectional isolation test (both
   panes active, each direction asserted).
 
+### Drag-drop consistency (human-requested after live testing)
+
+- **ITEM-70**: **Per-pane edge-directional drop in an EXISTING split** (unify with the
+  single-pane model). When a split is already open, dropping a sidebar conversation used
+  the OLD discrete model (header = replace, seam = new pane) — inconsistent with the
+  single-pane edge-directional L/C/R gesture + hint overlay. The human picked (DEC-72)
+  to unify: every pane's chat column shows the same L/C/R thirds; **left edge inserts a
+  new pane immediately BEFORE this pane, right edge AFTER, center REPLACES it**; at the
+  `MAX_PANES(3)` cap the insert edges fall back to replace. Retire the seam
+  conversation-drop (the pane edges cover insert) + the header conversation-replace (the
+  column center covers it); KEEP pane-grip → header reorder. New store
+  `openPane({beforePaneId})`; pure `planSplitPaneDrop(zone, thisConvId, dropped, atCap)`;
+  the single-pane `onColumnDrop`/overlay generalize to render per-pane (dispatching
+  single-pane vs split by `pane`). Covered by TEST-105 (unit) + TEST-106 (e2e:
+  insert-before/after/replace + cap-fallback + grip-reorder) + TEST-107 (unit: store
+  `beforePaneId`). NOTE: a Rules-of-Hooks regression (a reactive `Stores.SplitView.panes`
+  read inside the overlay `.map()`/conditional) was caught by the human RUNNING the live
+  app and fixed to a `.$` snapshot read — recorded FB-17/LEDGER (a hooks-count bug the
+  unit tests couldn't see; only a live render / the overlay-showing e2e exposes it).
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp
