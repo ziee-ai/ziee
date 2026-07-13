@@ -36,11 +36,21 @@ Build steps: `docker compose build` → `mkdir -p "${ZIEE_DATA_ROOT:-/data/ziee}
 | `ZIEE_PUBLIC_FILE_ORIGIN` | `http://host.docker.internal:18130` |
 | `ZIEE_CORS_ALLOW_ORIGIN` | public origin (e.g. `https://ziee.<domain>`) |
 | `ZIEE_MAX_FILE_UPLOAD_MB` | `128` |
+| *(Google sign-in — set BOTH to enable, omit to leave Google off)* `GOOGLE_CLIENT_ID` | Google OAuth **production** client ID |
+| `GOOGLE_CLIENT_SECRET` 🔐 | Google OAuth production client secret (in TeamCity) |
 | `COMPOSE_FILE` | `docker-compose.yml:docker-compose.sandbox.yaml:docker-compose.deploy.yml` |
 | `COMPOSE_PROJECT_NAME` | `ziee-web` |
 | *(optional — overlay defaults)* `ZIEE_APPLY_DESIRED_STATE` | `1` |
 | *(optional)* `BIOGNOSIA_MCP_URL` / `RCPA_MCP_URL` / `DSCC_MCP_URL` | `http://host.docker.internal:18100/mcp` / `:18120/mcp` / `:18122/mcp` |
 | *(optional)* `ZIEE_DATA_ROOT` | `/data/ziee` |
+
+**Google sign-in (optional):** with `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` set,
+boot reconcile (desired_state) stamps them onto the pre-seeded `google` provider and
+enables it — no admin-UI step. Register **`<public-origin>/api/auth/oauth/google/callback`**
+as an Authorized redirect URI in the Google Cloud OAuth (production) client. The redirect
+URI is derived from `X-Forwarded-Proto`/`Host`, so the ingress edge MUST forward
+`X-Forwarded-Proto: https` and the real public Host or Google rejects the callback
+(`redirect_uri_mismatch`). Unset both vars → Google stays disabled (clean skip).
 
 ## Databases  (repo ziee-ai/biognosia-mcp · `deploy/db/` · path-gated `+:deploy/db/**` or manual)
 Build step: `cd deploy/db && docker compose up -d`.
