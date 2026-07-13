@@ -38,7 +38,7 @@ in both themes as the backstop. `meta[theme-color]` = `--auth-backdrop`.
 text contrast; axe is the enforcement.
 
 ### DEC-6: Toggle testid — one shared id or per-host?
-**Resolution (amended in Phase-7 after the blind audit — see DRIFT-2):** ONE shared literal id
+**Resolution:** (amended in Phase-7 after the blind audit — see DRIFT-2) ONE shared literal id
 `auth-theme-toggle` rendered directly on the `AuthThemeToggle` element (no `data-testid` prop).
 A page only ever shows one toggle, so `byTestId(page,'auth-theme-toggle')` is unambiguous per
 page. The earlier per-host dynamic-prop scheme was dropped because a dynamic `data-testid={prop}`
