@@ -141,6 +141,22 @@ skips them ships as a defect):
   design. This feeds the checklist above; it is what caught a feature shipping a
   bare `timestamp — status` row where the user actually wanted an evolving,
   followable result stream.
+- **Multi-instance / workspace surfaces** — if the feature lets the same view
+  exist in more than one place at once (split panes, tabs, side-by-side, multiple
+  windows), design the ENTIRE interaction model up front: every open / navigate /
+  persist / edge case (open an EXISTING item next to another — not only newly
+  created ones; what a sidebar click does when the item is/ isn't already shown;
+  leaving and returning; per-instance state persistence). The happy path alone is
+  a design hole. Build it on the meta-framework SEAMS — a per-instance store
+  (`defineLocalStore` + a React context/`useX()` hook), extensions bound through a
+  per-instance runtime, UI composed via slots — NEVER a monolithic god-component
+  that reaches across modules. A "context-aware bridge" that only covers reactive
+  READS does NOT isolate a multi-instance surface: actions, `.$`/getState,
+  subscribe must bind to the INSTANCE, or state silently leaks to the focused one.
+- **Platform-provided affordances** — do not ship in-app chrome the platform
+  itself already provides (a web browser's native "open in new tab"); gate such
+  redundant affordances by platform (runtime `__TAURI__` check) via a pure
+  predicate, and challenge every affordance's value in EACH context it renders in.
 
 **P3 — conflict-surface scoping (BASE.md).** Also write a short
 `.lifecycle/<feature>/BASE.md` recording what CURRENT main touches that this
@@ -317,7 +333,20 @@ each traces to real rework that shipped despite a green gate):
 - **affordance-parity / reuse** — did it REUSE the existing component (`FileCard`,
   `ProjectFilesManagePanel`, `ListPagination`) via its slots, or hand-roll a
   parallel implementation? A reimplementation of something that already exists is
-  a finding.
+  a finding. **Before building a component that has a single-context sibling** (a
+  header, toolbar, drop-zone), OPEN the sibling and understand WHY each non-obvious
+  value exists (a `50px` height, a `paddingLeft: 118`, a `z-10`, a magic offset —
+  they almost always encode a real constraint: macOS traffic-lights, a fixed
+  overlay's z, a WCAG tap target). Hand-rolling a parallel version silently drops
+  those constraints and ships regressions invisible without running the real
+  chrome. Reuse the sibling or share its logic via a hook; never re-derive.
+- **new-rendering-context affordance audit** — when the change introduces a NEW
+  context the same UI now renders in (a pop-out window, a split pane, a mobile
+  tab), audit EVERY pre-existing affordance rendered there for whether its behavior
+  still makes sense. A navigate/global-state action that was correct in the single
+  context routinely breaks the new one (a back button collapses the whole split; a
+  window-wide navigate escapes a chat-only pop-out). Do this at implementation
+  time, not after the human points it out.
 - **scale-performance** — does every list bound its initial load (paging/
   virtualization) instead of fetch-all/render-all, and show "Showing N of M"? A
   list that renders its entire potentially-large set fails.
@@ -327,11 +356,31 @@ each traces to real rework that shipped despite a green gate):
 - **design-in-context** — does the component fit its container and siblings
   (counts in the container title, primary actions in `extra`/top-right, no
   duplicated headers), or was it designed in isolation and now fights its parent?
+- **reactive-read-in-loop (Rules of Hooks)** — a store read INSIDE a `.map()`, a
+  loop, or a conditional render MUST use the non-subscribing `.$` snapshot, never
+  the reactive proxy (which is a hook) — else the hook count varies per render and
+  React crashes. Pure unit tests can't catch this; only a live render / an e2e
+  that actually shows the component does. Flag any reactive proxy access under a
+  `.map()`/conditional.
 - **plan-coverage / scope-drift** — reconcile EVERY PLAN ITEM against shipped code
   with file:line evidence. An item with no implementation and no approved
   `[DESCOPED]` disposition is a finding (this is the human-judgment complement to
   the deterministic FB-7 gate — the gate catches missing dispositions; the audit
   catches an item "covered" on paper but absent in code).
+- **test-reality / paper-9/9 (do this every round)** — FB-7 only checks a TEST
+  *line* exists; a hollow test that passes trivially still satisfies it, so a
+  feature can be "covered on paper" yet never built. For EACH TEST, OPEN the spec
+  and confirm it actually exercises everything its TESTS.md line claims — mounts
+  the real surface, asserts real DOM/behavior, drives the real path. Flag:
+  (a) a spec whose assertions are NARROWER than its TESTS.md prose (a phantom
+  leg — the claim exceeds the code); (b) an **isolation/"other side unaffected"
+  test whose control is IDLE** (an empty quiescent pane/tab proves nothing — the
+  other side must be ACTIVELY doing the thing, e.g. two simultaneous streams,
+  both directions); (c) **one spec file mapped to many TEST-IDs** that share a
+  single assertion (coverage inflation — each TEST-ID must be a distinct exercised
+  assertion); (d) a mocked unit standing in for render/behavior that only the
+  real surface can prove. This is the systematic form of rule B7 — the human
+  keeps finding these when the audit doesn't.
 
 **Audit-vs-user-decision rule:** when an audit angle surfaces that a feature's
 cost/behavior conflicts with a decision the human explicitly made (e.g. a perf
