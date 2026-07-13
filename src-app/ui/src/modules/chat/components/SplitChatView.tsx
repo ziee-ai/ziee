@@ -64,8 +64,13 @@ export function SplitChatView() {
                   : 'hidden'
                 : cn(
                     'flex min-w-0',
+                    // `z-[5]` (not z-10): lift the focused pane's inset ring ABOVE
+                    // its neighbours, but stay BELOW the fixed `z-10` sidebar-toggle
+                    // button so the collapse control remains clickable (FB-18 — the
+                    // main-content area is z-auto, so a pane `z-10` competed with the
+                    // toggle and, being later in the DOM, covered it).
                     focusedPaneId === p.paneId &&
-                      'z-10 ring-2 ring-primary ring-inset',
+                      'z-[5] ring-2 ring-primary ring-inset',
                   ),
             )}
             style={

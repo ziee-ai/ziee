@@ -15,7 +15,7 @@ The living index of every desktop UI override. Regenerate with
 
 ## Whole-file overrides (`.desktop.{tsx,ts}` co-located in the core tree)
 
-14 co-located override files.
+15 co-located override files.
 
 | File | Core sibling |
 |---|---|
@@ -29,6 +29,7 @@ The living index of every desktop UI override. Regenerate with
 | `src-app/ui/src/modules/layouts/app-layout/components/HeaderBarContainer.desktop.tsx` | ✓ |
 | `src-app/ui/src/modules/layouts/app-layout/components/LeftSidebar.desktop.tsx` | ✓ |
 | `src-app/ui/src/modules/layouts/app-layout/components/SidebarToggleButton.desktop.tsx` | ✓ |
+| `src-app/ui/src/modules/layouts/app-layout/hooks/useHeaderLeftInset.desktop.ts` | ✓ |
 | `src-app/ui/src/modules/llm-provider/components/ProviderGroupAssignmentCard.desktop.tsx` | ✓ |
 | `src-app/ui/src/modules/loader.desktop.ts` | ✓ |
 | `src-app/ui/src/modules/settings/SettingsPage.desktop.tsx` | ✓ |

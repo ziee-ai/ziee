@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'
+import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeaderLeftInset'
 
 interface HeaderBarContainerProps {
   children?: React.ReactNode
@@ -22,7 +23,8 @@ export const HeaderBarContainer = ({
   className = '',
   style = {},
 }: HeaderBarContainerProps) => {
-  const { isSidebarCollapsed, nativeScroll } = Stores.AppLayout
+  const { nativeScroll } = Stores.AppLayout
+  const headerLeftInset = useHeaderLeftInset()
 
   // Native document-scroll (mobile Settings): direction-based header —
   //  • default / scrolling DOWN → position:relative → header wipes away with
@@ -112,7 +114,7 @@ export const HeaderBarContainer = ({
         className,
       )}
       style={{
-        paddingLeft: isSidebarCollapsed ? 48 : 12,
+        paddingLeft: headerLeftInset,
         paddingRight: 12,
         zIndex: nativeScroll ? 30 : 2,
         ...(nativeScroll

@@ -33,6 +33,7 @@ import {
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeaderLeftInset'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Stores } from '@/core'
@@ -121,6 +122,12 @@ export function ConversationPane() {
   // bridge (= primary) on the single-pane route. Both proxies expose the same
   // reactive-read / `.$` snapshot / action surface.
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  // Split per-pane header must match the single-pane app header `HeaderBarContainer`
+  // (ITEM-71 / FB-18): same 50px height, and the LEFTMOST pane reserves the same
+  // left inset (shared `useHeaderLeftInset` — web 48/12, macOS-desktop 118) so its
+  // content clears the fixed sidebar-collapse toggle + the macOS traffic lights.
+  const headerLeftInset = useHeaderLeftInset()
+  const isLeftmostPane = !!pane && Stores.SplitView.panes[0]?.paneId === pane.paneId
   // Per-pane edge-directional drop (ITEM-57 single-pane + ITEM-70 split): a
   // conversation dragged over a pane's chat column highlights the left/center/
   // right third. SINGLE-pane: left/right create the split ([dropped|current] /
@@ -794,9 +801,13 @@ export function ConversationPane() {
       {pane ? (
         <div
           className={cn(
-            'flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3',
+            'flex h-[50px] shrink-0 items-center justify-between gap-2 border-b',
             paneDropActive && 'bg-primary/10 ring-2 ring-primary ring-inset',
           )}
+          // Match HeaderBarContainer: 50px tall; the leftmost pane reserves the
+          // toggle/traffic-light inset (else a plain 12px), so the collapse button
+          // + macOS window controls are never overlapped (FB-18).
+          style={{ paddingLeft: isLeftmostPane ? headerLeftInset : 12, paddingRight: 12 }}
           data-testid="chat-pane-header"
           onDragOver={onPaneAreaDragOver}
           onDragLeave={onPaneAreaDragLeave}
