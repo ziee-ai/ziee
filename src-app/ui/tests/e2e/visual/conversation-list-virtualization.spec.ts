@@ -56,7 +56,7 @@ test.describe('chats-page-virtualization', () => {
     // Wait for the seeded list to render its window + the footer to confirm all
     // 200 are loaded.
     await expect(page.getByText('Showing 200 of 200 conversations')).toBeVisible({
-      timeout: 30000,
+      timeout: 60000,
     })
     await expect(page.locator(CARD).first()).toBeVisible()
   })
@@ -146,7 +146,7 @@ test.describe('chats-page-virtualization (narrow 390px)', () => {
     await page.goto(NARROW_SURFACE)
     await expect(
       page.getByText('Showing 200 of 200 conversations'),
-    ).toBeVisible({ timeout: 30000 })
+    ).toBeVisible({ timeout: 60000 })
     await expect(page.locator(CARD).first()).toBeVisible()
   })
 

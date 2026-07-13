@@ -956,12 +956,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/VirtualizedConversationList",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!vw || vw <= 0", line: 107 },
-      { kind: "branch", condition: "w <= 0", line: 109 },
-      { kind: "branch", condition: "!el", line: 116 },
-      { kind: "branch", condition: "!import.meta.env.DEV", line: 202 },
-      { kind: "branch", condition: "!virtualize", line: 212 },
-      { kind: "branch", condition: "!conversation", line: 248 },
+      { kind: "branch", condition: "!vw || vw <= 0", line: 111 },
+      { kind: "branch", condition: "w == null", line: 117 },
+      { kind: "branch", condition: "!el", line: 125 },
+      { kind: "branch", condition: "!import.meta.env.DEV", line: 230 },
+      { kind: "branch", condition: "!virtualize", line: 240 },
+      { kind: "branch", condition: "!conversation", line: 276 },
     ],
   },
   "modules/chat/core/components/ChatRightPanel": {

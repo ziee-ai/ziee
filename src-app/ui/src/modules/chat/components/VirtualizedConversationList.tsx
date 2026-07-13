@@ -102,12 +102,21 @@ export function VirtualizedConversationList({
   const [widthBucketState, setWidthBucketState] = useState(() =>
     widthBucket(widthRef.current),
   )
-  const measureWidth = () => {
+  const measuredOnceRef = useRef(false)
+  // Pure read (no setState) of the current content width from the scroll element,
+  // or null when the scroller isn't ready. Used both by measureWidth (below) and
+  // for the ONE-TIME synchronous width read at seed-build time.
+  const readContentWidth = (): number | null => {
     const vw = getScrollElement()?.clientWidth
-    if (!vw || vw <= 0) return
+    if (!vw || vw <= 0) return null
     const w = Math.min(vw, MAX_CONTENT_WIDTH) - CONTENT_GUTTER
-    if (w <= 0) return
+    return w > 0 ? w : null
+  }
+  const measureWidth = () => {
+    const w = readContentWidth()
+    if (w == null) return
     widthRef.current = w
+    measuredOnceRef.current = true
     const b = widthBucket(w)
     setWidthBucketState(prev => (prev === b ? prev : b))
   }
@@ -136,6 +145,25 @@ export function VirtualizedConversationList({
         return EMPTY_SEED
       }
       if (seedRef.current) return seedRef.current
+      // virtual-core consumes the seed on its FIRST getMeasurements — which runs
+      // during THIS render, BEFORE the width-measuring layout effect fires. Unlike
+      // MessageList (which mounts at count 0, so the effect corrects widthRef
+      // before the count 0→N seed build), this component is parent-gated to mount
+      // at count>0, so its first build would otherwise seed at the fallback
+      // (max) width and MISS the cache at a sub-max-width desktop window. The
+      // scroller is normally already initialized by the time count>0 (it mounts
+      // during the loading arm), so read the real width SYNCHRONOUSLY once here —
+      // a single mount-time reflow (not the per-scroll reflow measureWidth's ref
+      // dance avoids). Falls back to the ref (max width) only if the scroller
+      // isn't ready yet, where the content-aware estimate still gives a good first
+      // pass.
+      if (!measuredOnceRef.current) {
+        const w = readContentWidth()
+        if (w != null) {
+          widthRef.current = w
+          measuredOnceRef.current = true
+        }
+      }
       const seed = buildInitialMeasurementsCache(
         conversations.map(c => c.id),
         widthRef.current,

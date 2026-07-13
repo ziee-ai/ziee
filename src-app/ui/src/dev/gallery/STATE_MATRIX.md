@@ -1087,12 +1087,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 107 |
-| branch | `w <= 0` | 109 |
-| branch | `!el` | 116 |
-| branch | `!import.meta.env.DEV` | 202 |
-| branch | `!virtualize` | 212 |
-| branch | `!conversation` | 248 |
+| branch | `!vw \|\| vw <= 0` | 111 |
+| branch | `w == null` | 117 |
+| branch | `!el` | 125 |
+| branch | `!import.meta.env.DEV` | 230 |
+| branch | `!virtualize` | 240 |
+| branch | `!conversation` | 276 |
 
 ### `modules/chat/core/components/ChatRightPanel`
 
