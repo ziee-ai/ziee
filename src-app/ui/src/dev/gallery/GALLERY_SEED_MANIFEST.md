@@ -8,46 +8,46 @@ A module with a user-facing surface (a non-skip route `path:` or a user-facing
 slot) MUST own a `src/modules/<X>/gallery.tsx` (`export const gallery`), or be
 listed in `GALLERY_SEED_EXCEPTIONS.md` with a structural reason + sign-off.
 
-39 modules · 1 with a gallery.tsx · 0 allow-listed.
+39 modules · 31 with a gallery.tsx · 0 allow-listed.
 
 | Module | User surface? | Seed status |
 |---|---|---|
-| `app` | yes | ❌ MISSING seed |
-| `assistant` | yes | ❌ MISSING seed |
-| `auth` | yes | ❌ MISSING seed |
-| `auth-providers` | yes | ❌ MISSING seed |
-| `chat` | yes | ❌ MISSING seed |
-| `citations` | yes | ❌ MISSING seed |
-| `code-sandbox` | yes | ❌ MISSING seed |
+| `app` | yes | ✓ gallery.tsx |
+| `assistant` | yes | ✓ gallery.tsx |
+| `auth` | yes | ✓ gallery.tsx |
+| `auth-providers` | yes | ✓ gallery.tsx |
+| `chat` | yes | ✓ gallery.tsx |
+| `citations` | yes | ✓ gallery.tsx |
+| `code-sandbox` | yes | ✓ gallery.tsx |
 | `config-client` | no | — no user surface |
-| `dev-gallery` | no | — no user surface |
-| `file` | yes | ❌ MISSING seed |
-| `file-rag` | yes | ❌ MISSING seed |
-| `hardware` | yes | ❌ MISSING seed |
-| `hub` | yes | ❌ MISSING seed |
+| `dev-gallery` | no | ✓ gallery.tsx |
+| `file` | yes | ✓ gallery.tsx |
+| `file-rag` | yes | ✓ gallery.tsx |
+| `hardware` | yes | ✓ gallery.tsx |
+| `hub` | yes | ✓ gallery.tsx |
 | `js-tool` | yes | ❌ MISSING seed |
 | `knowledge-base` | yes | ❌ MISSING seed |
 | `layouts` | no | — no user surface |
-| `literature` | yes | ❌ MISSING seed |
-| `llm-local-runtime` | yes | ❌ MISSING seed |
-| `llm-provider` | yes | ❌ MISSING seed |
-| `llm-repository` | yes | ❌ MISSING seed |
-| `mcp` | yes | ❌ MISSING seed |
-| `memory` | yes | ❌ MISSING seed |
+| `literature` | yes | ✓ gallery.tsx |
+| `llm-local-runtime` | yes | ✓ gallery.tsx |
+| `llm-provider` | yes | ✓ gallery.tsx |
+| `llm-repository` | yes | ✓ gallery.tsx |
+| `mcp` | yes | ✓ gallery.tsx |
+| `memory` | yes | ✓ gallery.tsx |
 | `notification` | yes | ❌ MISSING seed |
-| `onboarding` | yes | ❌ MISSING seed |
-| `profile` | yes | ❌ MISSING seed |
-| `projects` | yes | ❌ MISSING seed |
+| `onboarding` | yes | ✓ gallery.tsx |
+| `profile` | yes | ✓ gallery.tsx |
+| `projects` | yes | ✓ gallery.tsx |
 | `router` | no | — no user surface |
 | `scheduler` | yes | ❌ MISSING seed |
-| `server-update` | yes | ❌ MISSING seed |
-| `settings` | yes | ❌ MISSING seed |
-| `settings-general` | yes | ❌ MISSING seed |
-| `skill` | yes | ❌ MISSING seed |
-| `summarization` | yes | ❌ MISSING seed |
+| `server-update` | yes | ✓ gallery.tsx |
+| `settings` | yes | ✓ gallery.tsx |
+| `settings-general` | yes | ✓ gallery.tsx |
+| `skill` | yes | ✓ gallery.tsx |
+| `summarization` | yes | ✓ gallery.tsx |
 | `user` | yes | ✓ gallery.tsx |
-| `user-llm-providers` | yes | ❌ MISSING seed |
-| `user-profile` | yes | ❌ MISSING seed |
+| `user-llm-providers` | yes | ✓ gallery.tsx |
+| `user-profile` | yes | ✓ gallery.tsx |
 | `voice` | yes | ❌ MISSING seed |
-| `web-search` | yes | ❌ MISSING seed |
-| `workflow` | yes | ❌ MISSING seed |
+| `web-search` | yes | ✓ gallery.tsx |
+| `workflow` | yes | ✓ gallery.tsx |
