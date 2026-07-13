@@ -2,3 +2,6 @@
 	path = src-app/server/vendor/pgvector
 	url = https://github.com/pgvector/pgvector.git
 	branch = master
+[submodule "sdk"]
+	path = sdk
+	url = https://github.com/ziee-ai/sdk.git
