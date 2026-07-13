@@ -91,10 +91,24 @@ used verbatim (the template/env path is skipped). Base it on
 ## Config as code (desired state) — zero-touch first boot
 
 The image ships **`config/desired-state.yaml`** at `/etc/ziee/desired-state.yaml`.
-On every boot — **after** migrations, **before** it serves — the server reconciles
-that file into the database, so a fresh deploy comes up **fully configured with no
-manual UI setup**: the org MCP servers registered, the root admin created, a
+When enabled, the server reconciles that file into the database on boot — **after**
+migrations, **before** it serves — so a fresh deploy comes up **fully configured with
+no manual UI setup**: the org MCP servers registered, the root admin created, a
 regular user seeded, and the default group's permissions trimmed.
+
+> ### Where it is turned on
+> The deploy overlay **`docker-compose.deploy.yml`** carries the switch, the MCP
+> endpoint URLs and the seeded-account passwords (and the `host.docker.internal`
+> mapping the org MCP servers need). The base `docker-compose.yml` is a local test
+> stack and deliberately does NOT enable any of it.
+>
+> ### ⚠ It is OFF unless the deploy turns it on
+> **`ZIEE_APPLY_DESIRED_STATE=1` is the switch, and it defaults to OFF.** Shipping
+> the file — in the repo or baked into the image — applies **nothing**. Without the
+> flag the server logs `desired-state reconcile: disabled` and writes nothing: no
+> seeding, no enforce, no MCP/admin/permission writes. That is what keeps a local
+> developer's hand-configured models, MCP servers, admin and permissions from ever
+> being touched or duplicated. TeamCity sets the flag **only** on the deploy configs.
 
 | Env var | Fills | If unset |
 |---|---|---|
@@ -103,6 +117,7 @@ regular user seeded, and the default group's permissions trimmed.
 | `BIOGNOSIA_MCP_URL` | the `biognosia-user` system MCP server's URL | that server is skipped |
 | `ZIEE_ADMIN_PASSWORD` | the root `admin` account's password | no admin is created (the UI shows first-run setup) |
 | `ZIEE_DEFAULT_USER_PASSWORD` | the regular `user` account's password | that user is not created |
+| `ZIEE_APPLY_DESIRED_STATE` | **the switch** — `1` applies the file | **nothing is applied at all** (the local-dev default) |
 | `ZIEE_DESIRED_STATE_FILE` | path of the file itself | **the image always sets this** to `/etc/ziee/desired-state.yaml` — point it at a nonexistent path to turn config-as-code OFF |
 
 On the **deploy host** the three MCP servers are published on the HOST (that host
@@ -111,6 +126,7 @@ only allows ports `18000-19000`) and reached over `host.docker.internal`:
 ```bash
 docker run --rm -p 8080:8080 \
   --add-host host.docker.internal:host-gateway \
+  -e ZIEE_APPLY_DESIRED_STATE=1 \
   -e ZIEE_DB_HOST=db.internal -e ZIEE_DB_USER=ziee -e ZIEE_DB_PASSWORD=secret -e ZIEE_DB_NAME=ziee \
   -e ZIEE_JWT_SECRET='…' -e ZIEE_STORAGE_KEY='…' \
   -e BIOGNOSIA_MCP_URL=http://host.docker.internal:18100/mcp \
@@ -127,9 +143,8 @@ docker run --rm -p 8080:8080 \
 > extra_hosts:
 >   - "host.docker.internal:host-gateway"
 > ```
-> — the same mapping `biognosia-mcp` and `cpa-website` already use. Both bundled
-> compose files (`docker-compose.yml`, `docker-compose.external-db.yml`) now set it;
-> a hand-rolled `docker run` needs `--add-host` as above. Local dev points the same
+> — the same mapping `biognosia-mcp` and `cpa-website` already use. **`docker-compose.deploy.yml`
+> already sets it**; a hand-rolled `docker run` needs `--add-host` as above. Local dev points the same
 > env vars somewhere else entirely (e.g. `http://172.21.0.1:9004/mcp`) — which is
 > exactly why they are env-templated rather than baked into the manifest.
 
@@ -181,10 +196,27 @@ in no group is unusable by non-admin users. Their `usage_mode` is `auto` — the
 model decides when to call them.
 
 Group permissions have no mode: they are declarative and re-applied every boot.
-The shipped file removes `projects::*`, `hub::*` and `assistants::*` from the
-default **Users** group, which hides Hubs and the Settings→Assistants section for
-regular users (nav entry, settings tab and route share one gate), while General,
-Profile, LLM providers and MCP servers stay. (`projects::*` is a no-op today —
+Nothing is removed from the product — the file just sets permissions false for the
+default **Users** group, and a permission gates the nav entry, the settings tab and
+the route together. The shipped file hides, for regular users:
+
+| Surface | Permission dropped |
+|---|---|
+| Projects (nav) | `projects::*` |
+| Hubs (nav) | `hub::*` |
+| Knowledge (nav) | `knowledge_base::*` |
+| Scheduled Tasks (nav) | `scheduler::*` |
+| Settings → Assistants | `assistants::*` |
+| Settings → Web Search Keys | `web_search::*` |
+| Settings → Literature Keys | `lit_search::*` |
+| Settings → Workflows | `workflows::*` |
+| Settings → Memory | `memory::*` |
+| Settings → Citations | `citations::*` |
+
+General, Profile, LLM providers, MCP servers, chat/files and `notifications::read`
+all stay. Note the `*::use` permissions also gate the matching built-in chat tools,
+so a user in this group does not get web-search / literature / citations /
+knowledge-base tools in chat either — intended, since they cannot configure them. (`projects::*` is a no-op today —
 the default group was never granted it — and is declared so a future migration
 cannot silently un-hide Projects.) An `add:` list may **not** contain a wildcard:
 a manifest can never grant `*`. Note the root admin **bypasses all permission

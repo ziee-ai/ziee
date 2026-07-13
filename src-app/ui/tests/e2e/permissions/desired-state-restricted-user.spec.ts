@@ -52,7 +52,12 @@ function shippedRemovePatterns(): string[] {
 
   const patterns: string[] = []
   for (const line of lines.slice(start + 1)) {
-    const item = line.match(/^\s*-\s*([^\s#]+)\s*$/)
+    // Skip blank lines and full-line comments inside the block …
+    if (/^\s*$/.test(line) || /^\s*#/.test(line)) continue
+    // … take `- pattern` (with an optional trailing comment) …
+    const item = line.match(/^\s*-\s*([^\s#]+)\s*(?:#.*)?$/)
+    // … and stop at the first line that is not a list item, so a block appended
+    // later to the file cannot silently widen what we extract.
     if (!item) break
     patterns.push(item[1])
   }
@@ -163,12 +168,16 @@ test.describe('desired-state — restricted (default-group) user', () => {
 
     // ── Layer 1: the nav slots are gone ──
     await page.goto(`${baseURL}/`)
-    await expect(
-      byTestId(page, 'layout-sidebar-nav-menu-item-projects'),
-    ).toHaveCount(0)
-    await expect(
-      byTestId(page, 'layout-sidebar-tools-menu-item-hub'),
-    ).toHaveCount(0)
+    for (const id of [
+      'layout-sidebar-nav-menu-item-projects',
+      'layout-sidebar-nav-menu-item-knowledge',
+      'layout-sidebar-nav-menu-item-scheduled-tasks',
+      'layout-sidebar-tools-menu-item-hub',
+      'layout-sidebar-tools-menu-item-knowledge',
+      'layout-sidebar-tools-menu-item-scheduled-tasks',
+    ]) {
+      await expect(byTestId(page, id), `${id} must be hidden`).toHaveCount(0)
+    }
 
     // ── Layer 2: the routes refuse to render the feature ──
     await page.goto(`${baseURL}/projects`)
@@ -179,12 +188,22 @@ test.describe('desired-state — restricted (default-group) user', () => {
     await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/hub')
 
-    // ── Layer 3: the Settings→Assistants section is gone (tab AND route) ──
+    // ── Layer 3: the hidden Settings sections are gone (tabs AND routes) ──
     await page.goto(`${baseURL}/settings/general`)
     await expect(byTestId(page, 'settings-nav-menu')).toBeVisible()
-    await expect(
-      byTestId(page, 'settings-nav-menu-item-assistants'),
-    ).toHaveCount(0)
+    for (const tab of [
+      'assistants',
+      'web-search-keys',
+      'literature-keys',
+      'workflows',
+      'memory',
+      'citations',
+    ]) {
+      await expect(
+        byTestId(page, `settings-nav-menu-item-${tab}`),
+        `Settings -> ${tab} must be hidden`,
+      ).toHaveCount(0)
+    }
 
     await page.goto(`${baseURL}/settings/assistants`)
     // A deep link renders the settings-level forbidden panel, not the feature.

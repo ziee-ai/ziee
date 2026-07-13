@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 365 surfaces carry renderable-state signals; 2146 signals total.
+// 365 surfaces carry renderable-state signals; 2150 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -583,24 +583,27 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/assistant/chat-extension/components/AssistantMenuItem",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "selectedAssistantId", line: 27 },
-      { kind: "empty", condition: "availableAssistants.length === 0", line: 36 },
-      { kind: "branch", condition: "dividerAfter", line: 126 },
+      { kind: "branch", condition: "!canRead", line: 27 },
+      { kind: "branch", condition: "selectedAssistantId", line: 36 },
+      { kind: "empty", condition: "availableAssistants.length === 0", line: 45 },
+      { kind: "branch", condition: "dividerAfter", line: 135 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantSelector": {
     surface: "modules/assistant/chat-extension/components/AssistantSelector",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "availableAssistants.length === 0", line: 27 },
+      { kind: "branch", condition: "!canRead", line: 19 },
+      { kind: "empty", condition: "availableAssistants.length === 0", line: 33 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantStatusChip": {
     surface: "modules/assistant/chat-extension/components/AssistantStatusChip",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!selectedAssistantId", line: 13 },
-      { kind: "branch", condition: "!assistant", line: 18 },
+      { kind: "branch", condition: "!canRead", line: 17 },
+      { kind: "branch", condition: "!selectedAssistantId", line: 18 },
+      { kind: "branch", condition: "!assistant", line: 23 },
     ],
   },
   "modules/assistant/chat-extension/extension": {
@@ -3143,11 +3146,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/memory/chat-extension/components/MemoryStatusPill",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!conversation?.id", line: 36 },
-      { kind: "branch", condition: "!conversation?.id", line: 58 },
-      { kind: "branch", condition: "adminSettings?.enabled === false", line: 59 },
-      { kind: "branch", condition: "!conversation?.id", line: 62 },
-      { kind: "branch", condition: "mode === 'off'", line: 122 },
+      { kind: "branch", condition: "!conversation?.id", line: 44 },
+      { kind: "branch", condition: "!canUse", line: 68 },
+      { kind: "branch", condition: "!conversation?.id", line: 69 },
+      { kind: "branch", condition: "adminSettings?.enabled === false", line: 70 },
+      { kind: "branch", condition: "!conversation?.id", line: 73 },
+      { kind: "branch", condition: "mode === 'off'", line: 133 },
     ],
   },
   "modules/memory/components/CoreMemoryBlocksEditor": {

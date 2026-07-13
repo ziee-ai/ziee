@@ -3,10 +3,17 @@
 //! up fully configured with NO manual UI setup.
 //!
 //! Wiring: `main.rs` calls [`reconcile`] AFTER migrations + `init_repositories`
-//! + `init_storage_key`, and BEFORE the server serves. The file is located by
-//! the `ZIEE_DESIRED_STATE_FILE` env var (the container image sets it); unset,
-//! or pointing at a path that does not exist, makes this a **silent no-op** —
-//! so dev, the desktop app, and every existing test are unaffected.
+//! + `init_storage_key`, and BEFORE the server serves.
+//!
+//! **DEPLOY-ONLY, OPT-IN, DEFAULT OFF.** The reconciler does NOTHING unless the
+//! deploy signal `ZIEE_APPLY_DESIRED_STATE=1` is set — no seeding, no enforce, no
+//! MCP/admin/permission writes. The repo-checked `config/desired-state.yaml` is
+//! version control, not a trigger: its presence (in the tree OR baked into the
+//! image) never applies it. Only a deploy (TeamCity sets the flag on the deploy
+//! configs) turns it on. This is what guarantees a local developer's
+//! hand-configured models / MCP servers / admin / permissions are never touched,
+//! enforced, or duplicated. When the flag is on, `ZIEE_DESIRED_STATE_FILE` says
+//! WHICH file (defaulting to the image's `/etc/ziee/desired-state.yaml`).
 //!
 //! Contract (all of it deliberate):
 //!
@@ -74,8 +81,28 @@ use crate::modules::mcp::{
     CreateMcpServerRequest, TransportType, UpdateMcpServerRequest, UsageMode,
 };
 
-/// Env var holding the absolute path of the desired-state file.
+/// The DEPLOY SIGNAL. The reconciler does nothing at all unless this is set to
+/// `1` / `true`. Default OFF, so a local developer — who has hand-configured
+/// their own models, MCP servers, admin and permissions — can never have that
+/// state seeded, enforced, or duplicated just because the repo happens to carry
+/// a desired-state file. Only a deploy (TeamCity) turns it on.
+pub const APPLY_ENV: &str = "ZIEE_APPLY_DESIRED_STATE";
+
+/// Env var holding the absolute path of the desired-state file. Only consulted
+/// once [`APPLY_ENV`] has opted in — the file's mere presence never applies it.
 pub const DESIRED_STATE_ENV: &str = "ZIEE_DESIRED_STATE_FILE";
+
+/// Default path inside the container image. Used when the deploy signal is on
+/// but no explicit path was given.
+const DEFAULT_FILE: &str = "/etc/ziee/desired-state.yaml";
+
+/// Is the deploy signal on?
+fn apply_enabled() -> bool {
+    matches!(
+        std::env::var(APPLY_ENV).unwrap_or_default().trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
 
 // ───────────────────────────── the file schema ─────────────────────────────
 
@@ -363,11 +390,23 @@ const LOCK_WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis
 /// rather than serve a silently-unconfigured deployment. A failure of one
 /// ENTRY inside a valid file is logged and skipped, never fatal.
 pub async fn reconcile(pool: &PgPool) -> Result<(), String> {
-    let Some(path) = std::env::var_os(DESIRED_STATE_ENV) else {
-        tracing::debug!("desired_state: {DESIRED_STATE_ENV} unset; nothing to reconcile");
+    // The deploy gate. OFF unless a deploy explicitly turns it on — a repo-checked
+    // desired-state file must never apply itself on a developer's machine.
+    if !apply_enabled() {
+        tracing::info!(
+            "desired-state reconcile: disabled ({APPLY_ENV} is not set) — no seeding, no enforce, \
+             no MCP/admin/permission writes"
+        );
         return Ok(());
-    };
-    let path = std::path::PathBuf::from(path);
+    }
+
+    let path = std::path::PathBuf::from(
+        std::env::var_os(DESIRED_STATE_ENV).unwrap_or_else(|| DEFAULT_FILE.into()),
+    );
+    tracing::info!(
+        path = %path.display(),
+        "desired-state reconcile: ENABLED ({APPLY_ENV} is set)"
+    );
 
     // An ABSENT file is the normal "not a config-as-code deployment" case (dev,
     // desktop, the test suite, and the image with the var pointed elsewhere).
@@ -1133,6 +1172,25 @@ mcp_servers:
     timout_seconds: 300
 "#;
         assert!(serde_norway::from_str::<DesiredState>(yaml).is_err());
+    }
+
+    #[test]
+    fn deploy_gate_is_off_by_default_and_accepts_the_usual_truthy_values() {
+        // The gate reads process env, so assert on the parser rather than
+        // mutating the environment (see `map_lookup`'s note).
+        let on = |v: &str| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        };
+        // Local-dev defaults: anything that is not an explicit opt-in is OFF.
+        for off in ["", " ", "0", "false", "no", "off", "maybe"] {
+            assert!(!on(off), "{off:?} must NOT enable the reconciler");
+        }
+        for enabled in ["1", "true", "TRUE", " yes ", "on"] {
+            assert!(on(enabled), "{enabled:?} must enable the reconciler");
+        }
     }
 
     // ── TEST-17: the file we actually ship ──

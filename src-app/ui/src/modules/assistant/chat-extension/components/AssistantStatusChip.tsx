@@ -1,4 +1,6 @@
 import { Tag } from '@/components/ui'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Bot } from 'lucide-react'
 import { Stores } from '@/core/stores'
 
@@ -7,9 +9,12 @@ import { Stores } from '@/core/stores'
  * Shows the selected assistant as a purple tag in the status row
  */
 export function AssistantStatusChip() {
+  // Permission gate (layer 4) — see AssistantMenuItem.
+  const canRead = usePermission(Permissions.AssistantsRead)
   const { selectedAssistantId, availableAssistants, clearAssistant } =
     Stores.AssistantPicker
 
+  if (!canRead) return null
   if (!selectedAssistantId) return null
 
   const assistant = availableAssistants.find(

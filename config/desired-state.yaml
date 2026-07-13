@@ -5,6 +5,13 @@
 # with no manual UI setup. Baked into the image at /etc/ziee/desired-state.yaml;
 # bind-mount over that path (or repoint ZIEE_DESIRED_STATE_FILE) to override.
 #
+# ⚠ DEPLOY-ONLY, OPT-IN, DEFAULT OFF. This file is version control, NOT a trigger:
+# checking it in — or baking it into the image — applies NOTHING. The reconciler
+# runs only when the deploy sets ZIEE_APPLY_DESIRED_STATE=1 (TeamCity does this on
+# the deploy configs). Without it the server logs "desired-state reconcile:
+# disabled" and writes nothing, so a local developer's own models, MCP servers,
+# admin and permissions are never touched, enforced or duplicated.
+#
 # RULES
 #   - Secrets are NEVER written here. A password must be exactly one ${ENV_VAR}
 #     placeholder; an inline literal is rejected and the entry is skipped.
@@ -108,9 +115,18 @@ users:
     password: ${ZIEE_DEFAULT_USER_PASSWORD}
 
 # ── Group permissions ───────────────────────────────────────────────────────
-# Hide Projects, Hubs and the Settings→Assistants section from regular users.
-# Removing the read permission hides the nav entry AND the settings tab AND
-# gates the route — they share one permission gate.
+# Limit what regular users can see. Nothing is removed from the product — these
+# are permissions set false for the default group, exactly like any other feature:
+# the permission gates the nav entry, the settings tab AND the route together, so
+# dropping it hides the whole surface for that group. Admins are unaffected.
+#
+# NOTE: the `*::use` permissions (web_search, lit_search, citations,
+# knowledge_base, scheduler) ALSO gate the matching built-in tool endpoints, so a
+# user in this group does not get those tools in chat either. That is intended:
+# without the feature's UI they cannot configure it anyway.
+#
+# `notifications::read` is deliberately KEPT (migration 142 grants it alongside
+# scheduler; users still need their notifications).
 #
 # (`projects::*` is a no-op today: migration 54 grants it only to Administrators,
 # so the default group never had it. It is declared anyway, so a future migration
@@ -124,6 +140,15 @@ users:
 groups:
   - name: Users
     remove:
+      # Left nav
       - projects::*
       - hub::*
-      - assistants::*
+      - knowledge_base::*      # "Knowledge"
+      - scheduler::*           # "Scheduled Tasks"
+      # Settings sections
+      - assistants::*          # Settings -> Assistants
+      - web_search::*          # Settings -> Web Search Keys
+      - lit_search::*          # Settings -> Literature Keys
+      - workflows::*           # Settings -> Workflows
+      - memory::*              # Settings -> Memory (incl. memory::core::*)
+      - citations::*           # Settings -> Citations

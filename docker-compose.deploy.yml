@@ -26,6 +26,24 @@ services:
       # Origin the MCP-server containers use to fetch ziee-hosted files — reach
       # ziee via the host gateway + its published web port (NOT 127.0.0.1).
       ZIEE_PUBLIC_FILE_ORIGIN: "${ZIEE_PUBLIC_FILE_ORIGIN:-http://host.docker.internal:${ZIEE_WEB_PORT:-8080}}"
+      # ── Config as code (see docker/web/README.md) ─────────────────────────
+      # THE SWITCH. Default OFF everywhere else: without it the container applies
+      # NOTHING from the desired-state file (no seeding, no enforce, no MCP/admin/
+      # permission writes), so a developer's local stack is never touched. Set it
+      # here because this overlay IS the deploy.
+      ZIEE_APPLY_DESIRED_STATE: "${ZIEE_APPLY_DESIRED_STATE:-1}"
+      # The manifest itself is baked into the image at this path; bind-mount over
+      # it (or repoint this var) to deploy a different one.
+      ZIEE_DESIRED_STATE_FILE: "${ZIEE_DESIRED_STATE_FILE:-/etc/ziee/desired-state.yaml}"
+      # The org MCP endpoints the manifest references. Host-published, reached via
+      # the host gateway mapped below (the deploy host only allows 18000-19000).
+      BIOGNOSIA_MCP_URL: "${BIOGNOSIA_MCP_URL:-http://host.docker.internal:18100/mcp}"
+      RCPA_MCP_URL: "${RCPA_MCP_URL:-http://host.docker.internal:18120/mcp}"
+      DSCC_MCP_URL: "${DSCC_MCP_URL:-http://host.docker.internal:18122/mcp}"
+      # Seeded accounts. Unset ⇒ that account is simply not created (the server
+      # logs it); it never blocks the boot.
+      ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:-}"
+      ZIEE_DEFAULT_USER_PASSWORD: "${ZIEE_DEFAULT_USER_PASSWORD:-}"
     # Lets ziee reach the host-published MCP servers at host.docker.internal:18xxx
     # (same pattern biognosia-mcp / cpa-website use).
     extra_hosts:

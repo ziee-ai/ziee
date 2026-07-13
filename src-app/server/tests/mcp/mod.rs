@@ -982,18 +982,35 @@ async fn test_assign_server_to_groups() {
         .expect("Failed to get default group");
     let default_group_id = default_group.id;
 
-    // Get the seeded `fetch` server ID (migration 157 removed the `filesystem`
-    // row this test used to key off; `fetch` is the surviving seeded server).
-    let fetch_server =
-        sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'fetch' AND is_system = true")
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to get fetch server");
-    let fetch_server_id = fetch_server.id;
+    // An UNASSIGNED system server. This test used to key off the seeded
+    // `filesystem` row (removed by migration 157). Retargeting it at the
+    // surviving `fetch` row would make it VACUOUS: migration 7 already assigns
+    // `fetch` to the default group, so the "assigned" assertion would hold before
+    // the POST was ever issued — the test would pass even if the assign endpoint
+    // were a no-op. Create a server that is genuinely in no group instead.
+    let fetch_server_id = sqlx::query!(
+        r#"INSERT INTO mcp_servers (name, display_name, description, transport_type, is_system, enabled, url)
+           VALUES ('assign_target', 'Assign Target', 'Group-assignment fixture', 'http', true, true, 'http://127.0.0.1:9/mcp')
+           RETURNING id"#
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("Failed to create the assignment fixture server")
+    .id;
+
+    // Precondition: it is in NO group — otherwise the assertion below is vacuous.
+    let before = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM user_group_mcp_servers WHERE mcp_server_id = $1"#,
+        fetch_server_id
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count groups");
+    assert_eq!(before, 0, "the fixture server must start unassigned");
 
     pool.close().await;
 
-    // Assign the fetch server to the default group
+    // Assign the fixture server to the default group
     let payload = json!({
         "group_ids": [default_group_id]
     });

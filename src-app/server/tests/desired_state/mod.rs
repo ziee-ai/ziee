@@ -72,7 +72,14 @@ groups:
     remove:
       - projects::*
       - hub::*
+      - knowledge_base::*
+      - scheduler::*
       - assistants::*
+      - web_search::*
+      - lit_search::*
+      - workflows::*
+      - memory::*
+      - citations::*
 "#
     )
 }
@@ -85,6 +92,10 @@ fn env_for(yaml: &str, admin_pw: &str, user_pw: &str) -> (tempfile::TempDir, Vec
     std::fs::write(&path, yaml).expect("write manifest");
 
     let env = vec![
+        // The DEPLOY SIGNAL. Without it the reconciler is inert (that is the
+        // local-dev default) — `test_file_present_but_flag_unset_is_a_no_op`
+        // pins exactly that.
+        ("ZIEE_APPLY_DESIRED_STATE".to_string(), "1".to_string()),
         (
             "ZIEE_DESIRED_STATE_FILE".to_string(),
             path.to_string_lossy().to_string(),
@@ -456,6 +467,7 @@ users:
     // Deliberately provide ONLY the rcpa URL.
     let server = TestServer::start_with_options(TestServerOptions {
         extra_env: vec![
+            ("ZIEE_APPLY_DESIRED_STATE".to_string(), "1".to_string()),
             (
                 "ZIEE_DESIRED_STATE_FILE".to_string(),
                 path.to_string_lossy().to_string(),
@@ -655,7 +667,18 @@ async fn test_users_group_permissions_are_trimmed() {
     .await
     .unwrap();
 
-    for hidden in ["assistants::", "hub::", "projects::"] {
+    for hidden in [
+        "assistants::",
+        "hub::",
+        "projects::",
+        "knowledge_base::",
+        "scheduler::",
+        "web_search::",
+        "lit_search::",
+        "workflows::",
+        "memory::",
+        "citations::",
+    ] {
         assert!(
             !perms.iter().any(|p| p.starts_with(hidden)),
             "the Users group still holds a `{hidden}*` permission: {perms:?}"
@@ -672,6 +695,9 @@ async fn test_users_group_permissions_are_trimmed() {
         "files::read",
         "mcp_servers::read",
         "user_llm_providers::read",
+        // Granted alongside scheduler by migration 142 — users still need their
+        // notifications, so the `scheduler::*` removal must not take it.
+        "notifications::read",
     ] {
         assert!(
             perms.iter().any(|p| p == kept),
@@ -690,7 +716,15 @@ async fn test_restricted_user_is_denied_hidden_features() {
     let token = login_token(&server, "user", USER_PASSWORD).await;
     let client = reqwest::Client::new();
 
-    for denied in ["/assistants", "/hub/assistants", "/projects"] {
+    for denied in [
+        "/assistants",
+        "/hub/assistants",
+        "/projects",
+        "/knowledge-bases",
+        "/scheduled-tasks",
+        "/citations",
+        "/workflows",
+    ] {
         let res = client
             .get(server.api_url(denied))
             .bearer_auth(&token)
@@ -804,5 +838,76 @@ async fn test_no_env_var_means_no_reconcile() {
     assert!(
         perms.iter().any(|p| p.starts_with("assistants::")),
         "without a desired-state file the default permissions must be untouched"
+    );
+}
+
+// ───────────────────────── the deploy gate ─────────────────────────
+
+/// The reconciler is DEPLOY-ONLY: a desired-state file that is present and fully
+/// resolvable must still do NOTHING unless `ZIEE_APPLY_DESIRED_STATE` says so.
+/// This is what protects a local developer's hand-configured MCP servers, admin
+/// and permissions from being seeded/enforced/duplicated behind their back.
+#[tokio::test]
+async fn test_file_present_but_flag_unset_is_a_no_op() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("desired-state.yaml");
+    std::fs::write(&path, manifest("enforce")).unwrap();
+
+    // Everything the reconciler would need — EXCEPT the deploy signal.
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![
+            (
+                "ZIEE_DESIRED_STATE_FILE".to_string(),
+                path.to_string_lossy().to_string(),
+            ),
+            ("RCPA_MCP_URL".to_string(), RCPA_URL.to_string()),
+            ("DSCC_MCP_URL".to_string(), DSCC_URL.to_string()),
+            ("BIOGNOSIA_MCP_URL".to_string(), BIOGNOSIA_URL.to_string()),
+            ("ZIEE_ADMIN_PASSWORD".to_string(), ADMIN_PASSWORD.to_string()),
+            (
+                "ZIEE_DEFAULT_USER_PASSWORD".to_string(),
+                USER_PASSWORD.to_string(),
+            ),
+        ],
+        ..Default::default()
+    })
+    .await;
+    let pool = pool_of(&server).await;
+
+    // No servers …
+    let servers = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM mcp_servers
+           WHERE name IN ('rcpa-user','dscc-user','biognosia-user')"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(servers, 0, "no MCP server may be created without the deploy flag");
+
+    // … no accounts …
+    let admins = sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM users WHERE is_admin"#)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(admins, 0, "no admin may be seeded without the deploy flag");
+    let users = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM users WHERE username = 'user'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(users, 0, "no user may be seeded without the deploy flag");
+
+    // … and the developer's permissions are untouched.
+    let perms: Vec<String> = sqlx::query_scalar!(
+        "SELECT permissions FROM groups WHERE name = 'Users' AND is_default = true"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        perms.iter().any(|p| p.starts_with("assistants::"))
+            && perms.iter().any(|p| p.starts_with("hub::")),
+        "the default group's permissions must NOT be trimmed without the deploy flag: {perms:?}"
     );
 }

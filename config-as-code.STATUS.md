@@ -15,9 +15,15 @@ UI setup:
   the deployment has no admin; **never** password-reset on a later boot.
 - **A regular user** (`${ZIEE_DEFAULT_USER_PASSWORD}`) — root admins bypass every permission check,
   so this is the account that actually exercises the reduced UI.
-- **Default-group trim**: `projects::*`, `hub::*`, `assistants::*` removed from **Users** → Hubs and
-  Settings→Assistants disappear for regular users; General / Profile / LLM providers / MCP servers
-  stay. (`projects::*` is a no-op today — the default group never had it — declared for the future.)
+- **Default-group trim** (permissions set false; nothing removed from the product). Hidden for
+  regular users — nav: **Projects, Hubs, Knowledge, Scheduled Tasks**; settings: **Assistants,
+  Web Search Keys, Literature Keys, Workflows, Memory, Citations**. Kept: General, Profile, LLM
+  providers, MCP servers, chat/files, `notifications::read`. The `*::use` perms also gate the
+  matching chat tools, so those users don't get web-search/literature/citations/KB tools either
+  (intended — they can't configure them anyway).
+- **UI gates added** so no hidden feature leaves a dead control in the composer: the assistant
+  picker/chip/selector and the memory pill now hide when the permission is false (the pattern
+  `KbMenuItem` already used). No feature deleted; admins unaffected.
 - **Migration 157** deletes the three unused seeded system MCP servers (`filesystem`, `browser`,
   `git`); `fetch` and the load-bearing `files` built-in are untouched.
 
@@ -33,10 +39,10 @@ is skipped; an unusable FILE fails the boot.
   `DSCC_MCP_URL=http://host.docker.internal:18122/mcp`, plus `ZIEE_ADMIN_PASSWORD` and
   `ZIEE_DEFAULT_USER_PASSWORD`. Nothing is hardcoded — local dev points the same vars at
   `172.21.0.1:9004` etc.
-- **Required compose change (included here):** `extra_hosts: ["host.docker.internal:host-gateway"]` on
-  the ziee service — without it the container cannot reach the host-published MCP ports. Added to both
-  `docker-compose.yml` and `docker-compose.external-db.yml`; a hand-rolled `docker run` needs
-  `--add-host`.
+- **Deploy surface is `docker-compose.deploy.yml`** (the lead's overlay): it already maps
+  `extra_hosts: host.docker.internal:host-gateway`, and this branch EXTENDS it with
+  `ZIEE_APPLY_DESIRED_STATE`, `ZIEE_DESIRED_STATE_FILE`, the three MCP URLs and the two seeded
+  passwords. The base compose files are left clean (local stacks never enable the reconciler).
 
 ## One operational nuance worth knowing
 
