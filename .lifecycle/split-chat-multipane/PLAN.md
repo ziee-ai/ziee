@@ -627,6 +627,24 @@ LEDGER) — not silently absorbed.
   inset). The lesson is [[feedback_match_existing_patterns]]: reuse/share the sibling's
   logic, never hand-roll a parallel one that drops its encoded constraints.
 
+- **ITEM-72**: **The URL must track the FOCUSED pane, not just the first-opened
+  conversation** (FB-19 regression fix). ConversationPage had only the URL→workspace
+  reconcile (ITEM-25); the reverse direction was incomplete — the ONLY thing that
+  navigated was the sidebar-open hook (`useOpenConversationInWorkspace`). Opening a
+  pane via the Split button / an edge-drop (ITEM-70) / the conversation picker, or
+  clicking a different pane to focus it, flows through `openPane`/`focusPane` which do
+  NOT navigate, so the address bar stuck on the FIRST conversation. That stale URL is
+  why "open in new tab" (which reuses the current URL) reopened the already-rendering
+  conversation instead of the focused one. Fix: a second effect in `ConversationPage`
+  computes the focused pane's `conversationId` reactively and `navigate(..., {replace})`s
+  the URL to it whenever it changes, guarded by an equality check (strict no-op when the
+  URL already matches) with deps `[focusedConvId, panes.length]` ONLY (not
+  `conversationId`) so it never fights the URL→workspace reconcile on an external URL
+  change (deep link). Single-pane path untouched (the URL already drives the view).
+  Verified live against the dev server before writing the spec (STEP2/3/4 all track
+  focus). Covered by TEST-109 (e2e — two active panes; asserts the URL follows the
+  focused conversation on pick + on each pane focus).
+
 **Considered but OUT OF SCOPE (proposed [DESCOPED], pending human approval — the survey
 found no in-pane surface, so there is nothing to make pane-aware):**
 - Web / Lit / Bio search composer affordances — NONE exist. web_search/lit_search/bio_mcp

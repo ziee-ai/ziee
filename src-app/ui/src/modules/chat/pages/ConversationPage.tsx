@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
 import { Columns2, GripVertical, Search as SearchIcon, X } from 'lucide-react'
@@ -60,7 +60,12 @@ import { SplitChatView } from '@/modules/chat/components/SplitChatView'
  */
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
-  const { panes } = Stores.SplitView
+  const { panes, focusedPaneId } = Stores.SplitView
+  const navigate = useNavigate()
+  // The FOCUSED pane's conversation (reactive) — what the URL must mirror while a
+  // split is open.
+  const focusedConvId =
+    panes.find((p) => p.paneId === focusedPaneId)?.conversationId ?? null
 
   // URL → workspace reconcile (ITEM-25). The URL is a *view into* the workspace
   // (the focused pane). When it changes to a conversation NOT already shown by
@@ -77,6 +82,25 @@ export default function ConversationPage() {
     if (focused?.conversationId === conversationId) return // already shown → no-op
     Stores.SplitView.openConversationInWorkspace(conversationId, 'auto')
   }, [conversationId])
+
+  // Workspace → URL (FB-19). The MISSING second direction: opening a pane via the
+  // Split button / an edge-drop / a picker, OR clicking a different pane to focus
+  // it, changes the focused conversation but flows through `openPane`/`focusPane`
+  // — neither of which navigates. Only the sidebar-open hook navigated, so the URL
+  // got stuck on the FIRST conversation. That stale URL is why "open in new tab"
+  // reopened the already-showing conversation ("the current rendering one") instead
+  // of the focused one. Keep the URL in lockstep with the focused pane here:
+  // `replace` so a focus change doesn't spam history, and the equality guard makes
+  // it a strict no-op when the URL already matches (so it can never ping-pong with
+  // the URL→workspace reconcile above). Deps are ONLY [focusedConvId, panes.length]
+  // — NOT conversationId — so an external URL change (deep link) is handled by the
+  // reconcile above rather than fought by this effect.
+  useEffect(() => {
+    if (panes.length < 2) return // single-pane: the URL already drives the view
+    if (!focusedConvId || focusedConvId === conversationId) return
+    navigate(`/chat/${focusedConvId}`, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedConvId, panes.length])
 
   if (panes.length >= 2) return <SplitChatView />
   return <ConversationPane />
@@ -127,7 +151,11 @@ export function ConversationPane() {
   // left inset (shared `useHeaderLeftInset` — web 48/12, macOS-desktop 118) so its
   // content clears the fixed sidebar-collapse toggle + the macOS traffic lights.
   const headerLeftInset = useHeaderLeftInset()
-  const isLeftmostPane = !!pane && Stores.SplitView.panes[0]?.paneId === pane.paneId
+  // Read `panes` UNCONDITIONALLY (reactive) then derive — never behind `&&`, so the
+  // reactive-proxy hook it triggers isn't conditional (Rules of Hooks; the file's
+  // convention is `.$` snapshots for hook-free reads, reactive reads only at top level).
+  const { panes: splitViewPanes } = Stores.SplitView
+  const isLeftmostPane = !!pane && splitViewPanes[0]?.paneId === pane.paneId
   // Per-pane edge-directional drop (ITEM-57 single-pane + ITEM-70 split): a
   // conversation dragged over a pane's chat column highlights the left/center/
   // right third. SINGLE-pane: left/right create the split ([dropped|current] /

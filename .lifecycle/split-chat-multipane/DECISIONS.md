@@ -718,3 +718,20 @@ single-pane edge gesture didn't carry into the split. Edge-directional is the mo
 consistent: one gesture + one hint overlay in both single-pane and split, and it
 generalizes the single-pane case (single-pane = the N=1 case of "insert before/after/
 replace this pane").
+
+### DEC-73: While a split is open, what does the address bar (URL) reflect (ITEM-72 / FB-19)?
+**Resolution:** the URL ALWAYS mirrors the FOCUSED pane's conversation. Any focus change
+— opening a pane (Split button / edge-drop / picker) which focuses the new pane, or
+clicking an existing pane to focus it — `navigate(/chat/<focusedConv>, {replace:true})`s
+the URL to match. `replace` (not push) so focus changes don't pollute browser
+back/forward history. Guard: strict no-op when the URL already equals the focused
+conversation, and the effect's deps are `[focusedConvId, panes.length]` only (NOT
+`conversationId`) so an EXTERNAL url change (deep link / back-forward) is handled solely
+by the existing URL→workspace reconcile (DEC/ITEM-25) and the two directions never
+ping-pong. Single-pane is unchanged (the route param already drives the one pane).
+**Basis:** user — the human diagnosed the exact cause ("when we open in new pane, the url
+does not change; when open in new tab, the next tab can be the current rendering one").
+This completes the URL↔workspace contract the ITEM-25 comment already ASSERTED ("the URL
+always tracks the focused pane") but only half-implemented (only the sidebar-open hook
+navigated). `replace` matches how the existing sidebar-open + close-pane hooks already
+navigate within the workspace. Verified live before writing the covering spec.
