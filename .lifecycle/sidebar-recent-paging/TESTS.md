@@ -16,8 +16,10 @@ Tiers: `unit` = vitest store test; `e2e` = Playwright. No backend change → no
 - **TEST-7** (tier: e2e) [covers: ITEM-3, ITEM-6, ITEM-7] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: scrolling the sidebar list downward reveals OLDER conversations not initially present (a title from page 2/3 becomes visible) — loading happens on scroll WITHOUT any manual button click; the `chat-recent-loading-more` indicator appears during a fetch.
 - **TEST-8** (tier: e2e) [covers: ITEM-3, ITEM-7] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: scrolling to the very bottom reaches the OLDEST seeded conversation (all pages loaded) and STOPS — the loading indicator is gone and further scroll triggers no more fetches (end-of-list, `recentHasMore` false).
 - **TEST-9** (tier: e2e) [covers: ITEM-5, ITEM-6] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: after scrolling past page 1, creating a new conversation makes it appear at the TOP of the sidebar list while a previously-loaded older row still resolves (the accumulated list is not reset to 20).
+- **TEST-14** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: deleting the last loaded row while the server still has more (`recentHasMore`) auto-refills page 1 (the widget's empty render has no virtual rows to trigger auto-load), so the sidebar doesn't strand on "no conversations".
+- **TEST-14b** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: deleting the last loaded row when nothing more exists (`!recentHasMore`) does NOT refetch (stays correctly empty).
 - **TEST-5c** (tier: unit) [covers: ITEM-5] file: `src-app/ui/src/modules/chat/stores/ChatHistory.store.test.ts` — asserts: `syncRecentFront()` re-anchors `recentPage` to the grown length after a full-page cross-device prepend, so the next `loadMoreRecent()` fetches the correct older page and paging keeps progressing (does not dead-end on an all-overlap page).
-- **TEST-13** (tier: e2e) [covers: ITEM-3, ITEM-6] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: with every next-page request forced to 500, repeated scroll-to-bottom does NOT hammer the API — the number of failed page fetches stays bounded (≤5) and the list keeps showing page 1 (the `!recentError` auto-load failure gate).
+- **TEST-13** (tier: e2e) [covers: ITEM-3, ITEM-6, ITEM-7] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: with every next-page request forced to 500, repeated scroll-to-bottom does NOT hammer the API — failed page fetches stay bounded (≤5) and the list keeps page 1 (the `!recentError` auto-load gate); then a visible `chat-recent-loadmore-error` + Retry appears, and clicking Retry (with the route restored) resumes paging (a page-2 row appears).
 - **TEST-10** (tier: e2e) [covers: ITEM-9] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: a virtual row is faithful to the Menu row — the currently-open conversation row carries `aria-current="page"`, and hovering a row reveals its `chat-recent-row-actions-btn-<id>` kebab whose Delete removes the row (row-actions still work under virtualization).
 - **TEST-11** (tier: e2e) [covers: ITEM-6, ITEM-9] file: `src-app/ui/tests/e2e/chat/sidebar-recent-infinite-scroll.spec.ts` — asserts: VIRTUALIZATION windowing — after scrolling all 45 rows in so the oldest is visible, the NEWEST (top) row is UNMOUNTED (count 0) and the DOM never holds all 45 at once. A non-virtualized list would keep the top row mounted; this off-screen-unmount is the decisive proof.
 - **TEST-12** (tier: e2e) [covers: ITEM-8] file: `src-app/ui/tests/e2e/visual/*` (gallery, via `gate:ui`/`runtime-health`) — asserts: the new seeded widget surfaces "Recent chats — loaded (many, has more)" and "Recent chats — loading more" render with zero runtime HIGH findings (no console error/exception/failed request/AA-contrast) at desktop and narrow (390px) viewport. (Run as part of `npm run gate:ui` in phase 8; it is the browser-verify harness per A6/A7.)
@@ -28,9 +30,9 @@ Tiers: `unit` = vitest store test; `e2e` = Playwright. No backend change → no
 - ITEM-2 → TEST-1, TEST-3b, TEST-3d, TEST-6
 - ITEM-3 → TEST-2, TEST-3, TEST-3b, TEST-3c, TEST-7, TEST-8, TEST-13
 - ITEM-4 → TEST-4
-- ITEM-5 → TEST-5, TEST-5b, TEST-5c, TEST-9
+- ITEM-5 → TEST-5, TEST-5b, TEST-5c, TEST-9, TEST-14, TEST-14b
 - ITEM-6 → TEST-6, TEST-7, TEST-9, TEST-11, TEST-13
-- ITEM-7 → TEST-7, TEST-8
+- ITEM-7 → TEST-7, TEST-8, TEST-13
 - ITEM-8 → TEST-12
 - ITEM-9 → TEST-10, TEST-11
 

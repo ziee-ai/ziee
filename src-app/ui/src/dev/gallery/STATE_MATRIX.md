@@ -1295,15 +1295,15 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `atEnd` | 92 |
-| empty | `recentError && recentConversations.length === 0` | 136 |
-| branch | `!recentInitialized` | 153 |
-| empty | `recentConversations.length === 0` | 164 |
-| branch | `!c` | 210 |
-| branch | `active?.closest('[role="menu"]')` | 239 |
-| branch | `recentLoadingMore` | 255 |
-| overlay | `<Dropdown open>` | 360 |
-| branch | `!open && keepMenuOpen` | 367 |
+| empty | `recentError && recentConversations.length === 0` | 134 |
+| branch | `!recentInitialized` | 151 |
+| empty | `recentConversations.length === 0` | 162 |
+| branch | `!c` | 213 |
+| branch | `active?.closest('[role="menu"]')` | 242 |
+| branch | `recentLoadingMore` | 258 |
+| branch | `recentError && !recentLoadingMore && recentConversations.length > 0` | 273 |
+| overlay | `<Dropdown open>` | 384 |
+| branch | `!open && keepMenuOpen` | 391 |
 
 ### `modules/citations/components/CitationCard`
 

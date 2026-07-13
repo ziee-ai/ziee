@@ -226,10 +226,21 @@ export const ChatHistory = defineStore('ChatHistory', {
       }
     }
 
+    // After a delete drains the loaded sidebar list to empty while the server
+    // still has rows, reload page 1 — the empty render has no virtual rows, so
+    // the auto-load effect can't self-heal.
+    const refillRecentIfEmptied = async () => {
+      const s = get()
+      if (s.recentConversations.length === 0 && s.recentHasMore) {
+        await loadRecentConversations(1)
+      }
+    }
+
     return {
       loadConversations,
       loadRecentConversations,
       syncRecentFront,
+      refillRecentIfEmptied,
       loadMoreRecent: async () => {
         const state = get()
         if (!state.recentHasMore || state.recentLoadingMore || state.recentLoading)
@@ -288,6 +299,10 @@ export const ChatHistory = defineStore('ChatHistory', {
             }
             draft.deleting = false
           })
+          // If the delete emptied the loaded sidebar list while more exist
+          // server-side, refill page 1 — the widget renders the empty state with
+          // NO virtual rows, so the last-item auto-load effect can never fire.
+          await refillRecentIfEmptied()
           // Broadcast deletion so other widgets drop the row (closes audit F5).
           // Import-late to avoid a cycle through `@/core/stores`.
           const { Stores } = await import('@/core/stores')
@@ -329,6 +344,7 @@ export const ChatHistory = defineStore('ChatHistory', {
             draft.selectedIds.clear()
             draft.deleting = false
           })
+          await refillRecentIfEmptied()
         } catch (error) {
           console.error('[ChatHistory] Failed to bulk delete conversations:', error)
           set({ error: 'Failed to delete selected conversations', deleting: false })
@@ -441,6 +457,8 @@ export const ChatHistory = defineStore('ChatHistory', {
             )
           }
         })
+        // Cross-device delete that emptied the loaded list → refill (see above).
+        void actions.refillRecentIfEmptied()
       } else {
         // Refetch the history list (page 1) and MERGE-prepend the sidebar's new
         // rows (preserving its accumulated infinite-scroll pages).

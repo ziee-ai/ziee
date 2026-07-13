@@ -308,6 +308,41 @@ describe('ChatHistory recent paging (TEST-1..5)', () => {
     expect(s.recentTotal).toBe(46)
   })
 
+  it('TEST-14: deleting the last loaded rows while more exist refills page 1', async () => {
+    // One loaded row, but the server has many more (recentHasMore=true).
+    useChatHistoryStore.setState({
+      recentConversations: [convo({ id: 'only' })],
+      recentInitialized: true,
+      recentTotal: 45,
+      recentHasMore: true,
+      recentPage: 1,
+    })
+    apiMock.Conversation.delete.mockResolvedValueOnce({})
+    // The refill's page-1 reload returns the next batch.
+    apiMock.Conversation.list.mockResolvedValueOnce(page(1, 20, 44))
+
+    await store().deleteConversation('only')
+
+    // The sidebar did NOT strand on empty — it refilled from the server.
+    expect(apiMock.Conversation.list).toHaveBeenCalledWith({ page: 1, limit: 20 })
+    expect(store().recentConversations).toHaveLength(20)
+    expect(store().recentHasMore).toBe(true)
+  })
+
+  it('TEST-14b: deleting the last loaded rows when NONE remain does NOT refetch', async () => {
+    useChatHistoryStore.setState({
+      recentConversations: [convo({ id: 'only' })],
+      recentInitialized: true,
+      recentTotal: 1,
+      recentHasMore: false, // fully loaded — nothing more server-side
+      recentPage: 0,
+    })
+    apiMock.Conversation.delete.mockResolvedValueOnce({})
+    await store().deleteConversation('only')
+    expect(apiMock.Conversation.list).not.toHaveBeenCalled()
+    expect(store().recentConversations).toHaveLength(0)
+  })
+
   it('TEST-5c: syncRecentFront re-anchors recentPage so paging keeps reaching older rows', async () => {
     // One page loaded (recentPage=1), then a big cross-device burst prepends a
     // full page of new rows.

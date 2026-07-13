@@ -232,6 +232,16 @@ test.describe('Sidebar recent chats — virtualized infinite scroll', () => {
       page.getByTestId(ROW).filter({ hasText: pad(N - 1) }),
     ).toBeVisible()
     expect(pageFetches).toBeLessThanOrEqual(5)
+
+    // A visible retry affordance is shown (recoverable even if the page fits the
+    // viewport and can't be scrolled). Let the next page succeed, click Retry,
+    // and confirm paging resumes.
+    await expect(byTestId(page, 'chat-recent-loadmore-error')).toBeVisible()
+    await page.unroute('**/api/conversations?**')
+    await byTestId(page, 'chat-recent-loadmore-retry').click()
+    await expect(
+      page.getByTestId(ROW).filter({ hasText: pad(N - 21) }),
+    ).toBeVisible({ timeout: 10000 })
   })
 
   test('TEST-10: virtual rows keep menu-row fidelity (aria-current + row actions)', async ({

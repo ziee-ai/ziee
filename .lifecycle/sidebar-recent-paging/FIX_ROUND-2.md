@@ -30,4 +30,5 @@ round-1 fixes. Both fixed:
 - `gate:ui --skip-visual`: PASS (exit 0) — runtime-health boot canary green for the
   new loaded / loading-more / error seeds.
 
-**New confirmed findings:** 0 (verified by the round-2 re-audit — see below)
+**New confirmed findings:** 3 (the round-2 re-audit surfaced three more delete/
+failure edge cases — see FIX_ROUND-3)

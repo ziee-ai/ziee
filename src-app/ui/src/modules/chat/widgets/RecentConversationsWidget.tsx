@@ -88,26 +88,24 @@ export function RecentConversationsWidget() {
   const lastIndex =
     virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1
   useEffect(() => {
-    const atEnd = lastIndex >= 0 && lastIndex >= recentConversations.length - 1
-    if (atEnd) {
-      if (recentHasMore && !recentLoadingMore && !recentError) {
-        void Stores.ChatHistory.loadMoreRecent()
-      }
-      return
+    if (
+      lastIndex >= 0 &&
+      lastIndex >= recentConversations.length - 1 &&
+      recentHasMore &&
+      !recentLoadingMore &&
+      !recentError
+    ) {
+      void Stores.ChatHistory.loadMoreRecent()
     }
-    // Scrolled away from a failed bottom (non-empty list): clear the load-more
-    // error so returning to the end retries once. The first-load error (empty
-    // list) is left intact — its retry is the ErrorState button below.
-    if (recentError && recentConversations.length > 0) {
-      Stores.ChatHistory.clearRecentError()
-    }
-  }, [
-    lastIndex,
-    recentConversations.length,
-    recentHasMore,
-    recentLoadingMore,
-    recentError,
-  ])
+  }, [lastIndex, recentConversations.length, recentHasMore, recentLoadingMore, recentError])
+
+  // Explicit retry for a FAILED load-more (list already populated). A visible
+  // affordance — NOT scroll-to-clear — because a loaded page that fits the
+  // viewport can't be scrolled, which would otherwise strand paging silently.
+  const retryLoadMore = () => {
+    Stores.ChatHistory.clearRecentError()
+    void Stores.ChatHistory.loadMoreRecent()
+  }
 
   // The currently-open conversation (for the `aria-current` selected row).
   // Memoized so the virtualizer's per-scroll-frame re-renders don't re-run this
@@ -185,7 +183,12 @@ export function RecentConversationsWidget() {
   // with where a click actually navigates.
   const hrefFor = (c: ConversationResponse) =>
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
-  const setSize = recentTotal || recentConversations.length
+  // aria-setsize: once fully loaded, the exact rendered count is authoritative;
+  // while more remain, recentTotal is the best (approximate) estimate. Never
+  // report a set size smaller than what's rendered.
+  const setSize = recentHasMore
+    ? Math.max(recentTotal, recentConversations.length)
+    : recentConversations.length
 
   return (
     <div className="flex flex-col h-full min-h-0 text-foreground">
@@ -265,6 +268,27 @@ export function RecentConversationsWidget() {
               label="Loading more conversations"
               description="Loading more…"
             />
+          </div>
+        )}
+        {recentError && !recentLoadingMore && recentConversations.length > 0 && (
+          // A FAILED load-more (the list is populated, so the empty-state
+          // ErrorState above doesn't apply): show an inline retry so paging is
+          // recoverable even when the loaded page fits the viewport (no scroll).
+          <div
+            data-testid="chat-recent-loadmore-error"
+            className="flex justify-center items-center gap-2 py-3"
+          >
+            <Text type="secondary" className="text-xs">
+              Couldn't load more.
+            </Text>
+            <Button
+              data-testid="chat-recent-loadmore-retry"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={retryLoadMore}
+            >
+              Retry
+            </Button>
           </div>
         )}
       </DivScrollY>
