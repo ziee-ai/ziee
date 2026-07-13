@@ -346,9 +346,12 @@ toggle unclickable). Fixed by sharing HeaderBarContainer's conventions. All gree
   migration, and the `isSameTabReload` gate table (reload→true; navigate/back_forward/
   prerender/unknown/null→false). Also confirmed the split IS written to sessionStorage via
   a live dev-server probe (`saved-in-sessionStorage=YES`).
-- **TEST-111**: PASS — e2e (`drag-flow-*.log`, `1 passed (45.8s)`): the LITERAL user flow —
-  build `[A|B]` by DRAGGING convB onto the pane's right third (real HTML5 drop handler, not
-  the split-button+picker shortcut); reload the origin tab → split restored (per-tab reload); click
+- **TEST-111**: PASS — e2e (`noreload-*.log`, `2 passed (31.1s)`): TWO tests, both building
+  `[A|B]` by DRAGGING convB onto the pane's right third (real HTML5 drop handler). (1) THE BUG,
+  NO RELOAD — drag → immediately pop pane B out via ⤢ → new tab single-pane B, origin → A.
+  (2) per-tab persistence (separate test) — a same-tab reload restores the split. The reload
+  was REMOVED from the bug repro (it belonged to a different feature and could mask the
+  drag→immediate-pop-out timing — human caught "why did you reload?"). Legacy line below:
   pane B's ⤢ → `window.open('/chat/B')` (real sessionStorage copy of the saved split) →
   the new tab shows ONLY convB single-pane (`split-chat-view`=0, `chat-pane-1`=0, composer
   + title "Bravo"); origin collapses to single-pane A. First proven standalone (`legA-real

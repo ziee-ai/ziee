@@ -67,47 +67,45 @@ test.describe('Split chat — splits are per-tab; a new tab does not inherit the
     // appears with the dropped conversation) — a no-op drop would leave single-pane.
   }
 
-  test('new tab shows one conversation even when it inherits the split blob; reload still restores', async ({
-    page,
-    context,
-    testInfra,
-  }) => {
+  // Shared setup: log in, create A + B, and build the [A|B] split by DRAGGING convB
+  // onto the right third of the single pane (the literal "drag one onto the right
+  // pane" flow). On return the per-tab blob has flushed and is asserted saved.
+  const dragBuildSplit = async (
+    page: import('@playwright/test').Page,
+    testInfra: { baseURL: string; apiURL: string },
+  ) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const convA = await mkConv(page, apiURL, token, 'Tab Alpha')
     const convB = await mkConv(page, apiURL, token, 'Tab Bravo')
-
-    // Tab 1: open A single-pane, then DRAG convB onto the RIGHT third of the pane to
-    // form [A|B] — the LITERAL user flow ("drag one onto the right pane").
     await page.goto(`${baseURL}/chat/${convA}`)
     await page.waitForLoadState('load')
     await dragConvOntoRightThird(page, convB)
     await expect(byTestId(page, 'chat-pane-1')).toBeVisible({ timeout: 15000 })
     await expect(byTestId(page, 'chat-pane-0').getByTestId('conversation-title')).toContainText('Alpha')
     await expect(byTestId(page, 'chat-pane-1').getByTestId('conversation-title')).toContainText('Bravo', { timeout: 15000 })
-    // The per-tab blob is written once panes>=2 (250ms debounce) — settle first.
-    await page.waitForTimeout(600)
-
-    // Confirm the split IS persisted to sessionStorage (per-tab).
-    const savedKey = await page.evaluate(() =>
-      Object.keys(sessionStorage).find((k) => k.startsWith('ziee-split-workspace')) ?? null,
+    await page.waitForTimeout(600) // the per-tab blob is debounced (250ms) — settle
+    // Assert the split IS saved, so the pop-out below genuinely copies a split-bearing
+    // sessionStorage (else the isolation would pass trivially).
+    const saved = await page.evaluate(() =>
+      Object.keys(sessionStorage).some((k) => k.startsWith('ziee-split-workspace')),
     )
-    expect(savedKey, 'the split is saved to sessionStorage (per-tab)').not.toBeNull()
+    expect(saved, 'the split is saved to sessionStorage (per-tab)').toBe(true)
+    return { baseURL, convA, convB }
+  }
 
-    // (C) SAME-TAB RELOAD restores that tab's split (from its sessionStorage). Done
-    // BEFORE the pop-out below, which moves pane B out of this tab.
-    await page.reload()
-    await page.waitForLoadState('load')
-    await expect(byTestId(page, 'chat-pane-0')).toBeVisible({ timeout: 15000 })
-    await expect(byTestId(page, 'chat-pane-1')).toBeVisible()
-    await page.waitForTimeout(600) // re-save the restored split before the pop-out copies it
-
-    // (A) THE EXACT USER SCENARIO: with the [A|B] split open, click pane B's ⤢
-    // "open in new tab". On web that is `window.open('/chat/B')`, whose sessionStorage
-    // is a live COPY of this tab's — split blob included. The new tab MUST show ONLY
-    // convB, single-pane: the reload gate refuses to restore a split on a fresh
-    // navigation, so the copied split can never leak into the new tab.
+  // THE LITERAL BUG (NO reload — exactly the reported repro): drag to split, then pop
+  // the right pane out to a new tab → that tab must show ONLY the dropped conversation,
+  // never the inherited split.
+  test('drag to split, then pop the pane out to a new tab → the new tab shows only that conversation', async ({
+    page,
+    context,
+    testInfra,
+  }) => {
+    const { convB } = await dragBuildSplit(page, testInfra)
+    // ⤢ pop out pane B → `window.open('/chat/B')` copies THIS tab's sessionStorage
+    // (split blob included). The reload gate drops the copied split on the fresh nav.
     const [popup] = await Promise.all([
       context.waitForEvent('page'),
       byTestId(page, 'chat-pane-1').getByTestId('chat-open-in-new-window').click(),
@@ -118,8 +116,20 @@ test.describe('Split chat — splits are per-tab; a new tab does not inherit the
     await expect(popup.getByTestId('split-chat-view')).toHaveCount(0)
     await expect(popup.getByTestId('chat-pane-1')).toHaveCount(0)
     await expect(popup.getByTestId('conversation-title')).toContainText('Bravo', { timeout: 15000 })
-
     // ...and the ORIGINAL tab collapsed to single-pane A (pane B moved out).
     await expect(byTestId(page, 'chat-pane-1')).toHaveCount(0, { timeout: 15000 })
+  })
+
+  // SEPARATE per-tab-persistence concern (NOT part of the bug repro): a same-tab
+  // reload restores that tab's own split.
+  test("a same-tab reload restores that tab's split (per-tab persistence)", async ({
+    page,
+    testInfra,
+  }) => {
+    await dragBuildSplit(page, testInfra)
+    await page.reload()
+    await page.waitForLoadState('load')
+    await expect(byTestId(page, 'chat-pane-0')).toBeVisible({ timeout: 15000 })
+    await expect(byTestId(page, 'chat-pane-1')).toBeVisible()
   })
 })
