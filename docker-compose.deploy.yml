@@ -35,3 +35,21 @@ services:
     environment:
       # Must equal ZIEE_DB_PASSWORD (the app authenticates with it).
       POSTGRES_PASSWORD: "${ZIEE_DB_PASSWORD:?set ZIEE_DB_PASSWORD}"
+
+# Back ziee's named volumes with host directories under /data (the deploy disk)
+# instead of Docker's default /var/lib/docker/volumes. The device paths MUST
+# exist before `up` — the deploy step does `mkdir -p ${ZIEE_DATA_ROOT}/{pg-data,ziee-data}`.
+# ${ZIEE_DATA_ROOT} defaults to /data/ziee.
+volumes:
+  pg-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${ZIEE_DATA_ROOT:-/data/ziee}/pg-data
+  ziee-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${ZIEE_DATA_ROOT:-/data/ziee}/ziee-data
