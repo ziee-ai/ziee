@@ -1,5 +1,16 @@
 # TEST_RESULTS — showcase-modular-seed (Phase 8)
 
+> **Re-verified on the MERGE with origin/main tip f60683384** (56 commits synced).
+> Main added 5 new seeded surfaces (`seeded-recent-convos-{loaded,error,loading-more}`,
+> `seeded-conversation-list-long{,-narrow}`) to the central `seededSurfaces.tsx` this
+> branch aggregatorized + renamed `ChatHistory` fields — all re-homed into
+> `chat/gallery.tsx` (baseline now 163). Both workspaces' `npm run check` PASS; all
+> generated files regenerated; `gate:ui` runtime canary **181/181 (ui) + 47/47
+> (desktop)** runtime-clean; seed-parity + newly-seeded + gap e2e all green; B6 strip
+> test passes (seed gate reads the permanent `GALLERY_SEED_EXCEPTIONS.md`, not
+> `.lifecycle`). Details below reflect the merged tree.
+
+
 Diff touches both frontend workspaces (`src-app/ui`, `src-app/desktop/ui`), no
 backend → the frontend gate chain applies to BOTH. All Phase-3 TEST-IDs + the
 required `npm run check` + boot/runtime canary lines below.
@@ -35,7 +46,7 @@ required `npm run check` + boot/runtime canary lines below.
 ## Required gate lines
 - `npm run check (ui): PASS`
 - `npm run check (desktop/ui): PASS`
-- `gate:ui (ui): PASS` — `gate:ui --skip-visual` = tsc + lint + runtime-health, **176/176 surfaces runtime-clean**.
+- `gate:ui (ui): PASS` — `gate:ui --skip-visual` = tsc + lint + runtime-health, **181/181 surfaces runtime-clean** (post-merge; 176 + 5 new chat surfaces).
 - `gate:ui (desktop/ui): PASS` — **47/47 surfaces runtime-clean**.
 
 ## Pre-existing failures explicitly NOT caused by this feature (evidence)
