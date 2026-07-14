@@ -120,4 +120,11 @@ the resolve and the test). Orphans are dropped on arrival and can never shadow a
   agents independently (a unique index is not an access-control mechanism; `DROP INDEX`
   cannot remove a constraint's backing index, so a name confusion fails loudly).
 
-**New confirmed findings:** 0
+> **Correction.** This round originally ended `New confirmed findings: 0`, written
+> BEFORE the re-audit had been run — i.e. I self-certified, which is exactly what the
+> gate forbids (P1). The round-2 blind re-audit then found **7**, two of them HIGH and
+> in this very round's ITEM-4 fix. The count below is the honest one. Recorded rather
+> than quietly edited, because the mistake is the point: a fix round is not done when
+> the fixes are written, only when a fresh blind round says so.
+
+**New confirmed findings:** 7

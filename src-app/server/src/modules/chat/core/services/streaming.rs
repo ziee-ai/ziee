@@ -473,10 +473,11 @@ impl StreamingService {
                         conversation_id = %conversation_id,
                         message_id = %assistant_message_id,
                         iteration,
-                        "dropped {} duplicate tool_result block(s) for tool_use_id(s) {:?} — \
-                         a second result for one tool_use is rejected by the provider. The \
-                         surviving (first) result is the one paired with its tool_use; this \
-                         indicates a duplicate SOURCE that should be fixed at its origin.",
+                        "dropped {} duplicate tool_result block(s) for tool_use_id(s) {:?} \
+                         within one tool batch — a second result for one tool_use is \
+                         rejected by the provider. The surviving (first) result is the one \
+                         paired with its tool_use; this indicates a duplicate SOURCE that \
+                         should be fixed at its origin.",
                         dropped_dupes.len(),
                         dropped_dupes,
                     );
@@ -1852,10 +1853,11 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
     messages
 }
 
-/// Enforce the provider invariant that EVERY `tool_use_id` is answered by
-/// EXACTLY ONE `tool_result` across the whole request. Anthropic rejects a
-/// second one outright ("each tool_use must have a single result. Found
-/// multiple `tool_result` blocks with id: …"), killing the turn.
+/// Enforce the provider invariant that every `tool_use_id` is answered by EXACTLY
+/// ONE `tool_result` **within its tool batch** (see SCOPE below — batch-wide, NOT
+/// request-wide, and deliberately so). Anthropic rejects a second one outright
+/// ("each tool_use must have a single result. Found multiple `tool_result` blocks
+/// with id: …"), killing the turn.
 ///
 /// `group_assistant_blocks` already guarantees this WITHIN one stored assistant
 /// message, but it cannot see blocks appended AFTER it returns — a `before_llm_call`
@@ -2595,14 +2597,19 @@ mod tests {
         }
     }
 
-    /// TEST-18: WHY every claim path must still emit a result. This pins the hazard
-    /// that makes a silent skip unrecoverable rather than merely degraded: for a batch
-    /// where NOTHING ran, the trailing branch emits a BARE Assistant turn with no Tool
-    /// message — correct for awaiting-approval (its result is still coming), fatal for
-    /// a tool that will never produce one. The tool_use is then unpaired on EVERY
-    /// subsequent request and the provider rejects all of them (the branch is bricked).
-    /// So `execute_approved_tools_sync` must push an is_error result on the
-    /// AlreadyClaimed / Failed paths, never skip silently.
+    /// TEST-18 — a CHARACTERIZATION test: it pins PRE-EXISTING behavior (it passes on
+    /// base too, by design) because that behavior is the load-bearing premise for a
+    /// decision elsewhere in this diff, and a future edit that "helpfully" synthesized
+    /// a result here would silently invalidate it.
+    ///
+    /// For a batch where NOTHING ran, the trailing branch emits a BARE Assistant turn
+    /// with no Tool message — correct for awaiting-approval (its result is still
+    /// coming), fatal for a tool that will never produce one: the tool_use is then
+    /// unpaired on EVERY subsequent request and the provider rejects all of them (the
+    /// branch is bricked). THAT is why `execute_approved_tools_sync`'s AlreadyClaimed
+    /// and Failed paths must emit an is_error result rather than skip silently or bail
+    /// — a blind-audit round found exactly that regression in this branch's own
+    /// earlier attempt.
     #[test]
     fn group_assistant_blocks_resultless_batch_emits_a_bare_unpaired_assistant_turn() {
         let msgs = group_assistant_blocks(vec![tool_use("A", "srv__a")]);

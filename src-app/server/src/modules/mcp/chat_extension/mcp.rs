@@ -332,16 +332,20 @@ fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSe
 }
 
 /// What a claim attempt (the DELETE of the approval row) authorizes.
+///
+/// Only `Won` authorizes EXECUTION. Both other outcomes still owe the tool_use an
+/// answer: the call site emits an `is_error` result and continues rather than
+/// skipping or bailing, because a tool_use left with no result at all is
+/// unrecoverable (see the call site's comment).
 #[derive(Debug, PartialEq, Eq)]
 enum ClaimOutcome {
     /// We deleted the row — we own this execution.
     Won,
-    /// Zero rows deleted: a concurrent pass already claimed it and is producing the
-    /// result. Skip WITHOUT emitting anything — an error result here would be the
-    /// second answer for this tool_use.
+    /// Zero rows deleted: a concurrent pass already claimed it and is executing it.
+    /// Do NOT run it again.
     AlreadyClaimed,
-    /// The DELETE itself failed. We cannot tell whether the row survives, so we can
-    /// neither safely execute nor safely skip — fail the turn loudly.
+    /// The DELETE itself failed, so we cannot tell whether the row survives. Do NOT
+    /// execute — a double-run of a side-effecting tool is the worse outcome.
     Failed,
 }
 
@@ -788,10 +792,20 @@ impl McpChatExtension {
             // their rows gone, their results never persisted. Trading a rare
             // duplicate for a permanently unusable conversation is a bad trade.
             //
-            // So: the error result keeps the request VALID, and the (already-persisted
-            // or concurrently-persisted) real result is deduped keep-first at
-            // assembly. Exactly-once execution still holds for the normal path —
-            // Ok(true) is the only branch that runs the tool.
+            // So: the error result keeps the request VALID. Exactly-once execution
+            // still holds where it matters — Ok(true) is the only branch that runs the
+            // tool.
+            //
+            // Known cost, accepted deliberately: on AlreadyClaimed this pass persists
+            // its error result while the winner is still executing, so the error takes
+            // the LOWER sequence_order and assembly's keep-first makes it
+            // authoritative — the model is told the tool was not run here even though
+            // the winner ran it, and the winner's output is not what it reads. That is
+            // the right trade: the alternative (emit nothing) leaves the tool_use
+            // unpaired, which is not a worse ANSWER but a dead conversation. The copy
+            // therefore tells the model to ask the user to retry rather than implying
+            // the tool never ran anywhere. Reaching this at all needs two concurrent
+            // passes over one branch.
             let claim = Repos
                 .chat
                 .mcp
