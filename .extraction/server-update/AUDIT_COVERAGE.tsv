@@ -1,0 +1,6 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-server-update/src/types.rs (new)	UpdateStatusResponse moved byte-for-byte	equivalence(server-update-01),canonical-equality(server-update-03),boundary(server-update-07)
+H2	sdk crates/ziee-server-update/src/permissions.rs (new)	ServerUpdateRead + 1 test; ONLY edit the two PermissionCheck/List imports	equivalence(server-update-01),api-surface(server-update-04),test-fidelity(server-update-08)
+H3	sdk crates/ziee-server-update/{lib.rs,Cargo.toml} (new)	pub mod permissions/types; DB-free dep set	cross-crate-resolution(server-update-06),boundary(server-update-07)
+H4	src-app server/src/modules/server_update/mod.rs (edit)	checker/handlers/routes/registration retained; pub use ziee_server_update::{permissions,types}	equivalence(server-update-02),shim-transparency(server-update-05),cross-crate-resolution(server-update-06)
+H5	src-app server/Cargo.toml (edit)	add ziee-server-update path dep	cross-crate-resolution(server-update-06),desktop-parity(server-update-09)

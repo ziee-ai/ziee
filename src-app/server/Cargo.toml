@@ -44,6 +44,17 @@ ziee-auth = { path = "../../sdk/crates/ziee-auth" }
 # `control_mcp` module re-exports `catalog`/`policy`/`tools` from here and keeps
 # the app-side handlers/routes/repository/chat_extension (decisions N1/N5).
 ziee-control-mcp = { path = "../../sdk/crates/ziee-control-mcp" }
+# Infra chunks (health/hardware/server-update/notification): four clean,
+# domain-agnostic modules lifted into their own SDK crates. ziee keeps each
+# module's `AppModule`/`MODULE_ENTRIES` registration + the aide/axum boundary
+# (handlers/routes that bind ziee's concrete permission resolver + `module_api`)
+# and re-exports the moved DB-free cores as equivalence-preserving shims.
+# `ziee-notification` additionally carries the module's own migrations (globbed
+# into the app's merged set from `sdk/crates/*/migrations/`).
+ziee-health = { path = "../../sdk/crates/ziee-health" }
+ziee-hardware = { path = "../../sdk/crates/ziee-hardware" }
+ziee-server-update = { path = "../../sdk/crates/ziee-server-update" }
+ziee-notification = { path = "../../sdk/crates/ziee-notification" }
 
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"
@@ -159,12 +170,11 @@ calamine = "0.31.0"
 # (DOCX/XLSX/PPTX). See modules/file/utils/zipbomb. Closes 05-file F-05.
 zip = "6.0.0"
 
-# Hardware monitoring
+# Hardware monitoring (the retained aide/axum handlers still read sysinfo for
+# static CPU/mem info). The GPU-detection libs (nvml/opencl/ash/wgpu-hal) moved
+# with `detection.rs` into `ziee-hardware`, behind ITS `gpu-detect` feature,
+# which ziee's own `gpu-detect` feature forwards to (see [features] below).
 sysinfo = "0.37.2"
-nvml-wrapper = { version = "0.11.0", optional = true }
-opencl3 = { version = "0.12.0", optional = true }
-ash = { version = "0.38", optional = true }
-wgpu-hal = { version = "27.0.4", optional = true }
 
 # Auth providers
 jsonwebtoken = { version = "10.1.0", features = ["rust_crypto"] }
@@ -209,7 +219,7 @@ path = "tests/mcp/examples/mock_sampling_server.rs"
 # The seccomp policy itself lives in the shared `sandbox-seccomp` crate so
 # the in-VM guest agent applies an identical filter.
 default = ["gpu-detect", "code_sandbox_seccomp"]
-gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]
+gpu-detect = ["ziee-hardware/gpu-detect"]
 code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 
 # Linux-only deps. `libseccomp` is `optional = true` so the feature

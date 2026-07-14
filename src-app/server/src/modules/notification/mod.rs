@@ -17,13 +17,20 @@ use linkme::distributed_slice;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
+// Chunk `notification` moved the DB-free `models` + `permissions` key + the
+// module's migrations into the `ziee-notification` crate (migrations globbed
+// into the app's merged set). `models`/`permissions` are re-exported below as
+// equivalence-preserving shims. The schema-bound `repository` (`query_as!`), the
+// `events` seam (concrete `SyncEntity`), the aide/axum `handlers`/`routes`, the
+// `prune` loop, and this registration stay here.
 pub mod events;
 pub mod handlers;
-pub mod models;
-pub mod permissions;
 pub mod prune;
 pub mod repository;
 pub mod routes;
+
+#[allow(unused_imports)]
+pub use ziee_notification::{models, permissions};
 
 #[distributed_slice(MODULE_ENTRIES)]
 static NOTIFICATION_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {

@@ -1,0 +1,8 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-hardware/src/types.rs (new)	wire types + SSEHardwareUsageEvent; ONLY edit crate::→ziee_core::sse_event_enum!	equivalence(hardware-01),equivalence(hardware-02),canonical-equality(hardware-03)
+H2	sdk crates/ziee-hardware/src/detection.rs (new)	GPU/CPU/mem detection byte-for-byte, gpu-detect-gated + 2 tests	equivalence(hardware-01),feature-parity(hardware-04),security(hardware-07),test-fidelity(hardware-10)
+H3	sdk crates/ziee-hardware/src/monitoring.rs (new)	SSE broadcaster + 10 tests; ONLY edit collect_hardware_usage pub(super)→pub	equivalence(hardware-01),visibility(hardware-05),security(hardware-07),test-fidelity(hardware-10)
+H4	sdk crates/ziee-hardware/src/permissions.rs (new)	HardwareRead/HardwareMonitor; ONLY edit PermissionCheck import	equivalence(hardware-01),boundary(hardware-09),canonical-equality(hardware-03)
+H5	sdk crates/ziee-hardware/{lib.rs,Cargo.toml} (new)	pub mod ×4; deps + gpu-detect feature/optionals + serial_test dev; edition 2024	feature-parity(hardware-04),cross-crate-resolution(hardware-08),build-hygiene(hardware-11),boundary(hardware-09)
+H6	src-app server/src/modules/hardware/mod.rs (edit)	handlers/routes/registration retained; pub use ziee_hardware::{detection,monitoring,permissions,types}	shim-transparency(hardware-06),cross-crate-resolution(hardware-08),desktop-parity(hardware-12)
+H7	src-app server/Cargo.toml (edit)	add ziee-hardware path dep; drop 4 GPU deps; gpu-detect=["ziee-hardware/gpu-detect"]; keep sysinfo	feature-parity(hardware-04),cross-crate-resolution(hardware-08),desktop-parity(hardware-12)

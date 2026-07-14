@@ -1,0 +1,8 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-notification/src/models.rs (new)	Notification/NewNotification/NotificationPage/UnreadCount moved byte-for-byte	equivalence(notification-01),canonical-equality(notification-05),boundary(notification-08)
+H2	sdk crates/ziee-notification/src/permissions.rs (new)	NotificationsRead; ONLY edit PermissionCheck import	equivalence(notification-01),boundary(notification-08),shim-transparency(notification-06)
+H3	sdk crates/ziee-notification/migrations/*.sql (new)	schema + fkeys migrations moved byte-for-byte (checksums/version preserved)	migration-integrity(notification-02),equivalence(notification-03),desktop-parity(notification-10)
+H4	sdk crates/ziee-notification/{lib.rs,Cargo.toml} (new)	pub mod models/permissions; sqlx FromRow (no query!), build-DB-free deps	cross-crate-resolution(notification-07),boundary(notification-08),test-fidelity(notification-09)
+H5	src-app server/src/modules/notification/mod.rs (edit)	repository/events/handlers/prune/routes/registration retained; pub use ziee_notification::{models,permissions}	shim-transparency(notification-06),equivalence(notification-03),equivalence(notification-04)
+H6	src-app server/src/modules/notification/migrations/ (deleted)	migrations dir removed; app globs them from sdk/crates/* (found once)	migration-integrity(notification-02)
+H7	src-app server/Cargo.toml (edit)	add ziee-notification path dep	cross-crate-resolution(notification-07),desktop-parity(notification-10)
