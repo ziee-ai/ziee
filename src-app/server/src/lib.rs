@@ -29,6 +29,14 @@ use std::sync::Arc;
 // Re-export types for desktop/external use
 pub use core::config::{Config, CorsConfig, JwtConfig};
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
+// Chunk BG-3: the desktop-consumer boot path (ziee-desktop's `ServerBoot` impl +
+// `ensure_desktop_admin`) threads the `BootHandle.pool` into repositories rather
+// than reaching the global `Repos`. `AppRepository` is the app-side owner-create
+// domain CRUD (kept app-side by BA); re-exported so the desktop crate can build
+// it from a threaded pool. `UserRepository` (owner read) lives in `ziee-auth` and
+// is consumed via the harness single-user strategy.
+pub use modules::app::AppRepository;
+pub use modules::user::UserRepository;
 // Re-exported so integration tests (which construct repositories directly
 // against the test DB pool) can initialise the same at-rest storage_key
 // that the spawned server process used. Without this, repo.get() in the

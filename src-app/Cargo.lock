@@ -12846,6 +12846,22 @@ dependencies = [
  "url",
  "uuid",
  "ziee",
+ "ziee-desktop-harness",
+]
+
+[[package]]
+name = "ziee-desktop-harness"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "sqlx 0.8.6",
+ "tracing",
+ "uuid",
+ "ziee-auth",
+ "ziee-core",
+ "ziee-identity",
 ]
 
 [[package]]
@@ -12858,6 +12874,7 @@ dependencies = [
  "indexmap 2.14.0",
  "linkme",
  "once_cell",
+ "postgresql_embedded",
  "reqwest 0.12.28",
  "schemars 0.9.0",
  "serde",

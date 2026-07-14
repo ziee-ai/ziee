@@ -5,7 +5,10 @@
 pub mod commands;
 mod handlers;
 mod routes;
+mod server_boot;
 mod state;
+
+pub use server_boot::ZieeServerBoot;
 
 #[cfg(not(debug_assertions))]
 mod static_files;
@@ -15,18 +18,29 @@ pub use state::BackendState;
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use axum::{body::Body, http::Request, response::Response};
+use sqlx::PgPool;
 use std::sync::{Arc, OnceLock};
 use tauri::{App, Manager};
 use ziee::ApiRouter;
+use ziee_desktop_harness::boot::ServerBoot;
 
 /// Global storage for backend config (set during init, used when starting server)
 static BACKEND_CONFIG: OnceLock<ziee::Config> = OnceLock::new();
 static BACKEND_STATE: OnceLock<BackendState> = OnceLock::new();
 static JWT_SERVICE: OnceLock<Arc<ziee::JwtService>> = OnceLock::new();
+/// The server DB pool, stashed from the `ServerBoot` `BootHandle` (Chunk BG-3)
+/// so the `auto_login` Tauri command threads it instead of reaching the global
+/// `ziee::Repos`. D-full's harness-owned command reads the same handle.
+static SERVER_POOL: OnceLock<PgPool> = OnceLock::new();
 
 /// Get the JWT service (for Tauri commands)
 pub fn get_jwt_service() -> Option<&'static Arc<ziee::JwtService>> {
     JWT_SERVICE.get()
+}
+
+/// Get the server DB pool (for Tauri commands) — threaded from the BootHandle.
+pub fn get_server_pool() -> Option<&'static PgPool> {
+    SERVER_POOL.get()
 }
 
 pub struct BackendModule {
@@ -246,77 +260,27 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
         AutoAssignMcpServerHandler::new(),
     ];
 
-    // Clone config so the closure can build a CORS layer that
-    // matches the server's own — `start_server_with_routes` takes
-    // ownership of `config`, so we need our own copy first.
-    let cors_config = config.clone();
+    // Chunk BG-3: the embed-server boundary is the harness `ServerBoot` seam.
+    // `ZieeServerBoot::boot` wraps `start_server_with_routes` + the desktop
+    // route re-layering (CORS + Extension(jwt)) and hands back a `BootHandle`
+    // carrying {addr, pool, jwt}. The desktop-consumer post-boot steps below
+    // thread that handle's pool/jwt instead of re-reaching the `ziee::Repos` /
+    // JWT globals — the de-globalization D-full needs.
+    let boot = ZieeServerBoot::new(config, desktop_routes, handlers);
 
     tauri::async_runtime::spawn(async move {
-        match ziee::start_server_with_routes(
-            config,
-            move |router, jwt| {
-            // Store JWT service for Tauri command access
-            let _ = JWT_SERVICE.set(jwt.clone());
-            tracing::info!("JWT service stored for Tauri commands");
+        match ServerBoot::boot(&boot).await {
+            Ok(handle) => {
+                tracing::info!("Backend server started successfully on {}", handle.addr);
 
-            // Initialize desktop repositories with server's pool
-            // Repos is available here because start_server_with_routes
-            // initializes it before calling this closure
-            let pool = ziee::Repos.pool().clone();
-            crate::core::init_desktop_repositories(pool);
-            tracing::info!("Desktop repositories initialized with server pool");
+                // Stash the JWT service (threaded from the BootHandle, not the
+                // raw route-builder closure) for the `auto_login` Tauri command.
+                let _ = JWT_SERVICE.set(handle.jwt.clone());
+                let _ = SERVER_POOL.set(handle.pool.clone());
+                tracing::info!("JWT service stored for Tauri commands");
 
-            // Re-apply CORS + Extension(jwt) to the merged desktop
-            // routes. `setup.app` already has these layers but axum's
-            // `.merge()` does NOT propagate parent layers onto
-            // merged routes. Without these:
-            //   - Browser preflight OPTIONS → 405 (no CORS layer).
-            //   - Authenticated requests → 500 "JWT service not
-            //     configured" (RequirePermissions can't find the
-            //     Arc<JwtService> extension).
-            let desktop_cors = ziee::create_cors_layer(&cors_config);
-            let router = router.merge(
-                desktop_routes
-                    .layer(axum::Extension(jwt.clone()))
-                    .layer(desktop_cors),
-            );
-
-            // Development: proxy non-API requests to Vite dev server
-            // This enables Playwright testing by serving both API and frontend from same origin
-            #[cfg(debug_assertions)]
-            let router = {
-                tracing::info!("Development mode: enabling Vite proxy fallback");
-                router.fallback(proxy_to_vite)
-            };
-
-            // Production: serve embedded static files, br/gzip-compressed.
-            // The CompressionLayer is scoped to the static fallback ONLY (not
-            // the API/SSE routes on `router`), and negotiates encoding from the
-            // request's Accept-Encoding. tower-http's DefaultPredicate already
-            // skips already-compressed types + tiny bodies. This shrinks the
-            // ~1.7 MB JS + 210 KB CSS bundle to a fraction on the wire for the
-            // Remote Access tunnel (the local Tauri webview loads over tauri://
-            // and never hits this path).
-            #[cfg(not(debug_assertions))]
-            let router = {
-                tracing::info!("Production mode: serving embedded static files (br/gzip)");
-                router.fallback_service(
-                    axum::routing::any(static_files::serve_embedded_files)
-                        .layer(tower_http::compression::CompressionLayer::new()),
-                )
-            };
-
-            router
-            },
-            handlers,
-        )
-        .await
-        {
-            Ok(addr) => {
-                tracing::info!("Backend server started successfully on {}", addr);
-
-                // Run desktop-specific migrations
-                if let Err(e) = run_desktop_migrations().await {
+                // Run desktop-specific migrations (threaded pool)
+                if let Err(e) = run_desktop_migrations(&handle.pool).await {
                     // Surface as ERROR (not WARN) with an actionable
                     // message — the server stays up and /api/health
                     // continues to respond, but any handler that
@@ -338,8 +302,9 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                 // at execute_command time.
                 crate::modules::host_mount::register_provider();
 
-                // Ensure admin exists (create on first run)
-                if let Err(e) = ensure_desktop_admin().await {
+                // Ensure the single owner exists (create on first run),
+                // threading the BootHandle pool.
+                if let Err(e) = ensure_desktop_admin(&handle.pool).await {
                     tracing::error!("Failed to ensure desktop admin: {}", e);
                 }
 
@@ -361,7 +326,7 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
                 // migration (server's opt-in posture) — desktop
                 // single-admins shouldn't have to discover an admin
                 // toggle to start using Memory. Idempotent.
-                if let Err(e) = enable_memory_admin_default().await {
+                if let Err(e) = enable_memory_admin_default(&handle.pool).await {
                     tracing::error!(
                         error = %e,
                         "enable_memory_admin_default failed — Memory will appear disabled until the admin flips it"
@@ -405,8 +370,7 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
 /// — that's intentional for the default-on posture; if a user
 /// genuinely wants Memory off forever on their desktop, they can
 /// override via a config flag in the future.
-async fn enable_memory_admin_default() -> Result<()> {
-    let pool = ziee::Repos.pool();
+async fn enable_memory_admin_default(pool: &PgPool) -> Result<()> {
     sqlx::query("UPDATE memory_admin_settings SET enabled = TRUE WHERE id = 1")
         .execute(pool)
         .await
@@ -416,10 +380,8 @@ async fn enable_memory_admin_default() -> Result<()> {
 }
 
 /// Run desktop-specific database migrations
-async fn run_desktop_migrations() -> Result<()> {
+async fn run_desktop_migrations(pool: &PgPool) -> Result<()> {
     tracing::info!("Running desktop migrations...");
-
-    let pool = ziee::Repos.pool();
 
     // Use set_ignore_missing(true) because server migrations are tracked
     // in the same _sqlx_migrations table but are not in our migrations folder

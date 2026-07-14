@@ -27,6 +27,12 @@ tauri-plugin-decorum = "1.1.1"
 # Backend server (embedded as library)
 ziee = { path = "../../server" }
 
+# Reusable SDK desktop shell. Chunk BG-3: ziee-desktop implements the harness's
+# `ServerBoot` seam (the app-side embed-server boundary) and consumes the
+# single-user auto-login strategy — the prerequisite for D-full (the live Tauri
+# shell move). The harness names ONLY the SDK crates, never `ziee`.
+ziee-desktop-harness = { path = "../../../sdk/desktop/harness" }
+
 # Inherited from `src-app/Cargo.toml::[workspace.dependencies]`.
 # sqlx in particular MUST match ziee's so pgvector (`>= 0.8, < 0.10`)
 # unifies onto one sqlx version — the workspace's single resolver pass
