@@ -12732,6 +12732,7 @@ dependencies = [
  "winreg 0.52.0",
  "wiremock",
  "ziee-auth",
+ "ziee-build-support",
  "ziee-control-mcp",
  "ziee-core",
  "ziee-framework",
@@ -12778,6 +12779,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ziee-build-support"
+version = "0.0.0"
+dependencies = [
+ "sqlx 0.8.6",
+ "tokio",
+]
+
+[[package]]
 name = "ziee-control-mcp"
 version = "0.0.0"
 dependencies = [
@@ -12797,6 +12806,7 @@ dependencies = [
  "once_cell",
  "serde",
  "serde_json",
+ "serde_norway",
  "sqlx 0.8.6",
  "tracing",
  "uuid",
@@ -12848,6 +12858,7 @@ dependencies = [
  "url",
  "uuid",
  "ziee",
+ "ziee-build-support",
  "ziee-desktop-harness",
 ]
 
@@ -12891,6 +12902,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "ziee-build-support",
  "ziee-core",
  "ziee-identity",
 ]

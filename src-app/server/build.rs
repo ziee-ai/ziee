@@ -19,8 +19,10 @@ mod sandbox_runtime;
 mod wsl2_agent;
 #[path = "build_helper/pgvector.rs"]
 mod pgvector_build;
-#[path = "build_helper/worktree_db.rs"]
-mod worktree_db;
+// Chunk sdk-batteries (decision #11): per-worktree build-DB keying + module-owned
+// migration composition now live in the SDK's `ziee-build-support` crate (a
+// build-dependency), so both ziee AND a second app share one implementation.
+use ziee_build_support::worktree_db;
 // hub_seed runs LAST inside setup_external_binaries and PANICS on
 // failure (unlike the helpers above, which warn-and-continue). See
 // the divider comment in setup_external_binaries() for the rationale.
@@ -58,75 +60,19 @@ fn redact_database_url(url: &str) -> String {
 /// every **module-owned** `migrations/` dir:
 ///   - `<manifest>/src/modules/*/migrations/`   (each ziee server module)
 ///   - `<manifest>/../../sdk/crates/*/migrations/` (SDK crates: ziee-auth, …)
-/// The squashed baselines are named `<YYYYMMDDNNNN>_<module>_<desc>.sql`; the
-/// merged set version-sorts by filename into a valid FK-topological order
-/// (bootstrap extensions first, all tables, then deferred FKs, then seed data).
 ///
-/// `migrations-merged/` is a generated artifact (gitignored). build.rs always
-/// runs before the crate compiles, so the dir is populated before the runtime
-/// `sqlx::migrate!("./migrations-merged")` macro embeds it.
+/// Chunk sdk-batteries (G5): the composition logic moved VERBATIM into
+/// `ziee_build_support::compose_merged_migrations` (an SDK contract, decision
+/// N7); this thin wrapper just supplies ziee's own merged-dir + module-roots so
+/// the output stays byte-identical.
 fn compose_merged_migrations() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let merged = manifest.join("migrations-merged");
-    let _ = std::fs::remove_dir_all(&merged);
-    std::fs::create_dir_all(&merged).expect("build.rs: create migrations-merged failed");
-
-    // Glob every `migrations` dir under the two module roots. A root that has
-    // no module with migrations yet is simply skipped.
     let module_roots = [
         manifest.join("src/modules"),
         manifest.join("../../sdk/crates"),
     ];
-    let mut sources: Vec<std::path::PathBuf> = Vec::new();
-    for root in &module_roots {
-        println!("cargo:rerun-if-changed={}", root.display());
-        let Ok(entries) = std::fs::read_dir(root) else { continue };
-        for entry in entries.flatten() {
-            let mig = entry.path().join("migrations");
-            if mig.is_dir() {
-                sources.push(mig);
-            }
-        }
-    }
-    // Deterministic module order (the per-file version prefix drives the final
-    // sqlx apply order; sorting the source dirs only makes the copy stable).
-    sources.sort();
-
-    // Guard against basename collisions across modules (two modules must never
-    // ship the same migration filename — it would silently drop one).
-    let mut seen: std::collections::HashMap<String, std::path::PathBuf> =
-        std::collections::HashMap::new();
-    for src in &sources {
-        println!("cargo:rerun-if-changed={}", src.display());
-        let entries = std::fs::read_dir(src).unwrap_or_else(|e| {
-            panic!(
-                "build.rs: cannot read migration source {}: {}",
-                src.display(),
-                e
-            )
-        });
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("sql") {
-                let name = path.file_name().expect("migration file name");
-                let name_str = name.to_string_lossy().to_string();
-                if let Some(prev) = seen.insert(name_str.clone(), path.clone()) {
-                    panic!(
-                        "build.rs: duplicate migration filename '{}' in {} and {} \
-                         — module-owned migrations must have unique <YYYYMMDDNNNN> names",
-                        name_str,
-                        prev.display(),
-                        path.display()
-                    );
-                }
-                let dst = merged.join(name);
-                std::fs::copy(&path, &dst).unwrap_or_else(|e| {
-                    panic!("build.rs: copy {} → merged failed: {}", path.display(), e)
-                });
-            }
-        }
-    }
-    println!("cargo:rerun-if-changed={}", merged.display());
+    ziee_build_support::compose_merged_migrations(&merged, &module_roots);
 }
 
 #[tokio::main]
@@ -143,8 +89,9 @@ async fn main() {
     let explicit = env::var("DATABASE_URL").ok();
 
     // Per-worktree build-DB isolation: when DATABASE_URL is the committed
-    // docker-compose default (the sentinel — see build_helper/worktree_db.rs),
-    // give THIS worktree its own database on the same :54321 cluster so a
+    // docker-compose default (the sentinel — see
+    // ziee_build_support::worktree_db), give THIS worktree its own database on
+    // the same :54321 cluster so a
     // concurrent build in another worktree can't wipe our schema mid-build.
     // A genuine operator/CI override (any other DATABASE_URL) is honored
     // unchanged. Opt out with ZIEE_BUILD_DB_PERWORKTREE=0.
@@ -156,45 +103,10 @@ async fn main() {
         let db_name = format!("ziee_build_{}", worktree_db::worktree_key(&manifest_dir));
         // Ensure the per-worktree database exists (connect to the cluster's
         // maintenance `postgres` db, CREATE if missing — idempotent + race
-        // tolerant: a concurrent creator just makes our CREATE a no-op error
-        // we swallow). Then point the build at it.
-        let admin_url = worktree_db::with_database(&base, "postgres");
-        match sqlx::postgres::PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&admin_url)
-            .await
-        {
-            Ok(admin) => {
-                let exists: Option<(i32,)> = sqlx::query_as(
-                    "SELECT 1 FROM pg_database WHERE datname = $1",
-                )
-                .bind(&db_name)
-                .fetch_optional(&admin)
-                .await
-                .ok()
-                .flatten();
-                if exists.is_none() {
-                    // CREATE DATABASE can't run in a tx; ignore the
-                    // duplicate_database error if another worktree's build
-                    // raced us to it.
-                    let _ = sqlx::query(&format!("CREATE DATABASE {db_name}"))
-                        .execute(&admin)
-                        .await;
-                }
-                admin.close().await;
-                println!(
-                    "build.rs: per-worktree build DB → {} (set ZIEE_BUILD_DB_PERWORKTREE=0 to disable)",
-                    db_name
-                );
-                worktree_db::with_database(&base, &db_name)
-            }
-            Err(e) => {
-                // Couldn't reach the cluster to provision — fall back to the
-                // base URL and let the connect-below surface the real error.
-                eprintln!("build.rs: per-worktree DB provisioning skipped: {e}");
-                base
-            }
-        }
+        // tolerant). Moved VERBATIM into `ziee_build_support::ensure_build_db`
+        // (G4); on cluster-unreachable it falls back to `base` so the connect
+        // below surfaces the real error.
+        ziee_build_support::ensure_build_db(&base, &db_name).await
     } else {
         explicit.unwrap_or_else(|| worktree_db::DEFAULT_BUILD_DB_URL.to_string())
     };

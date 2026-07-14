@@ -1,7 +1,8 @@
-// Shared per-worktree build-DB derivation (same source the server crate's
-// build.rs + the integration harness use).
-#[path = "../../server/build_helper/worktree_db.rs"]
-mod worktree_db;
+// Shared per-worktree build-DB derivation. Chunk sdk-batteries (decision #11):
+// moved into the SDK's `ziee-build-support` crate (a build-dependency) so ziee
+// AND a second app share one implementation (was a `#[path]`-include of the
+// server crate's build_helper/worktree_db.rs).
+use ziee_build_support::worktree_db;
 
 fn main() {
     // Point this crate's sqlx::query! compile-time verification at the SAME

@@ -14,6 +14,9 @@ workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2.4", features = [] }
+# Chunk sdk-batteries (decision #11): per-worktree build-DB keying (was a
+# `#[path]`-included copy of the server's build_helper/worktree_db.rs).
+ziee-build-support = { path = "../../../sdk/crates/ziee-build-support" }
 
 [dependencies]
 # Tauri framework (desktop-only, kept local)

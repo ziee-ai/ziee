@@ -13,10 +13,11 @@ use std::process::{Child, Command};
 use std::time::Duration;
 use uuid::Uuid;
 
-// Per-worktree DB isolation helper, shared verbatim with build.rs so the
-// suffix derivation is identical on both sides.
-#[path = "../../build_helper/worktree_db.rs"]
-mod worktree_db;
+// Per-worktree DB isolation helper, shared with build.rs so the suffix
+// derivation is identical on both sides. Chunk sdk-batteries (decision #11):
+// now sourced from the SDK's `ziee-build-support` crate (was a `#[path]`-include
+// of build_helper/worktree_db.rs, deleted in this chunk).
+use ziee_build_support::worktree_db;
 
 /// Stable per-worktree suffix for this test binary's template DB, derived
 /// from the worktree root (same value for the server + desktop crates of one

@@ -273,6 +273,11 @@ windows-service = "0.7"
 winreg = "0.52"
 
 [build-dependencies]
+# Chunk sdk-batteries (decision #11): the SDK's build.rs support — module-owned
+# migration composition + per-worktree build-DB keying/provisioning. Lean +
+# build-DB-free, so it's cheap as a build-dependency. Replaces the former inline
+# `compose_merged_migrations()` + `#[path]`-included `build_helper/worktree_db.rs`.
+ziee-build-support = { path = "../../sdk/crates/ziee-build-support" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 sqlx.workspace = true
 ureq = "3.1.4"
@@ -299,6 +304,9 @@ serde_json = "1"
 fs2 = "0.4"
 
 [dev-dependencies]
+# Chunk sdk-batteries: the integration harness derives its per-worktree test-DB
+# suffix via ziee-build-support's worktree_db (was a `#[path]`-included copy).
+ziee-build-support = { path = "../../sdk/crates/ziee-build-support" }
 mockall.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true
