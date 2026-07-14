@@ -309,9 +309,11 @@ serde_json = "1"
 fs2 = "0.4"
 
 [dev-dependencies]
-# Chunk sdk-batteries: the integration harness derives its per-worktree test-DB
-# suffix via ziee-build-support's worktree_db (was a `#[path]`-included copy).
-ziee-build-support = { path = "../../sdk/crates/ziee-build-support" }
+# Chunk ziee-test-harness: the generic spawn/isolation/DB-clone/Drop engine of
+# the integration harness moved to the SDK's ziee-test-harness crate (it
+# re-exports ziee-build-support's worktree_db, so the per-worktree test-DB
+# suffix derivation stays identical to build.rs).
+ziee-test-harness = { path = "../../sdk/crates/ziee-test-harness" }
 mockall.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true
