@@ -282,6 +282,70 @@ impl ziee_framework::sync::SyncEntityKind for SyncEntity {
     }
 }
 
+/// ziee's concrete realtime-sync surface for the mountable `sync_routes()` (chunk
+/// sdk-surfaces). Supplies everything the moved SSE subscribe handler needs that
+/// the framework won't name — the `SyncConnPrincipal` snapshot, the singleton
+/// `registry()`, the `SyncSseEvent` handshake + response schema, the
+/// `profile::read` baseline gate, and the `Repos`-backed periodic re-check.
+/// ziee mounts `sync_routes::<ZieeIdentityResolver, SyncEntity>()`.
+#[async_trait::async_trait]
+impl ziee_framework::sync::SyncSurface for SyncEntity {
+    type Principal = super::registry::SyncConnPrincipal;
+    type Wire = SyncSseEvent;
+    type BaselinePerms = (crate::modules::user::permissions::ProfileRead,);
+
+    fn registry() -> &'static ziee_framework::sync::SyncRegistry<Self::Principal> {
+        super::registry::registry()
+    }
+
+    fn principal_user_id(principal: &Self::Principal) -> Uuid {
+        principal.user.id
+    }
+
+    fn connected_signal(conn_id: Uuid) -> Event {
+        SyncSseEvent::Connected(SyncConnectedData {
+            connection_id: conn_id,
+        })
+        .into()
+    }
+
+    async fn recheck(user_id: Uuid) -> ziee_framework::sync::RecheckOutcome<Self::Principal> {
+        use ziee_framework::sync::RecheckOutcome;
+        // Byte-equivalent to the former inline re-check: reload the active
+        // user + groups, re-check the baseline `profile::read`, produce a
+        // refreshed snapshot — else teardown / transient.
+        match crate::core::Repos.user.get_by_id(user_id).await {
+            Ok(Some(u)) if u.is_active => {
+                let g = if u.is_admin {
+                    Vec::new()
+                } else {
+                    crate::core::Repos
+                        .user
+                        .get_user_groups(user_id)
+                        .await
+                        .unwrap_or_default()
+                };
+                // Baseline gate: a user who no longer holds profile::read is no
+                // longer entitled to the stream (matches the subscribe-time gate).
+                if !u.is_admin
+                    && !crate::modules::permissions::checker::check_permission_union(
+                        &u,
+                        &g,
+                        "profile::read",
+                    )
+                {
+                    return RecheckOutcome::TearDown;
+                }
+                RecheckOutcome::Refresh(super::registry::SyncConnPrincipal { user: u, groups: g })
+            }
+            // Account removed or deactivated → tear the stream down.
+            Ok(_) => RecheckOutcome::TearDown,
+            // Transient DB error → keep the stream; retry next tick.
+            Err(_) => RecheckOutcome::Transient,
+        }
+    }
+}
+
 /// Publish a change notification to the audience the caller chose.
 ///
 /// The publishing module decides the `audience` (owner / permission rule /
