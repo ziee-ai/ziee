@@ -16,7 +16,7 @@ use crate::modules::user::events::UserEvent;
 use crate::modules::user::permissions::ProfileEdit;
 use crate::modules::user::{User, UserRepository, UserService};
 
-use super::context::AuthContext;
+use super::context::{AuthContext, AuthSyncAction, AuthSyncEntity};
 
 use super::cookie;
 use super::jwt::{JwtService, TokenPair, TokenPairWithJti};
@@ -36,7 +36,7 @@ use super::types::{
     PublicProvider, PublicProvidersResponse, RefreshTokenRequest, RegisterRequest,
     TestProviderResponse, UpdateAuthProviderRequest, UpdateProfileRequest,
 };
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin};
+use crate::modules::sync::{Audience, SyncOrigin};
 
 // =====================================================
 // Cookie-mode response shaping
@@ -808,8 +808,8 @@ pub async fn update_profile(
     // reload. Mirrors the admin edit path (user::update_user); the self-echo
     // is suppressed via the originating connection id.
     ctx.sync.publish(
-        SyncEntity::Profile,
-        SyncAction::Update,
+        AuthSyncEntity::Profile,
+        AuthSyncAction::Update,
         updated_user.id,
         Audience::owner(updated_user.id),
         origin.0,
@@ -1946,8 +1946,8 @@ pub async fn admin_create_provider(
         })?;
     ctx.events.emit_auth_provider(AuthProviderEvent::created(outcome.provider.id));
     ctx.sync.publish(
-        SyncEntity::AuthProvider,
-        SyncAction::Create,
+        AuthSyncEntity::AuthProvider,
+        AuthSyncAction::Create,
         row_id,
         Audience::perm::<AuthProvidersRead>(),
         origin.0,
@@ -2030,8 +2030,8 @@ pub async fn admin_update_provider(
 
     ctx.events.emit_auth_provider(AuthProviderEvent::updated(enforced.id));
     ctx.sync.publish(
-        SyncEntity::AuthProvider,
-        SyncAction::Update,
+        AuthSyncEntity::AuthProvider,
+        AuthSyncAction::Update,
         id,
         Audience::perm::<AuthProvidersRead>(),
         origin.0,
@@ -2099,8 +2099,8 @@ pub async fn admin_delete_provider(
             .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
     ctx.events.emit_auth_provider(AuthProviderEvent::deleted(id, name));
     ctx.sync.publish(
-        SyncEntity::AuthProvider,
-        SyncAction::Delete,
+        AuthSyncEntity::AuthProvider,
+        AuthSyncAction::Delete,
         id,
         Audience::perm::<AuthProvidersRead>(),
         origin.0,
@@ -2158,8 +2158,8 @@ pub async fn admin_test_provider(
     // test_repository_connection_by_id pattern.
     ctx.events.emit_auth_provider(AuthProviderEvent::updated(id));
     ctx.sync.publish(
-        SyncEntity::AuthProvider,
-        SyncAction::Update,
+        AuthSyncEntity::AuthProvider,
+        AuthSyncAction::Update,
         id,
         Audience::perm::<AuthProvidersRead>(),
         origin.0,

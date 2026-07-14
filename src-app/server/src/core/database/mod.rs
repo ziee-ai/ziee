@@ -314,8 +314,12 @@ async fn try_initialize_database_once(
     // server share `_sqlx_migrations` and each binary owns its own
     // subset; ignore_missing is the supported sqlx pattern for that
     // setup.
+    // Chunk BA-full: the MERGED migration set (`migrations-merged` = the app's
+    // own `migrations/` ∪ `ziee-auth`'s structural auth-table migrations,
+    // composed by build.rs, version-sorted). Reproduces ziee's exact
+    // `_sqlx_migrations` history, so existing deployments are unaffected.
     println!("Running database migrations...");
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations-merged")
         .set_ignore_missing(true)
         .run(&pool)
         .await?;

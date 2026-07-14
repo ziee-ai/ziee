@@ -52,6 +52,50 @@ fn redact_database_url(url: &str) -> String {
     url.to_string()
 }
 
+/// Chunk BA-full: compose the merged migration directory used by BOTH the
+/// build-DB provisioner (this file) and the runtime `sqlx::migrate!`
+/// (`core/database/mod.rs`). It is `<manifest>/migrations-merged` =
+/// the app's own `migrations/` ∪ `ziee-auth`'s structural auth-table
+/// `migrations/` (path-dep at `../../sdk/crates/ziee-auth`). Files keep their
+/// original version-numbered names, so the merged set version-sorts back into
+/// ziee's exact `_sqlx_migrations` history — deployed DBs are unaffected.
+///
+/// `migrations-merged/` is a generated artifact (gitignored). build.rs always
+/// runs before the crate compiles, so the dir is populated before the runtime
+/// `sqlx::migrate!("./migrations-merged")` macro embeds it.
+fn compose_merged_migrations() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let merged = manifest.join("migrations-merged");
+    let _ = std::fs::remove_dir_all(&merged);
+    std::fs::create_dir_all(&merged).expect("build.rs: create migrations-merged failed");
+
+    let sources = [
+        manifest.join("migrations"),
+        manifest.join("../../sdk/crates/ziee-auth/migrations"),
+    ];
+    for src in &sources {
+        println!("cargo:rerun-if-changed={}", src.display());
+        let entries = std::fs::read_dir(src).unwrap_or_else(|e| {
+            panic!(
+                "build.rs: cannot read migration source {}: {}",
+                src.display(),
+                e
+            )
+        });
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("sql") {
+                let name = path.file_name().expect("migration file name");
+                let dst = merged.join(name);
+                std::fs::copy(&path, &dst).unwrap_or_else(|e| {
+                    panic!("build.rs: copy {} → merged failed: {}", path.display(), e)
+                });
+            }
+        }
+    }
+    println!("cargo:rerun-if-changed={}", merged.display());
+}
+
 #[tokio::main]
 async fn main() {
     // Get DATABASE_URL or use local dev fallback (build-time only;
@@ -155,14 +199,24 @@ async fn main() {
         .await
         .ok();
 
-    // Run migrations — server's own AND the desktop tauri crate's.
+    // Chunk BA-full: compose the MERGED migration directory
+    // (`migrations-merged` = the app's own `migrations/` ∪ `ziee-auth`'s
+    // structural auth-table migrations, both keeping their original version
+    // numbers + byte content). The auth-table migrations moved into
+    // `ziee-auth` (which owns them + its `query!` macros); the merged,
+    // version-sorted set reproduces ziee's exact `_sqlx_migrations` history
+    // so deployed DBs are unaffected. BOTH this build-DB provisioner AND the
+    // runtime `sqlx::migrate!` (core/database/mod.rs) point at the merged dir.
+    compose_merged_migrations();
+
+    // Run migrations — the merged server set AND the desktop tauri crate's.
     // The desktop crate's `remote_access` + `magic_link` modules
     // use `sqlx::query_as!()` macros that need the build DB to
     // include their schema (remote_access_settings, magic_link_tokens).
     // Folding both migration dirs into a single Migrator means the
     // shared build DB on port 54321 has every table both crates
     // touch, and macro validation succeeds for either crate.
-    for migrations_dir_rel in ["migrations", "../desktop/tauri/migrations"] {
+    for migrations_dir_rel in ["migrations-merged", "../desktop/tauri/migrations"] {
         let migrations_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(migrations_dir_rel);
         if !migrations_path.exists() {

@@ -203,7 +203,9 @@ impl Clone for EventBus {
 // app-aggregate `AppEvent` are named for the auth event/sync/outbound paths —
 // and hands the assembled `AuthContext` to the router as an extension.
 
-use crate::modules::auth::context::{AuthContext, AuthEventSink, AuthSyncSink};
+use crate::modules::auth::context::{
+    AuthContext, AuthEventSink, AuthSyncAction, AuthSyncEntity, AuthSyncSink,
+};
 use crate::modules::auth::providers::events::AuthProviderEvent;
 use crate::modules::sync::{Audience, SyncAction, SyncEntity};
 use crate::modules::user::events::UserEvent;
@@ -231,12 +233,30 @@ struct PublishSyncSink;
 impl AuthSyncSink for PublishSyncSink {
     fn publish(
         &self,
-        entity: SyncEntity,
-        action: SyncAction,
+        entity: AuthSyncEntity,
+        action: AuthSyncAction,
         id: uuid::Uuid,
         audience: Audience,
         origin: Option<uuid::Uuid>,
     ) {
+        // Map the crate-local auth abstractions (Chunk BA-full #4 transform)
+        // onto the app's concrete `SyncEntity` / `SyncAction`. `ziee-auth`
+        // cannot name these enums (they derive `JsonSchema` for the OpenAPI
+        // codegen contract), so the trait speaks in `AuthSyncEntity` /
+        // `AuthSyncAction` and the app maps here. Same events, same audiences.
+        let entity = match entity {
+            AuthSyncEntity::User => SyncEntity::User,
+            AuthSyncEntity::Group => SyncEntity::Group,
+            AuthSyncEntity::Profile => SyncEntity::Profile,
+            AuthSyncEntity::Session => SyncEntity::Session,
+            AuthSyncEntity::SessionSettings => SyncEntity::SessionSettings,
+            AuthSyncEntity::AuthProvider => SyncEntity::AuthProvider,
+        };
+        let action = match action {
+            AuthSyncAction::Create => SyncAction::Create,
+            AuthSyncAction::Update => SyncAction::Update,
+            AuthSyncAction::Delete => SyncAction::Delete,
+        };
         crate::modules::sync::publish(entity, action, id, audience, origin);
     }
     fn publish_session_to_users(&self, user_ids: &[uuid::Uuid], origin: Option<uuid::Uuid>) {

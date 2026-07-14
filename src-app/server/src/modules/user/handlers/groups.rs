@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    modules::auth::context::AuthContext,
+    modules::auth::context::{AuthContext, AuthSyncAction, AuthSyncEntity},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin},
+    modules::sync::{Audience, SyncOrigin},
 };
 
 use crate::modules::user::{
@@ -136,8 +136,8 @@ pub async fn create_group(
         .await?;
 
     ctx.sync.publish(
-        SyncEntity::Group,
-        SyncAction::Create,
+        AuthSyncEntity::Group,
+        AuthSyncAction::Create,
         group.id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -234,8 +234,8 @@ pub async fn update_group(
         .await?;
 
     ctx.sync.publish(
-        SyncEntity::Group,
-        SyncAction::Update,
+        AuthSyncEntity::Group,
+        AuthSyncAction::Update,
         group.id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -289,8 +289,8 @@ pub async fn delete_group(
     ctx.group().delete(group_id).await?;
 
     ctx.sync.publish(
-        SyncEntity::Group,
-        SyncAction::Delete,
+        AuthSyncEntity::Group,
+        AuthSyncAction::Delete,
         group_id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -426,8 +426,8 @@ pub async fn assign_user_to_group(
     // open sessions re-bootstrap /auth/me immediately (the 60s re-check is
     // the backstop). Owner-scoped to that user only.
     ctx.sync.publish(
-        SyncEntity::Session,
-        SyncAction::Update,
+        AuthSyncEntity::Session,
+        AuthSyncAction::Update,
         request.user_id,
         Audience::owner(request.user_id),
         origin.0,
@@ -435,8 +435,8 @@ pub async fn assign_user_to_group(
 
     // The group's member list changed → refresh admins viewing it elsewhere.
     ctx.sync.publish(
-        SyncEntity::Group,
-        SyncAction::Update,
+        AuthSyncEntity::Group,
+        AuthSyncAction::Update,
         request.group_id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -479,8 +479,8 @@ pub async fn remove_user_from_group(
 
     // Signal the affected user that their permissions changed (Owner-scoped).
     ctx.sync.publish(
-        SyncEntity::Session,
-        SyncAction::Update,
+        AuthSyncEntity::Session,
+        AuthSyncAction::Update,
         user_id,
         Audience::owner(user_id),
         origin.0,
@@ -488,8 +488,8 @@ pub async fn remove_user_from_group(
 
     // The group's member list changed → refresh admins viewing it elsewhere.
     ctx.sync.publish(
-        SyncEntity::Group,
-        SyncAction::Update,
+        AuthSyncEntity::Group,
+        AuthSyncAction::Update,
         group_id,
         Audience::perm::<GroupsRead>(),
         origin.0,

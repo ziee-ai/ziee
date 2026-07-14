@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    modules::auth::context::AuthContext,
+    modules::auth::context::{AuthContext, AuthSyncAction, AuthSyncEntity},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin},
+    modules::sync::{Audience, SyncOrigin},
 };
 
 use crate::modules::user::{
@@ -189,8 +189,8 @@ pub async fn create_user(
             // The group's member list changed → refresh admins viewing it
             // (mirrors the explicit assign-to-group handler).
             Ok(_) => ctx.sync.publish(
-                SyncEntity::Group,
-                SyncAction::Update,
+                AuthSyncEntity::Group,
+                AuthSyncAction::Update,
                 default_group.id,
                 Audience::perm::<GroupsRead>(),
                 origin.0,
@@ -207,8 +207,8 @@ pub async fn create_user(
     ctx.events.emit_user(UserEvent::Created { user: user.clone() });
 
     ctx.sync.publish(
-        SyncEntity::User,
-        SyncAction::Create,
+        AuthSyncEntity::User,
+        AuthSyncAction::Create,
         user.id,
         Audience::perm::<UsersRead>(),
         origin.0,
@@ -289,8 +289,8 @@ pub async fn update_user(
     ctx.events.emit_user(UserEvent::Updated { user: updated_user.clone() });
 
     ctx.sync.publish(
-        SyncEntity::User,
-        SyncAction::Update,
+        AuthSyncEntity::User,
+        AuthSyncAction::Update,
         updated_user.id,
         Audience::perm::<UsersRead>(),
         origin.0,
@@ -298,8 +298,8 @@ pub async fn update_user(
     // Also notify the EDITED user (Owner-scoped) so THEIR other devices
     // re-bootstrap /auth/me — an admin changed their profile / active state.
     ctx.sync.publish(
-        SyncEntity::Profile,
-        SyncAction::Update,
+        AuthSyncEntity::Profile,
+        AuthSyncAction::Update,
         updated_user.id,
         Audience::owner(updated_user.id),
         origin.0,
@@ -359,15 +359,15 @@ pub async fn toggle_user_active(
     // Owner) so their devices re-bootstrap — on deactivation that surfaces the
     // logout immediately rather than after the ≤60s stream re-check.
     ctx.sync.publish(
-        SyncEntity::User,
-        SyncAction::Update,
+        AuthSyncEntity::User,
+        AuthSyncAction::Update,
         user_id,
         Audience::perm::<UsersRead>(),
         origin.0,
     );
     ctx.sync.publish(
-        SyncEntity::Profile,
-        SyncAction::Update,
+        AuthSyncEntity::Profile,
+        AuthSyncAction::Update,
         user_id,
         Audience::owner(user_id),
         origin.0,
@@ -452,8 +452,8 @@ pub async fn reset_user_password(
     // /auth/me after the credential change, mirroring delete_user's session
     // signal. Notify-only — carries just the user id, no credential data.
     ctx.sync.publish(
-        SyncEntity::Session,
-        SyncAction::Update,
+        AuthSyncEntity::Session,
+        AuthSyncAction::Update,
         request.user_id,
         Audience::owner(request.user_id),
         origin.0,
@@ -461,8 +461,8 @@ pub async fn reset_user_password(
     // Also emit a Profile signal — a reset can flip `has_password`
     // (none → set). Mirrors set_active's owner-scoped Profile emit.
     ctx.sync.publish(
-        SyncEntity::Profile,
-        SyncAction::Update,
+        AuthSyncEntity::Profile,
+        AuthSyncAction::Update,
         request.user_id,
         Audience::owner(request.user_id),
         origin.0,
@@ -584,8 +584,8 @@ pub async fn delete_user(
     ctx.events.emit_user(UserEvent::Deleted { user_id });
 
     ctx.sync.publish(
-        SyncEntity::User,
-        SyncAction::Delete,
+        AuthSyncEntity::User,
+        AuthSyncAction::Delete,
         user_id,
         Audience::perm::<UsersRead>(),
         origin.0,
@@ -594,8 +594,8 @@ pub async fn delete_user(
     // /auth/me, get a 401, and log out immediately instead of lingering until
     // the ≤60s stream re-check tears the connection down.
     ctx.sync.publish(
-        SyncEntity::Session,
-        SyncAction::Update,
+        AuthSyncEntity::Session,
+        AuthSyncAction::Update,
         user_id,
         Audience::owner(user_id),
         origin.0,

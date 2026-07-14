@@ -1,52 +1,40 @@
-// Auth module - JWT-based authentication
-pub mod context;
-pub mod cookie;
-pub mod events;
+// Auth module - JWT-based authentication.
+//
+// Chunk BA-full moved the auth CORE (repositories + `query!` macros,
+// login/register/LDAP/OAuth2, the JWT + Session & Token-Refresh subsystem, the
+// cookie helpers, the injected `context` seams, the at-rest secret provider
+// repository) into the `ziee-auth` crate. This module keeps the HTTP/aide
+// boundary (`handlers` / `routes` / `permissions` / `jwt_extractor` + the
+// session-settings REST handlers + the `AuthModule` registration) and re-exports
+// the moved pieces as equivalence-preserving shims, so every
+// `crate::modules::auth::…` call site is unchanged.
+
+// App-side (HTTP/aide/permission boundary).
 pub mod handlers;
-pub mod jwt;
 pub mod jwt_extractor;
-pub mod password;
 pub mod permissions;
-pub mod providers;
-pub mod refresh_tokens;
-mod repository;
 pub mod routes;
 pub mod session_settings;
-pub mod types;
 
-// Re-exports
-pub use jwt::JwtService;
-// Suppress unused-import false positive: the re-export IS needed for `pub use modules::auth::hash_password` in lib.rs.
+// Re-export shims for the moved core (module paths + item re-exports preserved).
+// The `context`/`AuthContext`/sink types are reached via the `context` module
+// path (`crate::modules::auth::context::…`), so only the module is re-exported.
 #[allow(unused_imports)]
-pub use password::hash_password;
-pub use repository::AuthRepository;
+pub use ziee_auth::auth::{
+    AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, context, cookie, events,
+    hash_password, jwt, password, providers, refresh_tokens, repository, trust_forwarded_headers,
+    types,
+};
+
 pub use routes::{auth_admin_routes, auth_routes};
-pub use session_settings::SessionSettingsRepository;
-pub use types::AuthResponse;
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
-use once_cell::sync::OnceCell;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
-
-/// Set at module init from `config.server.trust_forwarded_headers`.
-/// When false, the OAuth-authorize handler derives redirect_uri from
-/// the HOST header only — defending self-hosted-direct deployments
-/// against attacker-supplied X-Forwarded-Host headers.
-static TRUST_FORWARDED_HEADERS: OnceCell<bool> = OnceCell::new();
-
-/// Returns true if the deployment configured a trusted reverse proxy
-/// in front of the server. Handlers use this to decide whether to
-/// honor X-Forwarded-Host / X-Forwarded-Proto. Defaults to `false`
-/// (the safer self-hosted-direct posture) when init() hasn't run
-/// (e.g. in unit tests that bypass the module loader).
-pub fn trust_forwarded_headers() -> bool {
-    TRUST_FORWARDED_HEADERS.get().copied().unwrap_or(false)
-}
 
 /// Register auth module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -90,7 +78,7 @@ impl AppModule for AuthModule {
         // Arc<Config> through every Axum extension layer. OnceCell::set
         // is idempotent on second-call (returns Err which we ignore —
         // module re-init isn't expected but isn't an error condition).
-        let _ = TRUST_FORWARDED_HEADERS.set(ctx.config.server.trust_forwarded_headers);
+        ziee_auth::auth::set_trust_forwarded_headers(ctx.config.server.trust_forwarded_headers);
 
         // One-time copy of the YAML jwt lifetimes into the session_settings
         // singleton (migration 129). Writes only while seeded_from_config is
@@ -103,7 +91,7 @@ impl AppModule for AuthModule {
             let access_hours = ctx.config.jwt.access_token_expiry_hours;
             let refresh_days = ctx.config.jwt.refresh_token_expiry_days;
             tokio::spawn(async move {
-                let repo = session_settings::SessionSettingsRepository::new((*pool).clone());
+                let repo = SessionSettingsRepository::new((*pool).clone());
                 if let Err(e) = repo.seed_from_config_once(access_hours, refresh_days).await {
                     tracing::warn!(error = ?e, "session_settings config seed failed; DB defaults remain");
                 }

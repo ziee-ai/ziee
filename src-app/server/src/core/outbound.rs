@@ -18,6 +18,7 @@
 //! adapter points straight at the framework crate (`ziee_framework::url_validator`)
 //! rather than the local `crate::utils::url_validator` shim.
 
+#[allow(unused_imports)]
 pub use ziee_framework::url_validator::{
     OutboundUrlPolicy, build_validated_client, validate_outbound_url,
 };
