@@ -65,14 +65,31 @@ fn redact_database_url(url: &str) -> String {
 /// `ziee_build_support::compose_merged_migrations` (an SDK contract, decision
 /// N7); this thin wrapper just supplies ziee's own merged-dir + module-roots so
 /// the output stays byte-identical.
+///
+/// Gap N-2: ziee lists its schema-bound SDK crates EXPLICITLY rather than
+/// blind-globbing `sdk/crates/*/migrations`. The SDK crates ziee actually
+/// schema-binds are `ziee-auth`, `ziee-file`, and `ziee-notification` (the only
+/// three that ship a `migrations/` dir today); naming them makes the merged set
+/// independent of which OTHER SDK crates happen to sit on disk. A fresh app
+/// lists only ITS linked schema-bound crates the same way. The resulting set is
+/// byte-identical to the old glob (same three source dirs).
 fn compose_merged_migrations() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let merged = manifest.join("migrations-merged");
-    let module_roots = [
-        manifest.join("src/modules"),
-        manifest.join("../../sdk/crates"),
+    // The app's OWN module roots (globbed for `*/migrations`).
+    let app_module_roots = [manifest.join("src/modules")];
+    // The SDK crates ziee schema-binds, named EXPLICITLY (not a blind glob).
+    let sdk_crates = manifest.join("../../sdk/crates");
+    let sdk_crate_migration_dirs = [
+        sdk_crates.join("ziee-auth/migrations"),
+        sdk_crates.join("ziee-file/migrations"),
+        sdk_crates.join("ziee-notification/migrations"),
     ];
-    ziee_build_support::compose_merged_migrations(&merged, &module_roots);
+    ziee_build_support::compose_merged_migrations_from(
+        &merged,
+        &app_module_roots,
+        &sdk_crate_migration_dirs,
+    );
 }
 
 #[tokio::main]
