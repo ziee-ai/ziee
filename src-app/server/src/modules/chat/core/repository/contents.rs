@@ -47,9 +47,15 @@ pub async fn create_content(
 /// **Assumes appends to a single `message_id` are sequential** — the streaming
 /// agentic loop awaits each append in one task, which is the only production
 /// caller. The subquery runs at READ COMMITTED isolation, so two truly-
-/// concurrent transactions appending to the SAME message could still race;
-/// adding `UNIQUE (message_id, sequence_order)` + retry is the next step if
-/// that ever becomes a real call shape.
+/// concurrent transactions appending to the SAME message could still race for
+/// the same slot.
+///
+/// That race is now CAUGHT, not silent: `UNIQUE (message_id, sequence_order)`
+/// exists (constraint `uq_message_contents_message_sequence`, migration 124), so
+/// the losing INSERT fails with a hard DB error instead of duplicating a slot.
+/// There is deliberately NO retry — a retry would be dead code guarding a call
+/// shape that does not exist, and a loud failure is the right thing to build one
+/// against if a genuinely concurrent caller ever appears.
 pub async fn append_content(
     pool: &PgPool,
     message_id: Uuid,
@@ -224,4 +230,38 @@ pub async fn update_content_json(
     .map_err(AppError::database_error)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// TEST-12: `append_content`'s header must not re-acquire the stale claim that
+    /// `UNIQUE (message_id, sequence_order)` is still "the next step". It shipped —
+    /// twice (migrations 114 and 124) — and a comment that says otherwise sends the
+    /// next reader looking for a guard that is already there, or worse, adding a
+    /// third one. The constraint's real name is asserted so a rename can't quietly
+    /// falsify the comment either.
+    ///
+    /// Source-scanning test, mirroring `code_sandbox::backend::wsl2`'s
+    /// `med3_wslenv_credential_leak_regression`. Only the production section is
+    /// scanned — the test mod below necessarily quotes the forbidden phrasing.
+    #[test]
+    fn append_content_doc_does_not_claim_the_unique_constraint_is_pending() {
+        let full_src = include_str!("contents.rs");
+        let normalized = full_src.replace("\r\n", "\n");
+        let prod_src = normalized
+            .split_once("#[cfg(test)]\nmod tests {")
+            .map(|(prod, _)| prod)
+            .expect("test mod marker present");
+
+        assert!(
+            !prod_src.contains("is the next step"),
+            "append_content's doc comment still describes the UNIQUE constraint as future \
+             work, but it shipped in migration 124 (uq_message_contents_message_sequence)."
+        );
+        assert!(
+            prod_src.contains("uq_message_contents_message_sequence"),
+            "the doc comment should name the constraint that actually enforces the invariant, \
+             so a reader can find it."
+        );
+    }
 }

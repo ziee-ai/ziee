@@ -459,6 +459,14 @@ impl StreamingService {
                     }
                 }
 
+                // Wire-format invariant: exactly one tool_result per tool_use_id.
+                // Runs HERE because this is after every extension mutation
+                // (call_before_llm_call above may append tool_results) and before
+                // the provider call below — the only point that sees the final
+                // request. Ordered before the trimming: keep-last-K counts
+                // tool_result blocks, so it must count the deduped set.
+                dedup_tool_results_by_id(&mut chat_request.messages);
+
                 // Context trimming: once the assembled context grows past a
                 // token threshold, clear the CONTENT of older tool_result blocks
                 // (keeping the matching tool_use + the most recent K results) so
@@ -1697,6 +1705,13 @@ fn flush_assistant_tool_pair(
         role: ai_providers::Role::Tool,
         content: tool_content,
     });
+    // Anything still keyed here answered no tool_use in THIS batch — an orphan
+    // result. Drop it now rather than carrying it into the next batch: the
+    // capture is keep-first (`or_insert`), so a lingering orphan for id X would
+    // shadow a later REAL result for a subsequent tool_use X and be emitted in
+    // its place. Keeps the map's meaning literal — "results captured since the
+    // last flush".
+    results_by_id.clear();
 }
 
 /// Group ONE assistant message's already-converted blocks into provider-ready
@@ -1803,6 +1818,62 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
     }
 
     messages
+}
+
+/// Enforce the provider invariant that EVERY `tool_use_id` is answered by
+/// EXACTLY ONE `tool_result` across the whole request. Anthropic rejects a
+/// second one outright ("each tool_use must have a single result. Found
+/// multiple `tool_result` blocks with id: …"), killing the turn.
+///
+/// `group_assistant_blocks` already guarantees this WITHIN one stored assistant
+/// message, but it cannot see blocks appended AFTER it returns — a `before_llm_call`
+/// extension may push more `tool_result`s onto the request (the approval-resume
+/// path does). This is the last checkpoint before the wire, so it is the only
+/// place the invariant can be enforced across ALL contributors.
+///
+/// Keep-FIRST, matching the rule `group_assistant_blocks` applies internally: the
+/// first occurrence is the one sitting in the Tool turn immediately after its
+/// Assistant turn, so keeping it also preserves Anthropic's "result immediately
+/// after the tool_use" rule — keep-last could strand the survivor in a trailing
+/// message. A message emptied by the drop is removed (an empty `content` array is
+/// itself invalid).
+///
+/// This is a DEFENSE, not the fix: each duplicate SOURCE is fixed at its origin
+/// (see `replace_or_collect_tool_results` in the mcp chat extension). If this ever
+/// fires, the `warn!` is the tripwire that a new source appeared.
+pub fn dedup_tool_results_by_id(messages: &mut Vec<ChatMessage>) {
+    let mut seen: std::collections::HashSet<String> = Default::default();
+    // Only messages this fn EMPTIES are removed — a message that arrived empty is
+    // left exactly as it was found (not this fn's business to police).
+    let mut emptied = vec![false; messages.len()];
+
+    for (i, m) in messages.iter_mut().enumerate() {
+        let had_content = !m.content.is_empty();
+        m.content.retain(|b| match b {
+            ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
+                if seen.insert(tool_use_id.clone()) {
+                    return true;
+                }
+                tracing::warn!(
+                    "dropping a duplicate tool_result for tool_use_id={} — a second result \
+                     for one tool_use is rejected by the provider. The surviving (first) \
+                     result is the one paired with its tool_use; this indicates a duplicate \
+                     SOURCE that should be fixed at its origin.",
+                    tool_use_id
+                );
+                false
+            }
+            _ => true,
+        });
+        emptied[i] = had_content && m.content.is_empty();
+    }
+
+    let mut i = 0;
+    messages.retain(|_| {
+        let keep = !emptied[i];
+        i += 1;
+        keep
+    });
 }
 
 /// Panic/early-exit backstop for the detached generation consumer. If the
@@ -2418,6 +2489,144 @@ mod tests {
             ),
             _ => panic!("expected tool_result"),
         }
+    }
+
+    /// TEST-5 (fix-duplicate-tool-result): `results_by_id` is cleared at each flush,
+    /// so a stale ORPHAN result can no longer shadow a later REAL result for the same
+    /// id. Pre-fix the map persisted across flushes and the keep-first `or_insert`
+    /// preferred the orphan, emitting "stale" as X's result.
+    #[test]
+    fn group_assistant_blocks_later_real_result_beats_stale_orphan() {
+        let blocks = vec![
+            tool_result("X", "stale"), // orphan: no tool_use X yet
+            tool_use("A", "srv__a"),
+            tool_result("A", "ra"), // flushes the A batch; the X orphan must not survive it
+            tool_use("X", "srv__x"),
+            tool_result("X", "real"),
+        ];
+        let msgs = group_assistant_blocks(blocks);
+
+        // [Assistant{A}, Tool{ra}, Assistant{X}, Tool{real}]
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(result_ids(&msgs[3].content), vec!["X"]);
+        match &msgs[3].content[0] {
+            ContentBlock::ToolResult { content, .. } => assert!(
+                matches!(&content[0], ContentBlock::Text { text } if text == "real"),
+                "X must carry its REAL result, not the stale pre-flush orphan"
+            ),
+            _ => panic!("expected tool_result"),
+        }
+    }
+
+    /// TEST-2 (fix-duplicate-tool-result): the chokepoint defense keeps the FIRST
+    /// tool_result for a repeated id and drops later ones, so exactly one result per
+    /// tool_use reaches the provider. Non-duplicate blocks keep their relative order.
+    #[test]
+    fn dedup_tool_results_keeps_first_and_drops_later_duplicates() {
+        let mut msgs = vec![
+            ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("A", "srv__a"), tool_use("B", "srv__b")],
+            },
+            ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("A", "ra"), tool_result("B", "placeholder")],
+            },
+            // The duplicate: a later message re-answers B.
+            ChatMessage {
+                role: ai_providers::Role::User,
+                content: vec![tool_result("B", "real"), text("trailing note")],
+            },
+        ];
+        dedup_tool_results_by_id(&mut msgs);
+
+        assert_eq!(msgs.len(), 3, "no message became empty here");
+        assert_eq!(result_ids(&msgs[1].content), vec!["A", "B"]);
+        assert!(
+            result_ids(&msgs[2].content).is_empty(),
+            "the later duplicate B result is dropped"
+        );
+        // Keep-first: the surviving B is the one adjacent to its tool_use.
+        match &msgs[1].content[1] {
+            ContentBlock::ToolResult { content, .. } => assert!(
+                matches!(&content[0], ContentBlock::Text { text } if text == "placeholder"),
+                "keep-FIRST: the block paired with the tool_use survives"
+            ),
+            _ => panic!("expected tool_result"),
+        }
+        // A non-tool_result block in the same message is untouched.
+        assert!(matches!(&msgs[2].content[0], ContentBlock::Text { text } if text == "trailing note"));
+    }
+
+    /// TEST-3 (fix-duplicate-tool-result): the defense never perturbs a healthy
+    /// request — an already-valid one is byte-identical after the pass.
+    #[test]
+    fn dedup_tool_results_is_a_noop_on_a_valid_request() {
+        let build = || {
+            vec![
+                ChatMessage {
+                    role: ai_providers::Role::Assistant,
+                    content: vec![text("thinking out loud"), tool_use("A", "srv__a")],
+                },
+                ChatMessage {
+                    role: ai_providers::Role::Tool,
+                    content: vec![tool_result("A", "ra")],
+                },
+                ChatMessage {
+                    role: ai_providers::Role::User,
+                    content: vec![text("next question")],
+                },
+            ]
+        };
+        let before = build();
+        let mut after = build();
+        dedup_tool_results_by_id(&mut after);
+
+        assert_eq!(after.len(), before.len());
+        for (a, b) in after.iter().zip(before.iter()) {
+            assert_eq!(a.role, b.role);
+            assert_eq!(a.content.len(), b.content.len());
+        }
+        assert_eq!(result_ids(&after[1].content), vec!["A"]);
+    }
+
+    /// TEST-4 (fix-duplicate-tool-result): a message whose ONLY block is dropped as a
+    /// duplicate is removed entirely — an empty `content` array is itself rejected by
+    /// the provider, so dedup must not trade one invalid request for another.
+    #[test]
+    fn dedup_tool_results_removes_a_message_it_empties() {
+        let mut msgs = vec![
+            ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("A", "srv__a")],
+            },
+            ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("A", "ra")],
+            },
+            // Sole block is a duplicate → the whole message must go.
+            ChatMessage {
+                role: ai_providers::Role::User,
+                content: vec![tool_result("A", "dup")],
+            },
+        ];
+        dedup_tool_results_by_id(&mut msgs);
+
+        assert_eq!(msgs.len(), 2, "the emptied User message is removed");
+        assert!(msgs.iter().all(|m| !m.content.is_empty()));
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+    }
+
+    /// A message that arrived EMPTY is not this fn's business — it is left alone
+    /// (only messages dedup itself empties are removed).
+    #[test]
+    fn dedup_tool_results_leaves_a_pre_existing_empty_message_alone() {
+        let mut msgs = vec![ChatMessage {
+            role: ai_providers::Role::User,
+            content: vec![],
+        }];
+        dedup_tool_results_by_id(&mut msgs);
+        assert_eq!(msgs.len(), 1);
     }
 
     // TEST-15: thinking resolves via row → catalog → family policy.

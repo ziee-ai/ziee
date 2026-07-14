@@ -331,6 +331,69 @@ fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSe
     }
 }
 
+/// Fold freshly-executed tool results into an assembled request WITHOUT ever
+/// producing two `tool_result` blocks for one `tool_use_id` (which Anthropic
+/// rejects: "each tool_use must have a single result").
+///
+/// A result whose `tool_use_id` ALREADY has a `tool_result` in the request replaces
+/// that block IN PLACE; the freshly-executed result is authoritative. Results with
+/// no existing block are returned for the caller to push as a User message.
+///
+/// Why replace in place instead of dropping the old block and appending ours: the
+/// existing block is a `synthetic_missing_tool_result` placeholder that
+/// `group_assistant_blocks` put in the Tool turn IMMEDIATELY AFTER its tool_use —
+/// which is exactly where the provider requires it. Removing it and appending the
+/// real result to a trailing User message would satisfy "one result per tool_use"
+/// while breaking "a tool_result immediately after the tool_use" — the sibling
+/// regression this must not reintroduce. Replacing keeps BOTH invariants and
+/// upgrades the placeholder to the real result.
+///
+/// Reached whenever a batch mixes an approval-EXEMPT built-in with an
+/// approval-REQUIRED tool: the built-in's result is persisted at the pause, so on
+/// resume `group_assistant_blocks` sees a partially-resolved batch, reads the
+/// still-unapproved tool as a permanent gap, and synthesizes a placeholder for it —
+/// then this path executes it for real.
+///
+/// Pure + registry-free so the invariant is directly unit-testable.
+fn replace_or_collect_tool_results(
+    messages: &mut [ai_providers::ChatMessage],
+    fresh: Vec<ai_providers::ContentBlock>,
+) -> Vec<ai_providers::ContentBlock> {
+    let mut leftovers = Vec::new();
+
+    for block in fresh {
+        let id = match &block {
+            ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => tool_use_id.clone(),
+            // Not a tool_result (shouldn't happen on this path) — pass through
+            // untouched rather than silently dropping model-visible content.
+            _ => {
+                leftovers.push(block);
+                continue;
+            }
+        };
+
+        let existing = messages.iter_mut().find_map(|m| {
+            m.content.iter_mut().find(|b| {
+                matches!(b, ai_providers::ContentBlock::ToolResult { tool_use_id, .. } if *tool_use_id == id)
+            })
+        });
+
+        match existing {
+            Some(slot) => {
+                tracing::debug!(
+                    "replacing an existing tool_result for tool_use_id={} with the \
+                     freshly-executed result (was a synthesized placeholder)",
+                    id
+                );
+                *slot = block;
+            }
+            None => leftovers.push(block),
+        }
+    }
+
+    leftovers
+}
+
 /// ITEM-13/DEC-17: is `(server_id, tool_name)` in an unattended run's allow-list?
 /// The allow-list is a JSON array of `{ server_id, tool_name? }` (tool_name
 /// absent ⇒ whole server allowed). Parsed generically from `context.metadata`
@@ -642,6 +705,55 @@ impl McpChatExtension {
             let tool_name = approval.tool_name.clone(); // Clean tool name (e.g., "fetch")
             let input = approval.tool_input.clone();
 
+            // CLAIM the approval BEFORE executing. The row is what makes a tool
+            // eligible to run, so deleting it first is what makes execution
+            // exactly-once: `get_approved_tools_for_branch` can no longer return it
+            // to a subsequent before_llm_call. This used to run AFTER execution with
+            // its error swallowed, so a failed DELETE silently re-ran the tool on the
+            // next pass and appended a SECOND tool_result row for this tool_use_id.
+            //
+            // If the claim fails we must NOT execute: another pass may already have,
+            // and re-running a side-effecting tool is worse than not running it. Skip
+            // with an is_error result so the tool_use still gets exactly one answer
+            // and the request stays protocol-valid.
+            //
+            // Trade-off (DEC-4): a crash between the claim and the result append
+            // leaves the tool un-run; its tool_use then gets a synthesized is_error
+            // placeholder on the next turn — degraded but valid, and strictly better
+            // than silently re-running an expensive tool. Same ordering the
+            // no-server_id arm below already uses.
+            if let Err(e) = Repos
+                .chat
+                .mcp
+                .delete_tool_approval(tool_use_id.clone(), approval.message_id)
+                .await
+            {
+                tracing::error!(
+                    "Failed to claim (delete) the approval record for tool_use_id={}: {}. \
+                     Skipping execution to avoid a double-run; answering with an error result.",
+                    tool_use_id,
+                    e
+                );
+                tool_results.push(
+                    McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.clone()),
+                        server_id: approval.server_id.map(|id| id.to_string()),
+                        content: "Tool execution was skipped: the approval record could not be \
+                                  claimed, so running it now risks executing it twice."
+                            .to_string(),
+                        is_error: Some(true),
+                        attachment: None,
+                        images: None,
+                        resource_links: None,
+                        hidden_content: None,
+                        structured_content: None,
+                    }
+                    .to_message_content(),
+                );
+                continue;
+            }
+
             // Use server_id from approval record (stored separately)
             let server_id = match approval.server_id {
                 Some(id) => id,
@@ -649,7 +761,8 @@ impl McpChatExtension {
                     // The tool_use never resolved to a server (e.g. the model
                     // returned a bare tool name with no `<server_id>__` prefix and
                     // it could not be matched to an advertised tool). Surface a
-                    // clear error AND delete the approval row so the loop can't
+                    // clear error. The approval row is already gone — the claim at
+                    // the top of this iteration deleted it — so the loop still can't
                     // spin here to `max_iteration` (the reported bug).
                     tracing::error!("No server_id in approval record for tool: {}", tool_name);
                     let error_result = McpContentData::ToolResult {
@@ -672,18 +785,6 @@ impl McpChatExtension {
                     };
                     tool_results.push(error_result.to_message_content());
                     executed_tool_use_ids.push(tool_use_id.clone());
-                    if let Err(e) = Repos
-                        .chat
-                        .mcp
-                        .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                        .await
-                    {
-                        tracing::error!(
-                            "Failed to delete unresolved approval record for tool_use_id={}: {}",
-                            tool_use_id,
-                            e
-                        );
-                    }
                     continue;
                 }
             };
@@ -707,19 +808,8 @@ impl McpChatExtension {
                 };
                 tool_results.push(error_result.to_message_content());
                 executed_tool_use_ids.push(tool_use_id.clone());
-                // Delete the approval row so this branch can't re-loop to max_iteration.
-                if let Err(e) = Repos
-                    .chat
-                    .mcp
-                    .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                    .await
-                {
-                    tracing::error!(
-                        "Failed to delete server-not-found approval record for tool_use_id={}: {}",
-                        tool_use_id,
-                        e
-                    );
-                }
+                // (Approval row already claimed at the top of this iteration, so this
+                // branch still can't re-loop to max_iteration.)
                 continue;
             }
 
@@ -817,19 +907,8 @@ impl McpChatExtension {
                     };
                     tool_results.push(error_result.to_message_content());
                     executed_tool_use_ids.push(tool_use_id.clone());
-                    // Delete the approval row so this branch can't re-loop to max_iteration.
-                    if let Err(e) = Repos
-                        .chat
-                        .mcp
-                        .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                        .await
-                    {
-                        tracing::error!(
-                            "Failed to delete sampling-no-session approval record for tool_use_id={}: {}",
-                            tool_use_id,
-                            e
-                        );
-                    }
+                    // (Approval row already claimed at the top of this iteration, so this
+                    // branch still can't re-loop to max_iteration.)
                     continue;
                 }
                 let arc = match self.session_manager
@@ -864,19 +943,8 @@ impl McpChatExtension {
                         };
                         tool_results.push(err_result.to_message_content());
                         executed_tool_use_ids.push(tool_use_id.clone());
-                        // Delete the approval row so this branch can't re-loop to max_iteration.
-                        if let Err(e) = Repos
-                            .chat
-                            .mcp
-                            .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                            .await
-                        {
-                            tracing::error!(
-                                "Failed to delete connect-fail approval record for tool_use_id={}: {}",
-                                tool_use_id,
-                                e
-                            );
-                        }
+                        // (Approval row already claimed at the top of this iteration, so this
+                        // branch still can't re-loop to max_iteration.)
                         continue;
                     }
                 };
@@ -1070,19 +1138,8 @@ impl McpChatExtension {
             // Track executed tool_use_id
             executed_tool_use_ids.push(tool_use_id.clone());
 
-            // Delete approval record after successful execution to prevent double-execution
-            if let Err(e) = Repos
-                .chat
-                .mcp
-                .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                .await
-            {
-                tracing::error!(
-                    "Failed to delete approval record for tool_use_id={}: {}. This may cause duplicate execution attempts.",
-                    tool_use_id,
-                    e
-                );
-            }
+            // (The approval record was already claimed/deleted at the top of this
+            // loop iteration, before execution — see the claim comment there.)
 
             // If this tool returns a final response, capture it and return early.
             // The caller will stream it directly without calling the LLM.
@@ -1542,7 +1599,15 @@ impl ChatExtension for McpChatExtension {
                 }
             }
 
-            // Append all tool results (approved + denied) as a single user message
+            // Fold the results (approved + denied) into the request. Any id that
+            // already carries a tool_result — a placeholder `group_assistant_blocks`
+            // synthesized for a tool that was still awaiting approval when the batch
+            // was last assembled — is REPLACED in place; only genuinely-new ids are
+            // appended as a single user message. Blindly pushing them all here is
+            // what produced two tool_result blocks for one tool_use_id and the
+            // provider's "each tool_use must have a single result" rejection.
+            let content_blocks =
+                replace_or_collect_tool_results(&mut request.messages, content_blocks);
             if !content_blocks.is_empty() {
                 use ai_providers::{ChatMessage, Role};
                 let count = content_blocks.len();
@@ -3442,14 +3507,233 @@ impl ChatExtension for McpChatExtension {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_artifact_download_url, file_download_origin, saved_artifact_hidden_content_guidance,
-        tool_system_guidance,
+        build_artifact_download_url, file_download_origin, replace_or_collect_tool_results,
+        saved_artifact_hidden_content_guidance, tool_system_guidance,
     };
     use crate::core::config::CodeSandboxConfig;
     use uuid::Uuid;
 
     fn tool(name: &str) -> ai_providers::Tool {
         ai_providers::Tool::function(name.to_string(), String::new(), serde_json::json!({}))
+    }
+
+    // ── fix-duplicate-tool-result ────────────────────────────────────────────
+    // Fixtures mirror the ones in chat/core/services/streaming.rs's `mod tests`
+    // (same wire types, same shapes) so the two suites read alike.
+
+    fn tool_use(id: &str, name: &str) -> ai_providers::ContentBlock {
+        ai_providers::ContentBlock::ToolUse {
+            id: id.to_string(),
+            name: name.to_string(),
+            input: serde_json::json!({}),
+        }
+    }
+
+    fn tool_result(id: &str, content: &str) -> ai_providers::ContentBlock {
+        ai_providers::ContentBlock::ToolResult {
+            tool_use_id: id.to_string(),
+            name: None,
+            content: vec![ai_providers::ContentBlock::Text {
+                text: content.to_string(),
+            }],
+            is_error: None,
+        }
+    }
+
+    /// Every `tool_use_id` answered by a `tool_result`, across the WHOLE request.
+    fn result_ids_all(msgs: &[ai_providers::ChatMessage]) -> Vec<String> {
+        msgs.iter()
+            .flat_map(|m| m.content.iter())
+            .filter_map(|b| match b {
+                ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
+                    Some(tool_use_id.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn result_text(b: &ai_providers::ContentBlock) -> String {
+        match b {
+            ai_providers::ContentBlock::ToolResult { content, .. } => match &content[0] {
+                ai_providers::ContentBlock::Text { text } => text.clone(),
+                _ => panic!("expected a text block inside the tool_result"),
+            },
+            _ => panic!("expected a tool_result"),
+        }
+    }
+
+    /// The provider invariant this feature exists to hold: no `tool_use_id` is
+    /// answered by more than one `tool_result` anywhere in the request.
+    fn assert_single_result_per_tool_use(msgs: &[ai_providers::ChatMessage]) {
+        let ids = result_ids_all(msgs);
+        let mut seen = std::collections::HashSet::new();
+        for id in &ids {
+            assert!(
+                seen.insert(id.clone()),
+                "tool_use_id {id} is answered by MORE THAN ONE tool_result — the provider \
+                 rejects this: \"each tool_use must have a single result\". All results: {ids:?}"
+            );
+        }
+    }
+
+    /// TEST-1 — THE REPRO, driven through the real production functions.
+    ///
+    /// A mixed parallel batch: built-in A (approval-exempt) + external B (needs
+    /// approval). At the pause only A's result was persisted, so the stored blocks
+    /// are `[use A, use B, result A]`. `group_assistant_blocks` reads B as a
+    /// permanent gap and synthesizes an is_error placeholder for it. Then the
+    /// approval-resume path folds in B's freshly-executed REAL result.
+    ///
+    /// Pre-fix that fold blindly pushed a User message → TWO tool_result blocks with
+    /// id B → `messages.N.content.M: each tool_use must have a single result`.
+    #[test]
+    fn resume_of_a_mixed_batch_yields_exactly_one_result_per_tool_use() {
+        use crate::modules::chat::core::services::streaming::group_assistant_blocks;
+
+        // What the DB holds at the pause (built-in A ran; B awaits approval).
+        let mut request_messages = group_assistant_blocks(vec![
+            tool_use("A", "builtin__remember"),
+            tool_use("B", "rcpa__run_de_analysis"),
+            tool_result("A", "remembered"),
+        ]);
+
+        // Precondition: the placeholder for B really is there (this is the setup the
+        // bug needs — if this ever stops holding, the test is no longer the repro).
+        assert_eq!(
+            result_ids_all(&request_messages),
+            vec!["A", "B"],
+            "group_assistant_blocks synthesized a placeholder for the unapproved B"
+        );
+        assert!(
+            result_text(&request_messages[1].content[1]).contains("Tool result unavailable"),
+            "B's block starts life as the synthesized placeholder"
+        );
+
+        // CONTROL — the PRE-FIX behavior on this exact shape, to prove the test is
+        // not vacuous. The old code appended every fresh result as a User message
+        // unconditionally; on this shape that is the reported bug verbatim.
+        {
+            let mut pre_fix = request_messages.clone();
+            pre_fix.push(ai_providers::ChatMessage {
+                role: ai_providers::Role::User,
+                content: vec![tool_result("B", "DE analysis complete: 412 genes")],
+            });
+            let ids = result_ids_all(&pre_fix);
+            assert_eq!(
+                ids,
+                vec!["A", "B", "B"],
+                "CONTROL: blind-append (pre-fix) really does answer tool_use B twice — \
+                 this is the shape the provider rejects"
+            );
+            assert!(
+                std::panic::catch_unwind(|| assert_single_result_per_tool_use(&pre_fix)).is_err(),
+                "CONTROL: the invariant assertion must actually catch the pre-fix duplicate \
+                 (else this test proves nothing)"
+            );
+        }
+
+        // The resume path folds in B's real result.
+        let leftovers = replace_or_collect_tool_results(
+            &mut request_messages,
+            vec![tool_result("B", "DE analysis complete: 412 genes")],
+        );
+        if !leftovers.is_empty() {
+            request_messages.push(ai_providers::ChatMessage {
+                role: ai_providers::Role::User,
+                content: leftovers,
+            });
+        }
+
+        // (a) The invariant the provider enforces.
+        assert_single_result_per_tool_use(&request_messages);
+        assert_eq!(result_ids_all(&request_messages), vec!["A", "B"]);
+
+        // (b) The SURVIVING B result is the real one, not the placeholder.
+        assert_eq!(
+            result_text(&request_messages[1].content[1]),
+            "DE analysis complete: 412 genes",
+            "the placeholder must be upgraded to the freshly-executed result"
+        );
+
+        // (c) Pairing still holds: results sit in the message immediately after the
+        // Assistant turn that carries their tool_use (Anthropic requires both).
+        assert!(matches!(
+            request_messages[0].role,
+            ai_providers::Role::Assistant
+        ));
+        assert!(matches!(request_messages[1].role, ai_providers::Role::Tool));
+        assert_eq!(request_messages.len(), 2, "no trailing User message was needed");
+    }
+
+    /// TEST-6: an existing block for the id is replaced IN PLACE — same message, same
+    /// index, so adjacency to its tool_use is preserved — and nothing is left over.
+    #[test]
+    fn replace_or_collect_replaces_an_existing_result_in_place() {
+        let mut msgs = vec![
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("B", "srv__b")],
+            },
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("B", "placeholder")],
+            },
+        ];
+        let leftovers = replace_or_collect_tool_results(&mut msgs, vec![tool_result("B", "real")]);
+
+        assert!(
+            leftovers.is_empty(),
+            "nothing to append — the result went into the existing slot"
+        );
+        assert_eq!(msgs.len(), 2, "no message added");
+        assert_eq!(result_text(&msgs[1].content[0]), "real");
+        assert_single_result_per_tool_use(&msgs);
+    }
+
+    /// TEST-7: with NO existing block for the id — the pure awaiting-approval batch,
+    /// where `group_assistant_blocks` emits a bare Assistant turn and no Tool message
+    /// — the result is returned for the User message and the request is untouched.
+    /// This is the `chat-toolresult-pairing` regression guard: dropping this path
+    /// would leave the tool_use unpaired.
+    #[test]
+    fn replace_or_collect_returns_a_result_with_no_existing_block() {
+        let mut msgs = vec![ai_providers::ChatMessage {
+            role: ai_providers::Role::Assistant,
+            content: vec![tool_use("B", "srv__b")],
+        }];
+        let before = msgs.len();
+        let leftovers = replace_or_collect_tool_results(&mut msgs, vec![tool_result("B", "real")]);
+
+        assert_eq!(leftovers.len(), 1, "must be appended as a User message");
+        assert_eq!(result_text(&leftovers[0]), "real");
+        assert_eq!(msgs.len(), before, "request left untouched");
+        assert!(result_ids_all(&msgs).is_empty());
+    }
+
+    /// TEST-8: a mixed fresh batch — one id has a placeholder, one does not — replaces
+    /// the first in place and returns only the second.
+    #[test]
+    fn replace_or_collect_handles_a_mixed_batch() {
+        let mut msgs = vec![
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("B", "srv__b"), tool_use("C", "srv__c")],
+            },
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("B", "placeholder")],
+            },
+        ];
+        let leftovers = replace_or_collect_tool_results(
+            &mut msgs,
+            vec![tool_result("B", "b-real"), tool_result("C", "c-real")],
+        );
+
+        assert_eq!(leftovers.len(), 1, "only C had no existing block");
+        assert_eq!(result_text(&leftovers[0]), "c-real");
+        assert_eq!(result_text(&msgs[1].content[0]), "b-real", "B replaced in place");
+        assert_single_result_per_tool_use(&msgs);
     }
 
     #[test]

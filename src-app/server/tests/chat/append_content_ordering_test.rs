@@ -131,3 +131,71 @@ async fn append_content_yields_monotonic_sequence_order_for_parallel_tool_iterat
     );
     assert_eq!(reloaded.contents.len(), 6);
 }
+
+/// TEST-11 (fix-duplicate-tool-result): migrations 114 and 124 each added a unique
+/// index on the SAME columns, so every deployed DB carried TWO — double write cost
+/// and a coin-flip over which name a violation reports. Migration 158 drops 114's
+/// bare index and keeps 124's named constraint.
+///
+/// Asserts the outcome, not the mechanism: exactly ONE unique index remains on
+/// `(message_id, sequence_order)`, it is the constraint's, and it STILL rejects a
+/// colliding slot — the protection is preserved, only the duplicate removed.
+#[tokio::test]
+async fn message_contents_has_exactly_one_unique_sequence_guard() {
+    let server = crate::common::TestServer::start().await;
+    let (msg_id, repo) = setup_assistant_message(&server).await;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .expect("connect to per-test database");
+
+    // Every UNIQUE index on exactly (message_id, sequence_order).
+    let names: Vec<String> = sqlx::query_scalar(
+        r#"
+        SELECT i.relname::text
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_class t ON t.oid = x.indrelid
+        WHERE t.relname = 'message_contents'
+          AND x.indisunique
+          AND (
+            SELECT array_agg(a.attname::text ORDER BY a.attname)
+            FROM unnest(x.indkey) AS k(attnum)
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+          ) = ARRAY['message_id','sequence_order']
+        ORDER BY i.relname
+        "#,
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("query unique indexes on message_contents");
+
+    assert_eq!(
+        names,
+        vec!["uq_message_contents_message_sequence".to_string()],
+        "exactly one unique guard on (message_id, sequence_order) must remain — 114's \
+         redundant idx_message_contents_message_seq_unique is dropped by migration 158, \
+         124's named constraint survives. Got: {names:?}"
+    );
+
+    // …and it still WORKS: a colliding slot is rejected. (append_content computes
+    // MAX+1 so it can't collide; go around it to force the collision.)
+    repo.append_content(msg_id, "tool_use", tool_use_block("t1", "search"))
+        .await
+        .expect("first append takes slot 0");
+
+    let collide = sqlx::query(
+        "INSERT INTO message_contents (message_id, content_type, content, sequence_order) \
+         VALUES ($1, 'tool_use', '{}'::jsonb, 0)",
+    )
+    .bind(msg_id)
+    .execute(&pool)
+    .await;
+
+    assert!(
+        collide.is_err(),
+        "the surviving constraint must still reject a duplicate (message_id, sequence_order)"
+    );
+}
