@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Spinner } from '@/components/ui'
+import { Spinner } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { FilePanel } from '@/modules/file/components/FilePanel'

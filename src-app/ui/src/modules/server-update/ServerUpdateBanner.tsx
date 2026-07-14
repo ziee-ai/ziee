@@ -6,7 +6,7 @@
  * this session. Gated by <Can> so only admins ever see/mount it.
  */
 
-import { Alert, Button, Link } from '@/components/ui'
+import { Alert, Button, Link } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

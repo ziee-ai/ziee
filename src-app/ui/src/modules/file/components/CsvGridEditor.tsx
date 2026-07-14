@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { Button, Input } from '@/components/ui'
+import { Button, Input } from '@ziee/kit'
 import type { CanvasEditorHandle } from '@/components/kit/editor/types'
 import {
   type CsvGrid,

@@ -1,4 +1,4 @@
-import { Accordion, Spin, Paragraph, message } from '@/components/ui'
+import { Accordion, Spin, Paragraph, message } from '@ziee/kit'
 import { useState } from 'react'
 import { ApiClient } from '@/api-client'
 

@@ -10,7 +10,7 @@
 // arrow and filename. FilePanel runs with `hideHeader` to avoid
 // duplicating the filename inside the body.
 
-import { Title } from '@/components/ui'
+import { Title } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { FilePanel, FilePanelHeaderActions } from '@/modules/file/components/FilePanel'

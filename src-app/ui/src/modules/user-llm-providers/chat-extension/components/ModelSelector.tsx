@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Select, Tooltip } from '@/components/ui'
+import { Button, Select, Tooltip } from '@ziee/kit'
 import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ProviderWithModels } from '@/api-client/types'

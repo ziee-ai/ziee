@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react'
-import { Button, Card, Confirm, Space, Text, Paragraph, message } from '@/components/ui'
+import { Button, Card, Confirm, Space, Text, Paragraph, message } from '@ziee/kit'
 import type { BibliographyEntry } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { VerificationBadge } from './VerificationBadge'

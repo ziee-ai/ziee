@@ -9,7 +9,7 @@ import {
   Progress,
   Text,
   Upload,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'

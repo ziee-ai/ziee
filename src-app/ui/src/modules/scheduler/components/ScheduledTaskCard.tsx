@@ -26,7 +26,7 @@ import {
   Text,
   Title,
   Tooltip,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'
 

@@ -1,6 +1,6 @@
 import { FileImage } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Spin } from '@/components/ui'
+import { Spin } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { getSource } from '../shared/source'

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Download, Save } from 'lucide-react'
-import { Button, message } from '@/components/ui'
+import { Button, message } from '@ziee/kit'
 import { ApiClient, getAuthToken } from '@/api-client'
 import { getBaseUrl } from '@/api-client/getBaseURL'
 import { Permissions } from '@/api-client/types'

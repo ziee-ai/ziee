@@ -7,7 +7,7 @@
  * Dev-only: mounted at `/dev/gallery` (gated on `import.meta.env.DEV`) inside the
  * app shell, and served standalone (backend-free) at `/gallery.html`.
  */
-import { Flex, Select, Text, Title } from '@/components/ui'
+import { Flex, Select, Text, Title } from '@ziee/kit'
 import { ACCENT_PRESETS } from '@/components/ThemeProvider/accentPresets'
 import { GALLERY_ALL_ACCENTS, GALLERY_DIRS, GALLERY_THEMES } from './matrix'
 import { GalleryPages } from './pages'

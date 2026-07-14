@@ -1,4 +1,4 @@
-import { Dropdown, Tooltip, Skeleton } from '@/components/ui'
+import { Dropdown, Tooltip, Skeleton } from '@ziee/kit'
 import { LogOut, User } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

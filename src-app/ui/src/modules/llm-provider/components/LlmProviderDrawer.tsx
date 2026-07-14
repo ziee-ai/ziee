@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Button, Form, FormField, Input, PasswordInput, Select, Switch, Text, message, useForm, zodResolver } from '@/components/ui'
+import { Button, Form, FormField, Input, PasswordInput, Select, Switch, Text, message, useForm, zodResolver } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'

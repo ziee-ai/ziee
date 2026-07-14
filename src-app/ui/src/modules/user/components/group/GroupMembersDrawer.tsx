@@ -2,7 +2,7 @@ import { User } from 'lucide-react'
 import { useEffect } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-import { List, Tag } from '@/components/ui'
+import { List, Tag } from '@ziee/kit'
 
 export function GroupMembersDrawer() {
   const { isOpen: open, selectedGroup: group } = Stores.GroupMembersDrawer

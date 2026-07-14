@@ -8,7 +8,7 @@ import {
   Spin,
   Tag,
   Text,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { ProgressTrack } from '@/api-client/types'

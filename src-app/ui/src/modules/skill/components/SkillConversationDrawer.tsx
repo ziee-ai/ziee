@@ -1,4 +1,4 @@
-import { Dialog } from '@/components/ui'
+import { Dialog } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { ConversationSkillsPanel } from './ConversationSkillsPanel'
 import { SkillDetailDrawer } from './SkillDetailDrawer'

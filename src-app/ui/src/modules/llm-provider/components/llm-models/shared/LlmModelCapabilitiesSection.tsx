@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { Card, Flex, FormField, Select, Switch, Alert, useWatch } from '@/components/ui'
+import { Card, Flex, FormField, Select, Switch, Alert, useWatch } from '@ziee/kit'
 
 export function LlmModelCapabilitiesSection() {
   // Memory-plan §8 polish (gap #12): when text_embedding is ticked,

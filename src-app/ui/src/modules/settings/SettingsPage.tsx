@@ -1,4 +1,4 @@
-import { Button, Dropdown, Flex, Link, Result, ScrollArea, Title, Text } from '@/components/ui'
+import { Button, Dropdown, Flex, Link, Result, ScrollArea, Title, Text } from '@ziee/kit'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
@@ -15,8 +15,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
-import { Menu } from '@/components/ui'
-import type { MenuItem } from '@/components/ui/kit/menu'
+import { Menu } from '@ziee/kit'
+import type { MenuItem } from '@ziee/kit/kit/menu'
 
 export default function SettingsPage() {
   const navigate = useNavigate()

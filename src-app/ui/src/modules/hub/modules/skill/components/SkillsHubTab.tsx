@@ -1,6 +1,6 @@
 import { Eraser, Search, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { MultiSelect, Input, Button, Empty } from '@/components/ui'
+import { MultiSelect, Input, Button, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'

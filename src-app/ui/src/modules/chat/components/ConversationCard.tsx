@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react'
-import { Button, Card, Checkbox, Confirm, Separator, Text, Tooltip } from '@/components/ui'
-import { message } from '@/components/ui'
+import { Button, Card, Checkbox, Confirm, Separator, Text, Tooltip } from '@ziee/kit'
+import { message } from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { Trash2 } from 'lucide-react'

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Library, Plus } from 'lucide-react'
-import { Button, Empty, ErrorState, Spin, Text, Title, message } from '@/components/ui'
+import { Button, Empty, ErrorState, Spin, Text, Title, message } from '@ziee/kit'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { type KnowledgeBase, Permissions } from '@/api-client/types'

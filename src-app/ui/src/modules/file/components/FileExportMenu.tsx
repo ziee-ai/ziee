@@ -1,5 +1,5 @@
 import { Download } from 'lucide-react'
-import { Button, Popover, message } from '@/components/ui'
+import { Button, Popover, message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'

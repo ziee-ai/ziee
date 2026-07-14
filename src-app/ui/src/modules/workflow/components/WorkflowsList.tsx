@@ -1,5 +1,5 @@
 import { Import as ImportIcon, Workflow as WorkflowIcon } from 'lucide-react'
-import { Button, Card, Empty, ErrorState, Flex, Text } from '@/components/ui'
+import { Button, Card, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'

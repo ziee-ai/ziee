@@ -36,6 +36,8 @@
       "@/*": ["../../ui/src/*"],
       "@ziee/ui-core": ["../../ui/src/index.ts"],
       "@ziee/ui-core/*": ["../../ui/src/*"],
+      "@ziee/kit": ["../../../sdk/packages/kit/src/index.ts"],
+      "@ziee/kit/*": ["../../../sdk/packages/kit/src/*"],
       "csstype": ["./node_modules/csstype"]
     }
   },

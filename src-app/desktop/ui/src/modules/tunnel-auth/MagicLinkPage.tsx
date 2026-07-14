@@ -16,7 +16,7 @@
 
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Result, Spin } from '@/components/ui'
+import { Button, Result, Spin } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { useTunnelAuthStore } from './TunnelAuth.store'
 

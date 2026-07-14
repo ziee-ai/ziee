@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Textarea } from '@/components/ui'
+import { Textarea } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import {
   getDraft,

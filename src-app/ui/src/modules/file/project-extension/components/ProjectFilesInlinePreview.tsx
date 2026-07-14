@@ -1,6 +1,6 @@
 import { File } from 'lucide-react'
-import { Button, Spin } from '@/components/ui'
-import { Text } from '@/components/ui'
+import { Button, Spin } from '@ziee/kit'
+import { Text } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'

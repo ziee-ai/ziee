@@ -10,8 +10,8 @@ import {
   Switch,
   Text,
   Tooltip,
-} from '@/components/ui'
-import { message } from '@/components/ui'
+} from '@ziee/kit'
+import { message } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
 import { useState } from 'react'

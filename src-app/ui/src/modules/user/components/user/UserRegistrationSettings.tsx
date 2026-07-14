@@ -1,4 +1,4 @@
-import { Card, Form, FormField, useForm, Switch, Text, message } from '@/components/ui'
+import { Card, Form, FormField, useForm, Switch, Text, message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 

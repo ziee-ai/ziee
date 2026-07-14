@@ -3,7 +3,7 @@ import { useUpdate } from 'react-use'
 import { ThemeContext } from '@/hooks/useTheme'
 import { resolveSystemTheme } from '@/components/ThemeProvider/resolveTheme'
 import { Stores } from '@/core/stores'
-import { Toaster, DialogHost } from '@/components/ui'
+import { Toaster, DialogHost } from '@ziee/kit'
 import { applyAccent } from '@/components/ThemeProvider/accentPresets'
 
 interface ThemeProviderProps {

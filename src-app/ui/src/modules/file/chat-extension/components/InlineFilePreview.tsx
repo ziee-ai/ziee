@@ -8,7 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
-import { Button, Tooltip } from '@/components/ui'
+import { Button, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'

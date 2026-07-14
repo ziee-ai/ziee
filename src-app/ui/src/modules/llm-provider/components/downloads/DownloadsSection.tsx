@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui'
+import { Card } from '@ziee/kit'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

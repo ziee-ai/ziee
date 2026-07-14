@@ -1,6 +1,6 @@
 import { Database, Pencil } from 'lucide-react'
 import { useEffect } from 'react'
-import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
+import { Button, Card, Flex, Space, Tag, Text, Spin } from '@ziee/kit'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'

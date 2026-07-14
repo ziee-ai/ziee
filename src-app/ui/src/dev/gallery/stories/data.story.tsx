@@ -11,8 +11,8 @@ import {
   Table,
   Tag,
   Tree,
-} from '@/components/ui'
-import type { TableColumn } from '@/components/ui'
+} from '@ziee/kit'
+import type { TableColumn } from '@ziee/kit'
 import {
   DelimitedViewerDemo,
   TableActionsDemo,

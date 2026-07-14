@@ -15,7 +15,7 @@
  *   - Full ARIA wiring: aria-label, aria-expanded, aria-controls.
  */
 
-import { Button, Tooltip } from '@/components/ui'
+import { Button, Tooltip } from '@ziee/kit'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'

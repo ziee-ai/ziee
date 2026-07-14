@@ -1,6 +1,6 @@
 import { Bot, Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { Combobox, MultiSelect, Text, Button, Input, ErrorState, Empty } from '@/components/ui'
+import { Combobox, MultiSelect, Text, Button, Input, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'

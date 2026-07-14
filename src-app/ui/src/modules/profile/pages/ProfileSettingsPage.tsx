@@ -14,7 +14,7 @@ import {
   Tag,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { User } from 'lucide-react'
 import { Stores } from '@/core/stores'

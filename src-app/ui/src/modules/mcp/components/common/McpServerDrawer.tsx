@@ -15,7 +15,7 @@ import {
   Tooltip,
   message,
   useWatch,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { McpToolCallsTab } from '@/modules/mcp/components/common/McpToolCallsTab'
 import { useEffect, useMemo, useState } from 'react'

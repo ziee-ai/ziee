@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Tooltip, Text, Title } from '@/components/ui'
+import { Button, Tooltip, Text, Title } from '@ziee/kit'
 import { MessageSquare, Plus, Search as SearchIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'

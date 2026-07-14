@@ -10,7 +10,7 @@ import {
   Spin,
   Text,
   Title,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'

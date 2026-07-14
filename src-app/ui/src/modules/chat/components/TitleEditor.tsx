@@ -6,7 +6,7 @@ import {
   Title,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import { IoIosArrowBack } from 'react-icons/io'

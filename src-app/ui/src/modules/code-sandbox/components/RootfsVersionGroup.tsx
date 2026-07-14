@@ -1,4 +1,4 @@
-import { Button, Flex, Confirm, Progress, Tag, Tooltip, Text } from '@/components/ui'
+import { Button, Flex, Confirm, Progress, Tag, Tooltip, Text } from '@ziee/kit'
 import { CircleCheck, CloudDownload, Trash2, Star } from 'lucide-react'
 import {
   MANAGE_PERM,

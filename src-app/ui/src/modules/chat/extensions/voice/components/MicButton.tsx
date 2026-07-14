@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Captions, CaptionsOff, Loader2, Mic, Square, X } from 'lucide-react'
-import { Button, Popover, Tooltip } from '@/components/ui'
+import { Button, Popover, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

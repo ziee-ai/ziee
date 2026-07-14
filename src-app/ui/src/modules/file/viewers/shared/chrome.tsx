@@ -9,10 +9,10 @@ import {
   WrapText,
 } from 'lucide-react'
 import { useInRouterContext, useNavigate } from 'react-router-dom'
-import { Button, Segmented, Tooltip } from '@/components/ui'
+import { Button, Segmented, Tooltip } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { isHighlightSupported } from './find/highlightSupported'
 
 /**

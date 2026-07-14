@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { Button, InputNumber, Text } from '@/components/ui'
+import { Button, InputNumber, Text } from '@ziee/kit'
 
 /**
  * The tabular viewer's "N rows" readout + jump-to-row control. Rendered INTO the

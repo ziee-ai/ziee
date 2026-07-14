@@ -9,7 +9,7 @@ import {
   Title,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'

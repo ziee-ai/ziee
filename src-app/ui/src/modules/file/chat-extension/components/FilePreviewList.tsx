@@ -1,4 +1,4 @@
-import { Alert, ScrollArea } from '@/components/ui'
+import { Alert, ScrollArea } from '@ziee/kit'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@/core/stores'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'

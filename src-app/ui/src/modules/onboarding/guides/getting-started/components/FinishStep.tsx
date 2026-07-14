@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { CircleCheck, Rocket } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
-import { Title, Paragraph, Text } from '@/components/ui'
+import { Title, Paragraph, Text } from '@ziee/kit'
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {
   // Read the REACTIVE field (not `.$`) in render so the count re-renders

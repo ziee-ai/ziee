@@ -21,7 +21,7 @@ import {
   Text,
   Tooltip,
   Upload,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

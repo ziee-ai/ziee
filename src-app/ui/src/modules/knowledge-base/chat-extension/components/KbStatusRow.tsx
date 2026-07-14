@@ -1,4 +1,4 @@
-import { Tag, message } from '@/components/ui'
+import { Tag, message } from '@ziee/kit'
 import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'

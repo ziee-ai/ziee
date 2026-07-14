@@ -1,4 +1,4 @@
-import { Alert, Text } from '@/components/ui'
+import { Alert, Text } from '@ziee/kit'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
 import { TOOL_STATUS } from '@/modules/chat/core/tool-status'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'

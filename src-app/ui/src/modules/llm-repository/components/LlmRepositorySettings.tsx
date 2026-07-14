@@ -7,14 +7,14 @@ import {
   ErrorState,
   Flex,
   Switch,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import {
   Text,
   message,
   Separator,
   Confirm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'

@@ -1,4 +1,4 @@
-import { Tag } from '@/components/ui'
+import { Tag } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Bot } from 'lucide-react'

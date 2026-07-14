@@ -11,7 +11,7 @@ import {
   Segmented,
   Spin,
   Text,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 

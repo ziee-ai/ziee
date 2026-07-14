@@ -1,12 +1,12 @@
 import { Check } from 'lucide-react'
-import { Button, Card, Select } from '@/components/ui'
+import { Button, Card, Select } from '@ziee/kit'
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldTitle,
-} from '@/components/ui/shadcn/field'
+} from '@ziee/kit/shadcn/field'
 import { Stores } from '@/core/stores'
 import type { ThemePreference } from '@/modules/config-client/ConfigClient.store'
 import {

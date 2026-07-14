@@ -11,7 +11,7 @@ import {
   Button,
   Space,
   Flex,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Lightbulb, Info, ArrowLeft, RotateCw, Plus } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'

@@ -192,7 +192,7 @@ const elicitErrorSurface = lazy(async () => {
 /** EditableArrayTable inside a RHF Form whose field array is empty → the
  *  "No rows" empty `<tr>` (:358). */
 const arrayEmptySurface = lazy(async () => {
-  const { Form, useForm } = await import('@/components/ui')
+  const { Form, useForm } = await import('@ziee/kit')
   const { EditableArrayTable } = await import(
     '@/modules/workflow/components/EditableArrayTable'
   )

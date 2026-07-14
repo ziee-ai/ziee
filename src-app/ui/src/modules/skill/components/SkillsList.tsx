@@ -1,6 +1,6 @@
 import { Import as ImportIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Button, Card, Empty, ErrorState, Flex, Text } from '@/components/ui'
+import { Button, Card, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'

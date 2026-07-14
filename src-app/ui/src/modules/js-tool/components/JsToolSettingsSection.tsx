@@ -12,7 +12,7 @@ import {
   useForm,
   zodResolver,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

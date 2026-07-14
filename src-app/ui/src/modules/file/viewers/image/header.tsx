@@ -1,5 +1,5 @@
 import { ZoomIn, ZoomOut } from 'lucide-react'
-import { Button, Segmented, Space } from '@/components/ui'
+import { Button, Segmented, Space } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { DEFAULT_IMAGE_VIEW } from './zoom'
 import type { FileViewerSlotProps } from '../../types/viewer'

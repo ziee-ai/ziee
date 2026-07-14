@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Spin } from '@/components/ui'
+import { Spin } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { lineDiff } from '@/modules/file/utils/lineDiff'
 

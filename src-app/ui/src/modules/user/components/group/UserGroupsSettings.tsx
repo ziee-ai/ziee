@@ -11,7 +11,7 @@ import {
   Tooltip,
   message,
   ErrorState,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Loading } from '@/core/components/Loading'

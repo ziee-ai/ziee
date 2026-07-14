@@ -2,7 +2,7 @@ import { Bell } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { Badge, Button, Empty, Flex, Popover, Text } from '@/components/ui'
+import { Badge, Button, Empty, Flex, Popover, Text } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 
 /**

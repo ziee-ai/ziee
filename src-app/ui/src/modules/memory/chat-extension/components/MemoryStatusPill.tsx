@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Tooltip, Dropdown, Tag } from '@/components/ui'
-import { message } from '@/components/ui'
+import { Tooltip, Dropdown, Tag } from '@ziee/kit'
+import { message } from '@ziee/kit'
 import { EyeOff, Lightbulb } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'

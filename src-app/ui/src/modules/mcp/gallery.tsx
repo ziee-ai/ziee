@@ -243,7 +243,7 @@ export const gallery: ModuleGallery = {
       path: '/',
       initialPath: '/',
       component: lazy(async () => {
-        const { Form, useForm } = await import('@/components/ui')
+        const { Form, useForm } = await import('@ziee/kit')
         const { KeyValueSecretEditor } = await import(
           '@/modules/mcp/components/common/KeyValueSecretEditor'
         )

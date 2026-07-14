@@ -31,7 +31,7 @@
  * loading state, since the probe takes up to the HTTP timeout (~10s).
  */
 
-import { Text, dialog, message } from '@/components/ui'
+import { Text, dialog, message } from '@ziee/kit'
 import { useState } from 'react'
 import { Stores } from '@/core/stores'
 import type { HubModel, LlmRepository } from '@/api-client/types'

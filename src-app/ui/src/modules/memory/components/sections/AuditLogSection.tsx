@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button, Card, Empty, ErrorState, InputNumber, Spin } from '@/components/ui'
-import { Table, Tag, Text, Paragraph } from '@/components/ui'
+import { Button, Card, Empty, ErrorState, InputNumber, Spin } from '@ziee/kit'
+import { Table, Tag, Text, Paragraph } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

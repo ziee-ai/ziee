@@ -1,4 +1,4 @@
-import { ScrollArea, Spin } from '@/components/ui'
+import { ScrollArea, Spin } from '@ziee/kit'
 import { MarkdownTable } from '@/components/common/MarkdownTable'
 import {
   nodeToText,

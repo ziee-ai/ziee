@@ -1,7 +1,7 @@
 import { memo, useEffect, useId, useRef, useState } from 'react'
 import { Copy, Download, ZoomIn, ZoomOut } from 'lucide-react'
-import { Button, Segmented, message } from '@/components/ui'
-import { useThemeOptional } from '@/components/ui/kit/theme'
+import { Button, Segmented, message } from '@ziee/kit'
+import { useThemeOptional } from '@ziee/kit/kit/theme'
 
 const MIN_ZOOM = 0.4
 const MAX_ZOOM = 4

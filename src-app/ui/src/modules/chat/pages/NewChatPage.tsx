@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Text, Title } from '@/components/ui'
+import { Text, Title } from '@ziee/kit'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { Stores } from '@/core/stores'
 

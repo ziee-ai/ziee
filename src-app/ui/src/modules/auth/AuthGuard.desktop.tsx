@@ -40,7 +40,7 @@
  * onboarding loop it can't escape.
  */
 
-import { Layout, Spin, Text } from '@/components/ui'
+import { Layout, Spin, Text } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { isTauriView } from '@ziee/desktop/core/platform'
 import { PhoneAuthPage } from '@ziee/desktop/modules/tunnel-auth/PhoneAuthPage'

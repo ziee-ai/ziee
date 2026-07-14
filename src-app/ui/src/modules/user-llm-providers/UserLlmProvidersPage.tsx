@@ -16,7 +16,7 @@ import {
   PasswordInput,
   Menu,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { CircleCheck } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
 import { Stores } from '@/core/stores'

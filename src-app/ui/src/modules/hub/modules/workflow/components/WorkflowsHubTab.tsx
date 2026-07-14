@@ -1,5 +1,5 @@
 import { Eraser, Search, Workflow } from 'lucide-react'
-import { Input, MultiSelect, Button, Empty } from '@/components/ui'
+import { Input, MultiSelect, Button, Empty } from '@ziee/kit'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'

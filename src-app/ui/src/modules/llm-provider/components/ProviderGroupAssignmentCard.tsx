@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui'
+import { Card } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { ApiClient } from '@/api-client'

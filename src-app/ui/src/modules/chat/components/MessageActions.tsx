@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Space, Tooltip, message } from '@/components/ui'
+import { Button, Space, Tooltip, message } from '@ziee/kit'
 import { Copy as CopyIcon, Pencil, RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'

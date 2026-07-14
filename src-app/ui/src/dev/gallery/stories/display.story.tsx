@@ -22,8 +22,8 @@ import {
   Tabs,
   Tag,
   Tooltip,
-} from '@/components/ui'
-import type { TagTone } from '@/components/ui'
+} from '@ziee/kit'
+import type { TagTone } from '@ziee/kit'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined

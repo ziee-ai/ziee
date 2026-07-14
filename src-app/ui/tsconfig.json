@@ -15,7 +15,9 @@
     "jsx": "react-jsx",
 
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@ziee/kit": ["../../sdk/packages/kit/src/index.ts"],
+      "@ziee/kit/*": ["../../sdk/packages/kit/src/*"]
     },
 
     "strict": true,

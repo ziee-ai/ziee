@@ -1,6 +1,6 @@
 import { CircleCheck, CircleMinus, CircleX } from 'lucide-react'
-import { Alert, List, Space, Spin, Tag, Text } from '@/components/ui'
-import { Dialog } from '@/components/ui'
+import { Alert, List, Space, Spin, Tag, Text } from '@ziee/kit'
+import { Dialog } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import type { TestRunResponse, Workflow } from '@/api-client/types'
 import { Stores } from '@/core/stores'

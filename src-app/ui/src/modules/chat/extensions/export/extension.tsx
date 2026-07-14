@@ -1,4 +1,4 @@
-import { Popover, message } from '@/components/ui'
+import { Popover, message } from '@ziee/kit'
 import { Download, ChevronRight } from 'lucide-react'
 import {
   createExtension,

@@ -1,5 +1,5 @@
 import type { Page, Locator } from '@playwright/test'
-import type { TestIdLike } from '../../src/components/ui/testIds.generated'
+import type { TestIdLike } from '@ziee/kit/testIds.generated'
 
 /**
  * i18n-safe selector helper. Prefer this over getByText / getByRole({ name }) — visible

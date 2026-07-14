@@ -1,4 +1,4 @@
-import { Button, Checkbox, Flex, Form, FormField, useForm, zodResolver, message } from '@/components/ui'
+import { Button, Checkbox, Flex, Form, FormField, useForm, zodResolver, message } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'

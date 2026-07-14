@@ -23,7 +23,7 @@
  * the filter list + flat menu logic.
  */
 
-import { Button, Dropdown, Flex, Menu, Title } from '@/components/ui'
+import { Button, Dropdown, Flex, Menu, Title } from '@ziee/kit'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'

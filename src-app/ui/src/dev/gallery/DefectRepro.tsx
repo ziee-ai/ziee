@@ -6,7 +6,7 @@ import {
   Maximize2,
   Star,
 } from 'lucide-react'
-import { Tag, Button } from '@/components/ui'
+import { Tag, Button } from '@ziee/kit'
 
 /**
  * DEFECT-REPRO — the detection system's living KNOWN-POSITIVE fixture suite.

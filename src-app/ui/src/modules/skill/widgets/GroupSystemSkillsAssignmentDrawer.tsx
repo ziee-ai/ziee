@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Tag } from '@/components/ui'
+import { Tag } from '@ziee/kit'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { ApiClient } from '@/api-client'

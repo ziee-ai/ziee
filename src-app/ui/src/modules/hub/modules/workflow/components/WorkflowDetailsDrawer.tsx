@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Descriptions, Space, Tag, Paragraph, Title } from '@/components/ui'
+import { Descriptions, Space, Tag, Paragraph, Title } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import type { IndexItem } from '@/api-client/types'
 

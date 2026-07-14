@@ -1,5 +1,5 @@
-import { Spin, Text } from '@/components/ui'
-import type { SpinProps } from '@/components/ui'
+import { Spin, Text } from '@ziee/kit'
+import type { SpinProps } from '@ziee/kit'
 import type { ReactNode } from 'react'
 
 export interface LoadingProps extends Omit<SpinProps, 'children' | 'tip' | 'label'> {

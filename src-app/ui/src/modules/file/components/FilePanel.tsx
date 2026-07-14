@@ -1,6 +1,6 @@
 import { FileQuestion, Pencil, TriangleAlert } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { Button, Empty, Spin, Text, Title } from '@/components/ui'
+import { Button, Empty, Spin, Text, Title } from '@ziee/kit'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import {

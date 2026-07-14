@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, ErrorState, Spin, Text, Title, message } from '@/components/ui'
+import { Button, ErrorState, Spin, Text, Title, message } from '@ziee/kit'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions'

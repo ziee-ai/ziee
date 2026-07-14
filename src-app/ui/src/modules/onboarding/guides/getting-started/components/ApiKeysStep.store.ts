@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { ProviderWithModels } from '@/api-client/types'
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { defineStore } from '@/core/store-kit'
 import { createStoreProxy } from '@/core/stores'
 

@@ -1,4 +1,4 @@
-import { Text, Title } from '@/components/ui'
+import { Text, Title } from '@ziee/kit'
 import { ReactNode, useId } from 'react'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { Stores } from '@/core/stores'

@@ -25,9 +25,9 @@ import {
   Statistic,
   Table,
   Tag,
-} from '@/components/ui'
+} from '@ziee/kit'
 import type { ReactNode } from 'react'
-import type { TableColumn } from '@/components/ui'
+import type { TableColumn } from '@ziee/kit'
 import type { GalleryStory } from '../story'
 
 const LONG_TOKEN =

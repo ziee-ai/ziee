@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Card, Flex, Progress, Spin } from '@/components/ui'
+import { Card, Flex, Progress, Spin } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 
 /**

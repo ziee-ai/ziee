@@ -15,7 +15,7 @@ import {
   Switch,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'

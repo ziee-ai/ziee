@@ -16,7 +16,7 @@ import {
   Switch,
   Input,
   Textarea,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { parseWorkflowIr } from './workflowIr'
 

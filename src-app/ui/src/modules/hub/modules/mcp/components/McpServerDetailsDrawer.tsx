@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, Tag, Card, Text, Title } from '@/components/ui'
+import { Flex, Tag, Card, Text, Title } from '@ziee/kit'
 import { Link } from 'lucide-react'
 import type { HubMCPServer } from '@/api-client/types'
 import { Stores } from '@/core/stores'

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Button, Form, FormField, Input, PasswordInput, message, useForm, zodResolver } from '@/components/ui'
+import { Button, Form, FormField, Input, PasswordInput, message, useForm, zodResolver } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

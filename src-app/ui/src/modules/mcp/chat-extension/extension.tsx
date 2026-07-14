@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { Alert, Button, Card, Progress, Text } from '@/components/ui'
+import { Alert, Button, Card, Progress, Text } from '@ziee/kit'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ToolStatusIcon } from '@/modules/chat/core/ToolStatusIcon'

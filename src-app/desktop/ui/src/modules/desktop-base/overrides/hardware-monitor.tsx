@@ -8,7 +8,7 @@
  * `registerOverride` here. The `seam` codemod scaffolds this file.
  */
 import { registerOverride } from '@/core/overrides'
-import { Button, message } from '@/components/ui'
+import { Button, message } from '@ziee/kit'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 

@@ -11,7 +11,7 @@ import {
   Paragraph,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { Lock } from 'lucide-react'
 import { Stores } from '@/core/stores'

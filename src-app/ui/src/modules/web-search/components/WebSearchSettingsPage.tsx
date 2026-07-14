@@ -1,4 +1,4 @@
-import { ErrorState, Spin } from '@/components/ui'
+import { ErrorState, Spin } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { WebSearchGlobalSection } from './WebSearchGlobalSection'

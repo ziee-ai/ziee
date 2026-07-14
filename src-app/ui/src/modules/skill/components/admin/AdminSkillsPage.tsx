@@ -1,5 +1,5 @@
 import { Import } from 'lucide-react'
-import { Button, Empty, ErrorState, Flex, Text } from '@/components/ui'
+import { Button, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/types'

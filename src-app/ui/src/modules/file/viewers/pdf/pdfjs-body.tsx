@@ -11,7 +11,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import { Button, Input, Separator, Spin, Text, Tooltip } from '@/components/ui'
+import { Button, Input, Separator, Spin, Text, Tooltip } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import type { PdfController, ScaleValue } from './pdfjs'

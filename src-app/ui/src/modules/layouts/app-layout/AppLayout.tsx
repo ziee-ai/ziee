@@ -6,7 +6,7 @@ import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMi
 import { cn } from '@/lib/utils'
 // shadcn primitives (not the kit wrapper, which forces a visible title header +
 // padded scroll body) so the raw LeftSidebar can fill the panel edge-to-edge.
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/shadcn/sheet'
+import { Sheet, SheetContent, SheetTitle } from '@ziee/kit/shadcn/sheet'
 import { useMetaThemeColor } from '@/components/ThemeProvider/themeColor'
 import 'overlayscrollbars/overlayscrollbars.css'
 import { Stores } from '@/core/stores'

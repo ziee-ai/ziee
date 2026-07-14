@@ -10,7 +10,7 @@ import {
   Switch,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 interface ConversationSkillsPanelProps {
   conversationId: string

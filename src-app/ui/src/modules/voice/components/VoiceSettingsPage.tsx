@@ -1,4 +1,4 @@
-import { Alert, Flex } from '@/components/ui'
+import { Alert, Flex } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AvailableModelsCard } from './AvailableModelsCard'

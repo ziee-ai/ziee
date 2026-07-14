@@ -1,5 +1,5 @@
 import type { ProviderWithModels } from '@/api-client/types'
-import type { SelectOptionGroup } from '@/components/ui'
+import type { SelectOptionGroup } from '@ziee/kit'
 
 /**
  * Grouped model options from the user's accessible providers. Pure + exported so

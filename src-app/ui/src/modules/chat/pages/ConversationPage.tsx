@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
-import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
+import { Alert, Button, ErrorState, Tooltip } from '@ziee/kit'
 import { Search as SearchIcon } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import {

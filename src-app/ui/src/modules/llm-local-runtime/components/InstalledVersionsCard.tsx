@@ -1,6 +1,6 @@
 import { RotateCw } from 'lucide-react'
 import { Fragment, useEffect } from 'react'
-import { Button, Card, Separator, Empty, ErrorState, Flex, Spin, Tag, Text, message } from '@/components/ui'
+import { Button, Card, Separator, Empty, ErrorState, Flex, Spin, Tag, Text, message } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

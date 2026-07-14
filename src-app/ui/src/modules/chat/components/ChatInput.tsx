@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Popover, Tooltip, message } from '@/components/ui'
+import { Button, Popover, Tooltip, message } from '@ziee/kit'
 import { Plus, SendHorizontal as SendIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'

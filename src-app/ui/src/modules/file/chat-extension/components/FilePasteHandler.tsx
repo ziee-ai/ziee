@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

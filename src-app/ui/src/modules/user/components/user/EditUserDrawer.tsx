@@ -1,4 +1,4 @@
-import { Button, Form, FormField, useForm, zodResolver, Input, Switch, message } from '@/components/ui'
+import { Button, Form, FormField, useForm, zodResolver, Input, Switch, message } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'

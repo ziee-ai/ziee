@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, Card, Form, FormField, InputNumber, Switch, message, useForm, zodResolver } from '@/components/ui'
+import { Alert, Card, Form, FormField, InputNumber, Switch, message, useForm, zodResolver } from '@ziee/kit'
 import { z } from 'zod'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

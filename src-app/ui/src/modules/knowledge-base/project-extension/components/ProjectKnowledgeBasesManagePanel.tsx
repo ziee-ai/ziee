@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BookOpen, Plus } from 'lucide-react'
-import { Button, Empty, message, Popover, Spin, Tag, Text } from '@/components/ui'
+import { Button, Empty, message, Popover, Spin, Tag, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions, type KnowledgeBase } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'

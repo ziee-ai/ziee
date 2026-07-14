@@ -1,4 +1,4 @@
-import { Flex, Text, message } from '@/components/ui'
+import { Flex, Text, message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'

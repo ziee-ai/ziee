@@ -10,7 +10,7 @@ import {
   Text,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { EMAIL_RE } from '@/lib/validation'
 import { Lock, Mail, User } from 'lucide-react'

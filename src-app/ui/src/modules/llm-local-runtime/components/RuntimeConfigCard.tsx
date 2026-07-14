@@ -10,7 +10,7 @@ import {
   Spin,
   ErrorState,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'

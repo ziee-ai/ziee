@@ -12,8 +12,8 @@ import {
   dialog,
   menuRowClasses,
   MenuRowButton,
-} from '@/components/ui'
-import type { DropdownItem } from '@/components/ui'
+} from '@ziee/kit'
+import type { DropdownItem } from '@ziee/kit'
 import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'

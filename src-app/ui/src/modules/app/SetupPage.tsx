@@ -1,6 +1,6 @@
 import React from 'react'
 import { z } from 'zod'
-import { Card, Form, FormField, useForm, zodResolver, Input, Button, Alert, Title, Paragraph } from '@/components/ui'
+import { Card, Form, FormField, useForm, zodResolver, Input, Button, Alert, Title, Paragraph } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core'
 import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'

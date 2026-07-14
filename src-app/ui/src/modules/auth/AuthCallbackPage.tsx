@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Alert, Card, Layout, Title } from '@/components/ui'
+import { Alert, Card, Layout, Title } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'

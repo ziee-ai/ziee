@@ -10,7 +10,7 @@ import {
   Tooltip,
   message,
   dialog,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { formatSpeed, formatTime } from '@/utils/downloadUtils'
 import {
   Permissions,

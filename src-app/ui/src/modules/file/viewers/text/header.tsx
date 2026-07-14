@@ -1,4 +1,4 @@
-import { Space } from '@/components/ui'
+import { Space } from '@ziee/kit'
 import {
   CopyButton,
   CopySelectionButton,

@@ -12,7 +12,7 @@ import {
   useForm,
   zodResolver,
   dialog,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Lock, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'

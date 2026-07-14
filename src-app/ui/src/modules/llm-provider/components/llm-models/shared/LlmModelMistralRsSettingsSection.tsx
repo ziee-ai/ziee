@@ -10,7 +10,7 @@ import {
   Text,
   useWatch,
   useFormContext,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { useEffect, useMemo } from 'react'
 
 // Quantization options based on mistral.rs ISQ documentation

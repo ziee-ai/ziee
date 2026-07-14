@@ -9,7 +9,7 @@ import {
   message,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import {
   Check,

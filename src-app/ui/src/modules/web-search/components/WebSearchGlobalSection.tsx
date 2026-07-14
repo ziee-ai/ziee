@@ -17,7 +17,7 @@ import {
   Tooltip,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

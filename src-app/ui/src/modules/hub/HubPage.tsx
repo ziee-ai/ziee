@@ -11,8 +11,8 @@ import {
   Menu,
   ScrollArea,
   message,
-} from '@/components/ui'
-import type { MenuItem } from '@/components/ui/kit/menu'
+} from '@ziee/kit'
+import type { MenuItem } from '@ziee/kit/kit/menu'
 import { RotateCw } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
 import { Stores } from '@/core/stores'

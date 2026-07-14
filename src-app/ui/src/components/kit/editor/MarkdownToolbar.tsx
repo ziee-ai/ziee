@@ -11,7 +11,7 @@ import {
   Strikethrough,
 } from 'lucide-react'
 import { useEditorRef } from 'platejs/react'
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 
 /**
  * Formatting toolbar for the markdown canvas. Rendered INSIDE the `<Plate>`

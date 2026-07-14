@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Input, Text } from '@/components/ui'
+import { Button, Input, Text } from '@ziee/kit'
 import { ChevronDown, ChevronUp, Loader2, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'

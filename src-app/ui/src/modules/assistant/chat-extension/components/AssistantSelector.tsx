@@ -1,4 +1,4 @@
-import { Combobox, Tooltip } from '@/components/ui'
+import { Combobox, Tooltip } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'

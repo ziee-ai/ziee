@@ -1,6 +1,6 @@
 import { ArrowUpDown, Check } from 'lucide-react'
-import { Button, Dropdown, Select } from '@/components/ui'
-import type { DropdownItem } from '@/components/ui'
+import { Button, Dropdown, Select } from '@ziee/kit'
+import type { DropdownItem } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import type { ConversationSort } from '@/modules/chat/stores/ChatHistory.store'
 

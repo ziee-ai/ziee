@@ -14,7 +14,7 @@
  * we stacked two whole pages).
  */
 
-import { Separator, Title } from '@/components/ui'
+import { Separator, Title } from '@ziee/kit'
 import { SettingsPageContainer } from '@ziee/ui-core/modules/settings/components/SettingsPageContainer'
 
 // User sections (web: /settings/memory)

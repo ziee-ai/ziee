@@ -17,7 +17,7 @@ import {
   Paragraph,
   Link,
   Tooltip,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 const UPGRADE_COMMAND =
   'curl -fsSL https://github.com/ziee-ai/ziee/releases/latest/download/install.sh | sh'

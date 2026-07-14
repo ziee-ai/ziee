@@ -1,4 +1,4 @@
-import { Button, Space, Text } from '@/components/ui'
+import { Button, Space, Text } from '@ziee/kit'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'

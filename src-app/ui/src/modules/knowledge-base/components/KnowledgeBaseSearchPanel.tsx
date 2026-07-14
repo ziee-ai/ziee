@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
-import { Button, Card, Flex, Input, Tag, Text } from '@/components/ui'
+import { Button, Card, Flex, Input, Tag, Text } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { KnowledgeSearchHit } from '@/api-client/types'

@@ -12,7 +12,7 @@ import {
   Button,
   Empty,
   List,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 export function UserGroupsDrawer() {
   const { isOpen, user } = Stores.UserGroupsDrawer

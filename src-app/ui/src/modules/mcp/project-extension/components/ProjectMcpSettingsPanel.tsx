@@ -1,4 +1,4 @@
-import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@/components/ui'
+import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@ziee/kit'
 import { Pencil } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

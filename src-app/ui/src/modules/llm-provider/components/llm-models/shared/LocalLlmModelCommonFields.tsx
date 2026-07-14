@@ -1,4 +1,4 @@
-import { FormField, Select } from '@/components/ui'
+import { FormField, Select } from '@ziee/kit'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants/localLlmModelTypes'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { LOCAL_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'

@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { COLLAPSE_MAX_HEIGHT_PX } from '@/modules/chat/components/collapsible'

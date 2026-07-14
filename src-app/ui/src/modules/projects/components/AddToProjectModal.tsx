@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Dialog, Button, message, Text, Combobox } from '@/components/ui'
+import { Dialog, Button, message, Text, Combobox } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 
 interface AddToProjectModalProps {

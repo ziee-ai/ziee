@@ -1,4 +1,4 @@
-import { Card, Tag, Tooltip, Text, Button, Flex, message } from '@/components/ui'
+import { Card, Tag, Tooltip, Text, Button, Flex, message } from '@ziee/kit'
 import { Download, Globe, GitBranch, Eye, Copy } from 'lucide-react'
 import {
   Permissions,

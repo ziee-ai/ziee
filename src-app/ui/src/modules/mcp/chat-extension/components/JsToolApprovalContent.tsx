@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Space, Text } from '@/components/ui'
+import { Alert, Button, Space, Text } from '@ziee/kit'
 import { Check, Clock, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions/types'

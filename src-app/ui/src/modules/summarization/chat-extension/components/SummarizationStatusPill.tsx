@@ -1,6 +1,6 @@
 import { Shrink, FileText, EyeOff, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Tooltip, Tag, Dropdown, message } from '@/components/ui'
+import { Tooltip, Tag, Dropdown, message } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 

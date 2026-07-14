@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react'
-import { Badge, Button, Empty, List, Paragraph, Popover, Switch, Text, message } from '@/components/ui'
+import { Badge, Button, Empty, List, Paragraph, Popover, Switch, Text, message } from '@ziee/kit'
 import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'

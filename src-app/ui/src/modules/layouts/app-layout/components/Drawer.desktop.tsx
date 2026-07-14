@@ -27,7 +27,7 @@
 import * as React from 'react'
 import { useCallback, useEffect, useRef } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { Button, Title } from '@/components/ui'
+import { Button, Title } from '@ziee/kit'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'

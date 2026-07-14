@@ -13,7 +13,7 @@ import {
   Spin,
   Tag,
   Text,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Can, usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 

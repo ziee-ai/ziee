@@ -11,8 +11,8 @@ import {
   useForm,
   zodResolver,
   type UseFormReturn,
-} from '@/components/ui'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/shadcn/radio-group'
+} from '@ziee/kit'
+import { RadioGroup, RadioGroupItem } from '@ziee/kit/shadcn/radio-group'
 import { SquarePen } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import {

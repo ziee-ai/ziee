@@ -1,4 +1,4 @@
-import { Spin } from '@/components/ui'
+import { Spin } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { AttachedFileCard } from '@/modules/file/chat-extension/components/AttachedFileCard'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'

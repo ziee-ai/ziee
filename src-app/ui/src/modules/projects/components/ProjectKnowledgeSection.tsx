@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Spin, Text } from '@/components/ui'
+import { Button, Spin, Text } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import {

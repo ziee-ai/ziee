@@ -19,7 +19,7 @@ import {
   Empty,
   InputNumber,
   Spin,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Trash2, Plus, Pencil } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { CoreMemoryBlock } from '@/api-client/types'

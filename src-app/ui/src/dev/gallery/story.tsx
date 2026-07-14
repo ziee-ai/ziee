@@ -15,7 +15,7 @@
  * gallery owns its own id namespace and guarantees uniqueness via story+case keys.
  */
 import type { ReactNode } from 'react'
-import { Text, Title } from '@/components/ui'
+import { Text, Title } from '@ziee/kit'
 
 /** One permutation of a component (a variant × state × size cell). */
 export interface GalleryCase {

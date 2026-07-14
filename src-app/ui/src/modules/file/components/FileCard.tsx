@@ -4,8 +4,8 @@ import {
   Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage,
   Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle,
   AttachmentDescription, AttachmentActions, AttachmentTrigger,
-} from '@/components/ui'
-import { Confirm } from '@/components/ui'
+} from '@ziee/kit'
+import { Confirm } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type File as FileEntity } from '@/api-client/types'

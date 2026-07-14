@@ -1,4 +1,4 @@
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 

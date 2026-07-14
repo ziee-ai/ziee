@@ -33,7 +33,7 @@ import {
   Paragraph,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { useTunnelAuthStore } from './TunnelAuth.store'
 

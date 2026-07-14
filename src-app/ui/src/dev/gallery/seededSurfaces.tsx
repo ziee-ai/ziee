@@ -9,7 +9,7 @@
  */
 import { type ReactNode, Suspense, useEffect } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { Text, Title } from '@/components/ui'
+import { Text, Title } from '@ziee/kit'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { Loading } from '@/core/components/Loading'
 import { useRunInteraction } from './interactions'

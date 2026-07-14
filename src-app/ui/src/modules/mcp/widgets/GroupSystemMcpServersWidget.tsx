@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Button, Card, Flex, Space, Tag, Text, Spin } from '@/components/ui'
+import { Button, Card, Flex, Space, Tag, Text, Spin } from '@ziee/kit'
 import { Plug, Pencil } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'

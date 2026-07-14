@@ -1,4 +1,4 @@
-import { Button, Card, ErrorState, Progress, Spin, Tag, Text, message } from '@/components/ui'
+import { Button, Card, ErrorState, Progress, Spin, Tag, Text, message } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'

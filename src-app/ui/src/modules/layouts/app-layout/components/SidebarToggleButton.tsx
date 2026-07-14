@@ -1,4 +1,4 @@
-import { Tooltip, Button } from '@/components/ui'
+import { Tooltip, Button } from '@ziee/kit'
 import { PanelLeft, PanelRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { cn } from '@/lib/utils'

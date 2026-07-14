@@ -1,4 +1,4 @@
-import { ErrorState, Tabs } from '@/components/ui'
+import { ErrorState, Tabs } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { LitSearchGlobalSection } from './LitSearchGlobalSection'

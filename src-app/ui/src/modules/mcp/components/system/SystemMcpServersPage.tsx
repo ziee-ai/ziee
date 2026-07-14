@@ -7,7 +7,7 @@ import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@/components/ui'
+import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 
 export function SystemMcpServersPage() {

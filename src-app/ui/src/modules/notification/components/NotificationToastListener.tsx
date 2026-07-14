@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 

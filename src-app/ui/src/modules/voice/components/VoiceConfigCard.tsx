@@ -17,7 +17,7 @@ import {
   Text,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'

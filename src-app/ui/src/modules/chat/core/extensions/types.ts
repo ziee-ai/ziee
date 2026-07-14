@@ -515,7 +515,7 @@ export interface ChatExtension {
   useConversationMenu?: (
     conversation: import('@/api-client/types').Conversation,
   ) => {
-    items: import('@/components/ui').DropdownItem[]
+    items: import('@ziee/kit').DropdownItem[]
     overlays?: import('react').ReactNode
     /**
      * Set true while any overlay (popconfirm, sub-popover) is

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { File, TriangleAlert } from 'lucide-react'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
-import { Alert, Button, ScrollArea, Spin, Text } from '@/components/ui'
+import { Alert, Button, ScrollArea, Spin, Text } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 

@@ -1,4 +1,4 @@
-import { Button, ErrorState, Separator, Spin, Text } from '@/components/ui'
+import { Button, ErrorState, Separator, Spin, Text } from '@ziee/kit'
 import { Apple as AppleIcon, Globe, LogIn, Monitor } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import type { PublicProvider } from '@/api-client/types'

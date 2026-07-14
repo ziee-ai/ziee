@@ -16,7 +16,7 @@ import {
   Paragraph,
   message,
   dialog,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
   Permissions,

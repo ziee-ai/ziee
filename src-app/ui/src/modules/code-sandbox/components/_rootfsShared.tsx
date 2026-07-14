@@ -1,4 +1,4 @@
-import { Button, Tooltip } from '@/components/ui'
+import { Button, Tooltip } from '@ziee/kit'
 import {
   Permissions,
   type DrainEntry,

@@ -1,4 +1,4 @@
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions, type VoiceCapability } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'

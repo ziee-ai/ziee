@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, Download, RotateCw } from 'lucide-react'
-import { Badge, Button, Flex, Popover, Tooltip, message } from '@/components/ui'
+import { Badge, Button, Flex, Popover, Tooltip, message } from '@ziee/kit'
 import { Stores } from '@/core/stores'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'

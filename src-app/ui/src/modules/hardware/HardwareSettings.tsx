@@ -8,7 +8,7 @@ import {
   Tag,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { useEffect } from 'react'
 import { Loading } from '@/core/components/Loading'
 import { Stores } from '@/core/stores'

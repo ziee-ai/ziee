@@ -14,7 +14,7 @@ import {
   Switch,
   Paragraph,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { RotateCw } from 'lucide-react'
 import { Stores } from '@/core/stores'

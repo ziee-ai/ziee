@@ -145,7 +145,7 @@ const fileExtension: ChatExtension = createExtension({
     const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
     const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { File: FileOutlinedIcon } = await import('lucide-react')
-    const { Spin: SpinComponent } = await import('@/components/ui')
+    const { Spin: SpinComponent } = await import('@ziee/kit')
     const { Stores: StoresRef } = await import('@/core/stores')
 
     registerPanelRenderer('file', {

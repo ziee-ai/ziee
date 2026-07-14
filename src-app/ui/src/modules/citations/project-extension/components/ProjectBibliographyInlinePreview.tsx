@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Book } from 'lucide-react'
-import { Button, Text } from '@/components/ui'
+import { Button, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'

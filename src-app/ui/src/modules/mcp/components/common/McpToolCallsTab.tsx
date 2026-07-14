@@ -8,7 +8,7 @@ import {
   Paragraph,
   type TableColumn,
   type TagTone,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Stores } from '@/core/stores'
 import { type McpToolCall } from '@/api-client/types'

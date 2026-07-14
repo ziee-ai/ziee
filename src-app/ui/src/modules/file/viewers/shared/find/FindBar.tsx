@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { Button, Input } from '@/components/ui'
+import { Button, Input } from '@ziee/kit'
 
 /**
  * The find-in-document control strip. Presentational — the match state comes

@@ -10,7 +10,7 @@ import {
   Text,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import {
   CircleCheck,
   CircleX,

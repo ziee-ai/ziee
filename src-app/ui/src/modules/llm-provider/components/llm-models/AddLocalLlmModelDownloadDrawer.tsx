@@ -10,7 +10,7 @@ import {
   Text,
   useForm,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'

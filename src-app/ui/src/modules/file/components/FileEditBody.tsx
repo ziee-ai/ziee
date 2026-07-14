@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
-import { Button, Spin, message } from '@/components/ui'
+import { Button, Spin, message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity } from '@/api-client/types'
 import { Stores } from '@/core/stores'

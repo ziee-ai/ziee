@@ -18,7 +18,7 @@ import {
   Space,
   Text,
   Paragraph,
-} from '@/components/ui'
+} from '@ziee/kit'
 import {
   Download,
   RotateCw,

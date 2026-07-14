@@ -1,5 +1,5 @@
 import { Download } from 'lucide-react'
-import { Button, Card, Flex, Tag, Text, message } from '@/components/ui'
+import { Button, Card, Flex, Tag, Text, message } from '@ziee/kit'
 import { useState } from 'react'
 import type { IndexItem } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'

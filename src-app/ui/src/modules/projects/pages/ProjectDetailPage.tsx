@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Separator, Flex, Confirm, Result, Spin, Text, Title, Paragraph, message } from '@/components/ui'
+import { Button, Card, Separator, Flex, Confirm, Result, Spin, Text, Title, Paragraph, message } from '@ziee/kit'
 import { ArrowLeft, CircleX, Copy, Pencil, Trash2 } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'

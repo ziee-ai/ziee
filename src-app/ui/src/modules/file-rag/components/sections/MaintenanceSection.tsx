@@ -1,5 +1,5 @@
-import { Alert, Button, Card, Paragraph } from '@/components/ui'
-import { message } from '@/components/ui'
+import { Alert, Button, Card, Paragraph } from '@ziee/kit'
+import { message } from '@ziee/kit'
 import { Database } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'

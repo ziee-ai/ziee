@@ -11,7 +11,7 @@ import {
   Tooltip,
   Upload,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Can } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { type KnowledgeBaseDocument, Permissions } from '@/api-client/types'

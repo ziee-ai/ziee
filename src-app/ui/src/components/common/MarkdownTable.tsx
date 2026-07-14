@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useState, type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, X } from 'lucide-react'
-import { Button, ScrollArea, Tooltip } from '@/components/ui'
+import { Button, ScrollArea, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 

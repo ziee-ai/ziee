@@ -15,7 +15,7 @@ import {
   Switch,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'
