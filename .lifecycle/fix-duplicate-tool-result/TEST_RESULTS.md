@@ -63,15 +63,15 @@ cargo test --test integration_tests -- --test-threads=4 \
 
 Claiming a test "fails pre-fix" is only honest if it was RUN that way (B7). Two were:
 
-- **TEST-5** — reverted `results_by_id.clear()` in the worktree → panicked with
+- `TEST-5` — reverted `results_by_id.clear()` in the worktree → panicked with
   *"X must carry its REAL result, not the stale pre-flush orphan"*. Restored. (Its
   scope was later corrected: the capture guard now subsumes `clear()`, so TEST-5
   covers the flushed half and TEST-16 the no-flush half — see FIX_ROUND-2.)
-- **TEST-14** — written BEFORE fixing the cross-turn scoping bug and run against my own
+- `TEST-14` — written BEFORE fixing the cross-turn scoping bug and run against my own
   round-1 code → failed `assertion left: 3, right: 4` (turn 2's entire Tool message
   deleted). This is the regression that would have broken every gpt-oss conversation.
 
-- **The claim REORDERING** — a blind auditor asserted "the branch's riskiest change ships
+- The claim REORDERING — a blind auditor asserted "the branch's riskiest change ships
   with zero discriminating coverage". Tested rather than argued: a revert-probe (claim
   disabled at the loop head, delete restored after execution) makes
   `mcp_approval_loop_unresolvable_tool_errors_and_terminates` **FAIL**. That arm
@@ -81,10 +81,10 @@ Claiming a test "fails pre-fix" is only honest if it was RUN that way (B7). Two 
   reverted; tree verified clean.
 
 Honestly labelled as NON-discriminating (recorded rather than overclaimed):
-- **TEST-10** passes with the claim reordering reverted (the pre-fix post-execution
+- `TEST-10` passes with the claim reordering reverted (the pre-fix post-execution
   DELETE succeeded on the happy path). It is a regression guard; **TEST-13** pins the
   decision the fix turns on, and the revert-probe above covers the ordering.
-- **TEST-1** cannot fail pre-fix (it calls a fn that did not exist), so it carries an
+- `TEST-1` cannot fail pre-fix (it calls a fn that did not exist), so it carries an
   explicit CONTROL asserting the pre-fix blind-append really yields `["A","B","B"]`,
   with **TEST-17** (`#[should_panic]`) proving the invariant assertion is not vacuous.
 
