@@ -1,0 +1,11 @@
+file	kind	angles	ledger_ids	verdict
+sdk/packages/shell/src/layouts/AppLayout.tsx	new	platform-override,equivalence,reactivity	dsh-01,dsh-03	clean
+sdk/packages/shell/src/layouts/appLayoutSlots.ts	new	type-seam,security,move-completeness	dsh-04,dsh-06	clean
+sdk/packages/shell/src/hooks/useWindowMinSize.ts	new	reactivity,equivalence,move-completeness	dsh-05,dsh-07	clean
+sdk/packages/shell/src/settings/SettingsPageContainer.tsx	new	equivalence,reactivity,type-seam	dsh-03,dsh-05	clean
+sdk/packages/shell/src/index.ts	modified	move-completeness,build-parity,type-seam	dsh-07,dsh-08	clean
+src-app/ui/src/modules/layouts/app-layout/AppLayout.tsx	modified	platform-override,equivalence,build-parity	dsh-01,dsh-08	clean
+src-app/ui/src/modules/layouts/app-layout/types.ts	modified	type-seam,security,equivalence	dsh-04,dsh-06	clean
+src-app/ui/src/modules/layouts/app-layout/hooks/useWindowMinSize.ts	modified	reactivity,equivalence,move-completeness	dsh-05,dsh-07	clean
+src-app/ui/src/modules/settings/components/SettingsPageContainer.tsx	modified	equivalence,move-completeness,render-identity	dsh-07,dsh-09	clean
+src-app/ui/src/modules/settings/SettingsLayout.tsx	unchanged-seam	platform-override,scope-boundary,equivalence	dsh-02,dsh-10	clean
