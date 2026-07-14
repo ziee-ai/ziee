@@ -23,7 +23,7 @@ use crate::modules::permissions::{
 use crate::modules::user::permissions::ProfileRead;
 
 use super::event::{SyncConnectedData, SyncSseEvent};
-use super::registry::{ClientConn, SYNC_CHANNEL_CAPACITY, registry};
+use super::registry::{ClientConn, SyncConnPrincipal, SYNC_CHANNEL_CAPACITY, registry};
 
 /// Re-resolve `is_active` + group permissions this often while a stream
 /// is open, so a deactivation / permission change is picked up within the
@@ -57,7 +57,6 @@ pub async fn subscribe_sync(
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let user = auth.user.clone();
     let user_id = user.id;
-    let is_admin = user.is_admin;
     let groups = auth.groups.clone();
 
     // Bound the stream by the access token's expiry: when it lapses the
@@ -79,9 +78,7 @@ pub async fn subscribe_sync(
             conn_id,
             ClientConn {
                 user_id,
-                is_admin,
-                user,
-                groups,
+                principal: SyncConnPrincipal { user, groups },
                 sender: tx.clone(),
             },
         )
@@ -139,7 +136,7 @@ pub async fn subscribe_sync(
                             if !u.is_admin && !check_permission_union(&u, &g, "profile::read") {
                                 break;
                             }
-                            registry().refresh(conn_id, u, g);
+                            registry().refresh(conn_id, SyncConnPrincipal { user: u, groups: g });
                         }
                         // Account removed or deactivated → tear the stream down.
                         Ok(_) => break,

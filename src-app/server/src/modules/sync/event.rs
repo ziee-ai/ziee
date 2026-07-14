@@ -5,11 +5,21 @@
 //! changed entity via its existing permission-checked REST endpoint, so
 //! the SSE channel never carries anything sensitive.
 
+use axum::response::sse::Event;
 use schemars::JsonSchema;
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::modules::permissions::{PermissionCheck, PermissionList};
+// Chunk B5: the audience machinery (`Audience` / `PermRule` + typed
+// constructors), the per-user SSE registry, and the `SyncOrigin` extractor moved
+// into `ziee_framework::sync`, generic over ziee's `Principal` snapshot +
+// `SyncEntityKind`. ziee KEEPS its concrete, schema-bearing wire types below
+// (`SyncEntity`/`SyncAction`/`SyncEvent`/`SyncConnectedData`/`SyncSseEvent`, all
+// deriving `JsonSchema` — so the OpenAPI/`types.ts` surface + the generated
+// `sync:<entity>` vocabulary are byte-unchanged) and re-exports `Audience` from
+// the framework so every emit site's `use crate::modules::sync::{Audience, ..}`
+// is unchanged.
+pub use ziee_framework::sync::Audience;
 
 /// The kind of entity that changed. Serialized snake_case to match the
 /// frontend's `sync:<entity>` event vocabulary.
@@ -249,65 +259,26 @@ crate::sse_event_enum! {
     }
 }
 
-/// Delivery scope for one event, chosen by the publishing handler. There is
-/// NO central per-entity table: the module that owns the mutation decides who
-/// may learn of it, using its OWN typed permissions. Build it with the typed
-/// constructors below so a renamed/removed permission is a compile error.
-#[derive(Debug, Clone)]
-pub enum Audience {
-    /// Only the owning user's connections.
-    Owner(Uuid),
-    /// Only connections whose permission snapshot satisfies the rule
-    /// (admins always qualify).
-    Perm(PermRule),
-    /// Every authenticated connection. No current prod caller (owner/perm
-    /// scoping covers today's entities); retained as intentional API surface.
-    #[allow(dead_code)]
-    Everyone,
+// `Audience` + `PermRule` (+ the `owner`/`everyone`/`perm`/`all_of`/`any_of`
+// typed constructors) now live in `ziee_framework::sync` and are re-exported at
+// the top of this module. The framework registry routes them against each
+// connection's `Principal` snapshot; ziee's typed permissions still drive the
+// constructors, so a renamed/removed permission is a compile error at every
+// emit site — unchanged.
+
+/// Build the wire SSE `Event` for one `{entity, action, id}` change. Kept as the
+/// single serialization point so `publish` (below) and ziee's `SyncEntityKind`
+/// impl (`session_signal`) produce byte-identical events.
+fn sync_sse_event(entity: SyncEntity, action: SyncAction, id: Uuid) -> Event {
+    SyncSseEvent::Sync(SyncEvent { entity, action, id }).into()
 }
 
-/// A composable permission requirement
-#[derive(Debug, Clone)]
-pub enum PermRule {
-    /// The connection must hold EVERY listed permission.
-    All(Vec<&'static str>),
-    /// The connection must hold AT LEAST ONE listed permission.
-    Any(Vec<&'static str>),
-}
-
-impl Audience {
-    /// Deliver only to `user_id`'s own connections.
-    pub fn owner(user_id: Uuid) -> Self {
-        Audience::Owner(user_id)
-    }
-
-    /// Deliver to every authenticated connection. Part of the audience API for
-    /// genuinely-public entities; no current caller (owner/perm scoping covers
-    /// today's entities), so retained as intentional API surface.
-    #[allow(dead_code)]
-    pub fn everyone() -> Self {
-        Audience::Everyone
-    }
-
-    /// Deliver to holders of a single typed permission, e.g.
-    /// `Audience::perm::<LlmModelsRead>()`.
-    pub fn perm<P: PermissionCheck>() -> Self {
-        Audience::Perm(PermRule::All(vec![P::PERMISSION]))
-    }
-
-    /// Deliver to holders of ALL permissions in the tuple, e.g.
-    /// `Audience::all_of::<(LlmProvidersRead, LlmModelsRead)>()`. Reuses the
-    /// same `PermissionList` tuple machinery as `RequirePermissions<(A, B)>`.
-    #[allow(dead_code)]
-    pub fn all_of<L: PermissionList>() -> Self {
-        Audience::Perm(PermRule::All(L::permissions()))
-    }
-
-    /// Deliver to holders of ANY permission in the tuple, e.g.
-    /// `Audience::any_of::<(McpServersRead, McpServersAdminRead)>()`.
-    #[allow(dead_code)]
-    pub fn any_of<L: PermissionList>() -> Self {
-        Audience::Perm(PermRule::Any(L::permissions()))
+/// ziee's concrete entity vocabulary implements the framework seam: the batched
+/// member fan-out (`deliver_session_to_users`) builds each recipient's event
+/// here, byte-identical to the former inline `SyncEntity::Session` construction.
+impl ziee_framework::sync::SyncEntityKind for SyncEntity {
+    fn session_signal(user_id: Uuid) -> Event {
+        sync_sse_event(SyncEntity::Session, SyncAction::Update, user_id)
     }
 }
 
@@ -323,54 +294,25 @@ pub fn publish(
     audience: Audience,
     origin_conn: Option<Uuid>,
 ) {
-    super::registry::registry().deliver(audience, SyncEvent { entity, action, id }, origin_conn);
+    super::registry::registry().deliver(audience, sync_sse_event(entity, action, id), origin_conn);
 }
 
 /// Fan a `Session` permissions-changed signal out to many users at once
 /// (used by group-permission edits that affect every member). Delivers via a
 /// SINGLE registry lock acquisition rather than one `publish` call per user.
 pub fn publish_session_to_users(user_ids: &[Uuid], origin_conn: Option<Uuid>) {
-    super::registry::registry().deliver_session_to_users(user_ids, origin_conn);
+    super::registry::registry().deliver_session_to_users::<SyncEntity>(user_ids, origin_conn);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    struct PermA;
-    impl PermissionCheck for PermA {
-        const NAME: &'static str = "PermA";
-        const PERMISSION: &'static str = "a::read";
-        const DESCRIPTION: &'static str = "";
-        const MODULE: &'static str = "test";
-    }
-    struct PermB;
-    impl PermissionCheck for PermB {
-        const NAME: &'static str = "PermB";
-        const PERMISSION: &'static str = "b::read";
-        const DESCRIPTION: &'static str = "";
-        const MODULE: &'static str = "test";
-    }
-
-    #[test]
-    fn perm_constructor_carries_the_typed_permission_string() {
-        match Audience::perm::<PermA>() {
-            Audience::Perm(PermRule::All(ps)) => assert_eq!(ps, vec!["a::read"]),
-            other => panic!("expected Perm(All), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn all_of_and_any_of_collect_the_permission_tuple() {
-        match Audience::all_of::<(PermA, PermB)>() {
-            Audience::Perm(PermRule::All(ps)) => assert_eq!(ps, vec!["a::read", "b::read"]),
-            other => panic!("expected Perm(All), got {other:?}"),
-        }
-        match Audience::any_of::<(PermA, PermB)>() {
-            Audience::Perm(PermRule::Any(ps)) => assert_eq!(ps, vec!["a::read", "b::read"]),
-            other => panic!("expected Perm(Any), got {other:?}"),
-        }
-    }
+    // The `Audience`/`PermRule` typed-constructor tests moved to
+    // `ziee_framework::sync::audience` alongside the machinery. The wire-format
+    // tests below stay here: they pin ziee's concrete, schema-bearing wire types
+    // (the `sync:<entity>` frontend vocabulary the generated `types.ts`
+    // depends on), which deliberately did NOT move.
 
     #[test]
     fn wire_payload_is_notify_only_snake_case() {

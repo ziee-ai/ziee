@@ -12815,9 +12815,11 @@ dependencies = [
  "schemars 0.9.0",
  "serde",
  "sqlx 0.8.6",
+ "tokio",
  "tower-http",
  "tower_governor",
  "tracing",
+ "uuid",
  "ziee-core",
  "ziee-identity",
 ]
