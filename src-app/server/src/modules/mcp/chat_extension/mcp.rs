@@ -796,16 +796,18 @@ impl McpChatExtension {
             // still holds where it matters — Ok(true) is the only branch that runs the
             // tool.
             //
-            // Known cost, accepted deliberately: on AlreadyClaimed this pass persists
-            // its error result while the winner is still executing, so the error takes
-            // the LOWER sequence_order and assembly's keep-first makes it
-            // authoritative — the model is told the tool was not run here even though
-            // the winner ran it, and the winner's output is not what it reads. That is
-            // the right trade: the alternative (emit nothing) leaves the tool_use
-            // unpaired, which is not a worse ANSWER but a dead conversation. The copy
-            // therefore tells the model to ask the user to retry rather than implying
-            // the tool never ran anywhere. Reaching this at all needs two concurrent
-            // passes over one branch.
+            // Known cost, accepted deliberately: this pass persists its error result
+            // FIRST, so it takes the lower sequence_order and assembly's keep-first
+            // makes it authoritative — if the tool does produce a real result, the
+            // model never reads it. That happens on BOTH non-Won paths, and Failed
+            // does NOT need a concurrent request to get there: a failed DELETE leaves
+            // the row at status='approved', so after_llm_call's own
+            // get_approved_tools_for_branch can re-claim and execute it later in this
+            // same turn. Hence the copy says only that THIS request did not run it,
+            // and explicitly refuses to claim it never ran — we cannot know.
+            //
+            // Still the right trade: the alternative (emit nothing) leaves the
+            // tool_use unpaired, which is not a worse ANSWER but a dead conversation.
             let claim = Repos
                 .chat
                 .mcp
@@ -820,13 +822,13 @@ impl McpChatExtension {
                              not executing it again.",
                             tool_use_id
                         );
-                        "it was already started by another request"
+                        "another request had already started it"
                     }
                     _ => {
                         let e = claim.as_ref().err().expect("non-Won, non-AlreadyClaimed is Err");
                         tracing::error!(
                             "Failed to claim the approval record for tool_use_id={}: {}. Not \
-                             executing, to avoid running the tool twice.",
+                             executing it here, to avoid running the tool twice.",
                             tool_use_id,
                             e
                         );
@@ -838,9 +840,16 @@ impl McpChatExtension {
                         tool_use_id: tool_use_id.clone(),
                         name: Some(tool_name.clone()),
                         server_id: approval.server_id.map(|id| id.to_string()),
+                        // Says only what is TRUE on BOTH paths: this pass did not run it.
+                        // It must NOT claim the tool never ran anywhere — on AlreadyClaimed
+                        // the winner is running it, and on Failed the surviving row may be
+                        // picked up and executed later in this same turn. Telling the model
+                        // "it was not executed twice" would be a guess we cannot make.
                         content: format!(
-                            "The tool '{tool_name}' was not run here because {reason}. It was \
-                             not executed twice. Ask the user to retry if you still need it."
+                            "The tool '{tool_name}' was not run by this request because \
+                             {reason}, so its output is not included here. Do not assume it \
+                             did or did not run — ask the user to confirm or retry if you \
+                             need its result."
                         ),
                         is_error: Some(true),
                         attachment: None,

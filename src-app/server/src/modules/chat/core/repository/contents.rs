@@ -53,9 +53,17 @@ pub async fn create_content(
 /// That race is now CAUGHT, not silent: `UNIQUE (message_id, sequence_order)`
 /// exists (constraint `uq_message_contents_message_sequence`, migration 124), so
 /// the losing INSERT fails with a hard DB error instead of duplicating a slot.
-/// There is deliberately NO retry — a retry would be dead code guarding a call
-/// shape that does not exist, and a loud failure is the right thing to build one
-/// against if a genuinely concurrent caller ever appears.
+///
+/// A concurrent caller DOES exist, so this is not hypothetical: the MCP extension's
+/// detached elicitation task calls `append_content_with_id` (same MAX+1-inside-INSERT
+/// slot computation, same `message_id`) while the approval loop's own
+/// `append_content` calls run. Neither retries, and the approval-loop site swallows
+/// the error with `let _ =`, so a lost race there is a DROPPED content row rather
+/// than a loud failure. That is a real (pre-existing, narrow — it needs an
+/// elicitation notification to land in the same instant as a result append) gap and
+/// NOT something this comment should paper over: fixing it means a retry-on-unique-
+/// violation loop here, which is deliberately out of scope for the change that
+/// corrected this comment.
 pub async fn append_content(
     pool: &PgPool,
     message_id: Uuid,
