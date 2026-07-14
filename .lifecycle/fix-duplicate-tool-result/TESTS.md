@@ -29,6 +29,10 @@ production functions and MUST FAIL on current code. Everything else is supportin
 - **TEST-16** (tier: unit) [covers: ITEM-3] file: `src-app/server/src/modules/chat/core/services/streaming.rs` — asserts: the orphan half that `results_by_id.clear()` could NOT close — `[result X(stale), use X, result X(real)]` never flushes in between, so only refusing to capture a result that answers no OUTSTANDING tool_use fixes it. X must carry its real result.
 - **TEST-17** (tier: unit) [covers: ITEM-1, ITEM-2] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: `#[should_panic]` — the `assert_single_result_per_tool_use` invariant helper actually CATCHES a duplicated id, proving the assertions built on it (incl. TEST-1's control) are not vacuous. Replaces a `catch_unwind` control that swapped the process-global panic hook and would have swallowed parallel tests' panic output.
 
+## Added in FIX_ROUND-2 (round-2 blind-audit findings)
+
+- **TEST-18** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/modules/chat/core/services/streaming.rs` — asserts: WHY every claim path must emit a result. A batch where NOTHING ran hits `group_assistant_blocks`' `batch_has_result` gate and emits a **bare Assistant turn with no Tool message**, leaving the `tool_use` unpaired — correct only for awaiting-approval (result still coming), branch-BRICKING for a tool that will never produce one. This pins the hazard that makes a silent skip / `return Err` unrecoverable rather than merely degraded, and is why the AlreadyClaimed and Failed paths push an `is_error` result instead of skipping.
+
 ## Coverage map (bipartite check)
 
 | ITEM | Covered by |
@@ -36,7 +40,7 @@ production functions and MUST FAIL on current code. Everything else is supportin
 | ITEM-1 | TEST-1, TEST-6, TEST-7, TEST-8, TEST-15, TEST-17 |
 | ITEM-2 | TEST-1, TEST-2, TEST-3, TEST-4, TEST-9, TEST-14, TEST-17 |
 | ITEM-3 | TEST-5, TEST-16 |
-| ITEM-4 | TEST-10, TEST-13 |
+| ITEM-4 | TEST-10, TEST-13, TEST-18 |
 | ITEM-5 | TEST-12 |
 | ITEM-6 | TEST-11 |
 | ITEM-7 | TEST-9 |
