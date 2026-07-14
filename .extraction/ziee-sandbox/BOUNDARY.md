@@ -86,3 +86,58 @@ impl), `streaming.rs`, `handlers.rs`, `routes.rs`, `version_handlers.rs`,
 domain-integration files. `code_sandbox/mod.rs` re-exports the moved engine
 (`pub use ziee_sandbox::{…}`) so retained files' `super::`/`crate::modules::
 code_sandbox::…` paths resolve unchanged (the ziee-hardware shim pattern).
+
+---
+
+## Phase-2 EXECUTED this session + design resolution
+
+- **Coupling A (SECURITY-CRITICAL) — RESOLVED + VERIFIED.** The `/lit` reverse-dep
+  was lifted out of `build_bwrap_argv` into a caller-injected
+  `SandboxContext::extra_ro_binds`. `cargo check -p ziee`=0; new audit test
+  `sandbox::tests::lit_bind_lift_is_byte_identical` proves the emitted argv is
+  byte-for-byte identical apart from the injected bind triple (23/23 sandbox
+  tier-1 tests pass). See TRANSFORMS.md.
+- **Couplings B, D, E — design resolved** (apply_workspace_mode relocation;
+  guest-agent staging via a set-once engine `app_data_dir` global — cleanest, no
+  churn on the un-verifiable mac/win arms; streaming.rs STAY). See TRANSFORMS.md.
+- **Coupling C — MOOT.** The VM backends do NOT read `runtime_mount::READY`
+  (confirmed: only a stale doc comment at `mac_vm.rs:153`). No provider accessor
+  needed. The original BOUNDARY item C over-modeled this.
+
+## mac / windows RUNTIME verify commands (for the human, once the crate move lands)
+
+The `mac_vm` (`cfg(macos)`) + `wsl2` (`cfg(windows)`) arms are `#[cfg]`-out on
+Linux → compile-gated here, runtime-verified on the human's hosts.
+
+**macOS (Apple Silicon; libkrun bundled at `Contents/Frameworks/libkrun.dylib`):**
+```bash
+# 1. compile the mac_vm arm (proves the seam rewrite didn't break the mac build):
+cd src-app/server && cargo check -p ziee && cargo check -p ziee-desktop
+cd sdk && cargo check --workspace
+# 2. build a macOS rootfs + exercise the VM backend end-to-end (tier4 bwrap-direct
+#    + tier6 HTTP-E2E — the only tiers that spawn the libkrun VM + guest agent):
+just sandbox-build minimal && just sandbox-mount
+ZIEE_SANDBOX_ROOTFS=.ziee-cache/sandbox-rootfs/current \
+  cargo test --test integration_tests -- --test-threads=1 \
+  --ignored code_sandbox::tier4_ code_sandbox::tier6_
+# 3. sanity: run a real execute_command via the app and confirm the /lit carry-
+#    forward + resource-limits provider + register_mount seam behave (fetch_info,
+#    a python one-liner, evict).
+```
+
+**Windows (WSL2 ≥ 2.5.10/2.6.1; Docker pgvector DB on :54321):**
+```powershell
+# 1. compile the wsl2 arm:
+cd src-app\server; cargo check -p ziee; cargo check -p ziee-desktop
+cd ..\..\sdk; cargo check --workspace
+# 2. provision the distro + run tier4/tier6 (needs a rootfs; ZIEE_WSL_VM_ID or the
+#    helper service registered — see CLAUDE.md "Windows one-time admin steps"):
+$env:ZIEE_SANDBOX_ROOTFS=".ziee-cache\sandbox-rootfs\current"
+cargo test --test integration_tests -- --test-threads=1 `
+  --ignored code_sandbox::tier4_ code_sandbox::tier6_
+```
+Focus of the human's review: (a) the two do_extract bodies read the engine's
+set-once `app_data_dir` (not a stale `crate::core::get_app_data_dir`); (b) the
+`RootfsProvider::{ensure_fetched(_format),cache_dir,evict_by_version_flavor}` +
+`ziee_sandbox::registry::register_mount` calls in `mac_vm`/`wsl2` resolve + behave;
+(c) the `/lit` `extra_ro_binds` carry-forward onto the guest argv.

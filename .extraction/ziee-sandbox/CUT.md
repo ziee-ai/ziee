@@ -7,7 +7,20 @@ CURRENT base (branch `feat/sdk-sbxsupport`), superseding the parked
 `sdk-sandbox-wt` design which was Increment-1-scaffold-only.
 
 Two phases. **Phase 1 (DONE + verified green this session): the 4 support crates.**
-**Phase 2 (STOP-and-report): the `ziee-sandbox` engine** — the parked Increment-2
+**Phase 2 (IN PROGRESS): the `ziee-sandbox` engine.** UPDATE (this session, under
+the revised dispatch that changed the STOP rule): the extended seam is now fully
+RESOLVED for all 5 couplings (A-E) and the SECURITY CRUX — coupling A, the `/lit`
+reverse-dep inside `build_bwrap_argv` — is EXECUTED + Linux-VERIFIED byte-identical
+(passing audit test; `cargo check -p ziee`=0). See `TRANSFORMS.md` (executed lift
++ turnkey design), `BOUNDARY.md` (resolution + mac/win verify commands), and
+`LEDGER.jsonl` sbx-11..18. The physical `sdk/crates/ziee-sandbox` crate creation +
+~25-file move + `version_manager` split + provider wiring is a mechanical
+all-or-nothing-compile follow-up specified in full in `TRANSFORMS.md`; it was NOT
+physically carved this session (reported transparently rather than risking a
+broken tree with a partial move). The prior STOP text below is retained for the
+record.
+
+**Phase 2 (prior STOP-and-report rationale, superseded): the `ziee-sandbox` engine** — the parked Increment-2
 seam spec is under-specified for the CURRENT base; the engine boundary is messier
 than it assumed (see `BOUNDARY.md`). Executing it correctly requires an EXTENDED
 seam + moving ~250 KB of VM-backend code that is `#[cfg]`-out on Linux (thus

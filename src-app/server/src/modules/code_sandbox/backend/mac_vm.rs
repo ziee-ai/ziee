@@ -812,6 +812,10 @@ impl SandboxBackend for MacVmBackend {
             user_id: ctx.user_id,
             workspace: guest_workspace_path(state, &ctx.workspace),
             files: ctx.files.clone(),
+            // Carry the caller-injected extra RO binds (the /lit view) forward
+            // onto the guest argv — byte-identical to the pre-lift inline block,
+            // which computed the same host path from `ctx.conversation_id`.
+            extra_ro_binds: ctx.extra_ro_binds.clone(),
         };
         let secs = timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64);
         // The argv references the guest seccomp fd; the agent builds the same

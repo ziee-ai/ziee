@@ -218,6 +218,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             workspace,
             files: Arc::new(Vec::new()),
+            extra_ro_binds: Vec::new(),
         }
     }
 

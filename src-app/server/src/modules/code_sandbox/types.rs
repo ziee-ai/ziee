@@ -53,6 +53,17 @@ pub struct SandboxContext {
     pub user_id: Uuid,
     pub workspace: PathBuf,
     pub files: Arc<Vec<ConversationFile>>,
+    /// Caller-injected extra read-only bind mounts, appended verbatim to the
+    /// `--ro-bind-try` set by `build_bwrap_argv` at the SAME position the
+    /// (former inline) `/lit` bind occupied — AFTER attachment + workflow RO
+    /// binds. This is the seam that keeps the build-DB-free sandbox engine free
+    /// of any `crate::modules::lit_search` reverse-dependency: the ziee-side
+    /// HTTP handler (`handlers::build_context`, which CAN reach `lit_search`)
+    /// computes the per-conversation `/lit` full-text view bind and stores it
+    /// here; the engine's argv builder appends it opaquely. Empty on every path
+    /// that had no `/lit` bind (MCP-spawn ctx, tests), so the emitted argv is
+    /// byte-identical to the pre-lift builder.
+    pub extra_ro_binds: Vec<(String, String)>,
 }
 
 /// Host-level capabilities — known at server boot. These don't depend
