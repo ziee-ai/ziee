@@ -9,24 +9,58 @@
 // the moved pieces as equivalence-preserving shims, so every
 // `crate::modules::auth::…` call site is unchanged.
 
-// App-side (HTTP/aide/permission boundary).
-pub mod handlers;
-pub mod jwt_extractor;
-pub mod permissions;
-pub mod routes;
-pub mod session_settings;
+// Chunk ziee-auth-routes (decision N10) moved the auth HTTP/aide SURFACE
+// (`handlers` / `routes` / `jwt_extractor` / the session-settings REST handlers
+// + the auth-domain permissions) into `ziee_auth::auth::{http, permissions}` as
+// a mountable, resolver-generic routes bundle. This module is now a THIN
+// CONSUMER: it mounts the SDK routes with ziee's concrete `ZieeIdentityResolver`
+// and supplies config (the reverse-proxy trust flag) at boot. The module-path
+// shims below keep every `crate::modules::auth::{handlers, jwt_extractor,
+// permissions, session_settings}::…` call site resolving unchanged.
 
-// Re-export shims for the moved core (module paths + item re-exports preserved).
-// The `context`/`AuthContext`/sink types are reached via the `context` module
-// path (`crate::modules::auth::context::…`), so only the module is re-exported.
+/// Shim: the auth handlers live in `ziee_auth::auth::http::handlers`. Only the
+/// two items other app modules name are re-exported (`token_response` — the
+/// first-run `setup_admin` cookie-mode shaper; `ensure_unique_username` — the
+/// OAuth username-collision helper).
+pub mod handlers {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::http::handlers::{ensure_unique_username, token_response};
+}
+
+/// Shim: the JWT request extractors live in `ziee_auth::auth::http::jwt_extractor`.
+pub mod jwt_extractor {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::http::jwt_extractor::{JwtAuth, OptionalJwtAuth};
+}
+
+/// Shim: the auth-domain permission keys live in `ziee_auth::auth::permissions`.
+pub mod permissions {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::permissions::{
+        AuthProvidersManage, AuthProvidersRead, SessionSettingsManage, SessionSettingsRead,
+    };
+}
+
+/// Shim: the session-settings REST handlers + DTOs live in ziee-auth.
+pub mod session_settings {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::http::session_settings::{
+        get_session_settings, get_session_settings_docs, update_session_settings,
+        update_session_settings_docs,
+    };
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::session_settings::{SessionSettings, UpdateSessionSettingsRequest};
+}
+
+// Re-export shims for the moved core + the routes-bundle builders (module paths
+// + item re-exports preserved). The `context`/`AuthContext`/sink types are
+// reached via the `context` module path (`crate::modules::auth::context::…`).
 #[allow(unused_imports)]
 pub use ziee_auth::auth::{
-    AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, context, cookie, events,
-    hash_password, jwt, password, providers, refresh_tokens, repository, trust_forwarded_headers,
-    types,
+    AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, auth_admin_routes,
+    auth_routes, context, cookie, events, hash_password, jwt, password, providers, refresh_tokens,
+    repository, trust_forwarded_headers, types,
 };
-
-pub use routes::{auth_admin_routes, auth_routes};
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
@@ -150,9 +184,13 @@ impl AppModule for AuthModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
+            // Mount the SDK routes bundle with ziee's concrete identity resolver
+            // (the auth MECHANISM); the wire schema is fixed to ziee-auth's own
+            // `User`/`Group` types via the builder's associated-type bound.
+            type Resolver = crate::modules::permissions::extractors::ZieeIdentityResolver;
             let auth_router = ApiRouter::new()
-                .nest("/auth", auth_routes())
-                .merge(auth_admin_routes());
+                .nest("/auth", auth_routes::<Resolver>())
+                .merge(auth_admin_routes::<Resolver>());
             // NOTE: `/users/me/password` (change_password) lives in the
             // desktop tunnel_auth crate now — only the desktop feature
             // (Remote Access password-auth gate) needs it.

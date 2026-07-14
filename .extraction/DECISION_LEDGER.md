@@ -96,6 +96,39 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
 - affects: MIGRATE-squash
 - reaudit: n/a
 
+### N10 — Auth HTTP surface moves to the SDK (complete the auth extraction, v1)
+- statement: BA extracted the auth ENGINE but under-extracted the SURFACE — the aide REST handlers
+  (`register`/`login`/`refresh`/`logout`, the full OAuth flow incl. `oauth_callback_post`,
+  `jwt_extractor`, `session_settings`, providers CRUD) are generic auth MECHANISMS, not ziee-domain,
+  so they move to the SDK as a **mountable `ziee-auth-routes` bundle** (feature/submodule of
+  ziee-auth). ziee's `auth` module shrinks to "mount SDK routes + supply provider config/branding".
+  Only CONFIG (enabled providers, client secrets, redirect URLs, branding) stays app-side.
+- status: active
+- decided: 2026-07-14 (human: "some should be in the sdk, e.g. oauth_callback_post" → chose "in v1")
+- affects: ziee-auth-routes (new chunk), ziee's auth module
+- reaudit: **clean (2026-07-14)** — chunk `ziee-auth-routes` landed. The auth HTTP
+  surface (handlers/routes/jwt_extractor/session_settings + auth-domain permissions +
+  the Profile permission family) moved to `ziee-auth/src/auth/http` + `auth/permissions.rs`
+  + `user/permissions.rs` as a mountable, resolver-generic routes bundle
+  (`auth_routes<R>` / `auth_admin_routes<R>`, R: IdentityResolver<User=User,Group=Group>,
+  feature `routes` default-on). ziee's `auth` module shrank to ONE file (`mod.rs`, thin
+  consumer: mounts SDK routes with `ZieeIdentityResolver` + module-path shims). All 3
+  design-gates resolved (see `.extraction/ziee-auth-routes/TRANSFORMS.md`): (1) golden
+  byte/canonical-identical on BOTH surfaces; (2) emits only crate-local
+  AuthSyncEntity/AuthSyncAction via the injected AuthSyncSink — zero ziee-domain
+  SyncEntity in the SDK; (3) redirect derives from headers+trust_forwarded_headers
+  static, providers from the auth_providers table — no ziee Config/Repos global.
+  Gates: cargo check ziee=0 / ziee-desktop=0 / sdk workspace=0 / skeleton framework-only=0;
+  auth::admin_providers_test 10/10 green on the moved surface (full suite blocked only by
+  a PRE-EXISTING MIGRATE-squash harness gap, untouched here).
+- design-gates: (1) **N2 byte-identical OpenAPI** — handlers mounted at same paths must keep
+  operationIds + schema names identical (preserve type names via re-export shims; spike openapi diff
+  BEFORE committing). (2) **sync emission** — handlers publish auth entities (User/Group/Session/
+  SessionSettings); emit via `ziee_framework::sync` (Audience/publish already in framework) over the
+  `SyncEntityKind` trait (B5) with auth-owned entities, NOT ziee's `modules::sync`. (3) **config
+  injection** — enabled providers + redirect base URL injected via a config trait/struct, not read
+  from ziee globals.
+
 ### N9 — Domain-seed boundary (new; the leak fix + a gate)
 - statement: an SDK/module migration must NOT seed another module's domain data. Concretely:
   `ziee-auth` migrations contain ZERO permission strings other than `profile::*` / `*` — domain
