@@ -21,19 +21,26 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
 ### N1 — Identity model: PLUGGABLE
 - statement: framework is identity-agnostic; enforcement is generic over an injected resolver;
   `ziee-identity` holds only traits; `ziee-auth` is the default replaceable impl.
-- status: active · decided: 2026-07-12 · affects: B1b, B3, BA · reaudit: pending
+- status: active
+- decided: 2026-07-12
+- affects: B1b, B3, BA
+- reaudit: pending
 
 ### N2 — Equivalence gate: equivalence-preserving + re-export shims
 - statement: byte-identical `types.ts` gate stays ABSOLUTE; refactors keep serialized schema
   identical via ziee shims; spike openapi diff before committing; cosmetic delta needs human sign-off.
-- status: active · decided: 2026-07-12 · affects: B2, B3, B5, B6, BA · reaudit: pending
+- status: active
+- decided: 2026-07-12
+- affects: B2, B3, B5, B6, BA
+- reaudit: pending
 
 ### N3 — Migration composition: build-time directory composition  → **REVISED (N3.1)**
 - statement (original): runtime Migrator concat is unsupported → app composes ONE migration dir at
   build time (auth ∪ app, version-sorted) and `sqlx::migrate!` over it. Moved historical migrations
   KEEP original numeric versions + byte content (checksum-safe for deployed DBs); only NEW migrations
   use timestamps.
-- status: **revised** · decided: 2026-07-12
+- status: revised
+- decided: 2026-07-12
 - **revised: 2026-07-14 → N3.1.** Supersedes the "preserve numeric history" clause. Now: **squash**
   the full 137+10 history into clean per-module baselines; **ALL** migrations become
   `<timestamp>_<module>_<desc>.sql` (not just new ones); migrations are **module-owned** (see N7).
@@ -46,16 +53,25 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
 ### N4 — Boundary CI: scoped subset per boundary
 - statement: per-boundary = touched-module tests + golden diffs + dual clean-build; full ziee suite
   + `gate:ui` only at the pre-merge gate (+ nightly).
-- status: active · decided: 2026-07-12 · affects: all · reaudit: n/a (process)
+- status: active
+- decided: 2026-07-12
+- affects: all
+- reaudit: n/a (process)
 
 ### N5 — control_mcp: descope C1 to tool-dispatch only; fresh-app exposure v1.5
 - statement: v1 extracts DB-free tool-dispatch (catalog/policy/tools); handlers/routes/repository/
   chat_extension + the `mcp_servers` row stay app-side. Self-expose needs the Tier-1 `mcp` registry (v1.5).
-- status: active · decided: 2026-07-13 · affects: C1 · reaudit: pending
+- status: active
+- decided: 2026-07-13
+- affects: C1
+- reaudit: pending
 
 ### N6 — De-globalize: dedicated Chunk BG before B3
 - statement: Repos/JWT/config singletons de-globalized behind traits as a dedicated chunk before B3.
-- status: active · decided: 2026-07-12 · affects: BG, BG-2, BG-3, B3, D-full · reaudit: pending
+- status: active
+- decided: 2026-07-12
+- affects: BG, BG-2, BG-3, B3, D-full
+- reaudit: pending
 
 ### N7 — Migrations are MODULE-OWNED (new, this session)
 - statement: every module owns `migrations/` (co-located with its routes/permissions/repository),
@@ -64,21 +80,29 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
   schema (as `ziee-auth` already does). A central flat dir hides ownership (root cause of the
   `27_fix_default_user_permissions` leak). build.rs globs `modules/*/migrations/ ∪
   sdk/crates/*/migrations/`, timestamp-sorted.
-- status: active · decided: 2026-07-14 · affects: MIGRATE-squash, all future module extractions
+- status: active
+- decided: 2026-07-14
+- affects: MIGRATE-squash, all future module extractions
 - reaudit: pending (lands with MIGRATE-squash)
 
 ### N8 — Pre-release: squash freely (no deployed DBs)
 - statement: no live third-party ziee Postgres deployments to protect → the checksum-immutability /
   append-only rule (N3 hard-rule #1) is CONSCIOUSLY SUSPENDED for the one squash, then re-established
   from the new baseline forward. Human-confirmed 2026-07-14.
-- status: active · decided: 2026-07-14 · affects: MIGRATE-squash · reaudit: n/a
+- status: active
+- decided: 2026-07-14
+- affects: MIGRATE-squash
+- reaudit: n/a
 
 ### N9 — Domain-seed boundary (new; the leak fix + a gate)
 - statement: an SDK/module migration must NOT seed another module's domain data. Concretely:
   `ziee-auth` migrations contain ZERO permission strings other than `profile::*` / `*` — domain
   perms (`chat::`,`branches::`,`assistants::`,`mcp_servers::`,`hub::`,`files::`,`conversations::`,…)
   live in the owning module's migration. New EA assertion greps for violations.
-- status: active · decided: 2026-07-14 · affects: BA (re-audit), MIGRATE-squash · reaudit: pending
+- status: active
+- decided: 2026-07-14
+- affects: BA (re-audit), MIGRATE-squash
+- reaudit: pending
 
 ---
 
@@ -166,3 +190,14 @@ Three parallel read-only audits ran against the revised plan + the extracted cod
 - reaudit status: N1/N2/N5/N6/#7/#10/E11 → **clean** (this pass). N3.1/N7/N9 → pending (land with
   MIGRATE-squash + the control-mcp/test-fixture domain-neutralization sweep). BA → re-gated by
   MIGRATE-squash.
+
+**Convergence round 2 (2026-07-14) — re-audit of the converged plan.** 3 HIGH + 2 MEDIUM, all closed
+on paper (no BLOCKER): **(H1-schema)** fingerprint now includes `is_generated`+`generation_expression`
+(ziee has 3 GENERATED cols — `content_tsv`×2 + `user_memories`), `pg_get_indexdef` (opclass
+`halfvec_cosine_ops` + predicate), `pg_get_constraintdef` (FK ON UPDATE/DELETE/DEFERRABLE, CHECK).
+**(H1-seed)** compare algorithm specified: business-key row keying (baseline uses random uuids),
+FK-via-business-key join, drop volatile cols, element-sort set-arrays (`groups.permissions TEXT[]`).
+**(H1-residual)** stale BA gate + §8 "preserve version/checksum / existing history preserved"
+reconciled to N3.1. **(MEDIUM)** index/FK fingerprinting folded in; ledger grammar normalized to
+standalone field lines (all 9 decisions uniform → a future `--all` regex won't skip any). **Verdict:
+GREEN LIGHT for MIGRATE-squash implementation.**

@@ -263,11 +263,13 @@ migration composition.*
   subsystem + the **dual-mode auth strategies** (multi-user + single-user auto-login/owner-`*`)
   into the `ziee-auth` MODULE crate (depends on `ziee-framework` + `ziee-identity`).
 - **Gate — migration composition:** `ziee-auth` owns its migrations; the app runs a **merged
-  Migrator** (SDK-auth ∪ app, sorted by version), timestamp-versioned; existing ziee auth
-  migrations move **preserving version + checksum** so deployed DBs are unaffected (§7). SDK CI
-  gets an **auth-only build DB** to verify `ziee-auth`'s `query!` macros.
+  Migrator** (SDK-auth ∪ app, sorted by version). *(BA's initial carve-out kept the original numeric
+  files; the later **MIGRATE-squash** chunk (N3.1) reconstructs ALL migrations to squashed,
+  module-owned, `<YYYYMMDDNNNN>`-versioned baselines — no version/checksum preservation, since N8
+  confirms no deployed DBs. Equivalence is proven by EA's logical fingerprint + whole-DB seed, §10,
+  NOT by chain preservation.)* SDK CI gets an **auth-only build DB** to verify `ziee-auth`'s `query!`.
 - **Green:** ziee boots with auth served from `ziee-auth`; auth/session/permission integration +
-  E2E pass; the merged migrator applies cleanly on a fresh AND an existing DB.
+  E2E pass; the merged migrator applies cleanly on a fresh DB (EA fingerprint + seed equivalent).
 
 **Chunk C1 — `ziee-control-mcp` capability (v1).** *Design-gate: the LLM-control surface.*
 - **Moves:** `control_mcp` (`modules/control_mcp/{catalog,policy,tools}.rs` — tool-dispatch only;
@@ -350,17 +352,22 @@ in-process** (`backend/mod.rs:228 start_backend_server` → `ziee::start_server_
      schema (attnum order, auto constraint-name suffixes, emission order). So the gate builds a
      **structural fingerprint** from `information_schema`/`pg_catalog` on BOTH the numeric-baseline DB
      and the squashed DB: each table as a SET of `{column → (data_type, is_nullable,
-     normalized-default)}` (order-independent); constraints (PK/UNIQUE column-sets, FK
-     target+columns+on-delete, CHECK expr), indexes (columns/method/predicate/uniqueness), enums,
-     sequences, functions, triggers, extensions — all by **definition, not auto-generated name**.
-     Diff must be EMPTY. Validator RE-RUNS the fingerprint script on both DBs (unfakeable).
+     normalized-default, **is_generated + generation_expression**)}` (order-independent — the
+     generated expr is REQUIRED; ziee has 3 `GENERATED` cols); indexes via name-normalized
+     `pg_get_indexdef` (opclass e.g. `halfvec_cosine_ops` + predicate + method); constraints via
+     `pg_get_constraintdef` (FK target+cols+`ON UPDATE/DELETE`+`DEFERRABLE`, CHECK, PK/UNIQUE);
+     enums/sequences/functions/triggers/extensions by **definition, not auto-name**. Diff must be
+     EMPTY. Validator RE-RUNS the fingerprint script on both DBs (unfakeable). **Exact catalog
+     columns: SPEC §3 EA-schema.**
   2. **Whole-DB seed data.** A fresh-migrated DB holds ONLY seed rows (no user data), so compare the
      ENTIRE data image, not a curated table list (H3). FIRST capture `.extraction/baseline/seed.sql`
-     = all rows of all tables from a fresh **numeric**-migrated DB. After the squash, the same dump
-     must be **equivalent per-table by content**, ignoring volatile generated columns
-     (`gen_random_uuid()` PKs, `created_at`/`updated_at`); FK-referenced seed rows keep their literal
-     ids in the squashed migration so cross-references stay stable. Any missing/extra/altered seed row
-     fails.
+     = all rows of all tables from a fresh **numeric**-migrated DB. After the squash, compare
+     **per-table by business key** (NOT literal uuid — the baseline seeds some FK'd rows with random
+     `gen_random_uuid()`): drop volatile cols (`created_at`/`updated_at`, surrogate uuid PKs), key
+     rows by natural cols (`groups.name`, `auth_providers.name`, settings discriminators), resolve
+     FKs **through the referenced business key** (join, don't compare raw uuids), and **element-sort
+     set-valued arrays** (`groups.permissions TEXT[]` — order not significant). Missing/extra/
+     mismatched row fails. **Exact algorithm: SPEC §3 EA-seed.**
   - Golden types/openapi trivially unchanged (migrations aren't in the API surface). **N9
     seed-assertion:** `grep` the auth migrations → zero non-`profile::`/non-`*` perm strings. Build
     DB provisions clean; `cargo check -p ziee` green (all `query!` still verify against the merged
@@ -514,7 +521,7 @@ the merged approach is least disruptive to existing deployments.
   the SDK; the deferred ~1–2 wk leaf cut).
 - **#12 Desktop override → BUNDLE-KEYED** (two entry bundles; each registers its overrides at boot).
 - **#10 SDK ships schema → YES**, `ziee-auth` only; framework crates stay build-DB-free (§7).
-- **Migration composition** → merged Migrator + timestamp versioning, existing history preserved (§7.1).
+- **Migration composition** → merged Migrator + module-owned squash (N3.1), `<YYYYMMDDNNNN>` monotonic versioning; migration-chain history **reconstructed, not preserved** (N8); equivalence via EA logical fingerprint + whole-DB seed (§7.1, §10).
 
 **Lower-level questions — RESOLVED this audit pass (resolutions below):**
 2. Nested-workspace mechanics (Cargo path-deps-across-workspaces; npm hoist) — validate in Chunk 0.
