@@ -11,11 +11,18 @@
 //! `tauri-plugin-updater`) — the desktop forces the flag off in
 //! `desktop/tauri/src/modules/backend/mod.rs`.
 
+// Chunk `server-update` moved the DB-free wire type (`types`) + the
+// `ServerUpdateRead` permission key (`permissions`) into the
+// `ziee-server-update` crate, re-exported below as equivalence-preserving shims.
+// `checker` stays here (embeds `env!("CARGO_PKG_VERSION")` — must be ziee's
+// version — and a test names `crate::core::config`), as do the aide/axum
+// `handlers`/`routes` (bind `RequirePermissions`) + this registration.
 mod checker;
 mod handlers;
-pub mod permissions;
 mod routes;
-mod types;
+
+#[allow(unused_imports)]
+pub use ziee_server_update::{permissions, types};
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;

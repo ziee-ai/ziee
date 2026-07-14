@@ -12642,7 +12642,6 @@ dependencies = [
  "ab_glyph",
  "ai-providers",
  "aide",
- "ash",
  "async-stream",
  "async-trait",
  "axum",
@@ -12681,10 +12680,8 @@ dependencies = [
  "macros",
  "mime_guess",
  "mockall",
- "nvml-wrapper",
  "oauth2",
  "once_cell",
- "opencl3",
  "openidconnect",
  "paste",
  "pdf-extract",
@@ -12729,7 +12726,6 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
- "wgpu-hal",
  "which",
  "windows-service",
  "windows-sys 0.59.0",
@@ -12739,7 +12735,11 @@ dependencies = [
  "ziee-control-mcp",
  "ziee-core",
  "ziee-framework",
+ "ziee-hardware",
+ "ziee-health",
  "ziee-identity",
+ "ziee-notification",
+ "ziee-server-update",
  "zip 6.0.0",
  "zstd",
 ]
@@ -12894,12 +12894,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "ziee-hardware"
+version = "0.0.0"
+dependencies = [
+ "ash",
+ "axum",
+ "chrono",
+ "lazy_static",
+ "nvml-wrapper",
+ "opencl3",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wgpu-hal",
+ "ziee-core",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-health"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "axum",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ziee-identity"
 version = "0.0.0"
 dependencies = [
  "schemars 0.9.0",
  "serde",
  "ziee-core",
+]
+
+[[package]]
+name = "ziee-notification"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sqlx 0.8.6",
+ "uuid",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-server-update"
+version = "0.0.0"
+dependencies = [
+ "schemars 0.9.0",
+ "serde",
+ "ziee-identity",
 ]
 
 [[package]]

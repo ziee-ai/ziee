@@ -5,14 +5,21 @@
 // This module provides hardware information and real-time monitoring
 // including OS, CPU, Memory, and GPU information via REST and SSE APIs
 
-pub mod detection;
+// Chunk `hardware` moved the DB-free core (wire `types` + the SSE event enum,
+// GPU/CPU/mem `detection`, the SSE `monitoring` broadcaster, and the
+// `permissions` keys) into the `ziee-hardware` crate. This module keeps the
+// aide/axum boundary (`handlers`/`routes`, which bind ziee's concrete
+// `RequirePermissions` resolver) + the `AppModule`/`MODULE_ENTRIES`
+// registration, and re-exports the moved core as equivalence-preserving shims so
+// every `super::{detection,monitoring,permissions,types}::…` path in the
+// retained handlers/routes + `main.rs`'s shutdown call resolve unchanged.
 pub mod handlers;
-pub mod monitoring;
-pub mod permissions;
 pub mod routes;
-pub mod types;
 
-// Re-export main types and router
+#[allow(unused_imports)]
+pub use ziee_hardware::{detection, monitoring, permissions, types};
+
+// Re-export main router
 pub use routes::hardware_router;
 
 use aide::axum::ApiRouter;

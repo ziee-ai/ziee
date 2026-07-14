@@ -1,8 +1,14 @@
-mod handlers;
-mod routes;
-mod types;
-
-pub use routes::routes;
+// Chunk `health` moved the DB-free module body (the `HealthResponse` wire type,
+// the pure `health_check` handler + docs, the `routes()` builder) into the
+// `ziee-health` crate. This module keeps the `AppModule`/`MODULE_ENTRIES`
+// registration (which names ziee's `module_api`) and re-exports the moved pieces
+// as equivalence-preserving shims, so `routes()` + `crate::modules::health::…`
+// resolve unchanged and the emitted OpenAPI is byte-identical.
+// `routes` re-exports both the module AND the crate-root `routes()` fn (value
+// namespace, via ziee-health's `pub use routes::routes`), so `register_routes`'
+// call to `routes()` below resolves, mirroring the former `pub use routes::routes;`.
+#[allow(unused_imports)]
+pub use ziee_health::{handlers, routes, types};
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
