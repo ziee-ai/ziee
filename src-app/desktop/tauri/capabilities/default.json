@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
-  "description": "Default capabilities for Ziee desktop app",
-  "windows": ["main"],
+  "description": "Default capabilities for Ziee desktop app (+ chat-* pop-out windows)",
+  "windows": ["main", "chat-*"],
   "permissions": [
     "core:default",
     "opener:default",

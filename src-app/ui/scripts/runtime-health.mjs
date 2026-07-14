@@ -132,6 +132,11 @@ function isHarnessNoise(f) {
   const d = f.detail || ''
   if (f.category === 'console-error' && matchesAny(d, HARNESS_CONSOLE)) return true
   if (f.category === 'request-failed') {
+    // A browser-ABORTED request (net::ERR_ABORTED) is a full-page-reload race in
+    // the per-cell harness (a dev fixture/module import still in flight when the
+    // next cell reloads) — never a product fetch defect, which surfaces as a
+    // 4xx/5xx status or ERR_CONNECTION*/ERR_NAME_NOT_RESOLVED. Mute it.
+    if (/net::ERR_ABORTED/.test(d)) return true
     const m = /(?:GET|POST|PUT|DELETE|PATCH|HEAD)\s+(\S+)/.exec(d)
     return isViteDevAsset(m ? m[1] : d)
   }
@@ -539,7 +544,21 @@ async function main() {
             ? 1100
             : 800
       await p.waitForTimeout(settle)
-      const audit = await p.evaluate(inPageAudit)
+      // The in-page audit evaluate can lose its execution context to a
+      // navigation/reload race (inherent to the reload-per-cell model, and
+      // aggravated by slow /@fs serving under a symlinked node_modules) — a
+      // harness timing artifact, NOT a product defect, and non-deterministic
+      // (it lands on whichever cell was mid-settle). Retry once on a
+      // context-destroyed race; only a PERSISTENT failure records a nav-error (a
+      // real unexpected redirect would still fail deterministically on retry).
+      let audit
+      try {
+        audit = await p.evaluate(inPageAudit)
+      } catch (e) {
+        if (!/context was destroyed/i.test(e.message || '')) throw e
+        await p.waitForTimeout(500)
+        audit = await p.evaluate(inPageAudit)
+      }
       for (const f of audit) record(cell, theme, f)
     } catch (e) {
       record(cell, theme, {

@@ -52,6 +52,54 @@ test('TEST-6: defineLocalStore proxy — reactive read in render, `$` snapshot, 
   assert.doesNotThrow(() => capturedAction('world'))
 })
 
+test('TEST-42 (split-chat): two defineLocalStore instances expose independent raw StoreApis (per-pane ctx.chatStore)', () => {
+  // The split feature gives each pane its OWN local store instance; the pane
+  // context threads that instance's raw StoreApi (`.__api__`) as `ctx.chatStore`.
+  // Two instances must be fully independent: a set on one never touches the other,
+  // and each has its own subscribe/getState/setState.
+  const Def = defineLocalStore({
+    state: { conv: null as string | null },
+    actions: (set: any) => ({ setConv: (v: string) => set(() => ({ conv: v })) }),
+  })
+  let apiA: any
+  let apiB: any
+  function A() {
+    apiA = (Def.use({ conv: 'a' }) as any).__api__
+    return null
+  }
+  function B() {
+    apiB = (Def.use({ conv: 'b' }) as any).__api__
+    return null
+  }
+  renderToStaticMarkup(React.createElement(A))
+  renderToStaticMarkup(React.createElement(B))
+
+  // Each raw StoreApi surface is present (subscribe / getState / setState).
+  for (const api of [apiA, apiB]) {
+    assert.equal(typeof api.getState, 'function')
+    assert.equal(typeof api.setState, 'function')
+    assert.equal(typeof api.subscribe, 'function')
+  }
+  // Distinct initial state (two independent instances, not a shared singleton).
+  assert.equal(apiA.getState().conv, 'a')
+  assert.equal(apiB.getState().conv, 'b')
+
+  // A set on instance A does not touch B; A's subscriber fires, B's does not.
+  let aFires = 0
+  let bFires = 0
+  apiA.subscribe(() => {
+    aFires += 1
+  })
+  apiB.subscribe(() => {
+    bFires += 1
+  })
+  apiA.setState({ conv: 'a2' })
+  assert.equal(apiA.getState().conv, 'a2')
+  assert.equal(apiB.getState().conv, 'b', 'instance B is unaffected by a set on A')
+  assert.ok(aFires >= 1, 'A subscriber fired on A set')
+  assert.equal(bFires, 0, 'B subscriber did NOT fire on A set')
+})
+
 test('TEST-9: `$.__destroy__` is reachable hook-free and does NOT trigger store init (HMR-destroy pattern)', () => {
   let initRuns = 0
   const h = defineStore('ProbeDestroy', {

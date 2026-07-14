@@ -4,11 +4,13 @@ import { message } from '@/components/ui'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { Trash2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import type { ConversationResponse } from '@/api-client/types'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
+import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 
 dayjs.extend(relativeTime)
 
@@ -41,7 +43,10 @@ export function ConversationCard({
   isInSelectionMode = false,
   trailing,
 }: ConversationCardProps) {
-  const navigate = useNavigate()
+  const openConversation = useOpenConversationInWorkspace()
+  // Tear-off (ITEM-58): releasing a card drag past the window edge pops the
+  // conversation into its own desktop window (no-op on web / in-window release).
+  const tearOff = useConversationTearOff()
   const [popconfirmOpen, setPopconfirmOpen] = useState(false)
   const canDelete = usePermission(Permissions.ConversationsDelete)
   // Lazy-render the trailing area only after first hover so extensions
@@ -55,19 +60,27 @@ export function ConversationCard({
     () => typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches,
   )
 
-  const handleCardClick = () => {
+  const handleCardClick = (e?: React.MouseEvent) => {
     if (isInSelectionMode && onSelect) {
       // In selection mode, toggle selection instead of navigating
       onSelect(conversation.id)
-    } else {
-      // Per-conversation URL resolution: chat extensions can
-      // override the default `/chat/{id}` link via the
-      // `conversationHref` hook. First non-undefined wins.
-      const href =
-        chatExtensionRegistry.conversationHref(conversation) ??
-        `/chat/${conversation.id}`
-      navigate(href)
+      return
     }
+    // Right-click opens the browser context menu — leave it alone.
+    if (e && e.button === 2) return
+    // Per-conversation URL resolution: chat extensions can override the default
+    // `/chat/{id}` link via the `conversationHref` hook. First non-undefined wins.
+    const href =
+      chatExtensionRegistry.conversationHref(conversation) ??
+      `/chat/${conversation.id}`
+    // Cmd/Ctrl/middle-click → open beside the current pane; plain click → the
+    // workspace reducer decides navigate-vs-replace-focused (ITEM-28).
+    const newPane = !!e && (e.metaKey || e.ctrlKey || e.button === 1)
+    if (e && e.button === 1) e.preventDefault() // middle-click: no autoscroll
+    openConversation(conversation.id, {
+      intent: newPane ? 'newPane' : 'auto',
+      href,
+    })
   }
 
   const handleDeleteConversation = async () => {
@@ -101,6 +114,15 @@ export function ConversationCard({
       tabIndex={0}
       aria-label={conversation.title || 'Untitled Conversation'}
       onClick={handleCardClick}
+      onAuxClick={handleCardClick}
+      draggable
+      onDragStart={e => setConversationDragData(e.dataTransfer, conversation.id)}
+      onDragEnd={e =>
+        tearOff(e, {
+          conversationId: conversation.id,
+          title: conversation.title ?? undefined,
+        })
+      }
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()

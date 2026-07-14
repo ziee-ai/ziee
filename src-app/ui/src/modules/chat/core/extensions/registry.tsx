@@ -98,21 +98,26 @@ export class ChatExtensionRegistry {
     this.extensions.set(extension.name, extension)
     this.extensionOptions.set(extension.name, options)
 
-    // Create independent extension store if provided
+    // Seed the PRIMARY pane's chat store with this extension's store instance
+    // (split panes seed their OWN via `injectExtensionStores` in each store's
+    // init — see that method). Idempotent so it can't race/overwrite the
+    // init-time injection: whichever runs first wins, the other skips.
     if (extension.store) {
-      const storeInstance = extension.store.createStore()
-
       // Lazy import useChatStore to avoid circular dependency
       // Import happens at runtime when register() is called, not at module load time
       import('../stores/Chat.store').then(({ useChatStore }) => {
         // Inject store at root level of Chat store for reactive access via Stores.Chat.{storeName}
         // Direct mutation is safe now that Immer middleware has been removed
-        const stateObject = useChatStore.getState()
-        ;(stateObject as any)[extension.store!.name] = storeInstance
-
-        console.log(
-          `[ChatExtensions] Injected store "${extension.store!.name}" for extension: ${extension.name}`,
-        )
+        const stateObject = useChatStore.getState() as unknown as Record<
+          string,
+          unknown
+        >
+        if (!stateObject[extension.store!.name]) {
+          stateObject[extension.store!.name] = extension.store!.createStore()
+          console.log(
+            `[ChatExtensions] Injected store "${extension.store!.name}" for extension: ${extension.name}`,
+          )
+        }
       })
     }
 
@@ -316,25 +321,93 @@ export class ChatExtensionRegistry {
   }
 
   /**
+   * Inject a FRESH instance of every registered extension store into the given
+   * chat store state, if not already present (ITEM-4/5). Each Chat store INSTANCE
+   * calls this in its `init`, so every split pane gets its OWN extension-store
+   * instances (e.g. its own composer `TextStore`) rather than sharing one — the
+   * register-time injection only seeds the PRIMARY pane's store. Idempotent:
+   * a store already present (the primary's register-time seed) is left as-is, so
+   * single-pane behaviour is unchanged.
+   *
+   * Direct mutation (not `set`) mirrors the register-time injection: the nested
+   * store carries its own reactivity (read as `Stores.Chat.<Name>`), so adding
+   * the field to the parent state object needs no subscriber notification.
+   */
+  injectExtensionStores(chatState: Record<string, unknown>): void {
+    for (const extension of this.extensions.values()) {
+      const store = extension.store
+      if (store && !chatState[store.name]) {
+        chatState[store.name] = store.createStore()
+      }
+    }
+  }
+
+  /**
    * Initialize all extensions
    * Call this once when chat is mounted
    * Extensions access Stores.Chat directly for conversation data
    */
-  async initialize(): Promise<void> {
+  /**
+   * Initialize all extensions against a chat store (ITEM-5/34). Each extension's
+   * `initialize(ctx)` receives the OWNING store's api + its own per-pane store
+   * instance, so its subscriptions/reads bind to that store rather than the
+   * global singleton. Called with no args → single-pane backward-compat: binds to
+   * the primary `useChatStore` singleton + its injected extension stores. The
+   * per-pane `PaneExtensionRuntime` passes the pane's api + a per-pane store
+   * resolver instead.
+   */
+  async initialize(
+    chatStore?: import('./types').ChatExtStoreApi,
+    resolveStore?: (
+      name: string,
+    ) => import('@/core/stores').StoreProxy<any> | null,
+  ): Promise<void> {
     if (this.initialized) {
       console.warn('[ChatExtensions] Already initialized')
       return
     }
+    await this.initializeExtensions(chatStore, resolveStore)
+    this.initialized = true
+  }
 
+  /**
+   * Run every extension's `initialize(ctx)` against a chat store — WITHOUT the
+   * `this.initialized` gate. The per-pane `PaneExtensionRuntime` drives this with
+   * its OWN flag + the pane's api, so a second pane's extensions actually
+   * initialize (the shared-flag bug: the global gate made the 2nd pane's
+   * `initialize()` early-return, silently skipping its subscriptions +
+   * keyboard/file/edit wiring — GAP-1). `initialize()` above is the single-pane
+   * gated wrapper; both share this body.
+   */
+  async initializeExtensions(
+    chatStore?: import('./types').ChatExtStoreApi,
+    resolveStore?: (
+      name: string,
+    ) => import('@/core/stores').StoreProxy<any> | null,
+  ): Promise<void> {
     const extensions = this.getExtensions()
     console.log(
       `[ChatExtensions] Initializing ${extensions.length} extensions...`,
     )
 
+    let api = chatStore
+    let resolve = resolveStore
+    if (!api || !resolve) {
+      const { useChatStore } = await import('../stores/Chat.store')
+      const state = useChatStore.getState() as unknown as Record<string, unknown>
+      api =
+        api ?? (useChatStore as unknown as import('./types').ChatExtStoreApi)
+      resolve =
+        resolve ??
+        ((name) =>
+          (state[name] as import('@/core/stores').StoreProxy<any>) ?? null)
+    }
+
     for (const extension of extensions) {
       try {
         if (extension.initialize) {
-          await extension.initialize()
+          const store = extension.store ? resolve(extension.store.name) : null
+          await extension.initialize({ chatStore: api, store })
           console.log(`[ChatExtensions] Initialized: ${extension.name}`)
         }
       } catch (error) {
@@ -344,8 +417,6 @@ export class ChatExtensionRegistry {
         )
       }
     }
-
-    this.initialized = true
   }
 
   /**
@@ -533,15 +604,45 @@ export class ChatExtensionRegistry {
    * Extensions access Stores.Chat directly for conversation data
    */
   async cleanup(): Promise<void> {
+    await this.cleanupExtensions()
+    this.initialized = false
+  }
+
+  /**
+   * Run every extension's `cleanup()` — WITHOUT flipping `this.initialized`. The
+   * per-pane `PaneExtensionRuntime` drives this with its OWN flag, so ONE pane
+   * unmounting no longer flips the shared global flag (which left surviving panes
+   * marked uninitialized with no re-init → dead keyboard/file/edit — GAP-1).
+   */
+  async cleanupExtensions(
+    chatStore?: import('./types').ChatExtStoreApi,
+    resolveStore?: (
+      name: string,
+    ) => import('@/core/stores').StoreProxy<any> | null,
+  ): Promise<void> {
     const extensions = this.getExtensions()
     console.log(
       `[ChatExtensions] Cleaning up ${extensions.length} extensions...`,
     )
 
+    let api = chatStore
+    let resolve = resolveStore
+    if (!api || !resolve) {
+      const { useChatStore } = await import('../stores/Chat.store')
+      const state = useChatStore.getState() as unknown as Record<string, unknown>
+      api =
+        api ?? (useChatStore as unknown as import('./types').ChatExtStoreApi)
+      resolve =
+        resolve ??
+        ((name) =>
+          (state[name] as import('@/core/stores').StoreProxy<any>) ?? null)
+    }
+
     for (const extension of extensions) {
       try {
         if (extension.cleanup) {
-          await extension.cleanup()
+          const store = extension.store ? resolve(extension.store.name) : null
+          await extension.cleanup({ chatStore: api, store })
           console.log(`[ChatExtensions] Cleaned up: ${extension.name}`)
         }
       } catch (error) {
@@ -551,8 +652,6 @@ export class ChatExtensionRegistry {
         )
       }
     }
-
-    this.initialized = false
   }
 
   /**
@@ -673,6 +772,7 @@ export class ChatExtensionRegistry {
    */
   async afterStreamComplete(
     message: import('@/api-client/types').MessageWithContent,
+    ownerPaneId?: string | null,
   ): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
       ext.afterStreamComplete !== undefined,
@@ -681,7 +781,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.afterStreamComplete) {
-          const result = await extension.afterStreamComplete(message)
+          const result = await extension.afterStreamComplete(message, ownerPaneId)
 
           // Execute any custom actions
           if (result.actions) {
@@ -707,17 +807,19 @@ export class ChatExtensionRegistry {
    */
   async handleSSEEvent(
     event: SSEEvent | import('./types').GenericSSEEvent,
+    // The get/set of the store INSTANCE processing this frame (ITEM-4/5). In
+    // split view a frame belongs to a specific pane's store; passing that pane's
+    // get/set here is what routes SSE-driven extension state (tool_use blocks,
+    // title) to the STREAMING pane instead of the (hardcoded, former) primary.
+    // Single-pane passes the primary's get/set, so behaviour is unchanged.
+    chatGet: () => any,
+    chatSet: (partial: any | ((state: any) => any)) => void,
   ): Promise<boolean> {
     const eventType = event.event_type as keyof SSEEventTypeRegistry
     const handlers = this.sseEventHandlerRegistry.get(eventType)
 
     // Try new registry-based handlers first (O(1) lookup)
     if (handlers && handlers.length > 0) {
-      // Get Chat store's get and set functions
-      const { useChatStore } = await import('../stores/Chat.store')
-      const chatGet = useChatStore.getState
-      const chatSet = useChatStore.setState
-
       // Filter enabled extensions and sort by priority
       const enabledHandlers = handlers
         .filter(({ extension }) => {
@@ -878,7 +980,9 @@ export class ChatExtensionRegistry {
    * Compose request fields from all extensions
    * Extensions access Stores.Chat directly for conversation data
    */
-  async composeRequestFields(): Promise<ExtensionRequestFields> {
+  async composeRequestFields(
+    ctx: import('./types').ChatHookCtx,
+  ): Promise<ExtensionRequestFields> {
     const extensions = this.getExtensions().filter(ext =>
       ext.composeRequestFields !== undefined,
     )
@@ -888,7 +992,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.composeRequestFields) {
-          const extensionFields = await extension.composeRequestFields()
+          const extensionFields = await extension.composeRequestFields(ctx)
           fields = { ...fields, ...extensionFields }
         }
       } catch (error) {
@@ -907,7 +1011,7 @@ export class ChatExtensionRegistry {
    * Called after message is successfully sent, before streaming starts
    * Extensions access Stores.Chat directly for conversation data
    */
-  async onMessageSent(): Promise<void> {
+  async onMessageSent(ownerPaneId?: string | null): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
       ext.onMessageSent !== undefined,
     )
@@ -915,7 +1019,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.onMessageSent) {
-          const result = await extension.onMessageSent()
+          const result = await extension.onMessageSent(ownerPaneId)
 
           // Execute any custom actions
           if (result.actions) {
@@ -969,7 +1073,7 @@ export class ChatExtensionRegistry {
    * Called when streaming encounters an error
    * Extensions access Stores.Chat directly for conversation data
    */
-  async onStreamError(error: Error): Promise<void> {
+  async onStreamError(error: Error, ownerPaneId?: string | null): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
       ext.onStreamError !== undefined,
     )
@@ -977,7 +1081,7 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.onStreamError) {
-          const result = await extension.onStreamError(error)
+          const result = await extension.onStreamError(error, ownerPaneId)
 
           // Execute any custom actions
           if (result.actions) {
@@ -1003,6 +1107,9 @@ export class ChatExtensionRegistry {
   async provideUserContent(
     text: string,
     composedRequest: any,
+    // The SENDING pane's id (ITEM-32) so an extension reads THAT pane's composer
+    // buffer (e.g. the file extension's per-pane attachments). Null single-pane.
+    composerPaneId?: string | null,
   ): Promise<import('@/api-client/types').MessageContent[]> {
     const extensions = this.getExtensions().filter(ext =>
       ext.provideUserContent !== undefined,
@@ -1013,7 +1120,11 @@ export class ChatExtensionRegistry {
     for (const extension of extensions) {
       try {
         if (extension.provideUserContent) {
-          const content = await extension.provideUserContent(text, composedRequest)
+          const content = await extension.provideUserContent(
+            text,
+            composedRequest,
+            composerPaneId ?? null,
+          )
           if (content && content.length > 0) {
             allContent.push(...content)
             console.log(

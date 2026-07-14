@@ -3,10 +3,12 @@ import { Permissions } from '@/api-client/types'
 import { History, Plus } from 'lucide-react'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import { chatBridge } from '@/modules/chat/core/stores/chatBridge'
 import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
+import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
 import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
+import { OpenInNewWindowAction } from '@/modules/chat/components/OpenInNewWindowAction'
 import '@/modules/chat/types'
 import '@/modules/chat/core/events' // Import chat events for type merging
 import '@/modules/chat/extensions' // Auto-discover and register chat extensions
@@ -14,6 +16,9 @@ import '@/modules/chat/extensions' // Auto-discover and register chat extensions
 const NewChatPage = lazyWithPreload(() => import('./pages/NewChatPage'))
 const ConversationPage = lazyWithPreload(
   () => import('./pages/ConversationPage'),
+)
+const PopoutConversationPage = lazyWithPreload(
+  () => import('./pages/PopoutConversationPage'),
 )
 const ChatHistoryPage = lazyWithPreload(
   () => import('./pages/ChatHistoryPage'),
@@ -28,8 +33,11 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     {
+      // `Stores.Chat` is the focused-pane BRIDGE (forwards to the focused pane,
+      // default = the primary pane); single-pane forwards to the primary so
+      // behaviour is unchanged.
       name: 'Chat',
-      store: useChatStore,
+      store: chatBridge,
     },
     {
       name: 'ChatHistory',
@@ -38,6 +46,10 @@ export default createModule({
     {
       name: 'MessageViewState',
       store: useMessageViewStateStore,
+    },
+    {
+      name: 'SplitView',
+      store: useSplitViewStore,
     },
   ],
   routes: [
@@ -58,6 +70,16 @@ export default createModule({
       element: ConversationPage,
       requiresAuth: true,
       layout: AppLayoutDef,
+    },
+    {
+      // Desktop pop-out target (FB-12 / ITEM-52): a native WebviewWindow loads THIS
+      // route, which has NO `layout` — so `ConversationPage` renders WITHOUT the app
+      // shell (no LeftSidebar / nav), i.e. the chat interface only, not a whole
+      // second app. Same `:conversationId` param name so ConversationPage's
+      // `useParams()` is unchanged. Web pop-out keeps /chat/:id (the whole app).
+      path: '/chat-window/:conversationId',
+      element: PopoutConversationPage,
+      requiresAuth: true,
     },
     {
       path: '/chats',
@@ -103,6 +125,15 @@ export default createModule({
         // it here so a user without the grant never sees the list nor
         // fires the 403 fetch.
         permission: Permissions.ConversationsRead,
+      },
+    ],
+    // Per-conversation header decoration: "Open in new window / tab".
+    // order 30 = before the desktop host-mount control (order 40).
+    chatConversationHeaderTrailing: [
+      {
+        id: 'chat-open-in-new-window',
+        order: 30,
+        component: OpenInNewWindowAction,
       },
     ],
   },

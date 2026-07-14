@@ -22,5 +22,13 @@ export function parseSSEEvent(event: MessageEvent): SSEEvent | null {
  * Returns true if any extension handled the event
  */
 export async function routeSSEEvent(event: SSEEvent): Promise<boolean> {
-  return await chatExtensionRegistry.handleSSEEvent(event)
+  // Standalone router with no pane context → route to the primary chat store
+  // (its own get/set). The in-stream path threads the streaming pane's get/set
+  // directly in Chat.store; this export is the context-free fallback.
+  const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+  return await chatExtensionRegistry.handleSSEEvent(
+    event,
+    useChatStore.getState,
+    useChatStore.setState,
+  )
 }

@@ -27,6 +27,11 @@ pub struct Config {
     pub control_mcp: Option<ControlMcpConfig>,
     #[serde(default)]
     pub js_tool: Option<JsToolConfig>,
+    /// Chat-token SSE stream transport caps (per-user / global concurrent
+    /// connections). A low-level resource knob (like `jwt.*`), NOT an admin
+    /// settings row — see the split-chat DEC-34. Always present with defaults.
+    #[serde(default)]
+    pub chat: ChatConfig,
     #[serde(default)]
     pub secrets: Option<SecretsConfig>,
     /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
@@ -346,6 +351,40 @@ impl Default for ControlMcpConfig {
     fn default() -> Self {
         Self {
             enabled: default_control_mcp_enabled(),
+        }
+    }
+}
+
+/// Chat-token SSE stream transport caps (DEC-34). A low-level resource knob
+/// analogous to the sibling registry const `GLOBAL_MAX_CONNECTIONS`, exposed as
+/// deployment config (like `jwt.*`) rather than an admin settings row. The
+/// per-user default was raised from the legacy 12 because split-chat opens one
+/// dedicated SSE connection PER open pane, so reconnect churn under a token
+/// refresh could otherwise 429 a legitimate pane.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ChatConfig {
+    /// Max concurrent chat-token SSE connections for a single user (all
+    /// tabs/devices/panes). Default 24.
+    #[serde(default = "default_chat_per_user_max_connections")]
+    pub per_user_max_connections: usize,
+    /// Max concurrent chat-token SSE connections across ALL users. Default 512.
+    #[serde(default = "default_chat_global_max_connections")]
+    pub global_max_connections: usize,
+}
+
+fn default_chat_per_user_max_connections() -> usize {
+    24
+}
+
+fn default_chat_global_max_connections() -> usize {
+    512
+}
+
+impl Default for ChatConfig {
+    fn default() -> Self {
+        Self {
+            per_user_max_connections: default_chat_per_user_max_connections(),
+            global_max_connections: default_chat_global_max_connections(),
         }
     }
 }

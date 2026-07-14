@@ -11,6 +11,7 @@ import {
 import { Button, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
 import { isInlineCapable } from '@/modules/file/viewers/shared/source'
@@ -80,6 +81,8 @@ const viewportH = () =>
  * preview; the chosen height persists there.
  */
 export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewProps) {
+  // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
   const key = source.url
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyId = useId()
@@ -153,7 +156,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
 
   const handleOpenInPanel = () => {
     if (!file) return
-    Stores.Chat.displayInRightPanel({
+    chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
       type: 'file',

@@ -5,60 +5,77 @@ import { defineStore } from '@/core/store-kit'
 import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 /**
+ * The composer key for a not-yet-created (new-chat) conversation. A pane with no
+ * conversation yet selects its model under this key; on send the created
+ * conversation adopts it (see the model chat-extension's composeRequestFields).
+ * Two simultaneous new-chat panes share this one slot (accepted edge — the
+ * per-pane split value is comparing EXISTING conversations' models).
+ */
+export const NEW_CHAT_MODEL_KEY = '__new_chat__'
+
+/**
+ * The new-chat model-selection key for a pane (ITEM-37). Two new-chat panes must
+ * NOT share one model selection, so a split pane gets its own suffixed key; a
+ * null paneId (single-pane) keeps the bare `NEW_CHAT_MODEL_KEY` (byte-identical).
+ * A pane with no explicit pick still falls back to the shared default via
+ * `defaultModelId()`.
+ */
+export const newChatModelKey = (paneId: string | null | undefined): string =>
+  paneId ? `${NEW_CHAT_MODEL_KEY}:${paneId}` : NEW_CHAT_MODEL_KEY
+
+/**
  * ModelPicker store — the chat composer's model selection plus the cached list
  * of user-accessible providers/models. Lives at `Stores.ModelPicker`. `providers`
- * lazy-loads once; listeners keep it in sync with admin llm_provider/llm_model
- * mutations; `selectedModelId` is scoped per conversation via the chat
- * extension's `initialize()` → `initializeFromConversation`.
+ * is a GLOBAL catalog (lazy-loads once; listeners keep it in sync with admin
+ * llm_provider/llm_model mutations). The SELECTION is PER-CONVERSATION
+ * (`selectedByConversation`, keyed by conversation id or `NEW_CHAT_MODEL_KEY`) so
+ * two split panes showing different conversations each pick their own model
+ * (compare-models side-by-side) — ITEM-5. Consumers key by their pane's
+ * conversation id (resolved via the `Stores.Chat` bridge); the send path threads
+ * the pane's chat `get` into `composeRequestFields`.
  */
 export const ModelPicker = defineStore('ModelPicker', {
   immer: true,
   state: {
-    /** User-accessible providers from the chat endpoint. */
+    /** User-accessible providers from the chat endpoint (GLOBAL catalog). */
     providers: [] as ProviderWithModels[],
     loading: false,
     error: null as string | null,
-    /** Currently selected model ID (UUID). */
-    selectedModelId: null as string | null,
+    /** Selected model ID (UUID) per conversation key (convId | NEW_CHAT_MODEL_KEY). */
+    selectedByConversation: {} as Record<string, string>,
   },
   actions: (set, get) => {
-    const initializeFromConversation = (conversationModelId?: string) => {
+    const firstEnabledModelId = (): string | null => {
+      for (const provider of get().providers) {
+        const firstEnabled = provider.llm_models?.find(m => m.enabled)
+        if (firstEnabled) return firstEnabled.id
+      }
+      return null
+    }
+    const initializeFromConversation = (
+      key: string,
+      conversationModelId?: string,
+    ) => {
       const providers = get().providers
-      const selectFirstEnabled = (): boolean => {
+      // Prefer the conversation's own (enabled) model; else the first enabled.
+      let resolved: string | null = null
+      if (conversationModelId) {
         for (const provider of providers) {
-          if (provider.llm_models && provider.llm_models.length > 0) {
-            const firstEnabledModel = provider.llm_models.find(m => m.enabled)
-            if (firstEnabledModel) {
-              set(state => {
-                state.selectedModelId = firstEnabledModel.id
-              })
-              return true
-            }
-          }
-        }
-        return false
-      }
-      if (!conversationModelId) {
-        // No conversation model — auto-select first enabled model.
-        selectFirstEnabled()
-        return
-      }
-      // Find matching enabled model by ID.
-      for (const provider of providers) {
-        if (provider.llm_models) {
-          const matchingModel = provider.llm_models.find(
-            model => model.id === conversationModelId && model.enabled,
+          const match = provider.llm_models?.find(
+            m => m.id === conversationModelId && m.enabled,
           )
-          if (matchingModel) {
-            set(state => {
-              state.selectedModelId = matchingModel.id
-            })
-            return
+          if (match) {
+            resolved = match.id
+            break
           }
         }
       }
-      // Fallback: conversation model not found or disabled → first available.
-      selectFirstEnabled()
+      resolved = resolved ?? firstEnabledModelId()
+      if (resolved) {
+        set(state => {
+          state.selectedByConversation[key] = resolved as string
+        })
+      }
     }
     const loadProviders = async () => {
       // Permission-gate the shell-eager-load fetch — the chat picker accesses
@@ -74,8 +91,10 @@ export const ModelPicker = defineStore('ModelPicker', {
           state.providers = sortProviders(response.providers)
           state.loading = false
         })
-        // Auto-select first model if none is selected yet.
-        if (!get().selectedModelId) initializeFromConversation()
+        // Seed the new-chat default if unset yet.
+        if (!get().selectedByConversation[NEW_CHAT_MODEL_KEY]) {
+          initializeFromConversation(NEW_CHAT_MODEL_KEY)
+        }
       } catch (error: any) {
         console.error('[ModelPicker] loadProviders error:', error)
         set(state => {
@@ -87,12 +106,19 @@ export const ModelPicker = defineStore('ModelPicker', {
     return {
       loadProviders,
       initializeFromConversation,
-      setModelId: (id: string) => {
+      /** Set the selected model for one conversation key. */
+      setModelId: (key: string, id: string) => {
         set(state => {
-          state.selectedModelId = id
+          state.selectedByConversation[key] = id
         })
       },
-      getModelId: (): string | null => get().selectedModelId,
+      /** Get the selected model for a conversation key (null if unset). */
+      getModelId: (key: string): string | null =>
+        get().selectedByConversation[key] ?? null,
+      /** The new-chat default model — for non-pane consumers (e.g. the workflow
+       *  run dialog) that just need a sensible current model. */
+      defaultModelId: (): string | null =>
+        get().selectedByConversation[NEW_CHAT_MODEL_KEY] ?? firstEnabledModelId(),
     }
   },
   init: ({ on, set, actions }) => {
@@ -150,6 +176,15 @@ export const ModelPicker = defineStore('ModelPicker', {
     const reload = () => void actions.loadProviders()
     on('sync:user_llm_provider', reload)
     on('sync:reconnect', reload)
+    // Prune a deleted conversation's per-conversation model selection so the
+    // `selectedByConversation` map doesn't grow unbounded / retain stale keys.
+    on('sync:conversation', event => {
+      if (event.data.action === 'delete') {
+        set(state => {
+          delete state.selectedByConversation[event.data.id]
+        })
+      }
+    })
     void actions.loadProviders()
   },
 })

@@ -10,12 +10,39 @@ import { ThinkingContent } from '@/modules/chat/extensions/text/components/Think
 import { TextInput } from '@/modules/chat/extensions/text/components/TextInput'
 import { createTextStore } from '@/modules/chat/extensions/text/Text.store'
 import { clearDraft, getDraft, makeDraftKey } from '@/modules/chat/extensions/text/chatDrafts'
+import { PaneDraftKeys } from '@/modules/chat/extensions/text/paneDraftKeys'
 import type { MessageContent } from '@/api-client/types'
 
 // The composer draft key captured at send START (before a new-chat conversation
 // is created), so onMessageSent — which runs AFTER creation — clears exactly the
 // key the text was authored under, never an unrelated conversation's draft.
-let capturedDraftKey: string | null = null
+//
+// Keyed BY PANE (audit #4): a module-global `let` let two concurrent sends (or a
+// send on a non-focused pane) clobber the key, and the async hooks read the
+// FOCUSED pane's TextStore — which may have changed by the time streaming errors
+// seconds later. Both are now pane-scoped: the key is stored under the sending
+// pane's id (`PaneDraftKeys`, unit-tested for clobber-safety), and the hooks
+// resolve the OWNING pane's TextStore via `ownerPaneId` (mirrors the File
+// extension's ownerPaneId threading).
+const capturedDraftKeys = new PaneDraftKeys()
+
+/** The OWNING pane's Chat state (its own TextStore), not the focused-pane bridge.
+ * `TextStore` is declaration-merged onto the `Stores.Chat` proxy, not the raw
+ * store's `getState()` return, so we narrow to the fields this extension uses. */
+async function ownerChatState(
+  ownerPaneId?: string | null,
+): Promise<{
+  TextStore: ReturnType<typeof createTextStore>
+  pendingBranchFromMessageId: string | null
+}> {
+  const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
+  const { Chat } = await import('@/modules/chat/core/stores/Chat.store')
+  const api = ownerPaneId ? paneRegistry.get(ownerPaneId)?.api : undefined
+  return (api?.getState() ?? Chat.store.getState()) as unknown as {
+    TextStore: ReturnType<typeof createTextStore>
+    pendingBranchFromMessageId: string | null
+  }
+}
 
 /**
  * Text Extension
@@ -152,9 +179,12 @@ const textExtension: ChatExtension = createExtension({
     // conversation it's that id; for a new chat it's the shared `new` bucket.
     // Must match TextInput's user-namespaced draftKey so onMessageSent clears the
     // right entry. Read via `$` snapshot (non-render access from an async hook).
-    capturedDraftKey = makeDraftKey(
-      Stores.Auth.$.user?.id,
-      Stores.Chat.$.conversation?.id,
+    // Keyed by the SENDING pane (= focused at send start, ITEM-33) so a concurrent
+    // send on another pane can't clobber it; onMessageSent reads it back by the
+    // owning pane's id (which equals this focused id).
+    capturedDraftKeys.set(
+      Stores.SplitView.$.focusedPaneId,
+      makeDraftKey(Stores.Auth.$.user?.id, Stores.Chat.$.conversation?.id),
     )
 
     return { cancel: false }
@@ -165,9 +195,11 @@ const textExtension: ChatExtension = createExtension({
    * Called after message is successfully sent (before streaming starts)
    * Backup text before clearing for error recovery
    */
-  onMessageSent: async () => {
-    const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.$.TextStore
+  onMessageSent: async (ownerPaneId) => {
+    // Act on the OWNING pane's TextStore/state (audit #4), not the focused-pane
+    // bridge — the sending pane may no longer be focused by the time this fires.
+    const state = await ownerChatState(ownerPaneId)
+    const textStore = state.TextStore
 
     // Backup text before clearing
     const currentText = textStore.getText()
@@ -184,8 +216,8 @@ const textExtension: ChatExtension = createExtension({
     // cleared right after — so we can tell the two apart. Restoring here also
     // covers regenerate, which sets no editingMessage and so wouldn't trigger
     // the TextInput restore-on-edit-end effect.)
-    const isBranchSend =
-      Stores.Chat.$.pendingBranchFromMessageId != null
+    const isBranchSend = state.pendingBranchFromMessageId != null
+    const capturedDraftKey = capturedDraftKeys.take(ownerPaneId)
     if (capturedDraftKey) {
       if (isBranchSend) {
         const draft = getDraft(capturedDraftKey)
@@ -194,8 +226,6 @@ const textExtension: ChatExtension = createExtension({
         clearDraft(capturedDraftKey)
       }
     }
-    capturedDraftKey = null
-    console.log('[TextExtension] Backed up and cleared text after message sent')
     return {}
   },
 
@@ -203,13 +233,12 @@ const textExtension: ChatExtension = createExtension({
    * Restore text on stream error
    * Called when streaming fails with an error
    */
-  onStreamError: async (_error: Error) => {
-    const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.$.TextStore
+  onStreamError: async (_error: Error, ownerPaneId) => {
+    // Restore into the OWNING pane's composer (audit #4), not the focused one.
+    const textStore = (await ownerChatState(ownerPaneId)).TextStore
 
     // Restore text from backup
     textStore.restoreFromBackup()
-    console.log('[TextExtension] Restored text from backup after stream error')
 
     // Keep backup for potential retry (don't clear it yet)
     return {}
@@ -219,13 +248,12 @@ const textExtension: ChatExtension = createExtension({
    * Clear backup on successful completion
    * Called when streaming completes successfully
    */
-  afterStreamComplete: async (_message) => {
-    const { Stores } = await import('@/core/stores')
-    const textStore = Stores.Chat.$.TextStore
+  afterStreamComplete: async (_message, ownerPaneId) => {
+    // Clear the OWNING pane's backup (audit #4), not the focused one.
+    const textStore = (await ownerChatState(ownerPaneId)).TextStore
 
     // Clear backup since message was sent successfully
     textStore.setBackupMessage(null)
-    console.log('[TextExtension] Cleared text backup after successful stream')
     return {}
   },
 

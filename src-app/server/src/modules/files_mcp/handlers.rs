@@ -490,7 +490,49 @@ struct ReadArgs {
     limit: Option<usize>,
 }
 
+/// How many file names the not-available error lists back to the model. Enough
+/// to self-correct without calling `list_files`; capped so a large conversation
+/// can't blow up the context with an error message.
+const NOT_AVAILABLE_NAME_CAP: usize = 10;
+
+/// Build the RECOVERABLE error for an id that isn't in this conversation's set.
+///
+/// The old message ("File (no longer available in this conversation)") was
+/// terminal: it told the model it was wrong but not what to do, so the model
+/// re-sent the same bad id or gave up. This one states the ONE provenance rule
+/// (ids come from this server, this conversation) and hands back the current
+/// names, so the model can recover IN-TURN. The names are the caller's own
+/// files, already in their injected manifest — nothing new is disclosed.
+fn file_not_available_error(files: &[AvailableFile]) -> AppError {
+    let mut msg = String::from(
+        "That id is not a file in this conversation. Ids must come from THIS server's \
+         list_files (or the manifest injected each turn) — an id copied from another \
+         tool's output, a URL, or an earlier conversation will not resolve here. \
+         Call list_files for the current ids, or pass `name` instead.",
+    );
+    if files.is_empty() {
+        msg.push_str(" This conversation currently has no files.");
+    } else {
+        let shown: Vec<&str> = files
+            .iter()
+            .take(NOT_AVAILABLE_NAME_CAP)
+            .map(|f| f.name.as_str())
+            .collect();
+        msg.push_str(&format!(" Available now: {}", shown.join(", ")));
+        if files.len() > NOT_AVAILABLE_NAME_CAP {
+            msg.push_str(&format!(" (+{} more)", files.len() - NOT_AVAILABLE_NAME_CAP));
+        }
+        msg.push('.');
+    }
+    AppError::bad_request("FILE_NOT_AVAILABLE", msg)
+}
+
 /// Resolve a target file from `id` (preferred) or `name` (only when unambiguous).
+///
+/// An id matches the entry's own `id` OR one of its `aka_ids` — the ids of
+/// byte-identical files this entry absorbed during content-dedup. Without the
+/// alias arm, an id the model was legitimately handed before the duplicate
+/// collapsed would resolve to nothing. Symmetric with the `name`/`aka` arm below.
 fn resolve_target<'a>(
     files: &'a [AvailableFile],
     id: Option<Uuid>,
@@ -499,8 +541,8 @@ fn resolve_target<'a>(
     if let Some(id) = id {
         return files
             .iter()
-            .find(|f| f.id == id)
-            .ok_or_else(|| AppError::not_found("File (no longer available in this conversation)"));
+            .find(|f| f.id == id || f.aka_ids.contains(&id))
+            .ok_or_else(|| file_not_available_error(files));
     }
     if let Some(name) = name {
         let matches: Vec<&AvailableFile> = files
@@ -1114,6 +1156,124 @@ async fn rewrite_file(
     // Ensure the target is text-editable (rejects binary).
     let _ = load_head_text(user_id, &file).await?;
     commit_text_version(user_id, &file, a.content, message_id).await
+}
+
+#[cfg(test)]
+mod resolve_target_tests {
+    use super::*;
+    use crate::modules::file::available_files::{AvailableFile, FileSource, FileType};
+    use chrono::Utc;
+
+    fn mk(name: &str) -> AvailableFile {
+        let id = Uuid::new_v4();
+        AvailableFile {
+            id,
+            name: name.to_string(),
+            aka: vec![],
+            aka_ids: vec![],
+            mime_type: Some("text/plain".into()),
+            file_type: FileType::Text,
+            text: true,
+            size: 10,
+            pages: 1,
+            source: vec![FileSource::Attachment],
+            uploaded_at: Utc::now(),
+            checksum: None,
+            blob_version_id: id,
+        }
+    }
+
+    /// The rendered message. `AppError` exposes `error_code()` but no message
+    /// accessor, so assert message CONTENT via Debug (which includes it) and the
+    /// code via the accessor.
+    fn err_parts(e: &AppError) -> String {
+        format!("{e:?}")
+    }
+
+    #[test]
+    fn resolves_by_canonical_id() {
+        let files = vec![mk("a.md"), mk("b.md")];
+        let got = resolve_target(&files, Some(files[1].id), None).expect("id must resolve");
+        assert_eq!(got.id, files[1].id);
+    }
+
+    /// An id absorbed by content-dedup still resolves — to the CANONICAL entry.
+    /// This is the alias-id guarantee; without it a legitimately-issued id 404s.
+    #[test]
+    fn resolves_by_absorbed_alias_id() {
+        let mut f = mk("report.md");
+        let absorbed = Uuid::new_v4();
+        f.aka_ids.push(absorbed);
+        let canonical = f.id;
+        let files = vec![f];
+        let got = resolve_target(&files, Some(absorbed), None).expect("alias id must resolve");
+        assert_eq!(got.id, canonical, "an alias id resolves to the canonical entry");
+    }
+
+    /// The reported symptom: an id from outside this conversation. The error must
+    /// be RECOVERABLE — name the escape hatches (list_files / `name`) and the
+    /// current files — not the old terminal "no longer available".
+    #[test]
+    fn unknown_id_errors_actionably() {
+        let files = vec![mk("alpha.md"), mk("beta.pdf")];
+        let e = resolve_target(&files, Some(Uuid::new_v4()), None).unwrap_err();
+        assert_eq!(e.error_code(), "FILE_NOT_AVAILABLE", "machine-readable code");
+        assert_eq!(e.status_code(), 400, "maps to JSON-RPC invalid_params, as before");
+        let s = err_parts(&e);
+        assert!(s.contains("list_files"), "must point at list_files; got: {s}");
+        assert!(s.contains("name"), "must offer the `name` fallback; got: {s}");
+        assert!(s.contains("alpha.md") && s.contains("beta.pdf"), "lists current files; got: {s}");
+    }
+
+    /// An empty conversation says so rather than dangling "Available now:".
+    #[test]
+    fn unknown_id_with_no_files_states_the_set_is_empty() {
+        let e = resolve_target(&[], Some(Uuid::new_v4()), None).unwrap_err();
+        let s = err_parts(&e);
+        assert!(s.contains("no files"), "got: {s}");
+    }
+
+    /// The name list is capped so an error can't flood the context window.
+    #[test]
+    fn unknown_id_caps_the_name_list() {
+        let files: Vec<AvailableFile> = (0..NOT_AVAILABLE_NAME_CAP + 5)
+            .map(|i| mk(&format!("f{i}.md")))
+            .collect();
+        let e = resolve_target(&files, Some(Uuid::new_v4()), None).unwrap_err();
+        let s = err_parts(&e);
+        assert!(s.contains("+5 more"), "must report the elided count; got: {s}");
+        assert!(!s.contains("f14.md"), "must not list past the cap; got: {s}");
+    }
+
+    // --- pre-existing name-path behaviour must be unchanged -----------------
+
+    #[test]
+    fn resolves_by_unique_name_and_by_aka() {
+        let mut f = mk("report.md");
+        f.aka.push("report-copy.md".to_string());
+        let files = vec![f];
+        assert_eq!(resolve_target(&files, None, Some("report.md")).unwrap().name, "report.md");
+        assert_eq!(
+            resolve_target(&files, None, Some("report-copy.md")).unwrap().name,
+            "report.md",
+            "an aka alias still resolves to the canonical entry"
+        );
+    }
+
+    #[test]
+    fn ambiguous_name_and_missing_target_are_unchanged() {
+        let files = vec![mk("dup.md"), mk("dup.md")];
+        assert_eq!(
+            resolve_target(&files, None, Some("dup.md")).unwrap_err().error_code(),
+            "AMBIGUOUS_NAME"
+        );
+        assert_eq!(
+            resolve_target(&files, None, None).unwrap_err().error_code(),
+            "MISSING_TARGET"
+        );
+        assert!(err_parts(&resolve_target(&files, None, Some("nope.md")).unwrap_err())
+            .contains("no such name"));
+    }
 }
 
 #[cfg(test)]

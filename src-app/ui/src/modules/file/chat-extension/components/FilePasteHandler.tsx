@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { message } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { composerPaneKey } from '@/modules/file/stores/File.store'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import {
@@ -28,6 +30,10 @@ export function FilePasteHandler() {
   // current value without re-binding.
   const canUploadRef = useRef(canUpload)
   canUploadRef.current = canUpload
+  // This pane's composer buffer key (ITEM-32), likewise in a ref so the
+  // bound-once paste listener uploads into THIS pane's attachments.
+  const paneKeyRef = useRef(composerPaneKey(useChatPaneOrNull()?.paneId))
+  paneKeyRef.current = composerPaneKey(useChatPaneOrNull()?.paneId)
 
   useEffect(() => {
     const el = sentinelRef.current?.closest<HTMLElement>('[data-chat-composer]')
@@ -75,7 +81,7 @@ export function FilePasteHandler() {
       if (files.length > 0) {
         // uploadFiles is an action — callable directly from a raw DOM event
         // listener (actions are hook-free, safe outside React render).
-        Stores.File.uploadFiles(files).catch((error: unknown) => {
+        Stores.File.uploadFiles(paneKeyRef.current, files).catch((error: unknown) => {
           console.error('Paste upload failed:', error)
           message.error('Failed to upload pasted image')
         })

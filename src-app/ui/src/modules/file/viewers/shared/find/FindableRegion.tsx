@@ -3,6 +3,10 @@ import { Stores } from '@/core/stores'
 import { FindBar } from './FindBar'
 import { useFindInDocument, type HighlightNames } from './useFindInDocument'
 import { isHighlightSupported } from './highlightSupported'
+import {
+  scopedHighlightKey,
+  useFileHighlightScope,
+} from '@/modules/file/viewers/highlightScope'
 
 // ── Module-level open-find registry ──────────────────────────────────────────
 // A single document-level Ctrl/Cmd-F listener drives whichever mounted region is
@@ -98,7 +102,11 @@ export function FindableRegion({
   const [query, setQuery] = useState('')
   // An external query (e.g. a KB citation's passage text) drives find to
   // highlight + scroll to it — the text/markdown analog of the PDF highlight.
-  const externalQuery = Stores.File.fileFindQuery.get(fileId) ?? ''
+  // Keyed by the per-pane highlight scope (ITEM-49) so two panes on the same doc
+  // don't share one find-query; null scope → the bare fileId key (unchanged).
+  const hlScope = useFileHighlightScope()
+  const externalQuery =
+    Stores.File.fileFindQuery.get(scopedHighlightKey(hlScope, fileId)) ?? ''
   useEffect(() => {
     if (externalQuery) setQuery(externalQuery)
   }, [externalQuery])

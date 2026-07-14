@@ -23,62 +23,60 @@ import { AssistantStatusChip } from '@/modules/assistant/chat-extension/componen
  * Auto-discovered by chat/extensions/index.ts via import.meta.glob
  * over '../../STAR/chat-extension/extension.tsx'.
  */
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneAssistantSubs = new WeakMap<object, Array<() => void>>()
+
 const assistantExtension: ChatExtension = createExtension({
   name: 'assistant',
   description: 'Provides assistant selection and configuration',
   priority: 80,
 
-  initialize: async () => {
-    const { useChatStore } = await import(
-      '@/modules/chat/core/stores/Chat.store'
-    )
+  initialize: async (ctx) => {
     const { Stores } = await import('@/core/stores')
-
-    // 1. Conversation-change → reset picker. Replaces the implicit
-    //    chat-extension-framework scoping the old Stores.Chat.AssistantStore
-    //    used to get for free; now we wire it explicitly because the
-    //    store lives in the assistant module's namespace.
-    useChatStore.subscribe(
-      state => state.conversation?.id,
-      () => {
-        Stores.AssistantPicker.reset()
-      },
+    const { newChatAssistantKey } = await import(
+      '@/modules/assistant/stores/AssistantPicker.store'
     )
 
-    // 2. Editing-message → restore the originally-attributed assistant.
-    //    Save the pre-edit selection so we can restore it when the edit
-    //    completes or is cancelled — never clear the user's choice.
+    // Per-conversation keying makes the old "reset on conversation change"
+    // subscription unnecessary — a conversation with no map entry simply has no
+    // assistant (ITEM-5). The editing-message restore binds to the OWNING pane's
+    // chat store (ctx.chatStore, ITEM-34/5) + keys by THAT pane's conversation,
+    // so editing in a non-focused pane restores the right pane's selection.
     let preEditAssistantId: string | null = null
+    const chatStore = ctx.chatStore
+    const paneKey = () =>
+      chatStore.getState().conversation?.id ??
+      newChatAssistantKey(chatStore.getState().paneId)
+    const subs: Array<() => void> = []
+    paneAssistantSubs.set(chatStore, subs)
 
-    useChatStore.subscribe(
-      state => state.editingMessage,
-      async (editingMessage) => {
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        async (editingMessage: any) => {
         const picker = Stores.AssistantPicker
         if (!picker) return
+        const key = paneKey()
 
         if (editingMessage) {
-          // Save the assistant the user had selected before initiating
-          // the edit, so we can restore it afterwards.
-          preEditAssistantId = picker.$.selectedAssistantId
+          // Save the assistant the user had selected before initiating the edit.
+          preEditAssistantId = picker.getAssistantId(key)
 
-          // Per-message assistant attribution moved off the Message
-          // row into the assistant bridge's own message_assistant
-          // table (backend migration 75). Fetch via the assistant-
-          // owned endpoint.
+          // Per-message assistant attribution moved off the Message row into the
+          // assistant bridge's own message_assistant table (backend migration
+          // 75). Fetch via the assistant-owned endpoint.
           try {
             const { ApiClient } = await import('@/api-client')
             const resp = await ApiClient.Message.getAssistant({
               id: editingMessage.id,
             })
             if (resp.assistant_id) {
-              picker.selectAssistant(resp.assistant_id)
+              picker.selectAssistant(key, resp.assistant_id)
             } else {
-              picker.clearAssistant()
+              picker.clearAssistant(key)
             }
           } catch (err) {
-            // Soft-fail: no attribution recorded (pre-migration
-            // message or write hook failed at send-time) → keep
-            // current assistant selection.
+            // Soft-fail: no attribution recorded → keep current selection.
             preEditAssistantId = null
             console.warn(
               '[Assistant Extension] Failed to load message assistant attribution:',
@@ -86,16 +84,16 @@ const assistantExtension: ChatExtension = createExtension({
             )
           }
         } else {
-          // Edit cancelled or sent — restore the pre-edit selection
-          // instead of blindly clearing.
+          // Edit cancelled or sent — restore the pre-edit selection.
           if (preEditAssistantId) {
-            picker.selectAssistant(preEditAssistantId)
+            picker.selectAssistant(key, preEditAssistantId)
           } else {
-            picker.clearAssistant()
+            picker.clearAssistant(key)
           }
           preEditAssistantId = null
         }
-      },
+        },
+      ),
     )
   },
 
@@ -104,10 +102,13 @@ const assistantExtension: ChatExtension = createExtension({
     toolbar_status: { component: AssistantStatusChip, order: 20 },
   },
 
-  composeRequestFields: async (): Promise<ExtensionRequestFields> => {
-    // Read via `$` (hook-free snapshot) outside a React component context.
-    const selectedAssistantId =
-      Stores.AssistantPicker.$.selectedAssistantId
+  composeRequestFields: async (ctx): Promise<ExtensionRequestFields> => {
+    // The SENDING pane's assistant (ctx.conversationId; null = new chat). (ITEM-5)
+    const { newChatAssistantKey } = await import(
+      '@/modules/assistant/stores/AssistantPicker.store'
+    )
+    const key = ctx.conversationId ?? newChatAssistantKey(ctx.paneId)
+    const selectedAssistantId = Stores.AssistantPicker.getAssistantId(key)
 
     if (selectedAssistantId) {
       return {
@@ -118,8 +119,12 @@ const assistantExtension: ChatExtension = createExtension({
     return {}
   },
 
-  cleanup: async () => {
-    console.log('[Assistant Extension] Cleaned up')
+  cleanup: async (ctx) => {
+    const subs = paneAssistantSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneAssistantSubs.delete(ctx.chatStore)
+    }
   },
 })
 
