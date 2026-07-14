@@ -47,6 +47,66 @@ pub fn trust_forwarded_headers() -> bool {
     TRUST_FORWARDED_HEADERS.get().copied().unwrap_or(false)
 }
 
+/// Operator-configured public origin to root OAuth `redirect_uri`s at,
+/// cached at module init from `code_sandbox.public_base_url`
+/// (ZIEE_PUBLIC_FILE_ORIGIN) — but ONLY when it declares an `https://`
+/// origin (see `https_public_origin`). `None` until init() runs.
+static CONFIGURED_PUBLIC_ORIGIN: OnceCell<Option<String>> = OnceCell::new();
+
+/// The operator-configured https public origin (no trailing slash) that
+/// OAuth `redirect_uri`s should be rooted at, or `None` to derive the
+/// origin from request headers. Behind an HTTPS edge that terminates TLS
+/// and forwards plain HTTP to this container, the header-derived scheme is
+/// `http`, producing `http://` redirect_uris that Google rejects; a
+/// configured https origin fixes that deterministically. Safe against the
+/// F-07 header-spoofing class because the value is operator-controlled, not
+/// request-derived.
+pub fn configured_public_origin() -> Option<String> {
+    CONFIGURED_PUBLIC_ORIGIN.get().cloned().flatten()
+}
+
+/// Return the trimmed origin (no trailing slash) IFF `raw` is a non-empty
+/// `https://` URL; otherwise `None`. An http / loopback value — e.g. the
+/// LOCAL default `http://172.21.0.1:8080` that `code_sandbox.public_base_url`
+/// carries for host-gateway file fetches — returns `None`, so local dev keeps
+/// deriving the redirect_uri from request headers and is unaffected.
+pub(crate) fn https_public_origin(raw: Option<&str>) -> Option<String> {
+    let s = raw?.trim();
+    // Case-insensitive scheme check; must be EXACTLY the https scheme, not
+    // merely a string that contains "https".
+    if s.is_empty() || !s.to_ascii_lowercase().starts_with("https://") {
+        return None;
+    }
+    Some(s.trim_end_matches('/').to_string())
+}
+
+#[cfg(test)]
+mod public_origin_tests {
+    use super::https_public_origin;
+
+    #[test]
+    fn only_https_origins_are_used() {
+        // Deploy: an https public origin is adopted (trailing slash trimmed).
+        assert_eq!(
+            https_public_origin(Some("https://biognosia.tinnguyen-lab.com")).as_deref(),
+            Some("https://biognosia.tinnguyen-lab.com")
+        );
+        assert_eq!(
+            https_public_origin(Some("https://x.example/")).as_deref(),
+            Some("https://x.example")
+        );
+        assert_eq!(
+            https_public_origin(Some("HTTPS://x.example")).as_deref(),
+            Some("HTTPS://x.example")
+        );
+        // Local default + empties → None → fall back to header derivation.
+        assert_eq!(https_public_origin(Some("http://172.21.0.1:8080")), None);
+        assert_eq!(https_public_origin(Some("")), None);
+        assert_eq!(https_public_origin(Some("   ")), None);
+        assert_eq!(https_public_origin(None), None);
+    }
+}
+
 /// Register auth module
 #[distributed_slice(MODULE_ENTRIES)]
 static AUTH_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
@@ -90,6 +150,15 @@ impl AppModule for AuthModule {
         // is idempotent on second-call (returns Err which we ignore —
         // module re-init isn't expected but isn't an error condition).
         let _ = TRUST_FORWARDED_HEADERS.set(ctx.config.server.trust_forwarded_headers);
+        // Cache the operator-configured https public origin (if any) the same
+        // way, so the free-function OAuth-authorize handler can root
+        // redirect_uris at it without threading Arc<Config> through Axum.
+        let _ = CONFIGURED_PUBLIC_ORIGIN.set(https_public_origin(
+            ctx.config
+                .code_sandbox
+                .as_ref()
+                .and_then(|cs| cs.public_base_url.as_deref()),
+        ));
 
         // One-time copy of the YAML jwt lifetimes into the session_settings
         // singleton (migration 129). Writes only while seeded_from_config is
