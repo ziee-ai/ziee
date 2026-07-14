@@ -36,24 +36,14 @@ pub async fn list_deliverable_files(
     conversation_id: Uuid,
     user_id: Uuid,
 ) -> Result<Vec<File>, AppError> {
-    // Derived: files the model authored somewhere in this conversation.
-    let derived: Vec<Uuid> = sqlx::query_scalar!(
-        r#"
-        SELECT DISTINCT fv.file_id AS "file_id!"
-        FROM file_versions fv
-        JOIN branch_messages bm ON bm.message_id = fv.source_message_id
-        JOIN branches br ON br.id = bm.branch_id
-        JOIN files f ON f.id = fv.file_id
-        WHERE br.conversation_id = $1
-          AND f.user_id = $2
-          AND f.created_by IN ('mcp', 'llm')
-        "#,
-        conversation_id,
-        user_id
-    )
-    .fetch_all(Repos.pool())
-    .await
-    .map_err(AppError::database_error)?;
+    // Derived: files the model authored somewhere in this conversation. Shared
+    // with the `files` MCP manifest (`available_files::resolve_available_files`)
+    // so the two definitions of "model-authored in this conversation" cannot
+    // drift apart; it also returns the rows deterministically (oldest first),
+    // which the inline query here did not.
+    let derived: Vec<Uuid> =
+        crate::modules::file::available_files::model_authored_file_ids(conversation_id, user_id)
+            .await?;
 
     // Curation rows: pinned=true promotes, pinned=false hides.
     let curated = sqlx::query!(

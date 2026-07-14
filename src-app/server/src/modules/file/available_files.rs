@@ -1,11 +1,23 @@
 //! Shared resolver for a conversation's *effective* file set.
 //!
-//! A conversation can "see" two kinds of files:
+//! A conversation can "see" three kinds of files:
 //!   - **project files** — the knowledge files of the project the conversation
 //!     belongs to (M:N via `project_files`), if any;
 //!   - **conversation attachments** — files referenced from `file_attachment`/
 //!     `image` content blocks across the conversation's messages (the `file_id`
-//!     lives in the `message_contents.content` JSONB, no FK).
+//!     lives in the `message_contents.content` JSONB, no FK);
+//!   - **model-authored (generated) files** — files the MODEL produced in this
+//!     conversation (`files_mcp`'s `create_file`/`convert_document`, or an MCP
+//!     tool-result artifact ingested by `mcp::resource_link::persist_links`).
+//!     These never get a `file_attachment` row, so they are resolved by
+//!     provenance instead: `file_versions.source_message_id` → the
+//!     conversation's branch messages, narrowed to `files.created_by IN
+//!     ('mcp','llm')` (migration 34's model-authored vocabulary). WITHOUT this
+//!     source the tools hand the model a file id (`"Created 'x' (id …)"`) and
+//!     then reject that very id as "no longer available" — the read/write
+//!     asymmetry that motivated this source (writes resolve by owner, reads by
+//!     this manifest). Same definition as the derived list behind
+//!     `deliverables.rs` — shared via `model_authored_file_ids`.
 //!
 //! This module is the source of truth for the built-in `files` MCP server's
 //! manifest + read tools — "what files exist for this conversation". The code
@@ -51,12 +63,17 @@ pub enum FileType {
     Binary,
 }
 
-/// Where a file is reachable from for this conversation. A file can be BOTH.
+/// Where a file is reachable from for this conversation. A file can be reachable
+/// from MORE THAN ONE of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileSource {
     Project,
     Attachment,
+    /// Authored by the MODEL in this conversation (`created_by IN ('mcp','llm')`),
+    /// reachable via `file_versions.source_message_id` provenance rather than an
+    /// attachment content block.
+    Generated,
 }
 
 /// One row of the conversation's manifest / mount set.
@@ -79,6 +96,13 @@ pub struct AvailableFile {
     /// All the ways this file is reachable (project and/or attachment).
     pub source: Vec<FileSource>,
     pub uploaded_at: DateTime<Utc>,
+    /// Ids of the OTHER files this entry absorbed during content-dedup (same
+    /// checksum). The model may legitimately hold one of these (a tool result
+    /// handed it that id before the duplicate collapsed), so `resolve_target`
+    /// accepts them as aliases for `id` — exactly as `aka` does for `name`.
+    /// Internal: never surfaced, so the model always sees ONE canonical id.
+    #[serde(skip)]
+    pub aka_ids: Vec<Uuid>,
     /// sha256 (when known) — the content-dedup key. Not surfaced to the model.
     #[serde(skip)]
     pub checksum: Option<String>,
@@ -107,6 +131,7 @@ impl AvailableFile {
             id: f.id,
             name: f.filename.clone(),
             aka: Vec::new(),
+            aka_ids: Vec::new(),
             mime_type: f.mime_type.clone(),
             file_type,
             text: has_text && !is_image,
@@ -364,6 +389,9 @@ pub fn render_manifest(files: &[AvailableFile]) -> String {
          file tools: `list_files()`, `read_file(id, offset?, limit?)`, \
          `grep_files(pattern, id?)`. Address files by `id` (preferred); a \
          `name` works only when it uniquely identifies one file. \
+         Use ONLY the ids listed here (or from `list_files()`) — an id from \
+         anywhere else, such as another tool's output or a URL, is not valid \
+         here. \
          Files marked `no-text` can't be read as text.\n\n",
     );
     for f in files {
@@ -395,6 +423,7 @@ pub fn render_manifest(files: &[AvailableFile]) -> String {
             .map(|s| match s {
                 FileSource::Project => "project",
                 FileSource::Attachment => "attachment",
+                FileSource::Generated => "generated",
             })
             .collect();
         let aka = if f.aka.is_empty() {
@@ -416,12 +445,59 @@ pub fn render_manifest(files: &[AvailableFile]) -> String {
     s
 }
 
+/// File ids the MODEL authored in this conversation, oldest first.
+///
+/// "Model-authored" = `files.created_by IN ('mcp','llm')` (migration 34's
+/// vocabulary: `mcp` = an MCP server / the built-in `files` tools, `llm` = a
+/// code-sandbox `save_as_artifact`; `user` and `workflow` are deliberately
+/// excluded). Conversation scope comes from PROVENANCE —
+/// `file_versions.source_message_id` (migration 93; no FK by design, so it
+/// survives message edits / branch pruning) joined back to the conversation's
+/// branch messages. Spans ALL branches, matching the attachment query.
+///
+/// Single source of truth for this set, shared by `resolve_available_files`
+/// (the `files` MCP manifest) and `deliverables.rs` (the user-facing derived
+/// list) so the two can never drift apart. `ORDER BY f.created_at, f.id` makes
+/// the order DETERMINISTIC — the content-dedup canonical pick depends on it
+/// (see `dedup_by_checksum`), and it also stabilizes the deliverables list.
+pub(crate) async fn model_authored_file_ids(
+    conversation_id: Uuid,
+    user_id: Uuid,
+) -> Result<Vec<Uuid>, AppError> {
+    // Dedup the provenance ids in a CTE, then JOIN `files` and ORDER BY there —
+    // `SELECT DISTINCT` cannot ORDER BY a column outside its select list, and
+    // this mirrors the attachment query's shape directly above.
+    sqlx::query_scalar!(
+        r#"
+        WITH ids AS (
+            SELECT DISTINCT fv.file_id
+            FROM file_versions fv
+            JOIN branch_messages bm ON bm.message_id = fv.source_message_id
+            JOIN branches br ON br.id = bm.branch_id
+            WHERE br.conversation_id = $1
+        )
+        SELECT f.id AS "file_id!"
+        FROM ids
+        JOIN files f ON f.id = ids.file_id
+        WHERE f.user_id = $2
+          AND f.created_by IN ('mcp', 'llm')
+        ORDER BY f.created_at, f.id
+        "#,
+        conversation_id,
+        user_id
+    )
+    .fetch_all(Repos.pool())
+    .await
+    .map_err(AppError::database_error)
+}
+
 /// Resolve the conversation's effective, deduped file set for `user_id`.
 ///
 /// Ownership is enforced in one batched query (`get_by_ids_and_user`), so
 /// foreign or deleted files never appear. Order: project files first (each by
 /// upload time), then attachments (each by upload time via the query's
-/// `ORDER BY created_at, id`), then content-dedup collapses duplicates.
+/// `ORDER BY created_at, id`), then model-authored files (same ordering), then
+/// content-dedup collapses duplicates.
 pub async fn resolve_available_files(
     conversation_id: Uuid,
     user_id: Uuid,
@@ -479,16 +555,24 @@ pub async fn resolve_available_files(
     .map_err(AppError::database_error)?;
     let attachment_file_ids: Vec<Uuid> = attachment_rows.into_iter().map(|r| r.file_id).collect();
 
-    // 3. Batch-load + ownership-check the union of project + attachment ids in a
-    //    SINGLE round-trip, then build `AvailableFile`s by walking the ordered id
-    //    lists (project first) so the canonical-source preference and the
-    //    content-dedup canonical pick stay stable. Foreign/deleted ids never make
-    //    it into the map, so they silently drop out — same filtering as the old
-    //    per-id `get_by_id_and_user` loop, minus N sequential queries.
-    let mut union_ids: Vec<Uuid> =
-        Vec::with_capacity(project_file_ids.len() + attachment_file_ids.len());
+    // 3. Model-authored file ids — files the model produced in THIS conversation
+    //    (create_file / convert_document / an ingested tool-result artifact).
+    //    They carry no `file_attachment` row, so they're resolved by provenance;
+    //    without this the tools would hand the model an id and then reject it.
+    let authored_file_ids = model_authored_file_ids(conversation_id, user_id).await?;
+
+    // 4. Batch-load + ownership-check the union of all three id lists in a SINGLE
+    //    round-trip, then build `AvailableFile`s by walking the ordered id lists
+    //    (project first) so the canonical-source preference and the content-dedup
+    //    canonical pick stay stable. Foreign/deleted ids never make it into the
+    //    map, so they silently drop out — same filtering as the old per-id
+    //    `get_by_id_and_user` loop, minus N sequential queries.
+    let mut union_ids: Vec<Uuid> = Vec::with_capacity(
+        project_file_ids.len() + attachment_file_ids.len() + authored_file_ids.len(),
+    );
     union_ids.extend(project_file_ids.iter().copied());
     union_ids.extend(attachment_file_ids.iter().copied());
+    union_ids.extend(authored_file_ids.iter().copied());
     let files = Repos.file.get_by_ids_and_user(&union_ids, user_id).await?;
     let by_uuid: std::collections::HashMap<Uuid, File> =
         files.into_iter().map(|f| (f.id, f)).collect();
@@ -496,9 +580,12 @@ pub async fn resolve_available_files(
     let mut by_id: Vec<AvailableFile> = Vec::new();
     let mut seen: std::collections::HashMap<Uuid, usize> = std::collections::HashMap::new();
 
+    // Generated LAST: appending keeps every pre-existing set's canonical pick
+    // (project → attachment) byte-identical to before this source existed.
     for (ids, source) in [
         (project_file_ids, FileSource::Project),
         (attachment_file_ids, FileSource::Attachment),
+        (authored_file_ids, FileSource::Generated),
     ] {
         for fid in ids {
             if let Some(&idx) = seen.get(&fid) {
@@ -521,10 +608,16 @@ pub async fn resolve_available_files(
 
 /// Collapse byte-identical files (same `checksum`) into one entry. The canonical
 /// entry is the FIRST in resolution order — project files first, then
-/// attachments, each ordered by upload time — a stable choice now that the
-/// attachment query has an explicit `ORDER BY created_at, id`; later
-/// same-content files fold their filename into `aka` and union their sources.
+/// attachments, then model-authored, each ordered by upload time — a stable
+/// choice now that every source query has an explicit `ORDER BY created_at, id`;
+/// later same-content files fold their filename into `aka`, their id into
+/// `aka_ids`, and union their sources.
 /// NULL-checksum files are never merged (we can't prove identity).
+///
+/// The absorbed id MUST be kept (`aka_ids`): the model may already hold it from
+/// a tool result (`"Created 'x' (id …)"`), and dropping it made a legitimately-
+/// issued id resolve to nothing — the same "no longer available" dead end this
+/// module's third source fixes.
 fn dedup_by_checksum(files: Vec<AvailableFile>) -> Vec<AvailableFile> {
     use std::collections::HashMap;
     let mut canonical: HashMap<String, usize> = HashMap::new();
@@ -541,6 +634,9 @@ fn dedup_by_checksum(files: Vec<AvailableFile>) -> Vec<AvailableFile> {
         let c = &mut out[idx];
         if f.name != c.name && !c.aka.contains(&f.name) {
             c.aka.push(f.name);
+        }
+        if f.id != c.id && !c.aka_ids.contains(&f.id) {
+            c.aka_ids.push(f.id);
         }
         for s in f.source {
             c.add_source(s);
@@ -571,6 +667,7 @@ mod tests {
             id,
             name: name.to_string(),
             aka: vec![],
+            aka_ids: vec![],
             mime_type: Some("text/plain".into()),
             file_type: FileType::Text,
             text: true,
@@ -593,6 +690,63 @@ mod tests {
         assert!(out[0].aka.contains(&"report-copy.md".to_string()), "alias preserved");
         assert!(out[0].source.contains(&FileSource::Project));
         assert!(out[0].source.contains(&FileSource::Attachment), "sources unioned");
+    }
+
+    /// Content-dedup drops the absorbed file's ROW, but the model may already
+    /// hold its id (a tool result handed it over before the duplicate appeared).
+    /// That id must stay resolvable via `aka_ids` — otherwise a legitimately-
+    /// issued id hits "not a file in this conversation". Mirrors the `aka`
+    /// alias-name guarantee asserted above.
+    #[test]
+    fn dedup_preserves_absorbed_id_as_alias() {
+        let a = mk(Uuid::new_v4(), "report.md", Some("abc"), FileSource::Project);
+        let b = mk(Uuid::new_v4(), "report-copy.md", Some("abc"), FileSource::Generated);
+        let b_id = b.id;
+        let out = dedup_by_checksum(vec![a.clone(), b]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, a.id, "first-seen stays canonical");
+        assert!(
+            out[0].aka_ids.contains(&b_id),
+            "the absorbed file's id must remain resolvable as an alias; aka_ids={:?}",
+            out[0].aka_ids
+        );
+    }
+
+    /// A unique file absorbs nothing, so it carries no alias ids.
+    #[test]
+    fn dedup_leaves_aka_ids_empty_when_content_is_unique() {
+        let a = mk(Uuid::new_v4(), "a.md", Some("h1"), FileSource::Project);
+        let b = mk(Uuid::new_v4(), "b.md", Some("h2"), FileSource::Attachment);
+        let out = dedup_by_checksum(vec![a, b]);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|f| f.aka_ids.is_empty()));
+    }
+
+    /// `aka_ids` is internal plumbing: surfacing it would show the model two ids
+    /// for one file — the exact confusion this module exists to prevent. It must
+    /// never appear in the `list_files` payload (which is this struct's serde).
+    #[test]
+    fn aka_ids_and_checksum_are_never_serialized_to_the_model() {
+        let a = mk(Uuid::new_v4(), "report.md", Some("abc"), FileSource::Project);
+        let b = mk(Uuid::new_v4(), "copy.md", Some("abc"), FileSource::Generated);
+        let out = dedup_by_checksum(vec![a, b]);
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert!(json.get("aka_ids").is_none(), "aka_ids must not reach the model: {json}");
+        assert!(json.get("checksum").is_none());
+        assert!(json.get("blob_version_id").is_none());
+        // The canonical id + alias NAME are still surfaced, as before.
+        assert!(json.get("id").is_some());
+        assert_eq!(json["aka"][0], "copy.md");
+    }
+
+    /// The `Generated` source renders in the injected manifest (a new arm in
+    /// `render_manifest`'s exhaustive match).
+    #[test]
+    fn manifest_renders_generated_source() {
+        let f = mk(Uuid::new_v4(), "authored.md", Some("h1"), FileSource::Generated);
+        let s = render_manifest(&[f]);
+        assert!(s.contains("generated"), "manifest must label the source; got:\n{s}");
+        assert!(s.contains("authored.md"));
     }
 
     #[test]

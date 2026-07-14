@@ -10,16 +10,16 @@ pub fn tool_list() -> Value {
         "tools": [
             {
                 "name": "list_files",
-                "description": "List the files available in this conversation (project knowledge files + attachments). Returns id, name, type, whether it has readable text, size and page count. Address files by `id`. A cheap manifest is already injected each turn; call this to refresh.",
+                "description": "List the files available in this conversation: project knowledge files, attachments, and files you created here yourself (create_file / convert_document / saved tool artifacts). Returns id, name, type, whether it has readable text, size and page count. This is the ONLY authoritative source of file ids for the other tools. A cheap manifest is already injected each turn; call this to refresh.",
                 "inputSchema": { "type": "object", "properties": {} }
             },
             {
                 "name": "read_file",
-                "description": "Read a file's extracted text by `id` (preferred); `name` also works but only when it uniquely identifies one file. Slice large files with `offset`/`limit` — these are LINES for text/code files and PAGES for PDF/office documents. Images are returned for vision; binary/no-text files return a short note. Never reads files outside this conversation.",
+                "description": "Read a file's extracted text by `id` (preferred); `name` also works but only when it uniquely identifies one file. Slice large files with `offset`/`limit` — these are LINES for text/code files and PAGES for PDF/office documents. Images are returned for vision; binary/no-text files return a short note. Never reads files outside this conversation — so an id from anywhere else will not resolve; when unsure, call list_files or pass `name`.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "string", "format": "uuid", "description": "File id from list_files (preferred)." },
+                        "id": { "type": "string", "format": "uuid", "description": "File id from THIS server's list_files (or the injected manifest) for THIS conversation. Never reuse an id seen elsewhere — another tool's output, a URL, or an earlier conversation; those do not resolve here. Unsure? Call list_files, or pass `name` instead." },
                         "name": { "type": "string", "description": "Filename — accepted only when it resolves to exactly one file." },
                         "offset": { "type": "integer", "minimum": 0, "description": "0-based start offset — counts lines for text/code files, pages for PDF/office documents." },
                         "limit": { "type": "integer", "minimum": 1, "description": "Max items to return — lines for text/code, pages for documents." }
@@ -33,7 +33,7 @@ pub fn tool_list() -> Value {
                     "type": "object",
                     "properties": {
                         "pattern": { "type": "string", "description": "Regular expression." },
-                        "id": { "type": "string", "format": "uuid", "description": "Optional: restrict to this file." },
+                        "id": { "type": "string", "format": "uuid", "description": "Optional: restrict to this file. Must be an id from this server's list_files for this conversation." },
                         "ignore_case": { "type": "boolean", "default": true }
                     },
                     "required": ["pattern"]
@@ -47,14 +47,14 @@ pub fn tool_list() -> Value {
                     "properties": {
                         "query": { "type": "string", "description": "Natural-language description of what you're looking for." },
                         "top_k": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Max passages to return (defaults to the deployment setting)." },
-                        "id": { "type": "string", "format": "uuid", "description": "Optional: restrict the search to this one file." }
+                        "id": { "type": "string", "format": "uuid", "description": "Optional: restrict the search to this one file. Must be an id from this server's list_files for this conversation." }
                     },
                     "required": ["query"]
                 }
             },
             {
                 "name": "create_file",
-                "description": "Create a new TEXT file (markdown, code, csv, json, …) with the given content. Returns its id and a resource_link. Edit it later with edit_file / rewrite_file. Use this to author a document the user can view and that you can revise across turns.",
+                "description": "Create a new TEXT file (markdown, code, csv, json, …) with the given content. Returns its id and a resource_link; the file joins this conversation's files, so that id is valid for read_file / edit_file / rewrite_file and it appears in list_files. Use this to author a document the user can view and that you can revise across turns.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -70,7 +70,7 @@ pub fn tool_list() -> Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "string", "format": "uuid", "description": "File id (preferred)." },
+                        "id": { "type": "string", "format": "uuid", "description": "File id from this server's list_files, or the one create_file just returned (preferred)." },
                         "name": { "type": "string", "description": "Filename — only when it resolves to exactly one file." },
                         "old_str": { "type": "string", "description": "The exact text to replace (must occur exactly once)." },
                         "new_str": { "type": "string", "description": "Replacement text." }
@@ -84,7 +84,7 @@ pub fn tool_list() -> Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "string", "format": "uuid" },
+                        "id": { "type": "string", "format": "uuid", "description": "File id from this server's list_files, or the one create_file just returned (preferred)." },
                         "name": { "type": "string" },
                         "start_line": { "type": "integer", "minimum": 1 },
                         "end_line": { "type": "integer", "minimum": 0 },
@@ -99,7 +99,7 @@ pub fn tool_list() -> Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "string", "format": "uuid" },
+                        "id": { "type": "string", "format": "uuid", "description": "File id from this server's list_files, or the one create_file just returned (preferred)." },
                         "name": { "type": "string" },
                         "content": { "type": "string", "description": "New full file contents." }
                     },
