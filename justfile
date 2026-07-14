@@ -592,3 +592,11 @@ check-server-release-ci:
         rhysd/actionlint:latest -color .github/workflows/server-release.yml
     @echo "✓ server-release.yml lint clean"
 
+# ─── Agent-kit (shared agent-dev infra) ──────────────────────────────
+
+# One-command post-clone setup: populate the agent-kit submodule, (re)create the
+# .claude skill + lifecycle symlinks into it, and install the pre-push hook.
+# Idempotent — run after a fresh clone or any time the symlinks/hook go stale.
+dev-init:
+    bash scripts/dev-init.sh
+
