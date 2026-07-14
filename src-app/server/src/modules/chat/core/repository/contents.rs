@@ -44,12 +44,24 @@ pub async fn create_content(
 /// with an earlier tool_result on the parallel-tool path: each caller reads
 /// the current MAX at write time instead of from a stale in-memory snapshot.
 ///
-/// **Assumes appends to a single `message_id` are sequential** — the streaming
-/// agentic loop awaits each append in one task, which is the only production
-/// caller. The subquery runs at READ COMMITTED isolation, so two truly-
-/// concurrent transactions appending to the SAME message could still race;
-/// adding `UNIQUE (message_id, sequence_order)` + retry is the next step if
-/// that ever becomes a real call shape.
+/// **Appends to one `message_id` are MOSTLY, but not strictly, sequential.** The
+/// streaming agentic loop awaits each of its own appends in a single task — but it is
+/// not the only writer: the MCP extension's detached elicitation task calls
+/// `append_content_with_id` (same MAX+1-inside-INSERT slot computation, same
+/// `message_id`) while the approval loop's `append_content` calls run. The subquery
+/// runs at READ COMMITTED, so those two CAN race for the same slot.
+///
+/// That race is CAUGHT, not silent: `UNIQUE (message_id, sequence_order)` exists
+/// (constraint `uq_message_contents_message_sequence`, migration 124), so the losing
+/// INSERT fails with a hard DB error instead of duplicating a slot.
+///
+/// Nothing retries, though, so a lost race is a FAILED append: the elicitation side
+/// swallows it (`let _ = …append_content_with_id(…)`) and silently drops that row,
+/// while the approval-loop sites at least log it. That gap is real but pre-existing
+/// and narrow — it needs an elicitation notification to land in the same instant as a
+/// result append. Closing it means a retry-on-unique-violation loop here, deliberately
+/// out of scope for the change that corrected this comment. Recorded rather than
+/// papered over.
 pub async fn append_content(
     pool: &PgPool,
     message_id: Uuid,
@@ -85,7 +97,13 @@ pub async fn append_content(
 /// Append a content block with a pre-registered UUID, computing the next
 /// `sequence_order` as `MAX+1` inside the INSERT. Id-preserving sibling of
 /// `append_content` for elicitation rows whose content id is registered before
-/// insertion. Same sequential-callers assumption — see `append_content`.
+/// insertion.
+///
+/// This is the OTHER writer `append_content`'s header names: its caller is the MCP
+/// extension's detached elicitation task, which can race the approval loop's
+/// `append_content` for the same slot on the same `message_id`. The UNIQUE constraint
+/// catches the collision, but this side's caller uses `let _ = …`, so the losing
+/// insert silently drops the row. See `append_content` for the full note.
 pub async fn append_content_with_id(
     pool: &PgPool,
     id: Uuid,
@@ -224,4 +242,64 @@ pub async fn update_content_json(
     .map_err(AppError::database_error)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// TEST-12: `append_content`'s header tells the reader that
+    /// `UNIQUE (message_id, sequence_order)` already exists and names the constraint
+    /// enforcing it — it used to describe that constraint as future work ("the next
+    /// step") long after migration 124 shipped it, which sends the next reader
+    /// looking for a guard that is already there, or worse, adding a third one.
+    ///
+    /// Rather than lint the prose (any paraphrase would slip through), this checks
+    /// the doc against the migrations: the constraint the comment cites must actually
+    /// be created by one. So RENAMING the constraint without updating the comment
+    /// fails here — a doc that names a guard nobody can find is exactly the defect
+    /// this replaces.
+    ///
+    /// Honest limit: it proves a migration ADDS the name, not that the guard still
+    /// exists on a live DB — a later `DROP CONSTRAINT` would leave this green. Nothing
+    /// here checks the live schema, so treat this as a doc-accuracy guard only.
+    ///
+    /// Source-scanning shape mirrors `code_sandbox::backend::wsl2`'s
+    /// `med3_wslenv_credential_leak_regression`; the production section is scanned
+    /// alone so the test mod's own strings can't satisfy it.
+    #[test]
+    fn append_content_doc_cites_a_constraint_that_really_exists() {
+        let normalized = include_str!("contents.rs").replace("\r\n", "\n");
+        let prod_src = normalized
+            .split_once("#[cfg(test)]\nmod tests {")
+            .map(|(prod, _)| prod)
+            .expect("test mod marker present");
+
+        let cited = "uq_message_contents_message_sequence";
+        assert!(
+            prod_src.contains(cited),
+            "append_content's doc must name the constraint that enforces the \
+             (message_id, sequence_order) invariant, so a reader can find it."
+        );
+
+        // The cited name must be real: some migration must create it.
+        let migrations = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
+        let mut found_in = None;
+        for entry in std::fs::read_dir(migrations).expect("read migrations dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("sql") {
+                continue;
+            }
+            let sql = std::fs::read_to_string(&path).expect("read migration");
+            if sql.contains(&format!("ADD CONSTRAINT\n    {cited}"))
+                || sql.contains(&format!("ADD CONSTRAINT {cited}"))
+            {
+                found_in = Some(path);
+                break;
+            }
+        }
+        assert!(
+            found_in.is_some(),
+            "append_content's doc cites constraint `{cited}`, but no migration creates it \
+             — the comment points the reader at a guard that does not exist."
+        );
+    }
 }

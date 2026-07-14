@@ -11,7 +11,9 @@
 //! and the `ai_providers` wire types are otherwise private to the lib).
 
 use serde_json::json;
-use ziee::test_internals::{group_assistant_blocks, ChatMessage, ContentBlock, Role};
+use ziee::test_internals::{
+    dedup_tool_results_by_id, group_assistant_blocks, ChatMessage, ContentBlock, Role,
+};
 
 fn tool_use(id: &str, name: &str) -> ContentBlock {
     ContentBlock::ToolUse {
@@ -191,4 +193,112 @@ fn multi_iteration_single_message_stays_valid() {
     assert_eq!(msgs.len(), 4, "two iterations → 2 Assistant + 2 Tool turns");
     assert_eq!(tool_use_ids(&msgs[0].content), vec!["i1"]);
     assert_eq!(tool_use_ids(&msgs[2].content), vec!["i2a", "i2b"]);
+}
+
+// ── fix-duplicate-tool-result ───────────────────────────────────────────────
+//
+// `assert_valid_tool_pairing` above checks pairing MESSAGE-BY-MESSAGE, so it
+// cannot see a duplicate that lands in a LATER message. That is exactly the
+// shape the provider rejected in production:
+//
+//   Assistant { tool_use A, tool_use B }
+//   Tool      { tool_result A, tool_result B }   ← valid pairing…
+//   User      { tool_result B }                  ← …but B is answered TWICE
+//
+// So the request-level invariant needs its own assertion.
+
+/// Assert the provider's other tool rule: NO `tool_use_id` is answered by more
+/// than one `tool_result` anywhere in the request.
+fn assert_single_result_per_tool_use(msgs: &[ChatMessage]) {
+    let all: Vec<String> = msgs.iter().flat_map(|m| tool_result_ids(&m.content)).collect();
+    let mut seen = std::collections::HashSet::new();
+    for id in &all {
+        assert!(
+            seen.insert(id.clone()),
+            "tool_use_id {id} is answered by MORE THAN ONE tool_result — the provider rejects \
+             this (\"each tool_use must have a single result\"). All result ids: {all:?}"
+        );
+    }
+}
+
+/// TEST-9: the approval-resume shape. A mixed batch (built-in A already resolved,
+/// external B still awaiting approval when the batch was last assembled) leaves a
+/// synthesized placeholder for B; the resume path then appends B's real result.
+/// `dedup_tool_results_by_id` is the chokepoint defense that guarantees the request
+/// still carries exactly one result per tool_use — while `assert_valid_tool_pairing`
+/// confirms the defense did not break the immediately-after rule in the process.
+#[test]
+fn resume_shape_keeps_exactly_one_result_per_tool_use() {
+    let mut msgs = group_assistant_blocks(vec![
+        tool_use("A", "builtin__remember"),
+        tool_use("B", "rcpa__run_de_analysis"),
+        tool_result("A", "remembered"),
+    ]);
+    // The resume path appends B's real result as a trailing User message. (The
+    // production fix folds it in place instead — this drives the DEFENSE directly,
+    // i.e. the path that must hold even if some other contributor appends a
+    // duplicate.)
+    msgs.push(ChatMessage {
+        role: Role::User,
+        content: vec![tool_result("B", "de-analysis-done")],
+    });
+
+    // Control: the shape really is a duplicate before the defense runs.
+    let before: Vec<String> = msgs.iter().flat_map(|m| tool_result_ids(&m.content)).collect();
+    assert_eq!(before, vec!["A", "B", "B"], "control: B is answered twice pre-dedup");
+
+    let dropped = dedup_tool_results_by_id(&mut msgs);
+
+    assert_eq!(dropped, vec!["B"], "the duplicate B result is the one dropped");
+    assert_single_result_per_tool_use(&msgs);
+    assert_valid_tool_pairing(&msgs);
+    assert_eq!(
+        msgs.len(),
+        2,
+        "the User message held only the duplicate, so it is removed rather than left empty"
+    );
+
+    // Make the DEFENSE's tradeoff explicit rather than let the shape assertions
+    // quietly certify it: keep-first means the SYNTHESIZED placeholder survives and
+    // B's real result is the one dropped. That is deliberate — the defense buys
+    // VALIDITY (a request the provider accepts), not fidelity, and keep-first is what
+    // preserves the "result immediately after the tool_use" rule. Content fidelity is
+    // the SOURCE fix's job (replace_or_collect_tool_results folds the real result into
+    // the placeholder's slot, so in production the survivor IS the real one and this
+    // path never runs). If this assertion ever flips, the defense started silently
+    // choosing content — revisit DEC-1/DEC-2.
+    match &msgs[1].content[1] {
+        ContentBlock::ToolResult { content, .. } => match &content[0] {
+            ContentBlock::Text { text } => assert!(
+                text.contains("Tool result unavailable"),
+                "keep-first keeps the placeholder; the real result is dropped by the \
+                 defense (validity over fidelity — the source fix is what preserves \
+                 content). Got: {text}"
+            ),
+            _ => panic!("expected a text block"),
+        },
+        _ => panic!("expected a tool_result"),
+    }
+}
+
+/// The defense must not disturb a healthy multi-iteration request — same message
+/// count, same pairing, same ids.
+#[test]
+fn dedup_leaves_a_valid_multi_iteration_request_untouched() {
+    let mut msgs = group_assistant_blocks(vec![
+        tool_use("i1", "search"),
+        tool_result("i1", "r1"),
+        tool_use("i2a", "read_file"),
+        tool_use("i2b", "read_file"),
+        tool_result("i2a", "ra"),
+        tool_result("i2b", "rb"),
+    ]);
+    let before_len = msgs.len();
+    let dropped = dedup_tool_results_by_id(&mut msgs);
+
+    assert!(dropped.is_empty(), "a healthy request drops nothing");
+    assert_eq!(msgs.len(), before_len);
+    assert_valid_tool_pairing(&msgs);
+    assert_single_result_per_tool_use(&msgs);
+    assert_eq!(tool_result_ids(&msgs[3].content), vec!["i2a", "i2b"]);
 }
