@@ -256,6 +256,14 @@ pub(crate) fn trusted_hosts_from_urls<'a>(
 /// and DOES vouch for that host, so its result files can be re-hosted — this is the boundary the
 /// old `is_system` filter got wrong (it excluded these legitimate hosts). Takes `(is_built_in, url)`
 /// pairs so it stays decoupled from the `McpServer` type.
+///
+/// SECURITY NOTE — only BUILT-IN loopback hosts are excluded, NOT loopback per se. A non-built-in
+/// server (user-owned OR admin-registered system) registered at a private/loopback host WILL
+/// contribute that host, granting same-host trust to a `resource_link` on it — this is the
+/// pre-existing same-host-trust model (a registered host is trusted), consistent with the existing
+/// user-owned-loopback-server behavior; registering a *system* server at loopback is a deliberate
+/// admin act. The policy layer is the backstop regardless: IMDS `169.254/16` + IPv6 link-local are
+/// re-blocked by `MCP_USER` even for a trusted host. See DECISIONS DEC-3 for the accepted tradeoff.
 pub(crate) fn trusted_hosts_from_servers<'a>(
     servers: impl IntoIterator<Item = (bool, Option<&'a str>)>,
 ) -> Vec<String> {
