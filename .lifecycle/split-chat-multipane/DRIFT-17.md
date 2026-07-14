@@ -50,4 +50,13 @@ scheduled-tasks). Merge commit: `c28ac8d20`.
   test-infra inconsistency). (2) The pre-existing gallery runtime-baseline findings
   (memory circular-init etc.) are main's, tracked in `runtime-baseline.js`.
 
+- **DRIFT-17.5** — verdict: none — Re-reconcile against the newer `origin/main` (`e6e5c6808`,
+  a 12-commit backend-only delta from 6da3d2aef: MCP sampling model-id / resource_link re-host +
+  trust-host fixes). **0 conflicts** (no overlap with the split-chat changes; no frontend/gallery/
+  migration). Backend `cargo check --workspace` clean; both `npm run check` green (gallery-seed gate
+  OK both workspaces); openapi regen (ui+desktop) = 0 content delta (ordering-only, types.ts
+  identical → the MCP fixes are internal, no API type change); isolation e2e 65/65 (0 fail/flaky) on
+  the e6e5c6808 base. Keeps the branch 0-behind current main; nothing in the delta conflicts with the
+  per-pane design.
+
 **Unresolved drifts:** 0

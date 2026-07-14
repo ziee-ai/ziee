@@ -484,3 +484,12 @@ errors). This feature adds no gallery surfaces and no new gating runtime finding
 - **B6 — gates survive the `.lifecycle` strip: PASS.** With `.lifecycle/` moved away,
   `npm run check (ui)` still exits 0 (the gate scripts — incl. main's new gallery-seed-registry
   + the override-registry — read only committed product-tree paths, never `.lifecycle/`).
+
+## Re-reconcile against origin/main e6e5c6808 (12-commit backend MCP delta) — 2026-07-14
+- **0 conflicts** (backend-only delta, no overlap). Backend `cargo check --workspace` clean.
+- **`npm run check` (ui + desktop): PASS** — both green, gallery-seed gate OK (ui 36 seeded/0
+  allow-listed; desktop 4 seeded/1 allow-listed).
+- **openapi regen (ui + desktop): 0 content delta** (ordering-only; types.ts byte-identical → the
+  MCP sampling/resource_link fixes changed no API type). Committed the reordered specs.
+- **Isolation e2e `tests/e2e/14-split-chat`: 65 passed, 0 failed, 0 flaky (9.5m)** on the
+  e6e5c6808 base (isolated CARGO_TARGET_DIR + qwen3.6-35b-a3b bridge).
