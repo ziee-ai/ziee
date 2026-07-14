@@ -557,6 +557,12 @@ async fn setup_server(
         ))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
+        // Chunk B3: the framework's permission extractors pull this injected
+        // resolver (backed by Repos + the JWT service above) from the request
+        // extensions to authenticate + authorize, so enforcement stays generic.
+        .layer(axum::Extension(Arc::new(
+            crate::modules::permissions::extractors::ZieeIdentityResolver,
+        )))
         .layer(cors);
 
     let addr = config.server_address();

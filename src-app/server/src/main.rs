@@ -375,6 +375,12 @@ async fn main() {
         ))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
+        // Chunk B3: the framework's permission extractors pull this injected
+        // resolver (backed by Repos + the JWT service above) from the request
+        // extensions to authenticate + authorize, so enforcement stays generic.
+        .layer(axum::Extension(std::sync::Arc::new(
+            crate::modules::permissions::extractors::ZieeIdentityResolver,
+        )))
         .layer(axum::Extension(mcp_session_manager.clone()))
         .layer(cors);
 

@@ -12812,6 +12812,8 @@ dependencies = [
  "async-trait",
  "axum",
  "linkme",
+ "schemars 0.9.0",
+ "serde",
  "sqlx 0.8.6",
  "tower-http",
  "tower_governor",
