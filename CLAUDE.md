@@ -2,6 +2,20 @@
 
 Essential documentation for developing Ziee, a full-stack application with Rust backend and React meta-framework frontend.
 
+## Shared agent-kit framework docs
+
+@agent-kit/docs/FRAMEWORK.md
+
+The **universal** framework docs (meta-framework architecture, React component
+patterns, backend architecture, permission-gating, testing guide, development
+guide, design system, coding guidelines) live in the **`agent-kit`** submodule
+(`agent-kit/docs/`) and are imported above — one evolving source of truth shared
+across ziee and future apps. The `.claude/skills/*` + `.claude/lifecycle/`
+tooling are symlinks into that same submodule; `.claude/app.config` supplies
+ziee's paths to the shared `preflight.sh`/`merge-gate.mjs`. See
+`agent-kit/README.md` for the consume model. Everything BELOW this line is
+**ziee-domain** (memory, sandbox, bio_mcp, chat, sync, …) and stays in this file.
+
 ---
 
 ## Quick Start
@@ -1632,7 +1646,7 @@ screenshots) live in `tests/e2e/visual/` and run under
 
 ### 📐 Architecture
 
-**[UI Meta-Framework Architecture](./.claude/META_FRAMEWORK_ARCHITECTURE.md)**
+**[UI Meta-Framework Architecture](agent-kit/docs/META_FRAMEWORK_ARCHITECTURE.md)**
 - Module system with auto-discovery
 - Store system (Zustand with proxies)
 - Event bus (type-safe, decoupled)
@@ -1640,7 +1654,7 @@ screenshots) live in `tests/e2e/visual/` and run under
 - Router integration
 - Complete module examples
 
-**[React Component Patterns](./.claude/REACT_COMPONENT_PATTERNS.md)** ⚠️ CRITICAL
+**[React Component Patterns](agent-kit/docs/REACT_COMPONENT_PATTERNS.md)** ⚠️ CRITICAL
 - Correct store access patterns
 - Permission gating (Can / usePermission / slot field)
 - Anti-patterns to avoid
@@ -1648,7 +1662,7 @@ screenshots) live in `tests/e2e/visual/` and run under
 - Error handling
 - Loading states
 
-**[Permission Gating](./.claude/PERMISSION_GATING.md)** ⚠️ CRITICAL (when adding admin features)
+**[Permission Gating](agent-kit/docs/PERMISSION_GATING.md)** ⚠️ CRITICAL (when adding admin features)
 - The `PermissionExpr` type and four gating layers (slot → route → `<Can>` → `usePermission`)
 - Root admin vs Administrators group
 - Wildcards and `is_admin` short-circuit
@@ -1656,14 +1670,14 @@ screenshots) live in `tests/e2e/visual/` and run under
 - Checklist for adding a new feature
 - Anti-patterns to avoid
 
-**[Frontend Dependency Hygiene](./.claude/FRONTEND_DEPS.md)**
+**[Frontend Dependency Hygiene](agent-kit/docs/FRONTEND_DEPS.md)**
 - `npm run check` gate (tsc + antd doctor + antd lint)
 - `@ant-design/cli` workflow + `just antd-check`
 - Within-major vs cross-major bump cadence
 - Common antd v6 deprecation fixes
 - Deferred major bumps + why
 
-**[Backend Architecture](./.claude/BACKEND_ARCHITECTURE.md)**
+**[Backend Architecture](agent-kit/docs/BACKEND_ARCHITECTURE.md)**
 - Rust module system
 - Permission system (RBAC)
 - OpenAPI integration
@@ -1672,7 +1686,7 @@ screenshots) live in `tests/e2e/visual/` and run under
 
 ### 🧪 Testing
 
-**[Testing Guide](./.claude/TESTING_GUIDE.md)**
+**[Testing Guide](agent-kit/docs/TESTING_GUIDE.md)**
 - E2E testing with Playwright
 - Semantic selectors (accessibility-first)
 - Component selectors (auto-generated)
@@ -1682,7 +1696,7 @@ screenshots) live in `tests/e2e/visual/` and run under
 
 ### 🔧 Development
 
-**[Development Guide](./.claude/DEVELOPMENT_GUIDE.md)**
+**[Development Guide](agent-kit/docs/DEVELOPMENT_GUIDE.md)**
 - Running the application
 - Development workflow
 - Building for production
@@ -1722,7 +1736,7 @@ modules/example/
 └── permissions.rs   # Permission definitions
 ```
 
-**Learn more:** [Backend Architecture](./.claude/BACKEND_ARCHITECTURE.md)
+**Learn more:** [Backend Architecture](agent-kit/docs/BACKEND_ARCHITECTURE.md)
 
 ### Frontend Module Structure
 
@@ -1736,7 +1750,7 @@ modules/example/
 └── widgets/         # Reusable widgets
 ```
 
-**Learn more:** [UI Architecture](./.claude/META_FRAMEWORK_ARCHITECTURE.md)
+**Learn more:** [UI Architecture](agent-kit/docs/META_FRAMEWORK_ARCHITECTURE.md)
 
 ---
 
@@ -1749,7 +1763,7 @@ modules/example/
 3. **Frontend:** Create stores → Define events → Build components → Register module
 4. **E2E Tests:** Write tests following semantic selector patterns
 
-**Detailed guide:** [Development Guide - Adding a New Feature](./.claude/DEVELOPMENT_GUIDE.md#adding-a-new-feature)
+**Detailed guide:** [Development Guide - Adding a New Feature](agent-kit/docs/DEVELOPMENT_GUIDE.md#adding-a-new-feature)
 
 ### Module Porting
 
@@ -1760,7 +1774,7 @@ When porting from reference project:
 4. **Frontend next** - Complete 8 phases
 5. **Write E2E tests** - Verify behavior
 
-**Detailed guide:** [Development Guide - Module Porting](./.claude/DEVELOPMENT_GUIDE.md#module-porting)
+**Detailed guide:** [Development Guide - Module Porting](agent-kit/docs/DEVELOPMENT_GUIDE.md#module-porting)
 
 ---
 
@@ -1935,8 +1949,8 @@ useEffect(() => {
 ```
 
 **Learn more:**
-- [React Component Patterns](./.claude/REACT_COMPONENT_PATTERNS.md) ⚠️ **MUST READ**
-- [UI Architecture - Store Usage](./.claude/META_FRAMEWORK_ARCHITECTURE.md#23-store-usage-pattern)
+- [React Component Patterns](agent-kit/docs/REACT_COMPONENT_PATTERNS.md) ⚠️ **MUST READ**
+- [UI Architecture - Store Usage](agent-kit/docs/META_FRAMEWORK_ARCHITECTURE.md#23-store-usage-pattern)
 
 ### E2E Selector Priority
 
@@ -1945,7 +1959,7 @@ useEffect(() => {
 3. `getByText()` - Visible text
 4. `getByTestId()` - Escape hatch (last resort)
 
-**Learn more:** [Testing Guide - Selector Priority](./.claude/TESTING_GUIDE.md#selector-priority)
+**Learn more:** [Testing Guide - Selector Priority](agent-kit/docs/TESTING_GUIDE.md#selector-priority)
 
 ### Event Emission
 
@@ -1958,7 +1972,7 @@ createItem: async (data) => {
 }
 ```
 
-**Learn more:** [UI Architecture - Event System](./.claude/META_FRAMEWORK_ARCHITECTURE.md#3-event-system)
+**Learn more:** [UI Architecture - Event System](agent-kit/docs/META_FRAMEWORK_ARCHITECTURE.md#3-event-system)
 
 ---
 
@@ -2051,10 +2065,10 @@ If you find yourself increasing timeouts from 1s → 5s → 10s, this indicates 
 ## Resources
 
 **Documentation:**
-- [UI Meta-Framework Architecture](./.claude/META_FRAMEWORK_ARCHITECTURE.md) - Complete frontend patterns
-- [Backend Architecture](./.claude/BACKEND_ARCHITECTURE.md) - Rust/Axum patterns
-- [Testing Guide](./.claude/TESTING_GUIDE.md) - E2E and integration testing
-- [Development Guide](./.claude/DEVELOPMENT_GUIDE.md) - Running, building, porting
+- [UI Meta-Framework Architecture](agent-kit/docs/META_FRAMEWORK_ARCHITECTURE.md) - Complete frontend patterns
+- [Backend Architecture](agent-kit/docs/BACKEND_ARCHITECTURE.md) - Rust/Axum patterns
+- [Testing Guide](agent-kit/docs/TESTING_GUIDE.md) - E2E and integration testing
+- [Development Guide](agent-kit/docs/DEVELOPMENT_GUIDE.md) - Running, building, porting
 
 **External:**
 - [Rust Book](https://doc.rust-lang.org/book/)
