@@ -154,18 +154,71 @@ async fn call_tool(
     name: &str,
     arguments: Value,
 ) -> Value {
-    let res = jsonrpc_call(
+    call_tool_as_message(server, user, conversation_id, None, name, arguments).await
+}
+
+/// `call_tool`, but stamping `x-message-id` — the assistant-turn provenance the
+/// MCP client injects for every built-in server call in production
+/// (`mcp/client/manager.rs::inject_builtin_context_headers`, fed from
+/// `StreamContext.message_id`). The write tools persist it as
+/// `file_versions.source_message_id`, which is what ties a model-authored file
+/// to this conversation. WITHOUT it a `create_file` is provenance-less and
+/// therefore belongs to no conversation — so any test asserting a model-authored
+/// file is later readable MUST send it, exactly as the real chat path does.
+async fn call_tool_as_message(
+    server: &TestServer,
+    user: &TestUser,
+    conversation_id: Uuid,
+    message_id: Option<Uuid>,
+    name: &str,
+    arguments: Value,
+) -> Value {
+    let mut req = jsonrpc_call(
         server,
         &user.token,
         Some(conversation_id),
         "tools/call",
         json!({ "name": name, "arguments": arguments }),
-    )
-    .send()
-    .await
-    .unwrap();
+    );
+    if let Some(mid) = message_id {
+        req = req.header("x-message-id", mid.to_string());
+    }
+    let res = req.send().await.unwrap();
     assert_eq!(res.status(), 200, "tools/call HTTP status");
     res.json().await.unwrap()
+}
+
+/// Insert an assistant message on the conversation's branch and return its id —
+/// the row production creates BEFORE the tool loop runs
+/// (`chat/core/services/streaming.rs`), so a tool call's `x-message-id` always
+/// points at a real, already-branch-joined message.
+async fn assistant_message(server: &TestServer, conversation_id: Uuid) -> Uuid {
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let branch_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM branches WHERE conversation_id = $1 ORDER BY created_at LIMIT 1",
+    )
+    .bind(conversation_id)
+    .fetch_one(&pool)
+    .await
+    .expect("the conversation must have a default branch");
+    let msg_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO messages (id, role, originated_from_id, created_at) \
+         VALUES ($1, 'assistant', $1, NOW())",
+    )
+    .bind(msg_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO branch_messages (branch_id, message_id, created_at) VALUES ($1, $2, NOW())",
+    )
+    .bind(branch_id)
+    .bind(msg_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    msg_id
 }
 
 fn jsonrpc_call(
@@ -1195,11 +1248,15 @@ async fn test_model_authored_file_is_readable_in_later_turn() {
     let conv_id = create_conversation(&server, &user).await;
     let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
 
-    // Turn 1 — the model authors a file.
-    let created = call_tool(
+    // Turn 1 — the model authors a file. `x-message-id` is the assistant-turn
+    // stamp the real chat path always injects; it's what scopes the new file to
+    // this conversation.
+    let msg_id = assistant_message(&server, conv_uuid).await;
+    let created = call_tool_as_message(
         &server,
         &user,
         conv_uuid,
+        Some(msg_id),
         "create_file",
         json!({ "filename": "authored.md", "content": "AUTHORED_MARKER first line\nsecond line\n" }),
     )
@@ -1237,6 +1294,134 @@ async fn test_model_authored_file_is_readable_in_later_turn() {
         text.contains("AUTHORED_MARKER"),
         "read_file must return the model-authored content; got: {text}"
     );
+}
+
+/// THE REPORTED SYMPTOM: the model passes an `id` that isn't a file in this
+/// conversation (copied from another tool's output / an earlier conversation /
+/// hallucinated). It must still be refused — but RECOVERABLY: the error names
+/// `list_files` and `name`, and lists what's actually here, so the model can
+/// self-correct in-turn instead of dead-ending on "no longer available".
+#[tokio::test]
+async fn test_read_file_foreign_id_returns_actionable_error() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_foreign_id").await;
+    let (conv_id, _ids) = project_conversation_with_files(
+        &server,
+        &user,
+        "foreign-id-project",
+        &[("only.txt", "content")],
+    )
+    .await;
+    let conv_uuid = Uuid::parse_str(&conv_id).unwrap();
+
+    let body = call_tool(
+        &server,
+        &user,
+        conv_uuid,
+        "read_file",
+        json!({ "id": Uuid::new_v4().to_string() }),
+    )
+    .await;
+    let err = &body["error"];
+    assert!(err.is_object(), "a foreign id must error; body={body}");
+    assert_eq!(err["code"].as_i64().unwrap(), INVALID_PARAMS, "wire code is unchanged");
+    let msg = err["message"].as_str().unwrap_or_default();
+    assert!(msg.contains("list_files"), "error must point at list_files; err={err}");
+    assert!(msg.contains("name"), "error must offer the `name` fallback; err={err}");
+    assert!(msg.contains("only.txt"), "error must list the current files; err={err}");
+}
+
+/// The conversation-scope invariant, on the NEW source: a file the model authored
+/// in conversation A must NOT be readable from conversation B — even by the same
+/// owner, and even though `read_file`'s set now includes model-authored files.
+/// This is the guard that keeps the scope fix from becoming a data leak.
+#[tokio::test]
+async fn test_model_authored_file_not_readable_from_another_conversation() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_authored_scope").await;
+
+    let conv_a = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+    let conv_b = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+
+    let msg_a = assistant_message(&server, conv_a).await;
+    let created = call_tool_as_message(
+        &server,
+        &user,
+        conv_a,
+        Some(msg_a),
+        "create_file",
+        json!({ "filename": "secret-a.md", "content": "CONV_A_ONLY marker\n" }),
+    )
+    .await;
+    assert!(created["error"].is_null(), "create_file in A should succeed; body={created}");
+    let file_id = created["result"]["structuredContent"]["file_id"].as_str().unwrap().to_string();
+
+    // Readable in A (the scope fix).
+    let read_a = call_tool(&server, &user, conv_a, "read_file", json!({ "id": file_id })).await;
+    assert!(read_a["error"].is_null(), "must read in its own conversation; body={read_a}");
+
+    // NOT readable in B — same user, different conversation.
+    let read_b = call_tool(&server, &user, conv_b, "read_file", json!({ "id": file_id })).await;
+    assert!(
+        read_b["error"].is_object(),
+        "a file authored in conversation A must NOT be readable from B; body={read_b}"
+    );
+    assert!(
+        !serde_json::to_string(&read_b).unwrap().contains("CONV_A_ONLY"),
+        "conversation B must never see A's content; body={read_b}"
+    );
+
+    // And it must not leak into B's manifest either.
+    let listed_b = call_tool(&server, &user, conv_b, "list_files", json!({})).await;
+    let files_b = listed_b["result"]["structuredContent"]["files"].as_array().unwrap();
+    assert!(
+        !files_b.iter().any(|f| f["id"].as_str() == Some(file_id.as_str())),
+        "A's authored file must not appear in B's manifest; files={files_b:?}"
+    );
+}
+
+/// The task's explicit ask: after the fix, BOTH addressing modes work on a
+/// model-authored file — the id `list_files` reports, and its unique `name`.
+#[tokio::test]
+async fn test_model_authored_file_readable_by_list_id_and_by_name() {
+    let server = TestServer::start().await;
+    let user = power_user(&server, "files_mcp_authored_byname").await;
+    let conv_uuid = Uuid::parse_str(&create_conversation(&server, &user).await).unwrap();
+
+    let msg_id = assistant_message(&server, conv_uuid).await;
+    let created = call_tool_as_message(
+        &server,
+        &user,
+        conv_uuid,
+        Some(msg_id),
+        "create_file",
+        json!({ "filename": "notes.md", "content": "BYNAME_MARKER content\n" }),
+    )
+    .await;
+    assert!(created["error"].is_null(), "create_file should succeed; body={created}");
+
+    // The id as reported by list_files (not the create response) — the exact
+    // provenance the tool descriptions tell the model to use.
+    let listed = call_tool(&server, &user, conv_uuid, "list_files", json!({})).await;
+    let files = listed["result"]["structuredContent"]["files"].as_array().unwrap();
+    let entry = files
+        .iter()
+        .find(|f| f["name"].as_str() == Some("notes.md"))
+        .expect("authored file must be listed");
+    assert!(
+        entry["source"].as_array().unwrap().iter().any(|s| s == "generated"),
+        "the authored file is labelled as generated; entry={entry}"
+    );
+    let listed_id = entry["id"].as_str().unwrap().to_string();
+
+    let by_id = call_tool(&server, &user, conv_uuid, "read_file", json!({ "id": listed_id })).await;
+    assert!(by_id["error"].is_null(), "read by list_files id; body={by_id}");
+    assert!(by_id["result"]["content"][0]["text"].as_str().unwrap().contains("BYNAME_MARKER"));
+
+    let by_name =
+        call_tool(&server, &user, conv_uuid, "read_file", json!({ "name": "notes.md" })).await;
+    assert!(by_name["error"].is_null(), "read by unique name; body={by_name}");
+    assert!(by_name["result"]["content"][0]["text"].as_str().unwrap().contains("BYNAME_MARKER"));
 }
 
 /// read_file on an IMAGE returns an image content block (handlers.rs:545-560);
