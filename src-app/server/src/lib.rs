@@ -579,6 +579,15 @@ async fn setup_server(
         )))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
+        // Chunk `ziee-file-http`: the per-request handle the mountable
+        // `ziee_file::http::file_routes` handlers pull from the extensions —
+        // the file store repository + ziee's `FileEvents` seam impl + the
+        // download-token signer — so those handlers no longer reach `Repos.file`
+        // / the file-module JWT global / `sync::publish`.
+        .layer(axum::Extension(crate::modules::file::ingest::build_file_context(
+            pool.clone(),
+            &config.jwt,
+        )))
         // Chunk B3: the framework's permission extractors pull this injected
         // resolver (backed by Repos + the JWT service above) from the request
         // extensions to authenticate + authorize, so enforcement stays generic.

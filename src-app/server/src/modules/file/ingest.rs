@@ -37,6 +37,34 @@ impl FileEvents for ZieeFileEvents {
     fn on_file_deleted(&self, user_id: Uuid, file_id: Uuid, origin: Option<Uuid>) {
         crate::modules::file::sync::publish_file_deleted_with_origin(user_id, file_id, origin);
     }
+    fn on_committed(&self, user_id: Uuid, file_id: Uuid, is_new: bool) {
+        // Document RAG. The HTTP restore path (the sole `on_committed` caller
+        // moved in chunk `ziee-file-http`) commits a new head of an EXISTING
+        // file → `spawn_reindex`. Brand-new-file indexing (`spawn_index`, which
+        // needs the full `&File`) stays on the upload path and calls it directly,
+        // so `is_new == true` is never reached through this seam.
+        if !is_new {
+            crate::modules::file_rag::ingest::spawn_reindex(user_id, file_id);
+        }
+    }
+}
+
+/// Assemble the [`ziee_file::http::FileContext`] the mountable file handlers pull
+/// from the request extensions, installing ziee's [`ZieeFileEvents`] seam impl +
+/// the download-token signing material (issuer/secret from the app's JWT
+/// config). Called once at boot by `lib.rs` (and thus the desktop embed).
+pub fn build_file_context(
+    pool: std::sync::Arc<sqlx::PgPool>,
+    jwt: &crate::core::config::JwtConfig,
+) -> ziee_file::http::FileContext {
+    ziee_file::http::FileContext {
+        files: std::sync::Arc::new(ziee_file::FileRepository::new((*pool).clone())),
+        events: std::sync::Arc::new(ZieeFileEvents),
+        download_token: ziee_file::http::DownloadTokenSigner {
+            issuer: jwt.issuer.clone(),
+            secret: jwt.secret.clone(),
+        },
+    }
 }
 
 /// Save `bytes` as a new durable file owned by `user_id`. Runs the processing
