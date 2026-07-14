@@ -1,18 +1,7 @@
 {
+  "extends": "../../sdk/packages/config/tsconfig.base.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "experimentalDecorators": true,
-
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
 
     "paths": {
       "@/*": ["./src/*"],
@@ -23,12 +12,7 @@
         "../../sdk/packages/framework/src/api-client/index.ts"
       ],
       "@ziee/framework/*": ["../../sdk/packages/framework/src/*"]
-    },
-
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    }
   },
   "include": ["src", "tests"],
   "exclude": [
