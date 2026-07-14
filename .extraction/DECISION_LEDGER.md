@@ -1,0 +1,131 @@
+# SDK Extraction — Decision & Drift Ledger (standing, cross-chunk)
+
+The program-level spine the per-chunk `DRIFT-N.md` files don't provide. Per-chunk drift converges
+to 0 *within* a chunk and freezes at its boundary; this ledger tracks **load-bearing decisions
+across the whole extraction**, records when one is **revised**, names the chunks each touches, and
+carries a **re-audit status** so a revised decision can't silently leave an already-gated chunk
+non-compliant. Analog of the lifecycle skill's `DECISIONS.md` + `HUMAN_FEEDBACK.md`, applied at the
+program level.
+
+**Gate (to wire into `extraction-check.mjs --all`):** fail if any decision is `status: revised`
+with `reaudit: pending` and no tracking chunk in `.extraction/ORDER`; and every chunk listed under a
+revised decision's `affects` must have a boundary commit **newer** than the revision date (else it's
+stale against the new decision). Grammar is regex-parseable (`- status:`, `- reaudit:`, `- affects:`).
+
+Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pending` | `n/a`(process).
+
+---
+
+## Decisions
+
+### N1 — Identity model: PLUGGABLE
+- statement: framework is identity-agnostic; enforcement is generic over an injected resolver;
+  `ziee-identity` holds only traits; `ziee-auth` is the default replaceable impl.
+- status: active · decided: 2026-07-12 · affects: B1b, B3, BA · reaudit: pending
+
+### N2 — Equivalence gate: equivalence-preserving + re-export shims
+- statement: byte-identical `types.ts` gate stays ABSOLUTE; refactors keep serialized schema
+  identical via ziee shims; spike openapi diff before committing; cosmetic delta needs human sign-off.
+- status: active · decided: 2026-07-12 · affects: B2, B3, B5, B6, BA · reaudit: pending
+
+### N3 — Migration composition: build-time directory composition  → **REVISED (N3.1)**
+- statement (original): runtime Migrator concat is unsupported → app composes ONE migration dir at
+  build time (auth ∪ app, version-sorted) and `sqlx::migrate!` over it. Moved historical migrations
+  KEEP original numeric versions + byte content (checksum-safe for deployed DBs); only NEW migrations
+  use timestamps.
+- status: **revised** · decided: 2026-07-12
+- **revised: 2026-07-14 → N3.1.** Supersedes the "preserve numeric history" clause. Now: **squash**
+  the full 137+10 history into clean per-module baselines; **ALL** migrations become
+  `<timestamp>_<module>_<desc>.sql` (not just new ones); migrations are **module-owned** (see N7).
+  Build-time composition mechanism is UNCHANGED (widen its source globs). Unblocked by N8
+  (pre-release, no deployed DBs to protect → checksum-immutability suspended for the one squash).
+- affects: BA (auth carve-out), every migration-bearing chunk, **MIGRATE-squash** (the tracking chunk)
+- reaudit: **pending** — current impl (numeric, central-ish, auth-carries-domain-perms) is faithful
+  to N3-as-written but NON-compliant with N3.1. MIGRATE-squash converges it; then re-gate BA.
+
+### N4 — Boundary CI: scoped subset per boundary
+- statement: per-boundary = touched-module tests + golden diffs + dual clean-build; full ziee suite
+  + `gate:ui` only at the pre-merge gate (+ nightly).
+- status: active · decided: 2026-07-12 · affects: all · reaudit: n/a (process)
+
+### N5 — control_mcp: descope C1 to tool-dispatch only; fresh-app exposure v1.5
+- statement: v1 extracts DB-free tool-dispatch (catalog/policy/tools); handlers/routes/repository/
+  chat_extension + the `mcp_servers` row stay app-side. Self-expose needs the Tier-1 `mcp` registry (v1.5).
+- status: active · decided: 2026-07-13 · affects: C1 · reaudit: pending
+
+### N6 — De-globalize: dedicated Chunk BG before B3
+- statement: Repos/JWT/config singletons de-globalized behind traits as a dedicated chunk before B3.
+- status: active · decided: 2026-07-12 · affects: BG, BG-2, BG-3, B3, D-full · reaudit: pending
+
+### N7 — Migrations are MODULE-OWNED (new, this session)
+- statement: every module owns `migrations/` (co-located with its routes/permissions/repository),
+  and the framework composes ⋃ all modules' migrations. Mirrors the `MODULE_ENTRIES` registry
+  pattern. Rationale: the extract-a-module-to-a-crate future — a module-crate must carry its own
+  schema (as `ziee-auth` already does). A central flat dir hides ownership (root cause of the
+  `27_fix_default_user_permissions` leak). build.rs globs `modules/*/migrations/ ∪
+  sdk/crates/*/migrations/`, timestamp-sorted.
+- status: active · decided: 2026-07-14 · affects: MIGRATE-squash, all future module extractions
+- reaudit: pending (lands with MIGRATE-squash)
+
+### N8 — Pre-release: squash freely (no deployed DBs)
+- statement: no live third-party ziee Postgres deployments to protect → the checksum-immutability /
+  append-only rule (N3 hard-rule #1) is CONSCIOUSLY SUSPENDED for the one squash, then re-established
+  from the new baseline forward. Human-confirmed 2026-07-14.
+- status: active · decided: 2026-07-14 · affects: MIGRATE-squash · reaudit: n/a
+
+### N9 — Domain-seed boundary (new; the leak fix + a gate)
+- statement: an SDK/module migration must NOT seed another module's domain data. Concretely:
+  `ziee-auth` migrations contain ZERO permission strings other than `profile::*` / `*` — domain
+  perms (`chat::`,`branches::`,`assistants::`,`mcp_servers::`,`hub::`,`files::`,`conversations::`,…)
+  live in the owning module's migration. New EA assertion greps for violations.
+- status: active · decided: 2026-07-14 · affects: BA (re-audit), MIGRATE-squash · reaudit: pending
+
+---
+
+## Earlier resolutions (stable; from §8 audit pass)
+- #1 identity→pluggable(=N1) · #2 nested-workspace→prove-in-Chunk0(done, retired) ·
+  #3 history→one filter-repo · #4 consumption→submodule+path-deps · #5 `.cargo/config`→app-root+SDK template ·
+  #6 sandbox→extract LATER(post-v1) · #7 abstraction homes(ServerConfig→core, SyncEntityKind→framework,
+  single-user→ziee-auth) · #8 branch→periodic-rebase, no main→branch merges · #10 SDK ships schema→auth only,
+  framework build-DB-free · #11 worktree_db→SDK build-support crate · #12 desktop override→bundle-keyed.
+
+---
+
+## Human-feedback ledger (Phase-9 analog)
+- **FB-1 [2026-07-14] domain-perm leak in auth.** "`27_fix_default_user_permissions` doesn't make
+  sense there; why does core know about chat/branches?" → Resolution: N9 + N7 (module-owned) + split
+  the mixed migrations. **generalizable: yes** — "a crate/module migration must not seed another
+  module's domain data; gate it" (folded into EA as N9's grep assertion).
+- **FB-2 [2026-07-14] feature+timestamp, module-owned migrations for extract-to-crate.**
+  "reconstruct migrations labeled by feature+timestamp instead of number… truly a meta framework."
+  → N3.1 + N7. **generalizable: yes** — migration authoring convention doc + the module-owned glob.
+- **FB-3 [2026-07-14] standing drift ledger.** "maintain a drift ledger like the lifecycle skills."
+  → THIS artifact + the `--all` gate above. **generalizable: yes** — program-level decision ledger
+  is now a required extraction artifact.
+
+---
+
+## Re-audit tracker (impl-vs-plan, driven by the revisions above)
+Trigger: N3→N3.1 revision + the concern that a revised load-bearing decision may reveal latent drift
+in already-gated chunks. Scope = every completed chunk checked against its decisions + `.extraction`
+artifacts + actual code.
+
+| Chunk | Primary decisions | Re-audit status |
+|---|---|---|
+| chunk0 | #2,#4 | pending |
+| B1 | #7 (ServerConfig→core) | pending |
+| B1b | N1 | pending |
+| B2 | N2, #7 | pending |
+| B3 | N1, N2, N5-adjacent | pending |
+| B4 | N2 | pending |
+| B5 | N2, #7 (SyncEntityKind) | pending |
+| B6 | N2 (emit_ts parity) | pending |
+| F1 | — | pending |
+| C1 | N5 | pending |
+| BG / BG-2 / BG-3 | N6, #7 (embedded-PG→framework) | pending |
+| F2 | — | pending |
+| **BA** | N1, N2, N3→**N3.1**, N9, #10 | **pending (highest priority — the migration+seed locus)** |
+| D / D-full | N6, #12 | pending (D-full mid-flight) |
+
+**Sequence:** update plan (N3.1/N7/N8/N9 + EA) → audit the updated plan → run this impl-vs-plan
+re-audit → implement MIGRATE-squash → re-gate BA + MIGRATE-squash → clear the pending rows.

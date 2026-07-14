@@ -74,7 +74,7 @@ Each chunk dir holds:
 - **E10 boundary-green** (deterministic, decision N4): per-boundary = **touched-module tests** + golden diffs + dual clean-build; the **full ziee suite + `gate:ui`** run at the **pre-merge gate** (+ nightly), not every boundary.
 - **E11 skeleton-agnostic** (deterministic): `sdk/examples/skeleton-server` builds linking only `ziee-core`+`ziee-framework` (+`ziee-control-mcp` only for the control-specific check) — no domain/auth pull-through.
 - **E12 submodule-pin** (deterministic): ziee's `sdk` submodule pointer is committed and points at an SDK commit that builds.
-- **EA merged-migrator** (chunk BA only, deterministic): the merged Migrator applies on a fresh DB AND a copy of a real ziee DB; identical final schema; no checksum errors; all migration versions timestamped; no edited released migration (checksum-immutability CI guard).
+- **EA merged-migrator** (chunks BA + MIGRATE-squash, deterministic): the merged Migrator applies on a fresh DB with no checksum errors; **the resulting `pg_dump --schema-only` is byte-identical to `.extraction/baseline/schema.sql`** (the equivalence anchor — validator RE-RUNS the dump + diff, unfakeable). For **MIGRATE-squash (N3.1/N7/N8/N9)**: migrations are composed from `modules/*/migrations/ ∪ sdk/crates/*/migrations/` (module-owned, `<timestamp>_<module>_<desc>.sql`); **N9 seed-assertion** — auth migrations `grep` clean of any permission string other than `profile::*`/`*`; the append-only/checksum-immutability guard is SUSPENDED for the one squash (N8: pre-release, no deployed DBs) and re-established from the new baseline forward. (Pre-N3.1 BA also checked application onto a copy of a real ziee DB + timestamped-only-for-new; superseded by the squash.)
 - **E1** exactly one `.extraction/<id>/` dir. **E2** clean working tree (ignores pgvector submodule + `.log`).
 - **TESTS-preservation** every `TESTS-MOVED.md` entry PASSes; **A5-shrink-guard** — no covering test id present in an older committed `TESTS-MOVED.md` may be absent now.
 
@@ -127,12 +127,3 @@ and MUST be spiked first.)
 `extraction-check.mjs` + the baseline snapshot + the `skeleton-server` are **prerequisites of Chunk 0**
 (the gate must exist before it can gate). They are Phase-1 tooling tasks (see
 `PHASE1_EXECUTION_PLAN.md`).
-
----
-## E8 REFINEMENT (from B1 — orchestrator decision)
-openapi.json is NOT byte-reproducible: top-level key ORDER is a deterministic function of the
-linkme route-registration/dependency graph, so any dep-graph change (even semantically neutral,
-e.g. adding a path-dep) reorders keys. Therefore E8 compares:
-- **types.ts -> BYTE-IDENTITY** (deterministic; the real client contract).
-- **openapi.json -> CANONICAL SET-EQUALITY** (`jq -S` sorted equality; same paths/schemas, order ignored).
-Verified on B1: types.ts byte-identical; openapi.json canonically-equal (1118 order-only lines).

@@ -330,6 +330,26 @@ in-process** (`backend/mod.rs:228 start_backend_server` → `ziee::start_server_
 - **Green:** ziee-desktop boots on the harness; the 2 IPC commands + auto-login + permanent-session
   desktop E2E pass; the server build is unaffected.
 
+**Chunk MIGRATE-squash — migration reconstruction (N3.1 / N7 / N8 / N9).** *Runs AFTER D-full.*
+- **CUT/reshape:** squash the composed 147-migration history into clean per-module baselines. Each
+  baseline lands in its **owning module's** `migrations/` dir: `sdk/crates/ziee-auth/migrations/`
+  (auth tables + CLEAN perms: `Admin=['*']`, `Users=['profile::*']`); each ziee module gains
+  `src-app/server/src/modules/<mod>/migrations/` (chat, llm, mcp, memory, files, file_rag, workflow,
+  code_sandbox, project, citations, knowledge_base, web_search, lit_search, sync, …). The
+  `chat::/branches::/assistants::/mcp_servers::/hub::/files::/conversations::` seed UPDATEs move to
+  the owning module's data migration. Naming: `<timestamp>_<module>_<desc>.sql`, dependency-ordered.
+- **build.rs:** widen `compose_merged_migrations()` source globs from the single `migrations/` dir to
+  `modules/*/migrations/ ∪ sdk/crates/*/migrations/`, timestamp-sort, compose `migrations-merged/`.
+  Add a framework migration-authoring convention doc.
+- **Gate (EA-revised):** the squashed merged set applied to a fresh DB → `pg_dump --schema-only`
+  **byte-identical to `.extraction/baseline/schema.sql`** (the equivalence anchor; validator
+  RE-RUNS the dump — unfakeable). Golden types/openapi trivially unchanged (migrations aren't in the
+  API surface). **N9 seed-assertion:** `grep` the auth migrations → zero non-`profile::`/non-`*`
+  perm strings. Build DB provisions clean; `cargo check -p ziee` green (all `query!` still verify
+  against the merged schema). Immutability re-established from the new baseline forward.
+- **Green:** ziee boots on the squashed set; schema-identical; auth crate domain-clean; each module
+  owns its schema.
+
 ---
 
 ## 4. Early skeleton second-consumer milestone
@@ -485,11 +505,30 @@ the merged approach is least disruptive to existing deployments.
   `types.ts` gate stays **absolute**; **spike BA's openapi diff BEFORE committing** the chunk; a
   provably-cosmetic delta needs human sign-off (no blanket declared-delta escape).
 - **N3 Migrator merge** → **build-time directory composition** (runtime concat is not a supported
-  sqlx API); changes `build.rs` + the `sqlx::migrate!` call site (§7.1).
+  sqlx API); changes `build.rs` + the `sqlx::migrate!` call site (§7.1). **→ REVISED to N3.1.**
+- **N3.1 Migration reconstruction (2026-07-14, supersedes N3's "preserve numeric history").**
+  The build-time-composition MECHANISM is unchanged; what changes is the source layout + naming:
+  **(a) squash** the 137 app + 10 auth migrations into clean per-module baselines (unblocked by N8);
+  **(b)** ALL migrations become `<timestamp>_<module>_<desc>.sql` (feature+timestamp, not just new
+  ones); **(c)** migrations are **module-owned** (N7). build.rs globs `modules/*/migrations/ ∪
+  sdk/crates/*/migrations/`, timestamp-sorts, composes `migrations-merged/`. Tracked by the
+  **MIGRATE-squash** chunk. See DECISION_LEDGER.md for re-audit status.
 - **N4 Boundary CI** → **scoped subset per boundary** (touched modules + golden diffs + dual-build);
   **full ziee suite + `gate:ui` only at the pre-merge gate** (+ nightly) (§9.4).
 - **N6 De-globalize** → a **dedicated Chunk BG** (Repos/JWT/config behind traits) BEFORE B3, since
   the globals gate the whole extraction (§3).
+- **N7 Module-owned migrations (2026-07-14).** Every module owns `migrations/` co-located with its
+  routes/permissions/repository; the framework composes ⋃ all modules' migrations (the migration
+  analog of `MODULE_ENTRIES`). Rationale: the extract-a-module-to-a-crate future — a module-crate
+  must carry its own schema (as `ziee-auth` already does). A central flat dir hides ownership (root
+  cause of the `27_fix_default_user_permissions` domain-perm leak). Forces one explicit owner per
+  shared table (`files`, `file_chunks`, …) — a feature, not overhead.
+- **N8 Pre-release squash freely (2026-07-14, human-confirmed).** No live third-party ziee Postgres
+  deployments to protect → the append-only/checksum-immutability rule (N3 hard-rule #1) is
+  CONSCIOUSLY SUSPENDED for the one squash, then re-established from the new baseline forward.
+- **N9 Domain-seed boundary (2026-07-14).** An SDK/module migration must not seed another module's
+  domain data. `ziee-auth` migrations contain ZERO permission strings other than `profile::*` / `*`;
+  domain perms live in the owning module's migration. New EA grep-assertion enforces it.
 
 **Audit corrections applied:** `AppError` count → **323**; `control_mcp` is not stateless (N1);
 `all_permissions()` is `#[allow(dead_code)]`/unwired (so B3/BA *introduce* the wired registry).
