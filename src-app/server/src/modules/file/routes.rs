@@ -1,6 +1,14 @@
-// File routes
+// File routes — the ziee consumer of the mountable SDK bundle.
+//
+// Chunk `ziee-file-http` moved the store-generic file routes into
+// `ziee_file::http::file_routes::<R>()`. This builder mounts that bundle with
+// ziee's `ZieeIdentityResolver` and MERGES the routes that stayed ziee-side
+// (upload / export / download-with-token / the version-append POST / the
+// conversation deliverables). The GET `/files/{file_id}/versions` (in the SDK
+// bundle) and the POST here merge on the same path. Route paths + operationIds
+// are byte-identical to the pre-move single router.
 
-use aide::axum::routing::{delete_with, get_with, post_with};
+use aide::axum::routing::{get_with, post_with};
 use aide::axum::ApiRouter;
 use axum::extract::DefaultBodyLimit;
 
@@ -8,12 +16,20 @@ use super::deliverables::{
     list_deliverables, list_deliverables_docs, pin_deliverable, pin_deliverable_docs,
     unpin_deliverable, unpin_deliverable_docs,
 };
-use super::handlers::*;
+use super::handlers::{
+    append_version, append_version_docs, download_with_token, download_with_token_docs,
+    export_file, export_file_docs, upload_file, upload_file_docs,
+};
 use crate::core::app_state::file_upload_body_limit_bytes;
+use crate::modules::permissions::extractors::ZieeIdentityResolver;
 
 /// File management routes
 pub fn file_router() -> ApiRouter {
-    ApiRouter::new()
+    // The store-generic subset (list / get / preview / raw / thumbnail / text /
+    // text-rects / delete / download / download-token / version reads / restore),
+    // mounted with ziee's resolver.
+    ziee_file::http::file_routes::<ZieeIdentityResolver>()
+        // ── ziee-RETAINED routes (processing / domain coupled) ──
         // Upload — explicit higher body limit than the app-wide default (see
         // main.rs). Derived from the configurable per-file cap (`cap + slack`,
         // set at boot in `app_state`) so the request is rejected before
@@ -25,40 +41,20 @@ pub fn file_router() -> ApiRouter {
             post_with(upload_file, upload_file_docs)
                 .layer(DefaultBodyLimit::max(file_upload_body_limit_bytes())),
         )
-        // List files
-        .api_route("/files", get_with(list_files, list_files_docs))
-        // Binary endpoints (must come BEFORE /files/{file_id} to avoid route conflicts)
-        .api_route("/files/{file_id}/preview", get_with(get_preview, get_preview_docs))
-        .api_route("/files/{file_id}/raw", get_with(get_raw, get_raw_docs))
-        .api_route("/files/{file_id}/thumbnail", get_with(get_thumbnail, get_thumbnail_docs))
-        .api_route("/files/{file_id}/text", get_with(get_text_content, get_text_content_docs))
-        .api_route("/files/{file_id}/text-rects", get_with(get_text_rects, get_text_rects_docs))
-        .api_route("/files/{file_id}/download", get_with(download_file, download_file_docs))
+        // User-facing export (pandoc) — stays ziee-side (processing).
         .api_route("/files/{file_id}/export", get_with(export_file, export_file_docs))
-        .api_route("/files/{file_id}/download-with-token", get_with(download_with_token, download_with_token_docs))
-        // Version endpoints (also before /files/{file_id})
+        // Unauthenticated token download — re-verifies identity by user-id
+        // (identity-recheck), stays ziee-side.
+        .api_route(
+            "/files/{file_id}/download-with-token",
+            get_with(download_with_token, download_with_token_docs),
+        )
+        // Version APPEND (the co-edit write) — runs commit_new_version
+        // (ProcessingManager), stays ziee-side. Merges with the SDK bundle's GET
+        // on the same path.
         .api_route(
             "/files/{file_id}/versions",
-            get_with(list_versions, list_versions_docs)
-                .post_with(append_version, append_version_docs),
-        )
-        .api_route("/files/{file_id}/head", get_with(get_head_version, get_head_version_docs))
-        .api_route("/files/{file_id}/versions/{version}", get_with(get_version, get_version_docs))
-        .api_route("/files/{file_id}/versions/{version}/download", get_with(download_version, download_version_docs))
-        .api_route("/files/{file_id}/versions/{version}/preview", get_with(preview_version, preview_version_docs))
-        .api_route("/files/{file_id}/versions/{version}/text", get_with(text_version, text_version_docs))
-        .api_route("/files/{file_id}/restore", post_with(restore_version, restore_version_docs))
-        // Get file metadata
-        .api_route("/files/{file_id}", get_with(get_file, get_file_docs))
-        // Download token generation
-        .api_route(
-            "/files/{file_id}/download-token",
-            post_with(generate_download_token, generate_download_token_docs),
-        )
-        // Delete
-        .api_route(
-            "/files/{file_id}",
-            delete_with(delete_file, delete_file_docs),
+            post_with(append_version, append_version_docs),
         )
         // Conversation deliverables (derived model-authored files ∪ pinned − hidden)
         .api_route(
@@ -71,4 +67,3 @@ pub fn file_router() -> ApiRouter {
                 .delete_with(unpin_deliverable, unpin_deliverable_docs),
         )
 }
-
