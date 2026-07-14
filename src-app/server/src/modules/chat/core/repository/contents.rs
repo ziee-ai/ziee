@@ -259,11 +259,8 @@ mod tests {
     /// this replaces.
     ///
     /// Honest limit: it proves a migration ADDS the name, not that the guard still
-    /// exists — a later `DROP CONSTRAINT` would leave this green. The live-schema
-    /// half is covered by the integration test
-    /// `chat::append_content_ordering_test::message_contents_has_exactly_one_unique_sequence_guard`,
-    /// which queries `pg_index` on a real migrated DB and asserts the constraint both
-    /// survives and still rejects a colliding slot. The two together are the property.
+    /// exists on a live DB — a later `DROP CONSTRAINT` would leave this green. Nothing
+    /// here checks the live schema, so treat this as a doc-accuracy guard only.
     ///
     /// Source-scanning shape mirrors `code_sandbox::backend::wsl2`'s
     /// `med3_wslenv_credential_leak_regression`; the production section is scanned
