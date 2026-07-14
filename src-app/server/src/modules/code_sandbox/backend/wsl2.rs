@@ -1005,6 +1005,9 @@ impl SandboxBackend for Wsl2Backend {
             user_id: ctx.user_id,
             workspace: PathBuf::from(&conv_dir),
             files: ctx.files.clone(),
+            // Carry the caller-injected extra RO binds (the /lit view) forward
+            // onto the guest argv — byte-identical to the pre-lift inline block.
+            extra_ro_binds: ctx.extra_ro_binds.clone(),
         };
         let secs = timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64);
         // Live-progress: when a sink is requested, the agent provisions the FIFO

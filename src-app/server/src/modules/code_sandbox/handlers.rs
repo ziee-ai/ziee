@@ -794,11 +794,34 @@ async fn build_context(
     // workspace copy, so the RW copy is the one the model sees.
     stage_editable_files(state, conversation_id, &files).await;
 
+    // lit_search: mount this conversation's open-access full-text view read-only
+    // at /lit, so the model can `grep`/`cat`/script over the papers it fetched
+    // via fetch_paper_fulltext (per-conversation — no cross-conversation leakage).
+    // Computed HERE (ziee-side, where `lit_search` is reachable) rather than
+    // inside the build-DB-free sandbox engine's `build_bwrap_argv`; passed opaque
+    // via `SandboxContext::extra_ro_binds`, which the argv builder appends at the
+    // same position the former inline block occupied → byte-identical argv. The
+    // Linux backend binds the host path directly; the macOS/WSL2 VM backends
+    // carry it forward onto the guest argv where `--ro-bind-try` no-ops until the
+    // lit-cache dir is shared into the guest (a follow-up).
+    let mut extra_ro_binds: Vec<(String, String)> = Vec::new();
+    {
+        let lit_view =
+            crate::modules::lit_search::fulltext::cache::conversation_view_dir(conversation_id);
+        if lit_view.is_dir() {
+            extra_ro_binds.push((
+                lit_view.display().to_string(),
+                crate::modules::lit_search::fulltext::cache::SANDBOX_MOUNT_PATH.to_string(),
+            ));
+        }
+    }
+
     Ok(SandboxContext {
         conversation_id,
         user_id,
         workspace,
         files: Arc::new(files),
+        extra_ro_binds,
     })
 }
 

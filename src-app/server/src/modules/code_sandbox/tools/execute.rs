@@ -301,6 +301,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             workspace: PathBuf::from("/nonexistent-test-workspace"),
             files: Arc::new(Vec::<ConversationFile>::new()),
+            extra_ro_binds: Vec::new(),
         }
     }
 

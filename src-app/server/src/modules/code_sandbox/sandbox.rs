@@ -806,23 +806,15 @@ pub(crate) fn build_bwrap_argv(
     let mut all_ro_binds = extra_ro_binds;
     all_ro_binds.extend(extra_workflow_ro);
 
-    // lit_search: mount this conversation's open-access full-text view read-only
-    // at /lit, so the model can `grep`/`cat`/script over the papers it fetched
-    // via fetch_paper_fulltext (per-conversation — no cross-conversation leakage).
-    // Emitted as `--ro-bind-try` (see the extra_ro_binds loop below), so it's
-    // non-fatal when absent. The Linux backend binds the host path directly; the
-    // macOS/WSL2 VM backends skip it gracefully until the lit-cache dir is shared
-    // into the guest (a follow-up — the host path isn't guest-visible there yet).
-    {
-        let lit_view =
-            crate::modules::lit_search::fulltext::cache::conversation_view_dir(ctx.conversation_id);
-        if lit_view.is_dir() {
-            all_ro_binds.push((
-                lit_view.display().to_string(),
-                crate::modules::lit_search::fulltext::cache::SANDBOX_MOUNT_PATH.to_string(),
-            ));
-        }
-    }
+    // Caller-injected extra RO binds (formerly the inline lit_search `/lit`
+    // full-text view bind). Lifted out of this build-DB-free engine function so
+    // it carries no `crate::modules::lit_search` reverse-dependency: the ziee
+    // HTTP handler computes the per-conversation `/lit` view dir (`is_dir` gate
+    // included) and passes it via `ctx.extra_ro_binds`. Appended at the SAME
+    // position the inline block occupied — AFTER attachment + workflow RO binds
+    // — so the emitted argv is byte-identical for a fixed input. Emitted as
+    // `--ro-bind-try` (the extra_ro_binds loop), non-fatal when absent.
+    all_ro_binds.extend(ctx.extra_ro_binds.iter().cloned());
 
     let mut argv = build_hardening_prefix(&HardeningArgvParams {
         caps,
@@ -1440,6 +1432,7 @@ mod tests {
             user_id: Uuid::nil(),
             workspace: PathBuf::from("/tmp/ws"),
             files: Arc::new(Vec::<ConversationFile>::new()),
+            extra_ro_binds: Vec::new(),
         }
     }
 
@@ -1614,6 +1607,82 @@ mod tests {
         // flag-like would be `--seccomp <fd>` which is correctly placed
         // before the `--`).
         assert!(prlimit_idx > dashdash_before);
+    }
+
+    /// HARDENING BYTE-IDENTICAL AUDIT (the `/lit` lift, Phase-2 seam).
+    ///
+    /// The former inline `crate::modules::lit_search::…` `/lit` bind was lifted
+    /// out of this build-DB-free engine function into a caller-injected
+    /// `ctx.extra_ro_binds`. This test pins the load-bearing equivalence: for a
+    /// fixed input, the emitted argv is byte-identical to what the inline block
+    /// produced — the `/lit` view is emitted as exactly
+    /// `--ro-bind-try <host_view> /lit`, at the SAME position (after attachment
+    /// RO binds, inside the `extra_ro_binds` loop), and NOTHING is emitted when
+    /// the caller passes no extra binds (proving the inline computation is gone,
+    /// not merely duplicated).
+    #[test]
+    fn lit_bind_lift_is_byte_identical() {
+        let caps = fake_caps();
+        let state = fake_state();
+
+        let build = |ctx: &SandboxContext| {
+            build_bwrap_argv(
+                &caps,
+                &state.workspace_root,
+                ctx,
+                std::path::Path::new(state.config.rootfs_path()),
+                "echo hi",
+                std::path::Path::new("/tmp/.sandbox_passwd"),
+                std::path::Path::new("/tmp/.sandbox_group"),
+                std::path::Path::new("/tmp/.sandbox_empty"),
+                None,
+                &fake_limits(),
+                &[],
+                None,
+            )
+        };
+
+        // 1) No caller-injected binds → no `/lit` anywhere (the inline block is
+        //    gone, not resurrected).
+        let bare = build(&fake_ctx());
+        assert!(
+            !bare.iter().any(|a| a == "/lit"),
+            "an empty extra_ro_binds must emit no /lit bind: {bare:?}"
+        );
+
+        // 2) Caller injects the exact (host_view, /lit) pair the ziee handler
+        //    computes → emitted as `--ro-bind-try <host_view> /lit`, contiguous.
+        let mut ctx = fake_ctx();
+        let host_view = "/data/lit-cache/view/conv-abc".to_string();
+        ctx.extra_ro_binds = vec![(host_view.clone(), "/lit".to_string())];
+        let with_lit = build(&ctx);
+        let pos = with_lit
+            .iter()
+            .position(|a| a == "/lit")
+            .expect("/lit must be present when injected");
+        assert_eq!(with_lit[pos - 2], "--ro-bind-try", "flag byte-identical to the old inline emit");
+        assert_eq!(with_lit[pos - 1], host_view, "host source byte-identical");
+
+        // 3) The injected bind lands AFTER the /proc masks (i.e. in the
+        //    extra_ro_binds loop) and BEFORE the prlimit tail — the exact slot
+        //    the inline `all_ro_binds.push` occupied.
+        let masks_end = with_lit
+            .iter()
+            .rposition(|a| a == "/proc/kmsg")
+            .expect("proc masks present");
+        let prlimit = with_lit
+            .iter()
+            .position(|a| a == "/usr/bin/prlimit")
+            .expect("prlimit present");
+        assert!(masks_end < pos && pos < prlimit, "/lit in the caller-supplied RO-bind slot");
+
+        // 4) The ONLY delta between bare and with-lit is the three injected
+        //    tokens — everything else in the argv is byte-for-byte identical.
+        let mut stripped = with_lit.clone();
+        for _ in 0..3 {
+            stripped.remove(pos - 2);
+        }
+        assert_eq!(stripped, bare, "argv is byte-identical apart from the injected bind triple");
     }
 
     #[test]

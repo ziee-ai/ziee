@@ -797,6 +797,22 @@ impl StepDispatcher for SandboxDispatcher {
             // lives at <workspace_root>/<run_id>/workflow/<run_id>/.
             ctx.run_id
         });
+        // Caller-injected `/lit` full-text view bind, computed ziee-side (where
+        // `lit_search` is reachable) and threaded through the build-DB-free
+        // sandbox engine via `SandboxContext::extra_ro_binds` — byte-identical to
+        // the former inline `build_bwrap_argv` block, which computed the same
+        // host path from `conversation_id`.
+        let mut extra_ro_binds: Vec<(String, String)> = Vec::new();
+        {
+            let lit_view =
+                crate::modules::lit_search::fulltext::cache::conversation_view_dir(conv_id);
+            if lit_view.is_dir() {
+                extra_ro_binds.push((
+                    lit_view.display().to_string(),
+                    crate::modules::lit_search::fulltext::cache::SANDBOX_MOUNT_PATH.to_string(),
+                ));
+            }
+        }
         let sb_ctx = SandboxContext {
             conversation_id: conv_id,
             user_id: ctx.user_id,
@@ -810,6 +826,7 @@ impl StepDispatcher for SandboxDispatcher {
             workspace: crate::modules::workflow::runner::workflow_workspace_root()
                 .join(conv_id.to_string()),
             files: Arc::new(Vec::new()),
+            extra_ro_binds,
         };
 
         // Live progress (P2): a per-step sink feeds the consumer, which parses
