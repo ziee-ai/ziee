@@ -846,6 +846,14 @@ async fn register_system_server(
     .execute(&pool)
     .await
     .expect("grant system server to default group");
+    // Force enabled=true: `create_system_server` runs a health probe and auto-downgrades to
+    // enabled=false when the probe fails (our fixture host isn't a real MCP server). The trust-host
+    // derivation intentionally only trusts ENABLED servers, so re-assert enabled to model a normal
+    // operational server — the probe-downgrade is orthogonal to what these tests exercise.
+    sqlx::query!("UPDATE mcp_servers SET enabled = true WHERE id = $1", server_id)
+        .execute(&pool)
+        .await
+        .expect("re-enable system server after create-time probe downgrade");
     pool.close().await;
     server_id
 }
