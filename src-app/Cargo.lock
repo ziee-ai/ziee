@@ -12742,6 +12742,7 @@ dependencies = [
  "ziee-identity",
  "ziee-notification",
  "ziee-server-update",
+ "ziee-test-harness",
  "zip 6.0.0",
  "zstd",
 ]
@@ -12861,6 +12862,7 @@ dependencies = [
  "ziee",
  "ziee-build-support",
  "ziee-desktop-harness",
+ "ziee-test-harness",
 ]
 
 [[package]]
@@ -12991,6 +12993,20 @@ dependencies = [
  "schemars 0.9.0",
  "serde",
  "ziee-identity",
+]
+
+[[package]]
+name = "ziee-test-harness"
+version = "0.0.0"
+dependencies = [
+ "portpicker",
+ "reqwest 0.12.28",
+ "sqlx 0.8.6",
+ "tempfile",
+ "tokio",
+ "url",
+ "uuid",
+ "ziee-build-support",
 ]
 
 [[package]]

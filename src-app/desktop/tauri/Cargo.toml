@@ -86,6 +86,11 @@ tempfile.workspace = true
 serial_test.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+# Chunk ziee-test-harness: the desktop integration_tests binary `#[path]`-
+# reincludes the server's harness shim, which now names the SDK's
+# ziee-test-harness crate (the generic spawn/isolation engine) instead of
+# ziee-build-support directly.
+ziee-test-harness = { path = "../../../sdk/crates/ziee-test-harness" }
 # Used by integration_tests/common/ — the test harness uses sqlx to
 # create per-test databases and seed group/permission rows for the
 # remote-access integration tests that moved here from server/tests/.
