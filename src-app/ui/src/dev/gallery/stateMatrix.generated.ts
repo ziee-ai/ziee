@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 368 surfaces carry renderable-state signals; 2195 signals total.
+// 371 surfaces carry renderable-state signals; 2216 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -241,14 +241,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "components/ui/kit/menu",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 72 },
-      { kind: "branch", condition: "'type' in it && it.type === 'group'", line: 78 },
-      { kind: "branch", condition: "!collapsed", line: 82 },
-      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 90 },
-      { kind: "branch", condition: "!(collapsed)", line: 91 },
-      { kind: "branch", condition: "item.icon != null", line: 149 },
-      { kind: "branch", condition: "!collapsed", line: 151 },
-      { kind: "branch", condition: "hasActions", line: 153 },
+      { kind: "branch", condition: "'type' in it && it.type === 'divider'", line: 164 },
+      { kind: "branch", condition: "'type' in it && it.type === 'group'", line: 170 },
+      { kind: "branch", condition: "!collapsed", line: 174 },
+      { kind: "branch", condition: "'type' in it && it.type === 'label'", line: 182 },
+      { kind: "branch", condition: "!(collapsed)", line: 183 },
+      { kind: "branch", condition: "item.icon != null", line: 215 },
+      { kind: "branch", condition: "!collapsed", line: 217 },
+      { kind: "branch", condition: "hasActions", line: 219 },
     ],
   },
   "components/ui/kit/multi-select": {
@@ -577,32 +577,34 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/app/SetupPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isDarkMode", line: 77 },
-      { kind: "branch", condition: "setupError", line: 164 },
+      { kind: "branch", condition: "setupError", line: 119 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantMenuItem": {
     surface: "modules/assistant/chat-extension/components/AssistantMenuItem",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "selectedAssistantId", line: 35 },
-      { kind: "empty", condition: "availableAssistants.length === 0", line: 44 },
-      { kind: "branch", condition: "dividerAfter", line: 134 },
+      { kind: "branch", condition: "!canRead", line: 37 },
+      { kind: "branch", condition: "selectedAssistantId", line: 47 },
+      { kind: "empty", condition: "availableAssistants.length === 0", line: 56 },
+      { kind: "branch", condition: "dividerAfter", line: 146 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantSelector": {
     surface: "modules/assistant/chat-extension/components/AssistantSelector",
     requiredStates: ["empty"],
     signals: [
-      { kind: "empty", condition: "availableAssistants.length === 0", line: 34 },
+      { kind: "branch", condition: "!canRead", line: 26 },
+      { kind: "empty", condition: "availableAssistants.length === 0", line: 40 },
     ],
   },
   "modules/assistant/chat-extension/components/AssistantStatusChip": {
     surface: "modules/assistant/chat-extension/components/AssistantStatusChip",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!selectedAssistantId", line: 20 },
-      { kind: "branch", condition: "!assistant", line: 25 },
+      { kind: "branch", condition: "!canRead", line: 26 },
+      { kind: "branch", condition: "!selectedAssistantId", line: 27 },
+      { kind: "branch", condition: "!assistant", line: 32 },
     ],
   },
   "modules/assistant/chat-extension/extension": {
@@ -716,9 +718,16 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/AuthPage",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "isAuthenticated", line: 22 },
-      { kind: "branch", condition: "mode === 'login'", line: 37 },
-      { kind: "branch", condition: "mode === 'register'", line: 41 },
+      { kind: "branch", condition: "isAuthenticated", line: 19 },
+      { kind: "branch", condition: "mode === 'login'", line: 26 },
+      { kind: "branch", condition: "mode === 'register'", line: 30 },
+    ],
+  },
+  "modules/auth/AuthThemeToggle": {
+    surface: "modules/auth/AuthThemeToggle",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "isDarkMode", line: 28 },
     ],
   },
   "modules/auth/LinkAccountPage": {
@@ -733,8 +742,8 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/auth/LoginForm",
     requiredStates: ["error"],
     signals: [
-      { kind: "error", condition: "error", line: 52 },
-      { kind: "branch", condition: "onSwitchToRegister", line: 109 },
+      { kind: "error", condition: "error", line: 57 },
+      { kind: "branch", condition: "onSwitchToRegister", line: 114 },
     ],
   },
   "modules/auth/ProviderButtons": {
@@ -796,13 +805,13 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ChatMessage",
     requiredStates: ["empty"],
     signals: [
-      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 55 },
-      { kind: "empty", condition: "contents.length === 0 && !showEmptyCompletionNotice", line: 77 },
-      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 167 },
-      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 196 },
-      { kind: "branch", condition: "offerCollapse", line: 222 },
-      { kind: "branch", condition: "showEmptyCompletionNotice", line: 242 },
-      { kind: "branch", condition: "isUser", line: 261 },
+      { kind: "branch", condition: "isStreaming || wasStreamingRef.current || isActiveMatch", line: 60 },
+      { kind: "empty", condition: "contents.length === 0 && !showEmptyCompletionNotice", line: 88 },
+      { kind: "branch", condition: "attachmentBlocks.length > 0", line: 178 },
+      { kind: "branch", condition: "bubbleBlocks.length > 0", line: 207 },
+      { kind: "branch", condition: "offerCollapse", line: 233 },
+      { kind: "branch", condition: "showEmptyCompletionNotice", line: 253 },
+      { kind: "branch", condition: "isUser", line: 272 },
     ],
   },
   "modules/chat/components/CollapsibleBlock": {
@@ -854,14 +863,14 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/ConversationList",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!getSearchBoxContainer", line: 127 },
-      { kind: "branch", condition: "selectedIds.size > 0", line: 134 },
-      { kind: "branch", condition: "canDelete", line: 159 },
-      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 183 },
-      { kind: "error", condition: "error", line: 184 },
-      { kind: "loading", condition: "loading && !isInitialized", line: 208 },
-      { kind: "branch", condition: "visibleConversations.length > 0", line: 233 },
-      { kind: "branch", condition: "hasMore", line: 241 },
+      { kind: "branch", condition: "!getSearchBoxContainer", line: 153 },
+      { kind: "branch", condition: "selectedIds.size > 0", line: 160 },
+      { kind: "branch", condition: "canDelete", line: 185 },
+      { kind: "loading", condition: "visibleConversations.length === 0 && !loading", line: 214 },
+      { kind: "error", condition: "error", line: 215 },
+      { kind: "loading", condition: "loading && !isInitialized", line: 239 },
+      { kind: "branch", condition: "visibleConversations.length > 0", line: 266 },
+      { kind: "branch", condition: "hasMore", line: 275 },
     ],
   },
   "modules/chat/components/ConversationPickerPane": {
@@ -902,28 +911,28 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/components/MessageList",
     requiredStates: ["delayed","empty"],
     signals: [
-      { kind: "branch", condition: "!vw || vw <= 0", line: 117 },
-      { kind: "branch", condition: "w <= 0", line: 119 },
-      { kind: "branch", condition: "!el", line: 130 },
-      { kind: "branch", condition: "inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key", line: 264 },
-      { kind: "branch", condition: "!import.meta.env.DEV", line: 296 },
-      { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 370 },
-      { kind: "branch", condition: "!el", line: 379 },
-      { kind: "empty", condition: "count === 0", line: 386 },
-      { kind: "branch", condition: "!el", line: 404 },
-      { kind: "branch", condition: "!item", line: 407 },
-      { kind: "branch", condition: "!msg", line: 409 },
-      { kind: "branch", condition: "!c", line: 415 },
-      { kind: "branch", condition: "virtualize", line: 420 },
-      { kind: "branch", condition: "idx < 0", line: 422 },
-      { kind: "branch", condition: "el && !anchorRestoreNeeded(el.scrollTop, target)", line: 434 },
-      { kind: "branch", condition: "!c", line: 449 },
-      { kind: "branch", condition: "top == null", line: 452 },
-      { kind: "loading", condition: "!loading && count === 0", line: 475 },
-      { kind: "branch", condition: "loadingOlder", line: 501 },
-      { kind: "branch", condition: "virtualize", line: 511 },
-      { kind: "branch", condition: "!msg", line: 526 },
-      { kind: "loading", condition: "(loading || isStreaming)", line: 582 },
+      { kind: "branch", condition: "!vw || vw <= 0", line: 123 },
+      { kind: "branch", condition: "w <= 0", line: 125 },
+      { kind: "branch", condition: "!el", line: 136 },
+      { kind: "branch", condition: "inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key", line: 270 },
+      { kind: "branch", condition: "!import.meta.env.DEV", line: 302 },
+      { kind: "branch", condition: "indexOfMessageId(arrRef.current, id) < 0", line: 376 },
+      { kind: "branch", condition: "!el", line: 385 },
+      { kind: "empty", condition: "count === 0", line: 392 },
+      { kind: "branch", condition: "!el", line: 410 },
+      { kind: "branch", condition: "!item", line: 413 },
+      { kind: "branch", condition: "!msg", line: 415 },
+      { kind: "branch", condition: "!c", line: 421 },
+      { kind: "branch", condition: "virtualize", line: 426 },
+      { kind: "branch", condition: "idx < 0", line: 428 },
+      { kind: "branch", condition: "el && !anchorRestoreNeeded(el.scrollTop, target)", line: 440 },
+      { kind: "branch", condition: "!c", line: 455 },
+      { kind: "branch", condition: "top == null", line: 458 },
+      { kind: "loading", condition: "!loading && count === 0", line: 481 },
+      { kind: "branch", condition: "loadingOlder", line: 507 },
+      { kind: "branch", condition: "virtualize", line: 517 },
+      { kind: "branch", condition: "!msg", line: 532 },
+      { kind: "loading", condition: "(loading || isStreaming)", line: 596 },
     ],
   },
   "modules/chat/components/ModelSelector": {
@@ -984,6 +993,18 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     signals: [
       { kind: "branch", condition: "isEditing", line: 92 },
       { kind: "branch", condition: "showBackButton", line: 138 },
+    ],
+  },
+  "modules/chat/components/VirtualizedConversationList": {
+    surface: "modules/chat/components/VirtualizedConversationList",
+    requiredStates: [],
+    signals: [
+      { kind: "branch", condition: "!vw || vw <= 0", line: 111 },
+      { kind: "branch", condition: "w == null", line: 117 },
+      { kind: "branch", condition: "!el", line: 125 },
+      { kind: "branch", condition: "!import.meta.env.DEV", line: 230 },
+      { kind: "branch", condition: "!virtualize", line: 240 },
+      { kind: "branch", condition: "!conversation", line: 276 },
     ],
   },
   "modules/chat/core/components/ChatRightPanel": {
@@ -1145,12 +1166,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/chat/pages/ChatHistoryPage",
     requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "!isNarrow", line: 96 },
-      { kind: "branch", condition: "isNarrow", line: 106 },
-      { kind: "loading", condition: "(conversations.length > 0 || loading)", line: 126 },
-      { kind: "branch", condition: "isNarrow && searchOpenInNarrow", line: 147 },
-      { kind: "error", condition: "(conversations.length > 0 || loading || error || hasSearch)", line: 156 },
-      { kind: "error", condition: "!loading && conversations.length === 0 && !error && !hasSearch", line: 168 },
+      { kind: "branch", condition: "!isNarrow", line: 95 },
+      { kind: "branch", condition: "isNarrow", line: 105 },
+      { kind: "loading", condition: "(conversations.length > 0 || loading)", line: 125 },
+      { kind: "branch", condition: "isNarrow && searchOpenInNarrow", line: 146 },
+      { kind: "error", condition: "(conversations.length > 0 || loading || error || hasSearch)", line: 155 },
+      { kind: "error", condition: "!loading && conversations.length === 0 && !error && !hasSearch", line: 175 },
     ],
   },
   "modules/chat/pages/ConversationPage": {
@@ -1212,16 +1233,19 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
   },
   "modules/chat/widgets/RecentConversationsWidget": {
     surface: "modules/chat/widgets/RecentConversationsWidget",
-    requiredStates: ["delayed","open"],
+    requiredStates: ["empty","open"],
     signals: [
-      { kind: "branch", condition: "!(e.metaKey || e.ctrlKey || e.button === 1)", line: 55 },
-      { kind: "branch", condition: "!c", line: 61 },
-      { kind: "loading", condition: "loading && !isInitialized", line: 86 },
-      { kind: "loading", condition: "!loading && recentConversations.length === 0", line: 97 },
-      { kind: "branch", condition: "!c", line: 174 },
-      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 179 },
-      { kind: "overlay", condition: "<Dropdown open>", line: 286 },
-      { kind: "branch", condition: "!open && keepMenuOpen", line: 293 },
+      { kind: "empty", condition: "recentError && recentConversations.length === 0", line: 146 },
+      { kind: "branch", condition: "!recentInitialized", line: 163 },
+      { kind: "empty", condition: "recentConversations.length === 0", line: 174 },
+      { kind: "branch", condition: "!(e.metaKey || e.ctrlKey || e.button === 1)", line: 205 },
+      { kind: "branch", condition: "!c", line: 213 },
+      { kind: "branch", condition: "!c", line: 249 },
+      { kind: "branch", condition: "active?.closest('[role=\"menu\"]')", line: 278 },
+      { kind: "branch", condition: "recentLoadingMore", line: 307 },
+      { kind: "branch", condition: "recentError && !recentLoadingMore && recentConversations.length > 0", line: 322 },
+      { kind: "overlay", condition: "<Dropdown open>", line: 445 },
+      { kind: "branch", condition: "!open && keepMenuOpen", line: 452 },
     ],
   },
   "modules/citations/components/CitationCard": {
@@ -3216,11 +3240,12 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/memory/chat-extension/components/MemoryStatusPill",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "!conversation?.id", line: 36 },
-      { kind: "branch", condition: "!conversation?.id", line: 58 },
-      { kind: "branch", condition: "adminSettings?.enabled === false", line: 59 },
-      { kind: "branch", condition: "!conversation?.id", line: 62 },
-      { kind: "branch", condition: "mode === 'off'", line: 122 },
+      { kind: "branch", condition: "!conversation?.id", line: 44 },
+      { kind: "branch", condition: "!canUse", line: 68 },
+      { kind: "branch", condition: "!conversation?.id", line: 69 },
+      { kind: "branch", condition: "adminSettings?.enabled === false", line: 70 },
+      { kind: "branch", condition: "!conversation?.id", line: 73 },
+      { kind: "branch", condition: "mode === 'off'", line: 133 },
     ],
   },
   "modules/memory/components/CoreMemoryBlocksEditor": {
@@ -3618,53 +3643,67 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/scheduler/components/ScheduleBuilder",
     requiredStates: [],
     signals: [
-      { kind: "branch", condition: "days.size === 1", line: 104 },
-      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 156 },
-      { kind: "branch", condition: "!raw", line: 165 },
-      { kind: "branch", condition: "preset !== 'custom'", line: 192 },
-      { kind: "branch", condition: "preset === 'weekly'", line: 208 },
-      { kind: "branch", condition: "preset === 'monthly'", line: 236 },
-      { kind: "branch", condition: "preset === 'custom'", line: 249 },
+      { kind: "branch", condition: "days.size === 1", line: 108 },
+      { kind: "branch", condition: "value.schedule_kind === 'once'", line: 167 },
+      { kind: "branch", condition: "!raw", line: 177 },
+      { kind: "branch", condition: "preset !== 'custom'", line: 204 },
+      { kind: "branch", condition: "preset === 'weekly'", line: 221 },
+      { kind: "branch", condition: "preset === 'monthly'", line: 249 },
+      { kind: "branch", condition: "preset === 'custom'", line: 265 },
+    ],
+  },
+  "modules/scheduler/components/ScheduledTaskCard": {
+    surface: "modules/scheduler/components/ScheduledTaskCard",
+    requiredStates: ["empty","error","open"],
+    signals: [
+      { kind: "branch", condition: "open", line: 128 },
+      { kind: "branch", condition: "badge", line: 135 },
+      { kind: "branch", condition: "preview", line: 141 },
+      { kind: "branch", condition: "open", line: 189 },
+      { kind: "error", condition: "run.status === 'failed' && run.error_message", line: 195 },
+      { kind: "branch", condition: "skip", line: 201 },
+      { kind: "error", condition: "!preview && run.status !== 'failed'", line: 209 },
+      { kind: "branch", condition: "task.target_kind === 'prompt'", line: 331 },
+      { kind: "overlay", condition: "<Confirm open>", line: 389 },
+      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 415 },
+      { kind: "branch", condition: "task.paused_reason", line: 420 },
+      { kind: "branch", condition: "expanded", line: 444 },
+      { kind: "branch", condition: "!runs", line: 446 },
+      { kind: "empty", condition: "total === 0", line: 448 },
+      { kind: "branch", condition: "total > perPage", line: 464 },
     ],
   },
   "modules/scheduler/components/ScheduledTaskFormDrawer": {
     surface: "modules/scheduler/components/ScheduledTaskFormDrawer",
     requiredStates: ["open"],
     signals: [
-      { kind: "branch", condition: "!open", line: 104 },
-      { kind: "branch", condition: "!open", line: 112 },
-      { kind: "branch", condition: "targetKind !== 'workflow' || !hasDeclaredInputs", line: 159 },
-      { kind: "branch", condition: "err", line: 249 },
-      { kind: "branch", condition: "err", line: 273 },
-      { kind: "overlay", condition: "<Drawer open>", line: 307 },
-      { kind: "branch", condition: "canUse", line: 332 },
-      { kind: "branch", condition: "targetKind === 'prompt'", line: 371 },
-      { kind: "branch", condition: "hasDeclaredInputs", line: 393 },
-      { kind: "branch", condition: "testing", line: 459 },
-      { kind: "branch", condition: "testResult", line: 464 },
+      { kind: "branch", condition: "!open", line: 183 },
+      { kind: "branch", condition: "!open", line: 191 },
+      { kind: "branch", condition: "targetKind !== 'workflow' || !hasDeclaredInputs", line: 238 },
+      { kind: "branch", condition: "values.target_kind !== 'workflow' || !hasDeclaredInputs", line: 293 },
+      { kind: "branch", condition: "dyn", line: 305 },
+      { kind: "branch", condition: "values.target_kind === 'workflow' && !hasDeclaredInputs && !isValidJson(values.inputs_json)", line: 310 },
+      { kind: "branch", condition: "!values.model_id.trim()", line: 339 },
+      { kind: "branch", condition: "values.target_kind === 'workflow' && !values.workflow_id.trim()", line: 343 },
+      { kind: "branch", condition: "values.target_kind === 'prompt' && !values.prompt.trim()", line: 347 },
+      { kind: "branch", condition: "dyn", line: 352 },
+      { kind: "overlay", condition: "<Drawer open>", line: 386 },
+      { kind: "branch", condition: "canUse", line: 411 },
+      { kind: "branch", condition: "targetKind === 'prompt'", line: 462 },
+      { kind: "branch", condition: "hasDeclaredInputs", line: 484 },
+      { kind: "branch", condition: "form.formState.errors.schedule?.message", line: 543 },
+      { kind: "branch", condition: "testing", line: 573 },
+      { kind: "branch", condition: "testResult", line: 578 },
     ],
   },
   "modules/scheduler/pages/ScheduledTasksPage": {
     surface: "modules/scheduler/pages/ScheduledTasksPage",
-    requiredStates: ["delayed","empty","error"],
+    requiredStates: ["delayed","error"],
     signals: [
-      { kind: "branch", condition: "open", line: 118 },
-      { kind: "branch", condition: "badge", line: 125 },
-      { kind: "branch", condition: "preview", line: 131 },
-      { kind: "branch", condition: "open", line: 176 },
-      { kind: "error", condition: "run.status === 'failed' && run.error_message", line: 178 },
-      { kind: "branch", condition: "skip", line: 184 },
-      { kind: "error", condition: "!preview && run.status !== 'failed'", line: 192 },
-      { kind: "branch", condition: "task.paused_reason === 'completed'", line: 260 },
-      { kind: "branch", condition: "task.paused_reason", line: 265 },
-      { kind: "branch", condition: "expanded", line: 289 },
-      { kind: "branch", condition: "!runs", line: 291 },
-      { kind: "empty", condition: "total === 0", line: 293 },
-      { kind: "branch", condition: "total > perPage", line: 309 },
-      { kind: "branch", condition: "task.target_kind === 'prompt'", line: 330 },
-      { kind: "loading", condition: "loading && tasks.length === 0", line: 411 },
-      { kind: "error", condition: "error && tasks.length === 0", line: 415 },
-      { kind: "empty", condition: "tasks.length === 0", line: 423 },
+      { kind: "branch", condition: "tasks.length > 0", line: 84 },
+      { kind: "branch", condition: "hasMore", line: 121 },
+      { kind: "loading", condition: "loading", line: 132 },
+      { kind: "error", condition: "error", line: 136 },
     ],
   },
   "modules/scheduler/pages/SchedulerAdminPage": {
@@ -4464,7 +4503,7 @@ export const SLOT_REGISTRATIONS: SlotRegistration[] = [
   { slot: "settingsAdminPages", surface: "modules/llm-repository/module", line: 56 },
   { slot: "settingsAdminPages", surface: "modules/mcp/module", line: 147 },
   { slot: "settingsAdminPages", surface: "modules/memory/module", line: 71 },
-  { slot: "settingsAdminPages", surface: "modules/scheduler/module", line: 78 },
+  { slot: "settingsAdminPages", surface: "modules/scheduler/module", line: 82 },
   { slot: "settingsAdminPages", surface: "modules/server-update/module", line: 35 },
   { slot: "settingsAdminPages", surface: "modules/skill/module", line: 105 },
   { slot: "settingsAdminPages", surface: "modules/summarization/module", line: 41 },
@@ -4494,7 +4533,7 @@ export type StateMatrixSurface = keyof typeof STATE_MATRIX
  * `STATE_COVERAGE satisfies Record<RequiredState, StateCoverageEntry>`, so a
  * newly-extracted state with no entry is a compile error (mirrors how
  * galleryCoverage.generated.ts's `GallerySurface` gates coverage.ts).
- * 378 keys.
+ * 380 keys.
  */
 export type RequiredState =
   | "components/ui/kit/button:delayed"
@@ -4568,7 +4607,7 @@ export type RequiredState =
   | "modules/chat/pages/ConversationPage:delayed"
   | "modules/chat/pages/ConversationPage:empty"
   | "modules/chat/pages/ConversationPage:error"
-  | "modules/chat/widgets/RecentConversationsWidget:delayed"
+  | "modules/chat/widgets/RecentConversationsWidget:empty"
   | "modules/chat/widgets/RecentConversationsWidget:open"
   | "modules/citations/components/ImportCitationsModal:empty"
   | "modules/citations/components/ImportCitationsModal:open"
@@ -4784,9 +4823,11 @@ export type RequiredState =
   | "modules/projects/pages/ProjectDetailPage:empty"
   | "modules/projects/pages/ProjectsListPage:delayed"
   | "modules/projects/pages/ProjectsListPage:error"
+  | "modules/scheduler/components/ScheduledTaskCard:empty"
+  | "modules/scheduler/components/ScheduledTaskCard:error"
+  | "modules/scheduler/components/ScheduledTaskCard:open"
   | "modules/scheduler/components/ScheduledTaskFormDrawer:open"
   | "modules/scheduler/pages/ScheduledTasksPage:delayed"
-  | "modules/scheduler/pages/ScheduledTasksPage:empty"
   | "modules/scheduler/pages/ScheduledTasksPage:error"
   | "modules/scheduler/pages/SchedulerAdminPage:delayed"
   | "modules/scheduler/pages/SchedulerAdminPage:error"
@@ -4949,7 +4990,7 @@ export const REQUIRED_STATE_KEYS = [
   "modules/chat/pages/ConversationPage:delayed",
   "modules/chat/pages/ConversationPage:empty",
   "modules/chat/pages/ConversationPage:error",
-  "modules/chat/widgets/RecentConversationsWidget:delayed",
+  "modules/chat/widgets/RecentConversationsWidget:empty",
   "modules/chat/widgets/RecentConversationsWidget:open",
   "modules/citations/components/ImportCitationsModal:empty",
   "modules/citations/components/ImportCitationsModal:open",
@@ -5165,9 +5206,11 @@ export const REQUIRED_STATE_KEYS = [
   "modules/projects/pages/ProjectDetailPage:empty",
   "modules/projects/pages/ProjectsListPage:delayed",
   "modules/projects/pages/ProjectsListPage:error",
+  "modules/scheduler/components/ScheduledTaskCard:empty",
+  "modules/scheduler/components/ScheduledTaskCard:error",
+  "modules/scheduler/components/ScheduledTaskCard:open",
   "modules/scheduler/components/ScheduledTaskFormDrawer:open",
   "modules/scheduler/pages/ScheduledTasksPage:delayed",
-  "modules/scheduler/pages/ScheduledTasksPage:empty",
   "modules/scheduler/pages/ScheduledTasksPage:error",
   "modules/scheduler/pages/SchedulerAdminPage:delayed",
   "modules/scheduler/pages/SchedulerAdminPage:error",

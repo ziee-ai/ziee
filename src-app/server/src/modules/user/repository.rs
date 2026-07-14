@@ -164,7 +164,6 @@ impl UserRepository {
         })
     }
 
-    /// Check if an admin user exists
     pub async fn has_admin(&self) -> Result<bool, AppError> {
         let result = sqlx::query_scalar!(
             r#"SELECT EXISTS(SELECT 1 FROM users WHERE is_admin = true) as "exists!""#

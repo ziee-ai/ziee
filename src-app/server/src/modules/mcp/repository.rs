@@ -588,12 +588,19 @@ impl McpRepository {
         get_system_servers_for_group(&self.pool, group_id).await
     }
 
-    pub async fn assign_to_group(&self, server_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
-        assign_mcp_server_to_group(&self.pool, server_id, group_id).await
+    // NOTE: the params are `(group_id, server_id)` — matching the free functions
+    // these forward into positionally, and matching every existing call site.
+    // They were previously NAMED `(server_id, group_id)` while forwarding
+    // positionally into `(group_id, server_id)`, i.e. the names were inverted and
+    // callers silently compensated. This is a pure rename (no behavior change)
+    // that removes the footgun: a caller who trusted the old names passed the
+    // arguments swapped and every assignment failed with `not_found("Server")`.
+    pub async fn assign_to_group(&self, group_id: Uuid, server_id: Uuid) -> Result<(), AppError> {
+        assign_mcp_server_to_group(&self.pool, group_id, server_id).await
     }
 
-    pub async fn remove_from_group(&self, server_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
-        remove_mcp_server_from_group(&self.pool, server_id, group_id).await
+    pub async fn remove_from_group(&self, group_id: Uuid, server_id: Uuid) -> Result<(), AppError> {
+        remove_mcp_server_from_group(&self.pool, group_id, server_id).await
     }
 
     pub async fn get_server_groups(&self, server_id: Uuid) -> Result<Vec<Uuid>, AppError> {
@@ -969,7 +976,7 @@ pub async fn list_user_mcp_servers(
 /// All `enabled = true` MCP servers that are NOT built-in. No
 /// pagination, no ordering — the boot health check iterates them
 /// once and the dataset is small (typically <100). Built-in servers
-/// (filesystem, memory_mcp, code_sandbox) are owned by their
+/// (files_mcp, memory_mcp, code_sandbox) are owned by their
 /// modules and their reachability isn't gated on this column.
 pub async fn list_enabled_for_health_check(pool: &PgPool) -> Result<Vec<McpServer>, AppError> {
     let rows = sqlx::query!(
@@ -1668,7 +1675,8 @@ pub async fn list_system_mcp_servers(
           -- are zero-config loopback built-ins), so they never appear here.
           -- Excluding them in SQL (not client-side) also keeps the pagination
           -- total/label honest. The other built-ins
-          -- (filesystem/fetch/browser/git/code_sandbox) remain visible.
+          -- (fetch, code_sandbox) remain visible. filesystem/browser/git were
+          -- removed by migration 157.
           AND id NOT IN ($5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           AND ($3::text IS NULL
                OR name ILIKE '%' || $3 || '%'
@@ -1786,7 +1794,7 @@ pub async fn update_system_mcp_server(
     // elicitation = ask_user) are immutable — they expose no command/secrets/
     // limits, so there is nothing to edit and they must stay always-on. Gate on
     // their deterministic ids, NOT the `is_built_in` column: that column is ALSO set on
-    // the admin-CONFIGURABLE built-ins (`filesystem`/`fetch`/`browser`/`git` via
+    // the admin-CONFIGURABLE built-ins (`fetch` via
     // migration 25, and `code_sandbox` whose row carries admin-tunable
     // timeout_seconds / usage_mode / max_concurrent_sessions). Gating those on
     // `is_built_in` regressed editing them (e.g. the existing "edit Web Fetch"

@@ -1,4 +1,6 @@
 import { Combobox, Tooltip } from '@/components/ui'
+import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
@@ -10,6 +12,8 @@ interface AssistantSelectorProps {
 export function AssistantSelector({
   disabled = false,
 }: AssistantSelectorProps) {
+  // Permission gate (layer 4) — see AssistantMenuItem.
+  const canRead = usePermission(Permissions.AssistantsRead)
   // Access assistant store directly - reactive via store proxy
   const { availableAssistants, selectedByConversation, selectAssistant } =
     Stores.AssistantPicker
@@ -18,6 +22,8 @@ export function AssistantSelector({
   const key =
     Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
   const selectedAssistantId = selectedByConversation[key]
+
+  if (!canRead) return null
 
   const handleChange = (assistantId: string) => {
     selectAssistant(key, assistantId)

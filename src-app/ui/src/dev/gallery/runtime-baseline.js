@@ -40,61 +40,57 @@ export const RUNTIME_BASELINE = [
     match: 'oklch(0.556 0 0)',
     note: 'Muted-foreground token (--muted-foreground) as 12px text on the light muted surface (bg ~rgb(245,245,245)) computes to 4.35:1, marginally under AA 4.5:1. Raising --muted-foreground contrast is an app-wide token decision (owner: design); appears across onboarding loaded/empty/error (same token, same surface).',
   },
-  // --- Pre-existing on origin/main, NOT introduced by feat/split-chat-multipane ---
-  // Proven apples-to-apples: a full runtime-health run on a clean `origin/main`
-  // worktree (no split feature) reports the SAME 8 gating HIGH on the SAME 2
-  // surfaces (`seeded-llm-models-loading` 6 + `deep-chat-right-panel-file` 2) as
-  // this branch. The split diff touches ZERO files in either surface's render
-  // subtree (no `llm-provider/` file, no shared kit source; `ChatRightPanel`'s
-  // change is inert with inPane=false and adds only an unconditional useEffect).
-  // Baselined so the gate reflects that this feature adds no new gating finding;
-  // the underlying defects are tracked for their owning modules below.
+  // ── Pre-existing product-component findings (NOT introduced by the
+  //    modular-seed feature). Verified to fail IDENTICALLY on origin/main
+  //    (e2b5bba) — these surfaces are migrated VERBATIM and render through
+  //    unchanged frames, so the defect is in the product component, not the
+  //    gallery seed. Scoped by `match` so a DIFFERENT crash on the same surface
+  //    still gates. Owner: the respective module.
+  // overlay-provider-api-key-modal: useNavigate outside a Router — the crash AND
+  // its console-error twin (React logs the boundary-caught error to console).
   {
-    category: 'console-error',
-    surface: 'seeded-llm-models-loading',
-    match: 'order of Hooks',
-    note: 'Pre-existing (identical on clean origin/main). `LlmModelsSection` (modules/llm-provider/) trips React "change in the order of Hooks" on the seeded admin models surface — a conditional-hook bug in that admin component, unrelated to split-chat. Owner: llm-provider module. Not in this diff (zero llm-provider files touched).',
+    category: 'crash',
+    surface: 'overlay-provider-api-key-modal',
+    match: 'useNavigate() may be used only in the context of a <Router>',
+    note: 'ProviderApiKeyModal (user-llm-providers) calls useNavigate but the gallery OverlayFrame renders it without a Router context. Pre-existing (fails identically on origin/main e2b5bba). Owner: user-llm-providers — drop the useNavigate or wrap the modal in a router at its call site.',
   },
   {
     category: 'console-error',
-    surface: 'seeded-llm-models-loading',
-    match: 'Rendered more hooks',
-    note: 'Pre-existing (identical on clean origin/main). Same `LlmModelsSection` conditional-hook defect — "Rendered more hooks than during the previous render". Owner: llm-provider module. Not in this diff.',
+    surface: 'overlay-provider-api-key-modal',
+    match: 'useNavigate() may be used only',
+    note: 'Console-error twin of the useNavigate crash above (React logs the boundary-caught error). Pre-existing (origin/main e2b5bba).',
   },
+  // seeded-llm-models-loading: Rules-of-Hooks violation — the crash + its two
+  // console-error twins (the throw + React\'s hook-order-change warning).
   {
     category: 'crash',
     surface: 'seeded-llm-models-loading',
-    match: 'Rendered more hooks',
-    note: 'Pre-existing (identical on clean origin/main). The `LlmModelsSection` hook-order defect escalates to an AppErrorBoundary render crash on the seeded admin models surface. Owner: llm-provider module (real bug to fix there). Not in this diff — the split feature touches no llm-provider file.',
+    match: 'Rendered more hooks than during the previous render',
+    note: 'The llm-models list component varies its hook count between the loading and loaded renders (a Rules-of-Hooks violation surfaced by the loading-state seed). Pre-existing (fails identically on origin/main e2b5bba). Owner: llm-provider.',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-llm-models-loading',
+    match: 'Rendered more hooks than during the previous render',
+    note: 'Console-error twin of the hooks-count crash above. Pre-existing (origin/main e2b5bba).',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-llm-models-loading',
+    match: 'change in the order of Hooks',
+    note: 'React\'s hook-order-change warning — same Rules-of-Hooks root cause as the crash above. Pre-existing (origin/main e2b5bba).',
+  },
+  {
+    category: 'console-error',
+    surface: 'seeded-s3-group-widget-error',
+    match: '/api/groups/',
+    note: 'This surface DELIBERATELY installs a one-time window.fetch shim that 500s GET /api/groups/:id/providers to exercise the LLMProviderGroupWidget error state — the console-error is the intended, seeded failure. Pre-existing (fails identically on origin/main e2b5bba).',
   },
   {
     category: 'contrast',
     surface: 'deep-chat-right-panel-file',
     match: 'rgba(0, 0, 0, 0)',
-    note: 'Pre-existing (identical on clean origin/main). A transparent foreground (fg rgba(0,0,0,0), alpha 0 — an element mid fade-in / placeholder) computes a degenerate 1.00:1 on the file right-panel surface. Owner: file right-panel component. Not in this diff — `ChatRightPanel`\'s change is inert on this surface (inPane=false) and the file-load path (FileStore) is unchanged.',
-  },
-  // --- Main-inherited (arrived with the origin/main merge — kb + voice + memory
-  // + UI, DRIFT-2.8); NOT introduced by feat/split-chat-multipane. The split diff
-  // touches ZERO files in either surface's render subtree. Baselined so the gate
-  // reflects that this feature adds no new gating finding; owners noted for the
-  // real fixes.
-  {
-    category: 'console-error',
-    surface: 'overlay-provider-api-key-modal',
-    match: 'useNavigate() may be used only',
-    note: 'Main-inherited gallery-harness limitation: `ProviderApiKeyModal.tsx` (NOT in this diff) calls `useNavigate()` (react-router), and the gallery renders the overlay outside a <Router>, so it throws. The split diff\'s only file in this folder is the sibling `ModelSelector.tsx` (per-pane store binding — no useNavigate/Router change). Owner: gallery overlay harness / user-llm-providers (wrap the overlay in a router context or guard the hook).',
-  },
-  {
-    category: 'crash',
-    surface: 'overlay-provider-api-key-modal',
-    match: 'useNavigate() may be used only',
-    note: 'Same root cause as the paired console-error above — the useNavigate-outside-<Router> throw escalates to an AppErrorBoundary crash on the isolated overlay surface. Main-inherited (`ProviderApiKeyModal.tsx`, not in this diff). Owner: gallery overlay harness / user-llm-providers.',
-  },
-  {
-    category: 'page-error',
-    surface: 'settings-memory-admin',
-    match: 'Cannot access',
-    note: 'Main-inherited: the memory-admin settings surface throws a module circular-init error ("Cannot access \'default\' before initialization") from the memory module\'s own import graph, which arrived with the origin/main merge. The split diff touches ZERO memory-module files. Owner: memory module (break the import cycle).',
+    note: 'A transparent-foreground (alpha-0) text node computes a 1.00:1 ratio on the chat right-panel file view (an empty/placeholder text span). Pre-existing (fails identically on origin/main e2b5bba). Owner: chat right-panel.',
   },
 ]
 

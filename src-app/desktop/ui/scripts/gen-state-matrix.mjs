@@ -261,6 +261,8 @@ let signalCount = 0
 for (const sf of files) {
   const abs = sf.getFilePath()
   const base = path.basename(abs)
+  // Per-module gallery.tsx seed files are authoring metadata, not surfaces.
+  if (base === 'gallery.tsx' || base === 'gallery.ts') continue
   const { signals, panels, slots } = extractSurface(sf)
   const id = surfaceId(abs)
   for (const p of panels) allPanels.push({ ...p, surface: id })

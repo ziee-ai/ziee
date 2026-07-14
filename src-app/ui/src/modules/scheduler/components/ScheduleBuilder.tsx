@@ -9,6 +9,7 @@ import {
   Select,
   Text,
 } from '@/components/ui'
+import { Field, FieldTitle } from '@/components/ui/shadcn/field'
 import { cn } from '@/lib/utils'
 
 import { buildWeeklyDow, isDowList } from './scheduleCron'
@@ -68,7 +69,9 @@ function toLocalInput(utcIso: string | undefined): string {
   if (!utcIso) return ''
   const d = new Date(utcIso)
   if (Number.isNaN(d.getTime())) return ''
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16)
 }
 
 /**
@@ -84,7 +87,8 @@ export function ScheduleBuilder({ value, onChange }: Props) {
   // Re-sync the preset when the seeded schedule identity changes (edit-open).
   // (The drawer uses destroyOnHidden, so this mostly matters for a live swap.)
   useEffect(() => {
-    if (value.schedule_kind === 'recurring') setPreset(presetOf(value.cron_expr))
+    if (value.schedule_kind === 'recurring')
+      setPreset(presetOf(value.cron_expr))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.schedule_kind])
 
@@ -110,7 +114,13 @@ export function ScheduleBuilder({ value, onChange }: Props) {
   }
   const timeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 
-  const emitCron = (nextPreset: Preset, h: number, m: number, nextDow: string, nextDom: string) => {
+  const emitCron = (
+    nextPreset: Preset,
+    h: number,
+    m: number,
+    nextDow: string,
+    nextDom: string,
+  ) => {
     let cron: string
     switch (nextPreset) {
       case 'weekly':
@@ -143,7 +153,8 @@ export function ScheduleBuilder({ value, onChange }: Props) {
           onChange({
             ...value,
             schedule_kind: v as 'once' | 'recurring',
-            cron_expr: v === 'recurring' ? (value.cron_expr ?? '0 9 * * *') : undefined,
+            cron_expr:
+              v === 'recurring' ? (value.cron_expr ?? '0 9 * * *') : undefined,
             run_at: v === 'once' ? (value.run_at ?? '') : undefined,
           })
         }
@@ -154,11 +165,12 @@ export function ScheduleBuilder({ value, onChange }: Props) {
       />
 
       {value.schedule_kind === 'once' ? (
-        <label className="flex flex-col gap-1">
-          <Text className="text-sm">Run at</Text>
+        <Field>
+          <FieldTitle>Run at</FieldTitle>
           <Input
             data-testid="schedule-run-at"
             type="datetime-local"
+            aria-label="Run at"
             value={toLocalInput(value.run_at)}
             onChange={e => {
               const raw = e.target.value
@@ -173,7 +185,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
               })
             }}
           />
-        </label>
+        </Field>
       ) : (
         <Flex className="flex-col gap-2">
           <Select
@@ -190,11 +202,12 @@ export function ScheduleBuilder({ value, onChange }: Props) {
           />
 
           {preset !== 'custom' && (
-            <label className="flex flex-col gap-1">
-              <Text className="text-sm">Time</Text>
+            <Field>
+              <FieldTitle>Time</FieldTitle>
               <Input
                 data-testid="schedule-time"
                 type="time"
+                aria-label="Time"
                 className="w-40"
                 value={timeStr}
                 onChange={e => {
@@ -202,7 +215,7 @@ export function ScheduleBuilder({ value, onChange }: Props) {
                   emitCron(preset, h || 0, m || 0, dow, dom)
                 }}
               />
-            </label>
+            </Field>
           )}
 
           {preset === 'weekly' && (
@@ -234,16 +247,19 @@ export function ScheduleBuilder({ value, onChange }: Props) {
           )}
 
           {preset === 'monthly' && (
-            <label className="flex flex-col gap-1">
-              <Text className="text-sm">Day of month</Text>
+            <Field>
+              <FieldTitle>Day of month</FieldTitle>
               <InputNumber
                 data-testid="schedule-dom"
+                aria-label="Day of month"
                 min={1}
                 max={28}
                 value={Number(dom)}
-                onChange={v => emitCron('monthly', hour, min, dow, String(v ?? 1))}
+                onChange={v =>
+                  emitCron('monthly', hour, min, dow, String(v ?? 1))
+                }
               />
-            </label>
+            </Field>
           )}
 
           {preset === 'custom' && (
@@ -261,7 +277,10 @@ export function ScheduleBuilder({ value, onChange }: Props) {
       {/* ITEM-2 (FB-3): the timezone is auto-detected from the client — never an
           input the user must fill. Shown read-only so the schedule is transparent
           about which zone its times are in. */}
-      <Text className="text-muted-foreground text-xs" data-testid="schedule-timezone-note">
+      <Text
+        className="text-muted-foreground text-xs"
+        data-testid="schedule-timezone-note"
+      >
         Times are in your timezone: {value.timezone}
       </Text>
     </Flex>

@@ -1,89 +1,166 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import {
   Button,
   Dropdown,
   Empty,
+  ErrorState,
   Spin,
   Text,
   Tooltip,
   dialog,
+  menuRowClasses,
+  MenuRowButton,
 } from '@/components/ui'
 import type { DropdownItem } from '@/components/ui'
-import { Columns2, MessageSquare, Trash2, MoreVertical } from 'lucide-react'
+import { MessageSquare, Trash2, MoreVertical, Columns2 } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { Menu } from '@/components/ui'
-import type { MenuItem } from '@/components/ui'
+import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
+import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
-import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
-import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
-import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 
+// INITIAL height estimate for one recent-chat row: the Menu row button is
+// `px-3 py-1.5 text-sm` (~32px) + a 2px inter-row gap ≈ 34px. This is only the
+// pre-measure guess — each row is measured via `virt.measureElement`, so text
+// zoom / a large OS font / a wrapped title grows the row correctly instead of
+// clipping against a rigid grid.
+const ROW_H = 34
+
+// Row testid prefix (split-chat): a modified-click (Cmd/Ctrl/middle) opens a
+// conversation in a NEW pane; the handler reads the clicked row's id off this.
 const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 
 /**
  * Sidebar list of the user's recent conversations, backed by
- * `Stores.ChatHistory.recentConversations`. Renders as a kit
- * `<Menu>` so hover / selected / focus styling matches the
- * Navigation + Tools menus above it in the sidebar.
+ * `Stores.ChatHistory.recentConversations`. INFINITE-SCROLL + VIRTUALIZED: the
+ * first page loads on mount and the next page auto-loads as the last virtual row
+ * nears the end (a nav-feed idiom); only the visible window is ever in the DOM,
+ * so a user with thousands of chats scrolls in O(viewport). Row styling is shared
+ * with the kit `<Menu>` (`menuRowClasses`) so it stays pixel-faithful to the
+ * Navigation + Tools menus above it; rows are a `role="list"` of navigation
+ * buttons (a virtualized `role="menu"` can't honor the ARIA menu keyboard
+ * contract across non-rendered items).
  *
- * Click navigation routes through the `conversationHref` extension
- * hook so any cross-cutting feature can override URL resolution
- * per conversation without this widget knowing about it.
+ * Click navigation routes through the `conversationHref` extension hook so any
+ * cross-cutting feature can override URL resolution per conversation.
  */
 export function RecentConversationsWidget() {
   const location = useLocation()
+  // Split-chat (ITEM-28): a plain click routes through the workspace reducer
+  // (replace the focused pane while split, else single-pane navigate); the hook
+  // owns navigation. Tear-off (ITEM-58): a sidebar drag released past the window
+  // edge pops the conversation into its own desktop window (no-op on web).
   const openConversation = useOpenConversationInWorkspace()
-  // Tear-off (ITEM-58): releasing a sidebar drag past the window edge pops the
-  // conversation into its own desktop window (no-op on web / in-window).
   const tearOff = useConversationTearOff()
-  const { recentConversations, loading, isInitialized } = Stores.ChatHistory
-
-  // Cmd/Ctrl/middle-click a row → open it in a NEW pane (ITEM-28) instead of the
-  // plain navigate the Menu's onSelect does. Handled in the capture phase so a
-  // modified click never reaches the row button's onSelect (which would navigate);
-  // the row button carries `${prefix}<id>` as its testid, an ancestor of any
-  // click target inside the row, so it resolves reliably.
-  const openInNewPaneIfModified = (
-    e: React.MouseEvent<HTMLDivElement>,
-  ): void => {
-    if (!(e.metaKey || e.ctrlKey || e.button === 1)) return
-    const row = (e.target as HTMLElement).closest<HTMLElement>(
-      `[data-testid^="${RECENT_ITEM_TESTID_PREFIX}"]`,
-    )
-    const id = row?.getAttribute('data-testid')?.slice(RECENT_ITEM_TESTID_PREFIX.length)
-    const c = id && recentConversations.find((x) => x.id === id)
-    if (!c) return
-    e.preventDefault()
-    e.stopPropagation()
-    openConversation(c.id, { intent: 'newPane', href: hrefFor(c) })
-  }
+  const {
+    recentConversations,
+    recentInitialized,
+    recentTotal,
+    recentHasMore,
+    recentLoadingMore,
+    recentError,
+  } = Stores.ChatHistory
 
   useEffect(() => {
-    if (!isInitialized) {
-      Stores.ChatHistory.loadConversations()
+    if (!recentInitialized) {
+      Stores.ChatHistory.loadRecentConversations()
     }
-  }, [isInitialized])
+  }, [recentInitialized])
 
-  // Section header for the empty + loading states. Rendered as a standalone
-  // styled heading (NOT a Menu) — an empty Menu group produces a
-  // `role="menu"` with no children, which fails axe-core's
-  // `aria-required-children`. The classes mirror the Menu group-title
-  // typography so it reads identically.
+  // OverlayScrollbars viewport is the virtualizer's scroll root. `initialized`
+  // flips `scrollReady` so the virtualizer re-reads `getScrollElement` once the
+  // (deferred) viewport exists — mirrors `kit/table.tsx::VirtualTable`.
+  const osRef = useRef<OverlayScrollbarsComponentRef>(null)
+  const [, setScrollReady] = useState(false)
+  const getScrollElement = useCallback(
+    () => osRef.current?.osInstance()?.elements().viewport ?? null,
+    [],
+  )
+  const virt = useVirtualizer({
+    count: recentConversations.length,
+    getScrollElement,
+    estimateSize: () => ROW_H,
+    overscan: 8,
+  })
+  const virtualItems = virt.getVirtualItems()
+
+  // Auto-load the next page when the last rendered virtual row reaches the end of
+  // the loaded set (the tanstack-virtual infinite-scroll idiom). The `!recentError`
+  // gate is load-bearing: on a persistent load-MORE failure the store leaves
+  // recentHasMore=true, so WITHOUT this gate the effect would re-fire the instant
+  // recentLoadingMore flips back to false and hammer the API in a tight loop.
+  const lastIndex =
+    virtualItems.length > 0 ? virtualItems[virtualItems.length - 1].index : -1
+  useEffect(() => {
+    if (
+      lastIndex >= 0 &&
+      lastIndex >= recentConversations.length - 1 &&
+      recentHasMore &&
+      !recentLoadingMore &&
+      !recentError
+    ) {
+      void Stores.ChatHistory.loadMoreRecent()
+    }
+  }, [lastIndex, recentConversations.length, recentHasMore, recentLoadingMore, recentError])
+
+  // Explicit retry for a FAILED load-more (list already populated). A visible
+  // affordance — NOT scroll-to-clear — because a loaded page that fits the
+  // viewport can't be scrolled, which would otherwise strand paging silently.
+  const retryLoadMore = () => {
+    Stores.ChatHistory.clearRecentError()
+    void Stores.ChatHistory.loadMoreRecent()
+  }
+
+  // The currently-open conversation (for the `aria-current` selected row).
+  // Memoized so the virtualizer's per-scroll-frame re-renders don't re-run this
+  // O(loaded-rows) scan (which calls the `conversationHref` extension hook per
+  // row) — it only recomputes when the list or the URL actually changes.
+  const selectedId = useMemo(() => {
+    const path = location.pathname
+    for (const c of recentConversations) {
+      const href = chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
+      if (path === href) return c.id
+    }
+    return undefined
+  }, [recentConversations, location.pathname])
+
+  // Section header (standalone, above the scroll area) — its typography mirrors
+  // the Menu group-title so it reads identically to the sections above.
   const headerOnly = (
-    <div
-      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground"
-    >
+    <div className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground">
       Recent chats
     </div>
   )
 
-  if (loading && !isInitialized) {
+  // First-load failure (nothing loaded yet): show a retryable error, never wedge
+  // on the spinner. A failed load-MORE (list already populated) is handled in the
+  // store by just clearing the flag, so the loaded rows stay and we fall through.
+  if (recentError && recentConversations.length === 0) {
+    return (
+      <div className="flex flex-col h-full">
+        {headerOnly}
+        <div className="px-2 py-4">
+          <ErrorState
+            data-testid="chat-recent-error"
+            resource="recent chats"
+            description="Your recent chats couldn't be loaded."
+            details={recentError}
+            onRetry={() => Stores.ChatHistory.loadRecentConversations(1)}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (!recentInitialized) {
     return (
       <div className="flex flex-col h-full">
         {headerOnly}
@@ -94,7 +171,7 @@ export function RecentConversationsWidget() {
     )
   }
 
-  if (!loading && recentConversations.length === 0) {
+  if (recentConversations.length === 0) {
     return (
       <div className="flex flex-col h-full">
         {headerOnly}
@@ -113,47 +190,37 @@ export function RecentConversationsWidget() {
     )
   }
 
-  // Conversation href is owned by the extension registry — same call
-  // the row click handler uses below, so the selected-key derivation
-  // stays in lockstep with what navigation actually does.
+  // Conversation href is owned by the extension registry — the SAME resolution
+  // the memoized `selectedId` above uses, so the selected row stays in lockstep
+  // with where a click actually navigates.
   const hrefFor = (c: ConversationResponse) =>
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
 
-  // The currently-open conversation gets the Menu's `selected`
-  // treatment (bg-accent + font-medium).
-  const selectedKey = recentConversations.find(
-    c => location.pathname === hrefFor(c),
-  )?.id
-
-  const items: MenuItem[] = [
-    {
-      type: 'group',
-      label: 'Recent chats',
-      children: recentConversations.map(c => {
-        const title = c.title || 'Untitled Conversation'
-        return {
-          key: c.id,
-          title,
-          label: (
-            // Drag source (ITEM-31): drag a conversation onto a pane header
-            // (replace) or the inter-pane seam (new pane).
-            <span
-              className="truncate"
-              title={title}
-              draggable
-              onDragStart={e => setConversationDragData(e.dataTransfer, c.id)}
-              onDragEnd={e => tearOff(e, { conversationId: c.id, title })}
-            >
-              {title}
-            </span>
-          ),
-          // Actions render as a SIBLING of the row button (see Menu `actions`) —
-          // a <button> may not contain the dropdown's own <button>.
-          actions: <ConversationRowActions conversation={c} />,
-        }
-      }),
-    },
-  ]
+  // Split-chat: a modified click (Cmd/Ctrl or middle-button) on a row opens the
+  // conversation in a NEW pane instead of navigating the focused one. Captured on
+  // the container so it wins before the row's plain-click navigate fires.
+  const openInNewPaneIfModified = (
+    e: React.MouseEvent<HTMLDivElement>,
+  ): void => {
+    if (!(e.metaKey || e.ctrlKey || e.button === 1)) return
+    const row = (e.target as HTMLElement).closest<HTMLElement>(
+      `[data-testid^="${RECENT_ITEM_TESTID_PREFIX}"]`,
+    )
+    const id = row
+      ?.getAttribute('data-testid')
+      ?.slice(RECENT_ITEM_TESTID_PREFIX.length)
+    const c = id && recentConversations.find(x => x.id === id)
+    if (!c) return
+    e.preventDefault()
+    e.stopPropagation()
+    openConversation(c.id, { intent: 'newPane', href: hrefFor(c) })
+  }
+  // aria-setsize: once fully loaded, the exact rendered count is authoritative;
+  // while more remain, recentTotal is the best (approximate) estimate. Never
+  // report a set size smaller than what's rendered.
+  const setSize = recentHasMore
+    ? Math.max(recentTotal, recentConversations.length)
+    : recentConversations.length
 
   return (
     <div
@@ -161,27 +228,118 @@ export function RecentConversationsWidget() {
       onClickCapture={openInNewPaneIfModified}
       onAuxClickCapture={openInNewPaneIfModified}
     >
-      <DivScrollY className="flex-col flex-1 min-h-0">
-        <Menu
-          data-testid="chat-recent-conversations-menu"
-          mode="vertical"
+      {headerOnly}
+      <DivScrollY
+        ref={osRef}
+        className="flex-col flex-1 min-h-0 px-2"
+        events={{ initialized: () => setScrollReady(true) }}
+      >
+        {/* role="list" (not menu): the window is virtualized, so the ARIA menu
+            keyboard contract across non-rendered items can't be honored. Rows are
+            navigation buttons; aria-setsize/posinset restore list position. */}
+        <ul
+          role="list"
           aria-label="Recent conversations"
-          className="px-2"
-          items={items}
-          selectedKey={selectedKey}
-          onSelect={key => {
-            const c = recentConversations.find(x => x.id === key)
-            if (!c) return
-            // Defensive: bail if the click originated inside a floating
-            // dropdown menu (body-level portal), in case event routing
-            // ever changes.
-            const active = document.activeElement as HTMLElement | null
-            if (active?.closest('[role="menu"]')) return
-            // Route through the workspace reducer (ITEM-28): plain click replaces
-            // the focused pane while split, else a normal single-pane navigate.
-            openConversation(c.id, { intent: 'auto', href: hrefFor(c) })
-          }}
-        />
+          data-testid="chat-recent-conversations-list"
+          className="relative w-full m-0 p-0 list-none"
+          style={{ height: virt.getTotalSize() }}
+        >
+          {virtualItems.map(vi => {
+            const c = recentConversations[vi.index]
+            if (!c) return null
+            const title = c.title || 'Untitled Conversation'
+            const selected = c.id === selectedId
+            const cls = menuRowClasses({ selected, hasActions: true })
+            return (
+              <li
+                key={c.id}
+                ref={virt.measureElement}
+                data-index={vi.index}
+                // pb-0.5 reproduces the kit Menu's 2px inter-row gap; the row is
+                // content-height (measured), not forced to a rigid ROW_H, so it
+                // grows with text zoom instead of clipping.
+                className="absolute start-0 w-full pb-0.5"
+                style={{ top: 0, transform: `translateY(${vi.start}px)` }}
+                aria-setsize={setSize}
+                aria-posinset={vi.index + 1}
+              >
+                {/* The row-style container carries `relative group/menu-row` so the
+                    trailing actions overlay anchors here (the <li> is positioned by
+                    the virtualizer). */}
+                <div className={cls.row}>
+                  <MenuRowButton
+                    selected={selected}
+                    data-testid={`chat-recent-conversations-menu-item-${c.id}`}
+                    title={title}
+                    onClick={() => {
+                      // Bail if the click originated inside a floating dropdown
+                      // (body-level portal), in case event routing ever changes.
+                      const active = document.activeElement as HTMLElement | null
+                      if (active?.closest('[role="menu"]')) return
+                      // Split-chat (ITEM-28): route through the workspace reducer —
+                      // plain click replaces the focused pane while split, else a
+                      // single-pane navigate. (The hook owns the navigation.)
+                      openConversation(c.id, { intent: 'auto', href: hrefFor(c) })
+                    }}
+                  >
+                    {/* Drag source (ITEM-31): drag onto a pane to replace it / the
+                        inter-pane seam for a new pane; release past the window edge
+                        tears off to a desktop window (no-op on web). */}
+                    <span
+                      className="min-w-0 flex-1 truncate text-start"
+                      draggable
+                      onDragStart={e =>
+                        setConversationDragData(e.dataTransfer, c.id)
+                      }
+                      onDragEnd={e => tearOff(e, { conversationId: c.id, title })}
+                    >
+                      {title}
+                    </span>
+                  </MenuRowButton>
+                  <div className={cls.actions}>
+                    <ConversationRowActions conversation={c} />
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+        {recentLoadingMore && (
+          // The Spin's inner Spinner is the single role="status" live region (no
+          // outer aria-live here → no duplicate announcement); `description` gives
+          // sighted users a visible caption, not just a bare icon.
+          <div
+            data-testid="chat-recent-loading-more"
+            className="flex justify-center items-center py-3"
+          >
+            <Spin
+              size="sm"
+              label="Loading more conversations"
+              description="Loading more…"
+            />
+          </div>
+        )}
+        {recentError && !recentLoadingMore && recentConversations.length > 0 && (
+          // A FAILED load-more (the list is populated, so the empty-state
+          // ErrorState above doesn't apply): show an inline retry so paging is
+          // recoverable even when the loaded page fits the viewport (no scroll).
+          <div
+            data-testid="chat-recent-loadmore-error"
+            className="flex justify-center items-center gap-2 py-3"
+          >
+            <Text type="secondary" className="text-xs">
+              Couldn't load more.
+            </Text>
+            <Button
+              data-testid="chat-recent-loadmore-retry"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={retryLoadMore}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
       </DivScrollY>
     </div>
   )
@@ -206,6 +364,7 @@ function ConversationRowActions({
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
   const [menuOpen, setMenuOpen] = useState(false)
+  // Split-chat: the ⋯ menu offers an explicit "Open in split pane" action.
   const openConversation = useOpenConversationInWorkspace()
 
   const { items: extensionItems, overlays, keepMenuOpen } =

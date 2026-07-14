@@ -1,7 +1,6 @@
 import { createModule, Stores } from '@/core'
 import { useAppStore } from '@/modules/app/App.store'
 import { useAppModeStore } from '@/modules/app/AppMode.store'
-import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -35,10 +34,13 @@ export default createModule({
   },
   routes: [
     {
+      // No `layout:` — SetupPage renders its own AuthScreenLayout (shared with
+      // the login page), which supplies the `main` landmark + meta-theme-color +
+      // themed backdrop. A router BlankLayout here would double the `main`
+      // landmark and race two meta-theme-color hooks.
       path: '/setup',
       element: SetupPage,
       requiresAuth: false,
-      layout: BlankLayout,
     },
   ],
   stores: [

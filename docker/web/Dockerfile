@@ -4,7 +4,7 @@
 #
 # Serves the built React SPA (src-app/ui) via nginx and reverse-proxies /api to
 # the Rust `ziee` API server running on loopback in the same container. One
-# artifact for TeamCity to build (`docker build`) and push — no GitHub Actions.
+# artifact for CI to build (`docker build`) and push — no GitHub Actions.
 #
 # Three stages:
 #   ui-build     — node: `npm ci` + `vite build` → dist/ui

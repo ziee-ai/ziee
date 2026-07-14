@@ -24,10 +24,12 @@ import {
 } from '@/modules/chat/core/utils/branchAnchor.utils'
 import {
   appendWindow,
+  finalizeTailWindow,
   firstMessageId,
   lastMessageId,
   mergeTailWindow,
   prependWindow,
+  resumeOrFreshPlaceholder,
   toOrderedMap,
 } from '@/modules/chat/core/stores/messageWindow'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
@@ -305,6 +307,12 @@ interface ChatState {
    *  message renderer to suppress the empty-completion notice on interrupted
    *  turns. Transient live state (not snapshotted / not persisted). */
   lastTurnInterrupted: boolean
+  /** True only for the sub-second window between a turn's `complete` frame and
+   *  the persisted tail being swapped in on-screen. Suppresses the
+   *  empty-completion notice so a transient empty/absent assistant frame during
+   *  the streaming→persisted handoff can never flash it. Transient live state
+   *  (not snapshotted / not persisted). */
+  finalizingTurn: boolean
 
   // ── Lazy-load window state ──────────────────────────────────────────────
   // The `messages` Map holds a contiguous slice of the active branch path.
@@ -515,6 +523,7 @@ const chatInitialState = {
     // is deleted or access is revoked (ITEM-29). Null on success / transient error.
     lastLoadErrorStatus: null as number | null,
     lastTurnInterrupted: false,
+    finalizingTurn: false,
     hasMoreBefore: false,
     hasMoreAfter: false,
     loadingOlder: false,
@@ -623,9 +632,11 @@ const chatStoreConfig = {
         streamingMessage: snapshot.streamingMessage,
         tempUserMessageId: snapshot.tempUserMessageId,
         isStreaming: snapshot.isStreaming,
-        // Not snapshotted (transient live signal): a restored conversation is
-        // not a fresh interruption, so clear it to avoid a stale suppression.
+        // Not snapshotted (transient live signals): a restored conversation is
+        // not a fresh interruption / mid-finalize, so clear them to avoid a
+        // stale suppression.
         lastTurnInterrupted: false,
+        finalizingTurn: false,
         hasMoreBefore: snapshot.hasMoreBefore ?? false,
         hasMoreAfter: snapshot.hasMoreAfter ?? false,
         loadingOlder: false,
@@ -790,6 +801,7 @@ const chatStoreConfig = {
           streamingAbortController: null,
           streamingMessageId: null,
           lastTurnInterrupted: false,
+          finalizingTurn: false,
           messages: new Map(),
           hasMoreBefore: false,
           hasMoreAfter: false,
@@ -1461,16 +1473,27 @@ const chatStoreConfig = {
         if (data.content && Array.isArray(data.content)) {
           if (!state.streamingMessage && data.content.length > 0) {
             const placeholderId = data.message_id || `streaming-${Date.now()}`
-            const placeholder: MessageWithContent = {
-              id: placeholderId,
-              role: 'assistant',
-              contents: [],
-              originated_from_id: '',
-              edit_count: 0,
-              created_at: new Date().toISOString(),
-            }
             set(state => {
               const newMessages = new Map(state.messages)
+              // A tool-approval RESUME continues the SAME assistant message id.
+              // If a message with this id already exists (with accumulated
+              // text/tool_use content), REUSE it as the streaming buffer rather
+              // than overwriting it with an empty placeholder — otherwise the
+              // message renders empty for a beat (ChatMessage bails to null on
+              // zero blocks) and the bubble VANISHES then reappears (the
+              // resume-chain flicker). A genuinely-new turn has no existing row
+              // → a fresh empty placeholder, unchanged from before.
+              const placeholder = resumeOrFreshPlaceholder(
+                newMessages.get(placeholderId),
+                {
+                  id: placeholderId,
+                  role: 'assistant',
+                  contents: [],
+                  originated_from_id: '',
+                  edit_count: 0,
+                  created_at: new Date().toISOString(),
+                },
+              )
               newMessages.set(placeholder.id, placeholder)
               return { streamingMessage: placeholder, messages: newMessages }
             })
@@ -1604,55 +1627,121 @@ const chatStoreConfig = {
         // empty-completion notice on the (possibly reasoning-only) partial.
         const cancelled = event.finish_reason === 'cancelled'
 
-        set(state => {
-          const newMessages = new Map(state.messages)
-          if (state.streamingMessage) {
-            newMessages.delete(state.streamingMessage.id)
-          }
-          return {
-            isStreaming: false,
-            sending: false,
-            streamingMessage: null,
-            streamingAbortController: null,
-            streamingMessageId: null,
-            messages: newMessages,
-            // Only track for the displayed conversation — a BACKGROUND
-            // conversation completing must not overwrite the on-screen flag
-            // (lastTurnInterrupted is a single global signal).
-            lastTurnInterrupted: isOnOriginalConversation
-              ? cancelled
-              : state.lastTurnInterrupted,
-          }
+        // A BACKGROUND conversation completing: tear down its live buffer and
+        // drop the streaming row (nothing on-screen to keep continuous), and
+        // never touch the on-screen `lastTurnInterrupted` (a single global
+        // signal). Unchanged from the original teardown.
+        if (!isOnOriginalConversation) {
+          set(state => {
+            const newMessages = new Map(state.messages)
+            if (state.streamingMessage) {
+              newMessages.delete(state.streamingMessage.id)
+            }
+            return {
+              isStreaming: false,
+              sending: false,
+              streamingMessage: null,
+              streamingAbortController: null,
+              streamingMessageId: null,
+              messages: newMessages,
+            }
+          })
+          get().clearConversationCache(conversationId)
+          return
+        }
+
+        // ── On-screen finalize: keep the streamed row, swap in persisted ────
+        // Clear the streaming CONTROL flags SYNCHRONOUSLY (as the original did),
+        // but do NOT delete the streamed assistant row from `messages`, and set
+        // `finalizingTurn` so the empty-completion notice stays suppressed until
+        // the persisted tail is merged in. The row is therefore continuously
+        // visible (no disappear/reappear + no false notice) WITHOUT holding
+        // `isStreaming` true across the awaited `getHistory` — so a conversation
+        // switch or a `saveConversationState` snapshot during that await can
+        // never observe a mid-stream state (which would strand the row as
+        // "generating" or clobber a background stream). Only the transient
+        // `finalizingTurn` is cleared AFTER the await, in the persisted swap.
+        const streamingRowId = streamingMessage?.id ?? null
+        // Capture BEFORE clearing: an edit/regenerate created a NEW branch during
+        // this stream, so the loaded window still holds the old branch's prefix —
+        // a merge would be inconsistent. Snap to the new branch's tail instead.
+        const branchChanged = get().branchChangedDuringStream
+        set({
+          isStreaming: false,
+          sending: false,
+          streamingMessage: null,
+          streamingAbortController: null,
+          streamingMessageId: null,
+          branchChangedDuringStream: false,
+          finalizingTurn: true,
+          lastTurnInterrupted: cancelled,
         })
 
-        if (isOnOriginalConversation) {
-          if (streamingMessage) {
-            await chatExtensionRegistry.afterStreamComplete(streamingMessage, get().paneId)
-          }
-          // Capture BEFORE clearing: an edit/regenerate created a NEW branch
-          // during this stream, so the loaded window still holds the old
-          // branch's prefix — cursors/merge would be inconsistent. Reset to the
-          // new branch's tail instead of merging.
-          const branchChanged = get().branchChangedDuringStream
-          set({ branchChangedDuringStream: false })
-          const conversation = get().conversation
-          if (conversation) {
-            if (branchChanged) {
-              await get().loadMessages(conversation.id)
-            } else {
-              // Merge the finalized tail into the window WITHOUT discarding any
-              // older pages the user scrolled up to load (DEC-6). The sidebar
-              // message_count self-heals via the `Conversation` sync the backend
-              // emits on turn completion (streaming.rs), so we no longer emit an
-              // optimistic `messageCountChanged` here — under lazy-load
-              // `messages.size` is only the loaded window, not the true total.
-              await get().reconcileTail(conversation.id)
+        // Per-pane (ITEM v2): the completion runs in the OWNING pane's own store,
+        // so thread this pane's id to the extension hooks (the async-hook focus-race
+        // fix). The switched-away/background case already returned via the early bail
+        // above (`!isOnOriginalConversation`), so no extra guard is needed here.
+        if (streamingMessage) {
+          await chatExtensionRegistry.afterStreamComplete(streamingMessage, get().paneId)
+        }
+        const conversation = get().conversation
+
+        if (conversation) {
+          try {
+            const page = await ApiClient.Message.getHistory({
+              id: conversation.id,
+              limit: MESSAGE_PAGE_SIZE,
+            })
+            if (get().conversation?.id === conversation.id) {
+              set(state => {
+                // Snap-to-tail when the branch changed or the window is anchored
+                // mid-conversation (a merge would splice the tail after a gap);
+                // else merge so loaded older pages stay and the finalized turn
+                // replaces the streaming row IN PLACE (no empty frame). The
+                // sidebar message_count self-heals via the backend `Conversation`
+                // sync, so no optimistic count emit here.
+                const snapToTail = branchChanged || state.hasMoreAfter
+                if (snapToTail) {
+                  return {
+                    finalizingTurn: false,
+                    messages: toOrderedMap(page.messages),
+                    hasMoreBefore: page.has_more_before,
+                    hasMoreAfter: page.has_more_after,
+                    loadingOlder: false,
+                    loadingNewer: false,
+                  }
+                }
+                return {
+                  finalizingTurn: false,
+                  messages: finalizeTailWindow(
+                    state.messages,
+                    page.messages,
+                    streamingRowId,
+                  ),
+                  hasMoreAfter: false,
+                }
+              })
+            }
+            // else — switched away mid-fetch: do NOT touch finalizingTurn. The
+            // switch/reset that changed the conversation already cleared it
+            // (loadConversation cleanup / reset), and whatever conversation is now
+            // on-screen may own its OWN finalize; clearing it here would clobber
+            // that newer suppression.
+          } catch (error: any) {
+            // getHistory failed: the streamed row is still in `messages`, so it
+            // stays visible; clear the finalize flag + surface the error only if
+            // we're still on-screen (else the switch already cleared it).
+            if (get().conversation?.id === conversation.id) {
+              set({
+                finalizingTurn: false,
+                error: get().error || error.message || 'Failed to refresh messages',
+              })
             }
           }
-          await get().computeForkPoints()
         } else {
-          get().clearConversationCache(conversationId)
+          set({ finalizingTurn: false })
         }
+        await get().computeForkPoints()
         return
       }
 
@@ -1669,6 +1758,7 @@ const chatStoreConfig = {
             streamingMessage: null,
             streamingAbortController: null,
             streamingMessageId: null,
+            finalizingTurn: false,
           })
           get().clearConversationCache(conversationId)
           return
@@ -1688,6 +1778,7 @@ const chatStoreConfig = {
               streamingMessage: null,
               streamingAbortController: null,
               streamingMessageId: null,
+              finalizingTurn: false,
               lastTurnInterrupted: true,
             }
           })
@@ -1699,6 +1790,7 @@ const chatStoreConfig = {
             streamingMessage: null,
             streamingAbortController: null,
             streamingMessageId: null,
+            finalizingTurn: false,
             lastTurnInterrupted: true,
           })
         }
@@ -1767,7 +1859,13 @@ const chatStoreConfig = {
         await chatExtensionRegistry.onConversationLoad(conversation)
       }
 
-      set({ sending: true, isStreaming: true, error: null, lastTurnInterrupted: false })
+      set({
+        sending: true,
+        isStreaming: true,
+        error: null,
+        lastTurnInterrupted: false,
+        finalizingTurn: false,
+      })
 
       // If the window is anchored MID-conversation (after an around=/find/
       // deep-link jump, so `hasMoreAfter` is true), the loaded slice does not
@@ -1867,6 +1965,7 @@ const chatStoreConfig = {
           streamingMessage: null,
           streamingAbortController: null,
           streamingMessageId: null,
+          finalizingTurn: false,
           // Aborted (user cancel) or a transport error — either way the turn's
           // partial is not a genuine empty completion.
           lastTurnInterrupted: true,
@@ -2080,6 +2179,7 @@ const chatStoreConfig = {
         loadingConversationId: null,
         sending: false,
         isStreaming: false,
+        finalizingTurn: false,
         error: null,
         hasMoreBefore: false,
         hasMoreAfter: false,

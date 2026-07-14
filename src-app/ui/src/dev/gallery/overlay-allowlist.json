@@ -22,10 +22,8 @@
     "modules/user/components/user/UsersSettings": "Inline controlled activate/deactivate Confirm shared by a user row's Switch + button (local open-state). Reached via the users table (rendered in the gallery). Inline confirm — future row interaction recipe.",
     "modules/user/components/group/UserGroupsSettings": "Renders the (separately wired) EditUserGroupDrawer plus an inline group-row Drawer; the standalone drawer is covered by overlay-edit-user-group-drawer. Page rendered in the gallery. Tracked.",
     "modules/notification/components/NotificationBellWidget": "Notification bell Popover — local open-state, opens on a click on the sidebar bell; the recent-list + empty states are exercised via the notifications e2e spec. Tracked for an interaction recipe.",
-    "modules/scheduler/components/ScheduledTaskFormDrawer": "Scheduled-task create/edit Drawer — open-state driven by the SchedulerDrawer store via the tasks-page New-task/edit actions; verified via the scheduler e2e interaction spec.",
     "modules/knowledge-base/components/KnowledgeBaseCard": "Inline controlled delete-Confirm on a knowledge-base card (local open-state). Reached via the knowledge list (rendered in the gallery). Inline confirm — future interaction recipe.",
-    "modules/knowledge-base/components/KnowledgeBaseFormDrawer": "Create/edit knowledge-base Drawer — opens from a list/detail action (prop open-state). List/detail are rendered in the gallery; a standalone open needs a trigger context. Tracked for an interaction recipe.",
-    "modules/voice/components/UploadModelDrawer": "Upload-model Drawer on the voice settings page (same pattern as AddLocalLlmModelUploadDrawer). Opened via a store action from the AvailableModelsCard 'Upload' trigger; gallery cell deferred (DRIFT-1). Covered by the 14-voice/voice-settings-admin e2e."
+    "modules/scheduler/components/ScheduledTaskCard": "Inline controlled delete-Confirm on a scheduled-task card (local open-state), mirroring KnowledgeBaseCard. Reached via the scheduled-tasks list; verified via the scheduler e2e (precedent-layout.spec.ts)."
   },
   "triggers": {
     "modules/assistant/chat-extension/components/AssistantMenuItem": "Composer assistant-picker Popover — opens on a click in the chat composer '+' menu. Reached via the chat surface; tracked for an interaction recipe.",

@@ -539,8 +539,24 @@ async fn test_list_system_servers() {
         .as_array()
         .expect("Should have servers array");
 
-    // Should have the 4 default system servers (filesystem, fetch, browser, git)
-    assert!(servers.len() >= 4, "Should have default system servers");
+    // Migration 157 deleted the three unused seeded system servers
+    // (filesystem / browser / git), leaving `fetch` as the seeded, admin-
+    // configurable one. The zero-config `*.ziee.internal` built-ins are
+    // excluded from this listing by design.
+    assert!(
+        !servers.is_empty(),
+        "Should have at least the seeded `fetch` system server"
+    );
+    assert!(
+        servers.iter().any(|s| s["name"] == "fetch"),
+        "The seeded `fetch` system server should be listed"
+    );
+    for removed in ["filesystem", "browser", "git"] {
+        assert!(
+            !servers.iter().any(|s| s["name"] == removed),
+            "`{removed}` was removed by migration 157 and must not be listed"
+        );
+    }
 
     // Verify all are system servers
     for server in servers {
@@ -731,8 +747,9 @@ async fn test_delete_system_server() {
 // Commit 52a5953b narrowed the `update_system_mcp_server` "built-in is
 // immutable" guard (repository.rs) so it gates ONLY the two zero-config
 // privileged built-ins — `files_mcp_server_id()` / `memory_mcp_server_id()`.
-// The admin-CONFIGURABLE built-ins (filesystem/fetch/browser/git from
-// migrations 7+25, code_sandbox) must stay editable. This pins BOTH sides.
+// The admin-CONFIGURABLE built-ins (`fetch` from migrations 7+25 — its
+// siblings filesystem/browser/git were removed by migration 157 — plus
+// code_sandbox) must stay editable. This pins BOTH sides.
 //
 // NOTE: the deterministic ids are `Uuid::new_v5(NAMESPACE_URL, b"<name>")`,
 // matching `files_mcp::files_mcp_server_id()` / `memory_mcp::memory_mcp_server_id()`.
@@ -783,7 +800,7 @@ async fn test_update_configurable_builtin_is_editable() {
     )
     .await;
 
-    // Find the seeded `filesystem` row (migration 7 — a random UUID, so it is
+    // Find the seeded `fetch` row (migration 7 — a random UUID, so it is
     // NOT in the zero-config guard set and must remain editable).
     let list_url = server.api_url("/mcp/system-servers");
     let list_body: serde_json::Value = reqwest::Client::new()
@@ -798,22 +815,22 @@ async fn test_update_configurable_builtin_is_editable() {
     let servers = list_body["servers"]
         .as_array()
         .expect("Should have servers array");
-    let filesystem = servers
+    let fetch = servers
         .iter()
-        .find(|s| s["name"] == "filesystem")
-        .expect("Should have seeded filesystem server");
-    let filesystem_id = filesystem["id"].as_str().expect("Should have server ID");
+        .find(|s| s["name"] == "fetch")
+        .expect("Should have seeded fetch server");
+    let fetch_id = fetch["id"].as_str().expect("Should have server ID");
 
     // PUT a benign config change (mirror `test_update_system_server` shape).
     let update_payload = json!({
-        "display_name": "Filesystem Access",
-        "description": "Edited filesystem description",
+        "display_name": "Web Fetch",
+        "description": "Edited fetch description",
         "transport_type": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+        "command": "uvx",
+        "args": ["mcp-server-fetch"]
     });
 
-    let update_url = server.api_url(&format!("/mcp/system-servers/{}", filesystem_id));
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", fetch_id));
     let response = reqwest::Client::new()
         .put(&update_url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -826,12 +843,12 @@ async fn test_update_configurable_builtin_is_editable() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(
         status, 200,
-        "Admin-configurable built-in (filesystem) must stay editable; got: {body}"
+        "Admin-configurable built-in (fetch) must stay editable; got: {body}"
     );
-    assert_eq!(body["description"], "Edited filesystem description");
+    assert_eq!(body["description"], "Edited fetch description");
 
     // Confirm persistence via a follow-up GET.
-    let get_url = server.api_url(&format!("/mcp/system-servers/{}", filesystem_id));
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", fetch_id));
     let get_body: serde_json::Value = reqwest::Client::new()
         .get(&get_url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -842,7 +859,7 @@ async fn test_update_configurable_builtin_is_editable() {
         .await
         .expect("Failed to parse JSON");
     assert_eq!(
-        get_body["description"], "Edited filesystem description",
+        get_body["description"], "Edited fetch description",
         "Edit must persist for the admin-configurable built-in"
     );
 }
@@ -965,24 +982,42 @@ async fn test_assign_server_to_groups() {
         .expect("Failed to get default group");
     let default_group_id = default_group.id;
 
-    // Get filesystem server ID
-    let filesystem_server =
-        sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'filesystem' AND is_system = true")
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to get filesystem server");
-    let filesystem_server_id = filesystem_server.id;
+    // An UNASSIGNED system server. This test used to key off the seeded
+    // `filesystem` row (removed by migration 157). Retargeting it at the
+    // surviving `fetch` row would make it VACUOUS: migration 7 already assigns
+    // `fetch` to the default group, so the "assigned" assertion would hold before
+    // the POST was ever issued — the test would pass even if the assign endpoint
+    // were a no-op. Create a server that is genuinely in no group instead.
+    let fetch_server_id = sqlx::query!(
+        r#"INSERT INTO mcp_servers (name, display_name, description, transport_type, is_system, enabled, url)
+           VALUES ('assign_target', 'Assign Target', 'Group-assignment fixture', 'http', true, true, 'http://127.0.0.1:9/mcp')
+           RETURNING id"#
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("Failed to create the assignment fixture server")
+    .id;
+
+    // Precondition: it is in NO group — otherwise the assertion below is vacuous.
+    let before = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM user_group_mcp_servers WHERE mcp_server_id = $1"#,
+        fetch_server_id
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count groups");
+    assert_eq!(before, 0, "the fixture server must start unassigned");
 
     pool.close().await;
 
-    // Assign filesystem server to default group
+    // Assign the fixture server to the default group
     let payload = json!({
         "group_ids": [default_group_id]
     });
 
     let url = server.api_url(&format!(
         "/mcp/system-servers/{}/groups",
-        filesystem_server_id
+        fetch_server_id
     ));
     let response = reqwest::Client::new()
         .post(&url)
@@ -997,7 +1032,7 @@ async fn test_assign_server_to_groups() {
     // Get server's assigned groups
     let get_url = server.api_url(&format!(
         "/mcp/system-servers/{}/groups",
-        filesystem_server_id
+        fetch_server_id
     ));
     let get_response = reqwest::Client::new()
         .get(&get_url)
@@ -1787,12 +1822,19 @@ async fn test_system_server_assignment_cascades_to_group_members() {
         .await
         .unwrap()
         .id;
-    let filesystem_server_id =
-        sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'filesystem' AND is_system = true")
-            .fetch_one(&pool)
-            .await
-            .unwrap()
-            .id;
+    // An UNASSIGNED system server to cascade. Created here rather than keyed off
+    // a seeded row: migration 157 removed the unused seeded servers, and the one
+    // that survives (`fetch`) ships already assigned to the default group — which
+    // would make the "before assignment" half of this test vacuous.
+    let cascade_server_id = sqlx::query!(
+        r#"INSERT INTO mcp_servers (name, display_name, description, transport_type, is_system, enabled, url)
+           VALUES ('cascade_target', 'Cascade Target', 'Cascade fixture', 'http', true, true, 'http://127.0.0.1:9/mcp')
+           RETURNING id"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap()
+    .id;
     pool.close().await;
 
     let member_server_names = || async {
@@ -1815,16 +1857,16 @@ async fn test_system_server_assignment_cascades_to_group_members() {
             .unwrap_or_default()
     };
 
-    // Before assignment: the member's default group has no filesystem grant.
+    // Before assignment: the member's default group has no grant for it.
     let before = member_server_names().await;
     assert!(
-        !before.contains(&"filesystem".to_string()),
-        "filesystem must NOT be visible before the group assignment: {before:?}"
+        !before.contains(&"cascade_target".to_string()),
+        "cascade_target must NOT be visible before the group assignment: {before:?}"
     );
 
     // Admin assigns the system server to the default group.
     let assign = reqwest::Client::new()
-        .post(server.api_url(&format!("/mcp/system-servers/{filesystem_server_id}/groups")))
+        .post(server.api_url(&format!("/mcp/system-servers/{cascade_server_id}/groups")))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({ "group_ids": [default_group_id] }))
         .send()
@@ -1835,8 +1877,8 @@ async fn test_system_server_assignment_cascades_to_group_members() {
     // After assignment: the member now sees the cascaded system server.
     let after = member_server_names().await;
     assert!(
-        after.contains(&"filesystem".to_string()),
-        "filesystem must cascade to the group member after assignment: {after:?}"
+        after.contains(&"cascade_target".to_string()),
+        "cascade_target must cascade to the group member after assignment: {after:?}"
     );
 }
 

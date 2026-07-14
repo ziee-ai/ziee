@@ -93,8 +93,14 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     }: MessageListProps,
     ref,
   ) {
-    const { messages, loading, isStreaming, loadingOlder, lastTurnInterrupted } =
-      Stores.Chat
+    const {
+      messages,
+      loading,
+      isStreaming,
+      loadingOlder,
+      lastTurnInterrupted,
+      finalizingTurn,
+    } = Stores.Chat
 
     // Ordered window (insertion order = render order).
     const messagesArray = useMemo(() => Array.from(messages.values()), [messages])
@@ -554,6 +560,11 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                         vi.index === count - 1 &&
                         msg.role === 'assistant'
                       }
+                      finalizing={
+                        finalizingTurn &&
+                        vi.index === count - 1 &&
+                        msg.role === 'assistant'
+                      }
                     />
                   </div>
                 </div>
@@ -572,6 +583,9 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                 }
                 interrupted={
                   lastTurnInterrupted && i === count - 1 && msg.role === 'assistant'
+                }
+                finalizing={
+                  finalizingTurn && i === count - 1 && msg.role === 'assistant'
                 }
               />
             ))}

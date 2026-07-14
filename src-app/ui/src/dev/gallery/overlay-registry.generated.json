@@ -1,10 +1,10 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 86,
-    "hosts": 62,
+    "total": 87,
+    "hosts": 63,
     "triggers": 24,
-    "wiredOpen": 37
+    "wiredOpen": 40
   },
   "hosts": [
     {
@@ -601,6 +601,19 @@
       "occurrences": [
         {
           "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/scheduler/components/ScheduledTaskCard",
+      "class": "host",
+      "primitives": [
+        "Confirm"
+      ],
+      "occurrences": [
+        {
+          "primitive": "Confirm",
           "mode": "controlled"
         }
       ]

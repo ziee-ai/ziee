@@ -141,7 +141,7 @@ function PageFrame({
       data-gallery-state={state}
       className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-background"
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-gallery-chrome>
         <Title level={3}>
           {page.path}
           {state !== 'loaded' ? (
@@ -155,6 +155,7 @@ function PageFrame({
         </Text>
       </div>
       <div
+        data-gallery-frame
         className="w-full overflow-hidden rounded-md border border-border bg-background"
         style={{ height }}
       >

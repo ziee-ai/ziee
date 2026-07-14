@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **368** surfaces carry at least one renderable-state signal.
-- **2195** signals total: 1735 branch, 140 empty, 113 error, 108 loading, 96 overlay, 3 panel.
+- **371** surfaces carry at least one renderable-state signal.
+- **2216** signals total: 1756 branch, 141 empty, 113 error, 106 loading, 97 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,10 +16,10 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 95 |
-| `empty` | 110 |
-| `error` | 88 |
-| `open` | 82 |
+| `delayed` | 94 |
+| `empty` | 111 |
+| `error` | 89 |
+| `open` | 83 |
 | `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -52,7 +52,7 @@ conversation page.
 | `settingsAdminPages` | `modules/llm-repository/module`:56 |
 | `settingsAdminPages` | `modules/mcp/module`:147 |
 | `settingsAdminPages` | `modules/memory/module`:71 |
-| `settingsAdminPages` | `modules/scheduler/module`:78 |
+| `settingsAdminPages` | `modules/scheduler/module`:82 |
 | `settingsAdminPages` | `modules/server-update/module`:35 |
 | `settingsAdminPages` | `modules/skill/module`:105 |
 | `settingsAdminPages` | `modules/summarization/module`:41 |
@@ -303,14 +303,14 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 72 |
-| branch | `'type' in it && it.type === 'group'` | 78 |
-| branch | `!collapsed` | 82 |
-| branch | `'type' in it && it.type === 'label'` | 90 |
-| branch | `!(collapsed)` | 91 |
-| branch | `item.icon != null` | 149 |
-| branch | `!collapsed` | 151 |
-| branch | `hasActions` | 153 |
+| branch | `'type' in it && it.type === 'divider'` | 164 |
+| branch | `'type' in it && it.type === 'group'` | 170 |
+| branch | `!collapsed` | 174 |
+| branch | `'type' in it && it.type === 'label'` | 182 |
+| branch | `!(collapsed)` | 183 |
+| branch | `item.icon != null` | 215 |
+| branch | `!collapsed` | 217 |
+| branch | `hasActions` | 219 |
 
 ### `components/ui/kit/multi-select`
 
@@ -673,8 +673,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isDarkMode` | 77 |
-| branch | `setupError` | 164 |
+| branch | `setupError` | 119 |
 
 ### `modules/assistant/chat-extension/components/AssistantMenuItem`
 
@@ -682,9 +681,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `selectedAssistantId` | 35 |
-| empty | `availableAssistants.length === 0` | 44 |
-| branch | `dividerAfter` | 134 |
+| branch | `!canRead` | 37 |
+| branch | `selectedAssistantId` | 47 |
+| empty | `availableAssistants.length === 0` | 56 |
+| branch | `dividerAfter` | 146 |
 
 ### `modules/assistant/chat-extension/components/AssistantSelector`
 
@@ -692,7 +692,8 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `availableAssistants.length === 0` | 34 |
+| branch | `!canRead` | 26 |
+| empty | `availableAssistants.length === 0` | 40 |
 
 ### `modules/assistant/chat-extension/components/AssistantStatusChip`
 
@@ -700,8 +701,9 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!selectedAssistantId` | 20 |
-| branch | `!assistant` | 25 |
+| branch | `!canRead` | 26 |
+| branch | `!selectedAssistantId` | 27 |
+| branch | `!assistant` | 32 |
 
 ### `modules/assistant/chat-extension/extension`
 
@@ -824,9 +826,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isAuthenticated` | 22 |
-| branch | `mode === 'login'` | 37 |
-| branch | `mode === 'register'` | 41 |
+| branch | `isAuthenticated` | 19 |
+| branch | `mode === 'login'` | 26 |
+| branch | `mode === 'register'` | 30 |
+
+### `modules/auth/AuthThemeToggle`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `isDarkMode` | 28 |
 
 ### `modules/auth/LinkAccountPage`
 
@@ -843,8 +853,8 @@ Required states: `error`
 
 | kind | condition | line |
 |---|---|---|
-| error | `error` | 52 |
-| branch | `onSwitchToRegister` | 109 |
+| error | `error` | 57 |
+| branch | `onSwitchToRegister` | 114 |
 
 ### `modules/auth/ProviderButtons`
 
@@ -913,13 +923,13 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 55 |
-| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 77 |
-| branch | `attachmentBlocks.length > 0` | 167 |
-| branch | `bubbleBlocks.length > 0` | 196 |
-| branch | `offerCollapse` | 222 |
-| branch | `showEmptyCompletionNotice` | 242 |
-| branch | `isUser` | 261 |
+| branch | `isStreaming \|\| wasStreamingRef.current \|\| isActiveMatch` | 60 |
+| empty | `contents.length === 0 && !showEmptyCompletionNotice` | 88 |
+| branch | `attachmentBlocks.length > 0` | 178 |
+| branch | `bubbleBlocks.length > 0` | 207 |
+| branch | `offerCollapse` | 233 |
+| branch | `showEmptyCompletionNotice` | 253 |
+| branch | `isUser` | 272 |
 
 ### `modules/chat/components/CollapsibleBlock`
 
@@ -976,14 +986,14 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!getSearchBoxContainer` | 127 |
-| branch | `selectedIds.size > 0` | 134 |
-| branch | `canDelete` | 159 |
-| loading | `visibleConversations.length === 0 && !loading` | 183 |
-| error | `error` | 184 |
-| loading | `loading && !isInitialized` | 208 |
-| branch | `visibleConversations.length > 0` | 233 |
-| branch | `hasMore` | 241 |
+| branch | `!getSearchBoxContainer` | 153 |
+| branch | `selectedIds.size > 0` | 160 |
+| branch | `canDelete` | 185 |
+| loading | `visibleConversations.length === 0 && !loading` | 214 |
+| error | `error` | 215 |
+| loading | `loading && !isInitialized` | 239 |
+| branch | `visibleConversations.length > 0` | 266 |
+| branch | `hasMore` | 275 |
 
 ### `modules/chat/components/ConversationPickerPane`
 
@@ -1029,28 +1039,28 @@ Required states: `delayed`, `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!vw \|\| vw <= 0` | 117 |
-| branch | `w <= 0` | 119 |
-| branch | `!el` | 130 |
-| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 264 |
-| branch | `!import.meta.env.DEV` | 296 |
-| branch | `indexOfMessageId(arrRef.current, id) < 0` | 370 |
-| branch | `!el` | 379 |
-| empty | `count === 0` | 386 |
-| branch | `!el` | 404 |
-| branch | `!item` | 407 |
-| branch | `!msg` | 409 |
-| branch | `!c` | 415 |
-| branch | `virtualize` | 420 |
-| branch | `idx < 0` | 422 |
-| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 434 |
-| branch | `!c` | 449 |
-| branch | `top == null` | 452 |
-| loading | `!loading && count === 0` | 475 |
-| branch | `loadingOlder` | 501 |
-| branch | `virtualize` | 511 |
-| branch | `!msg` | 526 |
-| loading | `(loading \|\| isStreaming)` | 582 |
+| branch | `!vw \|\| vw <= 0` | 123 |
+| branch | `w <= 0` | 125 |
+| branch | `!el` | 136 |
+| branch | `inPlaceAnchorSignal.key != null && item.key === inPlaceAnchorSignal.key` | 270 |
+| branch | `!import.meta.env.DEV` | 302 |
+| branch | `indexOfMessageId(arrRef.current, id) < 0` | 376 |
+| branch | `!el` | 385 |
+| empty | `count === 0` | 392 |
+| branch | `!el` | 410 |
+| branch | `!item` | 413 |
+| branch | `!msg` | 415 |
+| branch | `!c` | 421 |
+| branch | `virtualize` | 426 |
+| branch | `idx < 0` | 428 |
+| branch | `el && !anchorRestoreNeeded(el.scrollTop, target)` | 440 |
+| branch | `!c` | 455 |
+| branch | `top == null` | 458 |
+| loading | `!loading && count === 0` | 481 |
+| branch | `loadingOlder` | 507 |
+| branch | `virtualize` | 517 |
+| branch | `!msg` | 532 |
+| loading | `(loading \|\| isStreaming)` | 596 |
 
 ### `modules/chat/components/ModelSelector`
 
@@ -1118,6 +1128,19 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `isEditing` | 92 |
 | branch | `showBackButton` | 138 |
+
+### `modules/chat/components/VirtualizedConversationList`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!vw \|\| vw <= 0` | 111 |
+| branch | `w == null` | 117 |
+| branch | `!el` | 125 |
+| branch | `!import.meta.env.DEV` | 230 |
+| branch | `!virtualize` | 240 |
+| branch | `!conversation` | 276 |
 
 ### `modules/chat/core/components/ChatRightPanel`
 
@@ -1297,12 +1320,12 @@ Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!isNarrow` | 96 |
-| branch | `isNarrow` | 106 |
-| loading | `(conversations.length > 0 \|\| loading)` | 126 |
-| branch | `isNarrow && searchOpenInNarrow` | 147 |
-| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 156 |
-| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 168 |
+| branch | `!isNarrow` | 95 |
+| branch | `isNarrow` | 105 |
+| loading | `(conversations.length > 0 \|\| loading)` | 125 |
+| branch | `isNarrow && searchOpenInNarrow` | 146 |
+| error | `(conversations.length > 0 \|\| loading \|\| error \|\| hasSearch)` | 155 |
+| error | `!loading && conversations.length === 0 && !error && !hasSearch` | 175 |
 
 ### `modules/chat/pages/ConversationPage`
 
@@ -1364,18 +1387,21 @@ Required states: `delayed`, `empty`, `error`
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
-Required states: `delayed`, `open`
+Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!(e.metaKey \|\| e.ctrlKey \|\| e.button === 1)` | 55 |
-| branch | `!c` | 61 |
-| loading | `loading && !isInitialized` | 86 |
-| loading | `!loading && recentConversations.length === 0` | 97 |
-| branch | `!c` | 174 |
-| branch | `active?.closest('[role="menu"]')` | 179 |
-| overlay | `<Dropdown open>` | 286 |
-| branch | `!open && keepMenuOpen` | 293 |
+| empty | `recentError && recentConversations.length === 0` | 146 |
+| branch | `!recentInitialized` | 163 |
+| empty | `recentConversations.length === 0` | 174 |
+| branch | `!(e.metaKey \|\| e.ctrlKey \|\| e.button === 1)` | 205 |
+| branch | `!c` | 213 |
+| branch | `!c` | 249 |
+| branch | `active?.closest('[role="menu"]')` | 278 |
+| branch | `recentLoadingMore` | 307 |
+| branch | `recentError && !recentLoadingMore && recentConversations.length > 0` | 322 |
+| overlay | `<Dropdown open>` | 445 |
+| branch | `!open && keepMenuOpen` | 452 |
 
 ### `modules/citations/components/CitationCard`
 
@@ -3524,11 +3550,12 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversation?.id` | 36 |
-| branch | `!conversation?.id` | 58 |
-| branch | `adminSettings?.enabled === false` | 59 |
-| branch | `!conversation?.id` | 62 |
-| branch | `mode === 'off'` | 122 |
+| branch | `!conversation?.id` | 44 |
+| branch | `!canUse` | 68 |
+| branch | `!conversation?.id` | 69 |
+| branch | `adminSettings?.enabled === false` | 70 |
+| branch | `!conversation?.id` | 73 |
+| branch | `mode === 'off'` | 133 |
 
 ### `modules/memory/components/CoreMemoryBlocksEditor`
 
@@ -3960,13 +3987,35 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `days.size === 1` | 104 |
-| branch | `value.schedule_kind === 'once'` | 156 |
-| branch | `!raw` | 165 |
-| branch | `preset !== 'custom'` | 192 |
-| branch | `preset === 'weekly'` | 208 |
-| branch | `preset === 'monthly'` | 236 |
-| branch | `preset === 'custom'` | 249 |
+| branch | `days.size === 1` | 108 |
+| branch | `value.schedule_kind === 'once'` | 167 |
+| branch | `!raw` | 177 |
+| branch | `preset !== 'custom'` | 204 |
+| branch | `preset === 'weekly'` | 221 |
+| branch | `preset === 'monthly'` | 249 |
+| branch | `preset === 'custom'` | 265 |
+
+### `modules/scheduler/components/ScheduledTaskCard`
+
+Required states: `empty`, `error`, `open`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `open` | 128 |
+| branch | `badge` | 135 |
+| branch | `preview` | 141 |
+| branch | `open` | 189 |
+| error | `run.status === 'failed' && run.error_message` | 195 |
+| branch | `skip` | 201 |
+| error | `!preview && run.status !== 'failed'` | 209 |
+| branch | `task.target_kind === 'prompt'` | 331 |
+| overlay | `<Confirm open>` | 389 |
+| branch | `task.paused_reason === 'completed'` | 415 |
+| branch | `task.paused_reason` | 420 |
+| branch | `expanded` | 444 |
+| branch | `!runs` | 446 |
+| empty | `total === 0` | 448 |
+| branch | `total > perPage` | 464 |
 
 ### `modules/scheduler/components/ScheduledTaskFormDrawer`
 
@@ -3974,41 +4023,34 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!open` | 104 |
-| branch | `!open` | 112 |
-| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 159 |
-| branch | `err` | 249 |
-| branch | `err` | 273 |
-| overlay | `<Drawer open>` | 307 |
-| branch | `canUse` | 332 |
-| branch | `targetKind === 'prompt'` | 371 |
-| branch | `hasDeclaredInputs` | 393 |
-| branch | `testing` | 459 |
-| branch | `testResult` | 464 |
+| branch | `!open` | 183 |
+| branch | `!open` | 191 |
+| branch | `targetKind !== 'workflow' \|\| !hasDeclaredInputs` | 238 |
+| branch | `values.target_kind !== 'workflow' \|\| !hasDeclaredInputs` | 293 |
+| branch | `dyn` | 305 |
+| branch | `values.target_kind === 'workflow' && !hasDeclaredInputs && !isValidJson(values.inputs_json)` | 310 |
+| branch | `!values.model_id.trim()` | 339 |
+| branch | `values.target_kind === 'workflow' && !values.workflow_id.trim()` | 343 |
+| branch | `values.target_kind === 'prompt' && !values.prompt.trim()` | 347 |
+| branch | `dyn` | 352 |
+| overlay | `<Drawer open>` | 386 |
+| branch | `canUse` | 411 |
+| branch | `targetKind === 'prompt'` | 462 |
+| branch | `hasDeclaredInputs` | 484 |
+| branch | `form.formState.errors.schedule?.message` | 543 |
+| branch | `testing` | 573 |
+| branch | `testResult` | 578 |
 
 ### `modules/scheduler/pages/ScheduledTasksPage`
 
-Required states: `delayed`, `empty`, `error`
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `open` | 118 |
-| branch | `badge` | 125 |
-| branch | `preview` | 131 |
-| branch | `open` | 176 |
-| error | `run.status === 'failed' && run.error_message` | 178 |
-| branch | `skip` | 184 |
-| error | `!preview && run.status !== 'failed'` | 192 |
-| branch | `task.paused_reason === 'completed'` | 260 |
-| branch | `task.paused_reason` | 265 |
-| branch | `expanded` | 289 |
-| branch | `!runs` | 291 |
-| empty | `total === 0` | 293 |
-| branch | `total > perPage` | 309 |
-| branch | `task.target_kind === 'prompt'` | 330 |
-| loading | `loading && tasks.length === 0` | 411 |
-| error | `error && tasks.length === 0` | 415 |
-| empty | `tasks.length === 0` | 423 |
+| branch | `tasks.length > 0` | 84 |
+| branch | `hasMore` | 121 |
+| loading | `loading` | 132 |
+| error | `error` | 136 |
 
 ### `modules/scheduler/pages/SchedulerAdminPage`
 
