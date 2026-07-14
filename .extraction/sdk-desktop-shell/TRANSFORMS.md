@@ -93,13 +93,30 @@ the desktop-override constraint require.
   the scoped deviation from "SettingsPage generic → shell"; (a) is NOT globally
   infeasible — it is simply not worth moving a non-generic body whose only movable
   dependency (`HeaderBarContainer`) cannot move.
-- **D-4 (resolved):** `Drawer` + `HeaderBarContainer` (+ their `.desktop` variants)
-  STAY app-side. They are standalone app-wide primitives (40 / 14 `@/` importers),
-  NOT part of AppLayout's render tree. Moving them to `@ziee/shell` would rewrite
-  every consumer's import to a package path, which `localOverridePlugin` (which
-  only swaps `@/`) would NOT resolve to `.desktop` → a desktop regression for all
-  40+ consumers. Keeping them app-side preserves every swap. (An injection seam is
-  unnecessary — AppLayout never renders them.)
+- **D-4 (SUPERSEDED for `Drawer` + `ResizeHandle`; `HeaderBarContainer` still
+  app-side):** The original D-4 kept `Drawer`/`HeaderBarContainer` app-side on the
+  premise that moving them "would rewrite every consumer's import to a package
+  path" → break the `.desktop` swap for 40+ consumers. That premise is FALSE under
+  the **shim-at-`@/`** pattern already proven in THIS chunk for `DivScrollY` +
+  `useWindowMinSize`: the generic core moves to `@ziee/shell`, but the app keeps a
+  thin `@/`-path re-export shim, so **consumers' `@/` imports are unchanged** and
+  `localOverridePlugin` still intercepts that `@/` specifier → `.desktop` on the
+  Tauri build. So:
+  - **`Drawer` MOVED → `@ziee/shell/components/Drawer`** (the core/web body). App
+    keeps `@/…/components/Drawer.tsx` as a shim (`export { Drawer, type DrawerProps }
+    from '@ziee/shell/components/Drawer'`). `Drawer.desktop.tsx` STAYS app-side
+    unchanged — it reaches into `@ziee/desktop/core/platform` + `@tauri-apps/api`
+    for window-chrome behavior, so it can't live in the SDK; its `@/` imports of
+    `ResizeHandle`/`useWindowMinSize`/`DivScrollY` resolve via their shims. The
+    desktop override is byte-identical (same `@/` path, same `.desktop` sibling).
+  - **`ResizeHandle` MOVED → `@ziee/shell/components/ResizeHandle`** (dependency-
+    pure; no `.desktop` variant). App keeps a shim at `@/…/components/ResizeHandle.tsx`.
+  - **`HeaderBarContainer` (+ `.desktop`) still app-side** — a candidate for the
+    identical shim treatment in a later chunk, deferred here to keep the move
+    scoped to what the human asked for (Drawer + resize handle).
+  Both new files are also barrel-exported from `@ziee/shell` (next to `DivScrollY`)
+  for discoverability. Deps `@radix-ui/react-dialog` + `react-icons` added to
+  `@ziee/shell/package.json` (previously transitive via the app).
 
 ## §xvfb — DESKTOP OVERRIDE PROVEN (the equivalence check, run on Linux)
 
