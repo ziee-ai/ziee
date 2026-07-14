@@ -3,7 +3,6 @@
 //! Generates combined OpenAPI specification including both server and desktop endpoints.
 
 use crate::core;
-use std::fs;
 use std::path::Path;
 
 /// Generate combined OpenAPI specification (server + desktop endpoints)
@@ -68,7 +67,7 @@ pub async fn generate_openapi_spec(
     }
 
     // Build server API router (returns combined router + OpenAPI doc)
-    let (server_router, mut api_doc) =
+    let (server_router, api_doc) =
         ziee::build_api_router(&server_modules, &config.server.api_prefix, (*pool).clone());
 
     // Build desktop API routes (these already include /api prefix in their paths)
@@ -78,44 +77,15 @@ pub async fn generate_openapi_spec(
     // Merge desktop routes into server router
     let combined_router = server_router.merge(desktop_router);
 
-    // Finish the API and extract the OpenAPI spec
-    let _router = combined_router.finish_api(&mut api_doc);
-
-    // Serialize to JSON
-    let json = serde_json::to_string_pretty(&api_doc)?;
-
-    // Ensure output directory exists
-    let output_path = Path::new(output_dir);
-    if !output_path.exists() {
-        fs::create_dir_all(output_path)?;
-    }
-
-    // Write openapi.json
-    let openapi_json_path = output_path.join("openapi.json");
-    fs::write(&openapi_json_path, &json)?;
-    println!(
-        "✓ OpenAPI specification written to: {}",
-        openapi_json_path.display()
-    );
-
-    // Generate TypeScript types directly (Rust port of the former
-    // `desktop/ui/openapi/generate-endpoints.ts`). `output_dir` is
+    // Hand off to the framework's parameterized emit TAIL (Chunk B6): it
+    // finishes the API, writes `openapi.json` into `output_dir`, and emits
+    // `types.ts` via the shared (framework-hosted) generator. `output_dir` is
     // `desktop/ui/openapi`, so `types.ts` lands at
-    // `desktop/ui/src/api-client/types.ts`.
-    let types_ts = ziee::generate_types_ts_from_json(&json)?;
+    // `desktop/ui/src/api-client/types.ts` — the formerly-hardcoded relative
+    // path, now supplied by the app at the call site.
+    let output_path = Path::new(output_dir);
     let types_ts_path = output_path.join("../src/api-client/types.ts");
-    if let Some(parent) = types_ts_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&types_ts_path, &types_ts)?;
-    println!(
-        "✓ TypeScript types written to: {}",
-        types_ts_path.display()
-    );
-
-    println!("\n✓ OpenAPI generation complete!");
-    println!("  - OpenAPI spec: {}", openapi_json_path.display());
-    println!("  - TypeScript types: {}", types_ts_path.display());
+    ziee::finish_and_emit(combined_router, api_doc, output_path, &types_ts_path)?;
 
     Ok(())
 }

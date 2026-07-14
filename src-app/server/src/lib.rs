@@ -14,7 +14,13 @@ pub use ziee_core::{impl_json_from, impl_string_to_enum, sse_event_enum};
 /// Rust port of the former `ui/openapi/generate-endpoints.ts`. Re-exported so
 /// the desktop crate can emit its own `types.ts` from the combined OpenAPI spec
 /// without the Node/tsx codegen step.
-pub use openapi::emit_ts::generate_types_ts_from_json;
+pub use ziee_framework::openapi::emit_ts::generate_types_ts_from_json;
+
+/// Chunk B6: the app-agnostic OpenAPI emit TAIL (finish_api → openapi.json →
+/// emit_ts → types.ts, output paths parameterized), moved to `ziee-framework`.
+/// Re-exported at the crate root so the desktop crate can drive it with the
+/// combined (server + desktop) router + its own output paths.
+pub use ziee_framework::openapi::finish_and_emit;
 
 use module_api::ModuleContext;
 use std::net::SocketAddr;

@@ -2,13 +2,24 @@ use crate::core::app_builder;
 use crate::core::config::Config;
 use crate::module_api::ModuleContext;
 use sqlx::postgres::PgPoolOptions;
-use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-pub mod emit_ts;
+// Chunk B6: the OpenAPI TypeScript-client generator + the generation driver TAIL
+// (`finish_api → openapi.json → emit_ts → types.ts`, with the output paths
+// parameterized) now live in `ziee-framework`. The generator + tail are
+// re-exported at the ziee crate root (lib.rs) so existing call sites resolve
+// unchanged; here we consume only the tail.
+use ziee_framework::openapi::finish_and_emit;
 
-/// Generate OpenAPI specification in the output directory
+/// Generate OpenAPI specification in the output directory.
+///
+/// App-specific driver head: loads the ziee `Config`, publishes the process
+/// globals module `init` hooks read, instantiates + initializes the ziee module
+/// set, and builds the API router — then hands the finished router + doc to the
+/// framework's `finish_and_emit` TAIL, which writes `openapi.json` +
+/// `types.ts`. The `types.ts` output path (formerly hardcoded here) is passed
+/// explicitly.
 pub async fn generate_openapi_spec(
     output_dir: &str,
     config_file: Option<String>,
@@ -75,46 +86,15 @@ pub async fn generate_openapi_spec(
 
     // Build API router using shared builder function
     // build_api_router expects PgPool, so we need to extract it from Arc
-    let (api_router, mut api_doc) =
+    let (api_router, api_doc) =
         app_builder::build_api_router(&modules, &config.server.api_prefix, (*pool).clone());
 
-    // Finish the API and extract the OpenAPI spec
-    let _router = api_router.finish_api(&mut api_doc);
-
-    // Serialize to JSON
-    let json = serde_json::to_string_pretty(&api_doc)?;
-
-    // Ensure output directory exists
+    // Hand off to the framework's parameterized emit tail. `output_dir` is
+    // `ui/openapi`, so `types.ts` lands at `ui/src/api-client/types.ts` — the
+    // formerly-hardcoded relative path, now supplied by the app at the call site.
     let output_path = Path::new(output_dir);
-    if !output_path.exists() {
-        fs::create_dir_all(output_path)?;
-    }
-
-    // Write openapi.json
-    let openapi_json_path = output_path.join("openapi.json");
-    fs::write(&openapi_json_path, &json)?;
-    println!(
-        "✓ OpenAPI specification written to: {}",
-        openapi_json_path.display()
-    );
-
-    // Generate TypeScript types directly (Rust port of the former
-    // `ui/openapi/generate-endpoints.ts`). `output_dir` is `ui/openapi`, so
-    // `types.ts` lands at `ui/src/api-client/types.ts`.
-    let types_ts = emit_ts::generate_types_ts_from_json(&json)?;
     let types_ts_path = output_path.join("../src/api-client/types.ts");
-    if let Some(parent) = types_ts_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&types_ts_path, &types_ts)?;
-    println!(
-        "✓ TypeScript types written to: {}",
-        types_ts_path.display()
-    );
-
-    println!("\n✓ OpenAPI generation complete!");
-    println!("  - OpenAPI spec: {}", openapi_json_path.display());
-    println!("  - TypeScript types: {}", types_ts_path.display());
+    finish_and_emit(api_router, api_doc, output_path, &types_ts_path)?;
 
     Ok(())
 }
@@ -210,5 +190,72 @@ update_check:
             !std::fs::read_to_string(&types_path).unwrap().is_empty(),
             "types.ts must be non-empty"
         );
+    }
+
+    /// PER-APP REGEN-DRIFT GUARD (Chunk B6): the generator-correctness golden
+    /// lives in the SDK now (`ziee_framework::openapi::emit_ts` fixture test);
+    /// this app-side guard instead asserts ziee's COMMITTED `types.ts` is what
+    /// the (relocated) generator produces from ziee's COMMITTED `openapi.json`,
+    /// i.e. someone re-ran `just openapi-regen` after a spec-affecting change.
+    #[test]
+    fn types_ts_parity() {
+        assert_parity("../ui");
+    }
+
+    /// Same regen-drift guard for the desktop UI, whose `types.ts` is generated
+    /// by the `ziee-desktop` binary from the combined (server + desktop) spec —
+    /// through this exact (now framework-hosted) generator.
+    #[test]
+    fn types_ts_parity_desktop() {
+        assert_parity("../desktop/ui");
+    }
+
+    /// Assert the generator reproduces the committed `types.ts` for the
+    /// committed `openapi.json` under `<manifest>/<ui_rel>`.
+    fn assert_parity(ui_rel: &str) {
+        let manifest = env!("CARGO_MANIFEST_DIR"); // src-app/server
+        let openapi_path = format!("{}/{}/openapi/openapi.json", manifest, ui_rel);
+        let golden_path = format!("{}/{}/src/api-client/types.ts", manifest, ui_rel);
+
+        let openapi = std::fs::read_to_string(&openapi_path)
+            .unwrap_or_else(|e| panic!("read {}: {}", openapi_path, e));
+        let golden = std::fs::read_to_string(&golden_path)
+            .unwrap_or_else(|e| panic!("read {}: {}", golden_path, e));
+
+        let generated = ziee_framework::openapi::emit_ts::generate_types_ts_from_json(&openapi)
+            .expect("generate");
+
+        if generated != golden {
+            // Find the first differing line to make failures actionable.
+            let g: Vec<&str> = generated.lines().collect();
+            let e: Vec<&str> = golden.lines().collect();
+            let mut first = None;
+            for i in 0..g.len().max(e.len()) {
+                if g.get(i) != e.get(i) {
+                    first = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = first {
+                let lo = i.saturating_sub(2);
+                let mut msg = format!(
+                    "{} types.ts parity mismatch at line {} (generated {} lines, golden {} lines) — run `just openapi-regen`\n",
+                    ui_rel,
+                    i + 1,
+                    g.len(),
+                    e.len()
+                );
+                for j in lo..=(i + 2) {
+                    msg.push_str(&format!(
+                        "  {}: GEN |{}|\n      GOLD|{}|\n",
+                        j + 1,
+                        g.get(j).unwrap_or(&"<EOF>"),
+                        e.get(j).unwrap_or(&"<EOF>")
+                    ));
+                }
+                panic!("{}", msg);
+            }
+            panic!("{} types.ts parity mismatch (trailing-content difference)", ui_rel);
+        }
     }
 }
