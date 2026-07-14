@@ -1,23 +1,7 @@
-import { createContext, useContext } from 'react'
-import type { ThemePreference } from '@/modules/config-client/ConfigClient.store'
-
-export type ThemeName = 'light' | 'dark'
-
-export interface ThemeContextValue {
-  selectedTheme: ThemePreference
-  resolvedTheme: ThemeName
-  isDarkMode: boolean
-  setTheme: (theme: ThemePreference) => void
-}
-
-export const ThemeContext = createContext<ThemeContextValue | undefined>(
-  undefined,
-)
-
-export function useTheme() {
-  const context = useContext(ThemeContext)
-  if (!context) {
-    throw new Error('useTheme must be used within ThemeProvider')
-  }
-  return context
-}
+// Shim → @ziee/shell.
+export { useTheme, ThemeContext } from '@ziee/shell/theme/useTheme'
+export type {
+  ThemeName,
+  ThemeContextValue,
+  ThemePreference,
+} from '@ziee/shell/theme/useTheme'
