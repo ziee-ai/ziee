@@ -43,6 +43,8 @@
         "../../../sdk/packages/framework/src/api-client/index.ts"
       ],
       "@ziee/framework/*": ["../../../sdk/packages/framework/src/*"],
+      "@ziee/gallery": ["../../../sdk/packages/gallery/src/index.ts"],
+      "@ziee/gallery/*": ["../../../sdk/packages/gallery/src/*"],
       "csstype": ["./node_modules/csstype"]
     }
   },

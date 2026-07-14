@@ -11,7 +11,9 @@
       "@ziee/framework/api-client": [
         "../../sdk/packages/framework/src/api-client/index.ts"
       ],
-      "@ziee/framework/*": ["../../sdk/packages/framework/src/*"]
+      "@ziee/framework/*": ["../../sdk/packages/framework/src/*"],
+      "@ziee/gallery": ["../../sdk/packages/gallery/src/index.ts"],
+      "@ziee/gallery/*": ["../../sdk/packages/gallery/src/*"]
     }
   },
   "include": ["src", "tests"],

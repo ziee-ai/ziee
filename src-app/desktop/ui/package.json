@@ -12,6 +12,7 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@ziee/kit": "*",
     "@ziee/framework": "*",
+    "@ziee/gallery": "*",
     "dayjs": "^1.11.20",
     "i18next": "^26.2.0",
     "i18next-browser-languagedetector": "^8.2.1",

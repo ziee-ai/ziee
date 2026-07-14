@@ -40,6 +40,7 @@
     "@uiw/react-codemirror": "^4.25.11",
     "@ziee/kit": "*",
     "@ziee/framework": "*",
+    "@ziee/gallery": "*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -186,8 +187,8 @@
     "gallery:screenshots": "node scripts/capture-gallery-screenshots.mjs",
     "gallery:states": "node scripts/capture-gallery-states.mjs",
     "gallery:forms": "node scripts/capture-gallery-forms.mjs",
-    "gallery:runtime": "node scripts/runtime-health.mjs",
-    "gate:ui": "node scripts/gate-ui.mjs"
+    "gallery:runtime": "node ../../sdk/packages/gallery/scripts/runtime-health.mjs",
+    "gate:ui": "node ../../sdk/packages/gallery/scripts/gate-ui.mjs"
   },
   "type": "module",
   "types": "./dist/index.d.ts"
