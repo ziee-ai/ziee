@@ -34,6 +34,12 @@ ziee-identity = { path = "../../sdk/crates/ziee-identity" }
 # ServerConfig, with the full Config injected through the opaque app_config slot.
 ziee-framework = { path = "../../sdk/crates/ziee-framework" }
 
+# SDK default auth module (Chunk BA): owns the concrete User/Group/Session wire
+# types + (progressively) the auth queries/routes/migrations. Consumed here via
+# equivalence-preserving re-export shims (decision N2) — schemars keys types by
+# short ident, so moving the defining crate leaves the wire schemas unchanged.
+ziee-auth = { path = "../../sdk/crates/ziee-auth" }
+
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"
 

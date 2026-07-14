@@ -12735,11 +12735,26 @@ dependencies = [
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "wiremock",
+ "ziee-auth",
  "ziee-core",
  "ziee-framework",
  "ziee-identity",
  "zip 6.0.0",
  "zstd",
+]
+
+[[package]]
+name = "ziee-auth"
+version = "0.0.0"
+dependencies = [
+ "axum-login",
+ "chrono",
+ "schemars 0.9.0",
+ "serde",
+ "sqlx 0.8.6",
+ "uuid",
+ "ziee-framework",
+ "ziee-identity",
 ]
 
 [[package]]
