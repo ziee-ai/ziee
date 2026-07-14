@@ -11,6 +11,7 @@ import { useMetaThemeColor } from '@/components/ThemeProvider/themeColor'
 import 'overlayscrollbars/overlayscrollbars.css'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { usePopoutSnapBackListener } from '@/modules/chat/core/popout/usePopoutSnapBack'
 
 /**
  * AppLayout - Main application layout with sidebar
@@ -24,6 +25,10 @@ import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
  * - sidebarFooter: Footer section (e.g., user profile)
  */
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  // MAIN-window only (the layout-less /chat-window pop-out route does NOT render
+  // AppLayout): listen for a pop-out window closing and snap its conversation back
+  // in as a pane (ITEM-54). No-op on web.
+  usePopoutSnapBackListener()
   // The app shell is bg-card, but the iOS status/nav bars sample the CANVAS —
   // the <body> background — which is --background app-wide. The shell covers the
   // body, so painting the body --card changes nothing visible; it only makes the

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Text } from '@/components/ui'
 import { ChevronDown, ChevronUp, Loader2, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ApiClient } from '@/api-client'
 import type { MessageSearchMatch } from '@/api-client/types'
 import { cn } from '@/lib/utils'
@@ -51,7 +52,10 @@ export function ConversationFindBar({
   const [activeIndex, setActiveIndex] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const { conversation } = Stores.Chat
+  // Bind to THIS pane's store (audit #9): finding in pane B while pane A is
+  // focused must search + jump within pane B, not the focused pane.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { conversation } = chat
   const conversationId = conversation?.id
   const canLoadMore = matches.length < total
 
@@ -67,8 +71,8 @@ export function ConversationFindBar({
       if (!match) return
       const id = match.message_id
       onActiveMatchChange(id)
-      if (!Stores.Chat.$.messages.has(id)) {
-        const ok = await Stores.Chat.jumpToMessage(id)
+      if (!chat.$.messages.has(id)) {
+        const ok = await chat.jumpToMessage(id)
         if (!ok) return
       }
       // Allow the (possibly newly-jumped) window to render, then scroll the
@@ -77,7 +81,7 @@ export function ConversationFindBar({
         scrollToMessage(id)
       })
     },
-    [onActiveMatchChange, scrollToMessage],
+    [onActiveMatchChange, scrollToMessage, chat],
   )
 
   // Debounced first-page search whenever the query (or conversation) changes.

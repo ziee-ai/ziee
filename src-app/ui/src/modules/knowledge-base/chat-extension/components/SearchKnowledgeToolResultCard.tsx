@@ -3,6 +3,7 @@ import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button, Card, Tag, Text } from '@/components/ui'
 import type { MessageContentDataToolResult } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 import {
@@ -25,6 +26,8 @@ import {
  * MessageFilesView — mirrors LiteratureToolResultCard.
  */
 export function SearchKnowledgeToolResultCard(props: ContentRendererProps) {
+  // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
   const { content } = props
   if (!isSearchKnowledgeResult(content)) return <MessageFilesView {...props} />
   const block = content.content as MessageContentDataToolResult
@@ -37,7 +40,7 @@ export function SearchKnowledgeToolResultCard(props: ContentRendererProps) {
   const [expanded, setExpanded] = useState(false)
 
   const openSource = (h: KbHit) => {
-    Stores.Chat.displayInRightPanel({
+    chat.displayInRightPanel({
       id: `kb:${h.file_id}:${h.page}:${h.char_start}`,
       title: `${h.filename} · p${h.page}`.slice(0, 60),
       type: 'kb_source',

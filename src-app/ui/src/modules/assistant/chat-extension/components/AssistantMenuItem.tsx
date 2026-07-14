@@ -3,6 +3,8 @@ import { Bot, ChevronRight } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
+import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
 /**
@@ -16,9 +18,17 @@ export function AssistantMenuItem() {
   // item would render forever as a dead end ("No assistants available") for a
   // user who also has no Settings -> Assistants page to populate it from.
   const canRead = usePermission(Permissions.AssistantsRead)
-  const { availableAssistants, selectedAssistantId, selectAssistant, loading } =
+  // Per-conversation selection (ITEM-5): the picker store keys the selected
+  // assistant by conversation/pane, so `selectedAssistantId` is derived below
+  // from `selectedByConversation[key]`, not read globally off the store.
+  const { availableAssistants, selectedByConversation, selectAssistant, clearAssistant, loading } =
     Stores.AssistantPicker
   const { close } = usePlusDropdown()
+  // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
+  const pane = useChatPaneOrNull()
+  const key =
+    Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
+  const selectedAssistantId = selectedByConversation[key]
 
   const selectedAssistant = availableAssistants.find(
     (a: any) => a.id === selectedAssistantId,
@@ -27,7 +37,8 @@ export function AssistantMenuItem() {
   if (!canRead) return null
 
   const handleSelect = (id: string | null) => {
-    selectAssistant(id as any)
+    if (id) selectAssistant(key, id)
+    else clearAssistant(key)
     close()
   }
 
