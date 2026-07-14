@@ -27,6 +27,7 @@ CRATES=(
   "ziee-auth|$ROOT/sdk/crates/ziee-auth/migrations"
   "ziee-file|$ROOT/sdk/crates/ziee-file/migrations"
   "ziee-notification|$ROOT/sdk/crates/ziee-notification/migrations"
+  "ziee-onboarding|$ROOT/sdk/crates/ziee-onboarding/migrations"
 )
 
 fail=0

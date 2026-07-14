@@ -127,6 +127,23 @@ impl IdentityResolver for ZieeIdentityResolver {
             None
         }
     }
+
+    /// The access token's unix `exp`, used by the mountable `sync_routes()`
+    /// (chunk sdk-surfaces) to bound the SSE stream deadline. Byte-identical to
+    /// the former inline extraction in `sync::handlers::subscribe_sync` (read the
+    /// `Arc<JwtService>` from extensions, pull + validate the access token from
+    /// the `Authorization` header, take its `exp`). A missing service / header /
+    /// invalid token → `None`, and the stream falls back to the default TTL.
+    fn access_token_exp(&self, parts: &Parts) -> Option<i64> {
+        let jwt = parts.extensions.get::<Arc<JwtService>>()?;
+        parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| JwtService::extract_token_from_header(h).ok())
+            .and_then(|t| jwt.validate_access_token(t).ok())
+            .map(|c| c.exp)
+    }
 }
 
 /// Generic permission extractor, fixed to ziee's resolver. See

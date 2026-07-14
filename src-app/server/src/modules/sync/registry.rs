@@ -21,9 +21,11 @@ use ziee_identity::Principal;
 
 use crate::modules::user::models::{Group, User};
 
-// Re-export the framework registry surface the handler consumes, so
-// `super::registry::{ClientConn, SYNC_CHANNEL_CAPACITY}` keeps resolving.
-pub use ziee_framework::sync::{ClientConn, SYNC_CHANNEL_CAPACITY};
+// Chunk sdk-surfaces moved the SSE subscribe handler into
+// `ziee_framework::sync::sync_routes`, so ziee no longer names `ClientConn` /
+// `SYNC_CHANNEL_CAPACITY` directly (the framework handler consumes them). What
+// ziee still owns is its concrete `SyncConnPrincipal` + the singleton `registry()`
+// the `SyncSurface` impl (`event.rs`) returns to the framework.
 
 /// ziee's per-connection permission snapshot: the acting `User` plus its groups,
 /// captured at connect and refreshed by the handler's periodic re-check. The
@@ -34,6 +36,17 @@ pub use ziee_framework::sync::{ClientConn, SYNC_CHANNEL_CAPACITY};
 pub struct SyncConnPrincipal {
     pub user: User,
     pub groups: Vec<Group>,
+}
+
+/// Build the snapshot from an authenticated `User` + its groups. The
+/// framework's mountable `sync_routes()` (chunk sdk-surfaces) constructs the
+/// per-connection principal through this `From`, linking ziee's
+/// `ZieeIdentityResolver::{User, Group}` to `SyncConnPrincipal` at the mount
+/// site (`sync_routes::<ZieeIdentityResolver, SyncEntity>()`).
+impl From<(User, Vec<Group>)> for SyncConnPrincipal {
+    fn from((user, groups): (User, Vec<Group>)) -> Self {
+        Self { user, groups }
+    }
 }
 
 impl Principal for SyncConnPrincipal {

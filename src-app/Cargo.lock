@@ -12741,6 +12741,7 @@ dependencies = [
  "ziee-health",
  "ziee-identity",
  "ziee-notification",
+ "ziee-onboarding",
  "ziee-server-update",
  "ziee-test-harness",
  "zip 6.0.0",
@@ -12908,8 +12909,11 @@ name = "ziee-framework"
 version = "0.0.0"
 dependencies = [
  "aide",
+ "async-stream",
  "async-trait",
  "axum",
+ "chrono",
+ "futures-util",
  "indexmap 2.14.0",
  "linkme",
  "once_cell",
@@ -12984,6 +12988,18 @@ dependencies = [
  "sqlx 0.8.6",
  "uuid",
  "ziee-identity",
+]
+
+[[package]]
+name = "ziee-onboarding"
+version = "0.0.0"
+dependencies = [
+ "schemars 0.9.0",
+ "serde",
+ "sqlx 0.8.6",
+ "uuid",
+ "ziee-build-support",
+ "ziee-core",
 ]
 
 [[package]]

@@ -55,6 +55,11 @@ ziee-health = { path = "../../sdk/crates/ziee-health" }
 ziee-hardware = { path = "../../sdk/crates/ziee-hardware" }
 ziee-server-update = { path = "../../sdk/crates/ziee-server-update" }
 ziee-notification = { path = "../../sdk/crates/ziee-notification" }
+# `ziee-onboarding` — the generic guide/step completion tracker. Owns the
+# `user_onboarding` table migration (globbed into the merged set), the
+# `OnboardingProgress` wire type, AND the schema-bound repository (its own build
+# DB). ziee keeps the sync-coupled handlers/routes/registration + the FK migration.
+ziee-onboarding = { path = "../../sdk/crates/ziee-onboarding" }
 # `ziee-file` — the generic multi-derivative blob STORE (models/storage/
 # repository/types/utils/permissions/seams). Carries the base `files`/
 # `file_versions` migration (globbed into the merged set). ziee keeps the

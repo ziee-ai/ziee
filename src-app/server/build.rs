@@ -84,6 +84,7 @@ fn compose_merged_migrations() {
         sdk_crates.join("ziee-auth/migrations"),
         sdk_crates.join("ziee-file/migrations"),
         sdk_crates.join("ziee-notification/migrations"),
+        sdk_crates.join("ziee-onboarding/migrations"),
     ];
     ziee_build_support::compose_merged_migrations_from(
         &merged,
