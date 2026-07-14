@@ -36,7 +36,7 @@ impl FilesMcpRepository {
                 created_at, updated_at
             ) VALUES (
                 $1, NULL, 'files', 'Files',
-                'Built-in agentic file access (list_files / read_file / grep_files)',
+                'Built-in agentic file access (list / read / search + create / edit)',
                 true, true, true,
                 'http', $2, '{}'::jsonb,
                 30, false, 'auto', 4,
