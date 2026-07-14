@@ -37,3 +37,4 @@ sdk-testinfra
 sdk-desktop-shell
 sdk-agentkit-consume
 ziee-file-http
+sdk-test-fixtures

@@ -318,7 +318,9 @@ fs2 = "0.4"
 # the integration harness moved to the SDK's ziee-test-harness crate (it
 # re-exports ziee-build-support's worktree_db, so the per-worktree test-DB
 # suffix derivation stays identical to build.rs).
-ziee-test-harness = { path = "../../sdk/crates/ziee-test-harness" }
+# `fixtures` pulls the moved auth/sync mocks (chunk sdk-test-fixtures) that the
+# server integration tests use (oauth/ldap/apple + the SSE sync probe).
+ziee-test-harness = { path = "../../sdk/crates/ziee-test-harness", features = ["fixtures"] }
 mockall.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true

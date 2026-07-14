@@ -12973,13 +12973,20 @@ dependencies = [
 name = "ziee-test-harness"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "jsonwebtoken",
  "portpicker",
  "reqwest 0.12.28",
+ "rsa",
+ "serde_json",
  "sqlx 0.8.6",
  "tempfile",
+ "testcontainers",
  "tokio",
+ "tokio-stream",
  "url",
  "uuid",
+ "wiremock",
  "ziee-build-support",
 ]
 
