@@ -278,8 +278,12 @@ async fn tool_step_resource_link_is_saved_false_persists_a_workflow_file() {
     );
     // The blob exists: the file is downloadable via the file-store REST path,
     // and the bytes round-trip.
+    // The file<->run link lives in the `file_workflow_runs` join table
+    // (chunk `ziee-file`: the store carries no run column).
     let file_row = sqlx::query(
-        "SELECT id, created_by, workflow_run_id FROM files WHERE workflow_run_id = $1",
+        "SELECT f.id, f.created_by, fwr.workflow_run_id \
+         FROM files f JOIN file_workflow_runs fwr ON fwr.file_id = f.id \
+         WHERE fwr.workflow_run_id = $1",
     )
     .bind(run_id)
     .fetch_one(&pool)
@@ -407,11 +411,11 @@ async fn tool_step_resource_link_is_saved_true_references_without_duplicating() 
         0,
         "an is_saved:true link must NOT create a duplicate workflow file"
     );
-    // The pre-existing file's workflow_run_id is still NULL (only referenced).
+    // The pre-existing file has NO run link (only referenced) — no join row.
     let linked: Option<Uuid> =
-        sqlx::query_scalar("SELECT workflow_run_id FROM files WHERE id = $1")
+        sqlx::query_scalar("SELECT workflow_run_id FROM file_workflow_runs WHERE file_id = $1")
             .bind(Uuid::parse_str(&existing_id).unwrap())
-            .fetch_one(&pool)
+            .fetch_optional(&pool)
             .await
             .expect("read referenced file run link");
     assert_eq!(

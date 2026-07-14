@@ -50,6 +50,7 @@ declare_repositories! {
     onboarding: OnboardingRepository => crate::modules::onboarding,
     skill: SkillRepository => crate::modules::skill,
     workflow: WorkflowRepository => crate::modules::workflow,
+    file_workflow_runs: FileWorkflowRunsRepository => crate::modules::workflow::file_runs,
     web_search: WebSearchRepository => crate::modules::web_search,
     lit_search: LitSearchRepository => crate::modules::lit_search,
     js_tool: JsToolRepository => crate::modules::js_tool,

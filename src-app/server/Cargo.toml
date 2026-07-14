@@ -55,6 +55,11 @@ ziee-health = { path = "../../sdk/crates/ziee-health" }
 ziee-hardware = { path = "../../sdk/crates/ziee-hardware" }
 ziee-server-update = { path = "../../sdk/crates/ziee-server-update" }
 ziee-notification = { path = "../../sdk/crates/ziee-notification" }
+# `ziee-file` — the generic multi-derivative blob STORE (models/storage/
+# repository/types/utils/permissions/seams). Carries the base `files`/
+# `file_versions` migration (globbed into the merged set). ziee keeps the
+# domain processing/handlers/routes + re-export shim in `modules::file`.
+ziee-file = { path = "../../sdk/crates/ziee-file" }
 
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"

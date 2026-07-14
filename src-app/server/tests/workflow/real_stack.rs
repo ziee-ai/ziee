@@ -361,8 +361,9 @@ async fn real_stack_combined_all_kinds_completes_with_durable_artifacts() {
     // Fetch the TOOL file specifically (the resource_link-FK provenance check);
     // there are two run-linked files now, so filter by filename.
     let file_row = sqlx::query_as::<_, (Uuid, String, Option<Uuid>)>(
-        "SELECT id, created_by, workflow_run_id FROM files \
-         WHERE workflow_run_id = $1 AND filename = 'enriched.csv'",
+        "SELECT f.id, f.created_by, fwr.workflow_run_id FROM files f \
+         JOIN file_workflow_runs fwr ON fwr.file_id = f.id \
+         WHERE fwr.workflow_run_id = $1 AND f.filename = 'enriched.csv'",
     )
     .bind(run_id)
     .fetch_one(&pool)

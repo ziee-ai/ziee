@@ -10,5 +10,7 @@ ALTER TABLE ONLY public.files
 ALTER TABLE ONLY public.files
     ADD CONSTRAINT files_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
-ALTER TABLE ONLY public.files
-    ADD CONSTRAINT files_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE SET NULL;
+-- NOTE (chunk `ziee-file`): the former `files.workflow_run_id` column + its FK
+-- to `workflow_runs` moved out of the domain-agnostic store. The file<->run
+-- link now lives in the `file_workflow_runs` join table
+-- (workflow/migrations/202607144231_workflow_file_runs.sql).

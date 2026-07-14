@@ -21,6 +21,7 @@ pub mod dispatch;
 pub mod elicit;
 pub mod events;
 pub mod file_io;
+pub mod file_runs;
 pub mod handlers;
 pub mod log_io;
 pub mod log_stream;
