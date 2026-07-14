@@ -238,7 +238,7 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 # becomes inert (the seccomp module gates on `target_os = "linux"`
 # in addition to the feature).
 [target.'cfg(target_os = "linux")'.dependencies]
-sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
+sandbox-seccomp = { path = "../../sdk/crates/sandbox-seccomp", optional = true }
 
 # The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
 # in-guest agent over this shared control protocol. The protocol types are ALSO
@@ -249,7 +249,7 @@ sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 # no CI `cargo build`s the server on Linux, so the macOS/Windows-only
 # declaration never failed to compile.)
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
+sandbox-vm-protocol = { path = "../../sdk/crates/sandbox-vm-protocol" }
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
 # in-distro agent over the Hyper-V vsock instead of `127.0.0.1` — closing the

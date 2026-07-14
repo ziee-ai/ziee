@@ -5415,7 +5415,6 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
- "memoffset",
 ]
 
 [[package]]
@@ -8148,34 +8147,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbox-guest-agent"
-version = "0.1.0"
-dependencies = [
- "libc",
- "sandbox-seccomp",
- "sandbox-vm-protocol",
- "tokio",
- "tokio-vsock",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "sandbox-seccomp"
 version = "0.1.0"
 dependencies = [
  "libseccomp",
  "tempfile",
-]
-
-[[package]]
-name = "sandbox-vm-launcher"
-version = "0.1.0"
-dependencies = [
- "libc",
- "sandbox-vm-protocol",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -10334,19 +10310,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-vsock"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b319ef9394889dab2e1b4f0085b45ba11d0c79dc9d1a9d1afc057d009d0f1c7"
-dependencies = [
- "bytes",
- "futures",
- "libc",
- "tokio",
- "vsock",
-]
-
-[[package]]
 name = "toml"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11127,16 +11090,6 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
-
-[[package]]
-name = "vsock"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba782755fc073877e567c2253c0be48e4aa9a254c232d36d3985dfae0bd5205"
-dependencies = [
- "libc",
- "nix 0.31.3",
-]
 
 [[package]]
 name = "vswhom"
