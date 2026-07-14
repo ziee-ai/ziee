@@ -71,10 +71,19 @@ Claiming a test "fails pre-fix" is only honest if it was RUN that way (B7). Two 
   round-1 code → failed `assertion left: 3, right: 4` (turn 2's entire Tool message
   deleted). This is the regression that would have broken every gpt-oss conversation.
 
+- **The claim REORDERING** — a blind auditor asserted "the branch's riskiest change ships
+  with zero discriminating coverage". Tested rather than argued: a revert-probe (claim
+  disabled at the loop head, delete restored after execution) makes
+  `mcp_approval_loop_unresolvable_tool_errors_and_terminates` **FAIL**. That arm
+  `continue`s BEFORE execution and this branch removed its private delete, so its row can
+  only disappear if the claim precedes execution; revert the ordering ⇒ the row survives
+  ⇒ the loop spins to max_iteration ⇒ red. The claim IS discriminated end-to-end. Probe
+  reverted; tree verified clean.
+
 Honestly labelled as NON-discriminating (recorded rather than overclaimed):
 - **TEST-10** passes with the claim reordering reverted (the pre-fix post-execution
   DELETE succeeded on the happy path). It is a regression guard; **TEST-13** pins the
-  decision the fix turns on.
+  decision the fix turns on, and the revert-probe above covers the ordering.
 - **TEST-1** cannot fail pre-fix (it calls a fn that did not exist), so it carries an
   explicit CONTROL asserting the pre-fix blind-append really yields `["A","B","B"]`,
   with **TEST-17** (`#[should_panic]`) proving the invariant assertion is not vacuous.
