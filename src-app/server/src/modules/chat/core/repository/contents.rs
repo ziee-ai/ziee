@@ -97,7 +97,13 @@ pub async fn append_content(
 /// Append a content block with a pre-registered UUID, computing the next
 /// `sequence_order` as `MAX+1` inside the INSERT. Id-preserving sibling of
 /// `append_content` for elicitation rows whose content id is registered before
-/// insertion. Same sequential-callers assumption — see `append_content`.
+/// insertion.
+///
+/// This is the OTHER writer `append_content`'s header names: its caller is the MCP
+/// extension's detached elicitation task, which can race the approval loop's
+/// `append_content` for the same slot on the same `message_id`. The UNIQUE constraint
+/// catches the collision, but this side's caller uses `let _ = …`, so the losing
+/// insert silently drops the row. See `append_content` for the full note.
 pub async fn append_content_with_id(
     pool: &PgPool,
     id: Uuid,

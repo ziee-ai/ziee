@@ -2575,7 +2575,7 @@ mod tests {
         }
     }
 
-    /// TEST-5b: the orphan hazard with NO intervening flush. `[result X(stale),
+    /// TEST-16: the orphan hazard with NO intervening flush. `[result X(stale),
     /// use X, result X(real)]` — nothing flushes before X's real result arrives, so
     /// `results_by_id.clear()` never runs and cannot help. Only refusing to capture a
     /// result that answers no OUTSTANDING tool_use closes this half.
