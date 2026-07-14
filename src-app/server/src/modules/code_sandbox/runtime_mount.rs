@@ -54,11 +54,18 @@ use dashmap::DashMap;
 use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, OnceCell};
 
+use sqlx::PgPool;
+
 use crate::common::r#type::AppError;
-use crate::modules::code_sandbox::runtime_fetch::{
-    self, FetchError, FetchOutcome, FetchPhase,
+use crate::core::config::CodeSandboxConfig;
+use crate::modules::code_sandbox::runtime_fetch;
+// The rootfs-provider vocabulary (EnsureOutcome / EvictOutcome / FetchOutcome /
+// FetchPhase / FetchError) moved to the engine crate with the carve; re-import
+// it. `ReadyError` STAYS here (it is not in any provider signature).
+use crate::modules::code_sandbox::provider::{
+    EnsureOutcome, EvictOutcome, FetchError, FetchPhase,
 };
-use crate::modules::code_sandbox::types::{CodeSandboxState, HardeningCapabilities};
+use crate::modules::code_sandbox::types::HostCapabilities;
 
 // =====================================================================
 // Per-flavor lazy-init state
@@ -82,26 +89,7 @@ struct MountedRootfs {
     mount_dir: PathBuf,
 }
 
-/// What `ensure_rootfs_ready` returns. The caller (`run_in_sandbox`)
-/// uses `caps` for build_bwrap_argv and `mount_dir` for the
-/// `--ro-bind` source.
-///
-/// `fetch_info` is populated when THIS call did the auto-fetch; the
-/// chat UI uses it to render a "fetched X (Y MB in Z s)" system
-/// note. `None` when the flavor's squashfs was already in the cache.
-///
-/// `artifact_id` identifies the row in `code_sandbox_rootfs_artifacts`
-/// that this mount corresponds to. Callers that wish to participate
-/// in the drain-on-swap protocol (Plan 5 Phase 3) acquire an
-/// `InflightGuard` against it via
-/// `version_manager::acquire_inflight(artifact_id, kind)`.
-#[derive(Debug, Clone)]
-pub struct EnsureOutcome {
-    pub caps: Arc<HardeningCapabilities>,
-    pub mount_dir: PathBuf,
-    pub fetch_info: Option<FetchOutcome>,
-    pub artifact_id: Option<uuid::Uuid>,
-}
+// `EnsureOutcome` moved to `ziee_sandbox::provider` (imported above).
 
 // =====================================================================
 // Errors (mapped to structured AppError responses for MCP)
@@ -217,7 +205,9 @@ impl ReadyError {
 // =====================================================================
 
 pub async fn ensure_rootfs_ready(
-    state: &CodeSandboxState,
+    pool: &PgPool,
+    config: &CodeSandboxConfig,
+    host_caps: &HostCapabilities,
     flavor: &str,
 ) -> Result<EnsureOutcome, AppError> {
     // The READY map is keyed on (version, flavor) so a
@@ -225,24 +215,18 @@ pub async fn ensure_rootfs_ready(
     // mounts the new version against a fresh cell while live execs
     // continue to read the old cell's mount_dir from their captured
     // EnsureOutcome. Two pinned versions can coexist during drain.
-    let pin = match state.pool.as_ref() {
-        Some(pool) => {
-            // Audit B8: propagate hard DB errors here. The fn already
-            // returns `Ok(None)` for the soft cases (GitHub
-            // unreachable, no usable releases) so what's left is the
-            // `current_pin` SELECT / `set pin` UPDATE failing — in
-            // either of those we MUST NOT silently fall back to the
-            // legacy unkeyed cell, which would mount a stale rootfs
-            // for the next exec.
-            crate::modules::code_sandbox::version_manager::ensure_pin_initialized(pool)
-                .await
-                .map_err(|e| AppError::internal_error(format!(
-                    "code_sandbox: rootfs pin resolution failed: {e}"
-                )))?
-                .unwrap_or_default()
-        }
-        None => String::new(),
-    };
+    //
+    // Audit B8: propagate hard DB errors here. `ensure_pin_initialized`
+    // already returns `Ok(None)` for the soft cases (GitHub unreachable, no
+    // usable releases) so what's left is the `current_pin` SELECT / `set pin`
+    // UPDATE failing — in either of those we MUST NOT silently fall back to the
+    // legacy unkeyed cell, which would mount a stale rootfs for the next exec.
+    let pin = crate::modules::code_sandbox::version_manager::ensure_pin_initialized(pool)
+        .await
+        .map_err(|e| {
+            AppError::internal_error(format!("code_sandbox: rootfs pin resolution failed: {e}"))
+        })?
+        .unwrap_or_default();
     let key = if pin.is_empty() {
         flavor.to_string()
     } else {
@@ -255,7 +239,7 @@ pub async fn ensure_rootfs_ready(
         .or_insert_with(|| Arc::new(OnceCell::new()))
         .clone();
     let cached = cell
-        .get_or_init(|| async { do_first_init(state, flavor).await })
+        .get_or_init(|| async { do_first_init(pool, config, host_caps, flavor).await })
         .await;
     match cached {
         Ok(outcome) => Ok(outcome.clone()),
@@ -273,8 +257,13 @@ pub async fn ensure_rootfs_ready(
     }
 }
 
-async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
-    let cache_dir = derive_cache_dir(state);
+async fn do_first_init(
+    pool: &PgPool,
+    config: &CodeSandboxConfig,
+    host_caps: &HostCapabilities,
+    flavor: &str,
+) -> ReadyResult {
+    let cache_dir = derive_cache_dir(config);
 
     // 0. Resolve + auto-fetch. `ensure_fetched` is idempotent: a warm
     //    cache hit short-circuits without touching the network, so we
@@ -282,6 +271,7 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     //    carries the pinned `version` plus stats for `fetch_info`.
     let log_flavor = flavor.to_string();
     let outcome = runtime_fetch::ensure_fetched(
+        pool,
         &cache_dir,
         flavor,
         move |p| {
@@ -339,20 +329,20 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     // 3. PID-ns probe — needs a config view that points at THIS
     // flavor's mount dir, since probe_pid_ns invokes bwrap with
     // `--ro-bind <rootfs>/usr /usr`.
-    let mut probe_cfg = state.config.clone();
+    let mut probe_cfg = config.clone();
     probe_cfg.rootfs_path = Some(mount_dir.to_string_lossy().into_owned());
     let caps = crate::modules::code_sandbox::probes::probe_rootfs_dependent(
         &probe_cfg,
-        &state.host_caps,
+        host_caps,
     )
     .map_err(|reason| ReadyError::PidNsDisabled { reason })?;
 
-    // Register the live mount with the version manager so a
+    // Register the live mount with the engine registry so a
     // subsequent pin-change can drain + evict against the right
     // inflight counter. Idempotent: a re-mount under the same
     // artifact_id reuses the existing `MountedArtifact`.
     let arch = std::env::consts::ARCH.to_string();
-    crate::modules::code_sandbox::version_manager::register_mount(
+    crate::modules::code_sandbox::registry::register_mount(
         artifact_id,
         &fetch_version,
         &arch,
@@ -392,12 +382,12 @@ const _: Option<FetchPhase> = None;
 // Cache dir + per-flavor squashfs lookup
 // =====================================================================
 
-fn derive_cache_dir(state: &CodeSandboxState) -> PathBuf {
+fn derive_cache_dir(config: &CodeSandboxConfig) -> PathBuf {
     // The legacy `rootfs_path` config field points at a mounted tree
     // (e.g. `/var/lib/ziee/sandbox-rootfs/current`). Its parent is
     // the cache dir where per-flavor squashfs files live + where
     // per-flavor mount dirs sit.
-    PathBuf::from(state.config.rootfs_path())
+    PathBuf::from(config.rootfs_path())
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -406,8 +396,8 @@ fn derive_cache_dir(state: &CodeSandboxState) -> PathBuf {
 /// Public accessor for the per-flavor cache dir (parent of the legacy
 /// `current` mount symlink). Used by the streaming consent/fetch path
 /// to drive `runtime_fetch::ensure_fetched` directly with progress.
-pub fn cache_dir(state: &CodeSandboxState) -> PathBuf {
-    derive_cache_dir(state)
+pub fn cache_dir(config: &CodeSandboxConfig) -> PathBuf {
+    derive_cache_dir(config)
 }
 
 /// `true` if a downloaded artifact for the currently-pinned version +
@@ -419,12 +409,8 @@ pub fn cache_dir(state: &CodeSandboxState) -> PathBuf {
 /// Conservative on errors: any DB / FS failure resolves to "not
 /// cached", so the consent prompt fires (over-prompting is far less
 /// bad than silently downloading without consent).
-pub async fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
+pub async fn is_flavor_cached(pool: &PgPool, flavor: &str) -> bool {
     use crate::modules::code_sandbox::version_manager;
-    let pool = match state.pool.as_ref() {
-        Some(p) => p,
-        None => return false,
-    };
     let pinned = match version_manager::current_pin(pool).await {
         Ok(Some(v)) => v,
         _ => return false,
@@ -638,12 +624,7 @@ pub async fn shutdown() {
     }
 }
 
-/// Result of evicting a flavor from the cache.
-#[derive(Debug, Clone, Copy)]
-pub struct EvictOutcome {
-    pub bytes_freed: u64,
-    pub was_cached: bool,
-}
+// `EvictOutcome` moved to `ziee_sandbox::provider` (imported above).
 
 /// Version-aware evict: tear down ONLY the `(version, flavor)`
 /// mount, leaving any sibling version of the same flavor (or any

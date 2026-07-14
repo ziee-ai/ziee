@@ -53,6 +53,11 @@ ziee-control-mcp = { path = "../../sdk/crates/ziee-control-mcp" }
 # into the app's merged set from `sdk/crates/*/migrations/`).
 ziee-health = { path = "../../sdk/crates/ziee-health" }
 ziee-hardware = { path = "../../sdk/crates/ziee-hardware" }
+# Build-DB-free sandbox ENGINE (bwrap hardening core + backend seam + mount
+# registry + resource-limits types), injected back into the retained DB/HTTP
+# halves via the three provider seams. `code_sandbox_seccomp` forwards to the
+# engine's feature (which owns the `sandbox-seccomp` static link).
+ziee-sandbox = { path = "../../sdk/crates/ziee-sandbox" }
 ziee-server-update = { path = "../../sdk/crates/ziee-server-update" }
 ziee-notification = { path = "../../sdk/crates/ziee-notification" }
 # `ziee-onboarding` — the generic guide/step completion tracker. Owns the
@@ -230,26 +235,13 @@ path = "tests/mcp/examples/mock_sampling_server.rs"
 # the in-VM guest agent applies an identical filter.
 default = ["gpu-detect", "code_sandbox_seccomp"]
 gpu-detect = ["ziee-hardware/gpu-detect"]
-code_sandbox_seccomp = ["dep:sandbox-seccomp"]
-
-# Linux-only deps. `libseccomp` is `optional = true` so the feature
-# machinery (`dep:libseccomp`) above can still reference it; on
-# Mac/Windows, the dep is target-skipped and the feature flag
-# becomes inert (the seccomp module gates on `target_os = "linux"`
-# in addition to the feature).
-[target.'cfg(target_os = "linux")'.dependencies]
-sandbox-seccomp = { path = "../../sdk/crates/sandbox-seccomp", optional = true }
-
-# The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over this shared control protocol. The protocol types are ALSO
-# compiled on Linux — `backend/vm_long_lived` is intentionally not platform-gated
-# (it needs to exist on Linux for a uniform `SandboxBackend` return signature),
-# and it imports `sandbox_vm_protocol` unconditionally. So the dep must resolve
-# on every supported OS, not just macOS/Windows. (This was a latent main bug:
-# no CI `cargo build`s the server on Linux, so the macOS/Windows-only
-# declaration never failed to compile.)
-[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-sandbox-vm-protocol = { path = "../../sdk/crates/sandbox-vm-protocol" }
+# The seccomp code moved to the `ziee-sandbox` engine with the carve, so the
+# server feature now FORWARDS to the engine's `code_sandbox_seccomp` (which owns
+# the Linux-gated optional `sandbox-seccomp` static link). Non-Linux builds
+# resolve it to an inert no-op exactly as before. `sandbox-seccomp` +
+# `sandbox-vm-protocol` are no longer named by any retained server file — the
+# engine depends on them directly, and the server gets them transitively.
+code_sandbox_seccomp = ["ziee-sandbox/code_sandbox_seccomp"]
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
 # in-distro agent over the Hyper-V vsock instead of `127.0.0.1` — closing the

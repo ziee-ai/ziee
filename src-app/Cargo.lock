@@ -12649,8 +12649,6 @@ dependencies = [
  "rmcp",
  "rquickjs",
  "rsa",
- "sandbox-seccomp",
- "sandbox-vm-protocol",
  "schemars 0.9.0",
  "semver",
  "serde",
@@ -12695,6 +12693,7 @@ dependencies = [
  "ziee-identity",
  "ziee-notification",
  "ziee-onboarding",
+ "ziee-sandbox",
  "ziee-server-update",
  "ziee-test-harness",
  "zip 6.0.0",
@@ -12953,6 +12952,35 @@ dependencies = [
  "uuid",
  "ziee-build-support",
  "ziee-core",
+]
+
+[[package]]
+name = "ziee-sandbox"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "dashmap",
+ "hex",
+ "libc",
+ "once_cell",
+ "rmcp",
+ "sandbox-seccomp",
+ "sandbox-vm-protocol",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx 0.8.6",
+ "tokio",
+ "tracing",
+ "uuid",
+ "windows-service",
+ "windows-sys 0.59.0",
+ "winreg 0.52.0",
+ "ziee-core",
+ "ziee-framework",
 ]
 
 [[package]]

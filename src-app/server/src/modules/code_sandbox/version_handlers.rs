@@ -153,7 +153,8 @@ fn validate_install_request(
 /// 503 when the sandbox isn't initialized (e.g. `enabled: false` in
 /// config) so the admin UI gets a clear error rather than a panic.
 fn live_pool() -> Result<std::sync::Arc<sqlx::PgPool>, (StatusCode, crate::common::AppError)> {
-    let state = config::get_state().ok_or_else(|| {
+    // Init gate: the sandbox must be initialized (enabled + boot probe passed).
+    let _state = config::get_state().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             crate::common::AppError::new(
@@ -163,17 +164,11 @@ fn live_pool() -> Result<std::sync::Arc<sqlx::PgPool>, (StatusCode, crate::commo
             ),
         )
     })?;
-    let pool = state.pool.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            crate::common::AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_POOL_MISSING",
-                "code_sandbox state has no DB pool wired",
-            ),
-        )
-    })?;
-    Ok(pool.clone())
+    // The DB pool no longer lives on the (de-`pool`-ed) engine state; source it
+    // from the global repository factory.
+    Ok(std::sync::Arc::new(
+        crate::core::repository::Repos.pool().clone(),
+    ))
 }
 
 /// Derive the rootfs cache root (parent of the `current` symlink that
@@ -232,10 +227,12 @@ pub async fn get_versions_handler(
     // than a blanket 503. (install / set-pin / delete still require a live pool
     // and keep their 503.)
     let status = match config::get_state() {
-        Some(state) => match state.pool.as_ref() {
-            Some(pool) => version_manager::status(pool).await.map_err(map_version_err)?,
-            None => version_manager::available_only(config::SandboxAvailability::PoolMissing).await,
-        },
+        // The pool no longer lives on the engine state (carve); source it from
+        // the global repository factory. The `PoolMissing` availability variant
+        // is retained (wire-compat) but is no longer produced here.
+        Some(_state) => version_manager::status(crate::core::repository::Repos.pool())
+            .await
+            .map_err(map_version_err)?,
         None => version_manager::available_only(config::init_status()).await,
     };
     Ok((StatusCode::OK, Json(status)))
