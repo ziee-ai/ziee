@@ -21,14 +21,22 @@ production functions and MUST FAIL on current code. Everything else is supportin
 - **TEST-11** (tier: integration) [covers: ITEM-6] file: `src-app/server/tests/chat/append_content_ordering_test.rs` — asserts: after migration 158, `message_contents` carries EXACTLY ONE unique index on `(message_id, sequence_order)` (query `pg_indexes`/`pg_constraint`), the redundant `idx_message_contents_message_seq_unique` is gone, and the surviving `uq_message_contents_message_sequence` still rejects a colliding `sequence_order` — the protection is preserved, only the duplicate removed.
 - **TEST-12** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/chat/core/repository/contents.rs` — asserts: doc-comment accuracy guard — the `append_content` header does NOT claim the UNIQUE constraint is still "the next step" (a `#[test]` over `include_str!(file!())` asserting the stale phrasing is absent). Mirrors the existing docstring-accuracy check added by the sibling `chat-toolresult-pairing` fix (commit `51b5928a8`, "docstring accuracy").
 
+## Added in FIX_ROUND-1 (blind-audit findings — no prior TEST-ID may be dropped, A5)
+
+- **TEST-13** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: the claim VERDICT. `claim_outcome(Ok(true)) == Won` (we own the execution), `claim_outcome(Ok(false)) == AlreadyClaimed` (a concurrent pass claimed it — MUST NOT execute), `claim_outcome(Err) == Failed` (fail loudly). This is the leg that DISCRIMINATES the fix: branching only on `Err` — discarding `delete_tool_approval`'s `Ok(rows_affected > 0)` — silently turns AlreadyClaimed into Won, i.e. a double-run. TEST-10 cannot discriminate because the bug needs a losing/failing DELETE the HTTP harness cannot induce.
+- **TEST-14** (tier: unit) [covers: ITEM-2] file: `src-app/server/src/modules/chat/core/services/streaming.rs` — asserts: a `tool_use_id` reused across TURNS (gpt-oss/harmony streams the constant `"tool_use"`; `resolve_unique_tool_use_id` scopes uniqueness per `message_id`) is NOT a duplicate — both turns keep their own result and nothing is dropped. **Verified to fail on the pre-fix (global-scope) code**: turn 2's whole Tool message was deleted (`left: 3, right: 4`), which would have unpaired its tool_use and 400'd every gpt-oss conversation.
+- **TEST-15** (tier: unit) [covers: ITEM-1] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: `replace_or_collect_tool_results` ignores the same id in an OLDER turn — it must not overwrite that turn's result (history corruption) nor swallow the leftover, which would leave the CURRENT tool_use unanswered.
+- **TEST-16** (tier: unit) [covers: ITEM-3] file: `src-app/server/src/modules/chat/core/services/streaming.rs` — asserts: the orphan half that `results_by_id.clear()` could NOT close — `[result X(stale), use X, result X(real)]` never flushes in between, so only refusing to capture a result that answers no OUTSTANDING tool_use fixes it. X must carry its real result.
+- **TEST-17** (tier: unit) [covers: ITEM-1, ITEM-2] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: `#[should_panic]` — the `assert_single_result_per_tool_use` invariant helper actually CATCHES a duplicated id, proving the assertions built on it (incl. TEST-1's control) are not vacuous. Replaces a `catch_unwind` control that swapped the process-global panic hook and would have swallowed parallel tests' panic output.
+
 ## Coverage map (bipartite check)
 
 | ITEM | Covered by |
 |---|---|
-| ITEM-1 | TEST-1, TEST-6, TEST-7, TEST-8 |
-| ITEM-2 | TEST-1, TEST-2, TEST-3, TEST-4, TEST-9 |
-| ITEM-3 | TEST-5 |
-| ITEM-4 | TEST-10 |
+| ITEM-1 | TEST-1, TEST-6, TEST-7, TEST-8, TEST-15, TEST-17 |
+| ITEM-2 | TEST-1, TEST-2, TEST-3, TEST-4, TEST-9, TEST-14, TEST-17 |
+| ITEM-3 | TEST-5, TEST-16 |
+| ITEM-4 | TEST-10, TEST-13 |
 | ITEM-5 | TEST-12 |
 | ITEM-6 | TEST-11 |
 | ITEM-7 | TEST-9 |
