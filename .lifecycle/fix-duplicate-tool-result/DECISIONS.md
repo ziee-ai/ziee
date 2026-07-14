@@ -35,8 +35,10 @@ builds its own separate request and has no tool blocks), and `:468` is after
 `positions`, so it must count the true deduped set of results, not phantom duplicates.
 
 ### DEC-4: ITEM-4 — claim-then-execute, or keep execute-then-delete?
-**Resolution:** Claim-then-execute. DELETE the approval row BEFORE running the tool; if the DELETE
-fails, SKIP execution and record an `is_error` result so the `tool_use` stays paired.
+**Resolution:** Claim-then-execute. DELETE the approval row BEFORE running the tool.
+~~If the DELETE fails, SKIP execution and record an `is_error` result so the `tool_use` stays
+paired.~~ **REVISED after the blind audit falsified that disposition — see DEC-10.** The
+claim-failure branch now propagates the error instead.
 **Basis:** user — surfaced as an explicit option picker and chosen by khoi ("Fix all 4 adjacent
 defects"), with the trade-off stated in the approved plan and re-stated at approval time: a crash
 between the claim and the result append leaves the tool un-run (its `tool_use` then gets a
@@ -45,6 +47,34 @@ silently re-running an expensive DE analysis and appending a second `tool_result
 exists in the SAME loop: the no-`server_id` arm (`mcp.rs:653`) already deletes the approval row
 before erroring out, commented "delete the approval row so the loop can't spin here to
 max_iteration (the reported bug)".
+
+### DEC-10: What does each outcome of the claim DELETE authorize? (supersedes DEC-4's failure branch)
+**Resolution:** All three outcomes are distinct and total — `claim_outcome()` → `ClaimOutcome`:
+- `Ok(true)` → **Won**: we deleted the row, we own this execution.
+- `Ok(false)` → **AlreadyClaimed**: zero rows, so a concurrent pass claimed it and is producing
+  the result. Skip **silently, emitting nothing** — an error result here would BE the second
+  answer for this `tool_use`.
+- `Err` → **Failed**: propagate (`return Err`), failing the turn loudly.
+
+**Basis:** codebase + audit. DEC-4's original "skip with an `is_error` result" was **wrong on both
+halves**, and the blind audit proved it:
+1. `delete_tool_approval` returns `Ok(rows_affected() > 0)` (`approval/repository.rs:390`). The
+   bool IS the claim verdict. Discarding it and branching only on `Err` silently turns
+   AlreadyClaimed into Won — a double-run of an approved, side-effecting tool. The exactly-once
+   property DEC-4 was chosen for was not actually implemented.
+2. On `Err` the row **survives**, so `after_llm_call` re-fetches it via
+   `get_approved_tools_for_branch` and executes the tool for real — producing a SECOND
+   `tool_result` alongside the fabricated `is_error` one. DEC-4's disposition created the very
+   duplicate this feature exists to remove.
+   Propagating is the only honest option: a failed DELETE means we cannot know whether the row is
+   gone, so we can neither safely execute (maybe a double-run) nor safely skip (it may re-execute
+   later anyway). A failing DELETE is an unhealthy DB — the result-append that follows would most
+   likely fail too — so failing the turn loudly is both correct and consistent with fail-closed
+   treatment of an approval (a security boundary).
+
+The user's chosen intent (exactly-once, never silently re-run an expensive tool) is PRESERVED and
+strengthened; only the mechanism for the failure branch changed, so this is not a reversal of a
+human decision (no HUMAN_FEEDBACK item needed).
 
 ### DEC-5: Does this feature introduce an operational tunable (settings row vs fixed constant)?
 **Resolution:** No tunable is introduced. Nothing to make admin-configurable.

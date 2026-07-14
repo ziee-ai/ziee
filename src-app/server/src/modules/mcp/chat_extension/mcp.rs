@@ -331,6 +331,35 @@ fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSe
     }
 }
 
+/// What a claim attempt (the DELETE of the approval row) authorizes.
+#[derive(Debug, PartialEq, Eq)]
+enum ClaimOutcome {
+    /// We deleted the row — we own this execution.
+    Won,
+    /// Zero rows deleted: a concurrent pass already claimed it and is producing the
+    /// result. Skip WITHOUT emitting anything — an error result here would be the
+    /// second answer for this tool_use.
+    AlreadyClaimed,
+    /// The DELETE itself failed. We cannot tell whether the row survives, so we can
+    /// neither safely execute nor safely skip — fail the turn loudly.
+    Failed,
+}
+
+/// Decide what a claim attempt authorizes, from `delete_tool_approval`'s
+/// `Result<bool>` (the bool is `rows_affected() > 0`).
+///
+/// Split out from the loop so the exactly-once decision — the whole point of
+/// claiming before executing — is directly unit-testable. Discarding the bool and
+/// branching only on `Err` silently turns `AlreadyClaimed` into `Won`, which is a
+/// double-execution.
+fn claim_outcome<E>(delete_result: Result<bool, E>) -> ClaimOutcome {
+    match delete_result {
+        Ok(true) => ClaimOutcome::Won,
+        Ok(false) => ClaimOutcome::AlreadyClaimed,
+        Err(_) => ClaimOutcome::Failed,
+    }
+}
+
 /// Fold freshly-executed tool results into an assembled request WITHOUT ever
 /// producing two `tool_result` blocks for one `tool_use_id` (which Anthropic
 /// rejects: "each tool_use must have a single result").
@@ -354,12 +383,33 @@ fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSe
 /// still-unapproved tool as a permanent gap, and synthesizes a placeholder for it —
 /// then this path executes it for real.
 ///
+/// SCOPE — only the CURRENT (last) tool batch is searched, never the whole history.
+/// A `tool_use_id` is unique only within one assistant message
+/// (`resolve_unique_tool_use_id` seeds its used-set from `WHERE message_id = $1`,
+/// and deliberately tolerates gpt-oss/harmony's non-unique constant `"tool_use"`),
+/// so an id can recur in an OLDER turn. Searching the whole request would overwrite
+/// that older turn's result — corrupting history — and report no leftover, leaving
+/// the CURRENT tool_use unanswered. The results we are folding in belong to the
+/// batch being resumed, which is the last one.
+///
 /// Pure + registry-free so the invariant is directly unit-testable.
 fn replace_or_collect_tool_results(
     messages: &mut [ai_providers::ChatMessage],
     fresh: Vec<ai_providers::ContentBlock>,
 ) -> Vec<ai_providers::ContentBlock> {
     let mut leftovers = Vec::new();
+
+    // Start of the current batch: the last Assistant message carrying a tool_use.
+    // Everything from there on is this turn's Assistant/Tool(/User) group.
+    let batch_start = messages
+        .iter()
+        .rposition(|m| {
+            matches!(m.role, ai_providers::Role::Assistant)
+                && m.content
+                    .iter()
+                    .any(|b| matches!(b, ai_providers::ContentBlock::ToolUse { .. }))
+        })
+        .unwrap_or(0);
 
     for block in fresh {
         let id = match &block {
@@ -372,7 +422,7 @@ fn replace_or_collect_tool_results(
             }
         };
 
-        let existing = messages.iter_mut().find_map(|m| {
+        let existing = messages[batch_start..].iter_mut().find_map(|m| {
             m.content.iter_mut().find(|b| {
                 matches!(b, ai_providers::ContentBlock::ToolResult { tool_use_id, .. } if *tool_use_id == id)
             })
@@ -706,52 +756,55 @@ impl McpChatExtension {
             let input = approval.tool_input.clone();
 
             // CLAIM the approval BEFORE executing. The row is what makes a tool
-            // eligible to run, so deleting it first is what makes execution
-            // exactly-once: `get_approved_tools_for_branch` can no longer return it
-            // to a subsequent before_llm_call. This used to run AFTER execution with
-            // its error swallowed, so a failed DELETE silently re-ran the tool on the
-            // next pass and appended a SECOND tool_result row for this tool_use_id.
+            // eligible to run, so consuming it first is what makes execution
+            // exactly-once: `get_approved_tools_for_branch` can no longer hand it to
+            // a subsequent pass. This used to run AFTER execution with its error
+            // swallowed, so a failed DELETE silently re-ran the tool and appended a
+            // SECOND tool_result row for this tool_use_id.
             //
-            // If the claim fails we must NOT execute: another pass may already have,
-            // and re-running a side-effecting tool is worse than not running it. Skip
-            // with an is_error result so the tool_use still gets exactly one answer
-            // and the request stays protocol-valid.
+            // The DELETE is the claim, and its ROW COUNT is the verdict — that is the
+            // whole point, so all three outcomes are handled distinctly:
+            //   Ok(true)  — we deleted the row: we own this execution.
+            //   Ok(false) — zero rows: a concurrent pass already claimed it and is
+            //               producing the result. Skip silently and push NOTHING;
+            //               pushing an error here would be the second result.
+            //   Err       — the DB is unhealthy. Fail the turn loudly rather than
+            //               guess: we cannot know whether the row is gone, so we can
+            //               neither safely execute (maybe a double-run of an
+            //               expensive tool) nor safely skip (the row may survive and
+            //               re-execute later anyway, which is what a swallowed error
+            //               used to cause). The result-append that follows would most
+            //               likely fail too.
             //
-            // Trade-off (DEC-4): a crash between the claim and the result append
-            // leaves the tool un-run; its tool_use then gets a synthesized is_error
-            // placeholder on the next turn — degraded but valid, and strictly better
-            // than silently re-running an expensive tool. Same ordering the
-            // no-server_id arm below already uses.
-            if let Err(e) = Repos
+            // Trade-off (DEC-4, revised): a crash between the claim and the result
+            // append leaves the tool un-run; its tool_use then gets a synthesized
+            // is_error placeholder on the next turn — degraded but valid, and better
+            // than silently re-running an expensive tool.
+            let claim = Repos
                 .chat
                 .mcp
                 .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                .await
-            {
-                tracing::error!(
-                    "Failed to claim (delete) the approval record for tool_use_id={}: {}. \
-                     Skipping execution to avoid a double-run; answering with an error result.",
-                    tool_use_id,
-                    e
-                );
-                tool_results.push(
-                    McpContentData::ToolResult {
-                        tool_use_id: tool_use_id.clone(),
-                        name: Some(tool_name.clone()),
-                        server_id: approval.server_id.map(|id| id.to_string()),
-                        content: "Tool execution was skipped: the approval record could not be \
-                                  claimed, so running it now risks executing it twice."
-                            .to_string(),
-                        is_error: Some(true),
-                        attachment: None,
-                        images: None,
-                        resource_links: None,
-                        hidden_content: None,
-                        structured_content: None,
-                    }
-                    .to_message_content(),
-                );
-                continue;
+                .await;
+            match claim_outcome(claim.as_ref().map(|won| *won)) {
+                ClaimOutcome::Won => {}
+                ClaimOutcome::AlreadyClaimed => {
+                    tracing::warn!(
+                        "Approval for tool_use_id={} was already claimed by another pass; \
+                         skipping execution here so the tool runs exactly once.",
+                        tool_use_id
+                    );
+                    continue;
+                }
+                ClaimOutcome::Failed => {
+                    let e = claim.expect_err("Failed implies Err");
+                    tracing::error!(
+                        "Failed to claim the approval record for tool_use_id={}: {}. Failing \
+                         the turn rather than risk executing the tool twice.",
+                        tool_use_id,
+                        e
+                    );
+                    return Err(e);
+                }
             }
 
             // Use server_id from approval record (stored separately)
@@ -3507,8 +3560,9 @@ impl ChatExtension for McpChatExtension {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_artifact_download_url, file_download_origin, replace_or_collect_tool_results,
-        saved_artifact_hidden_content_guidance, tool_system_guidance,
+        build_artifact_download_url, claim_outcome, file_download_origin,
+        replace_or_collect_tool_results, saved_artifact_hidden_content_guidance,
+        tool_system_guidance, ClaimOutcome,
     };
     use crate::core::config::CodeSandboxConfig;
     use uuid::Uuid;
@@ -3613,23 +3667,21 @@ mod tests {
         // CONTROL — the PRE-FIX behavior on this exact shape, to prove the test is
         // not vacuous. The old code appended every fresh result as a User message
         // unconditionally; on this shape that is the reported bug verbatim.
+        // (That `assert_single_result_per_tool_use` actually CATCHES this is proven
+        // separately by `invariant_assertion_catches_a_duplicate`, via #[should_panic]
+        // — catching it inline would need a process-global panic-hook swap, which
+        // would swallow the output of any genuinely failing test running in parallel.)
         {
             let mut pre_fix = request_messages.clone();
             pre_fix.push(ai_providers::ChatMessage {
                 role: ai_providers::Role::User,
                 content: vec![tool_result("B", "DE analysis complete: 412 genes")],
             });
-            let ids = result_ids_all(&pre_fix);
             assert_eq!(
-                ids,
+                result_ids_all(&pre_fix),
                 vec!["A", "B", "B"],
                 "CONTROL: blind-append (pre-fix) really does answer tool_use B twice — \
                  this is the shape the provider rejects"
-            );
-            assert!(
-                std::panic::catch_unwind(|| assert_single_result_per_tool_use(&pre_fix)).is_err(),
-                "CONTROL: the invariant assertion must actually catch the pre-fix duplicate \
-                 (else this test proves nothing)"
             );
         }
 
@@ -3664,6 +3716,81 @@ mod tests {
         ));
         assert!(matches!(request_messages[1].role, ai_providers::Role::Tool));
         assert_eq!(request_messages.len(), 2, "no trailing User message was needed");
+    }
+
+    /// TEST-13: the claim verdict. `delete_tool_approval` returns
+    /// `Ok(rows_affected() > 0)`, and that bool IS the claim: `Ok(false)` means a
+    /// concurrent pass already claimed the row and this one must NOT execute.
+    /// Branching only on `Err` — discarding the bool — silently turns AlreadyClaimed
+    /// into Won, i.e. a double-run of an approved, side-effecting tool. This is the
+    /// leg that discriminates the fix; the integration test cannot, because the bug
+    /// needs a losing/failing DELETE it has no way to induce.
+    #[test]
+    fn claim_outcome_distinguishes_won_already_claimed_and_failed() {
+        assert_eq!(
+            claim_outcome::<()>(Ok(true)),
+            ClaimOutcome::Won,
+            "we deleted the row — we own the execution"
+        );
+        assert_eq!(
+            claim_outcome::<()>(Ok(false)),
+            ClaimOutcome::AlreadyClaimed,
+            "zero rows deleted means someone else claimed it — MUST NOT execute (this is \
+             the case a bool-discarding claim silently gets wrong)"
+        );
+        assert_eq!(
+            claim_outcome(Err(())),
+            ClaimOutcome::Failed,
+            "a failed DELETE leaves the row's fate unknown — fail loudly, never guess"
+        );
+    }
+
+    /// Proves the invariant assertion used by the tests above is not vacuous: given a
+    /// genuinely duplicated id it MUST panic. Pairs with the CONTROL block in
+    /// `resume_of_a_mixed_batch_…`.
+    #[test]
+    #[should_panic(expected = "answered by MORE THAN ONE tool_result")]
+    fn invariant_assertion_catches_a_duplicate() {
+        assert_single_result_per_tool_use(&[ai_providers::ChatMessage {
+            role: ai_providers::Role::Tool,
+            content: vec![tool_result("B", "one"), tool_result("B", "two")],
+        }]);
+    }
+
+    /// The current batch is the LAST one. An id reused by an OLDER turn (gpt-oss's
+    /// constant `"tool_use"`) must not be found: overwriting it would corrupt that
+    /// turn's history AND report no leftover, leaving the CURRENT tool_use unanswered.
+    #[test]
+    fn replace_or_collect_ignores_the_same_id_in_an_older_turn() {
+        let mut msgs = vec![
+            // Older, fully-resolved turn reusing the same id.
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("tool_use", "srv__search")],
+            },
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("tool_use", "turn-1 result")],
+            },
+            // Current batch: same id, awaiting approval → no result block yet.
+            ai_providers::ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("tool_use", "srv__run_de_analysis")],
+            },
+        ];
+        let leftovers =
+            replace_or_collect_tool_results(&mut msgs, vec![tool_result("tool_use", "turn-2 real")]);
+
+        assert_eq!(
+            leftovers.len(),
+            1,
+            "the current tool_use has no result block yet, so the result must be appended"
+        );
+        assert_eq!(
+            result_text(&msgs[1].content[0]),
+            "turn-1 result",
+            "the OLDER turn's result must not be overwritten"
+        );
     }
 
     /// TEST-6: an existing block for the id is replaced IN PLACE — same message, same

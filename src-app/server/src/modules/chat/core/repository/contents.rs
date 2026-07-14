@@ -234,34 +234,56 @@ pub async fn update_content_json(
 
 #[cfg(test)]
 mod tests {
-    /// TEST-12: `append_content`'s header must not re-acquire the stale claim that
-    /// `UNIQUE (message_id, sequence_order)` is still "the next step". It shipped —
-    /// twice (migrations 114 and 124) — and a comment that says otherwise sends the
-    /// next reader looking for a guard that is already there, or worse, adding a
-    /// third one. The constraint's real name is asserted so a rename can't quietly
-    /// falsify the comment either.
+    /// TEST-12: `append_content`'s header tells the reader that
+    /// `UNIQUE (message_id, sequence_order)` already exists and names the constraint
+    /// enforcing it — it used to describe that constraint as future work ("the next
+    /// step") long after migration 124 shipped it, which sends the next reader
+    /// looking for a guard that is already there, or worse, adding a third one.
     ///
-    /// Source-scanning test, mirroring `code_sandbox::backend::wsl2`'s
-    /// `med3_wslenv_credential_leak_regression`. Only the production section is
-    /// scanned — the test mod below necessarily quotes the forbidden phrasing.
+    /// Rather than lint the prose (any paraphrase would slip through), this checks
+    /// the doc against the SCHEMA: every constraint/index name the comment cites must
+    /// actually be created by a migration. So a rename or a removal of the real guard
+    /// fails here, which is the property worth protecting — a doc that names a
+    /// constraint nobody can find is exactly the defect this replaces.
+    ///
+    /// Source-scanning shape mirrors `code_sandbox::backend::wsl2`'s
+    /// `med3_wslenv_credential_leak_regression`; the production section is scanned
+    /// alone so the test mod's own strings can't satisfy it.
     #[test]
-    fn append_content_doc_does_not_claim_the_unique_constraint_is_pending() {
-        let full_src = include_str!("contents.rs");
-        let normalized = full_src.replace("\r\n", "\n");
+    fn append_content_doc_cites_a_constraint_that_really_exists() {
+        let normalized = include_str!("contents.rs").replace("\r\n", "\n");
         let prod_src = normalized
             .split_once("#[cfg(test)]\nmod tests {")
             .map(|(prod, _)| prod)
             .expect("test mod marker present");
 
+        let cited = "uq_message_contents_message_sequence";
         assert!(
-            !prod_src.contains("is the next step"),
-            "append_content's doc comment still describes the UNIQUE constraint as future \
-             work, but it shipped in migration 124 (uq_message_contents_message_sequence)."
+            prod_src.contains(cited),
+            "append_content's doc must name the constraint that enforces the \
+             (message_id, sequence_order) invariant, so a reader can find it."
         );
+
+        // The cited name must be real: some migration must create it.
+        let migrations = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
+        let mut found_in = None;
+        for entry in std::fs::read_dir(migrations).expect("read migrations dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("sql") {
+                continue;
+            }
+            let sql = std::fs::read_to_string(&path).expect("read migration");
+            if sql.contains(&format!("ADD CONSTRAINT\n    {cited}"))
+                || sql.contains(&format!("ADD CONSTRAINT {cited}"))
+            {
+                found_in = Some(path);
+                break;
+            }
+        }
         assert!(
-            prod_src.contains("uq_message_contents_message_sequence"),
-            "the doc comment should name the constraint that actually enforces the invariant, \
-             so a reader can find it."
+            found_in.is_some(),
+            "append_content's doc cites constraint `{cited}`, but no migration creates it \
+             — the comment points the reader at a guard that does not exist."
         );
     }
 }

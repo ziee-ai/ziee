@@ -247,8 +247,9 @@ fn resume_shape_keeps_exactly_one_result_per_tool_use() {
     let before: Vec<String> = msgs.iter().flat_map(|m| tool_result_ids(&m.content)).collect();
     assert_eq!(before, vec!["A", "B", "B"], "control: B is answered twice pre-dedup");
 
-    dedup_tool_results_by_id(&mut msgs);
+    let dropped = dedup_tool_results_by_id(&mut msgs);
 
+    assert_eq!(dropped, vec!["B"], "the duplicate B result is the one dropped");
     assert_single_result_per_tool_use(&msgs);
     assert_valid_tool_pairing(&msgs);
     assert_eq!(
@@ -256,6 +257,28 @@ fn resume_shape_keeps_exactly_one_result_per_tool_use() {
         2,
         "the User message held only the duplicate, so it is removed rather than left empty"
     );
+
+    // Make the DEFENSE's tradeoff explicit rather than let the shape assertions
+    // quietly certify it: keep-first means the SYNTHESIZED placeholder survives and
+    // B's real result is the one dropped. That is deliberate — the defense buys
+    // VALIDITY (a request the provider accepts), not fidelity, and keep-first is what
+    // preserves the "result immediately after the tool_use" rule. Content fidelity is
+    // the SOURCE fix's job (replace_or_collect_tool_results folds the real result into
+    // the placeholder's slot, so in production the survivor IS the real one and this
+    // path never runs). If this assertion ever flips, the defense started silently
+    // choosing content — revisit DEC-1/DEC-2.
+    match &msgs[1].content[1] {
+        ContentBlock::ToolResult { content, .. } => match &content[0] {
+            ContentBlock::Text { text } => assert!(
+                text.contains("Tool result unavailable"),
+                "keep-first keeps the placeholder; the real result is dropped by the \
+                 defense (validity over fidelity — the source fix is what preserves \
+                 content). Got: {text}"
+            ),
+            _ => panic!("expected a text block"),
+        },
+        _ => panic!("expected a tool_result"),
+    }
 }
 
 /// The defense must not disturb a healthy multi-iteration request — same message
@@ -271,8 +294,9 @@ fn dedup_leaves_a_valid_multi_iteration_request_untouched() {
         tool_result("i2b", "rb"),
     ]);
     let before_len = msgs.len();
-    dedup_tool_results_by_id(&mut msgs);
+    let dropped = dedup_tool_results_by_id(&mut msgs);
 
+    assert!(dropped.is_empty(), "a healthy request drops nothing");
     assert_eq!(msgs.len(), before_len);
     assert_valid_tool_pairing(&msgs);
     assert_single_result_per_tool_use(&msgs);

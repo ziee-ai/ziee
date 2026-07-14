@@ -465,7 +465,22 @@ impl StreamingService {
                 // the provider call below — the only point that sees the final
                 // request. Ordered before the trimming: keep-last-K counts
                 // tool_result blocks, so it must count the deduped set.
-                dedup_tool_results_by_id(&mut chat_request.messages);
+                let dropped_dupes = dedup_tool_results_by_id(&mut chat_request.messages);
+                if !dropped_dupes.is_empty() {
+                    // Should never fire: every known duplicate source is fixed at its
+                    // origin. If it does, this names the conversation to investigate.
+                    tracing::warn!(
+                        conversation_id = %conversation_id,
+                        message_id = %assistant_message_id,
+                        iteration,
+                        "dropped {} duplicate tool_result block(s) for tool_use_id(s) {:?} — \
+                         a second result for one tool_use is rejected by the provider. The \
+                         surviving (first) result is the one paired with its tool_use; this \
+                         indicates a duplicate SOURCE that should be fixed at its origin.",
+                        dropped_dupes.len(),
+                        dropped_dupes,
+                    );
+                }
 
                 // Context trimming: once the assembled context grows past a
                 // token threshold, clear the CONTENT of older tool_result blocks
@@ -1756,9 +1771,18 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
             }
             ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
                 let id = tool_use_id.clone();
-                pending_ids.remove(&id);
-                // Keep the first result seen for an id; a duplicate is dropped.
-                results_by_id.entry(id).or_insert(b);
+                // Capture a result ONLY if it answers a tool_use still outstanding in
+                // THIS batch. `remove` returns whether it was pending, so it is both
+                // the resolve and the test.
+                //   pending      → the first result for that use: capture it.
+                //   not pending, already captured → a DUPLICATE result: drop (keep-first).
+                //   not pending, not captured     → an ORPHAN (no tool_use precedes it):
+                //     drop NOW. Letting it sit in the map would shadow a LATER real
+                //     result for the same id via keep-first, and emit the stale one in
+                //     its place.
+                if pending_ids.remove(&id) {
+                    results_by_id.insert(id, b);
+                }
                 // All outstanding tool_uses resolved — flush one Assistant/Tool pair.
                 if pending_ids.is_empty() && !current_tool_uses.is_empty() {
                     flush_assistant_tool_pair(
@@ -1838,29 +1862,46 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
 /// message. A message emptied by the drop is removed (an empty `content` array is
 /// itself invalid).
 ///
+/// SCOPE — per TURN GROUP, never global. A `tool_use_id` is only unique within ONE
+/// assistant message: `resolve_unique_tool_use_id` seeds its used-set from
+/// `WHERE message_id = $1`, and its own doc names the case it tolerates —
+/// gpt-oss/harmony streams the non-unique constant `"tool_use"` for every call. So
+/// the same id legitimately recurs in a LATER turn answering a DIFFERENT tool_use,
+/// and OpenAI-compatible providers pair `tool_call_id` per adjacent turn, not
+/// globally. Deduping across the whole request would drop that later turn's real
+/// result and leave its tool_use unpaired — reintroducing the sibling regression
+/// this must not cause. The seen-set therefore resets at each Assistant message
+/// that opens a new tool batch.
+///
 /// This is a DEFENSE, not the fix: each duplicate SOURCE is fixed at its origin
-/// (see `replace_or_collect_tool_results` in the mcp chat extension). If this ever
-/// fires, the `warn!` is the tripwire that a new source appeared.
-pub fn dedup_tool_results_by_id(messages: &mut Vec<ChatMessage>) {
+/// (see `replace_or_collect_tool_results` in the mcp chat extension). Returns the
+/// ids it dropped — empty on every healthy request — so the CALLER can log them
+/// with its own conversation/message context; this fn stays pure and quiet.
+/// A non-empty return is the tripwire that a new duplicate source appeared.
+pub fn dedup_tool_results_by_id(messages: &mut Vec<ChatMessage>) -> Vec<String> {
+    let mut dropped: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = Default::default();
     // Only messages this fn EMPTIES are removed — a message that arrived empty is
     // left exactly as it was found (not this fn's business to police).
     let mut emptied = vec![false; messages.len()];
 
     for (i, m) in messages.iter_mut().enumerate() {
+        // A new Assistant tool batch opens a new id scope (see SCOPE above).
+        if matches!(m.role, ai_providers::Role::Assistant)
+            && m.content
+                .iter()
+                .any(|b| matches!(b, ai_providers::ContentBlock::ToolUse { .. }))
+        {
+            seen.clear();
+        }
+
         let had_content = !m.content.is_empty();
         m.content.retain(|b| match b {
             ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
                 if seen.insert(tool_use_id.clone()) {
                     return true;
                 }
-                tracing::warn!(
-                    "dropping a duplicate tool_result for tool_use_id={} — a second result \
-                     for one tool_use is rejected by the provider. The surviving (first) \
-                     result is the one paired with its tool_use; this indicates a duplicate \
-                     SOURCE that should be fixed at its origin.",
-                    tool_use_id
-                );
+                dropped.push(tool_use_id.clone());
                 false
             }
             _ => true,
@@ -1874,6 +1915,8 @@ pub fn dedup_tool_results_by_id(messages: &mut Vec<ChatMessage>) {
         i += 1;
         keep
     });
+
+    dropped
 }
 
 /// Panic/early-exit backstop for the detached generation consumer. If the
@@ -2518,6 +2561,30 @@ mod tests {
         }
     }
 
+    /// TEST-5b: the orphan hazard with NO intervening flush. `[result X(stale),
+    /// use X, result X(real)]` — nothing flushes before X's real result arrives, so
+    /// `results_by_id.clear()` never runs and cannot help. Only refusing to capture a
+    /// result that answers no OUTSTANDING tool_use closes this half.
+    #[test]
+    fn group_assistant_blocks_orphan_before_its_use_does_not_shadow_the_real_result() {
+        let blocks = vec![
+            tool_result("X", "stale"), // orphan: no tool_use X outstanding
+            tool_use("X", "srv__x"),
+            tool_result("X", "real"),
+        ];
+        let msgs = group_assistant_blocks(blocks);
+
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(result_ids(&msgs[1].content), vec!["X"]);
+        match &msgs[1].content[0] {
+            ContentBlock::ToolResult { content, .. } => assert!(
+                matches!(&content[0], ContentBlock::Text { text } if text == "real"),
+                "the orphan that PRECEDED the tool_use must not shadow the real result"
+            ),
+            _ => panic!("expected tool_result"),
+        }
+    }
+
     /// TEST-2 (fix-duplicate-tool-result): the chokepoint defense keeps the FIRST
     /// tool_result for a repeated id and drops later ones, so exactly one result per
     /// tool_use reaches the provider. Non-duplicate blocks keep their relative order.
@@ -2538,8 +2605,9 @@ mod tests {
                 content: vec![tool_result("B", "real"), text("trailing note")],
             },
         ];
-        dedup_tool_results_by_id(&mut msgs);
+        let dropped = dedup_tool_results_by_id(&mut msgs);
 
+        assert_eq!(dropped, vec!["B"], "the dropped id is reported to the caller");
         assert_eq!(msgs.len(), 3, "no message became empty here");
         assert_eq!(result_ids(&msgs[1].content), vec!["A", "B"]);
         assert!(
@@ -2580,14 +2648,16 @@ mod tests {
         };
         let before = build();
         let mut after = build();
-        dedup_tool_results_by_id(&mut after);
+        let dropped = dedup_tool_results_by_id(&mut after);
 
-        assert_eq!(after.len(), before.len());
-        for (a, b) in after.iter().zip(before.iter()) {
-            assert_eq!(a.role, b.role);
-            assert_eq!(a.content.len(), b.content.len());
-        }
-        assert_eq!(result_ids(&after[1].content), vec!["A"]);
+        assert!(dropped.is_empty(), "a valid request drops nothing");
+
+        // Deep equality — role/len alone would miss a swapped or mutated block.
+        assert_eq!(
+            serde_json::to_value(&after).unwrap(),
+            serde_json::to_value(&before).unwrap(),
+            "a valid request must come out byte-identical"
+        );
     }
 
     /// TEST-4 (fix-duplicate-tool-result): a message whose ONLY block is dropped as a
@@ -2610,11 +2680,68 @@ mod tests {
                 content: vec![tool_result("A", "dup")],
             },
         ];
-        dedup_tool_results_by_id(&mut msgs);
+        let dropped = dedup_tool_results_by_id(&mut msgs);
 
+        assert_eq!(dropped, vec!["A"]);
         assert_eq!(msgs.len(), 2, "the emptied User message is removed");
         assert!(msgs.iter().all(|m| !m.content.is_empty()));
         assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+    }
+
+    /// A tool_use_id is only unique WITHIN one assistant message —
+    /// `resolve_unique_tool_use_id` seeds its used-set per `message_id`, and its own
+    /// doc names the case: gpt-oss/harmony streams the non-unique constant
+    /// `"tool_use"` for every call. The SAME id therefore recurs legitimately in a
+    /// later turn, answering a DIFFERENT tool_use. Deduping globally would drop the
+    /// later turn's real result and leave its tool_use unpaired — the very rejection
+    /// this defense exists to prevent. Dedup is scoped to one turn group.
+    #[test]
+    fn dedup_tool_results_allows_the_same_id_reused_across_turns() {
+        let mut msgs = vec![
+            // Turn 1 — gpt-oss's constant id.
+            ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("tool_use", "srv__search")],
+            },
+            ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("tool_use", "turn-1 result")],
+            },
+            // Turn 2 — same id, a genuinely different call.
+            ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: vec![tool_use("tool_use", "srv__read_file")],
+            },
+            ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: vec![tool_result("tool_use", "turn-2 result")],
+            },
+        ];
+        let dropped = dedup_tool_results_by_id(&mut msgs);
+
+        assert!(
+            dropped.is_empty(),
+            "a reused id in a DIFFERENT turn is not a duplicate — nothing may be dropped"
+        );
+        assert_eq!(msgs.len(), 4, "no turn may be dropped");
+        assert_eq!(
+            result_ids(&msgs[1].content),
+            vec!["tool_use"],
+            "turn 1 keeps its result"
+        );
+        assert_eq!(
+            result_ids(&msgs[3].content),
+            vec!["tool_use"],
+            "turn 2's tool_use must KEEP its own result — a different call that happens \
+             to reuse the id"
+        );
+        match &msgs[3].content[0] {
+            ContentBlock::ToolResult { content, .. } => assert!(
+                matches!(&content[0], ContentBlock::Text { text } if text == "turn-2 result"),
+                "turn 2 must carry ITS result, not turn 1's"
+            ),
+            _ => panic!("expected tool_result"),
+        }
     }
 
     /// A message that arrived EMPTY is not this fn's business — it is left alone
@@ -2625,7 +2752,8 @@ mod tests {
             role: ai_providers::Role::User,
             content: vec![],
         }];
-        dedup_tool_results_by_id(&mut msgs);
+        let dropped = dedup_tool_results_by_id(&mut msgs);
+        assert!(dropped.is_empty());
         assert_eq!(msgs.len(), 1);
     }
 

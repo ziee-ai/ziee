@@ -194,8 +194,17 @@ async fn message_contents_has_exactly_one_unique_sequence_guard() {
     .execute(&pool)
     .await;
 
-    assert!(
-        collide.is_err(),
-        "the surviving constraint must still reject a duplicate (message_id, sequence_order)"
-    );
+    // Assert it is specifically a UNIQUE violation, not merely "some error" — any
+    // error would otherwise look like proof (matching the suite's existing idiom in
+    // tests/llm_model/download_test.rs).
+    match collide {
+        Err(sqlx::Error::Database(db)) => assert!(
+            db.is_unique_violation(),
+            "expected a unique violation, got: {db}"
+        ),
+        other => panic!(
+            "the surviving constraint must still reject a duplicate \
+             (message_id, sequence_order); got: {other:?}"
+        ),
+    }
 }
