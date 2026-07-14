@@ -11,11 +11,12 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::common::{ApiResult, AppError};
-use crate::core::{EventBus, Repos};
 use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::user::events::UserEvent;
 use crate::modules::user::permissions::ProfileEdit;
-use crate::modules::user::{User, UserService};
+use crate::modules::user::{User, UserRepository, UserService};
+
+use super::context::AuthContext;
 
 use super::cookie;
 use super::jwt::{JwtService, TokenPair, TokenPairWithJti};
@@ -35,9 +36,7 @@ use super::types::{
     PublicProvider, PublicProvidersResponse, RefreshTokenRequest, RegisterRequest,
     TestProviderResponse, UpdateAuthProviderRequest, UpdateProfileRequest,
 };
-use crate::modules::sync::{
-    Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
-};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin};
 
 // =====================================================
 // Cookie-mode response shaping
@@ -93,7 +92,7 @@ pub(crate) fn token_response<T: serde::Serialize>(
 #[debug_handler]
 pub async fn register(
     Extension(jwt_service): Extension<Arc<JwtService>>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     headers: HeaderMap,
     Json(req): Json<RegisterRequest>,
 ) -> ApiResult<Response> {
@@ -124,14 +123,12 @@ pub async fn register(
     // generic "ACCOUNT_EXISTS" response, leaking nothing about which
     // field collided. Server-side logs still record which one for
     // operator debugging.
-    let username_taken = Repos
-        .user
+    let username_taken = ctx.user()
         .get_by_username(&req.username)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .is_some();
-    let email_taken = Repos
-        .user
+    let email_taken = ctx.user()
         .get_by_email(&req.email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -165,8 +162,7 @@ pub async fn register(
     // failure of the group assignment can't leave an orphan user with no group
     // membership (and hence no permissions). Mirrors the external/OAuth path's
     // `create_external_user_with_link`.
-    let user = Repos
-        .auth
+    let user = ctx.auth()
         .create_local_user_with_default_group(
             &req.username,
             &req.email,
@@ -177,10 +173,10 @@ pub async fn register(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Emit UserCreated event asynchronously
-    event_bus.emit_async(UserEvent::created(user.clone()));
+    ctx.events.emit_user(UserEvent::Created { user: user.clone() });
 
     // Mint + whitelist the session tokens (admin-configured lifetimes).
-    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+    let minted = mint_session_tokens(ctx.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -202,6 +198,7 @@ pub fn register_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn login(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    Extension(ctx): Extension<AuthContext>,
     headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Response> {
@@ -210,7 +207,7 @@ pub async fn login(
         && provider_name != "local" {
             // External authentication (LDAP/OAuth)
             return login_with_provider(
-                Repos.pool().clone(),
+                &ctx,
                 jwt_service,
                 &headers,
                 &req.username,
@@ -249,8 +246,7 @@ pub async fn login(
             .expect("bcrypt dummy hash")
     });
 
-    let user_opt = Repos
-        .user
+    let user_opt = ctx.user()
         .get_by_username_or_email(&req.username)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -292,14 +288,13 @@ pub async fn login(
     let user = user_opt.expect("user_opt is Some past timing-equalised checks");
 
     // Update last login
-    Repos
-        .user
+    ctx.user()
         .update_last_login(user.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Mint + whitelist the session tokens (admin-configured lifetimes).
-    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+    let minted = mint_session_tokens(ctx.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -318,7 +313,7 @@ pub fn login_docs(op: TransformOperation) -> TransformOperation {
 
 /// Login with external provider (LDAP/OAuth)
 async fn login_with_provider(
-    pool: PgPool,
+    ctx: &AuthContext,
     jwt_service: Arc<JwtService>,
     headers: &HeaderMap,
     username: &str,
@@ -328,7 +323,7 @@ async fn login_with_provider(
     use crate::modules::auth::providers::{create_provider, repository as provider_repo};
 
     // Get provider configuration
-    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), provider_name)
+    let provider_config = provider_repo::get_provider_by_name(ctx.pool(), provider_name)
         .await
         .map_err(|e| {
             (
@@ -344,7 +339,7 @@ async fn login_with_provider(
         })?;
 
     // Create provider instance
-    let provider = create_provider(&provider_config, pool.clone()).map_err(|e| {
+    let provider = create_provider(&provider_config, ctx.pool().clone()).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             AppError::bad_request("PROVIDER_ERROR", format!("Provider error: {}", e)),
@@ -366,16 +361,14 @@ async fn login_with_provider(
         })?;
 
     // Try to find user via auth link
-    let user_id = Repos
-        .auth
+    let user_id = ctx.auth()
         .find_user_by_auth_link(provider_config.id, &auth_result.external_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let user = if let Some(user_id) = user_id {
         // User exists, get it
-        Repos
-            .user
+        ctx.user()
             .get_by_id(user_id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -388,8 +381,7 @@ async fn login_with_provider(
             .unwrap_or_else(|| username.to_string());
         let email = auth_result.attributes.email;
 
-        let new_user_id = Repos
-            .auth
+        let new_user_id = ctx.auth()
             .create_external_user_with_link(
                 username,
                 Some(email),
@@ -401,8 +393,7 @@ async fn login_with_provider(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
         // Fetch the newly created user
-        Repos
-            .user
+        ctx.user()
             .get_by_id(new_user_id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -423,14 +414,13 @@ async fn login_with_provider(
     }
 
     // Update last login
-    Repos
-        .user
+    ctx.user()
         .update_last_login(user.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Mint + whitelist the session tokens (admin-configured lifetimes).
-    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+    let minted = mint_session_tokens(ctx.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -444,6 +434,7 @@ async fn login_with_provider(
 #[debug_handler]
 pub async fn refresh(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    Extension(ctx): Extension<AuthContext>,
     headers: HeaderMap,
     Json(req): Json<RefreshTokenRequest>,
 ) -> ApiResult<Response> {
@@ -502,8 +493,7 @@ pub async fn refresh(
     };
 
     // Get user from database
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -522,7 +512,7 @@ pub async fn refresh(
         ));
     }
 
-    let (access_hours, refresh_days) = refresh_tokens::session_expiries(&jwt_service).await;
+    let (access_hours, refresh_days) = refresh_tokens::session_expiries(ctx.pool(), &jwt_service).await;
 
     // Determine the outgoing pair + the refresh token's expiry (for the
     // cookie Max-Age). Three cases:
@@ -559,7 +549,7 @@ pub async fn refresh(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
         let won = refresh_tokens::claim_rotation_and_register(
-            Repos.pool(),
+            ctx.pool(),
             jti,
             candidate.refresh_jti,
             user.id,
@@ -574,7 +564,7 @@ pub async fn refresh(
             // We lost the race / the token was already rotated. `candidate`
             // is discarded (never registered). Serve the existing
             // successor family if still within grace + active.
-            match refresh_tokens::rotation_grace_successor(Repos.pool(), jti)
+            match refresh_tokens::rotation_grace_successor(ctx.pool(), jti)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
             {
@@ -606,6 +596,7 @@ pub async fn refresh(
     } else {
         // Legacy jti-less token: one-time upgrade allowance.
         let minted = refresh_tokens::mint_session_tokens(
+            ctx.pool(),
             &jwt_service,
             user.id,
             &user.username,
@@ -659,14 +650,18 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 /// the design intent) or a per-request revocation check (deferred — adds
 /// a DB hit to every authenticated request).
 #[debug_handler]
-pub async fn logout(auth: JwtAuth, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn logout(
+    auth: JwtAuth,
+    Extension(ctx): Extension<AuthContext>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             AppError::internal_with_id(format!("parse user id from token: {e}")),
         )
     })?;
-    refresh_tokens::revoke_all_for_user(Repos.pool(), user_id)
+    refresh_tokens::revoke_all_for_user(ctx.pool(), user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -691,7 +686,10 @@ pub fn logout_docs(op: TransformOperation) -> TransformOperation {
 /// GET /api/auth/me
 /// Get currently authenticated user with their effective permissions
 #[debug_handler]
-pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
+pub async fn me(
+    auth: JwtAuth,
+    Extension(ctx): Extension<AuthContext>,
+) -> ApiResult<Json<MeResponse>> {
     // Parse user ID from claims
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
         (
@@ -701,8 +699,7 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
     })?;
 
     // Get user from database
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -722,7 +719,7 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
     }
 
     // Get effective permissions (union of user permissions + group permissions)
-    let user_service = UserService::new((**Repos.user).clone());
+    let user_service = UserService::new(ctx.user());
     let permissions = user_service
         .get_effective_permissions(user_id)
         .await
@@ -758,7 +755,7 @@ pub fn me_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_profile(
     auth: RequirePermissions<(ProfileEdit,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Json(req): Json<UpdateProfileRequest>,
 ) -> ApiResult<Json<User>> {
@@ -788,8 +785,7 @@ pub async fn update_profile(
     // username is a no-op. The DB UNIQUE constraint (mapped to 409 inside
     // `update_profile`) is the race-safe backstop.
     if let Some(ref u) = username
-        && let Some(existing) = Repos
-            .user
+        && let Some(existing) = ctx.user()
             .get_by_username(u)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -800,19 +796,18 @@ pub async fn update_profile(
 
     // `to_api_error` carries the AppError's own status: the UNIQUE-violation
     // race maps to 409, anything else to 500.
-    let updated_user = Repos
-        .user
+    let updated_user = ctx.user()
         .update_profile(user_id, username, set_display_name, display_name)
         .await
         .map_err(AppError::to_api_error)?;
 
-    event_bus.emit_async(UserEvent::updated(updated_user.clone()));
+    ctx.events.emit_user(UserEvent::Updated { user: updated_user.clone() });
 
     // Owner-scoped realtime sync so the user's OTHER devices re-bootstrap
     // /auth/me and converge on the new username / display_name without a
     // reload. Mirrors the admin edit path (user::update_user); the self-echo
     // is suppressed via the originating connection id.
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::Profile,
         SyncAction::Update,
         updated_user.id,
@@ -843,6 +838,7 @@ pub fn update_profile_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn change_password(
     auth: RequirePermissions<(ProfileEdit,)>,
+    Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ChangePasswordRequest>,
 ) -> ApiResult<()> {
     let user = auth.user;
@@ -888,8 +884,7 @@ pub async fn change_password(
     })?;
 
     // update_password also bumps password_changed_at.
-    Repos
-        .user
+    ctx.user()
         .update_password(user.id, &new_hash)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -903,7 +898,7 @@ pub async fn change_password(
     // closes the rotation-grace window (`rotation_grace_successor`
     // requires an active successor). Outstanding access tokens stay valid
     // for their short remaining TTL.
-    refresh_tokens::revoke_all_for_user(Repos.pool(), user.id)
+    refresh_tokens::revoke_all_for_user(ctx.pool(), user.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -927,12 +922,13 @@ pub fn change_password_docs(op: TransformOperation) -> TransformOperation {
 /// Initiate OAuth flow for the specified provider
 #[debug_handler]
 pub async fn oauth_authorize(
+    Extension(ctx): Extension<AuthContext>,
     headers: axum::http::HeaderMap,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
     // Get provider configuration
-    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
+    let provider_config = provider_repo::get_provider_by_name(ctx.pool(), &provider_name)
         .await
         .map_err(|e| {
             (
@@ -948,7 +944,7 @@ pub async fn oauth_authorize(
         })?;
 
     // Create provider instance
-    let provider = create_provider(&provider_config, Repos.pool().clone()).map_err(|e| {
+    let provider = create_provider(&provider_config, ctx.pool().clone()).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             AppError::bad_request("PROVIDER_ERROR", format!("Provider error: {}", e)),
@@ -1089,6 +1085,7 @@ fn validate_return_to(rt: Option<&str>) -> Option<String> {
 #[debug_handler]
 pub async fn oauth_callback(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    Extension(ctx): Extension<AuthContext>,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
     headers: HeaderMap,
@@ -1100,8 +1097,7 @@ pub async fn oauth_callback(
     // the state first via oauth_sessions (which proves the request
     // was solicited AND tells us the provider via provider_id), and
     // collapse failure modes into a single neutral 400.
-    let session = Repos
-        .auth
+    let session = ctx.auth()
         .get_oauth_session_by_state(&query.state)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1117,7 +1113,7 @@ pub async fn oauth_callback(
             ));
         }
     };
-    let provider_config = provider_repo::get_provider_by_id(Repos.pool(), session.provider_id)
+    let provider_config = provider_repo::get_provider_by_id(ctx.pool(), session.provider_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| {
@@ -1138,7 +1134,7 @@ pub async fn oauth_callback(
             ),
         ));
     }
-    oauth_complete(jwt_service, &headers, provider_name, query.code, query.state, None).await
+    oauth_complete(&ctx, jwt_service, &headers, provider_name, query.code, query.state, None).await
 }
 
 /// POST /api/auth/oauth/{provider_name}/callback
@@ -1149,6 +1145,7 @@ pub async fn oauth_callback(
 #[debug_handler]
 pub async fn oauth_callback_post(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    Extension(ctx): Extension<AuthContext>,
     Path(provider_name): Path<String>,
     headers: HeaderMap,
     Form(form): Form<AppleCallbackForm>,
@@ -1168,8 +1165,7 @@ pub async fn oauth_callback_post(
     // first via the oauth_sessions row (which proves the request
     // was solicited and tells us the provider via provider_id), and
     // collapse all failure modes into a single neutral 400.
-    let session = Repos
-        .auth
+    let session = ctx.auth()
         .get_oauth_session_by_state(&form.state)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1185,7 +1181,7 @@ pub async fn oauth_callback_post(
             ));
         }
     };
-    let provider_config = provider_repo::get_provider_by_id(Repos.pool(), session.provider_id)
+    let provider_config = provider_repo::get_provider_by_id(ctx.pool(), session.provider_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| {
@@ -1208,7 +1204,7 @@ pub async fn oauth_callback_post(
             ),
         ));
     }
-    oauth_complete(jwt_service, &headers, provider_name, form.code, form.state, form.user).await
+    oauth_complete(&ctx, jwt_service, &headers, provider_name, form.code, form.state, form.user).await
 }
 
 /// Shared callback completion logic. The user has bounced back from
@@ -1216,6 +1212,7 @@ pub async fn oauth_callback_post(
 /// they're in (returning user / first-broker-link required / new
 /// user / nothing to do) and route accordingly.
 async fn oauth_complete(
+    ctx: &AuthContext,
     jwt_service: Arc<JwtService>,
     headers: &HeaderMap,
     provider_name: String,
@@ -1231,15 +1228,16 @@ async fn oauth_complete(
     // here is non-fatal (the row will be reaped by TTL), and we don't
     // want to mask the original error.
     let result =
-        oauth_complete_inner(jwt_service, headers, provider_name, code, &state, apple_user_json)
+        oauth_complete_inner(ctx, jwt_service, headers, provider_name, code, &state, apple_user_json)
             .await;
     if result.is_err() {
-        let _ = Repos.auth.delete_oauth_session(&state).await;
+        let _ = ctx.auth().delete_oauth_session(&state).await;
     }
     result
 }
 
 async fn oauth_complete_inner(
+    ctx: &AuthContext,
     jwt_service: Arc<JwtService>,
     headers: &HeaderMap,
     provider_name: String,
@@ -1247,7 +1245,7 @@ async fn oauth_complete_inner(
     state: &str,
     apple_user_json: Option<String>,
 ) -> Result<Response, (StatusCode, AppError)> {
-    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
+    let provider_config = provider_repo::get_provider_by_name(ctx.pool(), &provider_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (
@@ -1255,7 +1253,7 @@ async fn oauth_complete_inner(
             AppError::not_found("Authentication provider"),
         ))?;
 
-    let provider = create_provider(&provider_config, Repos.pool().clone()).map_err(|e| {
+    let provider = create_provider(&provider_config, ctx.pool().clone()).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             AppError::bad_request("PROVIDER_ERROR", format!("Provider error: {}", e)),
@@ -1266,8 +1264,7 @@ async fn oauth_complete_inner(
     // provider — the provider deletes it on success and we need the
     // return_to for the final redirect. Errors here are non-fatal:
     // worst case we fall back to "/".
-    let return_to = Repos
-        .auth
+    let return_to = ctx.auth()
         .get_oauth_session_by_state(state)
         .await
         .ok()
@@ -1317,14 +1314,12 @@ async fn oauth_complete_inner(
     // ── 1. Existing link → returning user, just issue JWT ────────
     // Single UPDATE+RETURNING (`touch_auth_link_and_get_user_id`)
     // bumps last_login_at and returns the user_id in one round-trip.
-    if let Some(user_id) = Repos
-        .auth
+    if let Some(user_id) = ctx.auth()
         .touch_auth_link_and_get_user_id(provider_id, &auth_result.external_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
     {
-        let user = Repos
-            .user
+        let user = ctx.user()
             .get_by_id(user_id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1337,14 +1332,13 @@ async fn oauth_complete_inner(
             ));
         }
 
-        Repos
-            .user
+        ctx.user()
             .update_last_login(user.id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
         let minted =
-            mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+            mint_session_tokens(ctx.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -1356,14 +1350,12 @@ async fn oauth_complete_inner(
     if email_verified_from_auth_result(&auth_result) {
         if let Some(email) = auth_result.external_email.as_deref() {
             if !email.is_empty() {
-                if let Some(target_user_id) = Repos
-                    .auth
+                if let Some(target_user_id) = ctx.auth()
                     .find_user_by_email_for_linking(email)
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
                 {
-                    let target_user = Repos
-                        .user
+                    let target_user = ctx.user()
                         .get_by_id(target_user_id)
                         .await
                         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1371,8 +1363,7 @@ async fn oauth_complete_inner(
 
                     if target_user.password_hash.is_some() {
                         // Local-password account → standard FBL flow.
-                        let link_token = Repos
-                            .auth
+                        let link_token = ctx.auth()
                             .create_pending_link(
                                 provider_id,
                                 target_user_id,
@@ -1407,7 +1398,7 @@ async fn oauth_complete_inner(
     }
 
     // ── 3. No link, no collision → auto-provision a new user ────
-    let username = ensure_unique_username(&auth_result.attributes.username).await?;
+    let username = ensure_unique_username(ctx.pool(), &auth_result.attributes.username).await?;
     let display_name = auth_result
         .attributes
         .display_name
@@ -1439,8 +1430,7 @@ async fn oauth_complete_inner(
     // unique-collision race on the auth_link) used to leave a
     // password-less orphan that locked the user out forever —
     // re-login would trip the email-collision branch and refuse.
-    let new_user_id = Repos
-        .auth
+    let new_user_id = ctx.auth()
         .provision_external_user_atomic(
             &username,
             Some(email.as_str()),
@@ -1452,8 +1442,7 @@ async fn oauth_complete_inner(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(new_user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1465,7 +1454,7 @@ async fn oauth_complete_inner(
         })?;
 
     let minted =
-        mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        mint_session_tokens(ctx.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -1504,14 +1493,15 @@ fn email_verified_from_auth_result(r: &AuthResult) -> bool {
 /// than an infinite loop to avoid pathological cases.
 #[doc(hidden)] // pub for integration tests (auto-provision username collision)
 pub async fn ensure_unique_username(
+    pool: &PgPool,
     base: &str,
 ) -> Result<String, (StatusCode, AppError)> {
+    let users = UserRepository::new(pool.clone());
     let mut candidate = base.trim().to_string();
     if candidate.is_empty() {
         candidate = "user".to_string();
     }
-    if Repos
-        .user
+    if users
         .get_by_username(&candidate)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1521,8 +1511,7 @@ pub async fn ensure_unique_username(
     }
     for n in 2..=999u32 {
         let next = format!("{}{}", candidate, n);
-        if Repos
-            .user
+        if users
             .get_by_username(&next)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1648,6 +1637,7 @@ fn success_redirect(
 #[debug_handler]
 pub async fn link_account(
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    Extension(ctx): Extension<AuthContext>,
     headers: HeaderMap,
     Json(req): Json<LinkAccountRequest>,
 ) -> ApiResult<Response> {
@@ -1656,8 +1646,7 @@ pub async fn link_account(
     // re-running the entire OAuth dance. The token is still
     // single-use: we delete it on the FIRST successful password +
     // link insertion.
-    let pending = Repos
-        .auth
+    let pending = ctx.auth()
         .peek_pending_link(&req.link_token)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1674,8 +1663,7 @@ pub async fn link_account(
     // Authorization checks BEFORE bumping the attempts counter so
     // an OAuth-only target account (no password_hash) doesn't burn
     // 5 attempts before the user sees a useful error.
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(pending.target_user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1702,8 +1690,7 @@ pub async fn link_account(
     // password_hash checks so legitimate misuse-detection errors
     // don't burn attempts.
     const LINK_TOKEN_MAX_ATTEMPTS: i32 = 5;
-    let attempt_n = Repos
-        .auth
+    let attempt_n = ctx.auth()
         .bump_pending_link_attempts(&req.link_token)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
@@ -1721,7 +1708,7 @@ pub async fn link_account(
             )
         })?;
     if attempt_n > LINK_TOKEN_MAX_ATTEMPTS {
-        let _ = Repos.auth.delete_pending_link(&req.link_token).await;
+        let _ = ctx.auth().delete_pending_link(&req.link_token).await;
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
             AppError::new(
@@ -1746,8 +1733,7 @@ pub async fn link_account(
         ));
     }
 
-    Repos
-        .auth
+    ctx.auth()
         .create_auth_link_with_data(
             user.id,
             pending.provider_id,
@@ -1759,16 +1745,15 @@ pub async fn link_account(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Consume the pending token now that the link is bound.
-    let _ = Repos.auth.delete_pending_link(&req.link_token).await;
+    let _ = ctx.auth().delete_pending_link(&req.link_token).await;
 
-    Repos
-        .user
+    ctx.user()
         .update_last_login(user.id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Mint + whitelist the session tokens (admin-configured lifetimes).
-    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+    let minted = mint_session_tokens(ctx.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -1792,8 +1777,10 @@ pub fn link_account_docs(op: TransformOperation) -> TransformOperation {
 /// the login page. Returns ONLY the fields the login UI needs;
 /// never exposes config / secrets / tenant IDs.
 #[debug_handler]
-pub async fn list_public_providers() -> ApiResult<Json<PublicProvidersResponse>> {
-    let rows = provider_repo::list_public_providers(Repos.pool())
+pub async fn list_public_providers(
+    Extension(ctx): Extension<AuthContext>,
+) -> ApiResult<Json<PublicProvidersResponse>> {
+    let rows = provider_repo::list_public_providers(ctx.pool())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     let providers: Vec<PublicProvider> = rows
@@ -1888,8 +1875,9 @@ fn provider_to_response(p: super::providers::models::AuthProvider) -> AuthProvid
 #[debug_handler]
 pub async fn admin_list_providers(
     _: RequirePermissions<(AuthProvidersRead,)>,
+    Extension(ctx): Extension<AuthContext>,
 ) -> ApiResult<Json<Vec<AuthProviderResponse>>> {
-    let rows = provider_repo::list_providers(Repos.pool())
+    let rows = provider_repo::list_providers(ctx.pool())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     let resp: Vec<AuthProviderResponse> = rows.into_iter().map(provider_to_response).collect();
@@ -1908,7 +1896,7 @@ pub fn admin_list_providers_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn admin_create_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Json(req): Json<CreateAuthProviderRequest>,
 ) -> ApiResult<Json<CreateAuthProviderResponse>> {
@@ -1935,11 +1923,12 @@ pub async fn admin_create_provider(
         ));
     }
     let row = provider_repo::create_provider(
-        Repos.pool(),
+        ctx.pool(),
         req.name.trim(),
         req.provider_type.as_str(),
         req.enabled,
         &req.config,
+        ctx.secret_key(),
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1947,7 +1936,7 @@ pub async fn admin_create_provider(
     // If enabled=true, probe immediately; on failure the row stays
     // created but `enabled` is flipped back to false and
     // `connection_warning` carries the reason.
-    let outcome = provider_health::enforce_on_create_with_enabled(row, &event_bus)
+    let outcome = provider_health::enforce_on_create_with_enabled(row, ctx.pool(), &*ctx.events)
         .await
         .map_err(|e| {
             (
@@ -1955,8 +1944,8 @@ pub async fn admin_create_provider(
                 e,
             )
         })?;
-    event_bus.emit_async(AuthProviderEvent::created(outcome.provider.id).into());
-    sync_publish(
+    ctx.events.emit_auth_provider(AuthProviderEvent::created(outcome.provider.id));
+    ctx.sync.publish(
         SyncEntity::AuthProvider,
         SyncAction::Create,
         row_id,
@@ -1994,7 +1983,7 @@ pub fn admin_create_provider_docs(op: TransformOperation) -> TransformOperation 
 #[debug_handler]
 pub async fn admin_update_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
     Json(req): Json<UpdateAuthProviderRequest>,
@@ -2002,7 +1991,7 @@ pub async fn admin_update_provider(
     // Snapshot the existing row BEFORE the update so the
     // enable-transition check below can compare. We also need the
     // existing config to preserve sensitive fields.
-    let existing = provider_repo::get_provider_by_id(Repos.pool(), id)
+    let existing = provider_repo::get_provider_by_id(ctx.pool(), id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
@@ -2018,18 +2007,19 @@ pub async fn admin_update_provider(
     };
 
     let row = provider_repo::update_provider(
-        Repos.pool(),
+        ctx.pool(),
         id,
         req.name.as_deref().map(str::trim),
         req.enabled,
         final_config.as_ref(),
+        ctx.secret_key(),
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Enforce: if enabled transitioned false → true, probe live; on
     // failure this returns Err(400) which the `?` propagates.
-    let enforced = provider_health::enforce_on_update_transition(row, old_enabled, &event_bus)
+    let enforced = provider_health::enforce_on_update_transition(row, old_enabled, ctx.pool(), &*ctx.events)
         .await
         .map_err(|e| {
             (
@@ -2038,8 +2028,8 @@ pub async fn admin_update_provider(
             )
         })?;
 
-    event_bus.emit_async(AuthProviderEvent::updated(enforced.id).into());
-    sync_publish(
+    ctx.events.emit_auth_provider(AuthProviderEvent::updated(enforced.id));
+    ctx.sync.publish(
         SyncEntity::AuthProvider,
         SyncAction::Update,
         id,
@@ -2094,7 +2084,7 @@ pub fn admin_update_provider_docs(op: TransformOperation) -> TransformOperation 
 #[debug_handler]
 pub async fn admin_delete_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<DeleteProviderResponse>> {
@@ -2103,12 +2093,12 @@ pub async fn admin_delete_provider(
     // `affected_user_links` exactly match the FK cascade. `None` means the
     // provider doesn't exist (or a concurrent deleter already removed it) → 404.
     let (name, affected) =
-        provider_repo::delete_provider_with_link_count(Repos.pool(), id)
+        provider_repo::delete_provider_with_link_count(ctx.pool(), id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
             .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
-    event_bus.emit_async(AuthProviderEvent::deleted(id, name).into());
-    sync_publish(
+    ctx.events.emit_auth_provider(AuthProviderEvent::deleted(id, name));
+    ctx.sync.publish(
         SyncEntity::AuthProvider,
         SyncAction::Delete,
         id,
@@ -2143,22 +2133,22 @@ pub fn admin_delete_provider_docs(op: TransformOperation) -> TransformOperation 
 #[debug_handler]
 pub async fn admin_test_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<TestProviderResponse>> {
-    let row = provider_repo::get_provider_by_id(Repos.pool(), id)
+    let row = provider_repo::get_provider_by_id(ctx.pool(), id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
 
     let was_enabled = row.enabled;
-    let probe = provider_health::probe_provider(&row).await;
+    let probe = provider_health::probe_provider(&row, ctx.pool()).await;
     // record_test_outcome persists last_test_* AND auto-disables the
     // row when the probe failed on a currently-enabled provider —
     // mirroring the LLM repo's pattern.
     if let Err(e) =
-        provider_health::record_test_outcome(&event_bus, id, was_enabled, &probe).await
+        provider_health::record_test_outcome(ctx.pool(), &*ctx.events, id, was_enabled, &probe).await
     {
         tracing::warn!(error = ?e, "failed to persist auth-provider test outcome");
     }
@@ -2166,8 +2156,8 @@ pub async fn admin_test_provider(
     // that don't subscribe to AutoDisabled (e.g. a future audit hook)
     // still see "the test changed this row." Mirrors LLM repo's
     // test_repository_connection_by_id pattern.
-    event_bus.emit_async(AuthProviderEvent::updated(id).into());
-    sync_publish(
+    ctx.events.emit_auth_provider(AuthProviderEvent::updated(id));
+    ctx.sync.publish(
         SyncEntity::AuthProvider,
         SyncAction::Update,
         id,
@@ -2200,6 +2190,7 @@ pub fn admin_test_provider_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn admin_test_provider_config(
     _: RequirePermissions<(AuthProvidersManage,)>,
+    Extension(ctx): Extension<AuthContext>,
     Json(req): Json<CreateAuthProviderRequest>,
 ) -> ApiResult<Json<TestProviderResponse>> {
     // Same allowlist as admin_create_provider — refuses "local" + any
@@ -2232,7 +2223,7 @@ pub async fn admin_test_provider_config(
         last_test_ok: None,
         last_test_message: None,
     };
-    let probe = provider_health::probe_provider(&transient).await;
+    let probe = provider_health::probe_provider(&transient, ctx.pool()).await;
     Ok((
         StatusCode::OK,
         Json(TestProviderResponse {

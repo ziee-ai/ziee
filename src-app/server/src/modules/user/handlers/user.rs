@@ -1,20 +1,18 @@
 // User handlers and request/response models
 
-use crate::core::Repos;
 use aide::transform::TransformOperation;
 use axum::{
     Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
 };
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    core::EventBus,
+    modules::auth::context::AuthContext,
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin},
 };
 
 use crate::modules::user::{
@@ -32,9 +30,10 @@ use crate::modules::user::{
 #[debug_handler]
 pub async fn list_users(
     auth: RequirePermissions<(UsersRead,)>,
+    Extension(ctx): Extension<AuthContext>,
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<UserListResponse>> {
-    let (mut users, total) = Repos.user.list(params.page, params.per_page).await?;
+    let (mut users, total) = ctx.user().list(params.page, params.per_page).await?;
 
     // SECURITY: zero out sensitive PII fields when the caller isn't an
     // admin. The full User row includes email, permissions, and
@@ -78,10 +77,10 @@ pub fn list_users_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn get_user(
     _auth: RequirePermissions<(UsersRead,)>,
+    Extension(ctx): Extension<AuthContext>,
     Path(user_id): Path<Uuid>,
 ) -> ApiResult<Json<User>> {
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -104,7 +103,7 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_user(
     auth: RequirePermissions<(UsersCreate,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
@@ -142,8 +141,7 @@ pub async fn create_user(
         }
 
     // Check if username already exists
-    if Repos
-        .user
+    if ctx.user()
         .get_by_username(&request.username)
         .await?
         .is_some()
@@ -152,7 +150,7 @@ pub async fn create_user(
     }
 
     // Check if email already exists
-    if Repos.user.get_by_email(&request.email).await?.is_some() {
+    if ctx.user().get_by_email(&request.email).await?.is_some() {
         return Err(AppError::conflict("Email").into());
     }
 
@@ -169,8 +167,7 @@ pub async fn create_user(
         .map_err(|e| AppError::internal_with_id(format!("hash password: {e}")))?;
 
     // Create user
-    let user = Repos
-        .user
+    let user = ctx.user()
         .create(
             &request.username,
             &request.email,
@@ -181,18 +178,17 @@ pub async fn create_user(
         .await?;
 
     // Assign user to default group if it exists
-    if let Some(default_group) = Repos.group.get_default().await? {
+    if let Some(default_group) = ctx.group().get_default().await? {
         // Assign user to default group (assigned_by is None for automatic
         // assignment). We don't fail user creation if this fails, but we log
         // it — a silently group-less user can be missing expected permissions.
-        match Repos
-            .user
+        match ctx.user()
             .assign_to_group(user.id, default_group.id, None)
             .await
         {
             // The group's member list changed → refresh admins viewing it
             // (mirrors the explicit assign-to-group handler).
-            Ok(_) => sync_publish(
+            Ok(_) => ctx.sync.publish(
                 SyncEntity::Group,
                 SyncAction::Update,
                 default_group.id,
@@ -208,9 +204,9 @@ pub async fn create_user(
     }
 
     // Emit UserCreated event asynchronously
-    event_bus.emit_async(UserEvent::created(user.clone()));
+    ctx.events.emit_user(UserEvent::Created { user: user.clone() });
 
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::User,
         SyncAction::Create,
         user.id,
@@ -236,14 +232,13 @@ pub fn create_user_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_user(
     _auth: RequirePermissions<(UsersEdit,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     Path(user_id): Path<Uuid>,
     origin: SyncOrigin,
     Json(request): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Check if user exists and get user data
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -257,7 +252,7 @@ pub async fn update_user(
 
     // Check if new username already exists
     if let Some(ref username) = request.username
-        && let Some(existing) = Repos.user.get_by_username(username).await?
+        && let Some(existing) = ctx.user().get_by_username(username).await?
             && existing.id != user_id {
                 return Err(AppError::conflict("Username").into());
             }
@@ -269,8 +264,7 @@ pub async fn update_user(
     // either field — closes 03-user F-01 (Critical: permissions priv-esc)
     // and 03-user F-03 (High: silent email rewrite → OAuth takeover).
     // Email and permissions are managed via dedicated future endpoints.
-    Repos
-        .user
+    ctx.user()
         .update(
             user_id,
             request.username,
@@ -282,20 +276,19 @@ pub async fn update_user(
 
     // Update active status if provided
     if let Some(is_active) = request.is_active {
-        Repos.user.set_active(user_id, is_active).await?;
+        ctx.user().set_active(user_id, is_active).await?;
     }
 
     // Fetch updated user
-    let updated_user = Repos
-        .user
+    let updated_user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
 
     // Emit update event for other modules to react
-    event_bus.emit_async(UserEvent::updated(updated_user.clone()));
+    ctx.events.emit_user(UserEvent::Updated { user: updated_user.clone() });
 
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::User,
         SyncAction::Update,
         updated_user.id,
@@ -304,7 +297,7 @@ pub async fn update_user(
     );
     // Also notify the EDITED user (Owner-scoped) so THEIR other devices
     // re-bootstrap /auth/me — an admin changed their profile / active state.
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::Profile,
         SyncAction::Update,
         updated_user.id,
@@ -333,13 +326,12 @@ pub fn update_user_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn toggle_user_active(
     _auth: RequirePermissions<(UsersToggleStatus,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     Path(user_id): Path<Uuid>,
     origin: SyncOrigin,
 ) -> ApiResult<Json<UserActiveStatusResponse>> {
     // Get current user
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -353,28 +345,27 @@ pub async fn toggle_user_active(
 
     // Toggle active status
     let new_status = !user.is_active;
-    Repos.user.set_active(user_id, new_status).await?;
+    ctx.user().set_active(user_id, new_status).await?;
 
     // Fetch updated user and emit event
-    let updated_user = Repos
-        .user
+    let updated_user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
 
-    event_bus.emit_async(UserEvent::updated(updated_user));
+    ctx.events.emit_user(UserEvent::Updated { user: updated_user });
 
     // Mirror update_user: notify admins (User) AND the affected user (Profile,
     // Owner) so their devices re-bootstrap — on deactivation that surfaces the
     // logout immediately rather than after the ≤60s stream re-check.
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::User,
         SyncAction::Update,
         user_id,
         Audience::perm::<UsersRead>(),
         origin.0,
     );
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::Profile,
         SyncAction::Update,
         user_id,
@@ -409,12 +400,12 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn reset_user_password(
     auth: RequirePermissions<(UsersResetPassword,)>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    let target_user = Repos
-        .user
+    let target_user = ctx.user()
         .get_by_id(request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -443,8 +434,7 @@ pub async fn reset_user_password(
         .map_err(|e| AppError::internal_with_id(format!("hash password: {e}")))?;
 
     // Update password
-    Repos
-        .user
+    ctx.user()
         .update_password(request.user_id, &password_hash)
         .await?;
 
@@ -453,7 +443,7 @@ pub async fn reset_user_password(
     // cosmetic — the still-valid access token keeps passing /auth/me until it
     // expires. After revocation the next refresh fails → forced re-login.
     crate::modules::auth::refresh_tokens::revoke_all_for_user(
-        crate::core::Repos.pool(),
+        ctx.pool(),
         request.user_id,
     )
     .await?;
@@ -461,7 +451,7 @@ pub async fn reset_user_password(
     // Signal the affected user's own devices (Owner) so they re-bootstrap
     // /auth/me after the credential change, mirroring delete_user's session
     // signal. Notify-only — carries just the user id, no credential data.
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::Session,
         SyncAction::Update,
         request.user_id,
@@ -470,7 +460,7 @@ pub async fn reset_user_password(
     );
     // Also emit a Profile signal — a reset can flip `has_password`
     // (none → set). Mirrors set_active's owner-scoped Profile emit.
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::Profile,
         SyncAction::Update,
         request.user_id,
@@ -496,13 +486,12 @@ pub fn reset_user_password_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_user(
     _auth: RequirePermissions<(UsersDelete,)>,
-    Extension(event_bus): Extension<Arc<EventBus>>,
+    Extension(ctx): Extension<AuthContext>,
     Path(user_id): Path<Uuid>,
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    let user = Repos
-        .user
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -521,8 +510,7 @@ pub async fn delete_user(
     // Collect the user's skill bundle dirs BEFORE the delete — the skills row
     // FK is `ON DELETE CASCADE`, so after `user.delete` the extracted_path
     // values are gone and the on-disk dirs would be orphaned forever.
-    let skill_bundle_dirs = Repos
-        .skill
+    let skill_bundle_dirs = crate::modules::skill::SkillRepository::new(ctx.pool().clone())
         .list_owned_extracted_paths(user_id)
         .await
         .unwrap_or_default();
@@ -530,8 +518,7 @@ pub async fn delete_user(
     // Same rationale for the user's file-store blobs: `files` is
     // `ON DELETE CASCADE`, so after the delete the rows are gone and the
     // on-disk blobs would be orphaned. Collect the blob ids first.
-    let file_blob_ids = Repos
-        .file
+    let file_blob_ids = crate::modules::file::FileRepository::new(ctx.pool().clone())
         .list_all_blob_ids_for_user(user_id)
         .await
         .unwrap_or_default();
@@ -541,8 +528,8 @@ pub async fn delete_user(
     // get_by_id check above and here cannot result in deleting an admin
     // (TOCTOU). If no row was deleted, distinguish "became admin" from
     // "already gone" for an accurate error.
-    if !Repos.user.delete_if_not_admin(user_id).await? {
-        let still = Repos.user.get_by_id(user_id).await?;
+    if !ctx.user().delete_if_not_admin(user_id).await? {
+        let still = ctx.user().get_by_id(user_id).await?;
         return match still {
             Some(u) if u.is_admin => Err(AppError::bad_request(
                 "CANNOT_DELETE_ADMIN",
@@ -594,9 +581,9 @@ pub async fn delete_user(
     }
 
     // Emit deletion event for other modules to react
-    event_bus.emit_async(UserEvent::deleted(user_id));
+    ctx.events.emit_user(UserEvent::Deleted { user_id });
 
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::User,
         SyncAction::Delete,
         user_id,
@@ -606,7 +593,7 @@ pub async fn delete_user(
     // Signal the deleted user's own devices (Owner) so they re-bootstrap
     // /auth/me, get a 401, and log out immediately instead of lingering until
     // the ≤60s stream re-check tears the connection down.
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::Session,
         SyncAction::Update,
         user_id,

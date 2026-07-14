@@ -28,7 +28,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::core::Repos;
+use crate::modules::auth::AuthRepository;
 use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, OAuthResult, OAuthSession, UserAttributes};
 
 const DEFAULT_APPLE_BASE_URL: &str = "https://appleid.apple.com";
@@ -255,11 +255,11 @@ impl AppleProvider {
         // bind loopback); in release we use PUBLIC_HTTP_OR_HTTPS
         // (loopback blocked).
         let policy = if cfg!(debug_assertions) {
-            crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+            crate::core::outbound::OutboundUrlPolicy::DEV_LOCAL
         } else {
-            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+            crate::core::outbound::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
         };
-        let http = crate::utils::url_validator::build_validated_client(policy)
+        let http = crate::core::outbound::build_validated_client(policy)
             .or_else(|_| {
                 reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
@@ -519,7 +519,7 @@ impl AuthProviderTrait for AppleProvider {
             expires_at,
             return_to: return_to.map(|s| s.to_string()),
         };
-        Repos.auth.create_oauth_session(&session).await.map_err(|e| {
+        AuthRepository::new(self.pool.clone()).create_oauth_session(&session).await.map_err(|e| {
             AuthError::InternalError(format!("Failed to create oauth session: {}", e))
         })?;
 
@@ -535,8 +535,7 @@ impl AuthProviderTrait for AppleProvider {
         state: &str,
         _session_key: &str,
     ) -> Result<AuthResult, AuthError> {
-        let session = Repos
-            .auth
+        let session = AuthRepository::new(self.pool.clone())
             .get_oauth_session_by_state(state)
             .await
             .map_err(|e| AuthError::InternalError(format!("Failed to load session: {}", e)))?
@@ -588,7 +587,7 @@ impl AuthProviderTrait for AppleProvider {
             .await?;
 
         // Clean up session — single-use.
-        let _ = Repos.auth.delete_oauth_session(state).await;
+        let _ = AuthRepository::new(self.pool.clone()).delete_oauth_session(state).await;
 
         let mut email = claims.email.clone().unwrap_or_default();
         let email_verified = claims

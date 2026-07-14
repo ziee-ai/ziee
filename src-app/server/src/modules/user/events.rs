@@ -26,20 +26,8 @@ pub enum UserEvent {
     Deleted { user_id: Uuid },
 }
 
-#[allow(dead_code)]
-impl UserEvent {
-    /// Helper to create a UserCreated event wrapped in AppEvent
-    pub fn created(user: User) -> crate::core::AppEvent {
-        crate::core::AppEvent::User(UserEvent::Created { user })
-    }
-
-    /// Helper to create a UserUpdated event wrapped in AppEvent
-    pub fn updated(user: User) -> crate::core::AppEvent {
-        crate::core::AppEvent::User(UserEvent::Updated { user })
-    }
-
-    /// Helper to create a UserDeleted event wrapped in AppEvent
-    pub fn deleted(user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::User(UserEvent::Deleted { user_id })
-    }
-}
+// The former `impl UserEvent` AppEvent-wrapping constructors were removed in
+// Chunk BG. Callers now build the raw `UserEvent` variant and hand it to the
+// injected `AuthEventSink::emit_user` (see `modules::auth::context`); the app's
+// sink impl performs the `AppEvent::User(..)` wrapping, so the user module no
+// longer names the app-aggregate event enum.

@@ -18,11 +18,13 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::common::{ApiResult, AppError};
-use crate::core::Repos;
-use crate::modules::permissions::{RequirePermissions, with_permission};
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use axum::Extension;
 
+use crate::common::{ApiResult, AppError};
+use crate::modules::permissions::{RequirePermissions, with_permission};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin};
+
+use super::context::AuthContext;
 use super::permissions::{SessionSettingsManage, SessionSettingsRead};
 
 // ─────────────────────────────── DTOs ───────────────────────────────
@@ -149,8 +151,9 @@ impl SessionSettingsRepository {
 #[debug_handler]
 pub async fn get_session_settings(
     _auth: RequirePermissions<(SessionSettingsRead,)>,
+    Extension(ctx): Extension<AuthContext>,
 ) -> ApiResult<Json<SessionSettings>> {
-    let row = Repos.session_settings.get().await?;
+    let row = ctx.session_settings().get().await?;
     Ok((StatusCode::OK, Json(row)))
 }
 
@@ -166,6 +169,7 @@ pub fn get_session_settings_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_session_settings(
     _auth: RequirePermissions<(SessionSettingsManage,)>,
     origin: SyncOrigin,
+    Extension(ctx): Extension<AuthContext>,
     Json(body): Json<UpdateSessionSettingsRequest>,
 ) -> ApiResult<Json<SessionSettings>> {
     if let Some(n) = body.access_token_expiry_hours
@@ -187,12 +191,12 @@ pub async fn update_session_settings(
         .into());
     }
 
-    let row = Repos
-        .session_settings
+    let row = ctx
+        .session_settings()
         .update(body.access_token_expiry_hours, body.refresh_token_expiry_days)
         .await?;
 
-    sync_publish(
+    ctx.sync.publish(
         SyncEntity::SessionSettings,
         SyncAction::Update,
         Uuid::nil(),

@@ -4,17 +4,15 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, UserAttributes};
-use crate::core::Repos;
 use crate::modules::auth::password;
-use crate::modules::user::User;
+use crate::modules::user::{User, UserRepository};
 
 /// Local authentication provider using database-stored passwords
 pub struct LocalAuthProvider {
     name: String,
     config: serde_json::Value,
-    // Held for construction-API symmetry with the other providers; queries
-    // currently go through the global `Repos`. Narrow allow (was module blanket).
-    #[allow(dead_code)]
+    // Chunk BG: queries now build a `UserRepository` from this pool instead of
+    // reaching the global `Repos` aggregator.
     pool: PgPool,
 }
 
@@ -28,8 +26,9 @@ impl LocalAuthProvider {
     }
 
     async fn get_user(&self, username: &str) -> Result<Option<User>, AuthError> {
+        let users = UserRepository::new(self.pool.clone());
         // Try username first
-        if let Some(user) = Repos.user
+        if let Some(user) = users
             .get_by_username(username)
             .await
             .map_err(|e| AuthError::InternalError(format!("Database error: {}", e)))?
@@ -38,7 +37,8 @@ impl LocalAuthProvider {
         }
 
         // Try email
-        Repos.user.get_by_email(username)
+        users
+            .get_by_email(username)
             .await
             .map_err(|e| AuthError::InternalError(format!("Database error: {}", e)))
     }
@@ -104,7 +104,8 @@ impl AuthProviderTrait for LocalAuthProvider {
 
     async fn test_connection(&self) -> Result<String, AuthError> {
         // For local provider, just verify database connectivity
-        Repos.user.get_by_username("__test_connection__")
+        UserRepository::new(self.pool.clone())
+            .get_by_username("__test_connection__")
             .await
             .map_err(|e| {
                 AuthError::ConnectionFailed(format!("Database connection failed: {}", e))

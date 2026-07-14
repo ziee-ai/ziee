@@ -6,6 +6,7 @@ pub mod app_state;
 pub mod config;
 pub mod database;
 pub mod events;
+pub mod outbound;
 pub mod repository;
 pub mod secrets;
 

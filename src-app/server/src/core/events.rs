@@ -193,3 +193,65 @@ impl Clone for EventBus {
         }
     }
 }
+
+// ─────────────────────── Chunk BG: auth-seam impls ───────────────────────
+//
+// The auth (+ user) module declares the `AuthEventSink` / `AuthSyncSink` /
+// `OutboundHttp` abstractions (see `modules::auth::context`) and no longer
+// names the `EventBus`, `sync::publish`, or `url_validator` globals. The APP
+// installs these concrete impls — the only place the global singletons and the
+// app-aggregate `AppEvent` are named for the auth event/sync/outbound paths —
+// and hands the assembled `AuthContext` to the router as an extension.
+
+use crate::modules::auth::context::{AuthContext, AuthEventSink, AuthSyncSink};
+use crate::modules::auth::providers::events::AuthProviderEvent;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity};
+use crate::modules::user::events::UserEvent;
+
+/// `EventBus`-backed event sink. Wraps each module event into the
+/// app-aggregate `AppEvent` and fires it fire-and-forget — byte-identical to
+/// the former `event_bus.emit_async(UserEvent::created(..))` call sites.
+struct EventBusAuthSink {
+    bus: Arc<EventBus>,
+}
+
+impl AuthEventSink for EventBusAuthSink {
+    fn emit_user(&self, ev: UserEvent) {
+        self.bus.emit_async(AppEvent::User(ev));
+    }
+    fn emit_auth_provider(&self, ev: AuthProviderEvent) {
+        self.bus.emit_async(AppEvent::AuthProvider(ev));
+    }
+}
+
+/// `sync::publish`-backed sync sink — the single place the auth/user sync
+/// notifications reach the global publish functions.
+struct PublishSyncSink;
+
+impl AuthSyncSink for PublishSyncSink {
+    fn publish(
+        &self,
+        entity: SyncEntity,
+        action: SyncAction,
+        id: uuid::Uuid,
+        audience: Audience,
+        origin: Option<uuid::Uuid>,
+    ) {
+        crate::modules::sync::publish(entity, action, id, audience, origin);
+    }
+    fn publish_session_to_users(&self, user_ids: &[uuid::Uuid], origin: Option<uuid::Uuid>) {
+        crate::modules::sync::publish_session_to_users(user_ids, origin);
+    }
+}
+
+/// Assemble the [`AuthContext`] the auth/user handlers pull from the request
+/// extensions, installing the app-backed sinks. Called once at boot by
+/// `lib.rs` / `main.rs` (and thus the desktop embed).
+pub fn build_auth_context(pool: Arc<PgPool>, event_bus: Arc<EventBus>) -> AuthContext {
+    AuthContext::new(
+        pool,
+        crate::core::secrets::storage_key().map(|s| s.to_string()),
+        Arc::new(EventBusAuthSink { bus: event_bus }),
+        Arc::new(PublishSyncSink),
+    )
+}

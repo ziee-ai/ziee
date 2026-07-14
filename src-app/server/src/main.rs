@@ -373,6 +373,13 @@ async fn main() {
             axum::http::header::HeaderName::from_static("strict-transport-security"),
             axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
         ))
+        // Chunk BG: per-request auth/user dependency handle (pool + installed
+        // event/sync/outbound sinks) — replaces those handlers' reach into
+        // `Repos` / `EventBus` / `sync::publish` / `url_validator`.
+        .layer(axum::Extension(core::events::build_auth_context(
+            pool.clone(),
+            event_bus.clone(),
+        )))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
         // Chunk B3: the framework's permission extractors pull this injected

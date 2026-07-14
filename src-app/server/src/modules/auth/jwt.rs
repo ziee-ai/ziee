@@ -4,7 +4,23 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::core::config::JwtConfig;
+
+/// The JWT signer's settings — an auth-owned mirror of the app's
+/// `JwtConfig` (Chunk BG). Threading this instead of naming
+/// the app config's `JwtConfig` is what lets the JWT service compile
+/// without reaching the app config crate; the app installs the values via
+/// `From<JwtConfig>` at the two construction sites (`lib.rs` / `main.rs`).
+/// Field-for-field identical to `JwtConfig`, so the conversion is a pure
+/// move — behaviour is unchanged.
+#[derive(Debug, Clone)]
+pub struct JwtSettings {
+    pub secret: String,
+    pub issuer: String,
+    pub audience: String,
+    pub access_token_expiry_hours: i64,
+    pub refresh_token_expiry_days: i64,
+    pub access_token_expiry_seconds: Option<i64>,
+}
 
 /// JWT claims structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -51,7 +67,7 @@ pub struct TokenPairWithJti {
 /// JWT service for token generation and validation
 #[derive(Clone)]
 pub struct JwtService {
-    config: JwtConfig,
+    config: JwtSettings,
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
 }
@@ -86,7 +102,8 @@ impl JwtService {
     /// accepted at runtime). Callers (main.rs, lib.rs) propagate the
     /// error so the server refuses to boot rather than continuing with
     /// a weak signer.
-    pub fn try_new(config: JwtConfig) -> Result<Self, AppError> {
+    pub fn try_new(config: impl Into<JwtSettings>) -> Result<Self, AppError> {
+        let config: JwtSettings = config.into();
         if config.secret.len() < MIN_JWT_SECRET_LEN {
             return Err(AppError::internal_error(format!(
                 "JWT secret is {} bytes; minimum is {}. Set jwt.secret in \
@@ -122,7 +139,7 @@ impl JwtService {
     /// Used cross-crate by the `ziee-desktop` integration tests, so it
     /// appears unused from the `ziee` crate's own build — keep it.
     #[allow(dead_code)]
-    pub fn new(config: JwtConfig) -> Self {
+    pub fn new(config: impl Into<JwtSettings>) -> Self {
         Self::try_new(config).expect("JWT secret validation failed; use try_new for graceful errors")
     }
 
@@ -386,8 +403,8 @@ impl ziee_identity::TokenVerifier for JwtService {
 mod tests {
     use super::*;
 
-    fn test_config(access_seconds: Option<i64>) -> JwtConfig {
-        JwtConfig {
+    fn test_config(access_seconds: Option<i64>) -> JwtSettings {
+        JwtSettings {
             secret: "unit-test-jwt-secret-with-at-least-32-chars!".to_string(),
             issuer: "ziee".to_string(),
             audience: "ziee-api".to_string(),

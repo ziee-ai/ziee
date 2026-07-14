@@ -1,8 +1,8 @@
 //! Auth-provider lifecycle events. Mirrors
 //! `llm_repository/events.rs` — gives in-process Rust handlers a typed
 //! hook for the same transitions the frontend hears about via sync
-//! (`auth_provider.*` on the EventBus and `sync:auth_provider` via the
-//! SSE stream).
+//! (`auth_provider.*` on the in-process event bus and `sync:auth_provider`
+//! via the SSE stream).
 //!
 //! Notify-only payloads: the variants carry `{id}` / `{id, reason}` and
 //! never the full row. `AuthProvider.config` holds plaintext secrets at
@@ -51,8 +51,8 @@ impl AuthProviderEvent {
     }
 }
 
-impl From<AuthProviderEvent> for crate::core::events::AppEvent {
-    fn from(event: AuthProviderEvent) -> Self {
-        crate::core::events::AppEvent::AuthProvider(event)
-    }
-}
+// Chunk BG: the `From<AuthProviderEvent> for AppEvent` bridge was removed here.
+// Emitters now hand the raw `AuthProviderEvent` to the injected
+// `AuthEventSink::emit_auth_provider`; the app's sink impl (see `core::events`)
+// performs the `AppEvent::AuthProvider(..)` wrapping, so this module no longer
+// names the app-aggregate event enum.

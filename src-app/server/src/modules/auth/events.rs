@@ -24,25 +24,8 @@ pub enum AuthEvent {
     SessionExpired { user_id: Uuid },
 }
 
-#[allow(dead_code)] // future event-infrastructure constructors; see enum above
-impl AuthEvent {
-    /// Helper to create a UserAuthenticated event wrapped in AppEvent
-    pub fn user_authenticated(user_id: Uuid, provider: String) -> crate::core::AppEvent {
-        crate::core::AppEvent::Auth(AuthEvent::UserAuthenticated { user_id, provider })
-    }
-
-    /// Helper to create an AuthenticationFailed event wrapped in AppEvent
-    pub fn authentication_failed(username: String, reason: String) -> crate::core::AppEvent {
-        crate::core::AppEvent::Auth(AuthEvent::AuthenticationFailed { username, reason })
-    }
-
-    /// Helper to create a SessionRefreshed event wrapped in AppEvent
-    pub fn session_refreshed(user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::Auth(AuthEvent::SessionRefreshed { user_id })
-    }
-
-    /// Helper to create a SessionExpired event wrapped in AppEvent
-    pub fn session_expired(user_id: Uuid) -> crate::core::AppEvent {
-        crate::core::AppEvent::Auth(AuthEvent::SessionExpired { user_id })
-    }
-}
+// The former `impl AuthEvent` AppEvent-wrapping constructors were removed in
+// Chunk BG: they were dead code (no emitter/subscriber wired) and naming
+// the app-aggregate `AppEvent` here coupled the auth module to that enum.
+// If this vocabulary is ever wired, emit it through the injected
+// `AuthEventSink` (see `context.rs`) — the app owns the `AppEvent` wrapping.

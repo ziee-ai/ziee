@@ -12,9 +12,10 @@
 
 use uuid::Uuid;
 
+use sqlx::PgPool;
+
 use crate::common::AppError;
-use crate::core::events::EventBus;
-use crate::core::repository::Repos;
+use crate::modules::auth::context::AuthEventSink;
 
 use super::events::AuthProviderEvent;
 use super::models::AuthProvider;
@@ -46,14 +47,14 @@ impl ProbeResult {
 /// This is the single probe site for the manual Test endpoint and for
 /// the enable-transition enforcement below — a regression in one is a
 /// regression in the other.
-pub async fn probe_provider(provider: &AuthProvider) -> ProbeResult {
+pub async fn probe_provider(provider: &AuthProvider, pool: &PgPool) -> ProbeResult {
     // Force-enable a local copy. `create_provider` refuses
     // `enabled=false` rows because the live login path needs that
     // guard, but for tests we want to verify the config independent
     // of the kill switch.
     let mut row = provider.clone();
     row.enabled = true;
-    let built = match create_provider(&row, Repos.pool().clone()) {
+    let built = match create_provider(&row, pool.clone()) {
         Ok(p) => p,
         Err(AuthError::ConfigurationError(msg)) => {
             return ProbeResult::fail(format!("Configuration error: {}", msg));
@@ -83,19 +84,20 @@ pub async fn probe_provider(provider: &AuthProvider) -> ProbeResult {
 pub async fn enforce_on_update_transition(
     persisted: AuthProvider,
     old_enabled: bool,
-    event_bus: &EventBus,
+    pool: &PgPool,
+    events: &dyn AuthEventSink,
 ) -> Result<AuthProvider, AppError> {
     let transitioned_to_enabled = persisted.enabled && !old_enabled;
     if !transitioned_to_enabled {
         return Ok(persisted);
     }
 
-    let result = probe_provider(&persisted).await;
+    let result = probe_provider(&persisted, pool).await;
     if result.ok {
-        provider_repo::record_test_result(Repos.pool(), persisted.id, true, &result.message)
+        provider_repo::record_test_result(pool, persisted.id, true, &result.message)
             .await?;
         // Re-fetch so the response carries the recorded `last_test_*` fields.
-        let refetched = provider_repo::get_provider_by_id(Repos.pool(), persisted.id)
+        let refetched = provider_repo::get_provider_by_id(pool, persisted.id)
             .await
             .map_err(AppError::database_error)?
             .unwrap_or(persisted);
@@ -107,11 +109,9 @@ pub async fn enforce_on_update_transition(
         reason = %result.message,
         "auth_provider::health: update-enable-transition probe failed; reverting to enabled=false",
     );
-    provider_repo::set_enabled_false(Repos.pool(), persisted.id).await?;
-    provider_repo::record_test_result(Repos.pool(), persisted.id, false, &result.message).await?;
-    event_bus.emit_async(
-        AuthProviderEvent::auto_disabled(persisted.id, result.message.clone()).into(),
-    );
+    provider_repo::set_enabled_false(pool, persisted.id).await?;
+    provider_repo::record_test_result(pool, persisted.id, false, &result.message).await?;
+    events.emit_auth_provider(AuthProviderEvent::auto_disabled(persisted.id, result.message.clone()));
     Err(AppError::bad_request(
         "AUTH_PROVIDER_ENABLE_FAILED_HEALTH_CHECK",
         format!(
@@ -137,7 +137,8 @@ pub struct CreateOutcome {
 /// `connection_warning`.
 pub async fn enforce_on_create_with_enabled(
     row: AuthProvider,
-    event_bus: &EventBus,
+    pool: &PgPool,
+    events: &dyn AuthEventSink,
 ) -> Result<CreateOutcome, AppError> {
     if !row.enabled {
         return Ok(CreateOutcome {
@@ -146,10 +147,10 @@ pub async fn enforce_on_create_with_enabled(
         });
     }
 
-    let result = probe_provider(&row).await;
+    let result = probe_provider(&row, pool).await;
     if result.ok {
-        provider_repo::record_test_result(Repos.pool(), row.id, true, &result.message).await?;
-        let refetched = provider_repo::get_provider_by_id(Repos.pool(), row.id)
+        provider_repo::record_test_result(pool, row.id, true, &result.message).await?;
+        let refetched = provider_repo::get_provider_by_id(pool, row.id)
             .await
             .map_err(AppError::database_error)?
             .unwrap_or(row);
@@ -164,10 +165,10 @@ pub async fn enforce_on_create_with_enabled(
         reason = %result.message,
         "auth_provider::health: create-time probe failed; downgrading new provider to disabled",
     );
-    provider_repo::set_enabled_false(Repos.pool(), row.id).await?;
-    provider_repo::record_test_result(Repos.pool(), row.id, false, &result.message).await?;
-    event_bus.emit_async(AuthProviderEvent::auto_disabled(row.id, result.message.clone()).into());
-    let refetched = provider_repo::get_provider_by_id(Repos.pool(), row.id)
+    provider_repo::set_enabled_false(pool, row.id).await?;
+    provider_repo::record_test_result(pool, row.id, false, &result.message).await?;
+    events.emit_auth_provider(AuthProviderEvent::auto_disabled(row.id, result.message.clone()));
+    let refetched = provider_repo::get_provider_by_id(pool, row.id)
         .await
         .map_err(AppError::database_error)?
         // Concurrent delete between set_enabled_false and the
@@ -190,12 +191,13 @@ pub async fn enforce_on_create_with_enabled(
 /// Returns `Some(disabled_reason)` when the row was auto-disabled —
 /// the handler can use it to enrich the response if it wants to.
 pub async fn record_test_outcome(
-    event_bus: &EventBus,
+    pool: &PgPool,
+    events: &dyn AuthEventSink,
     provider_id: Uuid,
     was_enabled: bool,
     result: &ProbeResult,
 ) -> Result<Option<String>, AppError> {
-    provider_repo::record_test_result(Repos.pool(), provider_id, result.ok, &result.message)
+    provider_repo::record_test_result(pool, provider_id, result.ok, &result.message)
         .await?;
     if was_enabled && !result.ok {
         tracing::warn!(
@@ -203,9 +205,8 @@ pub async fn record_test_outcome(
             reason = %result.message,
             "auth_provider::health: manual Test on enabled row failed; auto-disabling",
         );
-        provider_repo::set_enabled_false(Repos.pool(), provider_id).await?;
-        event_bus
-            .emit_async(AuthProviderEvent::auto_disabled(provider_id, result.message.clone()).into());
+        provider_repo::set_enabled_false(pool, provider_id).await?;
+        events.emit_auth_provider(AuthProviderEvent::auto_disabled(provider_id, result.message.clone()));
         return Ok(Some(result.message.clone()));
     }
     Ok(None)

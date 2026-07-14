@@ -19,6 +19,26 @@ pub use ziee_core::config::{
     ServerConfig,
 };
 
+// Chunk BG: the auth JWT service holds an auth-owned `JwtSettings` instead of
+// naming the app config's `JwtConfig`. This app-side conversion is the one place
+// the two are bridged, so every existing `JwtService::try_new(config.jwt)` call
+// site (and the cross-crate tests that pass `ziee::JwtConfig`) keeps working
+// unchanged. Lives here (in the shared `core` tree compiled by BOTH the lib and
+// the `ziee` bin) rather than in `lib.rs`, so the bin target sees the impl too.
+// Field-for-field move — behaviour identical.
+impl From<JwtConfig> for crate::modules::auth::jwt::JwtSettings {
+    fn from(c: JwtConfig) -> Self {
+        crate::modules::auth::jwt::JwtSettings {
+            secret: c.secret,
+            issuer: c.issuer,
+            audience: c.audience,
+            access_token_expiry_hours: c.access_token_expiry_hours,
+            refresh_token_expiry_days: c.refresh_token_expiry_days,
+            access_token_expiry_seconds: c.access_token_expiry_seconds,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     /// Framework server settings (postgresql / server / logging / jwt),

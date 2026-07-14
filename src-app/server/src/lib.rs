@@ -38,6 +38,7 @@ pub use core::{Repos, EventBus, EventHandler, AppEvent};
 pub use core::secrets::{init_storage_key, storage_key};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, hash_password};
+pub use modules::auth::jwt::JwtSettings;
 pub use modules::auth::jwt_extractor::JwtAuth;
 pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
@@ -561,6 +562,13 @@ async fn setup_server(
             axum::http::header::HeaderName::from_static("strict-transport-security"),
             axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
         ))
+        // Chunk BG: the per-request auth/user dependency handle — pool + the
+        // installed event/sync/outbound sinks — so those handlers no longer
+        // reach `Repos` / `EventBus` / `sync::publish` / `url_validator`.
+        .layer(axum::Extension(crate::core::events::build_auth_context(
+            pool.clone(),
+            event_bus.clone(),
+        )))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
         // Chunk B3: the framework's permission extractors pull this injected

@@ -35,6 +35,7 @@ pub async fn mint_admin_login(
     // lifetimes + a jti-whitelisted refresh token, so desktop sessions
     // are revocable (logout-everywhere) and pruned like any other.
     let minted = ziee::refresh_tokens::mint_session_tokens(
+        ziee::Repos.pool(),
         jwt_service,
         admin.id,
         &admin.username,

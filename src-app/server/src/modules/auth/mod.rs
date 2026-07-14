@@ -1,4 +1,5 @@
 // Auth module - JWT-based authentication
+pub mod context;
 pub mod cookie;
 pub mod events;
 pub mod handlers;

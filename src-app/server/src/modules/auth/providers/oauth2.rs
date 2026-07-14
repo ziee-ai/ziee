@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::core::Repos;
+use crate::modules::auth::AuthRepository;
 use super::{
     AuthError, AuthProvider, AuthProviderTrait, AuthResult, OAuthResult, OAuthSession,
     UserAttributes,
@@ -38,11 +38,11 @@ use super::{
 /// works; PUBLIC_HTTP_OR_HTTPS in release (loopback blocked).
 fn validate_issuer_url(url: &str) -> Result<(), AuthError> {
     let policy = if cfg!(debug_assertions) {
-        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+        crate::core::outbound::OutboundUrlPolicy::DEV_LOCAL
     } else {
-        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+        crate::core::outbound::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
     };
-    crate::utils::url_validator::validate_outbound_url(url, &policy)
+    crate::core::outbound::validate_outbound_url(url, &policy)
         .map(|_| ())
         .map_err(|e| {
             AuthError::ConfigurationError(format!(
@@ -67,11 +67,11 @@ fn validate_issuer_url(url: &str) -> Result<(), AuthError> {
 /// `build_validated_client` somehow fails (TLS config error).
 fn create_http_client() -> reqwest::Client {
     let policy = if cfg!(debug_assertions) {
-        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+        crate::core::outbound::OutboundUrlPolicy::DEV_LOCAL
     } else {
-        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+        crate::core::outbound::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
     };
-    crate::utils::url_validator::build_validated_client(policy)
+    crate::core::outbound::build_validated_client(policy)
         .unwrap_or_else(|_| {
             reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
@@ -328,11 +328,13 @@ pub struct OAuth2Provider {
     provider_id: Uuid,
     config: OAuth2Config,
     raw_config: serde_json::Value,
-    // pool field removed — never read; retained implicitly via borrows
+    // Chunk BG: retained so OAuth-session queries build an `AuthRepository`
+    // from this pool instead of reaching the global `Repos` aggregator.
+    pool: PgPool,
 }
 
 impl OAuth2Provider {
-    pub fn new(provider: &AuthProvider, _pool: PgPool) -> Result<Self, AuthError> {
+    pub fn new(provider: &AuthProvider, pool: PgPool) -> Result<Self, AuthError> {
         let config: OAuth2Config =
             serde_json::from_value(provider.config.clone()).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid OAuth2 configuration: {}", e))
@@ -343,6 +345,7 @@ impl OAuth2Provider {
             provider_id: provider.id,
             config,
             raw_config: provider.config.clone(),
+            pool,
         })
     }
 
@@ -385,11 +388,11 @@ impl OAuth2Provider {
         //      who configures `userinfo_url=http://internal-vault:8200`
         //      at provider-create time.
         let policy = if cfg!(debug_assertions) {
-            crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+            crate::core::outbound::OutboundUrlPolicy::DEV_LOCAL
         } else {
-            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+            crate::core::outbound::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
         };
-        crate::utils::url_validator::validate_outbound_url(userinfo_url, &policy)
+        crate::core::outbound::validate_outbound_url(userinfo_url, &policy)
             .map_err(|e| {
                 AuthError::ConfigurationError(format!(
                     "userinfo_url failed safety check: {}",
@@ -630,7 +633,7 @@ impl AuthProviderTrait for OAuth2Provider {
             return_to: return_to.map(|s| s.to_string()),
         };
 
-        Repos.auth.create_oauth_session(&session)
+        AuthRepository::new(self.pool.clone()).create_oauth_session(&session)
             .await
             .map_err(|e| AuthError::InternalError(format!("Failed to create session: {}", e)))?;
 
@@ -647,7 +650,7 @@ impl AuthProviderTrait for OAuth2Provider {
         _session_key: &str, // Not used - we use state directly
     ) -> Result<AuthResult, AuthError> {
         // Get and validate session by state
-        let session = Repos.auth.get_oauth_session_by_state(state)
+        let session = AuthRepository::new(self.pool.clone()).get_oauth_session_by_state(state)
             .await
             .map_err(|e| AuthError::InternalError(format!("Failed to get session: {}", e)))?
             .ok_or_else(|| {
@@ -929,7 +932,7 @@ impl AuthProviderTrait for OAuth2Provider {
             .to_string();
 
         // Delete session after successful authentication
-        let _ = Repos.auth.delete_oauth_session(state).await;
+        let _ = AuthRepository::new(self.pool.clone()).delete_oauth_session(state).await;
 
         Ok(AuthResult {
             external_id,

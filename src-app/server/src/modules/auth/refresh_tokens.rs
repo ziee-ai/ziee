@@ -5,19 +5,19 @@
 //! the schema rationale.
 
 use crate::common::AppError;
-use crate::core::Repos;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::jwt::{JwtService, TokenPairWithJti};
+use super::session_settings::SessionSettingsRepository;
 
 /// The admin-configured token lifetimes `(access_hours, refresh_days)`
 /// from the `session_settings` singleton, falling back to the YAML
 /// `jwt.*` values when the DB read fails (so login never breaks
 /// mid-migration or on a transient DB error).
-pub async fn session_expiries(jwt_service: &JwtService) -> (i64, i64) {
-    match Repos.session_settings.get().await {
+pub async fn session_expiries(pool: &PgPool, jwt_service: &JwtService) -> (i64, i64) {
+    match SessionSettingsRepository::new(pool.clone()).get().await {
         Ok(s) => (
             s.access_token_expiry_hours as i64,
             s.refresh_token_expiry_days as i64,
@@ -43,13 +43,14 @@ pub async fn session_expiries(jwt_service: &JwtService) -> (i64, i64) {
 /// whitelist before the pair is returned (fail-closed: a DB write
 /// failure means no usable refresh token was handed out).
 pub async fn mint_session_tokens(
+    pool: &PgPool,
     jwt_service: &JwtService,
     user_id: Uuid,
     username: &str,
     email: &str,
     is_admin: bool,
 ) -> Result<TokenPairWithJti, AppError> {
-    let (access_hours, refresh_days) = session_expiries(jwt_service).await;
+    let (access_hours, refresh_days) = session_expiries(pool, jwt_service).await;
 
     let minted = jwt_service.generate_tokens_with_jti_expiry(
         user_id,
@@ -59,13 +60,7 @@ pub async fn mint_session_tokens(
         access_hours,
         refresh_days,
     )?;
-    register(
-        Repos.pool(),
-        minted.refresh_jti,
-        user_id,
-        minted.refresh_expires_at,
-    )
-    .await?;
+    register(pool, minted.refresh_jti, user_id, minted.refresh_expires_at).await?;
     Ok(minted)
 }
 

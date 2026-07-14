@@ -78,6 +78,7 @@ async fn assemble_provider(pool: &PgPool, row: AuthProviderRow) -> AuthProvider 
 async fn prepare_config_for_write(
     pool: &PgPool,
     config: &serde_json::Value,
+    storage_key: Option<&str>,
 ) -> Result<(serde_json::Value, Option<Vec<u8>>), AppError> {
     let secret = config
         .get(CLIENT_SECRET_KEY)
@@ -88,7 +89,7 @@ async fn prepare_config_for_write(
         // store config as-is, no encrypted blob.
         return Ok((config.clone(), None));
     };
-    match encrypt_secret(pool, secret, crate::core::secrets::storage_key()).await? {
+    match encrypt_secret(pool, secret, storage_key).await? {
         Some(blob) => {
             // Blank the plaintext copy in the stored config; the read path
             // re-injects the real value from the encrypted column.
@@ -230,11 +231,12 @@ pub async fn create_provider(
     provider_type: &str,
     enabled: bool,
     config: &serde_json::Value,
+    storage_key: Option<&str>,
 ) -> Result<AuthProvider, AppError> {
     // Encrypt the client_secret at rest: store it in client_secret_encrypted
     // and blank the plaintext copy inside config (compat: stays plaintext when
     // no storage key is configured).
-    let (stored_config, encrypted) = prepare_config_for_write(pool, config).await?;
+    let (stored_config, encrypted) = prepare_config_for_write(pool, config, storage_key).await?;
     let row = sqlx::query_as!(
         AuthProviderRow,
         r#"
@@ -268,6 +270,7 @@ pub async fn update_provider(
     name: Option<&str>,
     enabled: Option<bool>,
     config: Option<&serde_json::Value>,
+    storage_key: Option<&str>,
 ) -> Result<AuthProvider, AppError> {
     // Only touch the secret columns when `config` is being patched. When it is,
     // encrypt the client_secret + blank its plaintext copy; the encrypted column
@@ -278,7 +281,7 @@ pub async fn update_provider(
     let config_provided = config.is_some();
     let (stored_config, encrypted): (Option<serde_json::Value>, Option<Vec<u8>>) = match config {
         Some(c) => {
-            let (sc, enc) = prepare_config_for_write(pool, c).await?;
+            let (sc, enc) = prepare_config_for_write(pool, c, storage_key).await?;
             (Some(sc), enc)
         }
         None => (None, None),
