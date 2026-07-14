@@ -36,7 +36,11 @@ function walk(dir, acc = []) {
         e === 'dev' && /[\\/]src$/.test(dir)
       if (!['node_modules', 'dist', 'build', '.git', 'tests'].includes(e) && !isGalleryDev)
         walk(full, acc)
-    } else if (/\.(tsx|jsx|ts)$/.test(e)) acc.push(full)
+    } else if (/\.(tsx|jsx|ts)$/.test(e) && e !== 'gallery.tsx' && e !== 'gallery.ts')
+      // Per-module `gallery.tsx` seed files carry gallery-internal testids
+      // (e.g. a seeded dialog's `testid:`); they must not expand the app's typed
+      // production registry — same rationale as skipping `src/dev/gallery`.
+      acc.push(full)
   }
   return acc
 }
