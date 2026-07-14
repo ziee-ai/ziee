@@ -5,7 +5,7 @@ import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } 
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import { VirtualizedConversationList } from '@/modules/chat/components/VirtualizedConversationList'
 import type { ConversationResponse } from '@/api-client/types'

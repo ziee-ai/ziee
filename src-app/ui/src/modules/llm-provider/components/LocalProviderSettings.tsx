@@ -1,7 +1,7 @@
 import { Flex, Text, message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Loading } from '@/core/components/Loading'
 import { ProviderHeader } from '@/modules/llm-provider/components/ProviderHeader'
 import { LlmModelsSection } from '@/modules/llm-provider/components/LlmModelsSection'

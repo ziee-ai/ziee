@@ -1,6 +1,6 @@
 import { LayoutGrid } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'

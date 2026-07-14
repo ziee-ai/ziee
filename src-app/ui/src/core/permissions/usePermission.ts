@@ -1,7 +1,7 @@
 // See .claude/PERMISSION_GATING.md for the gating pattern and the
 // checklist for new features.
 
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { evaluatePermission } from './evaluatePermission'
 import type { PermissionExpr } from './types'
 

@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { User } from '@/api-client/types'
 
 export interface ProfileUpdatedEvent extends BaseEvent {
@@ -8,7 +8,7 @@ export interface ProfileUpdatedEvent extends BaseEvent {
 
 export type ProfileModuleEvent = ProfileUpdatedEvent
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'profile.updated': ProfileUpdatedEvent
   }

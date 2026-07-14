@@ -10,8 +10,8 @@
  */
 import { ApiClient } from '@/api-client'
 import type { SetupAdminRequest } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import type { StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import type { StoreProxy } from '@ziee/framework/stores'
 
 interface AppState {
   needsSetup: boolean | null
@@ -57,7 +57,7 @@ export const App = defineStore('App', {
 
 export const useAppStore = App.store
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     App: StoreProxy<AppState>
   }

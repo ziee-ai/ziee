@@ -8,7 +8,7 @@
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed, lazyProps } from '@/dev/gallery/support'
 import type { File as FileEntity } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { deepProjectFiles } from '@/dev/gallery/fixtures/project-deep'
 
 // ── Overlay fixture (from overlays.tsx) ───────────────────────────────────────

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetTitle } from '@ziee/kit/shadcn/sheet'
 import { useMetaThemeColor } from '@/components/ThemeProvider/themeColor'
 import 'overlayscrollbars/overlayscrollbars.css'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 
 /**

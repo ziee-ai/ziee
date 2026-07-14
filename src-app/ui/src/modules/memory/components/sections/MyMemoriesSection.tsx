@@ -38,7 +38,7 @@ import {
   Download,
   Pencil,
 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

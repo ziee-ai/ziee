@@ -1,5 +1,5 @@
 import { enableMapSet } from 'immer'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
@@ -435,8 +435,8 @@ export const McpComposer = defineStore('McpComposer', {
       // Fire `project.mcp_updated` so the dedicated ProjectMcpSettings
       // store (used by the project panel) refetches and the UI reflects
       // the new defaults. Dynamic import to avoid module cycle with
-      // @/core/stores.
-      const { Stores } = await import('@/core/stores')
+      // @ziee/framework/stores.
+      const { Stores } = await import('@ziee/framework/stores')
       await Stores.EventBus.emit({
         type: 'project.mcp_updated',
         data: { projectId },

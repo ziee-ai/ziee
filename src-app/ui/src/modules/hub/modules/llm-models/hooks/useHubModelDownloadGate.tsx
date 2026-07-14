@@ -33,7 +33,7 @@
 
 import { Text, dialog, message } from '@ziee/kit'
 import { useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { HubModel, LlmRepository } from '@/api-client/types'
 
 /**

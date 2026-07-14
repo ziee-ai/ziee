@@ -4,7 +4,7 @@ import { Button, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
 
 /** Compact view-only summary of a project's attached knowledge bases (the

@@ -8,8 +8,8 @@ import type {
   HostMountPolicyResponse,
   UpdateHostMountPolicyRequest,
 } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import { type StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
 
 interface HostMountPolicyState {
   policy: HostMountPolicyResponse | null
@@ -20,7 +20,7 @@ interface HostMountPolicyState {
   updatePolicy: (patch: UpdateHostMountPolicyRequest) => Promise<void>
 }
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     HostMountPolicy: StoreProxy<HostMountPolicyState>
   }

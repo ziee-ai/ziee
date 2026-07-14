@@ -10,7 +10,7 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { Permissions } from '@/api-client/types'

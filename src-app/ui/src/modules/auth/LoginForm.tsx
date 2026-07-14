@@ -15,7 +15,7 @@ import {
 } from '@ziee/kit'
 import { Lock, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { LoginRequest } from '@/api-client/types'
 import { ProviderButtons } from './ProviderButtons'
 

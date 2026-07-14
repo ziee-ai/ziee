@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { Button, Empty, Tabs, Text } from '@ziee/kit'
 import { CircleAlert, X } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'

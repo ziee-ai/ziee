@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button, Card, Text } from '@ziee/kit'
 import { Clock, Check, X } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 

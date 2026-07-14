@@ -7,7 +7,7 @@ import {
   type WebSearchSettings,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const WebSearchAdmin = defineStore('WebSearchAdmin', {
   immer: true,

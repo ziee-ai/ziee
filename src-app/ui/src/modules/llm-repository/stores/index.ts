@@ -2,4 +2,4 @@
 export * from './LlmRepository.store'
 
 // Re-export for compatibility with Stores pattern
-export { Stores } from '@/core/stores'
+export { Stores } from '@ziee/framework/stores'

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   type LiteratureRecord,
   type LiteratureScreeningData,

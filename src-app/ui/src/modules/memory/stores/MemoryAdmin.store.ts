@@ -8,7 +8,7 @@ import {
   type UpdateMemoryAdminSettingsRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
 // Candidate model row for the admin form's model pickers. Carries

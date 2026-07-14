@@ -127,7 +127,7 @@ const textExtension: ChatExtension = createExtension({
    * Returns content field with text from TextStore
    */
   composeRequestFields: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const content = Stores.Chat.$.TextStore.getText()
     return { content: content?.trim() || '' }
   },
@@ -137,7 +137,7 @@ const textExtension: ChatExtension = createExtension({
    * Only validates - does not return message (that's handled by composeRequestFields)
    */
   beforeSendMessage: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const content = Stores.Chat.$.TextStore.getText()
 
     if (!content || !content.trim()) {
@@ -166,7 +166,7 @@ const textExtension: ChatExtension = createExtension({
    * Backup text before clearing for error recovery
    */
   onMessageSent: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const textStore = Stores.Chat.$.TextStore
 
     // Backup text before clearing
@@ -204,7 +204,7 @@ const textExtension: ChatExtension = createExtension({
    * Called when streaming fails with an error
    */
   onStreamError: async (_error: Error) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const textStore = Stores.Chat.$.TextStore
 
     // Restore text from backup
@@ -220,7 +220,7 @@ const textExtension: ChatExtension = createExtension({
    * Called when streaming completes successfully
    */
   afterStreamComplete: async (_message) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const textStore = Stores.Chat.$.TextStore
 
     // Clear backup since message was sent successfully

@@ -4,7 +4,7 @@ import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import { message } from '@ziee/kit'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Globally-mounted (route-independent) listener that raises a live toast when a

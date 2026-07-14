@@ -48,13 +48,13 @@ const storesMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api-client', () => ({ ApiClient: apiMock }))
-vi.mock('@/core/stores', () => ({
+vi.mock('@ziee/framework/stores', () => ({
   Stores: storesMock,
   createStoreProxy: () => ({}),
 }))
 vi.mock('@/core/permissions', () => ({ hasPermissionNow: () => true }))
 // store-kit imports the event bus; nothing here fires it, so a no-op is enough.
-vi.mock('@/core/events', () => ({
+vi.mock('@ziee/framework/events', () => ({
   useEventBusStore: {
     getState: () => ({
       on: () => () => {

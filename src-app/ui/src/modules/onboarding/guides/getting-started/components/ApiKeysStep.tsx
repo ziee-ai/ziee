@@ -13,7 +13,7 @@ import {
 } from '@ziee/kit'
 import { Plug, CircleCheck } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 
 export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps) {

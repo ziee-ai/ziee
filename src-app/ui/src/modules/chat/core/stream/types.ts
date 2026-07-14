@@ -1,5 +1,5 @@
 import type { SSEChatStreamEvent } from '@/api-client/types'
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 
 /**
  * Live chat-token events, re-emitted onto the client EventBus by the
@@ -9,7 +9,7 @@ import type { BaseEvent } from '@/core/events'
  * reconnect` fires after the stream is re-established so the open conversation
  * can re-subscribe + reconcile.
  */
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'chat:token': BaseEvent & {
       type: 'chat:token'

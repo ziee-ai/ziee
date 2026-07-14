@@ -13,7 +13,7 @@ import { Text } from '@ziee/kit'
 import { Loader2, MessageSquare } from 'lucide-react'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   anchorRestoreNeeded,
   captureTopAnchor,

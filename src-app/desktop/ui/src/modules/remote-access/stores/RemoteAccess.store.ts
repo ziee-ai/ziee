@@ -6,8 +6,8 @@
  */
 
 import { ApiClient } from '@/api-client'
-import { defineStore } from '@/core/store-kit'
-import { type StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
 import { emitRemoteAccessStatusChanged } from '@ziee/desktop/modules/remote-access/events/remote-access-events'
 
 export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
@@ -57,7 +57,7 @@ interface RemoteAccessState {
   stopMagicLinkRotation: () => void
 }
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     RemoteAccess: StoreProxy<RemoteAccessState>
   }

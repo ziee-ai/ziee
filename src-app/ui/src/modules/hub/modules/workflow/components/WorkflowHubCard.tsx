@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { IndexItem } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { WorkflowDetailsDrawer } from './WorkflowDetailsDrawer'
 
 interface WorkflowHubCardProps {

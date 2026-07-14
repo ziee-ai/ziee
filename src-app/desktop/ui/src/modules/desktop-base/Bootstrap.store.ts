@@ -4,7 +4,7 @@
  * module's `initialize` lifecycle (auto-login retry loop), so there's no eager
  * load here; the store just resets on destroy.
  */
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export type BootstrapStatus = 'idle' | 'retrying' | 'succeeded' | 'failed'
 

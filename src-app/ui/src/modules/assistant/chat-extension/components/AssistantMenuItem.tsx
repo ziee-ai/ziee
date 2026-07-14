@@ -2,7 +2,7 @@ import { Popover } from '@ziee/kit'
 import { Bot, ChevronRight } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
 /**

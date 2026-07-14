@@ -11,7 +11,7 @@ import {
   Upload,
 } from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { formatBytes } from '@/utils/downloadUtils'
 

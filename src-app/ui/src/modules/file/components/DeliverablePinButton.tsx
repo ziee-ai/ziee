@@ -1,6 +1,6 @@
 import { Pin, PinOff } from 'lucide-react'
 import { Button, message } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 

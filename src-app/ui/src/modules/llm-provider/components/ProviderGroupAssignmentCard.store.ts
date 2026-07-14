@@ -1,7 +1,7 @@
 import { Permissions, type Group } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 interface ProviderGroups {
   providerId: string

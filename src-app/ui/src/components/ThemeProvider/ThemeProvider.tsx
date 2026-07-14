@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useUpdate } from 'react-use'
 import { ThemeContext } from '@/hooks/useTheme'
 import { resolveSystemTheme } from '@/components/ThemeProvider/resolveTheme'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Toaster, DialogHost } from '@ziee/kit'
 import { applyAccent } from '@/components/ThemeProvider/accentPresets'
 

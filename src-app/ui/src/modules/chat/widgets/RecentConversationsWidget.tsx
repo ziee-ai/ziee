@@ -16,7 +16,7 @@ import {
 import type { DropdownItem } from '@ziee/kit'
 import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import {

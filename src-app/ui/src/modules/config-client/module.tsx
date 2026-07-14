@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useConfigClientStore } from '@/modules/config-client/ConfigClient.store'
 
 export default createModule({

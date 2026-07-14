@@ -3,7 +3,7 @@ import { Alert, Button, Textarea } from '@ziee/kit'
 import { Dialog, Paragraph, Text } from '@ziee/kit'
 import { message } from '@ziee/kit'
 import type { BatchReport, CitationInput } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /** Summarize a batch report into a one-line human note. */
 function summary(report: BatchReport): string {

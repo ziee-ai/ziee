@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Per-provider API-key cache for user-supplied LLM provider keys

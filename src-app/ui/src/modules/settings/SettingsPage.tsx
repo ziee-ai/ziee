@@ -12,7 +12,7 @@ import { BookOpen, Compass, ExternalLink } from 'lucide-react'
 // org migration.)
 const HELP_DOCS_URL = 'https://github.com/ziee-ai/ziee#readme'
 import { useEffect, useRef, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
 import { Menu } from '@ziee/kit'

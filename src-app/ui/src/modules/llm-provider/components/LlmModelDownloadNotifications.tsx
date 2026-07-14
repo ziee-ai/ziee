@@ -1,6 +1,6 @@
 import { message } from '@ziee/kit'
 import { useEffect } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Globally-mounted listener that converts the

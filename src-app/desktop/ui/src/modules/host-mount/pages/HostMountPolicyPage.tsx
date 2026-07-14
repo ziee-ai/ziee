@@ -19,7 +19,7 @@ import {
 
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 type FormValues = {
   enabled: boolean

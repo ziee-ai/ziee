@@ -441,7 +441,7 @@ export interface ChatExtension {
     /** Store key for registration (e.g., "McpStore", "FileStore") */
     name: string
     /** Factory function to create the store instance */
-    createStore: () => import('@/core/stores').StoreProxy<any>
+    createStore: () => import('@ziee/framework/stores').StoreProxy<any>
   }
 
   /**

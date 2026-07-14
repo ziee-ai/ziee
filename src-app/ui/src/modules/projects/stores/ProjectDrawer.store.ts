@@ -1,5 +1,5 @@
 import type { Project } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const ProjectDrawer = defineStore('ProjectDrawer', {
   state: {

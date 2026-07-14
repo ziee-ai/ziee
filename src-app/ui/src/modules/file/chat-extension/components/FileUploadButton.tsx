@@ -1,6 +1,6 @@
 import { Paperclip } from 'lucide-react'
 import { Button, Tooltip, Upload, message } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import {

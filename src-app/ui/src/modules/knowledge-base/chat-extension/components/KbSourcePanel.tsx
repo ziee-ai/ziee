@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Spinner } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { FilePanel } from '@/modules/file/components/FilePanel'
 
 /** Serializable payload for a `kb_source` right-panel tab. */

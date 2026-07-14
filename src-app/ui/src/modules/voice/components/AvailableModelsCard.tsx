@@ -22,7 +22,7 @@ import {
   Text,
 } from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { formatBytes } from '@/utils/downloadUtils'
 
 const PAGE_SIZE = 10

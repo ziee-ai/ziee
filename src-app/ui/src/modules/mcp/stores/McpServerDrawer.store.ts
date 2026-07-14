@@ -1,5 +1,5 @@
 import type { McpServer } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Pre-fill payload for the "Install from Hub" flow. The Hub MCP card's Install

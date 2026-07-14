@@ -5,7 +5,7 @@ import { Menu, Separator } from '@ziee/kit'
 import type { MenuItem } from '@ziee/kit'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { SidebarHeaderSpacer } from '@/modules/layouts/app-layout/components/SidebarHeaderSpacer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { evaluatePermission } from '@/core/permissions'
 import type {

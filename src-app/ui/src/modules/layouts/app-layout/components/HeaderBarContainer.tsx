@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
 
 interface HeaderBarContainerProps {

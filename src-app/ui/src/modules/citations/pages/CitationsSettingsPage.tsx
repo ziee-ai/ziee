@@ -5,7 +5,7 @@ import { message } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { CitationCard } from '../components/CitationCard'
 import { ImportCitationsModal } from '../components/ImportCitationsModal'
 

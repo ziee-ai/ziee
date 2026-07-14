@@ -1,4 +1,4 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Visibility for the per-conversation skills panel (chat composer "+"). */
 export const SkillConversationDrawer = defineStore('SkillConversationDrawer', {

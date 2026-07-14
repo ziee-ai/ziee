@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { type McpToolCall, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const McpToolCalls = defineStore('McpToolCalls', {
   immer: true,

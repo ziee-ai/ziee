@@ -7,11 +7,11 @@
  */
 import { describe, test, expect, beforeEach } from 'vitest'
 import { registerDesktopOverrides } from './overrides'
-import { resolveOverride } from '@/core/overrides'
+import { resolveOverride } from '@ziee/framework/overrides'
 import {
   __clearOverrides,
   __registeredOverrideKeys,
-} from '@/core/overrides/registry'
+} from '@ziee/framework/overrides/registry'
 
 describe('registerDesktopOverrides', () => {
   beforeEach(() => __clearOverrides())

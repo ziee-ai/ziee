@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import type { LlmModel, UpdateMemoryAdminSettingsRequest } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import { createStoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { createStoreProxy } from '@ziee/framework/stores'
 
 // Picks the small subset of `LlmModel` the embedding-model dropdown needs.
 type EmbeddingCapableModel = Pick<

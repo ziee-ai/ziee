@@ -65,7 +65,7 @@ export interface GroupWidget {
  * Register the 'userGroup' slot.
  * Other modules can register widgets for this slot to display in group list items.
  */
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     userGroup: GroupWidget[]
   }

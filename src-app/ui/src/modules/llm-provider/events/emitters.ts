@@ -1,5 +1,5 @@
-import { Stores } from '@/core/stores'
-import type { BaseEvent } from '@/core/events'
+import { Stores } from '@ziee/framework/stores'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { LlmProvider } from '@/api-client/types'
 
 export const emitLlmProviderCreated = async (provider: LlmProvider) => {
@@ -119,7 +119,7 @@ export interface ApiKeyDeletedEvent extends BaseEvent {
   data: { providerId: string }
 }
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'api_key.saved': ApiKeySavedEvent
     'api_key.deleted': ApiKeyDeletedEvent

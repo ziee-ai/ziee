@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { HubInstalledResponse, HubInstalledRow } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Backs the "Installed" hub tab — every tracked hub install the caller can see

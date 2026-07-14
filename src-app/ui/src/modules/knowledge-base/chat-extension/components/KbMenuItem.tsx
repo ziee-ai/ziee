@@ -4,7 +4,7 @@ import { Input, Popover, message } from '@ziee/kit'
 import { BookOpen, Check, ChevronRight } from 'lucide-react'
 import { type KnowledgeBase, Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /** Compact per-KB status suffix for a picker row (from indexing_summary). */
 function statusSuffix(kb: KnowledgeBase): { text: string; className: string } | null {

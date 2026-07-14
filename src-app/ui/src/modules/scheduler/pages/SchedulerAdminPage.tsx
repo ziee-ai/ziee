@@ -17,7 +17,7 @@ import {
   FieldTitle,
 } from '@ziee/kit/shadcn/field'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 interface Form {

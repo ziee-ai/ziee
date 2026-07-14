@@ -7,7 +7,7 @@ import {
   type UpdateLitSearchSettingsRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const LitSearchAdmin = defineStore('LitSearchAdmin', {
   immer: true,

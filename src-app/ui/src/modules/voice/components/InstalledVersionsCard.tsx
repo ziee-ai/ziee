@@ -15,7 +15,7 @@ import {
   Tooltip,
   message,
 } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type RuntimeVersionResponse2 } from '@/api-client/types'
 

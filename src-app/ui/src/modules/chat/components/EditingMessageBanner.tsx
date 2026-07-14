@@ -1,7 +1,7 @@
 import { Button, Tooltip } from '@ziee/kit'
 import { Text } from '@ziee/kit'
 import { Pencil, X } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Shows a banner above the Chat Input when the user is in edit mode.

@@ -1,6 +1,6 @@
 import { Shrink } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useConversationSummarizationStore } from './stores/ConversationSummarization.store'

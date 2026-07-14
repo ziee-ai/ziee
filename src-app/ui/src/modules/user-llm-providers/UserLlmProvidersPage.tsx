@@ -19,7 +19,7 @@ import {
 } from '@ziee/kit'
 import { CircleCheck } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 

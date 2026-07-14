@@ -2,7 +2,7 @@ import { Bot, Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { Combobox, MultiSelect, Text, Button, Input, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { Button, Form, FormField, useForm, zodResolver, PasswordInput, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 

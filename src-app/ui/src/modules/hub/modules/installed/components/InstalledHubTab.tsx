@@ -14,7 +14,7 @@ import {
   Text,
   message,
 } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { emitMcpServerDeleted } from '@/modules/mcp/events/emitters'
 import { emitAssistantDeleted } from '@/modules/assistant/events/emitters'

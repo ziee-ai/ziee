@@ -6,7 +6,7 @@ import {
   type UpdateGroupRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import {
   emitGroupCreated,
   emitGroupDeleted,

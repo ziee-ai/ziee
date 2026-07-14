@@ -7,7 +7,7 @@
  * seam-key declaration merging from the core component applies to
  * `registerOverride` here. The `seam` codemod scaffolds this file.
  */
-import { registerOverride } from '@/core/overrides'
+import { registerOverride } from '@ziee/framework/overrides'
 import { Button, message } from '@ziee/kit'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'

@@ -12,7 +12,7 @@ import { Badge, Button, Empty, List, Paragraph, Popover, Switch, Text, message }
 import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export function ConversationMountsControl() {
   const conversationId = Stores.Chat.conversation?.id

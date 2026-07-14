@@ -41,7 +41,7 @@
  */
 
 import { Layout, Spin, Text } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { isTauriView } from '@ziee/desktop/core/platform'
 import { PhoneAuthPage } from '@ziee/desktop/modules/tunnel-auth/PhoneAuthPage'
 

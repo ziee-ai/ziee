@@ -1,9 +1,9 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useLlmRepositoryStore } from '@/modules/llm-repository/stores/LlmRepository.store'
 import type { useLlmRepositoryDrawerStore } from '@/modules/llm-repository/components/LlmRepositoryDrawer.store'
 
 // Augment the RegisteredStores interface to add LlmRepository stores
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     LlmRepository: StoreProxy<ReturnType<typeof useLlmRepositoryStore.getState>>
     LlmRepositoryDrawer: StoreProxy<

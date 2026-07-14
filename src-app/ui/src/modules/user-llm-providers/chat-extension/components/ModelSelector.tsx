@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Button, Select, Tooltip } from '@ziee/kit'
 import { TriangleAlert } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ProviderWithModels } from '@/api-client/types'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
 

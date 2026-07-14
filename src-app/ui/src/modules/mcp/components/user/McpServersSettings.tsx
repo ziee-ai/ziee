@@ -9,7 +9,7 @@ import {
 import { Search, Eraser } from 'lucide-react'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'

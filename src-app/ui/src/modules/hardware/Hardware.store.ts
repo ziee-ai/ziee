@@ -6,7 +6,7 @@ import type {
   HardwareInfoResponse,
   HardwareUsageUpdate,
 } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 // SSE Subscription Management for real-time usage monitoring (module-scope:
 // not serializable / reactive).

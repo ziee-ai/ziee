@@ -11,7 +11,7 @@
 // duplicating the filename inside the body.
 
 import { Title } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { FilePanel, FilePanelHeaderActions } from '@/modules/file/components/FilePanel'
 

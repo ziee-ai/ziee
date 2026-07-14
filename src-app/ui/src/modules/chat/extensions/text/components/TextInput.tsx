@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Textarea } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   getDraft,
   setDraft,

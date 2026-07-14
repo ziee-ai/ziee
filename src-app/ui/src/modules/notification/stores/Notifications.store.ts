@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { type Notification, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * The notification inbox store. Loads the paged inbox + unread count, and

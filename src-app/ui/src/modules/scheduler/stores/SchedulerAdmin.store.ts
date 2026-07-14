@@ -5,7 +5,7 @@ import {
   type UpdateSchedulerAdminSettings,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Deployment-wide scheduler admin settings (quota / cadence floor / retention). */
 export const SchedulerAdmin = defineStore('SchedulerAdmin', {

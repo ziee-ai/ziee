@@ -4,7 +4,7 @@ import { Button, Empty, message, Popover, Spin, Tag, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions, type KnowledgeBase } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Full management of a project's attached knowledge bases — inside the knowledge

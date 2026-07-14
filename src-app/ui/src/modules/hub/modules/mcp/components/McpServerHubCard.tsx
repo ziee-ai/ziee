@@ -7,7 +7,7 @@ import {
 } from '@/api-client/types'
 import { useState } from 'react'
 import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/McpServerDrawer.store'

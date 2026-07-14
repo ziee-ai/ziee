@@ -6,7 +6,7 @@ import {
   type UpdateFileRagAdminSettingsRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Candidate embedding-model row for the picker. */
 export type CandidateModelRow = Pick<

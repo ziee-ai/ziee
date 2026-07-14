@@ -13,7 +13,7 @@ import {
   Text,
   message,
 } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import {
   Permissions,

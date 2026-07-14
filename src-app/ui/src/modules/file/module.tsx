@@ -1,5 +1,5 @@
-import { createModule } from '@/core'
-import { Stores } from '@/core/stores'
+import { createModule } from '@ziee/framework'
+import { Stores } from '@ziee/framework/stores'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { useFileStore } from './stores/File.store'
 import { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'

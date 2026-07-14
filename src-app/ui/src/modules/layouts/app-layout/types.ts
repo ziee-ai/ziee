@@ -4,12 +4,12 @@ import type {
   ComponentType,
   LazyExoticComponent,
 } from 'react'
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
 import type { PermissionExpr } from '@/core/permissions'
 
 // Store type declarations
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     AppLayout: StoreProxy<ReturnType<typeof useAppLayoutStore.getState>>
   }
@@ -88,7 +88,7 @@ export interface SidebarWidgetItem {
 /**
  * Register AppLayout sidebar slots
  */
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     sidebarNavigation: SidebarNavItem[]
     sidebarTools: SidebarToolItem[]

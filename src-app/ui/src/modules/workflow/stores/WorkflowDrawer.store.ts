@@ -1,5 +1,5 @@
 import type { Workflow } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const WorkflowDrawer = defineStore('WorkflowDrawer', {
   immer: true,

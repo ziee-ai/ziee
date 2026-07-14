@@ -146,7 +146,7 @@ const fileExtension: ChatExtension = createExtension({
     const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { File: FileOutlinedIcon } = await import('lucide-react')
     const { Spin: SpinComponent } = await import('@ziee/kit')
-    const { Stores: StoresRef } = await import('@/core/stores')
+    const { Stores: StoresRef } = await import('@ziee/framework/stores')
 
     registerPanelRenderer('file', {
       icon: <FileOutlinedIcon />,
@@ -159,7 +159,7 @@ const fileExtension: ChatExtension = createExtension({
     })
 
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
 
     // Conversation-change → clear the per-composer upload buffer.
     // Replaces the implicit chat-extension-framework scoping that
@@ -230,7 +230,7 @@ const fileExtension: ChatExtension = createExtension({
    * previews until loadMessages() replaces the temp message with the real one.
    */
   provideUserContent: async (_text: string, _composedRequest: any): Promise<MessageContent[]> => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
     if (!fileStore) return []
 
@@ -278,7 +278,7 @@ const fileExtension: ChatExtension = createExtension({
       .filter((f): f is FileEntity => f !== null)
     if (stubs.length === 0) return
 
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
     if (!fileStore) return
 
@@ -300,7 +300,7 @@ const fileExtension: ChatExtension = createExtension({
   // disable lands (race) or some other extension's useSendBlocker
   // doesn't propagate. Same semantics as the useSendBlocker hook.
   beforeSendMessage: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Check if there are any files still uploading (use action method to avoid React hooks)
@@ -318,7 +318,7 @@ const fileExtension: ChatExtension = createExtension({
 
   // Compose request fields to add file_ids to send message request
   composeRequestFields: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
 
     // Call action method to get file IDs (actions don't trigger React hooks)
     const fileStore = Stores.File
@@ -337,7 +337,7 @@ const fileExtension: ChatExtension = createExtension({
 
   // Backup files before clearing (this runs after composeRequestFields)
   onMessageSent: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Backup files before clearing
@@ -349,7 +349,7 @@ const fileExtension: ChatExtension = createExtension({
 
   // Restore files on stream error
   onStreamError: async (_error: Error) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Restore files from backup
@@ -360,7 +360,7 @@ const fileExtension: ChatExtension = createExtension({
 
   // Clear backup on successful completion
   afterStreamComplete: async (_message) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Clear backup since message was sent successfully

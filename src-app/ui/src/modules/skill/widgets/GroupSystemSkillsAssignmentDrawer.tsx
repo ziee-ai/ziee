@@ -3,7 +3,7 @@ import { Tag } from '@ziee/kit'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { GroupEntityAssignmentDrawer } from '@/components/common/group-entity-assignment/GroupEntityAssignmentDrawer'
 

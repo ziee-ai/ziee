@@ -17,7 +17,7 @@ import {
   SquarePen,
   Ban,
 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import {
   ASK_USER_MARKER,

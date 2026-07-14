@@ -30,7 +30,7 @@ export interface HubTabSlot {
 }
 
 // Declare the slot in the global Slots interface
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     hubTabs: HubTabSlot[]
   }

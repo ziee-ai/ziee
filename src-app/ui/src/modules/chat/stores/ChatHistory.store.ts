@@ -2,8 +2,8 @@ import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import { type ConversationResponse, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { createStoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { createStoreProxy } from '@ziee/framework/stores'
 
 // This store mutates `selectedIds` (a Set) through immer, so the MapSet plugin
 // must be enabled. Own it here rather than relying on another store's import
@@ -335,8 +335,8 @@ export const ChatHistory = defineStore('ChatHistory', {
           // NO virtual rows, so the last-item auto-load effect can never fire.
           await refillRecentIfEmptied()
           // Broadcast deletion so other widgets drop the row (closes audit F5).
-          // Import-late to avoid a cycle through `@/core/stores`.
-          const { Stores } = await import('@/core/stores')
+          // Import-late to avoid a cycle through `@ziee/framework/stores`.
+          const { Stores } = await import('@ziee/framework/stores')
           await Stores.EventBus.emit({ type: 'conversation.deleted', data: { conversationId: id } })
         } catch (error) {
           console.error('[ChatHistory] Failed to delete conversation:', error)

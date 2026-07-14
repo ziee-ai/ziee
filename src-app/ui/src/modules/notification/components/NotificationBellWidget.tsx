@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Badge, Button, Empty, Flex, Popover, Text } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Sidebar (sidebarBottom slot) notification bell: an unread-count badge over a

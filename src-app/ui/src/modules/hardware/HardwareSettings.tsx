@@ -11,7 +11,7 @@ import {
 } from '@ziee/kit'
 import { useEffect } from 'react'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'

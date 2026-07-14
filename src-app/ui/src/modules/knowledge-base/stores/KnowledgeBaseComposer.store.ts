@@ -1,6 +1,6 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 enableMapSet()
 

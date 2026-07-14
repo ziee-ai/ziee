@@ -2,7 +2,7 @@ import { CircleMinus } from 'lucide-react'
 import { Alert, Button, Empty, Tooltip, Text, message, Confirm } from '@ziee/kit'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 
 interface ProjectConversationsListProps {

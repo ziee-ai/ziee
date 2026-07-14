@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Card, Confirm, Tag, Text, Tooltip, Switch, Flex } from '@ziee/kit'
 import { Pencil, Trash2, Plug } from 'lucide-react'
 import { message } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import {
   Permissions,

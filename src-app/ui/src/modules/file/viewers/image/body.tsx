@@ -1,7 +1,7 @@
 import { FileImage } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Spin } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { getSource } from '../shared/source'
 import { DEFAULT_IMAGE_VIEW, clampTranslate } from './zoom'

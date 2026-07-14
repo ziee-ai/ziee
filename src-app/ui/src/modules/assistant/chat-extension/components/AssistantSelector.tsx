@@ -1,7 +1,7 @@
 import { Combobox, Tooltip } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface AssistantSelectorProps {
   disabled?: boolean

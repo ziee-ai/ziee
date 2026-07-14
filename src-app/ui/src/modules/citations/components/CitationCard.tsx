@@ -1,7 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { Button, Card, Confirm, Space, Text, Paragraph, message } from '@ziee/kit'
 import type { BibliographyEntry } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { VerificationBadge } from './VerificationBadge'
 
 /** Pull a compact author list out of the entry's CSL-JSON. */

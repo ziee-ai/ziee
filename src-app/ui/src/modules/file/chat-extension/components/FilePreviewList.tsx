@@ -1,6 +1,6 @@
 import { Alert, ScrollArea } from '@ziee/kit'
 import { FileCard } from '@/modules/file/components/FileCard'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import type { File as FileEntity } from '@/api-client/types'
 

@@ -8,7 +8,7 @@
  * `INTERACTIVE_SEL` exemption future-proofs against overlaid controls.
  */
 import { useCallback } from 'react'
-import { registerOverride } from '@/core/overrides'
+import { registerOverride } from '@ziee/framework/overrides'
 import { isTauriView, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 

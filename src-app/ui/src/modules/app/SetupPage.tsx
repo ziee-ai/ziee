@@ -2,7 +2,7 @@ import React from 'react'
 import { z } from 'zod'
 import { Card, Form, FormField, useForm, zodResolver, Input, Button, Alert, Title, Paragraph } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@/core'
+import { Stores } from '@ziee/framework'
 import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'
 import { EMAIL_RE } from '@/lib/validation'
 

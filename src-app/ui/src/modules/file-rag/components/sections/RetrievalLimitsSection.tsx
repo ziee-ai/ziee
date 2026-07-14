@@ -11,7 +11,7 @@ import {
   zodResolver,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'

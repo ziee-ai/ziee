@@ -1,8 +1,8 @@
 import { ApiClient } from '@/api-client'
 import { Permissions, type ProviderWithModels } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { createStoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { createStoreProxy } from '@ziee/framework/stores'
 import { sortProviders } from '@/modules/llm-provider/sortProviders'
 
 export const UserLlmProviders = defineStore('UserLlmProviders', {

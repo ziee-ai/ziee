@@ -17,7 +17,7 @@ export interface SettingsPageSlot {
 }
 
 // Extend the global Slots interface
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     settingsUserPages: SettingsPageSlot[]
     settingsAdminPages: SettingsPageSlot[]

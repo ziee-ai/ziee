@@ -1,5 +1,5 @@
 import { type ComponentType, memo, type ReactNode } from 'react'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
 import type {
@@ -660,7 +660,7 @@ export const Chat = defineStore('Chat', {
         set({ conversation, loading: false })
 
         if (emitCreated) {
-          const { Stores } = await import('@/core/stores')
+          const { Stores } = await import('@ziee/framework/stores')
           await Stores.EventBus.emit({
             type: 'conversation.created',
             data: { conversation },
@@ -1762,7 +1762,7 @@ export const Chat = defineStore('Chat', {
           conversation = afterHook
           set({ conversation })
         }
-        const { Stores } = await import('@/core/stores')
+        const { Stores } = await import('@ziee/framework/stores')
         await Stores.EventBus.emit({
           type: 'conversation.created',
           data: { conversation },
@@ -1924,7 +1924,7 @@ export const Chat = defineStore('Chat', {
         }))
 
         if (updates.title !== undefined) {
-          const { Stores } = await import('@/core/stores')
+          const { Stores } = await import('@ziee/framework/stores')
           await Stores.EventBus.emit({
             type: 'conversation.titleUpdated',
             data: {
@@ -2122,7 +2122,7 @@ export const Chat = defineStore('Chat', {
   init: ({ set, get: getRaw, onCleanup }) => {
     const get = getRaw as () => ChatState
     void (async () => {
-        const { Stores } = await import('@/core/stores')
+        const { Stores } = await import('@ziee/framework/stores')
 
         // Cross-device sync: when the currently-OPEN conversation changed on
         // another device (a completed message turn, rename, branch switch,
@@ -2239,7 +2239,7 @@ export const Chat = defineStore('Chat', {
     onCleanup(() => {
       console.log('[Chat.store] Destroying - cleaning up resources')
 
-      void import('@/core/stores').then(({ Stores }) =>
+      void import('@ziee/framework/stores').then(({ Stores }) =>
         Stores.EventBus.removeGroupListeners('Chat'),
       )
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button, Card, Empty, ErrorState, InputNumber, Spin } from '@ziee/kit'
 import { Table, Tag, Text, Paragraph } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { MemoryAuditEntry } from '@/api-client/types'

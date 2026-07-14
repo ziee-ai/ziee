@@ -1,7 +1,7 @@
 import { Button, Form, FormField, useForm, zodResolver, Input, Switch, message } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type UpdateUserRequest } from '@/api-client/types'
 import { useEffect } from 'react'

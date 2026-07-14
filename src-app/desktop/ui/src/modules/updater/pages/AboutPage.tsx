@@ -24,7 +24,7 @@ import {
   RotateCw,
   Rocket,
 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@ziee/ui-core/modules/settings/components/SettingsPageContainer'
 
 export function AboutPage() {

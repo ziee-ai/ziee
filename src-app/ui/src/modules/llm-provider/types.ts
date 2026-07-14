@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type {
   useLlmProviderStore,
   useLlmModelDownloadStore,
@@ -13,7 +13,7 @@ import type { useProviderGroupCardStore } from '@/modules/llm-provider/component
 import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
 import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     LlmProvider: StoreProxy<ReturnType<typeof useLlmProviderStore.getState>>
     LlmModelDownload: StoreProxy<

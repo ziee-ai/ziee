@@ -4,7 +4,7 @@ import type {
   CreateAssistantFromHubRequest,
   HubAssistant,
 } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import {
   emitAssistantCreated,
   emitAssistantDeleted,

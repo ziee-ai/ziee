@@ -10,7 +10,7 @@ import {
   type TagTone,
 } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { type McpToolCall } from '@/api-client/types'
 import { toolStatusOf } from '@/modules/chat/core/tool-status'
 

@@ -4,7 +4,7 @@ import {
   type OverlayScrollbarsComponentProps,
   type OverlayScrollbarsComponentRef,
 } from 'overlayscrollbars-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export interface DivScrollYProps
   extends Omit<OverlayScrollbarsComponentProps, 'options'> {

@@ -9,8 +9,8 @@ import {
   type RetrievalInfo,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 
 enableMapSet()

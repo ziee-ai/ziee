@@ -12,7 +12,7 @@ import { FileEditBody } from '@/modules/file/components/FileEditBody'
 import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
 import { DeliverablePinButton } from '@/modules/file/components/DeliverablePinButton'
 import { editableKind } from '@/modules/file/utils/editableTypes'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 

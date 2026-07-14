@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { FindBar } from './FindBar'
 import { useFindInDocument, type HighlightNames } from './useFindInDocument'
 import { isHighlightSupported } from './highlightSupported'

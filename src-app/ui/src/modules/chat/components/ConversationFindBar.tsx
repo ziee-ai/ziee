@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Text } from '@ziee/kit'
 import { ChevronDown, ChevronUp, Loader2, X } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import type { MessageSearchMatch } from '@/api-client/types'
 import { cn } from '@/lib/utils'

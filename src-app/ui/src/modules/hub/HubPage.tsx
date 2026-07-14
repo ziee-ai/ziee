@@ -15,7 +15,7 @@ import {
 import type { MenuItem } from '@ziee/kit/kit/menu'
 import { RotateCw } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { evaluatePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'

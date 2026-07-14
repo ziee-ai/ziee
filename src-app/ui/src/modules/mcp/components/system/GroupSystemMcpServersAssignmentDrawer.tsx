@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Flex, Spinner, Switch, Tag, Text, Title, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type McpServer } from '@/api-client/types'
 

@@ -1,5 +1,5 @@
-import { createModule } from '@/core'
-import { Stores } from '@/core/stores'
+import { createModule } from '@ziee/framework'
+import { Stores } from '@ziee/framework/stores'
 import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'

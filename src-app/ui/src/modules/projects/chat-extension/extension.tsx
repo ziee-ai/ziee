@@ -8,7 +8,7 @@ import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import type { Project } from '@/api-client/types'
 import { hasPermissionNow, usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   createExtension,
   type ChatExtension,

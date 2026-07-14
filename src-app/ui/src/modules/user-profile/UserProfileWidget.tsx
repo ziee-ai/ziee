@@ -1,6 +1,6 @@
 import { Dropdown, Tooltip, Skeleton } from '@ziee/kit'
 import { LogOut, User } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'

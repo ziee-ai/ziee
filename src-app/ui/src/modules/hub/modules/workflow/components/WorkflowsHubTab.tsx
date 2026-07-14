@@ -2,7 +2,7 @@ import { Eraser, Search, Workflow } from 'lucide-react'
 import { Input, MultiSelect, Button, Empty } from '@ziee/kit'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 import { WorkflowHubCard } from './WorkflowHubCard'
 

@@ -38,6 +38,11 @@
       "@ziee/ui-core/*": ["../../ui/src/*"],
       "@ziee/kit": ["../../../sdk/packages/kit/src/index.ts"],
       "@ziee/kit/*": ["../../../sdk/packages/kit/src/*"],
+      "@ziee/framework": ["../../../sdk/packages/framework/src/index.ts"],
+      "@ziee/framework/api-client": [
+        "../../../sdk/packages/framework/src/api-client/index.ts"
+      ],
+      "@ziee/framework/*": ["../../../sdk/packages/framework/src/*"],
       "csstype": ["./node_modules/csstype"]
     }
   },

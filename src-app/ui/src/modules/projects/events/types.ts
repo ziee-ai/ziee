@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { Project } from '@/api-client/types'
 
 export interface ProjectCreatedEvent extends BaseEvent {
@@ -63,7 +63,7 @@ export type ProjectModuleEvent =
   | ProjectConversationAttachedEvent
   | ProjectConversationDetachedEvent
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'project.created': ProjectCreatedEvent
     'project.updated': ProjectUpdatedEvent

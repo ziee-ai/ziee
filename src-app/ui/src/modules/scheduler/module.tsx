@@ -1,8 +1,8 @@
 import { CalendarClock } from 'lucide-react'
 
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
-import { Stores } from '@/core/stores'
+import { createModule } from '@ziee/framework'
+import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'

@@ -12,7 +12,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { Button, Input, Separator, Spin, Text, Tooltip } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import type { PdfController, ScaleValue } from './pdfjs'
 import { usePdfDocument } from './usePdfDocument'

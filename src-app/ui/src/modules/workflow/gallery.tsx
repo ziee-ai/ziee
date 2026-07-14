@@ -15,7 +15,7 @@ import type {
 } from '@/api-client/types'
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyBound, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { workflowCassette } from '@/dev/gallery/fixtures/workflow'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
 

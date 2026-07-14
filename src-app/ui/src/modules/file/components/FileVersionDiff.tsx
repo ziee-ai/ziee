@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Spin } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { lineDiff } from '@/modules/file/utils/lineDiff'
 
 /**

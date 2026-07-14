@@ -1,6 +1,6 @@
 import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@ziee/kit'
 import { Pencil } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import {
   Permissions,

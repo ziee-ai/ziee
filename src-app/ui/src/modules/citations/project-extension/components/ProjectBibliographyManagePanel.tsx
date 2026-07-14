@@ -5,7 +5,7 @@ import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import type { BibliographyEntry } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { CitationCard } from '../../components/CitationCard'
 import { ImportCitationsModal } from '../../components/ImportCitationsModal'
 

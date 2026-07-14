@@ -1,7 +1,7 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useOnboardingStore } from './stores/Onboarding.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Onboarding: StoreProxy<ReturnType<typeof useOnboardingStore.getState>>
   }

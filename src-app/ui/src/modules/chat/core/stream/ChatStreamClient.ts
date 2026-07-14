@@ -1,6 +1,6 @@
-import { getAuthToken, getBaseUrl } from '@/api-client/core'
+import { getAuthToken, getBaseUrl } from '@ziee/framework/api-client/core'
 import type { ChatStreamFrame, SSEChatStreamEvent } from '@/api-client/types'
-import { useEventBusStore } from '@/core/events/store'
+import { useEventBusStore } from '@ziee/framework/events/store'
 import './types'
 
 // Live chat-token SSE client. A thin bridge (mirrors `core/sync/SyncClient`):

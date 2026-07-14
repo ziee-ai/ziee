@@ -6,7 +6,7 @@ import {
   type UpdateSkill,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Admin store for system-scope skills + their group assignments. Mirrors

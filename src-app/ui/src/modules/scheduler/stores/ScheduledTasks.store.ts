@@ -9,7 +9,7 @@ import {
   type UpdateScheduledTask,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 import { RUNS_PAGE_SIZE } from '../components/runTimeline'
 

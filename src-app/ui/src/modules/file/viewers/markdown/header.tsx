@@ -1,5 +1,5 @@
 import { Space } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   CopyButton,
   CopySelectionButton,

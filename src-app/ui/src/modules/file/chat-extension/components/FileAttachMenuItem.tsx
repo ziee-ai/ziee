@@ -1,6 +1,6 @@
 import { Paperclip } from 'lucide-react'
 import { Upload, message } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'

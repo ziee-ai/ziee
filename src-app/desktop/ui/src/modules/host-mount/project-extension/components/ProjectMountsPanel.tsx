@@ -19,7 +19,7 @@ import {
 import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /** Mirror of the server-side `/mnt/<full host path>` derivation (display only). */
 function toSandboxPath(hostPath: string): string {

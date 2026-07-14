@@ -1,7 +1,7 @@
 import { FileSearch } from 'lucide-react'
 import { Button, Card, Text } from '@ziee/kit'
 import type { MessageContentDataToolResult } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 import type { LiteratureResult, LiteratureScreeningData } from '../types'

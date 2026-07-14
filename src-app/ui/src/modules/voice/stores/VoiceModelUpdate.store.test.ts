@@ -16,8 +16,8 @@ const perm = vi.hoisted(() => ({ allow: true }))
 
 vi.mock('@/api-client', () => ({ ApiClient: apiMock }))
 vi.mock('@/core/permissions', () => ({ hasPermissionNow: () => perm.allow }))
-vi.mock('@/core/stores', () => ({ Stores: {}, createStoreProxy: () => ({}) }))
-vi.mock('@/core/events', () => ({
+vi.mock('@ziee/framework/stores', () => ({ Stores: {}, createStoreProxy: () => ({}) }))
+vi.mock('@ziee/framework/events', () => ({
   useEventBusStore: {
     getState: () => ({
       on: () => () => {

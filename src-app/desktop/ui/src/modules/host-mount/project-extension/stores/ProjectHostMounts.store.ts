@@ -5,8 +5,8 @@
 
 import { ApiClient } from '@/api-client'
 import type { MountEntry } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import { type StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
 // Raw zustand hook for the watch — going through Stores.ProjectDetail would fire
 // the proxy's internal hooks (corrupts hook count).
 import { useProjectDetailStore } from '@ziee/ui-core/modules/projects/stores'
@@ -22,7 +22,7 @@ interface ProjectHostMountsState {
   clearError: () => void
 }
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     ProjectHostMounts: StoreProxy<ProjectHostMountsState>
   }

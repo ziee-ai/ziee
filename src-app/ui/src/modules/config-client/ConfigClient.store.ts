@@ -4,8 +4,8 @@ import {
   ACCENT_PRESETS,
   DEFAULT_ACCENT,
 } from '@/components/ThemeProvider/accentPresets'
-import { defineStore } from '@/core/store-kit'
-import type { StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import type { StoreProxy } from '@ziee/framework/stores'
 
 // Guarded persistence storage. Accessing `localStorage` throws in locked-down
 // contexts (private-mode quota, disabled storage, sandboxed iframe). Probe once
@@ -75,7 +75,7 @@ export const ConfigClient = defineStore('ConfigClient', {
 
 export const useConfigClientStore = ConfigClient.store
 
-declare module '../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     ConfigClient: StoreProxy<ReturnType<typeof ConfigClient.store.getState>>
   }

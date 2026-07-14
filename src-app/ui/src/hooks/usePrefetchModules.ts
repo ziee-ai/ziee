@@ -1,5 +1,5 @@
 import { useEffect, isValidElement } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Hook to prefetch lazy-loaded modules after initial render

@@ -63,7 +63,7 @@ export interface RouteConfig<
  * Extend CreateModuleOptions to add routes field.
  * This is how the Router module adds routing capability to all modules.
  */
-declare module '@/core/module' {
+declare module '@ziee/framework/module' {
   interface CreateModuleOptions {
     routes?: RouteConfig<any>[] // Router module adds this!
   }
@@ -78,7 +78,7 @@ declare module '@/core/module' {
  * standalone and removing a contributing module just empties the list.
  * Plugins (e.g. onboarding) populate it at runtime via their module.tsx.
  */
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     routerEffects: Array<{ id: string; component: ComponentType }>
     /**

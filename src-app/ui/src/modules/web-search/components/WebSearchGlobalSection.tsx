@@ -19,7 +19,7 @@ import {
   useForm,
 } from '@ziee/kit'
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/types'

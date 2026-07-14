@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageSquareQuote, PencilLine } from 'lucide-react'
 import { Button, message } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   buildSelectionAskMessage,
   buildSelectionEditMessage,

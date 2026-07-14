@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { McpServer } from '@/api-client/types'
 
 export interface McpServerCreatedEvent extends BaseEvent {
@@ -65,7 +65,7 @@ export type McpModuleEvent =
   | GroupSystemMcpServersChangedEvent
   | McpUserPolicyUpdatedEvent
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'mcp_server.created': McpServerCreatedEvent
     'mcp_server.updated': McpServerUpdatedEvent

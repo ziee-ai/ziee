@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type {
   useSystemWorkflowStore,
   useWorkflowDrawerStore,
@@ -9,7 +9,7 @@ import type {
 import type { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsWidget.store'
 import type { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Workflow: StoreProxy<ReturnType<typeof useWorkflowStore.getState>>
     SystemWorkflow: StoreProxy<

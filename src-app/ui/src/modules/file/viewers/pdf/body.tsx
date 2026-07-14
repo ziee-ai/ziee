@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { File, TriangleAlert } from 'lucide-react'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ScrollArea, Spin, Text } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 
 // NOTE: since the PDF.js viewer (`pdfjs-body.tsx`) took over the

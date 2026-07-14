@@ -14,7 +14,7 @@ import {
 } from '@ziee/kit'
 import { RadioGroup, RadioGroupItem } from '@ziee/kit/shadcn/radio-group'
 import { SquarePen } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   allowsOther,
   buildFormSchema,

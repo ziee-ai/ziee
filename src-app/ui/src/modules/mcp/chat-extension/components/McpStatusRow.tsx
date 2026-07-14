@@ -1,6 +1,6 @@
 import { Tag } from '@ziee/kit'
 import { Wrench } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * McpStatusRow Component

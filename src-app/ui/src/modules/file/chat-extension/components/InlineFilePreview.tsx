@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { Button, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
 import { isInlineCapable } from '@/modules/file/viewers/shared/source'

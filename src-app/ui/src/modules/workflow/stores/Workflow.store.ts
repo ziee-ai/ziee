@@ -8,7 +8,7 @@ import {
   type WorkflowRunStartResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Workflows store — lists the user's own + accessible system workflows (each

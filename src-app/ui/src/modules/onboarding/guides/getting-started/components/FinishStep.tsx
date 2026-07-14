@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { CircleCheck, Rocket } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Title, Paragraph, Text } from '@ziee/kit'
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {

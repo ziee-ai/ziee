@@ -12,7 +12,7 @@ import {
   Spin,
   Text,
 } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 /** The full notification inbox at /notifications. */

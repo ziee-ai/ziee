@@ -6,7 +6,7 @@ import { getBaseUrl } from '@/api-client/getBaseURL'
 import { Permissions } from '@/api-client/types'
 import type { MessageContentDataToolResult, MessageContent } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 

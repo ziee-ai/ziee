@@ -1,5 +1,5 @@
 import type { SyncAction, SyncEntity } from '@/api-client/types'
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 
 /**
  * A remote change notification for one entity, re-emitted onto the client
@@ -28,7 +28,7 @@ type SyncEntityEvents = {
   [E in SyncEntity as `sync:${E}`]: SyncEntityEvent<E>
 }
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents extends SyncEntityEvents {
     // Broadcast by the SyncClient on every (re)connect so each store can
     // reload to cover events missed while the stream was down. Not an entity

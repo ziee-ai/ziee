@@ -43,7 +43,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     const { registerPanelRenderer, useChatStore } = await import(
       '@/modules/chat/core/stores/Chat.store'
     )
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { KbSourcePanel } = await import('./components/KbSourcePanel')
     registerPanelRenderer('kb_source', {
       icon: <BookOpen />,
@@ -73,7 +73,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   },
 
   onConversationLoad: async conversation => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const store = Stores.KnowledgeBaseComposer
     store.setCurrentConversation(conversation.id)
     if (conversation.id) await store.loadForConversation(conversation.id)
@@ -84,7 +84,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   },
 
   onMessageSent: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const store = Stores.KnowledgeBaseComposer.$
     const conversation = Stores.Chat.$.conversation
     // New conversation just minted: persist the pending selection to it.

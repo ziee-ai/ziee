@@ -4,7 +4,7 @@ import { Button, Card, Flex, Space, Tag, Text, Spin } from '@ziee/kit'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { LlmProviderGroupWidgetStore } from './LLMProviderGroupWidget.store'
 
 /**

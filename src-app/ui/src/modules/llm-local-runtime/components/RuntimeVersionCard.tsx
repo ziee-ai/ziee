@@ -11,7 +11,7 @@ import {
 } from '@ziee/kit'
 import { Trash2, Star } from 'lucide-react'
 
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type RuntimeVersionResponse } from '@/api-client/types'
 

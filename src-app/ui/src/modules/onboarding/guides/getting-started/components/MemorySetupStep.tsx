@@ -14,7 +14,7 @@ import {
 } from '@ziee/kit'
 import { Lightbulb, Info, ArrowLeft, RotateCw, Plus } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 

@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
 import { registerDesktopOverrides } from '@ziee/desktop/modules/desktop-base/overrides'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'

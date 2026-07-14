@@ -10,7 +10,7 @@ import {
   type ChatExtension,
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
 import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
@@ -416,7 +416,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   initialize: async () => {
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { ApiClient } = await import('@/api-client')
 
     useChatStore.subscribe(
@@ -933,7 +933,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Allow empty text when there are pending tool approvals
   beforeSendMessage: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const mcpStore = Stores.McpComposer
 
     // Check if there are approval decisions queued to send
@@ -950,7 +950,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Compose request fields to include MCP config and approval decisions
   composeRequestFields: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const mcpStore = Stores.McpComposer
     const selectedServers = mcpStore.getSelectedServersConfig()
     const approvalDecisions = mcpStore.getApprovalDecisions()
@@ -977,7 +977,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Load conversation MCP settings when conversation is opened
   onConversationLoad: async (conversation) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const mcpStore = Stores.McpComposer
     const mcpStoreProxy = Stores.McpComposer
 
@@ -1100,7 +1100,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Clear approval decisions after message is sent
   onMessageSent: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     // Read via `$` snapshot (state fields + actions both live on getState())
     const mcpStore = Stores.McpComposer.$
     const chatStore = Stores.Chat.$

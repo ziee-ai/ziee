@@ -6,7 +6,7 @@ import {
   AttachmentDescription, AttachmentActions, AttachmentTrigger,
 } from '@ziee/kit'
 import { Confirm } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'

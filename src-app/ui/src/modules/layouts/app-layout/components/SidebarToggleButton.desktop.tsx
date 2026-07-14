@@ -17,7 +17,7 @@
 
 import { Button, Tooltip } from '@ziee/kit'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
 import { TauriDragRegion } from '@ziee/desktop/components/TauriDragRegion.tsx'
 

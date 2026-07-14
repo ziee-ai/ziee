@@ -7,7 +7,7 @@ import {
   FieldGroup,
   FieldTitle,
 } from '@ziee/kit/shadcn/field'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ThemePreference } from '@/modules/config-client/ConfigClient.store'
 import {
   ACCENT_PRESETS,

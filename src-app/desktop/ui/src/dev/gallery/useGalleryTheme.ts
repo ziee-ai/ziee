@@ -9,7 +9,7 @@
  * standalone entry (registered by `main.tsx`).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { AccentPreset } from '@/components/ThemeProvider/accentPresets'
 import {
   type GalleryDir,

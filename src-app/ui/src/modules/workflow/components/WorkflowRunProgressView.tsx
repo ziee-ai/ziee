@@ -12,7 +12,7 @@ import {
 import { useEffect, useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { ProgressTrack } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { StepArtifacts } from './StepArtifacts'
 import { StepLogExpander } from './StepLogExpander'
 import { StepOutputExpander } from './StepOutputExpander'

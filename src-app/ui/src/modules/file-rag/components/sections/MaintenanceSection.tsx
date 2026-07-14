@@ -1,7 +1,7 @@
 import { Alert, Button, Card, Paragraph } from '@ziee/kit'
 import { message } from '@ziee/kit'
 import { Database } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'

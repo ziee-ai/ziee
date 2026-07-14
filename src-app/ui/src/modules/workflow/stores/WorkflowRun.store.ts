@@ -5,7 +5,7 @@ import type {
   SSEElicitationRequiredData,
   SSEStepManifestItem,
 } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import {
   type RunProgressSubscription,
   subscribeRunProgress,

@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useVoiceConfigStore } from './stores/VoiceConfig.store'
 import type { useVoiceDownloadProgressStore } from './stores/VoiceDownloadProgress.store'
 import type { useVoiceInstanceStore } from './stores/VoiceInstance.store'
@@ -10,7 +10,7 @@ import type { useVoiceRuntimeVersionStore } from './stores/VoiceRuntimeVersion.s
 import type { useVoiceUpdateStore } from './stores/VoiceUpdate.store'
 import type { useVoiceUploadModelDrawerStore } from './stores/VoiceUploadModelDrawer.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     VoiceRuntimeVersion: StoreProxy<
       ReturnType<typeof useVoiceRuntimeVersionStore.getState>

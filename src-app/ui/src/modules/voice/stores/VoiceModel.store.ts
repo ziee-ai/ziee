@@ -5,8 +5,8 @@ import {
   type VoiceModelStatus,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * The installed whisper-model library + the configured-model readiness status.

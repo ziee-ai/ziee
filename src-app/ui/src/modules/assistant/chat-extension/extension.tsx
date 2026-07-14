@@ -3,7 +3,7 @@ import {
   type ChatExtension,
   type ExtensionRequestFields,
 } from '@/modules/chat/core/extensions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AssistantMenuItem } from '@/modules/assistant/chat-extension/components/AssistantMenuItem'
 import { AssistantStatusChip } from '@/modules/assistant/chat-extension/components/AssistantStatusChip'
 
@@ -32,7 +32,7 @@ const assistantExtension: ChatExtension = createExtension({
     const { useChatStore } = await import(
       '@/modules/chat/core/stores/Chat.store'
     )
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
 
     // 1. Conversation-change → reset picker. Replaces the implicit
     //    chat-extension-framework scoping the old Stores.Chat.AssistantStore

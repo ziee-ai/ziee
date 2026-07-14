@@ -1,7 +1,7 @@
 import { Text, Title } from '@ziee/kit'
 import { ReactNode, useId } from 'react'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface SettingsPageContainerProps {
   title: string | ReactNode

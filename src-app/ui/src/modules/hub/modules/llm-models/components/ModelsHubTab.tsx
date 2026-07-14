@@ -2,7 +2,7 @@ import { Eraser, LayoutGrid, Search } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { MultiSelect, Select, Text, Button, Input, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 

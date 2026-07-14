@@ -25,7 +25,7 @@ import {
   FieldTitle,
 } from '@ziee/kit/shadcn/field'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 import { chooseInputMode, selectDeclaredInputs } from './inputMode'

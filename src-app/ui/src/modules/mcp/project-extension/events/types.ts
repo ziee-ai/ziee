@@ -1,7 +1,7 @@
 // Events for the project↔mcp relationship. Lives in mcp module (the
 // owner of project MCP settings post-inversion).
 
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 
 /** Fired after a project's MCP settings are upserted via PUT
  *  /api/projects/{id}/mcp-settings. Subscribers (cache invalidators,
@@ -15,7 +15,7 @@ export interface ProjectMcpUpdatedEvent extends BaseEvent {
   }
 }
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'project.mcp_updated': ProjectMcpUpdatedEvent
   }

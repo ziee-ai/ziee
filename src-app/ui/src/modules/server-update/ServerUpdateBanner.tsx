@@ -10,7 +10,7 @@ import { Alert, Button, Link } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export function ServerUpdateBanner() {
   return (

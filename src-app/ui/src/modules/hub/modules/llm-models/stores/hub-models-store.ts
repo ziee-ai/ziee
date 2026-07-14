@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import type { HubLocalProvider, HubModel } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 
 export const HubModels = defineStore('HubModels', {
   immer: true,

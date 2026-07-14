@@ -1,13 +1,13 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { ApiClient } from '@/api-client'
-import { setUnauthorizedHandler } from '@/api-client/core'
+import { setUnauthorizedHandler } from '@ziee/framework/api-client/core'
 import type {
   CreateUserRequest,
   LinkAccountRequest,
   LoginRequest,
   User,
 } from '@/api-client/types'
-import { type StoreProxy, Stores } from '@/core/stores'
+import { type StoreProxy, Stores } from '@ziee/framework/stores'
 
 /**
  * Map an API/login failure to safe, actionable user-facing copy.
@@ -109,7 +109,7 @@ interface AuthState {
 }
 
 // Augment the RegisteredStores interface for IntelliSense
-declare module '../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Auth: StoreProxy<AuthState>
   }

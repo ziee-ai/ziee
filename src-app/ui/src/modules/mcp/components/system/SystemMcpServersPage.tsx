@@ -1,6 +1,6 @@
 import { Plus, Search, Eraser } from 'lucide-react'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'

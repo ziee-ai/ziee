@@ -1,5 +1,5 @@
 import { Spin } from '@ziee/kit'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AttachedFileCard } from '@/modules/file/chat-extension/components/AttachedFileCard'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import type {

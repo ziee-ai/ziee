@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, Space, Text } from '@ziee/kit'
 import { Check, Clock, X } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions/types'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 

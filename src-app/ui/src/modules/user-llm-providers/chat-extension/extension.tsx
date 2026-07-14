@@ -26,7 +26,7 @@ const modelExtension: ChatExtension = createExtension({
 
   initialize: async () => {
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
 
     // 1. Conversation-change → re-initialize the picker. Replaces
     //    the implicit chat-extension-framework scoping the old
@@ -64,7 +64,7 @@ const modelExtension: ChatExtension = createExtension({
    * Provide model_id to request.
    */
   composeRequestFields: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const modelId = Stores.ModelPicker.getModelId()
     if (!modelId) {
       throw new Error('No model selected')
@@ -86,7 +86,7 @@ const modelExtension: ChatExtension = createExtension({
    * commits) so keep both to avoid a one-frame stale picker.
    */
   onConversationLoad: async (conversation: Conversation) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     Stores.ModelPicker.initializeFromConversation(conversation.model_id ?? undefined)
   },
 })

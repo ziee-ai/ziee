@@ -1,4 +1,4 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const CreateUserDrawer = defineStore('CreateUserDrawer', {
   state: { isOpen: false },

@@ -1,7 +1,7 @@
 import { CheckCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   message,
   Dialog,

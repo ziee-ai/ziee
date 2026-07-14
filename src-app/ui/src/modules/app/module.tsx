@@ -1,4 +1,4 @@
-import { createModule, Stores } from '@/core'
+import { createModule, Stores } from '@ziee/framework'
 import { useAppStore } from '@/modules/app/App.store'
 import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

@@ -3,7 +3,7 @@ import { Alert, List, Space, Spin, Tag, Text } from '@ziee/kit'
 import { Dialog } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import type { TestRunResponse, Workflow } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface WorkflowTestsPanelProps {
   workflow: Workflow
