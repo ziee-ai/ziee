@@ -1257,6 +1257,10 @@ pub(crate) fn tool_definitions() -> Value {
                 - For user-attached files (referenced by their original filename): returns a short-lived \
                 JWT-signed download-with-token URL that can be passed directly to external MCP tools \
                 (`is_saved: true`).\n\
+                - For a file ANOTHER tool handed you as a URL that you had to pull into the sandbox \
+                yourself (e.g. you fetched it into /home/sandboxuser): call get_resource_link on that \
+                local filename to get a proper link — do NOT re-emit or forward the tool's raw \
+                upstream URL.\n\
                 \n\
                 Use a plain filename (e.g., 'report.pdf' or 'data.csv').\n\
                 \n\
@@ -1495,6 +1499,12 @@ mod tests {
         assert!(
             desc.contains("DRS") && desc.contains("localhost") && desc.contains("VERBATIM"),
             "must keep the anti-invent/anti-DRS/anti-localhost + verbatim rules; got: {desc}"
+        );
+        // TEST-6: the bridge case — a file another tool handed you as a URL that you pulled into
+        // the sandbox → call get_resource_link on the LOCAL filename, don't re-emit the raw URL.
+        assert!(
+            desc.contains("ANOTHER tool handed you as a URL"),
+            "must cover the tool-returned-URL bridge case; got: {desc}"
         );
     }
 
