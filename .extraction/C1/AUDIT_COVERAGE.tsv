@@ -1,0 +1,11 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-control-mcp/src/catalog.rs (new)	OpenAPI->catalog ingest moved verbatim + 2 let-chains lowered to nested if-let (2021 compat) + 7 unit tests	equivalence(C1-01),edition-compat(C1-05),security(C1-08),test-fidelity(C1-11)
+H2	sdk crates/ziee-control-mcp/src/policy.rs (new)	reachability/mutation denylist byte-for-byte + 3 tests	equivalence(C1-02),security(C1-09),test-fidelity(C1-11)
+H3	sdk crates/ziee-control-mcp/src/tools.rs (new)	three static tool descriptors + name consts byte-for-byte	equivalence(C1-02),api-surface(C1-10),boundary(C1-07)
+H4	sdk crates/ziee-control-mcp/{lib.rs,Cargo.toml}	pub mod catalog/policy/tools; add aide+serde_json+tracing; retain framework+identity	cross-crate-resolution(C1-06),build-hygiene(C1-13),boundary(C1-07)
+H5	sdk crates/ziee-framework/src/mcp.rs (new)	JsonRpc types + loopback_host verbatim (AppError->ziee_core::AppError) + 7 tests	equivalence(C1-03),security(C1-04),test-fidelity(C1-12),boundary(C1-07)
+H6	sdk crates/ziee-framework/src/lib.rs	pub mod mcp + re-export JsonRpc*/loopback_host	api-surface(C1-10),cross-crate-resolution(C1-06),build-hygiene(C1-13)
+H7	ziee control_mcp/mod.rs (edit; catalog/policy/tools.rs deleted)	pub use ziee_control_mcp::{catalog,policy,tools} shim; app-side handlers/repo/routes/chat_ext stay	shim-transparency(C1-14),equivalence(C1-01),security(C1-09),api-surface(C1-10)
+H8	ziee server/Cargo.toml	add ziee-control-mcp path dep	cross-crate-resolution(C1-06),build-hygiene(C1-13)
+H9	ziee code_sandbox/types.rs (edit)	remove JsonRpc defs+default_jsonrpc+serde import+5 tests; re-export from framework::mcp	shim-transparency(C1-15),equivalence(C1-03),build-hygiene(C1-13),canonical-equality(C1-16)
+H10	ziee code_sandbox/mod.rs (edit)	remove loopback_host fn+2 tests; re-export from framework::mcp	shim-transparency(C1-15),security(C1-04),equivalence(C1-01),desktop-parity(C1-17)

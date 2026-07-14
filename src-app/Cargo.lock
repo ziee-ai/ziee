@@ -12736,6 +12736,7 @@ dependencies = [
  "winreg 0.52.0",
  "wiremock",
  "ziee-auth",
+ "ziee-control-mcp",
  "ziee-core",
  "ziee-framework",
  "ziee-identity",
@@ -12753,6 +12754,17 @@ dependencies = [
  "serde",
  "sqlx 0.8.6",
  "uuid",
+ "ziee-framework",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-control-mcp"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "serde_json",
+ "tracing",
  "ziee-framework",
  "ziee-identity",
 ]

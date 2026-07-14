@@ -56,57 +56,18 @@ pub fn code_sandbox_server_id() -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, b"code-sandbox.ziee.internal")
 }
 
-/// Resolve the host portion of the built-in code_sandbox MCP server's
-/// URL. **Always returns a loopback address** — never the operator's
-/// `server.host` config value.
-///
-/// SECURITY: an earlier implementation passed `server.host` through
-/// unchanged when it was a concrete address. That meant a config-set
-/// `server.host = attacker.com` would register the built-in MCP
-/// server's URL as `http://attacker.com:port/api/code-sandbox`, and
-/// the MCP client (`mcp/client/manager.rs:78-113`) would then ship
-/// every JWT-signed bearer + per-call context to attacker.com. This
-/// matters because config / env-var (e.g. `SERVER__HOST=...`) is
-/// often less guarded than DB credentials in container orchestration.
-///
-/// We pin to `127.0.0.1` because the loopback endpoint is the only
-/// place this server can route the call to (we're invoking ourselves
-/// through the local axum stack). The operator's `server.host` value
-/// controls what the server BINDS to externally — but a sandbox
-/// "loopback" must, by definition, dial `127.0.0.1`.
-pub fn loopback_host(_server_host: &str) -> &str {
-    "127.0.0.1"
-}
+// Chunk C1: `loopback_host` (the security-critical self-dial pin) moved to
+// `ziee_framework::mcp` and is re-exported here so every
+// `code_sandbox::loopback_host(...)` caller across the built-in MCP servers
+// (15 modules) resolves unchanged (decision N2 shim).
+pub use ziee_framework::mcp::loopback_host;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn loopback_host_always_127_0_0_1_for_wildcards() {
-        assert_eq!(loopback_host("0.0.0.0"), "127.0.0.1");
-        assert_eq!(loopback_host("::"), "127.0.0.1");
-        assert_eq!(loopback_host("[::]"), "127.0.0.1");
-        assert_eq!(loopback_host("0:0:0:0:0:0:0:0"), "127.0.0.1");
-        assert_eq!(loopback_host(""), "127.0.0.1");
-        assert_eq!(loopback_host("  "), "127.0.0.1");
-    }
-
-    #[test]
-    fn loopback_host_pins_to_loopback_regardless_of_server_host() {
-        // SECURITY regression test: the built-in MCP server's URL
-        // must NEVER be configurable to a non-loopback address. If
-        // server.host was `attacker.com`, an earlier implementation
-        // would have passed that through and the MCP client would
-        // ship JWT-signed bearer tokens to attacker.com per call.
-        assert_eq!(loopback_host("attacker.com"), "127.0.0.1");
-        assert_eq!(loopback_host("10.0.0.5"), "127.0.0.1");
-        assert_eq!(loopback_host("169.254.169.254"), "127.0.0.1"); // IMDS
-        assert_eq!(loopback_host("example.local"), "127.0.0.1");
-        assert_eq!(loopback_host("[2001:db8::1]"), "127.0.0.1");
-        // Even passing 127.0.0.1 itself yields the canonical form.
-        assert_eq!(loopback_host("127.0.0.1"), "127.0.0.1");
-    }
+    // The two `loopback_host` tests moved with the function to
+    // `ziee_framework::mcp` (Chunk C1).
 
     #[test]
     fn code_sandbox_server_id_is_stable() {

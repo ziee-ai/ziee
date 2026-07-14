@@ -39,6 +39,11 @@ ziee-framework = { path = "../../sdk/crates/ziee-framework" }
 # equivalence-preserving re-export shims (decision N2) — schemars keys types by
 # short ident, so moving the defining crate leaves the wire schemas unchanged.
 ziee-auth = { path = "../../sdk/crates/ziee-auth" }
+# Chunk C1: the DB-free control tool-dispatch core (OpenAPI→catalog ingest, the
+# reachability/mutation policy, the three control-tool descriptors). ziee's
+# `control_mcp` module re-exports `catalog`/`policy`/`tools` from here and keeps
+# the app-side handlers/routes/repository/chat_extension (decisions N1/N5).
+ziee-control-mcp = { path = "../../sdk/crates/ziee-control-mcp" }
 
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"

@@ -26,14 +26,21 @@ use uuid::Uuid;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
-pub mod catalog;
 pub mod chat_extension;
 pub mod handlers;
 pub mod permissions;
-pub mod policy;
 pub mod repository;
 pub mod routes;
-pub mod tools;
+
+// Chunk C1: the DB-free tool-dispatch core (catalog / policy / tools) moved into
+// the `ziee-control-mcp` SDK crate. ziee re-exports the three modules via
+// equivalence-preserving shims (decision N2) so `super::catalog` / `super::policy`
+// / `super::tools` in the retained app-side `handlers.rs` — and the two
+// `control_mcp::catalog::init_from_openapi` boot sites — resolve unchanged. The
+// `mcp_servers`-row `repository`, `routes`, `handlers` (forwarded-JWT loopback
+// invoke + per-user permission filter), and `chat_extension` stay app-side in v1
+// (decisions N1/N5).
+pub use ziee_control_mcp::{catalog, policy, tools};
 
 /// Deterministic UUID for the built-in control MCP server row. Stable across
 /// deployments. Mirrors `files_mcp_server_id` / `web_search_server_id`.
