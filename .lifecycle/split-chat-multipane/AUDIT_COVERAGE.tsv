@@ -50,7 +50,7 @@ src-app/ui/src/modules/chat/core/split/galleryCoverage.test.ts	1	36	tests-qualit
 src-app/ui/src/modules/chat/core/split/limits.ts	1	20	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/split/reconcile.test.ts	1	237	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/split/reconcile.ts	1	195	correctness,state-management,concurrency
-src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2344	correctness,state-management,concurrency
+src-app/ui/src/modules/chat/core/stores/Chat.store.ts	1	2450	correctness,state-management,concurrency
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.test.ts	1	86	tests-quality,correctness,api-contract
 src-app/ui/src/modules/chat/core/stores/MessageViewState.store.ts	1	86	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/core/stores/SplitView.store.test.ts	1	201	tests-quality,correctness,api-contract
@@ -65,7 +65,7 @@ src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx	1	124	corre
 src-app/ui/src/modules/chat/module.tsx	1	130	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/pages/ConversationPage.tsx	1	1200	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/chat/types.ts	1	44	correctness,state-management,patterns-conformance
-src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx	1	315	correctness,state-management,patterns-conformance
+src-app/ui/src/modules/chat/widgets/RecentConversationsWidget.tsx	1	420	correctness,state-management,patterns-conformance
 src-app/ui/src/modules/file/chat-extension/components/AttachedFileCard.tsx	1	87	correctness,state-management,error-handling
 src-app/ui/src/modules/file/chat-extension/components/FileAttachMenuItem.tsx	1	62	correctness,state-management,error-handling
 src-app/ui/src/modules/file/chat-extension/components/FilePasteHandler.tsx	1	95	correctness,state-management,error-handling
@@ -202,6 +202,8 @@ src-app/ui/tests/e2e/14-split-chat/conversation-delete-closes-pane.spec.ts	1	62	
 src-app/ui/tests/e2e/14-split-chat/split-button-cap.spec.ts	1	56	tests-quality,test-coverage,correctness
 src-app/ui/src/modules/chat/components/PaneManagerDrawer.tsx	1	300	correctness,state-management,patterns-conformance,a11y,affordance-parity
 src-app/ui/tests/e2e/14-split-chat/mobile-panes.spec.ts	1	200	tests-quality,correctness,patterns-conformance
-.claude/skills/feature-lifecycle/SKILL.md	280	300	patterns-conformance,correctness,tests-quality
+.claude/skills/feature-lifecycle/SKILL.md	280	345	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/overlay-allowlist.json	1	60	patterns-conformance,correctness,tests-quality
 src-app/ui/src/dev/gallery/overlay-registry.generated.json	1	200	patterns-conformance,correctness,tests-quality
+src-app/ui/src/modules/skill/gallery.tsx	1	130	correctness,patterns-conformance,tests-quality
+src-app/desktop/ui/src/dev/gallery/GALLERY_SEED_MANIFEST.md	1	40	patterns-conformance,correctness,tests-quality

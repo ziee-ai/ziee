@@ -440,3 +440,47 @@ errors). This feature adds no gallery surfaces and no new gating runtime finding
 - **TEST-114**: PASS — `mobile-panes.spec.ts` (harness `2/2` + `5/5`): drawer opens, split with no tab-strip/grip/✕.
 - **TEST-115**: PASS — `mobile-panes.spec.ts`: drawer lists both panes, tap-to-focus switches the visible pane.
 - **TEST-116**: PASS — `mobile-panes.spec.ts`: ✕ closes a pane → collapse to single-pane survivor + URL follows.
+
+## BIG RECONCILE — merge origin/main (6da3d2aef) verification — 2026-07-13
+
+- **`npm run check (ui)`: PASS** — full chain green on the merged base (tsc + all lints +
+  testid/design-spec/gallery-coverage/gallery-crawl/state-matrix/overlay-registry/override-registry
+  + the NEW `check:gallery-seed-registry` from main's showcase modularization: 39 modules, 36
+  seeded, 0 allow-listed). Regenerated galleryCoverage/state-matrix/testIds/overlay-registry/
+  gallery-seed-registry from the reconciled source.
+- **`npm run check (desktop/ui)`: PASS** — full chain green (regenerated the desktop
+  gallery-seed manifest via `npm run gen:gallery-seed-registry`).
+- **tsc (ui + desktop): 0 errors** each on the merged base (after the 5 merge-fix edits:
+  skill/gallery openDrawer arg + the regenerated coverage/state unions).
+- **Backend `cargo check --workspace`: clean** (compiles; warnings only) — the merged backend
+  (main's streaming.rs/mcp/summarization + my per-pane + stream-registry) builds.
+- **openapi regen (ui + desktop): 0 content delta** — regenerating from the MERGED backend
+  produced only a key-ordering diff in each `openapi.json` (types.ts byte-identical), i.e. the
+  merge reordered route registration but changed NO API type. Committed the reordered specs.
+  Confirms main added no API type (main never regenerated openapi across the 135 commits).
+- **ui unit tests (node:test `test:unit`): PASS for all branch tests** — reconcile 10/10,
+  SplitView.store, messageWindow, composerOwnership, approvalRouting, etc. (7 of MAIN's tests
+  fail under `test:unit` — they use `vitest` + extension-less relative imports the repo's
+  node:test runner can't resolve; byte-identical to origin/main → they fail identically on
+  clean main. A pre-existing MAIN test-infra inconsistency, flagged to the human, not hacked.)
+- **Blind re-audit of the merge delta (2 fresh diff-only agents): 0 findings.** Agent A
+  byte-verified Chat.store.ts (main's finalizeTailWindow/snapToTail preserved + per-pane
+  paneId threaded, no dangling vars) + RecentConversationsWidget (main's virtualization + ALL
+  per-pane deltas re-applied, navigate removed). Agent B confirmed the assistant reconcile
+  (permission gate ∪ per-conversation) AND that every NEW main surface is per-pane by
+  construction (finalizingTurn/message-window are per-ChatPaneStore-instance) or appropriately
+  GLOBAL (sidebar paging, /chats VirtualizedConversationList, scheduled-tasks) — no
+  two-active-pane cross-contamination.
+- **Isolation e2e — `tests/e2e/14-split-chat` on the MERGED base: 65 passed, 0 failed, 0 flaky
+  (8.0m)** (`merge-e2e-bridge-*.log`, workers=2 retries=1, isolated `CARGO_TARGET_DIR` +
+  the local qwen3.6-35b-a3b bridge for the real-streaming specs). Proves the per-pane
+  isolation holds end-to-end after the merge: two simultaneous bidirectional streams stay
+  isolated, focused-pane Enter-send targets the right pane, sidebar-click routing / drag /
+  tear-off / open-in-split all work with main's virtualized sidebar, the assistant chip is
+  per-conversation, delete-closes-pane, the small-screen drawer + mobile auto-hide header,
+  etc. (An initial run without the bridge env timed out the 3 real-streaming specs — a launch
+  omission, fixed by passing OPENAI_BASE_URL/OPENAI_API_KEY/ZIEE_TEST_LLM_MODEL; NOT a merge
+  regression.)
+- **B6 — gates survive the `.lifecycle` strip: PASS.** With `.lifecycle/` moved away,
+  `npm run check (ui)` still exits 0 (the gate scripts — incl. main's new gallery-seed-registry
+  + the override-registry — read only committed product-tree paths, never `.lifecycle/`).
