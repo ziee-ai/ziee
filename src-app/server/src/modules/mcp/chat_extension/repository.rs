@@ -120,7 +120,10 @@ impl McpChatRepository {
         repository::get_pending_approvals_for_branch(&self.pool, branch_id).await
     }
 
-    /// Delete tool use approval record (after execution)
+    /// Consume a tool-use approval record; returns whether a row was actually
+    /// deleted. See `approval::repository::delete_tool_approval` for the contract —
+    /// `execute_approved_tools_sync` deletes BEFORE running the tool, so for that
+    /// caller the bool is the CLAIM verdict, not incidental.
     pub async fn delete_tool_approval(
         &self,
         tool_use_id: String,

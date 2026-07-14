@@ -306,7 +306,9 @@ pub mod workflow {
 // not of the integration-test crate.
 #[doc(hidden)]
 pub mod test_internals {
-    pub use crate::modules::chat::core::services::streaming::group_assistant_blocks;
+    pub use crate::modules::chat::core::services::streaming::{
+        dedup_tool_results_by_id, group_assistant_blocks,
+    };
     pub use ai_providers::{ChatMessage, ContentBlock, Role};
     // Chat repository surface for the DB-level append_content tests
     // (Tier-2 monotonic / collision-free under concurrent appends).
