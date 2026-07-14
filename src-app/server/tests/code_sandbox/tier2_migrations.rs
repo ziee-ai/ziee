@@ -5,6 +5,60 @@ use uuid::Uuid;
 
 use crate::common::TestServer;
 
+/// Migration 36's read-only-auto-approve backfill body, inlined here.
+/// MIGRATE-squash (N8) squashed away the historical `00000000000036_seed_...`
+/// file — it was a ONE-TIME backfill of existing users' `auto_approved_tools`
+/// (new users inherit the table default `'[]'`), so a fresh squash baseline
+/// drops it. This test still validates the backfill SQL's row-level idempotent
+/// merge logic, so the body is inlined (as the original migration's comment
+/// invited) rather than `include_str!`-ing the deleted file.
+const MIGRATION_36_BODY: &str = r#"DO $$
+DECLARE
+    sandbox_id CONSTANT TEXT := 'b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd';
+    read_only_tools CONSTANT JSONB := '["read_file", "list_files", "get_resource_link"]'::jsonb;
+    rec RECORD;
+    updated JSONB;
+    found_idx INT;
+    existing_tools JSONB;
+    merged_tools JSONB;
+BEGIN
+    FOR rec IN SELECT id, auto_approved_tools FROM user_mcp_defaults LOOP
+        found_idx := NULL;
+        FOR i IN 0..jsonb_array_length(rec.auto_approved_tools) - 1 LOOP
+            IF rec.auto_approved_tools -> i ->> 'server_id' = sandbox_id THEN
+                found_idx := i;
+                EXIT;
+            END IF;
+        END LOOP;
+
+        IF found_idx IS NULL THEN
+            updated := rec.auto_approved_tools
+                     || jsonb_build_array(
+                         jsonb_build_object('server_id', sandbox_id, 'tools', read_only_tools)
+                     );
+        ELSE
+            existing_tools := COALESCE(rec.auto_approved_tools -> found_idx -> 'tools', '[]'::jsonb);
+            merged_tools := existing_tools;
+            FOR i IN 0..jsonb_array_length(read_only_tools) - 1 LOOP
+                IF NOT merged_tools @> jsonb_build_array(read_only_tools -> i) THEN
+                    merged_tools := merged_tools || jsonb_build_array(read_only_tools -> i);
+                END IF;
+            END LOOP;
+            updated := jsonb_set(
+                rec.auto_approved_tools,
+                ARRAY[found_idx::text],
+                jsonb_build_object('server_id', sandbox_id, 'tools', merged_tools)
+            );
+        END IF;
+
+        UPDATE user_mcp_defaults
+        SET auto_approved_tools = updated,
+            updated_at = NOW()
+        WHERE id = rec.id
+          AND auto_approved_tools IS DISTINCT FROM updated;
+    END LOOP;
+END $$;"#;
+
 async fn pool(server: &TestServer) -> sqlx::PgPool {
     PgPoolOptions::new()
         .max_connections(2)
@@ -90,7 +144,7 @@ async fn migration_36_seeds_read_only_tools_for_new_user_defaults() {
     // Re-run the migration 36 body. Loading the migration file would
     // require sqlx::migrate machinery; the body is short enough to
     // inline as a single anonymous PL/pgSQL block here.
-    let body = include_str!("../../migrations/00000000000036_seed_code_sandbox_read_only_auto_approve.sql");
+    let body = MIGRATION_36_BODY;
     sqlx::raw_sql(body).execute(&pool).await.unwrap();
 
     let (autos,): (serde_json::Value,) = sqlx::query_as(
@@ -156,7 +210,7 @@ async fn migration_36_is_idempotent() {
     .await
     .unwrap();
 
-    let body = include_str!("../../migrations/00000000000036_seed_code_sandbox_read_only_auto_approve.sql");
+    let body = MIGRATION_36_BODY;
     sqlx::raw_sql(body).execute(&pool).await.unwrap();
     let (first,): (serde_json::Value,) = sqlx::query_as(
         "SELECT auto_approved_tools FROM user_mcp_defaults WHERE user_id = $1",

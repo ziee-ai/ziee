@@ -215,19 +215,21 @@ fn test_template_db() -> String {
 }
 
 /// Ordered migration directories to apply when building the template.
-/// Server build: just the server's `migrations/`. Desktop build: the server's
-/// 118 migrations FIRST (resolved relative to the desktop crate manifest),
-/// THEN the desktop crate's 5 — mirroring the real desktop boot path in
-/// `src-app/desktop/tauri/src/lib.rs`.
+/// Server build: the composed `migrations-merged/` (build.rs globs the
+/// module-owned `modules/*/migrations/ ∪ sdk/crates/*/migrations/` into it —
+/// post-MIGRATE-squash the flat `migrations/` dir no longer exists). Desktop
+/// build: the server's merged set FIRST (resolved relative to the desktop crate
+/// manifest), THEN the desktop crate's own `migrations/` — mirroring the real
+/// desktop boot path in `src-app/desktop/tauri/src/lib.rs`.
 fn template_migration_dirs() -> Vec<PathBuf> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if is_desktop() {
         vec![
-            manifest.join("../../server/migrations"),
+            manifest.join("../../server/migrations-merged"),
             manifest.join("migrations"),
         ]
     } else {
-        vec![manifest.join("migrations")]
+        vec![manifest.join("migrations-merged")]
     }
 }
 

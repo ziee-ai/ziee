@@ -28,13 +28,66 @@ use uuid::Uuid;
 
 use crate::common::TestServer;
 
-const MIGRATION_SQL: &str = include_str!(
-    "../../migrations/00000000000092_rewrite_hub_entities_hub_id_to_reverse_dns.sql"
-);
+// Migrations 92 + 131 were one-time DATA rewrites of existing `hub_entities`
+// rows; MIGRATE-squash (N8) folded their end-state into the squashed hub
+// baseline and dropped the standalone files. Their rewrite SQL is inlined here
+// (from history) so this test still exercises the rewrite/idempotency logic —
+// same approach as `tests/code_sandbox/tier2_migrations.rs`. Migration 92
+// legitimately still emits the `io.github.phibya/*` form; 131 rebrands it.
+const MIGRATION_SQL: &str = r#"
+UPDATE hub_entities AS h
+SET hub_id = m.new_hub_id
+FROM (VALUES
+    ('filesystem-mcp',          'io.github.modelcontextprotocol/filesystem'),
+    ('memory-mcp',              'io.github.modelcontextprotocol/memory'),
+    ('postgres-mcp',            'io.github.modelcontextprotocol/postgres'),
+    ('github-mcp',              'io.github.github/mcp'),
+    ('brave-search-mcp',        'com.brave/search-mcp'),
+    ('linear-mcp',              'app.linear/mcp'),
+    ('llama-3-1-8b-instruct',           'io.github.phibya/llama-3-1-8b-instruct'),
+    ('llama-3-2-3b-instruct-gguf',      'io.github.phibya/llama-3-2-3b-instruct-gguf'),
+    ('qwen2.5-coder-7b-instruct',       'io.github.phibya/qwen2.5-coder-7b-instruct'),
+    ('qwen2.5-vl-3b-instruct',          'io.github.phibya/qwen2.5-vl-3b-instruct'),
+    ('phi-3-mini-4k-instruct',          'io.github.phibya/phi-3-mini-4k-instruct'),
+    ('nomic-embed-text-v1-5-gguf',      'io.github.phibya/nomic-embed-text-v1-5-gguf'),
+    ('deepseek-r1-70b',                 'io.github.phibya/deepseek-r1-70b'),
+    ('code-reviewer',   'io.github.phibya/code-reviewer'),
+    ('creative-writer', 'io.github.phibya/creative-writer'),
+    ('deep-researcher', 'io.github.phibya/deep-researcher'),
+    ('sql-helper',      'io.github.phibya/sql-helper'),
+    ('vision-analyst',  'io.github.phibya/vision-analyst')
+) AS m(old_slug, new_hub_id)
+WHERE h.hub_id = m.old_slug
+  AND h.hub_id NOT LIKE '%/%';
 
-const MIGRATION_131_SQL: &str = include_str!(
-    "../../migrations/00000000000131_rewrite_hub_ids_phibya_to_ziee_ai.sql"
-);
+DO $$
+DECLARE
+    orphan_count int;
+BEGIN
+    SELECT COUNT(*) INTO orphan_count
+    FROM hub_entities
+    WHERE hub_id NOT LIKE '%/%';
+    IF orphan_count > 0 THEN
+        RAISE NOTICE 'hub_entities migration: % row(s) have unrecognized slug-style hub_id (left untouched; reinstall to re-track)', orphan_count;
+    END IF;
+END $$;
+"#;
+
+const MIGRATION_131_SQL: &str = r#"
+DO $$
+DECLARE
+    rewritten_count int;
+BEGIN
+    UPDATE hub_entities
+    SET hub_id = 'io.github.ziee-ai/' || substring(hub_id from length('io.github.phibya/') + 1)
+    WHERE hub_id LIKE 'io.github.phibya/%';
+
+    GET DIAGNOSTICS rewritten_count = ROW_COUNT;
+    IF rewritten_count > 0 THEN
+        RAISE NOTICE 'hub_entities org migration: rewrote % row(s) io.github.phibya/* -> io.github.ziee-ai/*', rewritten_count;
+    END IF;
+END $$;
+"#;
 
 async fn pool(server: &TestServer) -> sqlx::PgPool {
     PgPoolOptions::new()
