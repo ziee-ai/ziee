@@ -937,24 +937,17 @@ impl McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
-                // Same-host trust set for re-hosting this external server's result files: the hosts
-                // of the user's accessible, enabled, NON-built-in MCP servers (incl. admin-registered
-                // system servers with a real external `url` like `host.docker.internal`). Derived
-                // server-side via `list_accessible_result_link_hosts` — which does NOT redact
-                // system-server URLs (the redaction in the user-facing list would otherwise blank
-                // them) yet returns hosts only, never URLs. Built-in loopback hosts stay excluded so
-                // an external link at `127.0.0.1:<port>` can't gain trust. Skip the query entirely
-                // when the EMITTER is a built-in (its links are trusted loopback URLs — the trust set
-                // is never consulted for them in `persist_links`).
-                let trusted_hosts = if server.is_built_in {
-                    Vec::new()
-                } else {
-                    Repos
-                        .mcp
-                        .list_accessible_result_link_hosts(context.user_id)
-                        .await
-                        .unwrap_or_default()
-                };
+                // Same-host trust set for re-hosting this external server's result files (see
+                // `resource_link::result_link_trusted_hosts`): the hosts of the user's accessible,
+                // enabled, NON-built-in MCP servers — incl. admin-registered system servers with a
+                // real external `url` (e.g. `host.docker.internal`) whose url is redacted in the
+                // user-facing list. A built-in emitter short-circuits to empty (its links are trusted
+                // loopback URLs the trust set is never consulted for).
+                let trusted_hosts = crate::modules::mcp::resource_link::result_link_trusted_hosts(
+                    server.is_built_in,
+                    context.user_id,
+                )
+                .await;
 
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
@@ -2895,24 +2888,17 @@ impl ChatExtension for McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
-                // Same-host trust set for re-hosting this external server's result files: the hosts
-                // of the user's accessible, enabled, NON-built-in MCP servers (incl. admin-registered
-                // system servers with a real external `url` like `host.docker.internal`). Derived
-                // server-side via `list_accessible_result_link_hosts` — which does NOT redact
-                // system-server URLs (the redaction in the user-facing list would otherwise blank
-                // them) yet returns hosts only, never URLs. Built-in loopback hosts stay excluded so
-                // an external link at `127.0.0.1:<port>` can't gain trust. Skip the query entirely
-                // when the EMITTER is a built-in (its links are trusted loopback URLs — the trust set
-                // is never consulted for them in `persist_links`).
-                let trusted_hosts = if server.is_built_in {
-                    Vec::new()
-                } else {
-                    Repos
-                        .mcp
-                        .list_accessible_result_link_hosts(context.user_id)
-                        .await
-                        .unwrap_or_default()
-                };
+                // Same-host trust set for re-hosting this external server's result files (see
+                // `resource_link::result_link_trusted_hosts`): the hosts of the user's accessible,
+                // enabled, NON-built-in MCP servers — incl. admin-registered system servers with a
+                // real external `url` (e.g. `host.docker.internal`) whose url is redacted in the
+                // user-facing list. A built-in emitter short-circuits to empty (its links are trusted
+                // loopback URLs the trust set is never consulted for).
+                let trusted_hosts = crate::modules::mcp::resource_link::result_link_trusted_hosts(
+                    server.is_built_in,
+                    context.user_id,
+                )
+                .await;
 
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,

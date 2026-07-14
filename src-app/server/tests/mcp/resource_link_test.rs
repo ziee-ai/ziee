@@ -982,6 +982,21 @@ async fn accessor_returns_system_host_and_omits_builtin() {
         "an admin-registered non-built-in system host is trusted (redaction bypassed): {hosts:?}"
     );
 
+    // The shared derivation used by ALL 3 persist_links call sites (chat approval, chat auto-exec,
+    // workflow dispatch): an EXTERNAL emitter gets the registered system host; a BUILT-IN emitter
+    // short-circuits to an empty set (skips the DB query). This covers the call-site glue logic that
+    // the direct persist_links/accessor calls bypass.
+    let via_external = ziee::result_link_trusted_hosts(false, uid).await;
+    assert!(
+        via_external.iter().any(|h| h == "host.docker.internal"),
+        "external emitter → registered system host in the trust set: {via_external:?}"
+    );
+    let via_builtin = ziee::result_link_trusted_hosts(true, uid).await;
+    assert!(
+        via_builtin.is_empty(),
+        "built-in emitter → empty trust set (no query): {via_builtin:?}"
+    );
+
     // Flip the row to a built-in (in-process loopback) server → the accessor must OMIT its host.
     sqlx::query!(
         "UPDATE mcp_servers SET is_built_in = true WHERE id = $1",

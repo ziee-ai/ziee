@@ -27,6 +27,19 @@ internal SSRF-policy decision.
 `http_link_matched_trusted_host_is_ingested` test (which trusts `127.0.0.1`) and the documented
 same-host multi-container deployment, and would change existing behavior for user-registered
 loopback servers. Scope creep + regression; rejected.
+**Accepted tradeoff (surfaced by the Phase-6 security audit, LEDGER SEC line):** because the guard is
+`is_built_in` (not host-is-loopback), an admin who registers a *non-built-in* SYSTEM server at
+`127.0.0.1:<port>` now puts `127.0.0.1` into the trust set — under the OLD `is_system` filter that
+was excluded. An injected external server could then aim a `resource_link` at a loopback service
+(port-ignored same-host match). This is accepted because: (a) it is consistent with the PRE-EXISTING
+same-host-trust design, which already trusts loopback hosts of user-registered non-system servers
+(locked by `http_link_matched_trusted_host_is_ingested` + the module's "same-host multi-container"
+docs) — the fix merely extends that trust to the MORE-privileged admin-registered system servers;
+(b) registering a system server at loopback is a deliberate privileged admin act; (c) IMDS
+`169.254/16` + IPv6 link-local stay blocked in ALL cases. The real deployment targets
+`host.docker.internal` (an RFC1918 gateway, not loopback), so loopback trust is not even needed for
+the fix — it is inherited from the existing design. The misleading "127.0.0.1 can't gain trust"
+comments were corrected to state accurately that only BUILT-IN loopback hosts are excluded.
 
 ### DEC-4: Rewrite the LLM-facing HTTP `resource_link` URI to `/api/files/{id}` after ingest?
 **Resolution:** No. Keep the existing behavior — only `ziee://` host-path links get their URI

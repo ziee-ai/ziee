@@ -267,6 +267,33 @@ pub(crate) fn trusted_hosts_from_servers<'a>(
     )
 }
 
+/// The SSRF same-host trust set for re-hosting an EXTERNAL MCP server's result files — the SINGLE
+/// derivation shared by every [`persist_links`] call site (chat approval, chat auto-exec, workflow
+/// dispatch), so the branch + query + error handling live in one place.
+///
+/// A BUILT-IN emitter's links are trusted loopback URLs that [`persist_links`] fetches with a plain
+/// client and never validates against the trust set, so this short-circuits to empty for a built-in
+/// emitter and skips the DB query entirely (the common `code_sandbox` path pays nothing). For an
+/// external emitter it returns the hosts of the user's accessible, enabled, NON-built-in servers via
+/// [`McpRepository::list_accessible_result_link_hosts`]. A lookup error degrades to an EMPTY set —
+/// fail-CLOSED: the fetch then falls to the strict `PUBLIC_HTTP_OR_HTTPS` policy — and is logged so
+/// the otherwise-silent "a same-host artifact didn't re-host" case is diagnosable.
+pub async fn result_link_trusted_hosts(emitter_is_built_in: bool, user_id: Uuid) -> Vec<String> {
+    if emitter_is_built_in {
+        return Vec::new();
+    }
+    match Repos.mcp.list_accessible_result_link_hosts(user_id).await {
+        Ok(hosts) => hosts,
+        Err(e) => {
+            tracing::warn!(
+                "resource_link trust-host lookup failed for user {user_id}: {e}; falling back to \
+                 the strict public SSRF policy (a same-host result artifact won't be re-hosted)"
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// Which SSRF policy the external-server HTTP fetch of a `resource_link` uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FetchPolicyKind {
@@ -743,11 +770,14 @@ mod tests {
         assert_eq!(hosts, vec!["10.0.0.5", "172.21.0.1", "rcpa.local"]);
     }
 
-    // TEST-1 (was TEST-11): trusted_hosts_from_servers now keys on `is_built_in`, NOT `is_system`.
-    // A built-in (in-process, loopback) server is excluded (its 127.0.0.1 host must never enter the
-    // trust set, else an external resource_link at 127.0.0.1 would bypass the loopback block), but an
-    // admin-registered system-but-NON-built-in server (real external url like host.docker.internal)
-    // IS included — the regression this fix targets. Tuples are `(is_built_in, url)`.
+    // TEST-1 (was TEST-11): trusted_hosts_from_servers filters on its `is_built_in` bool — a built-in
+    // (in-process, loopback) server is excluded (its 127.0.0.1 host must never enter the trust set),
+    // a non-built-in server with a real host is included. NOTE: this pure helper only sees ONE bool,
+    // so it can't by itself prove the is_system→is_built_in boundary change; that is proven at the
+    // caller level by the accessor test `accessor_returns_system_host_and_omits_builtin` (a system
+    // server, is_system=true throughout, is trusted while is_built_in=false and dropped when
+    // is_built_in=true — so reverting the accessor's column to is_system would break it). Tuples here
+    // are `(is_built_in, url)`.
     #[test]
     fn trusted_hosts_excludes_builtin_loopback_includes_admin_system() {
         let servers = vec![
