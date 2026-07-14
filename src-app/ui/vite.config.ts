@@ -6,8 +6,10 @@ import path from 'node:path'
 import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
-import { galleryCoveragePlugin } from './plugins/vite-plugin-gallery-coverage.js'
-import { galleryAliasPlugin } from './plugins/vite-plugin-gallery-alias.js'
+// @ts-ignore — self-contained JS plugins re-homed under @ziee/gallery (B4).
+import { galleryCoveragePlugin } from '@ziee/gallery/vite/vite-plugin-gallery-coverage.js'
+// @ts-ignore
+import { galleryAliasPlugin } from '@ziee/gallery/vite/vite-plugin-gallery-alias.js'
 
 const host = process.env.TAURI_DEV_HOST
 

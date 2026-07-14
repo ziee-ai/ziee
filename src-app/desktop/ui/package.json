@@ -103,8 +103,8 @@
     "test:tauri-driver": "node tests/tauri-driver/smoke.mjs",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
-    "check:gallery-seed-registry": "node ../../ui/scripts/gen-gallery-seed-registry.mjs --src src --check",
-    "gen:gallery-seed-registry": "node ../../ui/scripts/gen-gallery-seed-registry.mjs --src src"
+    "check:gallery-seed-registry": "node ../../../sdk/packages/gallery/scripts/gen-gallery-seed-registry.mjs --src src --check",
+    "gen:gallery-seed-registry": "node ../../../sdk/packages/gallery/scripts/gen-gallery-seed-registry.mjs --src src"
   },
   "type": "module"
 }
