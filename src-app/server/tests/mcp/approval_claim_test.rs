@@ -12,9 +12,18 @@
 //!
 //! Drives the REAL path (scriptable OpenAI stub → stream finalize → MCP extension →
 //! approval → resume) against an in-process HTTP MCP mock, mirroring
-//! `mcp_approval_loop_test.rs`. The decisive assertions are that the mock received
-//! EXACTLY ONE `tools/call` and that exactly ONE `tool_result` row exists for the
-//! tool_use_id — a re-execution would show up as two of each.
+//! `mcp_approval_loop_test.rs`.
+//!
+//! HONEST SCOPE — this is a REGRESSION GUARD, not the proof of the claim fix. On this
+//! happy path the pre-fix code's post-execution DELETE also succeeded, so every
+//! assertion below (row gone, one `tools/call`, one `tool_result` row) held pre-fix
+//! too. The bug needed a DELETE that FAILED or lost a race, which this harness has no
+//! way to induce. What discriminates the fix is the unit test
+//! `mcp::chat_extension::mcp::tests::claim_outcome_distinguishes_won_already_claimed_and_failed`
+//! — the verdict logic that a bool-discarding claim gets wrong. What THIS test buys is
+//! end-to-end proof that the reordering did not break exactly-once execution on the
+//! path users actually take, and that removing four scattered `delete_tool_approval`
+//! calls in favour of one up-front claim left no path that re-executes.
 
 use serde_json::json;
 use uuid::Uuid;
@@ -206,10 +215,12 @@ async fn approved_tool_is_claimed_and_executes_exactly_once() {
     // …and exactly ONE persisted tool_result for it. Two rows here is the duplicate
     // this feature exists to prevent (history reconstruction would dedup it, but the
     // stored history would be wrong and get_tool_result recall reads the LAST row).
+    // messages carry no branch_id — a branch owns its messages through the
+    // `branch_messages` join table.
     let result_rows: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM message_contents mc \
-         JOIN messages m ON m.id = mc.message_id \
-         WHERE m.branch_id = $1 AND mc.content_type = 'tool_result' \
+         JOIN branch_messages bm ON bm.message_id = mc.message_id \
+         WHERE bm.branch_id = $1 AND mc.content_type = 'tool_result' \
            AND mc.content->>'tool_use_id' = $2",
     )
     .bind(branch_id)

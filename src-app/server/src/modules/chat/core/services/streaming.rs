@@ -1687,11 +1687,15 @@ fn synthetic_missing_tool_result(
 /// Emit one `[Assistant { text + tool_use }, Tool { tool_result }]` pair, draining
 /// the accumulators. The Tool turn carries EXACTLY one result per tool_use, in
 /// tool_use order — the real result when we captured it, otherwise a synthesized
-/// `is_error` placeholder (`synthetic_missing_tool_result`). Results with no
-/// matching tool_use in this batch are left in `results_by_id` (dropped by the
-/// caller) — a `tool_result` with no preceding `tool_use` is itself an invalid
-/// provider block. This is what guarantees the wire-format invariant regardless of
-/// whether the tools succeeded, failed, or left a gap.
+/// `is_error` placeholder (`synthetic_missing_tool_result`). This is what guarantees
+/// the wire-format invariant regardless of whether the tools succeeded, failed, or
+/// left a gap.
+///
+/// `results_by_id` is drained here and is empty on return: the caller's capture guard
+/// only ever inserts a result whose tool_use is OUTSTANDING in this batch, so there
+/// are no orphans to leave behind (a `tool_result` with no preceding `tool_use` is
+/// itself an invalid provider block, and is refused at capture rather than filtered
+/// out here).
 fn flush_assistant_tool_pair(
     messages: &mut Vec<ChatMessage>,
     current_text: &mut Vec<ai_providers::ContentBlock>,
@@ -1720,13 +1724,17 @@ fn flush_assistant_tool_pair(
         role: ai_providers::Role::Tool,
         content: tool_content,
     });
-    // Anything still keyed here answered no tool_use in THIS batch — an orphan
-    // result. Drop it now rather than carrying it into the next batch: the
-    // capture is keep-first (`or_insert`), so a lingering orphan for id X would
-    // shadow a later REAL result for a subsequent tool_use X and be emitted in
-    // its place. Keeps the map's meaning literal — "results captured since the
-    // last flush".
-    results_by_id.clear();
+    // Deliberately NO `results_by_id.clear()` here. The capture guard in
+    // `group_assistant_blocks` only ever inserts a result whose tool_use is
+    // OUTSTANDING in this batch, so the map's keys are a subset of
+    // `current_tool_uses`' ids — every one of which the loop above just drained via
+    // `remove`. The map is provably empty at this point; a clear() would be dead code
+    // implying a hazard the capture guard already closes at the source.
+    debug_assert!(
+        results_by_id.is_empty(),
+        "flush must consume every captured result; leftovers mean the capture guard \
+         admitted a result for a tool_use outside this batch"
+    );
 }
 
 /// Group ONE assistant message's already-converted blocks into provider-ready
@@ -2534,10 +2542,12 @@ mod tests {
         }
     }
 
-    /// TEST-5 (fix-duplicate-tool-result): `results_by_id` is cleared at each flush,
-    /// so a stale ORPHAN result can no longer shadow a later REAL result for the same
-    /// id. Pre-fix the map persisted across flushes and the keep-first `or_insert`
-    /// preferred the orphan, emitting "stale" as X's result.
+    /// TEST-5 (fix-duplicate-tool-result): a stale ORPHAN result cannot shadow a later
+    /// REAL result for the same id — here with a flush (the A batch) in between.
+    /// Pre-fix, the keep-first `or_insert` captured the orphan and emitted "stale" as
+    /// X's result. Now the capture guard refuses a result that answers no OUTSTANDING
+    /// tool_use, so the orphan never enters the map at all. (TEST-16 covers the harder
+    /// half: the same hazard with NO intervening flush.)
     #[test]
     fn group_assistant_blocks_later_real_result_beats_stale_orphan() {
         let blocks = vec![
@@ -2583,6 +2593,29 @@ mod tests {
             ),
             _ => panic!("expected tool_result"),
         }
+    }
+
+    /// TEST-18: WHY every claim path must still emit a result. This pins the hazard
+    /// that makes a silent skip unrecoverable rather than merely degraded: for a batch
+    /// where NOTHING ran, the trailing branch emits a BARE Assistant turn with no Tool
+    /// message — correct for awaiting-approval (its result is still coming), fatal for
+    /// a tool that will never produce one. The tool_use is then unpaired on EVERY
+    /// subsequent request and the provider rejects all of them (the branch is bricked).
+    /// So `execute_approved_tools_sync` must push an is_error result on the
+    /// AlreadyClaimed / Failed paths, never skip silently.
+    #[test]
+    fn group_assistant_blocks_resultless_batch_emits_a_bare_unpaired_assistant_turn() {
+        let msgs = group_assistant_blocks(vec![tool_use("A", "srv__a")]);
+
+        assert_eq!(msgs.len(), 1, "no Tool turn is synthesized for a resultless batch");
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(tool_use_ids(&msgs[0].content), vec!["A"]);
+        assert!(
+            result_ids(&msgs[0].content).is_empty(),
+            "the tool_use is UNPAIRED — which is only safe when a result is still \
+             coming (awaiting approval). Any path that abandons a tool_use without a \
+             result lands here permanently."
+        );
     }
 
     /// TEST-2 (fix-duplicate-tool-result): the chokepoint defense keeps the FIRST

@@ -241,10 +241,17 @@ mod tests {
     /// looking for a guard that is already there, or worse, adding a third one.
     ///
     /// Rather than lint the prose (any paraphrase would slip through), this checks
-    /// the doc against the SCHEMA: every constraint/index name the comment cites must
-    /// actually be created by a migration. So a rename or a removal of the real guard
-    /// fails here, which is the property worth protecting — a doc that names a
-    /// constraint nobody can find is exactly the defect this replaces.
+    /// the doc against the migrations: the constraint the comment cites must actually
+    /// be created by one. So RENAMING the constraint without updating the comment
+    /// fails here — a doc that names a guard nobody can find is exactly the defect
+    /// this replaces.
+    ///
+    /// Honest limit: it proves a migration ADDS the name, not that the guard still
+    /// exists — a later `DROP CONSTRAINT` would leave this green. The live-schema
+    /// half is covered by the integration test
+    /// `chat::append_content_ordering_test::message_contents_has_exactly_one_unique_sequence_guard`,
+    /// which queries `pg_index` on a real migrated DB and asserts the constraint both
+    /// survives and still rejects a colliding slot. The two together are the property.
     ///
     /// Source-scanning shape mirrors `code_sandbox::backend::wsl2`'s
     /// `med3_wslenv_credential_leak_regression`; the production section is scanned

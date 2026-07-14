@@ -401,6 +401,10 @@ fn replace_or_collect_tool_results(
 
     // Start of the current batch: the last Assistant message carrying a tool_use.
     // Everything from there on is this turn's Assistant/Tool(/User) group.
+    //
+    // No such message ⇒ there is no batch to fold into, so search NOTHING (every
+    // result becomes a leftover). Defaulting to 0 would search the whole request and
+    // invert the scope rule above — exactly the cross-turn overwrite this guards.
     let batch_start = messages
         .iter()
         .rposition(|m| {
@@ -409,7 +413,7 @@ fn replace_or_collect_tool_results(
                     .iter()
                     .any(|b| matches!(b, ai_providers::ContentBlock::ToolUse { .. }))
         })
-        .unwrap_or(0);
+        .unwrap_or(messages.len());
 
     for block in fresh {
         let id = match &block {
@@ -766,45 +770,75 @@ impl McpChatExtension {
             // whole point, so all three outcomes are handled distinctly:
             //   Ok(true)  — we deleted the row: we own this execution.
             //   Ok(false) — zero rows: a concurrent pass already claimed it and is
-            //               producing the result. Skip silently and push NOTHING;
-            //               pushing an error here would be the second result.
-            //   Err       — the DB is unhealthy. Fail the turn loudly rather than
-            //               guess: we cannot know whether the row is gone, so we can
-            //               neither safely execute (maybe a double-run of an
-            //               expensive tool) nor safely skip (the row may survive and
-            //               re-execute later anyway, which is what a swallowed error
-            //               used to cause). The result-append that follows would most
-            //               likely fail too.
+            //               executing it. We must NOT run it again.
+            //   Err       — the DB is unhealthy; we cannot tell whether the row is
+            //               gone. Do not execute: a double-run of a side-effecting
+            //               tool is the worse outcome.
             //
-            // Trade-off (DEC-4, revised): a crash between the claim and the result
-            // append leaves the tool un-run; its tool_use then gets a synthesized
-            // is_error placeholder on the next turn — degraded but valid, and better
-            // than silently re-running an expensive tool.
+            // A non-Won outcome still PUSHES an is_error result and continues — it
+            // must, and this is load-bearing. Every sibling arm in this loop does the
+            // same, because a tool_use with no result is unrecoverable: for a batch
+            // where nothing ran, `group_assistant_blocks`' `batch_has_result` gate
+            // emits a BARE Assistant turn with no Tool message, so that tool_use stays
+            // unpaired on EVERY subsequent request and the branch is bricked. (The
+            // bare turn is correct only for the awaiting-approval case, whose result
+            // is still coming.) Skipping silently, or bailing with `return Err`, would
+            // also discard the real results of approvals earlier in this same batch
+            // that already won their claims and executed — their side effects done,
+            // their rows gone, their results never persisted. Trading a rare
+            // duplicate for a permanently unusable conversation is a bad trade.
+            //
+            // So: the error result keeps the request VALID, and the (already-persisted
+            // or concurrently-persisted) real result is deduped keep-first at
+            // assembly. Exactly-once execution still holds for the normal path —
+            // Ok(true) is the only branch that runs the tool.
             let claim = Repos
                 .chat
                 .mcp
                 .delete_tool_approval(tool_use_id.clone(), approval.message_id)
                 .await;
-            match claim_outcome(claim.as_ref().map(|won| *won)) {
-                ClaimOutcome::Won => {}
-                ClaimOutcome::AlreadyClaimed => {
-                    tracing::warn!(
-                        "Approval for tool_use_id={} was already claimed by another pass; \
-                         skipping execution here so the tool runs exactly once.",
-                        tool_use_id
-                    );
-                    continue;
-                }
-                ClaimOutcome::Failed => {
-                    let e = claim.expect_err("Failed implies Err");
-                    tracing::error!(
-                        "Failed to claim the approval record for tool_use_id={}: {}. Failing \
-                         the turn rather than risk executing the tool twice.",
-                        tool_use_id,
-                        e
-                    );
-                    return Err(e);
-                }
+            let outcome = claim_outcome(claim.as_ref().map(|won| *won));
+            if outcome != ClaimOutcome::Won {
+                let reason = match &outcome {
+                    ClaimOutcome::AlreadyClaimed => {
+                        tracing::warn!(
+                            "Approval for tool_use_id={} was already claimed by another pass; \
+                             not executing it again.",
+                            tool_use_id
+                        );
+                        "it was already started by another request"
+                    }
+                    _ => {
+                        let e = claim.as_ref().err().expect("non-Won, non-AlreadyClaimed is Err");
+                        tracing::error!(
+                            "Failed to claim the approval record for tool_use_id={}: {}. Not \
+                             executing, to avoid running the tool twice.",
+                            tool_use_id,
+                            e
+                        );
+                        "its approval could not be confirmed"
+                    }
+                };
+                tool_results.push(
+                    McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.clone()),
+                        server_id: approval.server_id.map(|id| id.to_string()),
+                        content: format!(
+                            "The tool '{tool_name}' was not run here because {reason}. It was \
+                             not executed twice. Ask the user to retry if you still need it."
+                        ),
+                        is_error: Some(true),
+                        attachment: None,
+                        images: None,
+                        resource_links: None,
+                        hidden_content: None,
+                        structured_content: None,
+                    }
+                    .to_message_content(),
+                );
+                executed_tool_use_ids.push(tool_use_id.clone());
+                continue;
             }
 
             // Use server_id from approval record (stored separately)
@@ -3722,9 +3756,15 @@ mod tests {
     /// `Ok(rows_affected() > 0)`, and that bool IS the claim: `Ok(false)` means a
     /// concurrent pass already claimed the row and this one must NOT execute.
     /// Branching only on `Err` — discarding the bool — silently turns AlreadyClaimed
-    /// into Won, i.e. a double-run of an approved, side-effecting tool. This is the
-    /// leg that discriminates the fix; the integration test cannot, because the bug
-    /// needs a losing/failing DELETE it has no way to induce.
+    /// into Won, i.e. a double-run of an approved, side-effecting tool.
+    ///
+    /// Honest limit: this pins the DECISION, not the wiring — it exercises the helper
+    /// directly, so reverting the call site to a bool-discarding `if let Err(e)` would
+    /// leave it green. Nothing at any tier can induce a losing/failing DELETE through
+    /// the HTTP harness, so the call site's Won path is covered end-to-end by
+    /// `mcp::approval_claim_test` and its non-Won paths are covered by construction:
+    /// the `outcome != Won` branch is the single exit, and it always emits a result
+    /// (the invariant TEST-18 shows is load-bearing).
     #[test]
     fn claim_outcome_distinguishes_won_already_claimed_and_failed() {
         assert_eq!(
