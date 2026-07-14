@@ -1287,31 +1287,17 @@ impl StepDispatcher for ToolDispatcher {
                         Ok(Some(s)) => (s.is_built_in, s.headers),
                         _ => (false, serde_json::json!({})),
                     };
-                // Same-host trust set: hosts of the user's enabled accessible MCP servers, so an
-                // external server's artifact URL on its own (private/RFC1918) host can be ingested.
-                // `trusted_hosts` is only consulted for EXTERNAL links, so skip the DB query
-                // entirely for a built-in emitter (e.g. code_sandbox `ziee://` artifacts — the
-                // common workflow producer). is_system servers have their `url` redacted here —
-                // those are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in instead
-                // (see resource_link.rs).
-                let trusted_hosts: Vec<String> = if is_built_in {
-                    Vec::new()
-                } else {
-                    crate::core::repository::Repos
-                        .mcp
-                        .list_accessible(ctx.user_id, 1, 1000, None, Some(true), None)
-                        .await
-                        .map(|resp| {
-                            // Exclude system/built-in servers from the trust set (their loopback
-                            // url must never grant same-host trust). `list_accessible` already
-                            // redacts is_system urls; `trusted_hosts_from_servers` makes the
-                            // exclusion the single source of truth + robust if that ever changes.
-                            crate::modules::mcp::resource_link::trusted_hosts_from_servers(
-                                resp.servers.iter().map(|s| (s.is_system, s.url.as_deref())),
-                            )
-                        })
-                        .unwrap_or_default()
-                };
+                // Same-host trust set (see `resource_link::result_link_trusted_hosts`): hosts of the
+                // user's enabled accessible NON-built-in MCP servers, so an external server's artifact
+                // URL on its own private host (e.g. `host.docker.internal`) can be ingested — no
+                // ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in needed. A built-in emitter (e.g.
+                // code_sandbox `ziee://` artifacts — the common workflow producer) short-circuits to
+                // empty and skips the DB query.
+                let trusted_hosts = crate::modules::mcp::resource_link::result_link_trusted_hosts(
+                    is_built_in,
+                    ctx.user_id,
+                )
+                .await;
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     &mut links,
                     ctx.user_id,

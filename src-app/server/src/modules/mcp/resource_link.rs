@@ -245,23 +245,61 @@ pub(crate) fn trusted_hosts_from_urls<'a>(
     hosts
 }
 
-/// Build the same-host trust set from MCP server rows, EXCLUDING system/built-in servers.
+/// Build the same-host trust set from MCP server rows, EXCLUDING in-process built-in servers.
 ///
-/// This is the single source of truth for the trust set at every call site. `is_system` servers
-/// (which include every deterministic built-in) carry a **loopback** `url`
-/// (`http://127.0.0.1:<port>/…`) and must NEVER contribute their host — otherwise an external
+/// This is the single source of truth for the trust set at every call site. A **built-in**
+/// (`is_built_in=true`) server is an in-process first-party endpoint listening on **loopback**
+/// (`http://127.0.0.1:<port>/…`); it must NEVER contribute its host — otherwise an external
 /// server's `resource_link` at `http://127.0.0.1:<port>` would gain same-host trust and bypass the
-/// default loopback block. Only the user's OWN registered (non-system) servers vouch for a host.
-/// Takes `(is_system, url)` pairs so it stays decoupled from the `McpServer` type.
+/// default loopback block. An admin-registered **system but non-built-in** server (`is_system=true,
+/// is_built_in=false`) carries a REAL external url (e.g. `http://host.docker.internal:<port>/…`)
+/// and DOES vouch for that host, so its result files can be re-hosted — this is the boundary the
+/// old `is_system` filter got wrong (it excluded these legitimate hosts). Takes `(is_built_in, url)`
+/// pairs so it stays decoupled from the `McpServer` type.
+///
+/// SECURITY NOTE — only BUILT-IN loopback hosts are excluded, NOT loopback per se. A non-built-in
+/// server (user-owned OR admin-registered system) registered at a private/loopback host WILL
+/// contribute that host, granting same-host trust to a `resource_link` on it — this is the
+/// pre-existing same-host-trust model (a registered host is trusted), consistent with the existing
+/// user-owned-loopback-server behavior; registering a *system* server at loopback is a deliberate
+/// admin act. The policy layer is the backstop regardless: IMDS `169.254/16` + IPv6 link-local are
+/// re-blocked by `MCP_USER` even for a trusted host. See DECISIONS DEC-3 for the accepted tradeoff.
 pub(crate) fn trusted_hosts_from_servers<'a>(
     servers: impl IntoIterator<Item = (bool, Option<&'a str>)>,
 ) -> Vec<String> {
     trusted_hosts_from_urls(
         servers
             .into_iter()
-            .filter(|(is_system, _)| !is_system)
+            .filter(|(is_built_in, _)| !is_built_in)
             .map(|(_, url)| url),
     )
+}
+
+/// The SSRF same-host trust set for re-hosting an EXTERNAL MCP server's result files — the SINGLE
+/// derivation shared by every [`persist_links`] call site (chat approval, chat auto-exec, workflow
+/// dispatch), so the branch + query + error handling live in one place.
+///
+/// A BUILT-IN emitter's links are trusted loopback URLs that [`persist_links`] fetches with a plain
+/// client and never validates against the trust set, so this short-circuits to empty for a built-in
+/// emitter and skips the DB query entirely (the common `code_sandbox` path pays nothing). For an
+/// external emitter it returns the hosts of the user's accessible, enabled, NON-built-in servers via
+/// [`McpRepository::list_accessible_result_link_hosts`]. A lookup error degrades to an EMPTY set —
+/// fail-CLOSED: the fetch then falls to the strict `PUBLIC_HTTP_OR_HTTPS` policy — and is logged so
+/// the otherwise-silent "a same-host artifact didn't re-host" case is diagnosable.
+pub async fn result_link_trusted_hosts(emitter_is_built_in: bool, user_id: Uuid) -> Vec<String> {
+    if emitter_is_built_in {
+        return Vec::new();
+    }
+    match Repos.mcp.list_accessible_result_link_hosts(user_id).await {
+        Ok(hosts) => hosts,
+        Err(e) => {
+            tracing::warn!(
+                "resource_link trust-host lookup failed for user {user_id}: {e}; falling back to \
+                 the strict public SSRF policy (a same-host result artifact won't be re-hosted)"
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// Which SSRF policy the external-server HTTP fetch of a `resource_link` uses.
@@ -535,9 +573,12 @@ pub async fn persist_links(
             //   * same-host trust (link host matches a registered MCP server's host) → MCP_USER
             //     with redirects DISABLED so an off-host redirect can't inherit the allowance;
             //   * otherwise PUBLIC_HTTP_OR_HTTPS (unchanged default: blocks loopback/RFC1918/IMDS).
-            // NOTE: `trusted_hosts` is built from the accessible-server list, whose `url` is
-            // redacted for is_system servers — a same-host server registered as a *system* server
-            // won't be covered by the scoped trust; use the env opt-in for that deployment.
+            // NOTE: `trusted_hosts` is derived server-side (via
+            // `McpRepository::list_accessible_result_link_hosts`) from the UN-redacted server rows,
+            // excluding only in-process built-in (loopback) servers. So an admin-registered *system*
+            // but non-built-in server (real external `url`, e.g. `host.docker.internal`) IS covered
+            // by the scoped trust — no `ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE` opt-in needed. Only a
+            // built-in's loopback host is excluded (the loopback-SSRF guard).
             let debug_loopback = cfg!(debug_assertions)
                 && std::env::var("MCP_RESOURCE_LINK_ALLOW_LOOPBACK").as_deref() == Ok("1");
             let kind = choose_fetch_policy(
@@ -737,22 +778,36 @@ mod tests {
         assert_eq!(hosts, vec!["10.0.0.5", "172.21.0.1", "rcpa.local"]);
     }
 
-    // TEST-11: trusted_hosts_from_servers EXCLUDES is_system (built-in) servers — their loopback
-    // url must never enter the trust set (else an external resource_link at 127.0.0.1 would bypass
-    // the default loopback block). Only the user's own non-system servers vouch for a host.
+    // TEST-1 (was TEST-11): trusted_hosts_from_servers filters on its `is_built_in` bool — a built-in
+    // (in-process, loopback) server is excluded (its 127.0.0.1 host must never enter the trust set),
+    // a non-built-in server with a real host is included. NOTE: this pure helper only sees ONE bool,
+    // so it can't by itself prove the is_system→is_built_in boundary change; that is proven at the
+    // caller level by the accessor test `accessor_returns_system_host_and_omits_builtin` (a system
+    // server, is_system=true throughout, is trusted while is_built_in=false and dropped when
+    // is_built_in=true — so reverting the accessor's column to is_system would break it). Tuples here
+    // are `(is_built_in, url)`.
     #[test]
-    fn trusted_hosts_excludes_system_builtin_loopback() {
+    fn trusted_hosts_excludes_builtin_loopback_includes_admin_system() {
         let servers = vec![
-            (false, Some("http://172.21.0.1:9004/mcp")), // user-owned external → included
-            (true, Some("http://127.0.0.1:41111/api/web-search/mcp")), // built-in (is_system) → excluded
-            (true, Some("http://127.0.0.1:8080/api/memory/mcp")),      // system → excluded
-            (false, None),                                             // user stdio server → skipped
+            // built-in (loopback) → excluded regardless of being a system server
+            (true, Some("http://127.0.0.1:41111/api/web-search/mcp")),
+            (true, Some("http://127.0.0.1:8080/api/memory/mcp")),
+            // admin-registered SYSTEM but non-built-in (real external host) → INCLUDED (the fix)
+            (false, Some("http://host.docker.internal:18122/mcp")),
+            // user-owned external → included
+            (false, Some("http://172.21.0.1:9004/mcp")),
+            // user stdio server (no url) → skipped
+            (false, None),
         ];
         let hosts = trusted_hosts_from_servers(servers);
-        assert_eq!(hosts, vec!["172.21.0.1"], "only the user-owned external host is trusted");
+        assert_eq!(
+            hosts,
+            vec!["172.21.0.1", "host.docker.internal"],
+            "admin-registered non-built-in system host is trusted alongside the user's own external host"
+        );
         assert!(
             !hosts.iter().any(|h| h == "127.0.0.1"),
-            "a built-in/system loopback host must NEVER be trusted (loopback-SSRF guard)"
+            "a built-in (loopback) host must NEVER be trusted (loopback-SSRF guard)"
         );
     }
 
@@ -792,6 +847,28 @@ mod tests {
         assert_eq!(
             choose_fetch_policy(link, &[], false, false),
             FetchPolicyKind::Public
+        );
+    }
+
+    // TESTS.md TEST-2: a `host.docker.internal` result-file link whose host is in the trust set
+    // (put there for an admin-registered system server via the new is_built_in-keyed derivation)
+    // selects PrivateScoped → MCP_USER, so the RFC1918 gateway it resolves to is fetchable. With no
+    // trusted host it stays Public (blocked). This is the exact org-deployment scenario the fix
+    // enables. (Policy DECISION only — no DNS; the resolved-IP→MCP_USER behavior is pinned by
+    // `policy_behavior_on_ip_literals`, which also proves IMDS stays blocked.)
+    #[test]
+    fn choose_fetch_policy_trusts_registered_docker_host() {
+        let link = "http://host.docker.internal:18123/results/out.csv";
+        let trusted = vec!["host.docker.internal".to_string()];
+        assert_eq!(
+            choose_fetch_policy(link, &trusted, false, false),
+            FetchPolicyKind::PrivateScoped,
+            "a registered system server's host.docker.internal result link earns the private policy"
+        );
+        assert_eq!(
+            choose_fetch_policy(link, &[], false, false),
+            FetchPolicyKind::Public,
+            "with no registered host the same link stays on the blocking public default"
         );
     }
 

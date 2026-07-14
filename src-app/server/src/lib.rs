@@ -140,7 +140,9 @@ pub use modules::mcp::chat_extension::content::{McpContentData, ResourceLink, Ri
 #[doc(hidden)]
 pub use modules::file::storage::manager::{get_file_storage, init_file_storage};
 #[doc(hidden)]
-pub use modules::mcp::resource_link::{persist_links, PersistOutcome, PersistedArtifact};
+pub use modules::mcp::resource_link::{
+    persist_links, result_link_trusted_hosts, PersistOutcome, PersistedArtifact,
+};
 
 // Re-export memory + summarization engines for integration tests
 // (tier 5 real-LLM tests need to invoke the pipelines directly).

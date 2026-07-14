@@ -161,6 +161,35 @@ impl McpSessionManager {
         Ok(Arc::new(RwLock::new(session)))
     }
 
+    /// Re-fetch the UN-REDACTED server row for building an OUTBOUND session.
+    ///
+    /// `list_accessible` (repository.rs) nulls `url` for `is_system` servers so a
+    /// regular user can't learn the admin-configured URL. That redacted view is
+    /// correct for user-facing responses, but it must NEVER be used to build the
+    /// server-side session/transport: `HttpMcpClient` then fails with
+    /// `MISSING_URL` and sampling / always-mode silently break for system servers
+    /// (a user server works only because its URL isn't redacted). The non-sampling
+    /// execution path already avoids this by re-fetching via `get_any_server`
+    /// inside `get_or_create_with_context`; the direct `new_with_sampling` /
+    /// always-mode builds must do the same. Returns the full row with the real URL.
+    ///
+    /// Unlike `get_or_create_with_context`, this does NOT re-check `server.enabled`
+    /// and does NOT inject built-in context headers: callers pass a `server.id` that
+    /// was already resolved from the caller's accessible-server set (which is
+    /// enabled-filtered upstream in `get_all_accessible_config`), and the sampling /
+    /// always-mode direct-build path is for external `supports_sampling` servers, not
+    /// loopback built-ins. Keep it a thin un-redacted re-fetch.
+    pub async fn resolve_server_for_session(
+        &self,
+        server_id: Uuid,
+    ) -> Result<McpServer, AppError> {
+        Repos
+            .mcp
+            .get_any_server(server_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Server not found"))
+    }
+
     /// Inject the loopback auth + context headers a **built-in** server needs
     /// onto `server.headers`: a short-lived per-user JWT (satisfying the
     /// built-in route's `RequirePermissions` gate) plus optional
