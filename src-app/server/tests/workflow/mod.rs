@@ -420,15 +420,19 @@ pub async fn db_pool(server: &TestServer) -> sqlx::PgPool {
         .expect("connect test db")
 }
 
-/// Count `files` rows linked to a run (`workflow_run_id = run_id`) with a given
-/// `created_by`. The A3/A6/A5 durable-artifact + delete tests assert on this.
+/// Count `files` rows linked to a run (via the `file_workflow_runs` join table)
+/// with a given `created_by`. The A3/A6/A5 durable-artifact + delete tests
+/// assert on this. (Chunk `ziee-file`: the store carries no run column; the
+/// link lives in the join table.)
 pub async fn count_files_for_run(
     pool: &sqlx::PgPool,
     run_id: Uuid,
     created_by: &str,
 ) -> i64 {
     sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM files WHERE workflow_run_id = $1 AND created_by = $2",
+        "SELECT COUNT(*) FROM files f \
+         JOIN file_workflow_runs fwr ON fwr.file_id = f.id \
+         WHERE fwr.workflow_run_id = $1 AND f.created_by = $2",
     )
     .bind(run_id)
     .bind(created_by)

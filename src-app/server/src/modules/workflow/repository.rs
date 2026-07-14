@@ -1171,9 +1171,10 @@ pub async fn list_runs_for_workflow(
     Ok(rows)
 }
 
-/// A5: hard-delete a run row. The `files.workflow_run_id` FK is
-/// `ON DELETE SET NULL`, so any still-linked files survive — the handler's
-/// cascade removes the run-owned ones first when there's no conversation.
+/// A5: hard-delete a run row. The `file_workflow_runs` join rows CASCADE-delete
+/// with the run (chunk `ziee-file`), so any still-linked files survive (they
+/// only lose the link) — the handler's cascade removes the run-owned ones first
+/// when there's no conversation.
 /// (run_id, conversation_id) for every run of a workflow. Used by the
 /// workflow-delete path to clean up each run's on-disk artifacts before the
 /// `workflow_runs` rows cascade away (which would otherwise orphan run-created

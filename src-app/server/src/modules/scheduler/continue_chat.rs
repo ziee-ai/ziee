@@ -147,7 +147,7 @@ async fn resolve_run_result(
             text = summarize_workflow_output(wrun.final_output_json.as_ref());
         }
         let mut owned = Vec::new();
-        if let Ok(ids) = Repos.file.list_ids_by_workflow_run(wr).await {
+        if let Ok(ids) = Repos.file_workflow_runs.list_file_ids(wr).await {
             for fid in ids {
                 if let Ok(Some(f)) = Repos.file.get_by_id(fid).await {
                     if f.user_id == user_id {

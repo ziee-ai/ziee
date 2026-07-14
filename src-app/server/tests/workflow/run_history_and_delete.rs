@@ -324,7 +324,7 @@ async fn delete_no_conversation_run_cascades_created_files_keeps_referenced() {
         "one run-created file before delete"
     );
     let created_id: Uuid =
-        sqlx::query_scalar("SELECT id FROM files WHERE workflow_run_id = $1")
+        sqlx::query_scalar("SELECT file_id FROM file_workflow_runs WHERE workflow_run_id = $1")
             .bind(run_id)
             .fetch_one(&pool)
             .await
@@ -413,7 +413,7 @@ async fn delete_with_conversation_run_keeps_files_nulling_run_link() {
 
     let pool = db_pool(&server).await;
     let created_id: Uuid =
-        sqlx::query_scalar("SELECT id FROM files WHERE workflow_run_id = $1")
+        sqlx::query_scalar("SELECT file_id FROM file_workflow_runs WHERE workflow_run_id = $1")
             .bind(run_id)
             .fetch_one(&pool)
             .await
@@ -429,8 +429,9 @@ async fn delete_with_conversation_run_keeps_files_nulling_run_link() {
         .expect("delete run");
     assert_eq!(del.status(), 204, "delete should 204");
 
-    // The file is KEPT (conversation context); its workflow_run_id → NULL via
-    // the FK ON DELETE SET NULL.
+    // The file is KEPT (conversation context); its run link is removed — the
+    // `file_workflow_runs` join row CASCADE-deletes with the run (chunk
+    // `ziee-file`: replaces the former `workflow_run_id` FK ON DELETE SET NULL).
     assert_eq!(
         file_status(&server, &user.token, &created_id.to_string()).await,
         200,
@@ -438,12 +439,12 @@ async fn delete_with_conversation_run_keeps_files_nulling_run_link() {
     );
     let pool = db_pool(&server).await;
     let link: Option<Uuid> =
-        sqlx::query_scalar("SELECT workflow_run_id FROM files WHERE id = $1")
+        sqlx::query_scalar("SELECT workflow_run_id FROM file_workflow_runs WHERE file_id = $1")
             .bind(created_id)
-            .fetch_one(&pool)
+            .fetch_optional(&pool)
             .await
             .expect("read run link");
-    assert_eq!(link, None, "workflow_run_id must be NULLed by the FK on delete");
+    assert_eq!(link, None, "run link must be removed (join row cascades) on run delete");
     pool.close().await;
 }
 

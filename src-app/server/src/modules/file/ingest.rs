@@ -1,22 +1,49 @@
-//! Shared file-store ingest: turn raw bytes into a durable, processed `File`
-//! (originals blob + text/thumbnail derivatives + DB rows + cross-device sync).
+//! Domain orchestration over the `ziee-file` store's ingest path.
 //!
-//! One code path for: workflow-run artifacts (A3), workflow tool-step
-//! `resource_link` results (A6), and the chat MCP tool-result save path —
-//! factored out of the previously-inline logic in `mcp/chat_extension/mcp.rs`.
+//! The STORE half (process → save blobs → create rows → change-event) lives in
+//! `ziee_file::ingest`, driven by two injected seams. This module supplies the
+//! ziee implementations of those seams — [`ZieeFileProcessor`] (the real
+//! `ProcessingManager`) and [`ZieeFileEvents`] (the real `sync::publish`) — and
+//! keeps the app-domain `workflow_run_id` linkage (now a `file_workflow_runs`
+//! join row) that the store deliberately does not carry.
 
+use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::core::Repos;
-use crate::modules::file::models::{File, FileCreateData};
+use crate::modules::file::models::{File, ProcessingResult};
 use crate::modules::file::processing::ProcessingManager;
-use crate::modules::file::storage::manager::get_file_storage;
+use ziee_file::seams::{FileEvents, FileProcessor};
+
+/// ziee's [`FileProcessor`] seam impl — the real extraction engine.
+pub struct ZieeFileProcessor;
+
+#[async_trait]
+impl FileProcessor for ZieeFileProcessor {
+    async fn process(&self, bytes: &[u8], mime_type: &str) -> Result<ProcessingResult, AppError> {
+        ProcessingManager::new().process_file(bytes, mime_type).await
+    }
+}
+
+/// ziee's [`FileEvents`] seam impl — routes store change/delete notifications
+/// to the concrete owner-scoped `SyncEntity::File` publish functions.
+pub struct ZieeFileEvents;
+
+impl FileEvents for ZieeFileEvents {
+    fn on_file_changed(&self, user_id: Uuid, file_id: Uuid, origin: Option<Uuid>) {
+        crate::modules::file::sync::publish_file_changed_with_origin(user_id, file_id, origin);
+    }
+    fn on_file_deleted(&self, user_id: Uuid, file_id: Uuid, origin: Option<Uuid>) {
+        crate::modules::file::sync::publish_file_deleted_with_origin(user_id, file_id, origin);
+    }
+}
 
 /// Save `bytes` as a new durable file owned by `user_id`. Runs the processing
-/// pipeline (text extraction + thumbnails), stores the original + derivatives,
-/// creates the `files`/`file_versions` rows, optionally links the file to a
-/// workflow run, and emits a cross-device `File` sync. Returns the head `File`.
+/// pipeline (text extraction + thumbnails) via the store's seam, stores the
+/// original + derivatives, creates the `files`/`file_versions` rows, optionally
+/// links the file to a workflow run (via the app-side `file_workflow_runs` join
+/// table), and emits a cross-device `File` sync. Returns the head `File`.
 #[allow(clippy::too_many_arguments)]
 pub async fn ingest_bytes(
     user_id: Uuid,
@@ -27,129 +54,22 @@ pub async fn ingest_bytes(
     source_message_id: Option<Uuid>,
     workflow_run_id: Option<Uuid>,
 ) -> Result<File, AppError> {
-    // Canonical extension (rsplit + lowercase) — MUST match how the download/
-    // read paths derive the blob key (Path::extension would mis-key dotfiles).
-    let ext = crate::modules::file::utils::extension_of(filename);
-    let mime_type = mime_hint.or_else(|| mime_guess::from_ext(&ext).first().map(|m| m.to_string()));
-    let mime_type_str = mime_type.as_deref().unwrap_or("application/octet-stream");
-
-    // A processing failure is non-fatal — the raw original is still stored
-    // below — but it must not be silent: log it so a missing text/thumbnail
-    // derivative is traceable rather than looking like an empty document.
-    let processing_result = ProcessingManager::new()
-        .process_file(bytes, mime_type_str)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(
-                "ingest_bytes: processing failed for {} ({}): {}; storing original only",
-                filename,
-                mime_type_str,
-                e
-            );
-            Default::default()
-        });
-
-    let file_id = Uuid::new_v4();
-    let storage = get_file_storage();
-    storage
-        .save_original(user_id, file_id, &ext, bytes)
-        .await
-        .map_err(AppError::internal_with_id)?;
-
-    // Derivative writes are best-effort (the original + DB row are the source
-    // of truth) but a failure is logged so a dropped page/thumbnail is
-    // traceable instead of silently vanishing.
-    for (n, text) in processing_result.text_pages.iter().enumerate() {
-        if let Err(e) = storage
-            .save_text_page(user_id, file_id, (n + 1) as u32, text)
-            .await
-        {
-            tracing::warn!(
-                "ingest_bytes: failed to save text page {} for {}: {}",
-                n + 1,
-                file_id,
-                e
-            );
-        }
-    }
-    // Per-page citation geometry (PDF only; aligned 1:1 with text pages).
-    for (n, geom) in processing_result.geometry_pages.iter().enumerate() {
-        if let Err(e) = storage
-            .save_geometry_page(user_id, file_id, (n + 1) as u32, geom)
-            .await
-        {
-            tracing::warn!(
-                "ingest_bytes: failed to save geometry page {} for {}: {}",
-                n + 1,
-                file_id,
-                e
-            );
-        }
-    }
-    if let Some(thumb) = processing_result.thumbnails.first() {
-        if let Err(e) = storage.save_image(user_id, file_id, 1, true, thumb).await {
-            tracing::warn!(
-                "ingest_bytes: failed to save thumbnail for {}: {}",
-                file_id,
-                e
-            );
-        }
-    }
-    for (n, img) in processing_result.images.iter().enumerate() {
-        if let Err(e) = storage
-            .save_image(user_id, file_id, (n + 1) as u32, false, img)
-            .await
-        {
-            tracing::warn!(
-                "ingest_bytes: failed to save preview image {} for {}: {}",
-                n + 1,
-                file_id,
-                e
-            );
-        }
-    }
-
-    let checksum = storage.calculate_checksum(bytes);
-    let file = match Repos
-        .file
-        .create(FileCreateData {
-            id: file_id,
-            user_id,
-            filename: filename.to_string(),
-            file_size: bytes.len() as i64,
-            mime_type: mime_type.clone(),
-            checksum: Some(checksum),
-            has_thumbnail: !processing_result.thumbnails.is_empty(),
-            preview_page_count: processing_result.images.len() as i32,
-            text_page_count: processing_result.text_pages.len() as i32,
-            processing_metadata: serde_json::to_value(&processing_result.metadata)
-                .unwrap_or_default(),
-            source_message_id,
-            created_by: created_by.to_string(),
-        })
-        .await
-    {
-        Ok(f) => f,
-        Err(e) => {
-            // The original + derivatives were already written to the file store
-            // above; the DB row failed, so roll the blobs back to avoid orphaned
-            // storage that no file_id row will ever reference.
-            if let Err(cleanup_err) = storage.delete_all(user_id, file_id).await {
-                tracing::warn!(
-                    "ingest_bytes: failed to clean up orphaned storage for {} after DB error: {}",
-                    file_id,
-                    cleanup_err
-                );
-            }
-            return Err(e);
-        }
-    };
+    let file = ziee_file::ingest::ingest_bytes(
+        &Repos.file,
+        &ZieeFileProcessor,
+        &ZieeFileEvents,
+        user_id,
+        bytes,
+        filename,
+        mime_hint,
+        created_by,
+        source_message_id,
+    )
+    .await?;
 
     if let Some(run_id) = workflow_run_id {
-        Repos.file.set_workflow_run_id(file_id, run_id).await?;
+        Repos.file_workflow_runs.link(file.id, run_id).await?;
     }
-
-    crate::modules::file::sync::publish_file_changed(user_id, file_id);
 
     Ok(file)
 }
