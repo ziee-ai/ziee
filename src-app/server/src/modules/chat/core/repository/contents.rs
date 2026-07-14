@@ -44,26 +44,24 @@ pub async fn create_content(
 /// with an earlier tool_result on the parallel-tool path: each caller reads
 /// the current MAX at write time instead of from a stale in-memory snapshot.
 ///
-/// **Assumes appends to a single `message_id` are sequential** — the streaming
-/// agentic loop awaits each append in one task, which is the only production
-/// caller. The subquery runs at READ COMMITTED isolation, so two truly-
-/// concurrent transactions appending to the SAME message could still race for
-/// the same slot.
+/// **Appends to one `message_id` are MOSTLY, but not strictly, sequential.** The
+/// streaming agentic loop awaits each of its own appends in a single task — but it is
+/// not the only writer: the MCP extension's detached elicitation task calls
+/// `append_content_with_id` (same MAX+1-inside-INSERT slot computation, same
+/// `message_id`) while the approval loop's `append_content` calls run. The subquery
+/// runs at READ COMMITTED, so those two CAN race for the same slot.
 ///
-/// That race is now CAUGHT, not silent: `UNIQUE (message_id, sequence_order)`
-/// exists (constraint `uq_message_contents_message_sequence`, migration 124), so
-/// the losing INSERT fails with a hard DB error instead of duplicating a slot.
+/// That race is CAUGHT, not silent: `UNIQUE (message_id, sequence_order)` exists
+/// (constraint `uq_message_contents_message_sequence`, migration 124), so the losing
+/// INSERT fails with a hard DB error instead of duplicating a slot.
 ///
-/// A concurrent caller DOES exist, so this is not hypothetical: the MCP extension's
-/// detached elicitation task calls `append_content_with_id` (same MAX+1-inside-INSERT
-/// slot computation, same `message_id`) while the approval loop's own
-/// `append_content` calls run. Neither retries, so whichever loses the race fails —
-/// and the elicitation side swallows it (`let _ = …append_content_with_id(…)`), which
-/// turns a lost race there into a silently DROPPED elicitation row. The approval-loop
-/// sites do log it. That gap is real but pre-existing and narrow (it needs an
-/// elicitation notification to land in the same instant as a result append); closing
-/// it means a retry-on-unique-violation loop here, deliberately out of scope for the
-/// change that corrected this comment. Recorded rather than papered over.
+/// Nothing retries, though, so a lost race is a FAILED append: the elicitation side
+/// swallows it (`let _ = …append_content_with_id(…)`) and silently drops that row,
+/// while the approval-loop sites at least log it. That gap is real but pre-existing
+/// and narrow — it needs an elicitation notification to land in the same instant as a
+/// result append. Closing it means a retry-on-unique-violation loop here, deliberately
+/// out of scope for the change that corrected this comment. Recorded rather than
+/// papered over.
 pub async fn append_content(
     pool: &PgPool,
     message_id: Uuid,
