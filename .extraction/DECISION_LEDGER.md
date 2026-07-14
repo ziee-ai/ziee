@@ -129,3 +129,40 @@ artifacts + actual code.
 
 **Sequence:** update plan (N3.1/N7/N8/N9 + EA) → audit the updated plan → run this impl-vs-plan
 re-audit → implement MIGRATE-squash → re-gate BA + MIGRATE-squash → clear the pending rows.
+
+---
+
+## Plan-audit convergence (2026-07-14) — findings → resolutions
+Three parallel read-only audits ran against the revised plan + the extracted code. Results:
+- **Boundary-purity (impl):** 5/5 boundaries clean (N1 trait-only, #7 homes, #10 build-DB-free,
+  N5 descope, E11 skeleton). **MEDIUM:** `ziee-control-mcp/src/tools.rs` descriptors ship the
+  literal "ziee" app-name + domain nouns (assistants/users) to the LLM → same leak CLASS as N9.
+  **Resolution → N9 generalized:** app-agnostic SDK crates must not hard-code the app name or
+  domain nouns in shipped strings; control-mcp descriptors get templated app-name + neutral
+  examples. **LOW×3:** test-fixture domain coupling (identity/core/policy) — opportunistic fix.
+- **Equivalence + de-globalize (impl):** N2 + N6 genuinely clean (shims real, no schema rename,
+  types.ts byte-identical both surfaces re-confirmed, boot-path threaded not disguised-global).
+  **LOW:** `BootHandle.pool` sourced from `ziee::Repos.pool()` inside the *app-side* `ZieeServerBoot`
+  (allowed); optional future tightening (return pool from `start_server_with_routes`).
+- **Plan-audit:** **BLOCKER B1** — byte-identical `pg_dump --schema-only` is the WRONG equivalence
+  relation for a squash (attnum order, auto constraint-name suffixes, emission order diverge on
+  logically-identical schema). **Resolution:** EA switches to a **logical, catalog-derived schema
+  fingerprint** (name/order-invariant: columns as a set of {name,type,nullable,norm-default};
+  constraints/indexes by definition not name; enums/sequences/functions/triggers/extensions by
+  definition) — diff must be empty; validator RE-RUNS on both DBs. **H1** stale §7.1/§9.2(4)/§10.3
+  → rewrite to N3.1. **H2/H3** seed anchor unimplemented + curated → implement in SPEC §4/§3 as a
+  **whole-DB** data image compare (a fresh-migrated DB has ONLY seed data → dump all rows all
+  tables, compare per-table by content excluding volatile generated-UUID/timestamp columns;
+  FK-referenced seed rows keep literal ids). **H4** ownership map defined (auth tables→ziee-auth;
+  files→files; file_chunks/file_index_state→file_rag; join tables→parent module;
+  `CREATE EXTENSION vector`→framework/core bootstrap-first; domain perm-grants→feature-owning
+  module). **H5** ordering = date-prefixed monotonic counter `YYYYMMDDNNNN` (unique + FK-topo-valid,
+  gated), not wall-clock seconds. **H6** ledger grammar normalized + the `--all` decision-gate is a
+  documented rule for now (not yet machine-parsed). **M1** N8 append-only re-established from the
+  squash baseline commit forward (checksum guard re-armed). **M2** MIGRATE-squash is a
+  reconstruction, EXEMPT from the move-shaped C-2 E5/E6/E7 (it doesn't move symbols) — gated by EA
+  equivalence + N9 instead. **§2.4 invariant** carve-out: git code-history preserved; migration-chain
+  history deliberately squashed (the two disambiguated).
+- reaudit status: N1/N2/N5/N6/#7/#10/E11 → **clean** (this pass). N3.1/N7/N9 → pending (land with
+  MIGRATE-squash + the control-mcp/test-fixture domain-neutralization sweep). BA → re-gated by
+  MIGRATE-squash.

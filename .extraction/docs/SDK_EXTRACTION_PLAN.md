@@ -164,7 +164,10 @@ between the two workspaces is a discipline (§8 #1).
 2. **MOVED, not parallel-copied.** Each chunk is cut out of ziee INTO the SDK (history preserved),
    its tests ported into the SDK, ziee wired to the path dep. One source of truth at every boundary.
 3. **Green at each chunk boundary** (ziee compiles + tests; SDK compiles + tests). Red mid-chunk is fine.
-4. **History preserved.**
+4. **Git code-history preserved** (one up-front `filter-repo`). **Migration-chain history is NOT** —
+   N3.1 deliberately squashes the 137+10 numeric chain into clean per-module baselines (no deployed
+   DBs to protect, N8). The two are distinct: source-file lineage survives; the migration sequence
+   is reconstructed. Equivalence is proven at the *result* (schema + seed), not the chain (§10 EA).
 
 ### 2.2 The per-chunk "cut"
 1. Files are brought into the SDK by **one up-front `git filter-repo`** of the whole platform slice
@@ -341,12 +344,27 @@ in-process** (`backend/mod.rs:228 start_backend_server` → `ziee::start_server_
 - **build.rs:** widen `compose_merged_migrations()` source globs from the single `migrations/` dir to
   `modules/*/migrations/ ∪ sdk/crates/*/migrations/`, timestamp-sort, compose `migrations-merged/`.
   Add a framework migration-authoring convention doc.
-- **Gate (EA-revised):** the squashed merged set applied to a fresh DB → `pg_dump --schema-only`
-  **byte-identical to `.extraction/baseline/schema.sql`** (the equivalence anchor; validator
-  RE-RUNS the dump — unfakeable). Golden types/openapi trivially unchanged (migrations aren't in the
-  API surface). **N9 seed-assertion:** `grep` the auth migrations → zero non-`profile::`/non-`*`
-  perm strings. Build DB provisions clean; `cargo check -p ziee` green (all `query!` still verify
-  against the merged schema). Immutability re-established from the new baseline forward.
+- **Gate (EA-revised) — TWO LOGICAL equivalence anchors, schema AND data (NOT byte-identical, B1):**
+  1. **Schema fingerprint (catalog-derived, name/order-invariant).** A squash reorders `CREATE TABLE`
+     vs later `ALTER ADD COLUMN`, so `pg_dump --schema-only` byte-differs on a *logically identical*
+     schema (attnum order, auto constraint-name suffixes, emission order). So the gate builds a
+     **structural fingerprint** from `information_schema`/`pg_catalog` on BOTH the numeric-baseline DB
+     and the squashed DB: each table as a SET of `{column → (data_type, is_nullable,
+     normalized-default)}` (order-independent); constraints (PK/UNIQUE column-sets, FK
+     target+columns+on-delete, CHECK expr), indexes (columns/method/predicate/uniqueness), enums,
+     sequences, functions, triggers, extensions — all by **definition, not auto-generated name**.
+     Diff must be EMPTY. Validator RE-RUNS the fingerprint script on both DBs (unfakeable).
+  2. **Whole-DB seed data.** A fresh-migrated DB holds ONLY seed rows (no user data), so compare the
+     ENTIRE data image, not a curated table list (H3). FIRST capture `.extraction/baseline/seed.sql`
+     = all rows of all tables from a fresh **numeric**-migrated DB. After the squash, the same dump
+     must be **equivalent per-table by content**, ignoring volatile generated columns
+     (`gen_random_uuid()` PKs, `created_at`/`updated_at`); FK-referenced seed rows keep their literal
+     ids in the squashed migration so cross-references stay stable. Any missing/extra/altered seed row
+     fails.
+  - Golden types/openapi trivially unchanged (migrations aren't in the API surface). **N9
+    seed-assertion:** `grep` the auth migrations → zero non-`profile::`/non-`*` perm strings. Build
+    DB provisions clean; `cargo check -p ziee` green (all `query!` still verify against the merged
+    schema). Immutability re-established from the new baseline forward.
 - **Green:** ziee boots on the squashed set; schema-identical; auth crate domain-clean; each module
   owns its schema.
 
@@ -430,14 +448,38 @@ app **composes one migration directory at build time** (SDK-auth ∪ app, the SD
 from `ziee-auth`) and runs `sqlx::migrate!` over it — which also updates `build.rs` + the `migrate!`
 call site.
 
-**Version numbers become timestamps** (e.g. `20260713_140000`) for all new migrations, both sides
-— which solves both problems at once: **no collision** (timestamps ~never match) and **authoring
-order = dependency order** (auth tables authored before app tables that FK them → sort first).
+**Reconstruction (N3.1 — supersedes the numeric-preserve model below the line).** Because there are
+NO deployed DBs to protect (N8), the 137+10 numeric history is **squashed** into clean per-module
+baselines. **ALL** migrations become `<YYYYMMDDNNNN>_<module>_<desc>.sql` — a date prefix + a
+**monotonic counter** `NNNN` (NOT wall-clock seconds, which collide when 147 files are authored in
+one session). The counter is assigned to preserve **dependency order** (a valid topological order:
+every FK-target table's migration sorts before its referrer). Migrations are **module-owned** (N7):
+build.rs globs `modules/*/migrations/ ∪ sdk/crates/*/migrations/`, version-sorts, composes
+`migrations-merged/`, and `sqlx::migrate!`s over it.
 
-**Safe for EXISTING ziee deployments.** The extracted auth migration **files keep their original
-version numbers + byte content** (checksums preserved) — the merged, version-sorted set reproduces
-ziee's exact current history, so deployed DBs see no change and fresh DBs get an identical result.
-Only *new* post-extraction auth migrations use timestamps.
+**Shared-table ownership map (H4 — one owner per table, others FK in):**
+`users`/`groups`/`sessions`/`auth_providers`/`refresh_tokens`/`user_auth_links` → `ziee-auth`;
+`files` → files module; `file_chunks`/`file_index_state` → file_rag; join tables (`project_files`,
+`*_knowledge_bases`, `project_bibliography`, …) → their parent module; `CREATE EXTENSION vector` →
+a framework/core **bootstrap** migration that sorts FIRST; a domain permission-grant seed → the
+feature-owning module (this is where the old `27_fix_default_user_permissions` `chat::`/`branches::`
+UPDATE lands — NOT in `ziee-auth`, per N9).
+
+**Equivalence gate is LOGICAL, not byte-identical (B1).** A squash reorders `CREATE TABLE` vs later
+`ALTER ADD COLUMN`, so `pg_dump --schema-only` will byte-differ on a *logically identical* schema
+(attnum order, auto constraint-name suffixes, emission order). The gate is therefore a
+**catalog-derived structural fingerprint** (§10 EA): tables as a SET of
+`{column → (type, nullable, normalized-default)}`, constraints/indexes/enums/sequences/functions/
+triggers/extensions by **definition, not auto-name** — diff must be empty. PLUS a **whole-DB
+seed-data** compare (a fresh-migrated DB holds only seed rows): every table's rows compared by
+content, ignoring volatile generated columns. See §10 EA + SPEC §3/§4.
+
+Below the line is the ORIGINAL N3 numeric-preserve model, **retained for provenance only** —
+superseded by N3.1 above; do not implement it.
+
+**~~Version numbers become timestamps~~ (N3, superseded).** ~~Only *new* post-extraction auth
+migrations use timestamps; extracted auth files keep original numbers + byte content (checksums
+preserved) so deployed DBs see no change.~~ Void under N8 (no deployed DBs) + N3.1 (squash all).
 
 **Build-DB tie-in.** App build DB = merged set (so app `query!` joining `users` verify);
 `build.rs` runs `MERGED_MIGRATOR`. SDK CI provisions an **auth-only** build DB (just
@@ -447,10 +489,12 @@ Only *new* post-extraction auth migrations use timestamps.
 CI verifies against auth-only DB → app bumps the submodule → app `build.rs` re-provisions with the
 merged set → app deploy `migrate run` applies it (version > last-applied).
 
-**Three hard rules:** (1) **append-only / immutable** — never edit a released migration (checksum
-change breaks every deployed DB); add a CI guard. (2) **forward-only SDK pinning across a migration
-boundary** (a downgrade leaves an "applied but unknown" migration → needs `ignore_missing`; avoid).
-(3) **version = timestamp** for all new migrations.
+**Three hard rules (in force AFTER the N3.1 squash baseline):** (1) **append-only / immutable** —
+never edit a released migration; a CI checksum guard is **re-armed from the squash baseline commit
+forward** (N8 suspended it only for the one squash — no deployed DBs then). (2) **forward-only SDK
+pinning across a migration boundary** (a downgrade leaves an "applied but unknown" migration → needs
+`ignore_missing`; avoid). (3) **version = `<YYYYMMDDNNNN>` monotonic** (not wall-clock seconds) for
+all migrations.
 
 **Alternative (open, if merged coordination proves painful):** a dedicated Postgres schema
 (`auth.*`) with its own migration-tracking table, isolated from `public.*`; cross-schema FKs work;
@@ -566,9 +610,11 @@ nearly every chunk. Four layers:
    `api-client/types.ts` before extraction; after each chunk regenerate and assert **byte-identical**.
    A changed route/type/schema surfaces immediately — this single check covers an enormous fraction
    of "did anything observable change."
-4. **DB schema snapshot diff.** `pg_dump --schema-only` before extraction; after Chunk BA assert the
-   **merged migrator yields an identical schema**, and apply it to BOTH a fresh DB and a **copy of a
-   real ziee DB** — no checksum errors, identical final schema (existing-deployment safety, §7.1).
+4. **DB schema + seed equivalence (EA).** Capture the pre-extraction schema fingerprint + whole-DB
+   seed image; after MIGRATE-squash assert the merged migrator (on a FRESH DB) yields an **identical
+   logical schema fingerprint** (catalog-derived, name/order-invariant — NOT byte-identical, B1) and
+   an **equivalent whole-DB seed image** (content, ignoring volatile cols). No checksum errors. (No
+   real-ziee-DB-copy step — N8: no deployed DBs to protect.)
 
 ### 9.3 Extraction-specific techniques
 - **Characterization tests first** for thin-coverage security-critical code (Session & Token
@@ -635,12 +681,12 @@ non-byte-identical change + rationale — the DECISIONS analog), `LEDGER.jsonl` 
 | **E5** | every file/symbol in `CUT.md` now exists in the SDK crate | P2 |
 | **E6** | every file in `CUT.md` is **deleted from ziee** (no divergent duplicate — §2 single-source) | NEW |
 | **E7** | every symbol changed during the move is declared in `TRANSFORMS.md`; byte-identical moves need none | NEW (equivalence-modulo-transform) |
-| **E8** | **`openapi.json` + `types.ts` byte-identical** vs the `pre-sdk-extraction` baseline; `pg_dump` schema identical after Chunk BA | C3 (master gate) |
+| **E8** | **`openapi.json` + `types.ts` byte-identical** vs the `pre-sdk-extraction` baseline (schema/seed equivalence is **EA**'s job — logical fingerprint + whole-DB seed, NOT byte-identical, post-squash B1) | C3 (master gate) |
 | **E9** | dual clean-build: SDK standalone **and** ziee-on-pinned-SDK | C1 (both sides) |
 | **E10** | full ziee suite + `gate:ui` green at the boundary | phase8 / A7 |
 | **E11** | `skeleton-server` builds framework-only (no domain/auth pull-through) | app-agnostic guard |
 | **E12** | ziee branch pins an SDK commit that builds; pointer committed | NEW (cross-repo) |
-| **EA** | (Chunk BA) merged migrator applies on fresh **and** existing-DB-copy; schema identical; no checksum errors; append-only/timestamped | C2 + §7.1 |
+| **EA** | (Chunks BA + MIGRATE-squash) merged migrator applies on a FRESH DB, no checksum errors; **logical schema fingerprint** (catalog-derived, name/order-invariant) == baseline; **whole-DB seed-data** compare == baseline (content, ignoring volatile cols); N9 auth-perm grep clean. NOT byte-identical (B1). Append-only re-armed from the squash baseline commit (N8). | C2 + §7.1 |
 | **E-audit** | blind audit: full per-chunk-diff hunk coverage ≥3 angles; findings converged to 0 | phase6/7 |
 
 ### 10.4 What must be built new

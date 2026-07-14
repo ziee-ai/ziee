@@ -69,12 +69,16 @@ Each chunk dir holds:
 - **FIX-converge** final `FIX_ROUND-N.md` `New confirmed findings: 0`.
 
 ### C-5 boundary (equivalence + green — the master gates)
-- **E8 golden equivalence** (deterministic, validator RE-RUNS): `just openapi-regen` in ziee → `git diff` empty across all 4 generated files vs the `pre-sdk-extraction` baseline; after chunk BA, `pg_dump --schema-only` of a merged-migrator DB byte-identical to the baseline schema snapshot. **See §5 for the genericization caveat.**
+- **E8 golden equivalence** (deterministic, validator RE-RUNS): `just openapi-regen` in ziee → `git diff` empty across all 4 generated files vs the `pre-sdk-extraction` baseline. (Schema/seed equivalence is **EA**'s job, not E8's — and post-squash it is the LOGICAL fingerprint + whole-DB seed compare, NOT byte-identical `pg_dump`, per B1.) **See §5 for the genericization caveat.**
 - **E9 dual clean-build** (deterministic): `cargo clean && cargo check --tests` for (a) the SDK standalone and (b) ziee-on-pinned-SDK, both from fresh staging worktrees (catches warm-build proc-macro masking).
 - **E10 boundary-green** (deterministic, decision N4): per-boundary = **touched-module tests** + golden diffs + dual clean-build; the **full ziee suite + `gate:ui`** run at the **pre-merge gate** (+ nightly), not every boundary.
 - **E11 skeleton-agnostic** (deterministic): `sdk/examples/skeleton-server` builds linking only `ziee-core`+`ziee-framework` (+`ziee-control-mcp` only for the control-specific check) — no domain/auth pull-through.
 - **E12 submodule-pin** (deterministic): ziee's `sdk` submodule pointer is committed and points at an SDK commit that builds.
-- **EA merged-migrator** (chunks BA + MIGRATE-squash, deterministic): the merged Migrator applies on a fresh DB with no checksum errors; **the resulting `pg_dump --schema-only` is byte-identical to `.extraction/baseline/schema.sql`** (the equivalence anchor — validator RE-RUNS the dump + diff, unfakeable). For **MIGRATE-squash (N3.1/N7/N8/N9)**: migrations are composed from `modules/*/migrations/ ∪ sdk/crates/*/migrations/` (module-owned, `<timestamp>_<module>_<desc>.sql`); **N9 seed-assertion** — auth migrations `grep` clean of any permission string other than `profile::*`/`*`; the append-only/checksum-immutability guard is SUSPENDED for the one squash (N8: pre-release, no deployed DBs) and re-established from the new baseline forward. (Pre-N3.1 BA also checked application onto a copy of a real ziee DB + timestamped-only-for-new; superseded by the squash.)
+- **EA merged-migrator** (chunk MIGRATE-squash, deterministic; supersedes the pre-N3.1 BA form): the merged Migrator — composed from `modules/*/migrations/ ∪ sdk/crates/*/migrations/` (module-owned, `<YYYYMMDDNNNN>_<module>_<desc>.sql`, monotonic version) — applies on a FRESH DB with no checksum errors, and satisfies TWO LOGICAL anchors (NOT byte-identical, per B1 — a squash reorders CREATE/ALTER so `pg_dump` byte-differs on a logically-identical schema):
+  - **EA-schema:** a **catalog-derived structural fingerprint** (from `information_schema`/`pg_catalog`) is IDENTICAL to `.extraction/baseline/schema.fp`: tables as a set of `{column → (type, nullable, normalized-default)}` (attnum-order-independent); constraints/indexes/enums/sequences/functions/triggers/extensions by **definition, not auto-name**. Validator RE-RUNS the fingerprint script on both the baseline and the squashed DB and diffs (unfakeable).
+  - **EA-seed:** a **whole-DB data image** (all rows, all tables — a fresh-migrated DB holds only seed rows) is equivalent to `.extraction/baseline/seed.sql` **per-table by content**, ignoring volatile generated columns (`gen_random_uuid()` PKs, `created_at`/`updated_at`); FK-referenced seed rows keep literal ids. Missing/extra/altered row → fail.
+  - **N9 grep-assertion:** auth migrations contain zero permission strings other than `profile::*`/`*`. The append-only/checksum guard is SUSPENDED for the one squash (N8) and RE-ARMED from the squash baseline commit forward.
+  - **C-2 exemption (M2):** MIGRATE-squash is a RECONSTRUCTION, not a symbol move — EXEMPT from the move-shaped E5/E6/E7 (no `move:`/symbol-deletion). It is gated by EA-schema + EA-seed + N9 instead.
 - **E1** exactly one `.extraction/<id>/` dir. **E2** clean working tree (ignores pgvector submodule + `.log`).
 - **TESTS-preservation** every `TESTS-MOVED.md` entry PASSes; **A5-shrink-guard** — no covering test id present in an older committed `TESTS-MOVED.md` may be absent now.
 
@@ -84,10 +88,11 @@ Each chunk dir holds:
 
 `--baseline snapshot` (run once, before Chunk 0) captures into `.extraction/baseline/`:
 - `openapi.ui.json`, `types.ui.ts`, `openapi.desktop.json`, `types.desktop.ts` (from `just openapi-regen` on pre-extraction ziee),
-- `schema.sql` (`pg_dump --schema-only` of a fully-migrated ziee DB),
+- `schema.sql` (`pg_dump --schema-only` of a fully-migrated ziee DB — retained for E8/reference),
+- **`schema.fp`** — the catalog-derived structural fingerprint (EA-schema anchor for MIGRATE-squash; name/order-invariant, so it survives the squash where byte-`schema.sql` cannot),
+- **`seed.sql`** — the whole-DB seed image (all rows/all tables) of a fresh **numeric**-migrated ziee DB (EA-seed anchor),
 - the git tag `pre-sdk-extraction` (the diff base for E7 and the per-symbol transform check).
-E8 diffs against these. The baseline is **immutable** for the life of the extraction (a legitimate
-generated-output change — see §5 — is a deliberate, reviewed baseline re-capture, logged).
+E8 diffs the generated files + `schema.sql`; EA (MIGRATE-squash) diffs `schema.fp` + `seed.sql`. The baseline is **immutable** for the life of the extraction (a legitimate generated-output change — see §5 — is a deliberate, reviewed baseline re-capture, logged). The `schema.fp` fingerprint script (catalog query → canonical text) is committed alongside so the validator can re-run it on any DB.
 
 ---
 
