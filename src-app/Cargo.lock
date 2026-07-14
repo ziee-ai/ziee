@@ -12857,6 +12857,8 @@ dependencies = [
  "async-trait",
  "serde",
  "sqlx 0.8.6",
+ "tauri",
+ "tauri-plugin-decorum",
  "tracing",
  "uuid",
  "ziee-auth",
