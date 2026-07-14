@@ -651,6 +651,43 @@ impl McpRepository {
         })
     }
 
+    /// Server-side-only trust-host set for `resource_link` re-hosting (SSRF same-host allowance).
+    ///
+    /// Returns the deduped, lowercased HOSTS of the enabled MCP servers this user can access,
+    /// EXCLUDING in-process built-in (loopback) servers — consumed ONLY in-process by
+    /// `resource_link::persist_links` to decide the fetch policy. Unlike [`Self::list_accessible`],
+    /// it deliberately does NOT redact system-server URLs: that redaction is a *client-facing*
+    /// disclosure guard, but this path never returns URLs to a client — it derives hosts and
+    /// discards the URLs. So an admin-registered system-but-non-built-in server (real external
+    /// `url`, e.g. `host.docker.internal`) contributes its host here even though its `url` is
+    /// blanked in the user-facing list — which is exactly what lets its result files be re-hosted.
+    /// Built-in loopback hosts are still excluded (the loopback-SSRF guard, in
+    /// `trusted_hosts_from_servers`). Accessibility predicate mirrors `list_accessible_mcp_servers`.
+    pub async fn list_accessible_result_link_hosts(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT DISTINCT s.is_built_in, s.url
+            FROM mcp_servers s
+            LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
+            LEFT JOIN user_groups ug ON ugms.group_id = ug.group_id
+            WHERE (s.user_id = $1 OR (s.is_system = true AND ug.user_id = $1))
+              AND s.enabled = true
+            "#,
+            user_id,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(
+            crate::modules::mcp::resource_link::trusted_hosts_from_servers(
+                rows.iter().map(|r| (r.is_built_in, r.url.as_deref())),
+            ),
+        )
+    }
+
     // Check if user has access to a server (single query: ownership + group membership)
     pub async fn can_user_access_server(&self, user_id: Uuid, server_id: Uuid) -> Result<bool, AppError> {
         let has_access = sqlx::query_scalar!(

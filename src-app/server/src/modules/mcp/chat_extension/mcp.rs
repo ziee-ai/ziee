@@ -98,7 +98,10 @@ fn tool_system_guidance(tools: &[ai_providers::Tool]) -> String {
              get_resource_link returns. These download URLs are SHORT-LIVED: call \
              get_resource_link again to obtain a FRESH URL each time you hand a file to a \
              tool, and never reuse a URL from an earlier turn (an old URL may have stopped \
-             working).",
+             working). When another tool HANDS you a file as a URL, use the exact URL ziee \
+             gives you for it (an /api/files link, shown as a file-card attachment) — do NOT \
+             fetch or forward the tool's raw upstream URL, and NEVER rewrite, guess, or \
+             substitute its host (no 127.0.0.1, localhost, or a made-up platform/DRS host).",
         );
     }
     guidance
@@ -115,7 +118,9 @@ fn tool_system_guidance(tools: &[ai_providers::Tool]) -> String {
 /// saved-artifact download guidance (both artifact-save sites call it).
 fn saved_artifact_hidden_content_guidance(url_lines: &str) -> String {
     format!(
-        "[system: Files saved as artifact attachments (shown as file cards in UI). \
+        "[system: Files saved as artifact attachments (shown as file cards in UI). This includes \
+         files another tool returned that ziee has re-hosted for you — use the ziee URL listed \
+         below, not the tool's original upstream URL. \
          Do NOT embed file URLs or images inline in your text response. \
          To pass one of these files to another tool, copy its URL below VERBATIM into that \
          tool's file/URL argument — never rewrite the host, never substitute \
@@ -932,20 +937,17 @@ impl McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
-                // Same-host trust set: hosts of the user's OWN registered (non-system) MCP servers,
-                // so an external server's artifact URL on its own (private/RFC1918) host can be
-                // ingested. EXCLUDE `is_system` servers: that covers the auto-attached BUILT-IN
-                // servers pushed above via `get_any_server` (which does NOT redact `url`) — those
-                // carry a loopback `url` (`http://127.0.0.1:<port>/…`), and including it would let an
-                // external server's `resource_link` at `http://127.0.0.1:<port>` bypass the default
-                // loopback block. Admin-registered *system* external servers (url redacted in the
-                // base list anyway) are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in
-                // instead (see resource_link.rs).
-                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_servers(
-                    accessible_servers
-                        .iter()
-                        .map(|s| (s.is_system, s.url.as_deref())),
-                );
+                // Same-host trust set for re-hosting this external server's result files (see
+                // `resource_link::result_link_trusted_hosts`): the hosts of the user's accessible,
+                // enabled, NON-built-in MCP servers — incl. admin-registered system servers with a
+                // real external `url` (e.g. `host.docker.internal`) whose url is redacted in the
+                // user-facing list. A built-in emitter short-circuits to empty (its links are trusted
+                // loopback URLs the trust set is never consulted for).
+                let trusted_hosts = crate::modules::mcp::resource_link::result_link_trusted_hosts(
+                    server.is_built_in,
+                    context.user_id,
+                )
+                .await;
 
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
@@ -2886,20 +2888,17 @@ impl ChatExtension for McpChatExtension {
                         .map(|s| vec![s.workspace_root.join(context.conversation_id.to_string())])
                         .unwrap_or_default();
 
-                // Same-host trust set: hosts of the user's OWN registered (non-system) MCP servers,
-                // so an external server's artifact URL on its own (private/RFC1918) host can be
-                // ingested. EXCLUDE `is_system` servers: that covers the auto-attached BUILT-IN
-                // servers pushed above via `get_any_server` (which does NOT redact `url`) — those
-                // carry a loopback `url` (`http://127.0.0.1:<port>/…`), and including it would let an
-                // external server's `resource_link` at `http://127.0.0.1:<port>` bypass the default
-                // loopback block. Admin-registered *system* external servers (url redacted in the
-                // base list anyway) are covered by the ZIEE_MCP_RESOURCE_LINK_ALLOW_PRIVATE opt-in
-                // instead (see resource_link.rs).
-                let trusted_hosts = crate::modules::mcp::resource_link::trusted_hosts_from_servers(
-                    accessible_servers
-                        .iter()
-                        .map(|s| (s.is_system, s.url.as_deref())),
-                );
+                // Same-host trust set for re-hosting this external server's result files (see
+                // `resource_link::result_link_trusted_hosts`): the hosts of the user's accessible,
+                // enabled, NON-built-in MCP servers — incl. admin-registered system servers with a
+                // real external `url` (e.g. `host.docker.internal`) whose url is redacted in the
+                // user-facing list. A built-in emitter short-circuits to empty (its links are trusted
+                // loopback URLs the trust set is never consulted for).
+                let trusted_hosts = crate::modules::mcp::resource_link::result_link_trusted_hosts(
+                    server.is_built_in,
+                    context.user_id,
+                )
+                .await;
 
                 let outcome = crate::modules::mcp::resource_link::persist_links(
                     links,
@@ -3432,6 +3431,11 @@ mod tests {
         ]);
         assert!(with.contains("you MUST first call get_resource_link"), "{with}");
         assert!(with.contains("Never invent, guess, or construct a file/download URL"), "{with}");
+        // TEST-5: covers a file another tool HANDS you as a URL — use the ziee-provided /api/files
+        // link, never forward the tool's raw upstream URL, never rewrite/substitute its host.
+        assert!(with.contains("another tool HANDS you a file as a URL"), "{with}");
+        assert!(with.contains("/api/files"), "{with}");
+        assert!(with.contains("NEVER rewrite, guess, or substitute its host"), "{with}");
 
         // A different tool merely containing the substring must NOT trigger it
         // (suffix match guards against e.g. "get_resource_link_v2").
@@ -3491,6 +3495,12 @@ mod tests {
         assert!(
             g.contains("VERBATIM") && g.contains("DRS") && g.contains("127.0.0.1/localhost"),
             "must keep verbatim + anti-DRS/localhost rules; {g}"
+        );
+        // TEST-5: the saved list now explicitly covers a file another tool returned that ziee
+        // re-hosted, steering the model to the ziee URL rather than the tool's upstream URL.
+        assert!(
+            g.contains("files another tool returned that ziee has re-hosted"),
+            "must cover tool-returned re-hosted files; {g}"
         );
     }
 
