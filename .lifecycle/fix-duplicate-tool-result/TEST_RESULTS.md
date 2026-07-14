@@ -79,10 +79,49 @@ Honestly labelled as NON-discriminating (recorded rather than overclaimed):
   explicit CONTROL asserting the pre-fix blind-append really yields `["A","B","B"]`,
   with **TEST-17** (`#[should_panic]`) proving the invariant assertion is not vacuous.
 
+## LIVE A/B CONFIRMATION — the reported bug reproduced and fixed, end-to-end
+
+Run on my OWN stack (`:8231`, isolated embedded Postgres, scratch data dirs) with the
+real Anthropic key khoi supplied. **`:8080` was never written to, never restarted** —
+40h uptime unbroken; only read-only `docker exec psql` provider listing touched it.
+Stack torn down after the run.
+
+**Forcing function** (a mixed batch — the precondition the root-cause analysis
+predicted): a KB attached so the approval-EXEMPT built-in `knowledge_base` attaches,
+plus the approval-REQUIRED external `fetch` server, `approval_mode=manual_approve`,
+and a prompt telling real Claude to emit both `tool_use` blocks in ONE parallel batch.
+
+Claude complied, and the DB reached exactly the predicted state:
+
+```
+0 tool_use    list_knowledge_bases   ← built-in, approval-exempt: ran
+1 tool_use    fetch                  ← external: paused (mcpApprovalRequired)
+2 tool_result list_knowledge_bases   ← ONLY the built-in's result persisted
+```
+
+Then approve → resume. Identical flow, identical prompt, one variable (the fix):
+
+| Binary | Result |
+|---|---|
+| **PRE-FIX** (both call sites reverted, rebuilt) | `AI provider error: Invalid request: messages.2.content.2: each tool_use must have a single result. Found multiple `tool_result` blocks with id: toolu_01RHUaXDdW…` |
+| **POST-FIX** (HEAD, rebuilt) | `complete` / `finish_reason: stop` — blocks `[tool_use, tool_use, tool_result, tool_result, text]`, Claude answered *"Both calls completed successfully"* |
+
+That pre-fix line is the USER'S REPORTED SYMPTOM verbatim (theirs was
+`messages.14.content.2`, same error, deeper history). The mechanism is confirmed live,
+not just by code trace.
+
+**The defense never fired:** `grep -c "dropping a duplicate tool_result"` = **0** on the
+post-fix run. The SOURCE fix (`replace_or_collect_tool_results`) handled it in place, so
+`dedup_tool_results_by_id` had nothing to drop — exactly the designed division of labour
+(ITEM-1 fixes the cause; ITEM-2 is the tripwire that should stay silent).
+
+Two incidental pre-existing issues surfaced while standing the instance up, neither
+related to this fix and both out of scope (noted for the PR): a provider registered
+without a `/v1` base_url yields an empty `AI provider error: Invalid request:` with no
+detail, and `claude-sonnet-4-5` resolves to *adaptive* thinking, which Anthropic rejects
+("adaptive thinking is not supported on this model") until `supports_thinking:false` is
+set on the model row.
+
 ## Not run (and why)
 
 - E2E / `npm run check` / `gate:ui` — no frontend path in the diff.
-- The **live end-to-end confirmation** khoi asked for (own stack on a free port, real
-  Anthropic key read read-only from the `:8080` container's DB, mixed built-in +
-  approval-required batch → approve → observe the 400 disappear) is **still outstanding**
-  and tracked as the remaining work; it is not covered by any tier above.

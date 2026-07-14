@@ -57,13 +57,13 @@ pub async fn create_content(
 /// A concurrent caller DOES exist, so this is not hypothetical: the MCP extension's
 /// detached elicitation task calls `append_content_with_id` (same MAX+1-inside-INSERT
 /// slot computation, same `message_id`) while the approval loop's own
-/// `append_content` calls run. Neither retries, and the approval-loop site swallows
-/// the error with `let _ =`, so a lost race there is a DROPPED content row rather
-/// than a loud failure. That is a real (pre-existing, narrow — it needs an
-/// elicitation notification to land in the same instant as a result append) gap and
-/// NOT something this comment should paper over: fixing it means a retry-on-unique-
-/// violation loop here, which is deliberately out of scope for the change that
-/// corrected this comment.
+/// `append_content` calls run. Neither retries, so whichever loses the race fails —
+/// and the elicitation side swallows it (`let _ = …append_content_with_id(…)`), which
+/// turns a lost race there into a silently DROPPED elicitation row. The approval-loop
+/// sites do log it. That gap is real but pre-existing and narrow (it needs an
+/// elicitation notification to land in the same instant as a result append); closing
+/// it means a retry-on-unique-violation loop here, deliberately out of scope for the
+/// change that corrected this comment. Recorded rather than papered over.
 pub async fn append_content(
     pool: &PgPool,
     message_id: Uuid,

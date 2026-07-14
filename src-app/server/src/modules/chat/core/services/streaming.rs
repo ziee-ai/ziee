@@ -1842,8 +1842,10 @@ pub fn group_assistant_blocks(blocks: Vec<ai_providers::ContentBlock>) -> Vec<Ch
             });
         }
     } else if !current_text.is_empty() {
-        // Pure-text final answer (no trailing tool_use). Any leftover results in
-        // `results_by_id` are orphans with no tool_use — dropped here.
+        // Pure-text final answer (no trailing tool_use). `results_by_id` is empty
+        // here — the capture guard above refuses any result answering no OUTSTANDING
+        // tool_use, so orphans are dropped on arrival rather than accumulating for
+        // this branch to discard.
         messages.push(ChatMessage {
             role: ai_providers::Role::Assistant,
             content: std::mem::take(&mut current_text),
