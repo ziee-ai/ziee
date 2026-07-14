@@ -28,9 +28,10 @@ pub mod pgvector_install;
 /// has no such env, so the version can't be `env!`'d framework-side.
 const POSTGRES_VERSION: &str = env!("ZIEE_POSTGRES_VERSION");
 
-/// The app's merged migration set (`migrations-merged` = the app's own
-/// `migrations/` ∪ `ziee-auth`'s structural auth-table migrations, composed by
-/// build.rs, version-sorted). `set_ignore_missing(true)` because desktop +
+/// The app's merged migration set (`migrations-merged` = the UNION of every
+/// module-owned `src/modules/*/migrations/` ∪ SDK `sdk/crates/*/migrations/`,
+/// composed by build.rs, version-sorted — see MIGRATE-squash / N3.1 / N7).
+/// `set_ignore_missing(true)` because desktop +
 /// server share `_sqlx_migrations` and each binary owns its own subset — the
 /// supported sqlx pattern. A `LazyLock` so the framework receives a `&'static`.
 static MERGED_MIGRATOR: std::sync::LazyLock<sqlx::migrate::Migrator> =

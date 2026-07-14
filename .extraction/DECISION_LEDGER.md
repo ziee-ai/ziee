@@ -47,8 +47,10 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
   Build-time composition mechanism is UNCHANGED (widen its source globs). Unblocked by N8
   (pre-release, no deployed DBs to protect → checksum-immutability suspended for the one squash).
 - affects: BA (auth carve-out), every migration-bearing chunk, **MIGRATE-squash** (the tracking chunk)
-- reaudit: **pending** — current impl (numeric, central-ish, auth-carries-domain-perms) is faithful
-  to N3-as-written but NON-compliant with N3.1. MIGRATE-squash converges it; then re-gate BA.
+- reaudit: **clean (2026-07-14)** — MIGRATE-squash landed: 147 numeric migrations squashed into 91
+  module-owned `<YYYYMMDDNNNN>_<module>_<desc>.sql` baselines; build.rs globs the module dirs;
+  EA-schema fingerprint IDENTICAL + EA-seed EQUIVALENT + N9 grep 0 + 3× cargo check green + golden
+  byte/canonical-identical both surfaces. BA is re-gated by these EA anchors.
 
 ### N4 — Boundary CI: scoped subset per boundary
 - statement: per-boundary = touched-module tests + golden diffs + dual clean-build; full ziee suite
@@ -83,7 +85,7 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
 - status: active
 - decided: 2026-07-14
 - affects: MIGRATE-squash, all future module extractions
-- reaudit: pending (lands with MIGRATE-squash)
+- reaudit: clean (2026-07-14 — landed with MIGRATE-squash; migrations now module-owned + build.rs globs)
 
 ### N8 — Pre-release: squash freely (no deployed DBs)
 - statement: no live third-party ziee Postgres deployments to protect → the checksum-immutability /
@@ -102,7 +104,7 @@ Status vocab: `active` | `revised` | `superseded`. Reaudit vocab: `clean` | `pen
 - status: active
 - decided: 2026-07-14
 - affects: BA (re-audit), MIGRATE-squash
-- reaudit: pending
+- reaudit: clean (2026-07-14 — auth migrations grep-clean: 0 non-profile/non-* perm strings)
 
 ---
 

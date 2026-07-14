@@ -1,0 +1,11 @@
+-- Squashed module baseline (MIGRATE-squash / N3.1 / N7).
+-- llm_provider seed data.
+
+INSERT INTO public.llm_providers VALUES ('79babd92-30fd-487f-b791-8c62708e7d6a', 'OpenAI', 'openai', false, NULL, 'https://api.openai.com/v1', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('06bda3ec-ad16-43e9-8220-c26206ccdf38', 'Anthropic', 'anthropic', false, NULL, 'https://api.anthropic.com/v1', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('29f92657-1082-4685-8885-b57635c5c8fa', 'Groq', 'groq', false, NULL, 'https://api.groq.com/openai/v1', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('4d5e2537-c03c-44d6-861a-0f7a76217c01', 'Google Gemini', 'gemini', false, NULL, 'https://generativelanguage.googleapis.com/v1beta', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('f198a396-1dc6-4766-b6a4-3aed4c938002', 'Mistral AI', 'mistral', false, NULL, 'https://api.mistral.ai/v1', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('d525f74b-8adc-495d-bbfb-8b1d42580da7', 'DeepSeek', 'deepseek', false, NULL, 'https://api.deepseek.com', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('18abd00d-e2d9-40b0-8e07-9f018ca3a8d5', 'Local', 'local', false, NULL, 'http://localhost:8080/v1', true, '{}', '2026-07-14 15:09:55.450123+00', '2026-07-14 15:09:55.450123+00', '{"type": "local", "binary_path": null}', NULL, NULL);
+INSERT INTO public.llm_providers VALUES ('25258ca9-b3a0-4f4d-8b61-cb2b9010d9d6', 'OpenRouter', 'openrouter', false, NULL, 'https://openrouter.ai/api/v1', true, '{}', '2026-07-14 15:10:00.863533+00', '2026-07-14 15:10:00.863533+00', '{"type": "local", "binary_path": null}', NULL, NULL);

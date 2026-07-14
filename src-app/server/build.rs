@@ -52,13 +52,15 @@ fn redact_database_url(url: &str) -> String {
     url.to_string()
 }
 
-/// Chunk BA-full: compose the merged migration directory used by BOTH the
-/// build-DB provisioner (this file) and the runtime `sqlx::migrate!`
-/// (`core/database/mod.rs`). It is `<manifest>/migrations-merged` =
-/// the app's own `migrations/` ∪ `ziee-auth`'s structural auth-table
-/// `migrations/` (path-dep at `../../sdk/crates/ziee-auth`). Files keep their
-/// original version-numbered names, so the merged set version-sorts back into
-/// ziee's exact `_sqlx_migrations` history — deployed DBs are unaffected.
+/// MIGRATE-squash (N3.1 / N7): compose the merged migration directory used by
+/// BOTH the build-DB provisioner (this file) and the runtime `sqlx::migrate!`
+/// (`core/database/mod.rs`). It is `<manifest>/migrations-merged` = the UNION of
+/// every **module-owned** `migrations/` dir:
+///   - `<manifest>/src/modules/*/migrations/`   (each ziee server module)
+///   - `<manifest>/../../sdk/crates/*/migrations/` (SDK crates: ziee-auth, …)
+/// The squashed baselines are named `<YYYYMMDDNNNN>_<module>_<desc>.sql`; the
+/// merged set version-sorts by filename into a valid FK-topological order
+/// (bootstrap extensions first, all tables, then deferred FKs, then seed data).
 ///
 /// `migrations-merged/` is a generated artifact (gitignored). build.rs always
 /// runs before the crate compiles, so the dir is populated before the runtime
@@ -69,10 +71,31 @@ fn compose_merged_migrations() {
     let _ = std::fs::remove_dir_all(&merged);
     std::fs::create_dir_all(&merged).expect("build.rs: create migrations-merged failed");
 
-    let sources = [
-        manifest.join("migrations"),
-        manifest.join("../../sdk/crates/ziee-auth/migrations"),
+    // Glob every `migrations` dir under the two module roots. A root that has
+    // no module with migrations yet is simply skipped.
+    let module_roots = [
+        manifest.join("src/modules"),
+        manifest.join("../../sdk/crates"),
     ];
+    let mut sources: Vec<std::path::PathBuf> = Vec::new();
+    for root in &module_roots {
+        println!("cargo:rerun-if-changed={}", root.display());
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        for entry in entries.flatten() {
+            let mig = entry.path().join("migrations");
+            if mig.is_dir() {
+                sources.push(mig);
+            }
+        }
+    }
+    // Deterministic module order (the per-file version prefix drives the final
+    // sqlx apply order; sorting the source dirs only makes the copy stable).
+    sources.sort();
+
+    // Guard against basename collisions across modules (two modules must never
+    // ship the same migration filename — it would silently drop one).
+    let mut seen: std::collections::HashMap<String, std::path::PathBuf> =
+        std::collections::HashMap::new();
     for src in &sources {
         println!("cargo:rerun-if-changed={}", src.display());
         let entries = std::fs::read_dir(src).unwrap_or_else(|e| {
@@ -86,6 +109,16 @@ fn compose_merged_migrations() {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("sql") {
                 let name = path.file_name().expect("migration file name");
+                let name_str = name.to_string_lossy().to_string();
+                if let Some(prev) = seen.insert(name_str.clone(), path.clone()) {
+                    panic!(
+                        "build.rs: duplicate migration filename '{}' in {} and {} \
+                         — module-owned migrations must have unique <YYYYMMDDNNNN> names",
+                        name_str,
+                        prev.display(),
+                        path.display()
+                    );
+                }
                 let dst = merged.join(name);
                 std::fs::copy(&path, &dst).unwrap_or_else(|e| {
                     panic!("build.rs: copy {} → merged failed: {}", path.display(), e)
