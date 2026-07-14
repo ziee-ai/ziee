@@ -370,7 +370,17 @@ pub async fn cancel_pending_approvals_for_branch(
     Ok(result.rows_affected())
 }
 
-/// Delete tool use approval record (after execution)
+/// Consume a tool-use approval record.
+///
+/// Returns whether a row was actually deleted, which is the CLAIM verdict its main
+/// caller depends on: `execute_approved_tools_sync` deletes the row BEFORE running
+/// the tool, so `true` means "we own this execution" and `false` means a concurrent
+/// pass already claimed it and this one must not execute. That caller must not
+/// discard the bool (see `claim_outcome`).
+///
+/// A caller that is NOT claiming may ignore it: the denied-tool cleanup deletes a
+/// denial record purely so it isn't re-processed, and nothing branches on whether a
+/// row was there.
 pub async fn delete_tool_approval(
     pool: &PgPool,
     tool_use_id: String,
