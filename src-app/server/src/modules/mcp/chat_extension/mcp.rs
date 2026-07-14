@@ -744,7 +744,20 @@ impl McpChatExtension {
                     match ChatSamplingHandler::new(model_id, context.user_id).await {
                         Ok(h) => {
                             let handler = Arc::new(h);
-                            match McpSession::new_with_sampling(server.clone(), handler).await {
+                            // Build from the UN-REDACTED server row: the accessible
+                            // list nulls is_system URLs, which would fail
+                            // new_with_sampling with MISSING_URL.
+                            let built = match self
+                                .session_manager
+                                .resolve_server_for_session(server.id)
+                                .await
+                            {
+                                Ok(real_server) => {
+                                    McpSession::new_with_sampling(real_server, handler).await
+                                }
+                                Err(e) => Err(e),
+                            };
+                            match built {
                                 Ok(mut s) => {
                                     s.set_call_context(McpCallContext {
                                         user_id: Some(context.user_id),
@@ -1669,21 +1682,32 @@ impl ChatExtension for McpChatExtension {
                         .and_then(|v| v.as_str())
                         .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-                    // Create session (with sampling if supported)
-                    let session_result = if server.supports_sampling {
-                        if let Some(model_id) = maybe_model_id {
-                            match ChatSamplingHandler::new(model_id, context.user_id).await {
-                                Ok(h) => McpSession::new_with_sampling(server.clone(), Arc::new(h)).await,
-                                Err(e) => {
-                                    tracing::warn!("Always-mode: failed to init sampling provider for {}: {}", server.name, e);
-                                    McpSession::new(server.clone()).await
+                    // Create session (with sampling if supported). Build from the
+                    // UN-REDACTED server row: the accessible list nulls is_system
+                    // URLs, which would fail every build below with MISSING_URL.
+                    let session_result = match self
+                        .session_manager
+                        .resolve_server_for_session(server.id)
+                        .await
+                    {
+                        Err(e) => Err(e),
+                        Ok(real_server) => {
+                            if server.supports_sampling {
+                                if let Some(model_id) = maybe_model_id {
+                                    match ChatSamplingHandler::new(model_id, context.user_id).await {
+                                        Ok(h) => McpSession::new_with_sampling(real_server, Arc::new(h)).await,
+                                        Err(e) => {
+                                            tracing::warn!("Always-mode: failed to init sampling provider for {}: {}", server.name, e);
+                                            McpSession::new(real_server).await
+                                        }
+                                    }
+                                } else {
+                                    McpSession::new(real_server).await
                                 }
+                            } else {
+                                McpSession::new(real_server).await
                             }
-                        } else {
-                            McpSession::new(server.clone()).await
                         }
-                    } else {
-                        McpSession::new(server.clone()).await
                     };
 
                     match session_result {
@@ -2740,7 +2764,20 @@ impl ChatExtension for McpChatExtension {
                                     }, false)
                                 }
                                 Ok(h) => {
-                                    match McpSession::new_with_sampling(server.clone(), Arc::new(h)).await {
+                                    // Build from the UN-REDACTED server row: the
+                                    // accessible list nulls is_system URLs, which
+                                    // would fail new_with_sampling with MISSING_URL.
+                                    let built = match self
+                                        .session_manager
+                                        .resolve_server_for_session(server.id)
+                                        .await
+                                    {
+                                        Ok(real_server) => {
+                                            McpSession::new_with_sampling(real_server, Arc::new(h)).await
+                                        }
+                                        Err(e) => Err(e),
+                                    };
+                                    match built {
                                         Ok(mut sampling_session) => {
                                             sampling_session.set_call_context(McpCallContext {
                                                 user_id: Some(context.user_id),
@@ -2766,12 +2803,15 @@ impl ChatExtension for McpChatExtension {
                                             .await
                                         }
                                         Err(e) => {
+                                            // Log the full error (may contain the upstream URL) server-side only.
+                                            // The user-facing content names the server, NOT the raw error, so an
+                                            // is_system server's redacted admin URL is never disclosed to the user.
                                             tracing::error!("Failed to create sampling session for {}: {}", server.name, e);
                                             (McpContentData::ToolResult {
                                                 tool_use_id: tool_use_id.clone(),
                                                 name: Some(tool_name.clone()),
                                                 server_id: Some(server.id.to_string()),
-                                                content: format!("Failed to connect to server: {}", e),
+                                                content: format!("Failed to connect to server '{}'", server.name),
                                                 is_error: Some(true),
                                                                             attachment: None,
                                                                             images: None,
