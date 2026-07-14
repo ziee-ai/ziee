@@ -124,6 +124,22 @@ function projectIdFromUrl(): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * The project a NEW conversation should be filed into (ITEM-13/39). In a split
+ * the URL points at the FOCUSED pane's project, so deriving from `window.location`
+ * would file a new-chat pane B's conversation into pane A's project. Sending
+ * focuses the pane first, so the focused pane IS the sending pane — use ITS
+ * `projectId` (null for a plain new-chat pane). Single-pane → the URL, unchanged.
+ */
+function sendingPaneProjectId(): string | null {
+  const sv = Stores.SplitView.$
+  if (sv.panes.length >= 2) {
+    const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
+    return focused?.projectId ?? null
+  }
+  return projectIdFromUrl()
+}
+
 
 const projectExtension: ChatExtension = createExtension({
   name: 'project',
@@ -135,18 +151,18 @@ const projectExtension: ChatExtension = createExtension({
     // any cached membership from a previous session is stale.
     const project = await loadProjectForConversation(conversation.id, true)
     if (project?.default_assistant_id) {
-      // Seed the assistant picker with the project's default when
-      // the user hasn't picked one. One-shot — won't override an
-      // explicit user choice.
+      // Seed the assistant picker with the project's default when the user
+      // hasn't picked one, keyed by THIS conversation so it's pane-scoped
+      // (ITEM-5). One-shot — won't override an explicit user choice.
       const picker = Stores.AssistantPicker
-      if (!picker.selectedAssistantId) {
-        picker.selectAssistant(project.default_assistant_id)
+      if (!picker.getAssistantId(conversation.id)) {
+        picker.selectAssistant(conversation.id, project.default_assistant_id)
       }
     }
   },
 
   afterCreateConversation: async (conversation) => {
-    const projectId = projectIdFromUrl()
+    const projectId = sendingPaneProjectId()
     if (!projectId) return
     try {
       const response = await Stores.Projects.attachConversation(

@@ -2,6 +2,7 @@ import { Button, Space, Text } from '@/components/ui'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Stores } from '@/core/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**
  * Core component rendered via MessageContext in ChatMessage.
@@ -17,7 +18,11 @@ import { useMessageContext } from '@/modules/chat/core/MessageContext'
  */
 export function BranchNavigator() {
   const msg = useMessageContext()
-  const { forkPoints, conversation } = Stores.Chat
+  // Bind to THIS pane's store (ITEM-38): activateBranch would otherwise route to
+  // the FOCUSED pane, corrupting the other pane's window on same-conversation
+  // splits. Captured once so it can't drift across the await.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { forkPoints, conversation } = chat
 
   if (!msg || !conversation) return null
 
@@ -33,7 +38,7 @@ export function BranchNavigator() {
     if (index < 0 || index >= total) return
     const branchId = branchIds[index]
     if (!branchId || branchId === activeBranchId) return
-    await Stores.Chat.activateBranch(conversation.id, branchId)
+    await chat.activateBranch(conversation.id, branchId)
   }
 
   return (

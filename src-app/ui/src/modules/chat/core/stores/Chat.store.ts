@@ -1,5 +1,10 @@
 import { type ComponentType, memo, type ReactNode } from 'react'
-import { defineStore } from '@/core/store-kit'
+import {
+  defineLocalStore,
+  defineStore,
+  type StoreInitCtx,
+  type StoreSet,
+} from '@/core/store-kit'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
 import type {
@@ -10,9 +15,8 @@ import type {
 } from '@/api-client/types'
 import type { SSEEvent } from '@/modules/chat/core/extensions/types'
 import {
-  setActiveConversation,
-  startChatStream,
-  stopChatStream,
+  type ChatStreamClient,
+  createChatStreamClient,
 } from '@/modules/chat/core/stream/ChatStreamClient'
 import {
   computeChildAnchor,
@@ -165,20 +169,14 @@ const PANEL_STORAGE_KEY = 'ziee-right-panel-tabs-v2'
 const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 // ── Chat-token stream module state ──────────────────────────────────────────
-// These live at MODULE scope (not store state) so they survive store re-init.
-// `chatStreamWired` makes the auth-driven stream lifecycle a once-only wiring
-// (the store's `__init__.__store__` can run again after a destroy; re-running
-// the `useAuthStore.subscribe` would STACK subscribers — cf. core/sync/index).
-let chatStreamWired = false
-// Serializes `applyStreamFrame` calls: the `chat:token` EventBus handler is
-// fire-and-forget, so without this, fast successive frames' async assembly
-// would interleave and drop/duplicate tokens. The old per-request SSE reader
-// awaited each callback; this restores that ordering.
-let frameApplyTail: Promise<void> = Promise.resolve()
 // Min interval between reconnect-driven open-conversation refetches, so a
 // flapping stream can't storm `loadMessages` (mirrors SyncClient's debounce).
+// `frameApplyTail` (frame-apply serialization), `lastChatResyncAt` (resync
+// throttle) and the stream client were formerly MODULE-scope singletons; they
+// are now PER-INSTANCE (declared in `init`) so each split pane serializes /
+// throttles / streams independently and one pane's teardown can't disturb
+// another's (ITEM-6).
 const CHAT_RESYNC_MIN_INTERVAL_MS = 5_000
-let lastChatResyncAt = 0
 
 function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
   try {
@@ -302,6 +300,8 @@ interface ChatState {
   sending: boolean
   isStreaming: boolean
   error: string | null
+  /** HTTP status of the last failed conversation load (404/403) — see initial state. */
+  lastLoadErrorStatus: number | null
   /** The last turn ended via cancel / stream-error / abort (a partial, not a
    *  genuine empty completion). Reset when a new send starts. Consumed by the
    *  message renderer to suppress the empty-completion notice on interrupted
@@ -461,6 +461,18 @@ interface ChatState {
   // The assistant message id of the in-flight generation (from the send
   // response), used to address the stop-generation endpoint.
   streamingMessageId: string | null
+  /** This instance's own chat-token stream client (ITEM-6); null before init. */
+  chatStreamClient: ChatStreamClient | null
+  /** This pane's extension runtime (ITEM-34); null on the single-pane primary. */
+  extensionRuntime: import('../extensions/types').ExtensionLifecycle | null
+  /** This pane's stable id (ITEM-32/37); null on the single-pane primary. */
+  paneId: string | null
+  /** Attach a per-pane extension runtime (called by ChatPaneProvider on mount). */
+  attachExtensionRuntime: (
+    runtime: import('../extensions/types').ExtensionLifecycle | null,
+  ) => void
+  /** Set this pane's stable id (called by ChatPaneProvider on mount). */
+  setPaneId: (paneId: string | null) => void
   stopStreaming: () => void
 
   // ── Right panel ───────────────────────────────────────────────────────────
@@ -491,8 +503,14 @@ interface ChatState {
   __destroy__?: () => void
 }
 
-export const Chat = defineStore('Chat', {
-  state: {
+// Shared authoring config for the chat store. The SAME config builds BOTH the
+// eager "primary" pane (a `defineStore` singleton — pane 0, keeps single-pane
+// behaviour byte-identical + gives boot-time consumers/registry a store to bind
+// to) AND per-pane `defineLocalStore` instances for additional split panes.
+// The initial per-conversation state (named so `typeof chatInitialState` can
+// type the actions/init callbacks — extracting the config to a const otherwise
+// drops the contextual param typing `defineStore` gave them inline).
+const chatInitialState = {
     conversation: null as Conversation | null,
     messages: new Map<string, MessageWithContent>(),
     loading: false,
@@ -500,6 +518,10 @@ export const Chat = defineStore('Chat', {
     sending: false,
     isStreaming: false,
     error: null as string | null,
+    // HTTP status of the last failed conversation load (404 gone / 403 no-access),
+    // so a split pane can move itself out of the workspace when its conversation
+    // is deleted or access is revoked (ITEM-29). Null on success / transient error.
+    lastLoadErrorStatus: null as number | null,
     lastTurnInterrupted: false,
     finalizingTurn: false,
     hasMoreBefore: false,
@@ -510,6 +532,21 @@ export const Chat = defineStore('Chat', {
     tempUserMessageId: null as string | null,
     streamingAbortController: null as AbortController | null,
     streamingMessageId: null as string | null,
+    // This instance's own chat-token stream client (ITEM-6). Created in `init`
+    // so actions can scope it via `setActiveConversation`; null before init.
+    chatStreamClient: null as ChatStreamClient | null,
+    // This pane's extension runtime (ITEM-34). Attached by `ChatPaneProvider` on
+    // mount so lifecycle/hooks bind to THIS pane's store + its own `initialized`
+    // flag. Null on the single-pane primary store → falls back to the global
+    // `chatExtensionRegistry` (which binds to the singleton = correct).
+    extensionRuntime: null as import(
+      '../extensions/types'
+    ).ExtensionLifecycle | null,
+    // This pane's stable id (ITEM-32/37), attached by ChatPaneProvider. Scopes
+    // the composer buffer (per-pane files) + the new-chat sentinel keys (model /
+    // assistant / MCP) so two new-chat panes don't share one selection. Null on
+    // the single-pane primary → the shared/global key (byte-identical).
+    paneId: null as string | null,
     conversationStateCache: new Map<string, ChatStateSnapshot>(),
     cacheClearTimers: new Map<string, NodeJS.Timeout>(),
     // Branch initial state
@@ -528,10 +565,33 @@ export const Chat = defineStore('Chat', {
       activeId: null as string | null,
       mobileDrawerOpen: false,
     },
-  },
-  actions: (set, getRaw) => {
+}
+
+const chatStoreConfig = {
+  state: chatInitialState,
+  actions: (
+    set: StoreSet<typeof chatInitialState>,
+    getRaw: () => typeof chatInitialState,
+  ) => {
     const get = getRaw as () => ChatState
+    // Resolve the extension lifecycle target (ITEM-34): this pane's runtime when
+    // attached (split), else the global registry (single-pane, binds to the
+    // singleton). Every initialize/cleanup/injectExtensionStores call routes here.
+    const extLifecycle = (): import('../extensions/types').ExtensionLifecycle =>
+      get().extensionRuntime ?? chatExtensionRegistry
     return {
+
+    /** Attach a per-pane extension runtime (ChatPaneProvider, on mount). */
+    attachExtensionRuntime: (
+      runtime: import('../extensions/types').ExtensionLifecycle | null,
+    ) => {
+      set({ extensionRuntime: runtime })
+    },
+
+    /** Set this pane's stable id (ChatPaneProvider, on mount). */
+    setPaneId: (paneId: string | null) => {
+      set({ paneId })
+    },
 
     // ── Conversation state management ──────────────────────────────────────
 
@@ -681,7 +741,7 @@ export const Chat = defineStore('Chat', {
       // Scope this device's token stream to the conversation being opened, so
       // it receives (only) this conversation's live assistant tokens — and a
       // catch-up replay if it is mid-generation. Deduped for a no-op repeat.
-      void setActiveConversation(id)
+      void get().chatStreamClient?.setActiveConversation(id)
 
       const currentConversation = get().conversation
       const loadingId = get().loadingConversationId
@@ -721,7 +781,11 @@ export const Chat = defineStore('Chat', {
           },
         }))
 
-        await chatExtensionRegistry.cleanup()
+        await extLifecycle().cleanup()
+        // Capture the OUTGOING message ids BEFORE clearing `messages` (ITEM-38):
+        // reading them after the `set({ messages: new Map() })` below yielded []
+        // — a no-op that leaked the outgoing conversation's collapse state.
+        const outgoingMessageIds = Array.from(get().messages.keys())
         // Clear messages on switch so consumers never momentarily see the
         // OUTGOING conversation's messages under the new conversation id.
         // (Outgoing state was already saved via saveConversationState above;
@@ -745,11 +809,12 @@ export const Chat = defineStore('Chat', {
           loadingNewer: false,
         })
         // Drop the outgoing conversation's ephemeral per-row view state
-        // (show-more collapse, inline-file collapse/seen/height) so the
-        // incoming conversation starts clean — message ids are globally unique,
-        // so this is a memory-bound + correctness measure, not required for
-        // isolation (message-scroll-stability, ITEM-6 / DEC-4).
-        useMessageViewStateStore.getState().resetViewState()
+        // (show-more collapse) so the incoming conversation starts clean. Scoped
+        // to THIS store's own (now-captured) message ids so a split pane switching
+        // conversation never clears another pane's entries (ITEM-21/38).
+        useMessageViewStateStore
+          .getState()
+          .resetViewState(outgoingMessageIds)
       }
 
       get().cancelCacheClear(id)
@@ -757,7 +822,7 @@ export const Chat = defineStore('Chat', {
       const cacheHit = get().loadConversationState(id)
       if (cacheHit) {
         console.log(`[Chat.store] Cache hit for conversation: ${id}`)
-        await chatExtensionRegistry.initialize()
+        await extLifecycle().initialize()
 
         const { conversation } = get()
         if (conversation) {
@@ -786,7 +851,7 @@ export const Chat = defineStore('Chat', {
       }
 
       console.log(`[Chat.store] Cache miss for conversation: ${id}`)
-      set({ loading: true, loadingConversationId: id, error: null })
+      set({ loading: true, loadingConversationId: id, error: null, lastLoadErrorStatus: null })
       try {
         const conversation = await ApiClient.Conversation.get({ id })
         // Stale-result guard: if the user navigated away during the
@@ -804,7 +869,7 @@ export const Chat = defineStore('Chat', {
         await get().loadBranches(id)
         if (get().conversation?.id !== id) return
 
-        await chatExtensionRegistry.initialize()
+        await extLifecycle().initialize()
         await chatExtensionRegistry.onConversationLoad(conversation)
 
         // Restore panel tabs from localStorage (after initialize() so registry is populated)
@@ -830,6 +895,8 @@ export const Chat = defineStore('Chat', {
             error: error.message || 'Failed to load conversation',
             loading: false,
             loadingConversationId: null,
+            lastLoadErrorStatus:
+              typeof error?.status === 'number' ? error.status : null,
           })
         }
       }
@@ -1301,6 +1368,19 @@ export const Chat = defineStore('Chat', {
     applyStreamFrame: async (conversationId: string, event: any) => {
       const type = event?.type
 
+      // SPLIT-VIEW ISOLATION (audit HIGH — both correctness + security angles):
+      // every pane's store subscribes to the shared `chat:token` bus, so pane B
+      // receives pane A's frames too. Only `started`/`content` guarded on the
+      // conversation id; `complete` (unconditional streaming-state reset),
+      // `error` (mismatch path cleared streaming + cache), and the raw-extension
+      // tail (`titleUpdated`/`mcp*` → this store's extensions) did NOT — so a
+      // sibling pane finishing / erroring / renaming corrupted THIS pane. One
+      // guard up front makes a frame for a conversation this store does not have
+      // open a true no-op. Single-pane: the client is subscription-scoped to the
+      // open conversation, so this never trips (the per-branch re-checks below
+      // still handle a switch that happens mid-await).
+      if (get().conversation?.id !== conversationId) return
+
       // Mark the OPEN conversation as streaming on started/content. Critical for
       // a RECEIVING device (one watching a generation another device started) —
       // it never went through `sendMessage`, so without this its "generating"
@@ -1341,7 +1421,7 @@ export const Chat = defineStore('Chat', {
         }
 
         const sseEvent: SSEEvent = { event_type: 'started', data: event }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
         if (handled) return
 
         const state = get()
@@ -1386,7 +1466,7 @@ export const Chat = defineStore('Chat', {
 
         const data = event
         const sseEvent: SSEEvent = { event_type: 'content', data }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
         if (handled) return
 
         const state = get()
@@ -1534,7 +1614,7 @@ export const Chat = defineStore('Chat', {
 
       if (type === 'complete') {
         const sseEvent: SSEEvent = { event_type: 'complete', data: event }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
         if (handled) return
 
         const { streamingMessage } = get()
@@ -1597,8 +1677,12 @@ export const Chat = defineStore('Chat', {
           lastTurnInterrupted: cancelled,
         })
 
+        // Per-pane (ITEM v2): the completion runs in the OWNING pane's own store,
+        // so thread this pane's id to the extension hooks (the async-hook focus-race
+        // fix). The switched-away/background case already returned via the early bail
+        // above (`!isOnOriginalConversation`), so no extra guard is needed here.
         if (streamingMessage) {
-          await chatExtensionRegistry.afterStreamComplete(streamingMessage)
+          await chatExtensionRegistry.afterStreamComplete(streamingMessage, get().paneId)
         }
         const conversation = get().conversation
 
@@ -1663,9 +1747,9 @@ export const Chat = defineStore('Chat', {
 
       if (type === 'error') {
         const streamError = new Error(event.message || 'Stream error')
-        await chatExtensionRegistry.onStreamError(streamError)
+        await chatExtensionRegistry.onStreamError(streamError, get().paneId)
         const sseEvent: SSEEvent = { event_type: 'error', data: event }
-        await chatExtensionRegistry.handleSSEEvent(sseEvent)
+        await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
 
         if (get().conversation?.id !== conversationId) {
           set({
@@ -1719,7 +1803,7 @@ export const Chat = defineStore('Chat', {
       // `default` SSE handler did. The backend forwards these onto the
       // chat-token stream alongside content frames.
       const sseEvent: SSEEvent = { event_type: type, data: event }
-      await chatExtensionRegistry.handleSSEEvent(sseEvent)
+      await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
     },
 
     sendMessage: async () => {
@@ -1734,9 +1818,13 @@ export const Chat = defineStore('Chat', {
         )
       }
 
-      // Collect all request fields from extensions
-      const allRequestFields =
-        await chatExtensionRegistry.composeRequestFields()
+      // Collect all request fields from extensions. Pass THIS pane's
+      // conversation id so per-conversation composer selections (e.g. model)
+      // resolve to the sending pane (ITEM-5); null = a new-chat pane.
+      const allRequestFields = await chatExtensionRegistry.composeRequestFields({
+        conversationId: get().conversation?.id ?? null,
+        paneId: get().paneId,
+      })
 
       // Inject branching fields directly (moved from branching extension)
       const pendingBranchFromMessageId = get().pendingBranchFromMessageId
@@ -1767,7 +1855,7 @@ export const Chat = defineStore('Chat', {
           type: 'conversation.created',
           data: { conversation },
         })
-        await chatExtensionRegistry.initialize()
+        await extLifecycle().initialize()
         await chatExtensionRegistry.onConversationLoad(conversation)
       }
 
@@ -1792,6 +1880,7 @@ export const Chat = defineStore('Chat', {
       const userContents = await chatExtensionRegistry.provideUserContent(
         (allRequestFields.content as string) || '',
         allRequestFields,
+        get().paneId,
       )
 
       const tempUserMessage: MessageWithContent = {
@@ -1816,7 +1905,7 @@ export const Chat = defineStore('Chat', {
         // Subscribe this device's token stream to the (possibly just-created)
         // conversation BEFORE kicking off generation, so it receives all of its
         // own tokens. Idempotent/deduped for an already-open conversation.
-        await setActiveConversation(conversation.id)
+        await get().chatStreamClient?.setActiveConversation(conversation.id)
 
         // Fire-and-forget: the assistant reply streams over the chat-token
         // stream (applied by `applyStreamFrame` via the `chat:token` router),
@@ -1853,7 +1942,7 @@ export const Chat = defineStore('Chat', {
           }
         }
 
-        await chatExtensionRegistry.onMessageSent()
+        await chatExtensionRegistry.onMessageSent(get().paneId)
         get().clearPendingBranch()
         set({ sending: false })
       } catch (error: any) {
@@ -1864,6 +1953,7 @@ export const Chat = defineStore('Chat', {
             error instanceof Error
               ? error
               : new Error(error.message || 'Failed to send message'),
+            get().paneId,
           )
         }
 
@@ -2065,7 +2155,7 @@ export const Chat = defineStore('Chat', {
 
     reset: async () => {
       // Leaving for a new chat: stop receiving any conversation's tokens.
-      void setActiveConversation(null)
+      void get().chatStreamClient?.setActiveConversation(null)
       const { conversation } = get()
       if (conversation) {
         get().saveConversationState(conversation.id)
@@ -2079,7 +2169,7 @@ export const Chat = defineStore('Chat', {
           rightPanel.activeId,
         )
 
-        await chatExtensionRegistry.cleanup()
+        await extLifecycle().cleanup()
       }
 
       set(state => ({
@@ -2119,11 +2209,59 @@ export const Chat = defineStore('Chat', {
 
     }
   },
-  init: ({ set, get: getRaw, onCleanup }) => {
+  init: ({
+    set,
+    get: getRaw,
+    on,
+    onCleanup,
+  }: StoreInitCtx<typeof chatInitialState>) => {
     const get = getRaw as () => ChatState
-    void (async () => {
-        const { Stores } = await import('@/core/stores')
 
+    // Idempotent: `__init__.__store__` can be invoked more than once per instance
+    // (a local pane self-inits via `.use()`, and the `Stores.Chat` proxy's lazy
+    // init check may also fire it for the focused pane). Bail if this instance
+    // already created its client, so we never stack a second client / auth
+    // subscription.
+    if (get().chatStreamClient) return
+
+    // Per-init-lifecycle teardown flag. The async continuation below restarts the
+    // stream client AFTER an `await`; under React StrictMode a pane's init runs
+    // init#1 → destroy#1 → init#2 on the SAME api, so init#1's resumed tail must
+    // NOT restart its already-stopped client (that would leak an SSE the final
+    // teardown can't reach). `onCleanup` sets this true; the tail bails on it.
+    let destroyed = false
+
+    // Per-instance stream/serialization state (formerly module singletons). Each
+    // pane serializes its own frame-apply chain, throttles its own resync, and
+    // owns its own stream client — so panes never couple (ITEM-6).
+    let frameApplyTail: Promise<void> = Promise.resolve()
+    let lastChatResyncAt = 0
+    // Reconnect handler is forward-declared (resyncOpen is defined in the async
+    // IIFE below); the client only fires it after a genuine (re)connect, long
+    // after that assignment lands.
+    let onStreamReconnect: () => void = () => {}
+    // Deliver THIS client's frames DIRECTLY to THIS pane's store (ITEM-35) rather
+    // than the global `chat:token` bus, so two panes on the same conversation
+    // never double-process. SERIALIZED via the per-instance tail promise
+    // (applyStreamFrame is async → concurrent calls would corrupt streamingMessage).
+    const streamClient = createChatStreamClient({
+      onFrame: (conversationId, event) => {
+        frameApplyTail = frameApplyTail
+          .then(() => get().applyStreamFrame(conversationId, event))
+          .catch((err) => console.error('[chat:token] apply failed', err))
+      },
+      onReconnect: () => onStreamReconnect(),
+    })
+    set({ chatStreamClient: streamClient })
+
+    // Give THIS instance its own extension-store instances (e.g. the composer
+    // `TextStore`) so split panes don't share one. Idempotent — the primary's
+    // register-time seed is left in place, so single-pane is unchanged (ITEM-4/5).
+    ;(get().extensionRuntime ?? chatExtensionRegistry).injectExtensionStores(
+      get() as unknown as Record<string, unknown>,
+    )
+
+    void (async () => {
         // Cross-device sync: when the currently-OPEN conversation changed on
         // another device (a completed message turn, rename, branch switch,
         // edit/delete), refetch its messages + branches. Skip while we're
@@ -2171,8 +2309,11 @@ export const Chat = defineStore('Chat', {
           lastChatResyncAt = now
           void reloadOpen(id)
         }
+        // Wire this pane's stream client reconnect → its own debounced resync
+        // (ITEM-35): only THIS pane refetches on its own reconnect, not all panes.
+        onStreamReconnect = resyncOpen
 
-        Stores.EventBus.on(
+        on(
           'sync:conversation',
           event => {
             if (event.data.action === 'delete') {
@@ -2185,63 +2326,65 @@ export const Chat = defineStore('Chat', {
             }
             void reloadOpen(event.data.id)
           },
-          'Chat',
         )
 
-        Stores.EventBus.on('sync:reconnect', () => resyncOpen(), 'Chat')
+        on('sync:reconnect', () => resyncOpen())
 
-        // Live chat-token stream lifecycle. Owned by the chat module (this
-        // stream serves only chat); start on auth, restart on user-switch,
-        // stop on logout — mirrors core/sync's index but module-local. Wired
-        // ONCE: __init__.__store__ can run again after a store destroy, and a
-        // second `useAuthStore.subscribe` would stack subscribers.
-        if (!chatStreamWired) {
-          chatStreamWired = true
-          const { useAuthStore } = await import('@/modules/auth/Auth.store')
-          let currentUserId = useAuthStore.getState().user?.id
-          const applyAuth = (userId: string | undefined) => {
-            stopChatStream()
-            if (userId) startChatStream()
-          }
-          applyAuth(currentUserId)
-          useAuthStore.subscribe(state => {
-            const id = state.user?.id
-            if (id === currentUserId) return
-            currentUserId = id
-            applyAuth(id)
-          })
+        // Live chat-token stream lifecycle for THIS instance's own client. Start
+        // on auth, restart on user-switch, stop on logout — mirrors core/sync's
+        // index but per-instance. The auth subscription + the client are torn
+        // down in `onCleanup`, so a re-init (or a pane unmount) never stacks
+        // subscribers or leaks a connection.
+        const { useAuthStore } = await import('@/modules/auth/Auth.store')
+        // Bail if this init lifecycle was torn down during the await (a StrictMode
+        // destroy#1 landing between init#1's await and its resume) — otherwise we'd
+        // restart a stopped client and register an orphaned auth sub that the
+        // already-drained teardown will never reach (DRIFT-2.16).
+        if (destroyed) return
+        let currentUserId = useAuthStore.getState().user?.id
+        const applyAuth = (userId: string | undefined) => {
+          streamClient.stop()
+          if (userId) streamClient.start()
         }
+        applyAuth(currentUserId)
+        const unsubscribeAuth = useAuthStore.subscribe(state => {
+          const id = state.user?.id
+          if (id === currentUserId) return
+          currentUserId = id
+          applyAuth(id)
+        })
+        onCleanup(unsubscribeAuth)
 
-        // Inbound: route each live generation frame to the open conversation.
-        // Fires on EVERY device (sender or receiver) — whichever has the
-        // conversation open renders live tokens. SERIALIZED via a tail promise:
-        // applyStreamFrame is async (awaits extension hooks / loadMessages), so
-        // concurrent invocations would interleave and corrupt streamingMessage.
-        Stores.EventBus.on(
-          'chat:token',
-          event => {
-            frameApplyTail = frameApplyTail
-              .then(() =>
-                get().applyStreamFrame(
-                  event.data.conversation_id,
-                  event.data.event,
-                ),
-              )
-              .catch(err => console.error('[chat:token] apply failed', err))
-          },
-          'Chat',
-        )
-
-        // On stream (re)connect the server replays the reply-so-far (catch-up);
-        // also reconcile the open conversation from the DB (debounced).
-        Stores.EventBus.on('chat:stream-reconnect', () => resyncOpen(), 'Chat')
+        // Inbound frames + stream-reconnect are now delivered DIRECTLY to this
+        // pane's client via the onFrame/onReconnect callbacks wired at client
+        // creation (ITEM-35) — no global `chat:token` / `chat:stream-reconnect`
+        // EventBus subscription, so a same-conversation split never double-applies.
     })()
     onCleanup(() => {
       console.log('[Chat.store] Destroying - cleaning up resources')
 
-      void import('@/core/stores').then(({ Stores }) =>
-        Stores.EventBus.removeGroupListeners('Chat'),
-      )
+      // Stop this instance's own stream client (its own SSE connection). The
+      // `ctx.on` subscriptions + the auth unsubscribe are torn down by the
+      // store-kit builder's per-group cleanup — NO manual
+      // `removeGroupListeners('Chat')` here: for a split pane that would wipe the
+      // PRIMARY pane's ('Chat'-group) listeners too.
+      // Mark this init lifecycle destroyed FIRST, so init#1's still-pending async
+      // tail (under a StrictMode init#1→destroy#1→init#2 remount) bails at its
+      // `if (destroyed) return` instead of restarting this client (DRIFT-2.16).
+      destroyed = true
+      streamClient.stop()
+
+      // Null the client so a destroy→re-init cycle passes the init guard
+      // (`if (get().chatStreamClient) return`, ~L2098). The SINGLETON primary's
+      // STATE OBJECT survives destroy (defineStore creates it once; ref-count
+      // destroy only tears down subscriptions), so without this a navigate-away >5s
+      // (grace destroy) + return leaves the stopped client in state, the guard
+      // early-returns, and streaming + sync never re-establish (DRIFT-2.15). Now
+      // SAFE for pane instances too: the `destroyed` flag above stops init#1's tail
+      // from restarting the orphaned client, so nulling lets init#2 fully
+      // re-register the teardown + sync subscriptions instead of early-returning
+      // with them dropped (the StrictMode teardown-drop FIX_ROUND-7 caught).
+      set({ chatStreamClient: null })
 
       const state = get()
 
@@ -2265,7 +2408,10 @@ export const Chat = defineStore('Chat', {
       if (state.conversation) {
         get().saveConversationState(state.conversation.id)
 
-        chatExtensionRegistry
+        // Route through THIS pane's runtime (ITEM-34) so a pane's teardown cleans
+        // up its OWN extension subscriptions, not the singleton's; single-pane
+        // falls back to the global registry.
+        ;(state.extensionRuntime ?? chatExtensionRegistry)
           .cleanup()
           .catch(error =>
             console.error('[Chat.store] Extension cleanup failed:', error),
@@ -2274,11 +2420,25 @@ export const Chat = defineStore('Chat', {
 
       state.conversationStateCache.clear()
       state.cacheClearTimers.clear()
-      useMessageViewStateStore.getState().resetViewState()
+      // Scoped to this instance's own messages so tearing down one split pane
+      // doesn't wipe another pane's live view state (ITEM-21).
+      useMessageViewStateStore
+        .getState()
+        .resetViewState(Array.from(state.messages.keys()))
 
       console.log('[Chat.store] Destroyed successfully')
     })
   },
-})
+}
+
+/** Pane 0 — the eager primary chat store (a global singleton). Single-pane chat
+ *  runs entirely on this instance, so behaviour is unchanged. The `Stores.Chat`
+ *  bridge (chatBridge.ts) forwards to whichever pane is focused, defaulting here. */
+export const Chat = defineStore('Chat', chatStoreConfig)
+
+/** Per-pane chat store for additional split panes (ITEM-2). Same config as the
+ *  primary; each `.use()` / `.create()` is an independent instance with its own
+ *  EventBus group. */
+export const ChatPaneStore = defineLocalStore(chatStoreConfig)
 
 export const useChatStore = Chat.store

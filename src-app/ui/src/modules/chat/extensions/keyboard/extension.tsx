@@ -4,6 +4,26 @@ import {
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
 import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
+
+/**
+ * Resolve the DOM subtree of the FOCUSED split pane (ITEM-39). The keyboard
+ * shortcuts run one GLOBAL document listener, so a `document.querySelector` would
+ * always hit the LEFTMOST pane's Send button / textarea — Ctrl+Enter would send
+ * pane A no matter which pane you're typing in. Scoping the lookup to the focused
+ * pane's container (`chat-pane-<index>`) sends/focuses/clears the RIGHT pane.
+ * Single-pane (0–1 panes) has no wrapper → falls back to `document`, unchanged.
+ */
+function focusedPaneRoot(): ParentNode {
+  const { panes, focusedPaneId } = useSplitViewStore.getState()
+  if (panes.length < 2 || !focusedPaneId) return document
+  const idx = panes.findIndex((p) => p.paneId === focusedPaneId)
+  if (idx < 0) return document
+  return (
+    document.querySelector<HTMLElement>(`[data-testid="chat-pane-${idx}"]`) ??
+    document
+  )
+}
 
 /**
  * Keyboard shortcut configuration
@@ -27,8 +47,8 @@ const defaultShortcuts: KeyboardShortcut[] = [
     ctrlKey: true,
     description: 'Send message (Ctrl+Enter)',
     action: () => {
-      // Trigger send message
-      const sendButton = document.querySelector<HTMLButtonElement>(
+      // Trigger send in the FOCUSED pane (ITEM-39), not the leftmost.
+      const sendButton = focusedPaneRoot().querySelector<HTMLButtonElement>(
         'button[aria-label="Send message"]',
       )
       if (sendButton) {
@@ -41,7 +61,7 @@ const defaultShortcuts: KeyboardShortcut[] = [
     ctrlKey: true,
     description: 'Focus message input (Ctrl+K)',
     action: () => {
-      const textarea = document.querySelector<HTMLTextAreaElement>(
+      const textarea = focusedPaneRoot().querySelector<HTMLTextAreaElement>(
         'textarea[placeholder*="Type your message"]',
       )
       if (textarea) {
@@ -53,7 +73,7 @@ const defaultShortcuts: KeyboardShortcut[] = [
     key: 'Escape',
     description: 'Clear message input (Esc)',
     action: () => {
-      const textarea = document.querySelector<HTMLTextAreaElement>(
+      const textarea = focusedPaneRoot().querySelector<HTMLTextAreaElement>(
         'textarea[placeholder*="Type your message"]',
       )
       if (textarea) {
@@ -68,6 +88,10 @@ const defaultShortcuts: KeyboardShortcut[] = [
  * Global keyboard event handler
  */
 let globalKeyboardHandler: ((event: KeyboardEvent) => void) | null = null
+// Refcount of live pane runtimes (ITEM-39): the ONE global listener must survive
+// until EVERY pane has cleaned up. Without it, the first pane's cleanup() would
+// remove the shared listener and disarm the survivors.
+let keyboardInitCount = 0
 
 /**
  * Create keyboard event handler for shortcuts
@@ -123,24 +147,22 @@ const keyboardExtension: ChatExtension = createExtension({
   // No store needed - stateless extension
 
   initialize: async () => {
-    // Only register handler if not already registered (global handler)
+    // ONE global listener across all panes (refcounted). Actions resolve the
+    // focused pane at event time (focusedPaneRoot), so a single handler is
+    // pane-correct.
+    keyboardInitCount++
     if (!globalKeyboardHandler) {
       globalKeyboardHandler = createKeyboardHandler(defaultShortcuts)
       document.addEventListener('keydown', globalKeyboardHandler)
-
-      console.log(
-        '[Keyboard Extension] Initialized shortcuts:',
-        defaultShortcuts.length,
-      )
     }
   },
 
   cleanup: async () => {
-    // Remove global handler
-    if (globalKeyboardHandler) {
+    // Only remove the shared listener once the LAST pane has cleaned up.
+    keyboardInitCount = Math.max(0, keyboardInitCount - 1)
+    if (keyboardInitCount === 0 && globalKeyboardHandler) {
       document.removeEventListener('keydown', globalKeyboardHandler)
       globalKeyboardHandler = null
-      console.log('[Keyboard Extension] Cleaned up shortcuts')
     }
   },
 

@@ -1,4 +1,5 @@
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { FileCard } from '@/modules/file/components/FileCard'
 import type { File as FileEntity } from '@/api-client/types'
 
@@ -32,6 +33,8 @@ export function AttachedFileCard({
   versionId,
   isUser,
 }: AttachedFileCardProps) {
+  // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
   const fallback: FileEntity = {
     id: fileId,
     filename,
@@ -61,7 +64,7 @@ export function AttachedFileCard({
   // Chat surfaces open the side-by-side right panel (mounted in ConversationPage);
   // without this, FileCard falls back to the global preview drawer.
   const openInRightPanel = () => {
-    Stores.Chat.displayInRightPanel({
+    chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
       type: 'file',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MessageSquareQuote, PencilLine } from 'lucide-react'
 import { Button, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   buildSelectionAskMessage,
   buildSelectionEditMessage,
@@ -31,6 +32,10 @@ export function CanvasSelectionPopover({
 }) {
   const [sel, setSel] = useState<{ text: string; top: number; left: number } | null>(null)
   const popRef = useRef<HTMLDivElement>(null)
+  // Inject into THIS pane's composer, not the focused-pane bridge (audit #10): a
+  // canvas viewer lives in its own pane's right panel, so "Ask/Edit in chat" from
+  // pane B's viewer must target pane B's composer even when pane A is focused.
+  const paneChat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
 
   useEffect(() => {
     const onUp = () => {
@@ -63,7 +68,7 @@ export function CanvasSelectionPopover({
 
   if (!sel) return null
 
-  const composer = Stores.Chat.$.TextStore
+  const composer = paneChat.$.TextStore
   const injectIntoComposer = (text: string) => {
     const existing = composer.getText()
     composer.setText(existing ? `${existing}\n\n${text}` : text)

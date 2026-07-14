@@ -1,6 +1,8 @@
 import { Paperclip } from 'lucide-react'
 import { Button, Tooltip, Upload, message } from '@/components/ui'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { composerPaneKey } from '@/modules/file/stores/File.store'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import {
@@ -15,6 +17,7 @@ import {
 export function FileUploadButton() {
   // Access file extension store directly via Stores.Chat (reactive via store proxy)
   const { uploadFiles } = Stores.File
+  const paneKey = composerPaneKey(useChatPaneOrNull()?.paneId)
   const canUpload = usePermission(Permissions.FilesUpload)
 
   if (!canUpload) return null
@@ -34,7 +37,7 @@ export function FileUploadButton() {
 
     if (files.length > 0) {
       // Upload files using store
-      uploadFiles(files).catch((error: any) => {
+      uploadFiles(paneKey, files).catch((error: any) => {
         console.error('Upload failed:', error)
         message.error('Failed to upload files')
       })

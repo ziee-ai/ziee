@@ -4,6 +4,11 @@ import { Permissions, type VoiceCapability } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@/core/stores'
 import { defineExtensionStore } from '@/modules/chat/core/extensions'
+import { paneRegistry } from '@/modules/chat/core/stores/chatBridge'
+import {
+  acquireRecordingLock,
+  releaseRecordingLock,
+} from './voiceRecordingLock'
 import { recordedBlobToWav16k } from './audio/wav'
 import {
   appendTranscript,
@@ -42,7 +47,12 @@ let mediaStream: MediaStream | null = null
 let chunks: Blob[] = []
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 let stageTimer: ReturnType<typeof setTimeout> | null = null
-let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
+// NOTE: `errorRevertTimer` is deliberately NOT module-scope — see the per-instance
+// declaration inside `actions`. The other timers/recorder above ARE shared because
+// the exclusive recording lock guarantees at most one pane is in the recording flow
+// at a time; but TWO panes can sit in the post-fail 'error' window simultaneously
+// (pane A fails → releases the lock → pane B records → fails), so a shared revert
+// timer would let pane B's fail cancel pane A's error→idle auto-revert.
 let requestTimeout: ReturnType<typeof setTimeout> | null = null
 /** Self-rescheduling interim (live-caption) decode timer; null when not looping. */
 let interimTimer: ReturnType<typeof setTimeout> | null = null
@@ -121,14 +131,45 @@ function clearTimers(): void {
 const COMPOSER_TESTID = 'chat-message-textarea'
 const TESTID_ATTR = 'data-testid'
 
-function focusComposer(): void {
+/** Focus the composer textarea of the OWNING pane, scoped to its `chat-pane-<idx>`
+ *  subtree (ITEM-45) — the previous document-wide first-match stole focus to the
+ *  leftmost pane. paneId null → single-pane document-wide (unchanged). */
+function focusComposer(paneId: string | null): void {
   if (typeof document === 'undefined' || typeof requestAnimationFrame === 'undefined') return
   requestAnimationFrame(() => {
-    const el = document.querySelector<HTMLTextAreaElement>(
-      `[${TESTID_ATTR}="${COMPOSER_TESTID}"]`,
-    )
-    el?.focus()
+    let scope: ParentNode = document
+    if (paneId) {
+      const idx = Stores.SplitView.$.panes.findIndex(p => p.paneId === paneId)
+      if (idx >= 0) {
+        const paneEl = document.querySelector<HTMLElement>(
+          `[${TESTID_ATTR}="chat-pane-${idx}"]`,
+        )
+        if (paneEl) scope = paneEl
+      }
+    }
+    scope
+      .querySelector<HTMLTextAreaElement>(`[${TESTID_ATTR}="${COMPOSER_TESTID}"]`)
+      ?.focus()
   })
+}
+
+/** The TextStore of the OWNING pane (ITEM-45) — the pane that recorded — so the
+ *  transcript lands in ITS composer, not the focused pane's. paneId null → the
+ *  focused/single-pane bridge (unchanged). */
+function ownerTextStore(
+  paneId: string | null,
+): { getText(): string; setText(t: string): void } {
+  if (paneId) {
+    const handle = paneRegistry.get(paneId)
+    if (handle) {
+      return (
+        handle.api.getState() as unknown as {
+          TextStore: { getText(): string; setText(t: string): void }
+        }
+      ).TextStore
+    }
+  }
+  return Stores.Chat.$.TextStore
 }
 
 /**
@@ -151,6 +192,10 @@ export const createVoiceStore = defineExtensionStore({
   immer: false,
   state: {
     status: 'idle' as VoiceStatus,
+    /** The pane that owns the active recording (ITEM-45) — the transcript + focus
+     *  target. null on the single-pane route. Kept in per-pane state so this
+     *  instance's stop/cancel resolve ITS own owner, not a shared module value. */
+    recordingPaneId: null as string | null,
     /** Elapsed record time in ms (drives the on-screen timer). */
     elapsedMs: 0,
     /** Readiness snapshot; null until fetched. */
@@ -177,6 +222,9 @@ export const createVoiceStore = defineExtensionStore({
     announcement: '',
   },
   actions: (set, get) => {
+    // Per-instance (per-pane): each pane's 'error' state owns its OWN auto-revert
+    // timer, so a second pane failing doesn't cancel this pane's error→idle revert.
+    let errorRevertTimer: ReturnType<typeof setTimeout> | null = null
     const revertToIdleSoon = () => {
       if (errorRevertTimer !== null) clearTimeout(errorRevertTimer)
       errorRevertTimer = setTimeout(() => {
@@ -193,9 +241,11 @@ export const createVoiceStore = defineExtensionStore({
       requestGeneration++
       stopStream()
       chunks = []
+      releaseRecordingLock(get().recordingPaneId) // ITEM-45: free the exclusive lock
       message.error(msg)
       set({
         status: 'error',
+        recordingPaneId: null,
         errorMessage: msg,
         announcement: msg,
         elapsedMs: 0,
@@ -271,16 +321,25 @@ export const createVoiceStore = defineExtensionStore({
       set({ liveCaptions: on })
     }
 
-    const startRecording = async () => {
+    const startRecording = async (paneId: string | null = null) => {
         const { status, capability } = get()
         if (status !== 'idle' && status !== 'error') return
         if (!isRecordingSupported()) {
           fail('Voice recording is not supported in this browser.')
           return
         }
+        // Exclusive recording (ITEM-45, DEC-61 A1): the mic + module recorder are
+        // single-owner, so refuse if ANOTHER split pane is already recording rather
+        // than clobbering its stream. (Held through transcription so its buffered
+        // chunks aren't reset out from under it.)
+        if (!acquireRecordingLock(paneId)) {
+          set({ announcement: 'Another pane is recording. Stop it first.' })
+          return
+        }
         const gen = ++requestGeneration
         set({
           status: 'requesting',
+          recordingPaneId: paneId,
           errorMessage: null,
           announcement: '',
           elapsedMs: 0,
@@ -424,18 +483,22 @@ export const createVoiceStore = defineExtensionStore({
           if (isSuperseded(gen, requestGeneration)) return
           clearTimers()
           const text = result.text?.trim() ?? ''
+          // Insert into the OWNING pane's composer (ITEM-45), not the focused pane.
+          const ownerPaneId = get().recordingPaneId
           if (text) {
-            const textStore = Stores.Chat.$.TextStore
+            const textStore = ownerTextStore(ownerPaneId)
             textStore.setText(appendTranscript(textStore.getText(), text))
           }
+          releaseRecordingLock(ownerPaneId)
           set({
             status: 'idle',
+            recordingPaneId: null,
             elapsedMs: 0,
             stageText: '',
             errorMessage: null,
             announcement: text ? 'Transcript added' : 'No speech detected',
           })
-          focusComposer()
+          focusComposer(ownerPaneId)
         } catch (err) {
           // Superseded by a cancel/unmount — swallow the (now irrelevant) error.
           if (isSuperseded(gen, requestGeneration)) return
@@ -451,6 +514,29 @@ export const createVoiceStore = defineExtensionStore({
       // announcement when this runs as an unmount cleanup while already idle.
       const status = get().status
       if (status === 'idle') return
+      // 'error' is the ONE non-idle state where this pane has ALREADY released the
+      // exclusive lock and cleared its recorder ownership (see `fail`). During the
+      // ~2.5s error window ANOTHER pane may have acquired the lock and now owns the
+      // shared module recorder/stream/chunks/timers. So an 'error'-state cancel
+      // (e.g. this pane unmounting) must touch ONLY this pane's own revert timer +
+      // status — never the shared recorder, or it would stop the other pane's live
+      // recording, wipe its buffer, and (since recordingPaneId is null here)
+      // release nothing, stranding that pane's lock forever.
+      if (status === 'error') {
+        if (errorRevertTimer !== null) {
+          clearTimeout(errorRevertTimer)
+          errorRevertTimer = null
+        }
+        set({
+          status: 'idle',
+          errorMessage: null,
+          elapsedMs: 0,
+          stageText: '',
+          interimText: '',
+          announcement: 'Recording cancelled',
+        })
+        return
+      }
       finalizing = false
       clearTimers()
       // Abandon a pending getUserMedia prompt so a late resolve discards its
@@ -467,15 +553,18 @@ export const createVoiceStore = defineExtensionStore({
       }
       stopStream()
       chunks = []
+      const ownerPaneId = get().recordingPaneId
+      releaseRecordingLock(ownerPaneId) // ITEM-45: free the exclusive lock
       set({
         status: 'idle',
+        recordingPaneId: null,
         elapsedMs: 0,
         stageText: '',
         errorMessage: null,
         interimText: '',
         announcement: 'Recording cancelled',
       })
-      focusComposer()
+      focusComposer(ownerPaneId)
     }
 
     return { fetchCapability, setLiveCaptions, startRecording, stopRecording, cancelRecording }

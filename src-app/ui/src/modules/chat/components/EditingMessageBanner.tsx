@@ -2,6 +2,7 @@ import { Button, Tooltip } from '@/components/ui'
 import { Text } from '@/components/ui'
 import { Pencil, X } from 'lucide-react'
 import { Stores } from '@/core/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**
  * Shows a banner above the Chat Input when the user is in edit mode.
@@ -12,7 +13,11 @@ import { Stores } from '@/core/stores'
  * trimmed messages, and clears the text input.
  */
 export function EditingMessageBanner() {
-  const editingMessage = Stores.Chat.editingMessage
+  // Bind to THIS pane's store (audit #10): the edit is started on the pane's own
+  // store (MessageActions), so the banner + cancel must read/act on that pane, not
+  // the focused-pane bridge.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const editingMessage = chat.editingMessage
 
   if (!editingMessage) return null
 
@@ -33,7 +38,7 @@ export function EditingMessageBanner() {
           variant="ghost"
           size="default"
           icon={<X />}
-          onClick={() => Stores.Chat.cancelEdit()}
+          onClick={() => chat.cancelEdit()}
           aria-label="Cancel edit"
         />
       </Tooltip>

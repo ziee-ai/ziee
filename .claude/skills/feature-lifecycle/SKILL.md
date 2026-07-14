@@ -325,6 +325,18 @@ separate handlers — the originating device's own echo is suppressed, so a
 "What happens when it's deleted / access is revoked?" must be ANSWERED BY RUNNING
 it (delete it, watch the surface), never inferred from a handler.
 
+> **Entity-lifecycle audit (mandatory sub-check of the infra walk).** For EVERY
+> entity a surface holds, displays, or caches (conversation, pane, file, message,
+> membership, …), enumerate what happens on **ADD / REMOVE / MUTATE / access-loss**
+> — and prove each is handled from **BOTH** origins: the **local same-session**
+> mutation path AND the **cross-device / sync (SSE)** path. These are DIFFERENT
+> code (the originating device's sync echo is self-suppressed), so a handler that
+> covers `sync:X delete` does NOT cover the user deleting it themselves, and
+> vice-versa. Answer each "what happens when it's removed?" by RUNNING it (remove
+> it, watch the surface) — not by pointing at a sync handler. This is exactly the
+> gap that shipped a split pane going stale on a local delete (FB-23): the
+> cross-device path was wired, the local one wasn't.
+
 Implement all items (only `cargo check` / `tsc` mid-flight; don't run the full
 suites yet — [[feedback_finish_all_before_testing]]). Then audit
 **implementation vs plan** and write `DRIFT-1.md`. For each divergence:
