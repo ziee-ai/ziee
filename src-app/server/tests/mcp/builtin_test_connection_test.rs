@@ -106,12 +106,22 @@ async fn builtin_probe_still_works_after_a_logout_bumped_the_token_epoch() {
         .expect("logout");
     assert_eq!(res.status(), 204);
 
+    // `create_user_with_permissions` uniquifies the username (`<name>_<uuid8>`)
+    // and TestUser doesn't expose it, so read it back by id. Password is the
+    // helper's fixed `password123`.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = $1::uuid")
+        .bind(&admin.user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read back the generated username");
+
     // Fresh session for the same user — its token carries epoch 1.
     let res = client
         .post(server.api_url("/auth/login"))
         .json(&json!({
-            "username": "builtin_probe_after_logout",
-            "password": "testpass123",
+            "username": username,
+            "password": "password123",
         }))
         .send()
         .await
