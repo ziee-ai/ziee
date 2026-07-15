@@ -68,7 +68,12 @@ ziee-hardware = { path = "../../sdk/crates/ziee-hardware" }
 # engine's feature (which owns the `sandbox-seccomp` static link).
 ziee-sandbox = { path = "../../sdk/crates/ziee-sandbox" }
 ziee-server-update = { path = "../../sdk/crates/ziee-server-update" }
-ziee-notification = { path = "../../sdk/crates/ziee-notification" }
+# `routes` = the resolver-generic notification engine (repository/events seam/
+# aide+axum handlers/`notification_router::<R>()` + the NOTIFICATION_KINDS
+# registry). NOT `module`: ziee keeps its OWN thin `AppModule` bound to
+# `ZieeIdentityResolver`, so enabling the turnkey `module` (DefaultIdentityResolver)
+# would double-register the notification module. Mirrors ziee-auth/ziee-file.
+ziee-notification = { path = "../../sdk/crates/ziee-notification", features = ["routes"] }
 # `ziee-onboarding` — the generic guide/step completion tracker. Owns the
 # `user_onboarding` table migration (globbed into the merged set), the
 # `OnboardingProgress` wire type, AND the schema-bound repository (its own build

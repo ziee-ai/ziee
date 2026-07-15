@@ -14,6 +14,7 @@ import {
 } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { renderNotificationContent } from '../kinds'
 
 /** The full notification inbox at /notifications. */
 export function NotificationsPage() {
@@ -33,9 +34,20 @@ export function NotificationsPage() {
     }
   }, [])
 
+  // Per-kind renderer context (seam). `close` is a no-op on the full page (no
+  // popover to dismiss).
+  const rendererCtx = {
+    markRead: (id: string) => void Stores.Notifications.markRead(id),
+    remove: (id: string) => void Stores.Notifications.remove(id),
+    close: () => {},
+  }
+
   const open = (n: (typeof items)[number]) => {
     void Stores.Notifications.markRead(n.id)
-    if (n.conversation_id) navigate(`/chat/${n.conversation_id}`)
+    // R2: kind-specific ids ride the `payload` jsonb column (typed `unknown`).
+    const conversationId = (n.payload as { conversation_id?: string } | null)
+      ?.conversation_id
+    if (conversationId) navigate(`/chat/${conversationId}`)
   }
 
   return (
@@ -96,15 +108,7 @@ export function NotificationsPage() {
                   onClick={() => open(n)}
                   data-testid={`notification-open-${n.id}`}
                 >
-                  <Text className="font-medium">{n.title}</Text>
-                  {n.body && (
-                    <Text className="text-muted-foreground text-sm">
-                      {n.body}
-                    </Text>
-                  )}
-                  <Text className="text-muted-foreground text-xs">
-                    {new Date(n.created_at).toLocaleString()}
-                  </Text>
+                  {renderNotificationContent(n, rendererCtx)}
                 </Button>
                 <Flex className="gap-1">
                   {!n.read_at && (

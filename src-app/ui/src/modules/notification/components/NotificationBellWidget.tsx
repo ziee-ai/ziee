@@ -21,7 +21,10 @@ export function NotificationBellWidget() {
   const goTo = (n: (typeof items)[number]) => {
     void Stores.Notifications.markRead(n.id)
     setOpen(false)
-    if (n.conversation_id) navigate(`/chat/${n.conversation_id}`)
+    // R2: kind-specific ids ride the `payload` jsonb column (typed `unknown`).
+    const conversationId = (n.payload as { conversation_id?: string } | null)
+      ?.conversation_id
+    if (conversationId) navigate(`/chat/${conversationId}`)
     else navigate('/notifications')
   }
 

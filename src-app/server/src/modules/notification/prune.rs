@@ -34,8 +34,9 @@ async fn prune_once(pool: &PgPool) {
         return; // keep forever
     }
 
-    let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(days as i64);
-    match super::repository::prune_older_than(pool, cutoff).await {
+    // Delegate to the SDK crate's retention prune (it takes the window in days
+    // and computes the cutoff internally; also a no-op for days <= 0).
+    match ziee_notification::repository::prune_older_than(pool, days as i64).await {
         Ok(0) => {}
         Ok(n) => tracing::info!("notification: pruned {n} rows older than {days} days"),
         Err(e) => tracing::warn!(error = %e, "notification: prune failed"),

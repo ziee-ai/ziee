@@ -26,8 +26,8 @@ use crate::core::config::Config;
 use crate::modules::chat::core::extension::SendMessageRequest;
 use crate::modules::chat::core::services::StreamingService;
 use crate::modules::chat::extension_registration::auto_register_extensions;
-use crate::modules::notification::events::create_and_emit;
 use crate::modules::notification::models::NewNotification;
+use ziee_notification::create_and_emit;
 use crate::modules::workflow::runner::{SpawnRunOpts, spawn_run};
 
 use super::change::{self, Signature};
@@ -469,17 +469,24 @@ async fn finalize_success(
     let title = format!("Scheduled task '{}' ran", task.name);
 
     let interrupt = task.notify_mode == "always";
-    let mut n = NewNotification::new(task.user_id, "scheduled_task_result", title)
-        .body(body)
-        .task(task.id);
-    if !interrupt {
-        n = n.silent();
-    }
+    // R2 payload convention: kind-specific ids ride the `payload jsonb` column
+    // (the SDK notification schema is domain-agnostic). For a scheduler-produced
+    // notification the well-known keys are `scheduled_task_id` (always) and,
+    // when the run produced them, `workflow_run_id` / `conversation_id`. The FE
+    // renderer reads these via `n.payload?.<key>`; only applicable keys are set.
+    let mut payload = serde_json::Map::new();
+    payload.insert("scheduled_task_id".into(), serde_json::json!(task.id));
     if let Some(wr) = raw.workflow_run_id {
-        n = n.workflow_run(wr);
+        payload.insert("workflow_run_id".into(), serde_json::json!(wr));
     }
     if let Some(cid) = raw.conversation_id {
-        n = n.conversation(cid);
+        payload.insert("conversation_id".into(), serde_json::json!(cid));
+    }
+    let mut n = NewNotification::new(task.user_id, "scheduled_task_result", title)
+        .body(body)
+        .payload(serde_json::Value::Object(payload));
+    if !interrupt {
+        n = n.silent();
     }
     // ITEM-11: log (don't silently swallow) a notification-creation failure —
     // a broken task that also fails to notify was previously undiagnosable.
@@ -519,13 +526,15 @@ async fn finalize_failure(
 
     // A failure always interrupts (regardless of notify_mode) — the user needs
     // to know their task stopped working.
+    // R2 payload convention (see finalize_success): the well-known
+    // `scheduled_task_id` key rides the `payload jsonb` column.
     let n = NewNotification::new(
         task.user_id,
         "scheduled_task_failed",
         format!("Scheduled task '{}' failed", task.name),
     )
     .body(truncate(&msg, NOTIF_BODY_CAP))
-    .task(task.id);
+    .payload(serde_json::json!({ "scheduled_task_id": task.id }));
     // ITEM-11: log (don't silently swallow) a notification-creation failure —
     // a broken task that also fails to notify was previously undiagnosable.
     let notification_id = match create_and_emit(pool, n).await {
