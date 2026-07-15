@@ -83,7 +83,8 @@ services:
           -v rcpa_url="$$RCPA_MCP_URL" \
           -v dscc_url="$$DSCC_MCP_URL" \
           -v biognosia_url="$$BIOGNOSIA_MCP_URL" \
-          -f /seed/seed.sql
+          -f /seed/seed.sql \
+          -f /seed/local-provider.sql
     environment:
       # psql connection to the bundled postgres.
       PGHOST: postgres
