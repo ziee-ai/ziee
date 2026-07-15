@@ -39,12 +39,13 @@ pub async fn session_expiries(jwt_service: &JwtService) -> (i64, i64) {
 /// lifetime lookup where falling back to config is safe, whereas minting a
 /// token with a guessed epoch could hand out a credential that outlives a
 /// logout. A missing user row is likewise an error, not a `0` default.
-pub async fn current_token_version(user_id: Uuid) -> Result<i32, AppError> {
-    Repos
-        .user
-        .get_token_version(user_id)
-        .await?
-        .ok_or_else(|| AppError::unauthorized("USER_NOT_FOUND", "User not found"))
+///
+/// Returns `Ok(None)` when the user row is absent (an auth failure the caller
+/// should surface as 401) and `Err` only for a genuine DB failure (a transient
+/// condition the caller must NOT report as 401 — a 401 from `/auth/refresh` is
+/// terminal to the client and would log the user out over a pool blip).
+pub async fn current_token_version(user_id: Uuid) -> Result<Option<i32>, AppError> {
+    Repos.user.get_token_version(user_id).await
 }
 
 /// End every session the user holds, ATOMICALLY: bump the access-token
@@ -118,7 +119,9 @@ pub async fn mint_session_tokens(
     is_admin: bool,
 ) -> Result<TokenPairWithJti, AppError> {
     let (access_hours, refresh_days) = session_expiries(jwt_service).await;
-    let token_version = current_token_version(user_id).await?;
+    let token_version = current_token_version(user_id)
+        .await?
+        .ok_or_else(|| AppError::unauthorized("USER_NOT_FOUND", "User not found"))?;
 
     let minted = jwt_service.generate_tokens_with_jti_expiry(
         user_id,
@@ -238,6 +241,34 @@ pub async fn claim_rotation_and_register(
     successor_expires_at: DateTime<Utc>,
 ) -> Result<bool, AppError> {
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // Serialize against a concurrent logout — SECURITY, and subtler than it
+    // looks. `end_session_atomically` revokes with
+    // `UPDATE refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL`. Under
+    // READ COMMITTED that UPDATE's scan only sees rows committed as of the
+    // command's start, so a successor this transaction has INSERTed but not yet
+    // COMMITTed is INVISIBLE to it — it is never scanned, and EvalPlanQual only
+    // re-checks rows the scan already found. Without this lock the successor
+    // would therefore SURVIVE the logout while the epoch still moved to N+1,
+    // and replaying it would mint a fresh access token stamped with the NEW
+    // epoch — i.e. a fully valid session, defeating the logout entirely.
+    //
+    // Taking the `users` row lock FIRST forces a strict order with logout:
+    //   - logout first  → this SELECT blocks; on release the presented token is
+    //     already revoked → 0 rows → `false` → 401, and no successor is written.
+    //   - this tx first → logout's `UPDATE users` blocks until we COMMIT, by
+    //     which time the successor IS committed and visible, so logout revokes
+    //     it too.
+    // Lock ORDER matters: logout takes users → refresh_tokens, so we must take
+    // users first as well. Reversing it here would invert the order and
+    // deadlock.
+    sqlx::query_scalar!(
+        r#"SELECT token_version FROM users WHERE id = $1 FOR SHARE"#,
+        user_id,
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
 
     let r = sqlx::query!(
         r#"

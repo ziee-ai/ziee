@@ -1109,12 +1109,16 @@ async fn test_logout_is_atomic_bump_rolls_back_if_revoke_fails() {
     );
 }
 
-/// TEST-9 — read-before-claim. A refresh that has ALREADY rotated (its claim
-/// committed) must not be able to hand back a session that survives a logout
-/// landing immediately after: the epoch is read BEFORE the claim, so the minted
-/// token carries the pre-bump `ver` and dies with the logout.
+/// TEST-9 — a session obtained via a refresh does not outlive a LATER logout.
+///
+/// HONEST SCOPE: this is sequential (the refresh completes, then logout runs),
+/// so it does NOT exercise the read-before-claim ordering — with both operations
+/// serialized, the epoch read returns the same value before or after the claim.
+/// It pins the user-visible property (rotating your token doesn't buy you a
+/// session that survives logout). The actual interleaving is covered by
+/// TEST-23 below.
 #[tokio::test]
-async fn test_refresh_racing_a_logout_does_not_outlive_it() {
+async fn test_refresh_then_logout_kills_the_refreshed_session() {
     let server = TestServer::start().await;
     let client = reqwest::Client::new();
     let (_, _, body) = register(&client, &server, "refresh_race_logout", false).await;
@@ -1145,4 +1149,113 @@ async fn test_refresh_racing_a_logout_does_not_outlive_it() {
         401,
         "a token minted by a refresh must not survive a subsequent logout"
     );
+}
+
+/// TEST-23 — SECURITY: no refresh token may survive a logout, even when a
+/// rotation is in flight at the moment the logout lands.
+///
+/// The bug this pins (found in the blind audit): logout revokes with
+/// `UPDATE refresh_tokens ... WHERE user_id = $1 AND revoked_at IS NULL`. Under
+/// READ COMMITTED that UPDATE only scans rows committed as of the command's
+/// start, so a SUCCESSOR token that a concurrent `/auth/refresh` has INSERTed
+/// but not yet COMMITTed is invisible to it — never scanned, never revoked —
+/// while the epoch still moves to N+1. Replaying that successor then mints an
+/// access token stamped with the NEW epoch: a fully valid session, i.e. logout
+/// silently defeated. `claim_rotation_and_register` takes the `users` row lock
+/// FOR SHARE first to force a serial order with logout.
+///
+/// Drives real concurrent HTTP (refresh chain vs logout) rather than a
+/// contrived interleaving, then asserts the INVARIANT that must hold no matter
+/// who won: after logout returns 204, the user has ZERO usable refresh tokens
+/// and no working access token. Both outcomes are legal (the refresh may win
+/// and rotate, or lose and 401) — what is illegal is a live token afterwards.
+#[tokio::test]
+async fn test_no_refresh_token_survives_a_concurrent_logout() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+
+    // Repeat: the window is sub-millisecond, so one attempt could miss it.
+    for round in 0..12 {
+        let name = format!("race_logout_{round}");
+        let (_, _, body) = register(&client, &server, &name, false).await;
+        let access = body["access_token"].as_str().unwrap().to_string();
+        let refresh = body["refresh_token"].as_str().unwrap().to_string();
+        let user_id: uuid::Uuid = body["user"]["id"].as_str().unwrap().parse().unwrap();
+
+        // Fire the rotation and the logout concurrently.
+        let (c1, s1) = (client.clone(), server.api_url("/auth/refresh"));
+        let refresher = tokio::spawn(async move {
+            c1.post(s1)
+                .json(&json!({ "refresh_token": refresh }))
+                .send()
+                .await
+                .ok()
+        });
+        let (c2, s2) = (client.clone(), server.api_url("/auth/logout"));
+        let acc = access.clone();
+        let logouter = tokio::spawn(async move {
+            c2.post(s2)
+                .header("Authorization", format!("Bearer {acc}"))
+                .send()
+                .await
+                .ok()
+        });
+
+        let refresh_res = refresher.await.unwrap();
+        let logout_res = logouter.await.unwrap();
+        assert_eq!(
+            logout_res.expect("logout response").status(),
+            204,
+            "round {round}: logout must succeed"
+        );
+
+        // INVARIANT 1: not one active refresh-token row remains for this user.
+        let active: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            active, 0,
+            "round {round}: a refresh token survived the logout — it can re-mint a \
+             valid access token stamped with the NEW epoch and restore the session"
+        );
+
+        // INVARIANT 2: if the refresh won the race, the session it handed back
+        // must not work either.
+        if let Some(res) = refresh_res
+            && res.status() == 200
+        {
+            let refreshed: Value = res.json().await.unwrap();
+            let new_access = refreshed["access_token"].as_str().unwrap().to_string();
+            assert_eq!(
+                get_status(&client, &server, "/auth/me", &new_access).await,
+                401,
+                "round {round}: a token minted by a refresh racing the logout must not work"
+            );
+            // ...and its refresh token must not be replayable.
+            let new_refresh = refreshed["refresh_token"].as_str().unwrap().to_string();
+            let replay = client
+                .post(server.api_url("/auth/refresh"))
+                .json(&json!({ "refresh_token": new_refresh }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                replay.status(),
+                401,
+                "round {round}: the successor refresh token must be dead after logout"
+            );
+        }
+
+        // INVARIANT 3: the original access token is dead.
+        assert_eq!(
+            get_status(&client, &server, "/auth/me", &access).await,
+            401,
+            "round {round}: the pre-logout access token must be dead"
+        );
+    }
 }

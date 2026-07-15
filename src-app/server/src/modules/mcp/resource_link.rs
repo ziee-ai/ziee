@@ -520,7 +520,11 @@ pub async fn persist_links(
             // the same RequirePermissions gate as any user token.
             let tv = match crate::modules::auth::refresh_tokens::current_token_version(user_id).await
             {
-                Ok(v) => v,
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    tracing::warn!("skipping HTTP resource_link fetch — user not found: {user_id}");
+                    continue;
+                }
                 Err(e) => {
                     tracing::warn!(
                         "skipping HTTP resource_link fetch — token-version read failed: {}",

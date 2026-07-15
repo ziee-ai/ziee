@@ -236,7 +236,9 @@ impl McpSessionManager {
                 &self.config.jwt.issuer,
                 &self.config.jwt.audience,
                 60,
-                crate::modules::auth::refresh_tokens::current_token_version(user_id).await?,
+                crate::modules::auth::refresh_tokens::current_token_version(user_id)
+                    .await?
+                    .ok_or_else(|| AppError::unauthorized("USER_NOT_FOUND", "User not found"))?,
             )?;
             headers.insert(
                 "Authorization".to_string(),

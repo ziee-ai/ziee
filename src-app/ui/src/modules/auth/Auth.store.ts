@@ -199,11 +199,20 @@ const clearedSession = {
  * DESKTOP: callers MUST check `refreshFallback` first. A Tauri window has no
  * login page to land on (AuthGuard.desktop never renders one) and re-mints
  * locally via auto_login instead, so reloading it would strand the user.
+ * The `__TAURI__` probe below is a second, independent guard: `refreshFallback`
+ * is registered asynchronously by the desktop-base module, so a terminal 401
+ * arriving during boot could otherwise slip past the caller's check and reload
+ * the webview mid-startup. State is still cleared either way — only the reload
+ * is suppressed. (The ngrok/phone surface serves this same bundle OUTSIDE
+ * Tauri, where reloading to PhoneAuthPage is correct, so probe the runtime,
+ * not the build.)
  */
 function tearDownSession(): void {
   endSession()
   useAuthStore.setState(clearedSession)
-  if (typeof window !== 'undefined') {
+  const isDesktopShell =
+    typeof window !== 'undefined' && '__TAURI__' in window
+  if (typeof window !== 'undefined' && !isDesktopShell) {
     window.location.reload()
   }
 }
@@ -613,15 +622,20 @@ export const Auth = defineStore('Auth', {
           )
           set({
             user: response.user,
-            // The identity is changing, so the grants in state belong to the
+            // The identity may be changing, so the grants in state belong to the
             // PREVIOUS user. Clear them in the SAME set() that flips
             // isAuthenticated true, or every permission gate (<Can>,
             // usePermission, hasPermissionNow, slot `permission` fields)
             // evaluates the old user's permissions until the later initAuth()
             // /me lands — an authenticated render window with a foreign
             // permission set. They are repopulated by that /me.
+            //
+            // `hasPassword` is deliberately NOT cleared: it is not a grant and
+            // not a leak vector, and desktop's mid-session auto_login re-mint
+            // reaches here for the SAME identity with no follow-up initAuth() —
+            // clearing it would flip the profile page to "set a password" until
+            // some later refetch.
             permissions: [],
-            hasPassword: false,
             isAuthenticated: true,
             isLoading: false,
             error: null,

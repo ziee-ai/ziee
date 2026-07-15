@@ -277,3 +277,47 @@ async fn logout_signals_the_users_other_tabs_but_not_the_origin_tab() {
     other_tab.expect_event("session", "update", EVENT_TIMEOUT).await;
     origin_tab.expect_silence(SILENCE_WINDOW).await;
 }
+
+/// TEST-24 — SECURITY: logging out must tear down an ALREADY-OPEN sync stream,
+/// not just stop new requests.
+///
+/// The subscribe gate checks the access-token epoch once, but the stream then
+/// lives until the token's `exp` (24h by default) and its periodic re-check
+/// only re-resolved `is_active` + `profile::read` — neither of which a logout
+/// changes. So a holder of a revoked token kept an open stream. The `Session`
+/// fan-out does not help there: an attacker's client simply ignores it. The
+/// re-check now compares the epoch too.
+///
+/// Uses the debug-only `SYNC_RECHECK_TICK_MS` seam to shorten the 60s cadence,
+/// mirroring `deactivating_a_user_mid_stream_closes_their_sync_stream`.
+#[tokio::test]
+async fn logging_out_closes_an_already_open_sync_stream() {
+    let server = crate::common::TestServer::start_with_options(
+        crate::common::TestServerOptions {
+            extra_env: vec![("SYNC_RECHECK_TICK_MS".to_string(), "200".to_string())],
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "sync_logout_close", &[])
+            .await;
+
+    // The stream is open and healthy BEFORE the logout.
+    let mut probe = SyncProbe::open(&server, &user.token).await;
+
+    // Log out from somewhere else entirely (no X-Sync-Connection-Id), so the
+    // stream cannot be torn down merely by the origin-suppressed fan-out — the
+    // server-side epoch re-check is what must close it.
+    let res = reqwest::Client::new()
+        .post(server.api_url("/auth/logout"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("logout");
+    assert_eq!(res.status(), 204);
+
+    // Within a few re-check ticks the server closes the stream.
+    probe.expect_closed(Duration::from_secs(5)).await;
+}

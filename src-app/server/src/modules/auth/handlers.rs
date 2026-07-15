@@ -554,9 +554,19 @@ pub async fn refresh(
     // already returned the PRE-bump value, so the token we mint carries the old
     // `ver` and is dead on arrival. Reading after the claim would instead
     // observe the NEW epoch and mint a token that survives the logout.
+    // A DB failure here is 500, NOT 401: the client treats a 401 from
+    // /auth/refresh as terminal (wipe + reload), so mapping a transient pool
+    // blip to 401 would log active users out mid-work. Only an absent user row
+    // is an auth failure. Mirrors the `get_by_id` mapping above.
     let token_version = refresh_tokens::current_token_version(user.id)
         .await
-        .map_err(|e| (StatusCode::UNAUTHORIZED, e))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized("USER_NOT_FOUND", "User not found"),
+            )
+        })?;
 
     let (out_pair, out_refresh_expires_at) = if let Some(jti) = presented_jti {
         let candidate = jwt_service
@@ -663,7 +673,8 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// POST /api/auth/logout
-/// Logout current user. Ends EVERY session the user holds:
+/// Logout current user. Ends every session the user holds — with one
+/// pre-existing residue noted below:
 ///   - bumps `users.token_version`, so every already-issued ACCESS token stops
 ///     validating at once (see `jwt_extractor::verify_token_version`);
 ///   - revokes all of the user's active refresh tokens, so /auth/refresh fails
@@ -675,6 +686,14 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 /// Sign-out-everywhere is not a new behavior — `revoke_all_for_user` has always
 /// revoked every refresh token the user holds (see migration 44). The bump only
 /// removes the up-to-24h delay before that intent took effect.
+///
+/// RESIDUE (pre-existing, unchanged here): a jti-LESS refresh token — minted
+/// before migration 44 — has no `refresh_tokens` row, so there is nothing to
+/// revoke, and `refresh`'s legacy-upgrade branch will mint it a fresh session
+/// carrying the CURRENT epoch. Those tokens are effectively extinct (the
+/// jti-less minter is deleted and the default refresh TTL is 30d), and
+/// `revoke_all_for_user` never covered them either. Closing it needs the legacy
+/// branch retired — its own change.
 ///
 /// The bump + revoke are ONE transaction, and the sync signal is published only
 /// after it commits: see `refresh_tokens::end_session_atomically` for why a
