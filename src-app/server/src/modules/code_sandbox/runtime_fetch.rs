@@ -25,84 +25,15 @@ use std::time::Duration;
 
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
+use sqlx::PgPool;
 use tokio::sync::Mutex;
 
-// =====================================================================
-// Public surface (preserved from the prior module)
-// =====================================================================
-
-#[derive(Debug, Clone)]
-pub struct FetchProgress {
-    pub phase: FetchPhase,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FetchPhase {
-    Resolving,
-    Downloading,
-    VerifyingSha256,
-    VerifyingCosign,
-    Installing,
-}
-
-#[derive(Debug, Clone)]
-pub struct FetchOutcome {
-    pub installed_path: PathBuf,
-    pub bytes_downloaded: u64,
-    pub duration_ms: u64,
-    pub cosign_verified: bool,
-    /// Semver string identifying which rootfs release this artifact
-    /// belongs to. Surfaced via `fetch_info.version` in the chat UI.
-    pub version: String,
-    /// PK of the `code_sandbox_rootfs_artifacts` row corresponding to
-    /// this fetch. Plumbed through so `runtime_mount` can register the
-    /// mount + every caller can `version_manager::acquire_inflight`
-    /// for the drain-on-swap protocol (Plan 5 Phase 3).
-    pub artifact_id: uuid::Uuid,
-}
-
-/// Packaging variant. The squashfs is the universal artifact
-/// (Linux squashfuse + macOS in-guest mount); the `.tar.zst` tarball
-/// exists only for Windows `wsl --import` (which can't consume a
-/// squashfs). Both are produced from the identical staged tree at
-/// release time, so both share the rootfs content but ship in different
-/// container formats.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RootfsFormat {
-    Squashfs,
-    #[allow(dead_code)]
-    TarZst,
-}
-
-#[derive(Debug, Clone)]
-pub enum FetchError {
-    /// Stable catch-all surfaced from the version_manager — the inner
-    /// message carries the structured error code
-    /// (`SANDBOX_ROOTFS_UNAVAILABLE`, `SANDBOX_ROOTFS_VERSION_MISSING`,
-    /// …). Other variants were retired with the prior TOML resolver.
-    Install(String),
-    /// Download failed for network reasons.
-    Download(String),
-    /// sha256 sidecar disagreed with the downloaded artifact.
-    Sha256Mismatch { expected: String, got: String },
-    /// cosign keyless verification failed.
-    CosignFailed(String),
-}
-
-impl std::fmt::Display for FetchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FetchError::Install(e) => write!(f, "{e}"),
-            FetchError::Download(e) => write!(f, "download failed: {e}"),
-            FetchError::Sha256Mismatch { expected, got } => {
-                write!(f, "sha256 mismatch (expected {expected}, got {got})")
-            }
-            FetchError::CosignFailed(e) => write!(f, "cosign verification failed: {e}"),
-        }
-    }
-}
+// The fetch vocabulary (FetchProgress / FetchPhase / FetchOutcome / RootfsFormat
+// / FetchError) moved to the engine crate with the carve; re-import it. The
+// LOGIC (single-flight lock, download/verify primitives) stays here.
+pub use crate::modules::code_sandbox::provider::{
+    FetchError, FetchOutcome, FetchPhase, FetchProgress, RootfsFormat,
+};
 
 // =====================================================================
 // Single-flight per-flavor fetch lock (used by both auto-fetch and the
@@ -138,35 +69,29 @@ pub fn is_fetch_in_flight(flavor: &str) -> bool {
 /// matching the system-wide pinned rootfs version. Idempotent.
 #[allow(dead_code)]
 pub async fn fetch_flavor(
+    pool: &PgPool,
     cache_dir: &Path,
     flavor: &str,
     progress: impl Fn(FetchProgress) + Send + Sync + 'static,
 ) -> Result<FetchOutcome, FetchError> {
-    fetch_flavor_format(cache_dir, flavor, RootfsFormat::Squashfs, progress).await
+    fetch_flavor_format(pool, cache_dir, flavor, RootfsFormat::Squashfs, progress).await
 }
 
 /// Like [`fetch_flavor`] but for a specific packaging. The Windows WSL2
 /// backend fetches [`RootfsFormat::TarZst`]; everything else uses the
 /// squashfs default.
+///
+/// `pool` is threaded explicitly (the engine carve de-`pool`-ed
+/// `CodeSandboxState`): the `ZieeRootfsProvider` passes its pool; the ziee
+/// `streaming.rs` passes `Repos.pool()`.
 pub async fn fetch_flavor_format(
+    pool: &PgPool,
     cache_dir: &Path,
     flavor: &str,
     format: RootfsFormat,
     progress: impl Fn(FetchProgress) + Send + Sync + 'static,
 ) -> Result<FetchOutcome, FetchError> {
     use crate::modules::code_sandbox::version_manager;
-
-    let state = crate::modules::code_sandbox::config::get_state().ok_or_else(|| {
-        FetchError::Install(
-            "code_sandbox not initialized; cannot resolve rootfs artifact".to_string(),
-        )
-    })?;
-    let pool = state.pool.as_ref().ok_or_else(|| {
-        FetchError::Install(
-            "code_sandbox state is missing the DB pool; cannot resolve rootfs artifact"
-                .to_string(),
-        )
-    })?;
 
     let pkg = match format {
         RootfsFormat::Squashfs => "squashfs",
@@ -260,14 +185,16 @@ pub async fn fetch_flavor_format(
 /// Single-flight wrapper: serializes per-flavor downloads so the
 /// admin "Install" SSE flow + in-conversation auto-fetch never collide.
 pub async fn ensure_fetched(
+    pool: &PgPool,
     cache_dir: &Path,
     flavor: &str,
     progress: impl Fn(FetchProgress) + Send + Sync + 'static,
 ) -> Result<FetchOutcome, FetchError> {
-    ensure_fetched_format(cache_dir, flavor, RootfsFormat::Squashfs, progress).await
+    ensure_fetched_format(pool, cache_dir, flavor, RootfsFormat::Squashfs, progress).await
 }
 
 pub async fn ensure_fetched_format(
+    pool: &PgPool,
     cache_dir: &Path,
     flavor: &str,
     format: RootfsFormat,
@@ -275,7 +202,7 @@ pub async fn ensure_fetched_format(
 ) -> Result<FetchOutcome, FetchError> {
     let lock = fetch_lock_for(flavor);
     let _guard = lock.lock().await;
-    fetch_flavor_format(cache_dir, flavor, format, progress).await
+    fetch_flavor_format(pool, cache_dir, flavor, format, progress).await
 }
 
 // =====================================================================

@@ -31,6 +31,7 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
+use crate::core::repository::Repos;
 use crate::modules::code_sandbox::runtime_fetch::{self, FetchPhase};
 use crate::modules::code_sandbox::types::{SandboxContext, KNOWN_FLAVORS};
 use crate::modules::code_sandbox::{config, handlers, runtime_mount, tools};
@@ -286,7 +287,7 @@ async fn run_execute(
         cfg.require_download_consent,
         cfg.auto_download_under_mb,
         size_mb,
-        runtime_mount::is_flavor_cached(&state, &flavor).await,
+        runtime_mount::is_flavor_cached(Repos.pool(), &flavor).await,
         runtime_fetch::is_fetch_in_flight(&flavor),
     );
 
@@ -328,12 +329,12 @@ async fn run_execute(
     }
 
     // --- Fetch with progress (if still uncached) -----------------------
-    if !runtime_mount::is_flavor_cached(&state, &flavor).await {
-        let cache_dir = runtime_mount::cache_dir(&state);
+    if !runtime_mount::is_flavor_cached(Repos.pool(), &flavor).await {
+        let cache_dir = runtime_mount::cache_dir(&state.config);
         let txp = tx.clone();
         let token = progress_token.clone();
         let fetch_flavor = flavor.clone();
-        let result = runtime_fetch::ensure_fetched(&cache_dir, &fetch_flavor, move |p| {
+        let result = runtime_fetch::ensure_fetched(Repos.pool(), &cache_dir, &fetch_flavor, move |p| {
             let (progress, total) = phase_to_progress(p.phase);
             let _ = txp.send(StreamMsg::Progress {
                 token: token.clone(),

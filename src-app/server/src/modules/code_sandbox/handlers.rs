@@ -762,7 +762,7 @@ async fn build_context(
     // `execute_command_with_mounts` path via `apply_workspace_mode` so the
     // two can't drift (the workflow path hit "Permission denied" creating
     // the `.gitconfig` mask on macOS before it shared this policy).
-    apply_workspace_mode(&workspace).await;
+    crate::modules::code_sandbox::tools::execute::apply_workspace_mode(&workspace).await;
 
     let files = Repos
         .code_sandbox
@@ -1047,24 +1047,9 @@ fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::
 /// dir mtime; a genuine bind failure surfaces downstream). Callers that
 /// require the dir to EXIST must `create_dir_all` separately — this only
 /// sets the mode on an existing dir.
-pub(crate) async fn apply_workspace_mode(workspace: &std::path::Path) {
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ =
-            tokio::fs::set_permissions(workspace, std::fs::Permissions::from_mode(0o700)).await;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ =
-            tokio::fs::set_permissions(workspace, std::fs::Permissions::from_mode(0o1777)).await;
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        let _ = workspace; // Windows: NTFS ACL story handled elsewhere.
-    }
-}
+// `apply_workspace_mode` (pure per-OS chmod, DB-free) moved to the engine
+// (`ziee_sandbox::tools::execute`) with the carve; the chat-side caller above
+// reaches it via the shim path. The doc comment on the original lived here.
 
 /// SECURITY: assert that the JWT-authenticated `user_id` is the owner
 /// of `conversation_id`. Returns the same 404 error for "conversation
@@ -1622,6 +1607,74 @@ mod tests {
     };
     use crate::modules::file::storage::filesystem::FilesystemStorage;
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use ziee_sandbox::provider::{
+        EnsureOutcome, EvictOutcome, Extracted, FetchError, FetchOutcome, FetchProgress,
+        GuestAgentProvider, ResourceLimitsProvider, RootfsFormat, RootfsProvider,
+    };
+
+    /// No-op provider stubs (the engine carve de-`pool`-ed `CodeSandboxState`).
+    /// These attachment-staging tests read only `config`/`workspace_root`/
+    /// `host_caps`, never a provider seam, so every method is `unreachable!()`.
+    struct TestProviders;
+
+    #[async_trait::async_trait]
+    impl RootfsProvider for TestProviders {
+        async fn ensure_rootfs_ready(
+            &self,
+            _flavor: &str,
+        ) -> Result<EnsureOutcome, crate::common::AppError> {
+            unreachable!()
+        }
+        fn cache_dir(&self) -> PathBuf {
+            PathBuf::from("/tmp")
+        }
+        async fn evict_by_version_flavor(
+            &self,
+            _v: &std::path::Path,
+            _ver: &str,
+            _f: &str,
+        ) -> EvictOutcome {
+            unreachable!()
+        }
+        async fn ensure_fetched(
+            &self,
+            _c: &std::path::Path,
+            _f: &str,
+            _p: Box<dyn Fn(FetchProgress) + Send + Sync>,
+        ) -> Result<FetchOutcome, FetchError> {
+            unreachable!()
+        }
+        async fn ensure_fetched_format(
+            &self,
+            _c: &std::path::Path,
+            _f: &str,
+            _fmt: RootfsFormat,
+            _p: Box<dyn Fn(FetchProgress) + Send + Sync>,
+        ) -> Result<FetchOutcome, FetchError> {
+            unreachable!()
+        }
+        async fn shutdown(&self) {}
+    }
+    #[async_trait::async_trait]
+    impl ResourceLimitsProvider for TestProviders {
+        async fn load_from_db(
+            &self,
+        ) -> Result<
+            crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits,
+            crate::common::AppError,
+        > {
+            unreachable!()
+        }
+    }
+    impl GuestAgentProvider for TestProviders {
+        fn ensure(&self) -> Result<&'static Extracted, String> {
+            unreachable!()
+        }
+        fn ensure_wsl2(&self) -> Result<&'static PathBuf, String> {
+            unreachable!()
+        }
+    }
 
     fn fake_state(workspace_root: PathBuf) -> CodeSandboxState {
         CodeSandboxState {
@@ -1638,10 +1691,11 @@ mod tests {
                 cgroup: CgroupMode::None,
                 seccomp: SeccompMode::NotLinked,
             },
-            // These handler unit tests stub the DB layer via
-            // repository mocks, so the optional version-manager
-            // pool stays None.
-            pool: None,
+            // These handler unit tests stub the DB/rootfs/guest-agent layers via
+            // no-op provider seams (never invoked on these code paths).
+            rootfs: Arc::new(TestProviders),
+            limits: Arc::new(TestProviders),
+            guest_agent: Arc::new(TestProviders),
         }
     }
 

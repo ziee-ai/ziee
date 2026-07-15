@@ -1,5 +1,20 @@
 # Chunk `ziee-sandbox` — the full sandbox subsystem extraction (5-crate scope)
 
+> **STATUS UPDATE (Phase 2 EXECUTED + verified — see LEDGER sbx-19..24):** the
+> physical `sdk/crates/ziee-sandbox` engine crate is now carved. 32 files
+> `git mv`'d byte-identical; `version_manager`/`resource_limits`/`CodeSandboxConfig`/
+> provider-vocab split; 3 injected seams (`RootfsProvider` +
+> `ResourceLimitsProvider` + **`GuestAgentProvider`**). Deviation from the parked
+> design: `embedded.rs`/`wsl2_agent_embedded.rs` STAY in ziee (their
+> `include_bytes!(env!("CARGO_MANIFEST_DIR")/binaries/…)` is server-`build.rs`-staged
+> — moving them would break the mac/win builds), so coupling D is solved by the 3rd
+> `GuestAgentProvider` seam, NOT the app_data_dir global. ALL 6 gates green
+> (`-p ziee`, `-p ziee-desktop`, `sdk --workspace`, build-DB-free grep, 64
+> engine tier-1 tests, zero OpenAPI/types.ts delta) + the `build_bwrap_argv`
+> body proven byte-identical. mac_vm/wsl2 arms are `#[cfg]`-out on Linux → the
+> human runs the mac/win runtime verify (BOUNDARY.md).
+
+
 Scope per the human decision: extract the FULL sandbox subsystem into the SDK —
 the **4 support crates** (clean leaf MOVES) **+ the `ziee-sandbox` engine**
 (abstract over rootfs + resource-limits via injected seams). Re-implemented on the

@@ -19,34 +19,36 @@ use uuid::Uuid;
 
 use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
-pub mod backend;
-pub mod cgroup;
-pub mod config;
+// ── STAY (ziee server): DB/HTTP halves + the guest-agent staging bodies (their
+//    `include_bytes!` reads the SERVER `CARGO_MANIFEST_DIR`) + the provider impls.
 pub mod embedded;
 #[cfg(target_os = "windows")]
 pub mod wsl2_agent_embedded;
 pub mod handlers;
+pub mod providers;
 pub mod runtime_fetch;
 pub mod runtime_mount;
-pub mod models;
 pub mod mount_context_extension;
-pub mod mount_provider;
 pub mod permissions;
-pub mod probes;
 pub mod repository;
-pub mod resource_limits;
-pub mod resource_limits_cache;
-pub mod mcp_spawn;
 pub mod routes;
-pub mod sandbox;
 pub mod streaming;
 pub mod tools;
-pub mod types;
 pub mod version_back;
 pub mod version_handlers;
 pub mod version_install_tasks;
 pub mod version_manager;
-pub mod workflow_staging;
+
+// ── Engine carve: the build-DB-free sandbox ENGINE moved to
+//    `ziee_sandbox` (`sdk/crates/ziee-sandbox`). Re-export its modules as
+//    equivalence-preserving shims (the ziee-hardware precedent) so every
+//    retained `crate::modules::code_sandbox::{sandbox,types,config,…}::…` +
+//    `super::{sandbox,types,…}::…` path in the STAY halves resolves unchanged.
+#[allow(unused_imports)]
+pub use ziee_sandbox::{
+    backend, cgroup, config, mcp_spawn, models, mount_provider, probes, provider, registry,
+    resource_limits, resource_limits_cache, sandbox, sandbox_config, types, workflow_staging,
+};
 
 pub use repository::CodeSandboxRepository;
 
@@ -237,12 +239,24 @@ impl AppModule for CodeSandboxModule {
             port = ctx.config.server.port,
         );
 
+        // Engine carve: the de-`pool`-ed engine state now carries the three
+        // injected provider seams (`crate::modules::code_sandbox::providers`),
+        // which hold the DB pool + boot-probed host caps + resolved config and
+        // delegate back to the retained `runtime_mount`/`runtime_fetch`/
+        // `repository`/`embedded` halves.
+        let pool = ctx.db_pool.clone();
         let state = types::CodeSandboxState {
             config: cfg.clone(),
             loopback_url: loopback_url.clone(),
             workspace_root: workspace_root.clone(),
-            host_caps,
-            pool: Some(ctx.db_pool.clone()),
+            host_caps: host_caps.clone(),
+            rootfs: Arc::new(providers::ZieeRootfsProvider {
+                pool: pool.clone(),
+                host_caps: host_caps.clone(),
+                config: cfg.clone(),
+            }),
+            limits: Arc::new(providers::ZieeResourceLimitsProvider { pool: pool.clone() }),
+            guest_agent: Arc::new(providers::ZieeGuestAgentProvider),
         };
         let _state_arc = config::init_state(state);
 
