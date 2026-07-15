@@ -6,9 +6,13 @@
 -- OpenRouter provider). The port (4000) is the LiteLLM proxy's published port,
 -- reachable via the workspace URL.
 
--- 1) The provider (empty api_key — the local proxy needs none).
-INSERT INTO llm_providers (name, provider_type, enabled, api_key, base_url, built_in)
+-- 1) The provider. The local LiteLLM proxy needs NO real key, but ziee's UI
+-- prompts for one unless a key is set — so store a random dummy key (encrypted
+-- with ZIEE_STORAGE_KEY, exactly like the seed does for the google secret).
+-- The value is never validated by the proxy.
+INSERT INTO llm_providers (name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in)
 SELECT 'Local Provider', 'openai', true, NULL,
+       pgp_sym_encrypt('sk-local-04a910e8055b6afc2904d3553b8d08d30acf1232', :'storage_key'),
        'https://4000--main--workspace--khoi.workspace.tinnguyen-lab.com/v1', false
 WHERE NOT EXISTS (SELECT 1 FROM llm_providers WHERE name = 'Local Provider');
 
