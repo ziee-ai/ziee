@@ -41,6 +41,18 @@ async fn create_sampling_mcp_server(
     user: &test_helpers::TestUser,
     mock_mcp: &crate::mcp::mock_sampling_server::MockSamplingServer,
 ) -> serde_json::Value {
+    create_sampling_mcp_server_with_mode(server, user, mock_mcp, "auto").await
+}
+
+/// Same as `create_sampling_mcp_server` but with a configurable `usage_mode`
+/// (`"auto"` → gate 3 / gate 1; `"always"` → gate 2 pre-run). The server is always
+/// registered via `/mcp/system-servers` (so `is_system = true`) + group-granted.
+async fn create_sampling_mcp_server_with_mode(
+    server: &TestServer,
+    user: &test_helpers::TestUser,
+    mock_mcp: &crate::mcp::mock_sampling_server::MockSamplingServer,
+    usage_mode: &str,
+) -> serde_json::Value {
     let payload = json!({
         "name": format!("mock_sampling_{}", &Uuid::new_v4().to_string()[..8]),
         "display_name": "Mock Sampling Server",
@@ -49,7 +61,7 @@ async fn create_sampling_mcp_server(
         "transport_type": "http",
         "url": mock_mcp.url(),
         "supports_sampling": true,
-        "usage_mode": "auto",
+        "usage_mode": usage_mode,
         "timeout_seconds": 120
     });
 
@@ -564,5 +576,168 @@ async fn test_sampling_with_image_content_does_not_crash() {
         "Every mcpToolStart must have a corresponding mcpToolComplete — \
          start={}, complete={}",
         tool_start_count, tool_complete_count
+    );
+}
+
+// ============================================================================
+// Regression — is_system server URL redaction must not break sampling
+// (commit 393d5eadc redacted `url` for is_system servers in the user-facing
+//  `list_accessible`; the chat path builds sampling sessions from that same list,
+//  so a system server hit MISSING_URL and could never sample. The fix re-fetches
+//  the un-redacted row for the session build while KEEPING the user-facing
+//  redaction.)
+// ============================================================================
+
+/// TEST-1 — an `is_system` `supports_sampling` server completes its full sampling
+/// round-trip through the chat path. The mock is registered via
+/// `/mcp/system-servers` (so `is_system = true`); pre-fix the redacted URL made
+/// `new_with_sampling` fail with MISSING_URL and the mock was never reached
+/// (0 calls). Post-fix the session is built from the un-redacted URL and the two
+/// `sampling/createMessage` calls complete.
+#[tokio::test]
+async fn test_system_server_sampling_round_trip_unaffected_by_url_redaction() {
+    let server = TestServer::start().await;
+
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "sampling_sys_user",
+        MCP_SAMPLING_PERMISSIONS,
+    )
+    .await;
+
+    let mock_mcp = crate::mcp::mock_sampling_server::MockSamplingServer::start().await;
+    let mcp_server = create_sampling_mcp_server(&server, &user, &mock_mcp).await;
+
+    // Precondition the regression hinges on: the server is an ORG-WIDE system server.
+    assert_eq!(
+        mcp_server["is_system"].as_bool(),
+        Some(true),
+        "sampling mock must be registered as an is_system server for this regression"
+    );
+
+    let mcp_server_id = crate::chat::helpers::parse_uuid(&mcp_server["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+
+    set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
+
+    send_message_with_mcp(
+        &server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        mcp_server_id,
+        "Use the research tool with query 'What is the capital of France?'",
+    )
+    .await;
+
+    let count = mock_mcp.sampling_call_count();
+    assert_eq!(
+        count, 2,
+        "is_system sampling server must complete its 2-call sampling round-trip, \
+         got {} (0 ⇒ the MISSING_URL redaction regression)",
+        count
+    );
+}
+
+/// TEST-2 — the security fix (393d5eadc) stays intact: the SAME `is_system`
+/// server's `url` is still redacted (`null`) in the user-facing accessible list,
+/// even though the session build (TEST-1) uses the real URL. Guards against a fix
+/// that reverts the redaction. LLM-free / deterministic.
+#[tokio::test]
+async fn test_system_server_url_still_redacted_in_user_facing_list() {
+    let server = TestServer::start().await;
+
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "redact_guard_user",
+        MCP_SAMPLING_PERMISSIONS,
+    )
+    .await;
+
+    let mock_mcp = crate::mcp::mock_sampling_server::MockSamplingServer::start().await;
+    let mcp_server = create_sampling_mcp_server(&server, &user, &mock_mcp).await;
+    let server_id = mcp_server["id"].as_str().unwrap().to_string();
+    assert_eq!(mcp_server["is_system"].as_bool(), Some(true));
+
+    let list: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/mcp/servers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Failed to GET accessible servers")
+        .json()
+        .await
+        .expect("Failed to parse accessible-servers response");
+
+    let row = list["servers"]
+        .as_array()
+        .expect("accessible-servers response has a `servers` array")
+        .iter()
+        .find(|s| s["id"].as_str() == Some(server_id.as_str()))
+        .expect("the is_system server is present in the user-facing accessible list");
+
+    assert!(
+        row["url"].is_null(),
+        "is_system server URL MUST stay redacted (null) in the user-facing list \
+         (security fix 393d5eadc) — got {}",
+        row["url"]
+    );
+}
+
+/// TEST-3 — the ALWAYS-mode gate (gate 2, `before_llm_call` pre-run) also builds
+/// its sampling session from the un-redacted URL. An `is_system` `usage_mode:always`
+/// `supports_sampling` server pre-runs its tool on every turn; pre-fix that build
+/// hit MISSING_URL (redacted clone) and issued 0 sampling calls. Post-fix the
+/// pre-run connects and samples. Exercises a different gate than TEST-1 (auto/gate 3).
+#[tokio::test]
+async fn test_system_server_always_mode_sampling_builds_from_unredacted_url() {
+    let server = TestServer::start().await;
+
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "sampling_always_user",
+        MCP_SAMPLING_PERMISSIONS,
+    )
+    .await;
+
+    let mock_mcp = crate::mcp::mock_sampling_server::MockSamplingServer::start().await;
+    let mcp_server =
+        create_sampling_mcp_server_with_mode(&server, &user, &mock_mcp, "always").await;
+    assert_eq!(mcp_server["is_system"].as_bool(), Some(true));
+
+    let mcp_server_id = crate::chat::helpers::parse_uuid(&mcp_server["id"]);
+    let conversation =
+        crate::chat::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = crate::chat::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = crate::chat::helpers::parse_uuid(&conversation["active_branch_id"]);
+    let model = crate::chat::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = crate::chat::helpers::parse_uuid(&model["id"]);
+
+    set_mcp_settings(&server, &user.token, conversation_id, "auto_approve", vec![]).await;
+
+    // Any user turn triggers the always-mode pre-run of the server's tools.
+    send_message_with_mcp(
+        &server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        mcp_server_id,
+        "Tell me about France.",
+    )
+    .await;
+
+    let count = mock_mcp.sampling_call_count();
+    assert!(
+        count >= 1,
+        "always-mode is_system server must build the sampling session from the real URL \
+         and issue >= 1 sampling call, got {} (0 ⇒ the MISSING_URL redaction regression on gate 2)",
+        count
     );
 }

@@ -2,6 +2,8 @@ import { Combobox, Tooltip } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
+import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 interface AssistantSelectorProps {
   disabled?: boolean
@@ -13,13 +15,18 @@ export function AssistantSelector({
   // Permission gate (layer 4) — see AssistantMenuItem.
   const canRead = usePermission(Permissions.AssistantsRead)
   // Access assistant store directly - reactive via store proxy
-  const { availableAssistants, selectedAssistantId, selectAssistant } =
+  const { availableAssistants, selectedByConversation, selectAssistant } =
     Stores.AssistantPicker
+  // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
+  const pane = useChatPaneOrNull()
+  const key =
+    Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
+  const selectedAssistantId = selectedByConversation[key]
 
   if (!canRead) return null
 
   const handleChange = (assistantId: string) => {
-    selectAssistant(assistantId)
+    selectAssistant(key, assistantId)
   }
 
   // Build options for the combobox

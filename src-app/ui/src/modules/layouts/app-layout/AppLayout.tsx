@@ -2,6 +2,7 @@ import React from 'react'
 import { AppLayout as ShellAppLayout } from '@ziee/shell/layouts/AppLayout'
 import { LeftSidebar } from '@/modules/layouts/app-layout/components/LeftSidebar'
 import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/SidebarToggleButton'
+import { usePopoutSnapBackListener } from '@/modules/chat/core/popout/usePopoutSnapBack'
 
 /**
  * AppLayout — the ziee app's INJECTION SITE for the generic shell layout.
@@ -16,6 +17,11 @@ import { SidebarToggleButton } from '@/modules/layouts/app-layout/components/Sid
  * internally.
  */
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  // MAIN-window only (the layout-less /chat-window pop-out route does NOT render
+  // AppLayout): snap a closing pop-out window's conversation back in as a pane
+  // (ITEM-54). App-specific, so it lives at this injection site rather than in
+  // the generic shell layout. No-op on web.
+  usePopoutSnapBackListener()
   return (
     <ShellAppLayout
       LeftSidebar={LeftSidebar}

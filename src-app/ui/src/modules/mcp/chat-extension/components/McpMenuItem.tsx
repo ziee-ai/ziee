@@ -2,6 +2,7 @@ import { Wrench } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**
  * McpMenuItem Component
@@ -17,6 +18,15 @@ export function McpMenuItem() {
   const { servers, loading } = Stores.McpServer
   const mcpStore = Stores.McpComposer
   const { close } = usePlusDropdown()
+  // THIS pane's conversation, resolved from its OWN store (the same
+  // `useChatPaneOrNull()` pattern as McpStatusRow) — NOT the focused-pane bridge.
+  // The modal edits the global `currentConversationId`, so opening it from a
+  // non-focused split pane's "+" menu must point the modal at THIS pane's
+  // conversation, else the toggle edits the focused pane's config (ITEM-47).
+  const pane = useChatPaneOrNull()
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const paneId = pane?.paneId ?? null
+  const conversation = chat.conversation
 
   const enabledServers = servers.filter(s => s.enabled)
 
@@ -31,6 +41,9 @@ export function McpMenuItem() {
       icon={<Wrench />}
       label="MCP tools & servers"
       onClick={() => {
+        // Bind the shared modal to THIS pane's conversation AND pane id (ITEM-51),
+        // so a new-chat toggle edits this pane's own pending config.
+        mcpStore.setCurrentConversation(conversation?.id ?? null, paneId)
         mcpStore.openConfigModal()
         close()
       }}

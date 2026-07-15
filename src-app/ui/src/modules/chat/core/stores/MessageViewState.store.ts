@@ -55,8 +55,24 @@ export const MessageViewState = defineStore('MessageViewState', {
         set(d => {
           ensureFile(d.files, key).heightPx = heightPx
         }),
-      /** Drop ALL view state — called on conversation switch (ITEM-6, DEC-4). */
-      resetViewState: () => set(() => emptyViewMaps()),
+      /**
+       * Drop ephemeral view state on conversation switch / store teardown
+       * (ITEM-6, DEC-4).
+       *
+       * With `messageIds` (split-safe, ITEM-21): drop only THOSE messages'
+       * collapse entries, so closing/switching one split pane never clobbers
+       * another pane's still-open conversation. Message ids are globally unique,
+       * so this store legitimately holds several conversations' view state at
+       * once. Inline-file entries (keyed by resource_link URI, not message id)
+       * are left intact — harmless to keep (idempotent, bounded).
+       *
+       * Without `messageIds` (single-pane / global): full reset, unchanged.
+       */
+      resetViewState: (messageIds?: string[]) =>
+        set(d => {
+          if (!messageIds) return emptyViewMaps()
+          for (const id of messageIds) delete d.collapsed[id]
+        }),
     }
   },
 })

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ErrorState, Tooltip } from '@ziee/kit'
-import { Search as SearchIcon } from 'lucide-react'
+import { Columns2, GripVertical, Search as SearchIcon, X } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import {
   MessageList,
@@ -11,8 +11,30 @@ import {
 } from '@/modules/chat/components/MessageList'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
+import { ConversationPickerPane } from '@/modules/chat/components/ConversationPickerPane'
 import { TitleEditor } from '@/modules/chat/components/TitleEditor'
+import {
+  useClosePane,
+  useOpenConversationInWorkspace,
+} from '@/modules/chat/core/pane/useOpenConversation'
+import {
+  dragKind,
+  readConversationDragId,
+  readPaneDragId,
+  reorderIndices,
+  setPaneDragData,
+} from '@/modules/chat/core/pane/paneDnd'
+import {
+  type DropZone,
+  planSinglePaneDrop,
+  planSplitPaneDrop,
+  zoneForX,
+} from '@/modules/chat/core/pane/singlePaneDrop'
+import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeaderLeftInset'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Stores } from '@ziee/framework'
@@ -23,28 +45,275 @@ import { ConversationFindBar } from '@/modules/chat/components/ConversationFindB
 import { ConversationFindContext } from '@/modules/chat/components/ConversationFindContext'
 import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton'
 import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
+import { pendingApprovalIdsInPane } from '@/modules/chat/core/utils/toolCallPaneScope'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
+import { SplitChatView } from '@/modules/chat/components/SplitChatView'
+import { PaneManagerDrawer } from '@/modules/chat/components/PaneManagerDrawer'
 
+/**
+ * Chat route element for `/chat/:conversationId`.
+ *
+ * Single-pane (0–1 split panes) → the normal `ConversationPane` bound to the URL
+ * conversation via `Stores.Chat` (the primary pane). Once ≥2 split panes exist it
+ * renders `SplitChatView`, which mounts one `ConversationPane` per pane inside a
+ * `ChatPaneProvider`. Branching here on a single reactive read keeps hook order
+ * stable; each branch is its own component boundary.
+ */
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
+  const { panes, focusedPaneId } = Stores.SplitView
+  const navigate = useNavigate()
+  // The FOCUSED pane's conversation (reactive) — what the URL must mirror while a
+  // split is open.
+  const focusedConvId =
+    panes.find((p) => p.paneId === focusedPaneId)?.conversationId ?? null
+
+  // URL → workspace reconcile (ITEM-25). The URL is a *view into* the workspace
+  // (the focused pane). When it changes to a conversation NOT already shown by
+  // the focused pane while a split is open — a deep link, a browser back/forward,
+  // a "New chat in project" redirect — reconcile it in (focus its pane if open,
+  // else replace the focused pane). Loop-guarded on the focused pane's current
+  // conversation so the navigate that FOLLOWS a sidebar-click reconcile (which
+  // already set the focused pane) does not re-trigger a second reconcile.
+  useEffect(() => {
+    if (!conversationId) return
+    const sv = Stores.SplitView.$
+    if (sv.panes.length < 2) return // single-pane: the URL drives ConversationPane
+    const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
+    if (focused?.conversationId === conversationId) return // already shown → no-op
+    Stores.SplitView.openConversationInWorkspace(conversationId, 'auto')
+  }, [conversationId])
+
+  // Workspace → URL (FB-19). The MISSING second direction: opening a pane via the
+  // Split button / an edge-drop / a picker, OR clicking a different pane to focus
+  // it, changes the focused conversation but flows through `openPane`/`focusPane`
+  // — neither of which navigates. Only the sidebar-open hook navigated, so the URL
+  // got stuck on the FIRST conversation. That stale URL is why "open in new tab"
+  // reopened the already-showing conversation ("the current rendering one") instead
+  // of the focused one. Keep the URL in lockstep with the focused pane here:
+  // `replace` so a focus change doesn't spam history, and the equality guard makes
+  // it a strict no-op when the URL already matches (so it can never ping-pong with
+  // the URL→workspace reconcile above). Deps are ONLY [focusedConvId, panes.length]
+  // — NOT conversationId — so an external URL change (deep link) is handled by the
+  // reconcile above rather than fought by this effect.
+  useEffect(() => {
+    // `=== 0` (not `< 2`): a PURE single-pane view (no SplitView pane) is URL-driven,
+    // so skip. But a workspace COLLAPSING to a single surviving pane (e.g. the other
+    // pane's conversation was deleted — FB-25) must still point the URL at the
+    // survivor, or the single-pane view keeps loading the now-gone URL conversation
+    // and toasts "conversation does not exist".
+    if (panes.length === 0) return
+    if (!focusedConvId || focusedConvId === conversationId) return
+    navigate(`/chat/${focusedConvId}`, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedConvId, panes.length])
+
+  // The small-screen pane manager is mounted ONCE here (outside the pane subtrees)
+  // so it's reachable from both the single-pane header and every split pane header,
+  // and its global open-state survives the single-pane ⇄ split brancher swap below.
+  return (
+    <>
+      {panes.length >= 2 ? <SplitChatView /> : <ConversationPane />}
+      <PaneManagerDrawer />
+    </>
+  )
+}
+
+/**
+ * One conversation surface — message history + composer + right panel.
+ *
+ * Rendered in TWO contexts: as the single-pane route (no `ChatPaneProvider` →
+ * `pane` is null → drives the primary `Stores.Chat`), and as a pane inside
+ * `SplitChatView` (wrapped in a provider → `pane` set → drives that pane's own
+ * store). All store access goes through `chat`, so single-pane stays
+ * byte-identical to before the split existed.
+ */
+export function ConversationPane() {
+  const { conversationId: routeConversationId } = useParams<{
+    conversationId: string
+  }>()
+  const pane = useChatPaneOrNull()
+  const closePane = useClosePane()
+  const openConversationInWorkspace = useOpenConversationInWorkspace()
+  // Tear-off (ITEM-58): dragging this pane's grip past the window edge opens the
+  // conversation as its own desktop window (and MOVES the pane out). No-op on web.
+  const tearOff = useConversationTearOff()
+  // The pop-out window is a focused single-conversation view — hide window-management
+  // chrome (split, here; back + pop-out elsewhere) that only fits the main window
+  // (ITEM-56 / FB-13).
+  const isPopoutWindow = useIsPopoutWindow()
+  // Pane header drop-zone (ITEM-31): a conversation dropped on the header replaces
+  // this pane; a pane-header drag dropped here reorders. File drags are ignored
+  // (they belong to the composer) — the header is not over the composer, so they
+  // never cross-fire. `paneDropActive` drives the drop highlight.
+  // `paneDropActive` = a pane-REORDER drag is over this pane's header (ring
+  // highlight). The unified `onPaneArea*` handlers (defined below, after
+  // `conversationId`) drive both this and the conversation edge-directional drop.
+  const [paneDropActive, setPaneDropActive] = useState(false)
+  // In a pane the provider owns the target conversation id (the URL param is the
+  // route's, not this pane's); on the single-pane route it's the URL param.
+  const conversationId = pane
+    ? pane.conversationId ?? undefined
+    : routeConversationId
+  // Uniform store handle: the pane's own store in split, else the focused-pane
+  // bridge (= primary) on the single-pane route. Both proxies expose the same
+  // reactive-read / `.$` snapshot / action surface.
+  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  // Split per-pane header must match the single-pane app header `HeaderBarContainer`
+  // (ITEM-71 / FB-18): same 50px height, and the LEFTMOST pane reserves the same
+  // left inset (shared `useHeaderLeftInset` — web 48/12, macOS-desktop 118) so its
+  // content clears the fixed sidebar-collapse toggle + the macOS traffic lights.
+  const headerLeftInset = useHeaderLeftInset()
+  // Small screen (≤768px): a split pane can't tile columns, so it renders as a
+  // normal single-pane conversation (normal header, no grip, no drag, no per-pane
+  // ✕) and pane management moves to the `PaneManagerDrawer` (FB-26). `md === true`
+  // is the drawer/single-visible-pane mode; desktop (false) keeps the compact
+  // split header + drag-to-split + one-click split.
+  const { md } = useWindowMinSize()
+  // Read `panes` UNCONDITIONALLY (reactive) then derive — never behind `&&`, so the
+  // reactive-proxy hook it triggers isn't conditional (Rules of Hooks; the file's
+  // convention is `.$` snapshots for hook-free reads, reactive reads only at top level).
+  const { panes: splitViewPanes, focusedPaneId: splitFocusedPaneId } =
+    Stores.SplitView
+  const isLeftmostPane = !!pane && splitViewPanes[0]?.paneId === pane.paneId
+  // On a small screen the FOCUSED pane is the only visible one; it should read like
+  // a normal single-pane conversation — native document-scroll + the SAME auto-hiding
+  // `HeaderBarContainer` (FB-28), so it inherits that header's real notch handling
+  // (sticky top:5, the safe-area backdrop, relative-wipe) instead of a re-derived
+  // approximation. `useMobileShell` marks that pane → it renders the
+  // `HeaderBarContainer` branch below; hidden + desktop panes keep the compact header.
+  // Safe to branch on because the store-proxy flag it depends on is read
+  // unconditionally (a conditional proxy read would be a conditional hook).
+  const isFocusedPane = !!pane && splitFocusedPaneId === pane.paneId
+  const useMobileShell = !!pane && md && isFocusedPane
+  // Per-pane edge-directional drop (ITEM-57 single-pane + ITEM-70 split): a
+  // conversation dragged over a pane's chat column highlights the left/center/
+  // right third. SINGLE-pane: left/right create the split ([dropped|current] /
+  // [current|dropped]), center replaces in place. SPLIT: left/right insert a NEW
+  // pane immediately before/after THIS pane, center replaces THIS pane; at
+  // MAX_PANES the edges fall back to replace. Only conversation drags participate
+  // — a file drag belongs to the composer; a pane-reorder drag is the header's.
+  const [dropZone, setDropZone] = useState<DropZone | null>(null)
+  // Unified pane-area drop, attached to BOTH the pane HEADER and the chat COLUMN
+  // (they're SIBLINGS, so a header drop can't bubble to the column — blind-audit
+  // fix). Dispatches by drag kind: a CONVERSATION drag drives the edge-directional
+  // L/C/R zone (the whole pane is one target); a pane-REORDER drag highlights the
+  // header + reorders. Both use `e.currentTarget`'s rect — header + column share
+  // the pane's full width, so the x-fraction is consistent wherever you drop.
+  const onPaneAreaDragOver = (e: React.DragEvent) => {
+    const kind = dragKind(e.dataTransfer)
+    if (kind === 'conversation') {
+      if (!conversationId) return
+      e.preventDefault()
+      const rect = e.currentTarget.getBoundingClientRect()
+      setDropZone(zoneForX(e.clientX, rect.left, rect.width))
+    } else if (kind === 'pane' && pane) {
+      e.preventDefault()
+      setPaneDropActive(true)
+    }
+  }
+  const onPaneAreaDragLeave = (e: React.DragEvent) => {
+    // Ignore leave events that cross into a child; only clear on a real exit.
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setDropZone(null)
+      setPaneDropActive(false)
+    }
+  }
+  const onPaneAreaDrop = (e: React.DragEvent) => {
+    setDropZone(null)
+    setPaneDropActive(false)
+    const kind = dragKind(e.dataTransfer)
+    if (kind === 'pane') {
+      if (!pane) return
+      const from = readPaneDragId(e.dataTransfer)
+      const idx = from ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId) : null
+      if (idx) {
+        e.preventDefault()
+        Stores.SplitView.reorderPanes(idx.from, idx.to)
+      }
+      return
+    }
+    if (kind !== 'conversation' || !conversationId) return
+    const droppedId = readConversationDragId(e.dataTransfer)
+    if (!droppedId) return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const zone = zoneForX(e.clientX, rect.left, rect.width)
+    if (pane) {
+      // Existing split: insert before/after THIS pane, or replace it.
+      const atCap = Stores.SplitView.$.panes.length >= SPLIT_LIMITS.MAX_PANES
+      const plan = planSplitPaneDrop(zone, conversationId, droppedId, atCap)
+      if (plan.kind === 'replace') {
+        Stores.SplitView.setPaneConversation(pane.paneId, droppedId)
+      } else if (plan.kind === 'insertBefore') {
+        Stores.SplitView.openPane({ conversationId: droppedId, beforePaneId: pane.paneId })
+      } else if (plan.kind === 'insertAfter') {
+        Stores.SplitView.openPane({ conversationId: droppedId, afterPaneId: pane.paneId })
+      }
+      return
+    }
+    // Single-pane: create the split (or replace in place). Route BOTH edges
+    // through the canonical reconcile open (blind-audit fixes): `newPane` seeds
+    // `[current | dropped]`, navigates to + focuses the DROPPED conversation, and
+    // dedups a conversation already live in a pop-out WINDOW. A left drop then
+    // reorders the dropped pane to the front.
+    const plan = planSinglePaneDrop(zone, conversationId, droppedId)
+    if (plan.kind === 'replace') {
+      void openConversationInWorkspace(plan.id)
+    } else if (plan.kind === 'split') {
+      const droppedOnLeft = plan.order[0] === droppedId
+      void openConversationInWorkspace(droppedId, { intent: 'newPane' }).then(() => {
+        if (!droppedOnLeft) return
+        const panes = Stores.SplitView.$.panes
+        const idx = panes.findIndex(p => p.conversationId === droppedId)
+        if (idx > 0) Stores.SplitView.reorderPanes(idx, 0)
+      })
+    }
+  }
 
   const { conversation, messages, loading, error, hasMoreBefore, hasMoreAfter } =
-    Stores.Chat
+    chat
   // Native document-scroll on mobile: the message history scrolls the WINDOW
   // (iOS toolbar collapses as you scroll up) while the composer stays pinned via
-  // position:sticky. Desktop keeps the fixed inner-scroll shell. The right panel
-  // is a fixed overlay on mobile, so the chat column is effectively full-width.
-  useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
+  // position:sticky. Desktop keeps the fixed inner-scroll shell.
+  //   • Single-pane route → THIS component owns the flag (`useNativeScroll(!pane)`).
+  //   • Split → `SplitChatView` owns it for the whole mobile split; a pane's own
+  //     `useNativeScroll(!pane)` is a no-op and just READS the flag.
+  // The focused MOBILE pane (`useMobileShell`) then follows the flag → native
+  // document scroll + auto-hide header, like single-pane; hidden + desktop panes
+  // stay on the inner shell.
+  useNativeScroll(!pane)
+  // Read the store flag UNCONDITIONALLY: a store-proxy read IS a subscription hook,
+  // so reading it only in one ternary branch would ADD/DROP a hook when
+  // `useMobileShell` flips on a focus-switch → a Rules-of-Hooks crash. Apply the
+  // condition to the VALUE, never to the read.
+  const appNativeScroll = Stores.AppLayout.nativeScroll
+  const nativeScroll = !pane || useMobileShell ? appNativeScroll : false
   // Live MCP tool-call statuses — subscribed reactively (proxy destructure) so a
   // newly-`pending_approval` tool triggers the scroll-to-approval effect below.
+  // NOTE (split-awareness, Stage-2 candidate): `toolCalls` reads the McpComposer
+  // store as a process-global map (see the effect below) — not yet pane-scoped.
   const { toolCalls } = Stores.McpComposer
 
-  // Load conversation and messages on mount or when ID changes.
-  useEffect(() => {
-    if (conversationId) {
-      Stores.Chat.loadConversation(conversationId)
+  // Split affordance: open the current conversation beside a fresh pane. On the
+  // single-pane route this seeds pane 0 with the current conversation first.
+  const onSplit = () => {
+    if (Stores.SplitView.$.panes.length === 0 && conversationId) {
+      Stores.SplitView.openPane({ conversationId })
     }
-  }, [conversationId])
+    Stores.SplitView.openPane({ conversationId: null })
+  }
+
+  // Load conversation and messages on mount or when ID changes — single-pane
+  // route only; in a pane `ChatPaneProvider` owns loading into the pane's own
+  // store, so ConversationPane must not re-load via the (focused-pane) bridge.
+  useEffect(() => {
+    if (!pane && conversationId) {
+      chat.loadConversation(conversationId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pane, conversationId])
 
   // Auto-scroll to bottom on new messages, but ONLY if the user is
   // already near the bottom. Previously this scrolled unconditionally
@@ -71,6 +340,9 @@ export default function ConversationPage() {
   // tool_use_ids whose pending approval we've already scrolled to — so the
   // scroll-to-approval effect fires once per approval, not on every toolCalls change.
   const scrolledApprovalsRef = useRef<Set<string>>(new Set())
+  // One-shot latch for the pre-existing-approval seed below (it must seed once
+  // THIS pane's messages have loaded, NOT on bare mount when `messages` is empty).
+  const didSeedApprovalsRef = useRef(false)
 
   // ── Reverse-infinite-scroll (load older on scroll-up) refs (ITEM-9) ────────
   // The OverlayScrollbars component (desktop inner scroll). In mobile native
@@ -220,7 +492,11 @@ export default function ConversationPage() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f') {
-        if (!Stores.Chat.$.conversation) return
+        if (!chat.$.conversation) return
+        // Each pane registers this window listener; only the FOCUSED pane opens
+        // its find bar (audit #2) — otherwise Cmd-F opened it in EVERY loaded pane.
+        // Single-pane (`!pane`) is always "focused".
+        if (pane && pane.paneId !== Stores.SplitView.$.focusedPaneId) return
         e.preventDefault()
         setFindOpen(true)
       }
@@ -236,9 +512,9 @@ export default function ConversationPage() {
     // real latest message isn't loaded — `messagesEndRef` is only the bottom of
     // the loaded slice. Snap to the tail first so "Jump to latest" reaches the
     // actual latest, then scroll instantly (content just changed).
-    const cid = Stores.Chat.$.conversation?.id
-    if (cid && Stores.Chat.$.hasMoreAfter) {
-      await Stores.Chat.loadMessages(cid)
+    const cid = chat.$.conversation?.id
+    if (cid && chat.$.hasMoreAfter) {
+      await chat.loadMessages(cid)
       requestAnimationFrame(() =>
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }),
       )
@@ -309,11 +585,25 @@ export default function ConversationPage() {
   // yank a freshly-opened one to the bottom — only approvals that appear AFTER this
   // page mounts should scroll.
   useEffect(() => {
-    for (const [id, call] of toolCalls) {
-      if (call.status === 'pending_approval') scrolledApprovalsRef.current.add(id)
-    }
+    // Seed ONCE, the first commit where THIS pane's own conversation has loaded —
+    // NOT on bare mount, where `messages` is still empty (so the old `[]`-deps
+    // version seeded nothing and, on a pane REMOUNT into split view / pop-out with
+    // an approval already pending in the process-global toolCalls for this pane's
+    // conversation, let the scroll effect below yank the pane to that pre-existing
+    // approval). Re-running on `messages` and latching via the ref means that in
+    // the commit where messages first include the approval, this effect (declared
+    // BEFORE the scroll effect) marks it seen first, so the scroll effect then
+    // finds it already-seen and does not scroll.
+    if (didSeedApprovalsRef.current) return
+    if (conversation?.id !== conversationId) return
+    didSeedApprovalsRef.current = true
+    // Per-pane (ITEM-48): seed only THIS pane's own already-pending approvals, so a
+    // leftover pending approval belonging to another pane's conversation is never
+    // treated as this pane's (it's filtered out — its message isn't in `messages`).
+    for (const id of pendingApprovalIdsInPane(toolCalls, messages))
+      scrolledApprovalsRef.current.add(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [conversation, conversationId, messages])
 
   // A tool call that needs approval must grab the user's attention even if they've
   // scrolled up reading history — the streaming approval is injected at the TAIL of
@@ -331,8 +621,11 @@ export default function ConversationPage() {
     // stray cross-conversation scroll later.
     const seen = scrolledApprovalsRef.current
     let hasNewApproval = false
-    for (const [id, call] of toolCalls) {
-      if (call.status === 'pending_approval' && !seen.has(id)) {
+    // Per-pane (ITEM-48): only approvals whose carrying message is in THIS pane's
+    // messages count — a pending approval in another pane's conversation must not
+    // scroll this pane's list.
+    for (const id of pendingApprovalIdsInPane(toolCalls, messages)) {
+      if (!seen.has(id)) {
         seen.add(id)
         hasNewApproval = true
       }
@@ -360,7 +653,7 @@ export default function ConversationPage() {
     } else {
       messageListRef.current?.scrollToBottom()
     }
-  }, [toolCalls, conversation, conversationId, hasMoreAfter])
+  }, [toolCalls, messages, conversation, conversationId, hasMoreAfter])
 
   // ── Reverse-infinite-scroll: load older on scroll-up (ITEM-9) ──────────────
   // A top sentinel with an 800px rootMargin (~1.5 viewports) prefetches the next
@@ -376,15 +669,15 @@ export default function ConversationPage() {
         if (!entries[0]?.isIntersecting) return
         // Fresh store reads — the closure's `hasMoreBefore`/`loadingOlder` could
         // be stale between re-renders.
-        if (!Stores.Chat.$.hasMoreBefore || Stores.Chat.$.loadingOlder) return
+        if (!chat.$.hasMoreBefore || chat.$.loadingOlder) return
         // Capture the top-visible message as an index anchor via the virtualizer
         // so the prepend doesn't teleport the view (restored below).
-        const prevFirstId = firstMessageId(Stores.Chat.$.messages)
+        const prevFirstId = firstMessageId(chat.$.messages)
         const anchor = messageListRef.current?.captureAnchor() ?? null
         if (anchor && prevFirstId) {
           pendingAnchorRef.current = { anchor, prevFirstId }
         }
-        await Stores.Chat.loadOlderMessages()
+        await chat.loadOlderMessages()
         // If NO older page landed (guard early-return, empty/duplicate page, or
         // a conversation switch), the restore layout-effect never fires — clear
         // the pending anchor so it can't stick truthy and permanently suppress
@@ -392,7 +685,7 @@ export default function ConversationPage() {
         const pending = pendingAnchorRef.current
         if (
           pending &&
-          firstMessageId(Stores.Chat.$.messages) === pending.prevFirstId
+          firstMessageId(chat.$.messages) === pending.prevFirstId
         ) {
           pendingAnchorRef.current = null
         }
@@ -416,8 +709,8 @@ export default function ConversationPage() {
     const observer = new IntersectionObserver(
       entries => {
         if (!entries[0]?.isIntersecting) return
-        if (!Stores.Chat.$.hasMoreAfter || Stores.Chat.$.isStreaming) return
-        void Stores.Chat.loadNewerMessages()
+        if (!chat.$.hasMoreAfter || chat.$.isStreaming) return
+        void chat.loadNewerMessages()
       },
       { root: view?.root ?? null, rootMargin: '0px 0px 800px 0px', threshold: 0 },
     )
@@ -449,8 +742,8 @@ export default function ConversationPage() {
       const m = window.location.hash.match(/^#message-(.+)$/)
       if (!m) return
       const messageId = m[1]
-      const found = await Stores.Chat.jumpToMessage(messageId)
-      if (!found || Stores.Chat.$.conversation?.id !== conversation.id) return
+      const found = await chat.jumpToMessage(messageId)
+      if (!found || chat.$.conversation?.id !== conversation.id) return
       // Wait for the centered window to render, then scroll the (possibly
       // virtualized-out) target into view via the virtualizer + highlight.
       requestAnimationFrame(() => {
@@ -469,11 +762,32 @@ export default function ConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.id])
 
+  // New-chat pane adoption (ITEM-11 / TEST-37): when a pane that started with no
+  // conversation (a "New chat" pane) creates one via its composer, adopt that
+  // conversation into the pane's SplitView slot so it stops being a new-chat pane
+  // and the whole WINDOW does not navigate (no hijack). Keyed on this pane's own
+  // store's conversation becoming set.
+  useEffect(() => {
+    if (pane && !pane.conversationId && conversation?.id) {
+      Stores.SplitView.setPaneConversation(pane.paneId, conversation.id)
+    }
+  }, [pane, conversation?.id])
+
   // Loading state
   if (loading && !conversation) {
     return (
       <Loading />
     )
+  }
+
+  // Empty PANE (ITEM-27): a split pane with no conversation targeted yet is the
+  // second slot of a split waiting to be filled. Render the conversation PICKER
+  // (searchable list of existing conversations + "Start a new chat") so the slot
+  // can hold an EXISTING conversation — not only a fresh one (FB-3). The new-chat
+  // path inside the picker reaches the same greeting + composer + adoption.
+  // (Single-pane new chat uses the NewChatPage route instead.)
+  if (pane && !conversationId && !conversation) {
+    return <ConversationPickerPane paneId={pane.paneId} />
   }
 
   // No conversation to show. A load FAILURE (the store set `error`) is a
@@ -488,7 +802,7 @@ export default function ConversationPage() {
             description="This conversation couldn't be loaded. Check your connection and try again."
             details={error}
             onRetry={() =>
-              conversationId && Stores.Chat.loadConversation(conversationId)
+              conversationId && chat.loadConversation(conversationId)
             }
             className="max-w-md"
             data-testid="chat-conversation-error"
@@ -505,51 +819,223 @@ export default function ConversationPage() {
     )
   }
 
+  // Shared header controls (find toggle + split affordance + the decoupled
+  // trailing slot). Reused by both the full app header (single-pane) and the
+  // compact per-pane header (split).
+  const headerControls = (
+    <>
+      {/* Find-in-conversation toggle (ITEM-1). Also openable via Cmd/Ctrl-F. */}
+      <Tooltip content="Find in conversation">
+        <Button
+          ref={findToggleRef}
+          data-testid="conversation-find-toggle-btn"
+          variant={findOpen ? 'default' : 'ghost'}
+          size="icon"
+          icon={<SearchIcon />}
+          aria-label="Find in conversation"
+          aria-pressed={findOpen}
+          onClick={() => (findOpen ? closeFind() : setFindOpen(true))}
+        />
+      </Tooltip>
+      {/* Panes affordance — the columns icon, visually distinct from the pop-out
+          "new window" action that the trailing slot injects. Hidden inside the
+          pop-out WINDOW (ITEM-56/FB-13): a focused single-conversation window
+          shouldn't spawn a split inside itself.
+            • Desktop (columns): one-click "Open in split view" (onSplit), hidden at
+              MAX_PANES since another pane can't fit.
+            • Small screen (FB-26): there are no tiled columns, so the button opens
+              the `PaneManagerDrawer` (switch / add / close panes) instead — always
+              available (even at MAX_PANES, where it's still the way to switch/close). */}
+      {!isPopoutWindow &&
+        (md ? (
+          <Tooltip content="Panes">
+            <Button
+              data-testid="chat-split-btn"
+              variant="ghost"
+              size="icon"
+              icon={<Columns2 />}
+              aria-label="Open panes"
+              aria-haspopup="dialog"
+              onClick={() => Stores.SplitView.setPaneManagerOpen(true)}
+            />
+          </Tooltip>
+        ) : (
+          splitViewPanes.length < SPLIT_LIMITS.MAX_PANES && (
+            <Tooltip content="Open in split view">
+              <Button
+                data-testid="chat-split-btn"
+                variant="ghost"
+                size="icon"
+                icon={<Columns2 />}
+                aria-label="Open in split view"
+                onClick={onSplit}
+              />
+            </Tooltip>
+          )
+        ))}
+      {/* Decoupled chip injection point — other modules register header
+          decorations into `chatConversationHeaderTrailing` without chat
+          compiling against them. */}
+      <ConversationHeaderTrailingSlot />
+    </>
+  )
+
   return (
     <div className={cn('flex flex-col', nativeScroll ? 'min-h-dvh' : 'h-full')}>
-      {/* Header — full width, matches the rest of the app's header bars
-          (project page, settings, etc.). TitleEditor at the left,
-          slot consumers at the right. */}
-      <HeaderBarContainer>
-        <div className="h-full flex items-center justify-between w-full gap-2">
-          <div className="flex items-center min-w-0 gap-2">
+      {/* Header — full width app header on the single-pane route; an in-column
+          header inside a split pane. On DESKTOP the pane header is compact (reorder
+          grip + close-pane ✕ + drag-to-split drop target). On SMALL SCREENS
+          (`md`, FB-26) the split can't tile columns, so the pane reads as a normal
+          single-pane conversation: normal left inset (clears the sidebar toggle for
+          EVERY focused pane, not just the leftmost — fixing the "2nd pane loses the
+          inset" bug), NO grip, NO per-pane ✕, and NO drag chrome (pane management
+          moves to the `PaneManagerDrawer`). One element, adapted by `md`, so the
+          `chat-pane-header` testid stays unique. The FOCUSED mobile pane
+          (`useMobileShell`) instead falls through to the `HeaderBarContainer` branch
+          below (same as single-pane) so it INHERITS the real auto-hide chrome —
+          sticky `top:5` (dodges iOS's under-notch latch), the `bg-card` backdrop that
+          fills the safe-area/notch gap, and the relative-wipe-on-scroll-down — rather
+          than a re-derived approximation (FB-28). The store-proxy flag is read
+          unconditionally above, so this branch flip does not change the hook tree. */}
+      {pane && !useMobileShell ? (
+        <div
+          className={cn(
+            'flex h-[50px] shrink-0 items-center justify-between gap-2 border-b',
+            !md && paneDropActive && 'bg-primary/10 ring-2 ring-primary ring-inset',
+          )}
+          // Match HeaderBarContainer: 50px tall. Small screen → always reserve the
+          // toggle inset (the focused pane is the ONLY visible one). Desktop → only
+          // the leftmost pane reserves it (else a plain 12px); FB-18.
+          style={{ paddingLeft: md || isLeftmostPane ? headerLeftInset : 12, paddingRight: 12 }}
+          data-testid="chat-pane-header"
+          onDragOver={md ? undefined : onPaneAreaDragOver}
+          onDragLeave={md ? undefined : onPaneAreaDragLeave}
+          onDrop={md ? undefined : onPaneAreaDrop}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {/* Reorder handle (ITEM-31): drag this pane's header onto another
+                pane to reorder. A span (not a button) so it doesn't steal the
+                title's focus; keyboard reorder is out of scope for the handle.
+                Tear-off (ITEM-58): releasing the same drag PAST the window edge
+                pops this pane's conversation into its own desktop window and
+                MOVES it out (no-op on web / in-window release). Desktop-only:
+                drag is meaningless on touch/narrow (FB-26). */}
+            {!md && (
+              <span
+                draggable
+                onDragStart={e => setPaneDragData(e.dataTransfer, pane.paneId)}
+                onDragEnd={e => {
+                  if (pane.conversationId)
+                    tearOff(e, {
+                      conversationId: pane.conversationId,
+                      paneId: pane.paneId,
+                      title: conversation?.title ?? undefined,
+                    })
+                }}
+                data-testid="chat-pane-grip"
+                aria-label="Drag to reorder pane"
+                className="shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+              >
+                <GripVertical className="size-4" />
+              </span>
+            )}
             <TitleEditor />
           </div>
           <div className="flex items-center gap-1">
-            {/* Find-in-conversation toggle (ITEM-1). Also openable via
-                Cmd/Ctrl-F. */}
-            <Tooltip content="Find in conversation">
-              <Button
-                ref={findToggleRef}
-                data-testid="conversation-find-toggle-btn"
-                variant={findOpen ? 'default' : 'ghost'}
-                size="icon"
-                icon={<SearchIcon />}
-                aria-label="Find in conversation"
-                aria-pressed={findOpen}
-                onClick={() => (findOpen ? closeFind() : setFindOpen(true))}
-              />
-            </Tooltip>
-            {/* Decoupled chip injection point — other modules register
-                header decorations into `chatConversationHeaderTrailing`
-                without chat compiling against them. */}
-            <ConversationHeaderTrailingSlot />
+            {headerControls}
+            {/* Per-pane close ✕ — desktop only; on small screens a pane is closed
+                from the PaneManagerDrawer's ✕ (FB-26). */}
+            {!md && (
+              <Tooltip content="Close pane">
+                <Button
+                  data-testid="chat-pane-close"
+                  variant="ghost"
+                  size="icon"
+                  icon={<X />}
+                  aria-label="Close pane"
+                  onClick={() => closePane(pane.paneId)}
+                />
+              </Tooltip>
+            )}
           </div>
         </div>
-      </HeaderBarContainer>
+      ) : (
+        <HeaderBarContainer>
+          <div className="h-full flex items-center justify-between w-full gap-2">
+            <div className="flex items-center min-w-0 gap-2">
+              <TitleEditor />
+            </div>
+            <div className="flex items-center gap-1">{headerControls}</div>
+          </div>
+        </HeaderBarContainer>
+      )}
 
       {/* Error banner */}
       {error && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-4">
-          <Alert data-testid="chat-conversation-error-alert" tone="error" title={error} onClose={Stores.Chat.clearError} closeLabel="Close" />
+          <Alert data-testid="chat-conversation-error-alert" tone="error" title={error} onClose={chat.clearError} closeLabel="Close" />
         </div>
       )}
 
       {/* Main area: chat column + right panel */}
-      <div ref={mainAreaRef} className={cn('flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
+      <div ref={mainAreaRef} className={cn('relative flex flex-1 min-h-0', nativeScroll ? '' : 'overflow-hidden')}>
         {/* Chat column. `relative` anchors the floating find bar (ITEM-1) and
             jump-to-latest button (ITEM-2). */}
-        <div className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}>
+        <div
+          // Testid only in single-pane (kept unique — split panes have `pane`); a
+          // plain data attr marks the per-pane drop column for split e2e targeting.
+          data-testid={pane ? undefined : 'chat-single-drop-column'}
+          data-pane-drop-column="true"
+          className={cn('relative flex flex-col flex-1 min-w-0', nativeScroll ? '' : 'overflow-hidden')}
+          // Drag-to-split / edge-drop is desktop-only (FB-26): meaningless on
+          // touch/narrow, where pane management lives in the PaneManagerDrawer.
+          onDragOver={md ? undefined : onPaneAreaDragOver}
+          onDragLeave={md ? undefined : onPaneAreaDragLeave}
+          onDrop={md ? undefined : onPaneAreaDrop}
+        >
+          {/* Edge-directional drop hint (ITEM-57 single-pane / ITEM-70 split): while
+              a conversation is dragged over the column, show the three target thirds
+              and highlight the one under the pointer. Non-interactive overlay — the
+              drag events land on the column beneath it. Labels reflect the action:
+              single-pane opens a split by side; a split pane inserts a new pane
+              before/after (or replaces at the MAX_PANES cap). */}
+          {!md && dropZone && (
+            <div className="pointer-events-none absolute inset-0 z-40 flex" aria-hidden="true">
+              {(['left', 'center', 'right'] as const).map(z => {
+                // Snapshot read (`.$`) — NOT the reactive proxy — so this is a plain
+                // value read, not a hook call inside a loop/conditional (Rules of Hooks).
+                const atCap =
+                  !!pane && Stores.SplitView.$.panes.length >= SPLIT_LIMITS.MAX_PANES
+                const label =
+                  z === 'center'
+                    ? 'Replace'
+                    : pane
+                      ? atCap
+                        ? 'Replace'
+                        : z === 'left'
+                          ? 'Insert left'
+                          : 'Insert right'
+                      : z === 'left'
+                        ? 'Open on left'
+                        : 'Open on right'
+                return (
+                  <div
+                    key={z}
+                    className={cn(
+                      'flex flex-1 items-center justify-center border border-dashed border-primary/30 text-sm font-medium text-primary transition-colors',
+                      dropZone === z
+                        ? 'bg-primary/10 ring-2 ring-inset ring-primary'
+                        : 'opacity-40',
+                    )}
+                  >
+                    {dropZone === z && (
+                      <span className="rounded-md bg-card/80 px-2 py-1 shadow-sm">{label}</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
           {/* Floating find bar, top-right of the chat column. */}
           <div className="pointer-events-none absolute end-3 top-3 z-30 flex justify-end">
             <div className="pointer-events-auto">
@@ -706,8 +1192,10 @@ export default function ConversationPage() {
           </div>
         </div>
 
-        {/* Right sidebar panel */}
-        <ChatRightPanel narrow={rightPanelNarrow} />
+        {/* Right sidebar panel. Inside a split pane it renders as an in-pane
+            slide-over anchored to this pane's main area (ITEM-18); on the full
+            page it's the inline side panel / narrow Drawer as before. */}
+        <ChatRightPanel narrow={rightPanelNarrow} inPane={!!pane} />
       </div>
     </div>
   )

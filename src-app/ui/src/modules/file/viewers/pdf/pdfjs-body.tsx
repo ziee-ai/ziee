@@ -17,6 +17,10 @@ import type { FileViewerSlotProps } from '../../types/viewer'
 import type { PdfController, ScaleValue } from './pdfjs'
 import { usePdfDocument } from './usePdfDocument'
 import { canNextPage, canPrevPage, clampPage, parseJump } from './nav'
+import {
+  scopedHighlightKey,
+  useFileHighlightScope,
+} from '@/modules/file/viewers/highlightScope'
 import { nextZoomStep } from './zoom'
 
 // Client-side PDF viewer (ITEM-5/6/7/8/9, DEC-11). Mounts PDF.js's own
@@ -34,8 +38,12 @@ export function PdfJsBody(props: FileViewerSlotProps) {
 
   // Citation-highlight target for THIS file (set by a caller that opens the doc
   // at an exact passage, e.g. the KB kb_source panel). Read reactively so a
-  // re-target re-applies. See PdfHighlight.store + types/viewer.ts convention.
-  const highlightTarget = Stores.PdfHighlight.targets.get(file.id) ?? null
+  // re-target re-applies. Keyed by the per-pane highlight scope (ITEM-49) so two
+  // split panes viewing the same doc hold independent highlights; null scope →
+  // the bare fileId key (unchanged single-pane behavior).
+  const hlScope = useFileHighlightScope()
+  const highlightTarget =
+    Stores.PdfHighlight.targets.get(scopedHighlightKey(hlScope, file.id)) ?? null
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)

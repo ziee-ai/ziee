@@ -160,7 +160,9 @@ pub use modules::mcp::chat_extension::content::{McpContentData, ResourceLink, Ri
 #[doc(hidden)]
 pub use modules::file::storage::manager::{get_file_storage, init_file_storage};
 #[doc(hidden)]
-pub use modules::mcp::resource_link::{persist_links, PersistOutcome, PersistedArtifact};
+pub use modules::mcp::resource_link::{
+    persist_links, result_link_trusted_hosts, PersistOutcome, PersistedArtifact,
+};
 
 // Re-export memory + summarization engines for integration tests
 // (tier 5 real-LLM tests need to invoke the pipelines directly).
@@ -324,7 +326,9 @@ pub mod workflow {
 // not of the integration-test crate.
 #[doc(hidden)]
 pub mod test_internals {
-    pub use crate::modules::chat::core::services::streaming::group_assistant_blocks;
+    pub use crate::modules::chat::core::services::streaming::{
+        dedup_tool_results_by_id, group_assistant_blocks,
+    };
     pub use ai_providers::{ChatMessage, ContentBlock, Role};
     // Chat repository surface for the DB-level append_content tests
     // (Tier-2 monotonic / collision-free under concurrent appends).
@@ -428,6 +432,8 @@ fn init_data_dir(config: &Config) {
     // Publish the resolved caches config into global state so handlers
     // can read paths without threading Config through every signature.
     core::set_caches_config(config.caches.clone());
+    // Apply the deployment-config chat-token SSE connection caps (DEC-34).
+    crate::modules::chat::stream::registry::apply_config_limits(&config.chat);
 }
 
 /// Common server setup - initializes all components and returns the router

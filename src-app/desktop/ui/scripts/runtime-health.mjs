@@ -82,6 +82,67 @@ const REACT_WARNING = [
   /findDOMNode/i,
 ]
 
+/**
+ * HARNESS-NOISE classifier — documented, NARROW patterns for console/request
+ * findings that are gallery-harness / dev-server / mock-cassette artifacts, NOT
+ * product defects. These are subtracted from the gating HIGH total (exactly like
+ * the runtime-baseline) but STILL EMITTED to the JSONL and listed in a dedicated
+ * rollup section — so the filter is fully auditable, never a silent mute.
+ *
+ * This is deliberately a SHORT allowlist, not a blanket. Anything that does NOT
+ * match one of these — a real React hydration/DOM-nesting error, a thrown app
+ * TypeError, an ErrorBoundary `crash` (which is NEVER muted here, regardless of
+ * trigger), a genuine broken PRODUCT fetch — still gates.
+ *
+ * Rationale per class (from the R3 runtime triage — see fix/runtime-triage):
+ *  • Browser "Failed to load resource: the server responded with a status of N"
+ *    — the console-channel MIRROR of an HTTP status, carrying no app stack. In
+ *    the gallery every /api response is the mock cassette's deliberate output
+ *    (the `error` state injects 500/403 on purpose). This is the request/HTTP
+ *    layer, not application logic — the console twin of `request-failed`.
+ *  • "Gallery forced error" — the cassette's own reject() sentinel that
+ *    `*-err` / error-state surfaces use to exercise error UI, by design.
+ *  • FileStore `…text is not a function` — the gallery mock returns a plain
+ *    object for a file body, so File.store's `.text()` throws; production
+ *    returns a real Blob. A mock-FIXTURE shape gap, not a product bug.
+ *  • Vite dev-asset request failures — a full reload aborts in-flight ESM /
+ *    font imports (`/@fs/…/node_modules/katex/…woff2 — net::ERR_ABORTED`).
+ *    Dev-server transport, never a product fetch (product data goes to /api,
+ *    which the mock intercepts before the network).
+ */
+const HARNESS_CONSOLE = [
+  /^Failed to load resource: the server responded with a status of/i,
+  /Gallery forced error/i,
+  /\[FileStore\] Failed to load file text content:.*\.text is not a function/i,
+]
+/** A failed request to a Vite-served dev asset (source module, /@-internal,
+ *  node_modules font/chunk) — dev-transport noise, never a product fetch. */
+const isViteDevAsset = url =>
+  /\/@(fs|id|vite|react-refresh)\b/.test(url) ||
+  /\/node_modules\//.test(url) ||
+  /\/(src|modules|core|api-client|dev|components|hooks|widgets|stores|events|utils|assets)\/[^?]*\.(tsx?|jsx?|mjs|css)(\?|$)/.test(
+    url,
+  )
+/**
+ * True when a HIGH finding is documented gallery-harness noise (subtracted from
+ * gating, but kept visible). A `crash` (ErrorBoundary) is intentionally excluded
+ * — a render crash gates no matter what triggered it.
+ */
+function isHarnessNoise(f) {
+  const d = f.detail || ''
+  if (f.category === 'console-error' && matchesAny(d, HARNESS_CONSOLE)) return true
+  if (f.category === 'request-failed') {
+    // A browser-ABORTED request (net::ERR_ABORTED) is a full-page-reload race in
+    // the per-cell harness (a dev fixture/module import still in flight when the
+    // next cell reloads) — never a product fetch defect, which surfaces as a
+    // 4xx/5xx status or ERR_CONNECTION*/ERR_NAME_NOT_RESOLVED. Mute it.
+    if (/net::ERR_ABORTED/.test(d)) return true
+    const m = /(?:GET|POST|PUT|DELETE|PATCH|HEAD)\s+(\S+)/.exec(d)
+    return isViteDevAsset(m ? m[1] : d)
+  }
+  return false
+}
+
 // An ErrorBoundary catch is a genuine render CRASH in ANY state (the surface
 // failed to render, incl. its error UI) — always HIGH.
 const ERRORBOUNDARY = /\[AppErrorBoundary/
@@ -353,8 +414,7 @@ async function main() {
 
   // 2. Build the surface × state matrix. Pages get the data-state set; the
   //    interaction-only classes (overlay/deep/seeded) render once via
-  //    `?surface=<slug>` (state is ignored by the mock for those). On the
-  //    page-focused desktop canvas the latter three are empty.
+  //    `?surface=<slug>` (state is ignored by the mock for those).
   const cells = []
   for (const slug of classes.pages)
     for (const state of STATES) cells.push({ surface: slug, state, kind: 'page' })
@@ -365,9 +425,39 @@ async function main() {
   for (const slug of classes.seeded)
     cells.push({ surface: slug, state: 'seeded', kind: 'seeded' })
 
+  // Optional scoping: `--only-kinds=overlay` (comma-list) restricts the run to
+  // one or more surface classes; `--only-match=<substr>` restricts to slugs
+  // containing the substring. Lets an overlay-focused pass skip the ~300 pages.
+  const onlyKinds = arg('only-kinds', '').split(',').filter(Boolean)
+  const onlyMatch = arg('only-match', '')
+  // COPY, do not alias: `scoped = cells` would share the array reference, so the
+  // `cells.length = 0` below empties BOTH and the re-push restores nothing — the
+  // default (no --only-*) run then renders ZERO cells and truthfully reports
+  // "0 findings", a silent false-clean. `[...cells]` gives scoped its own array.
+  let scoped = [...cells]
+  if (onlyKinds.length) scoped = scoped.filter(c => onlyKinds.includes(c.kind))
+  if (onlyMatch) scoped = scoped.filter(c => c.surface.includes(onlyMatch))
+  cells.length = 0
+  cells.push(...scoped)
+
   console.log(
     `runtime-health: ${classes.pages.length} pages × ${STATES.length} states + ${classes.overlays.length} overlays + ${classes.deep.length} deep + ${classes.seeded.length} seeded = ${cells.length} surface/state cells × ${THEMES.length} themes\n`,
   )
+
+  // Fail-loud regression guard: enumerating surfaces but building ZERO cells is
+  // the cell-aliasing false-clean class — it would report "0 findings" while
+  // rendering nothing. If any surface class was enumerated and no scoping arg
+  // was supplied, an empty cell list is a bug, not a clean run. Refuse to lie.
+  const enumeratedSurfaces =
+    classes.pages.length + classes.overlays.length + classes.deep.length + classes.seeded.length
+  const scopingApplied = onlyKinds.length > 0 || onlyMatch.length > 0
+  if (enumeratedSurfaces > 0 && cells.length === 0 && !scopingApplied) {
+    console.error(
+      `runtime-health: enumerated ${enumeratedSurfaces} surfaces but built 0 cells with no scoping — ` +
+        `refusing to report a false "0 findings" (cell-aliasing regression). See the COPY comment above.`,
+    )
+    process.exit(2)
+  }
 
   const findings = []
   // Normalize volatile substrings so the committed report is stable across runs:
@@ -384,6 +474,10 @@ async function main() {
     // flagged so it does NOT count toward the gating HIGH total.
     if (finding.severity === 'HIGH' && isRuntimeBaselined(finding))
       finding.baselined = true
+    // Documented gallery-harness noise (mock-cassette / dev-server artifacts) —
+    // also emitted + visible, also subtracted from gating. Never masks a crash.
+    else if (finding.severity === 'HIGH' && isHarnessNoise(finding))
+      finding.harness = true
     findings.push(finding)
   }
 
@@ -491,18 +585,24 @@ async function main() {
   for (const f of findings) byCat[f.category] = (byCat[f.category] || 0) + 1
   const bySev = { HIGH: 0, MEDIUM: 0, LOW: 0 }
   for (const f of findings) bySev[f.severity]++
-  // Gating HIGH = HIGH minus documented-baselined items.
+  // Gating HIGH = HIGH minus documented-baselined AND documented-harness items.
   const baselinedCount = findings.filter(f => f.baselined).length
-  const gatingHigh = bySev.HIGH - baselinedCount
+  const harnessCount = findings.filter(f => f.harness).length
+  const gatingHigh = bySev.HIGH - baselinedCount - harnessCount
+  // Harness-noise breakdown by category, for the transparency rollup.
+  const harnessByCat = {}
+  for (const f of findings)
+    if (f.harness) harnessByCat[f.category] = (harnessByCat[f.category] || 0) + 1
 
   // Per-surface roll-up (worst severity per surface, across states/themes). A
   // baselined HIGH goes into `baselined`, NOT `high`, so it doesn't fail a surface.
   const surfaces = {}
-  const blank = () => ({ high: 0, medium: 0, low: 0, baselined: 0 })
+  const blank = () => ({ high: 0, medium: 0, low: 0, baselined: 0, harness: 0 })
   for (const c of cells) surfaces[c.surface] ??= blank()
   for (const f of findings) {
     const s = (surfaces[f.surface] ??= blank())
     if (f.baselined) s.baselined++
+    else if (f.harness) s.harness++
     else s[f.severity.toLowerCase()]++
   }
   const failingSurfaces = Object.entries(surfaces).filter(([, s]) => s.high > 0)
@@ -516,6 +616,7 @@ async function main() {
   md.push('| Severity | Count |')
   md.push('|---|---|')
   md.push(`| 🔴 HIGH (gating) | ${gatingHigh} |`)
+  md.push(`| 🟣 HIGH (harness-noise, non-gating) | ${harnessCount} |`)
   md.push(`| 🔵 HIGH (baselined, non-gating) | ${baselinedCount} |`)
   md.push(`| 🟡 MEDIUM | ${bySev.MEDIUM} |`)
   md.push(`| ⚪ LOW (informational) | ${bySev.LOW} |`)
@@ -570,10 +671,27 @@ async function main() {
     md.push('')
   }
 
-  // Detail — HIGH + MEDIUM, grouped by surface (LOW + baselined omitted from
-  // this section; LOW is in the JSONL, baselined has its own section above).
+  // Harness-noise (documented mock-cassette / dev-server artifacts) — visible
+  // but non-gating, subtracted from the HIGH total. This is the transparency
+  // ledger for the filter: every muted finding is accounted for here by class.
+  if (harnessCount) {
+    md.push('## Harness-noise (documented, non-gating)\n')
+    md.push(
+      `${harnessCount} HIGH finding(s) classified as gallery-harness / dev-server / mock-cassette artifacts by \`isHarnessNoise()\` in \`scripts/runtime-health.mjs\` (see the rationale block there). Subtracted from the gating HIGH total but still emitted to the JSONL. A real console error / DOM-nesting error / ErrorBoundary crash does NOT match these patterns and still gates.\n`,
+    )
+    md.push('| Category | Muted count |')
+    md.push('|---|---|')
+    for (const [cat, n] of Object.entries(harnessByCat).sort((a, b) => b[1] - a[1]))
+      md.push(`| \`${cat}\` | ${n} |`)
+    md.push('')
+  }
+
+  // Detail — HIGH + MEDIUM, grouped by surface (LOW + baselined + harness omitted
+  // from this section; LOW is in the JSONL, baselined + harness have rollups above).
   md.push('## Detail (HIGH + MEDIUM)\n')
-  const gating = findings.filter(f => f.severity !== 'LOW' && !f.baselined)
+  const gating = findings.filter(
+    f => f.severity !== 'LOW' && !f.baselined && !f.harness,
+  )
   if (!gating.length) {
     md.push('_No HIGH or MEDIUM findings._\n')
   } else {
@@ -599,8 +717,12 @@ async function main() {
   fs.writeFileSync(mdPath, md.join('\n'))
 
   console.log(
-    `\n=== runtime-health: ${findings.length} findings (HIGH ${gatingHigh} gating${baselinedCount ? ` + ${baselinedCount} baselined` : ''} / MEDIUM ${bySev.MEDIUM} / LOW ${bySev.LOW}) ===`,
+    `\n=== runtime-health: ${findings.length} findings (HIGH ${gatingHigh} gating${harnessCount ? ` + ${harnessCount} harness-noise` : ''}${baselinedCount ? ` + ${baselinedCount} baselined` : ''} / MEDIUM ${bySev.MEDIUM} / LOW ${bySev.LOW}) ===`,
   )
+  if (harnessCount)
+    console.log(
+      `  (harness-noise muted: ${Object.entries(harnessByCat).map(([c, n]) => `${c} ${n}`).join(', ')})`,
+    )
   console.log(`  ${failingSurfaces.length} surface(s) with gating HIGH findings`)
   console.log(`  → ${path.relative(process.cwd(), mdPath)}`)
   console.log(`  → ${path.relative(process.cwd(), jsonlPath)}`)

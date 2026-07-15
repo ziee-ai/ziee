@@ -89,3 +89,12 @@ src-app/target
 config/desired-state.yaml
 docker-compose.deploy.yml
 DEPLOY.md
+deploy/seed/
+# The web image (nginx + SPA + server) and its local test stack. The publishable
+# server image is the root `./Dockerfile` (server-release.yml) and does NOT use these.
+# Anchored with a leading `/` so a future nested compose file can't be swallowed —
+# `src-app/docker-compose.yaml` (the dev Postgres) is unrelated and stays tracked.
+/docker/web/
+/docker-compose.yml
+/docker-compose.sandbox.yaml
+/docker-compose.external-db.yml

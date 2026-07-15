@@ -409,19 +409,28 @@ McpToolUseGroup.contentSpan = (blocks: MessageContent[], index: number): number 
  * MCP Extension
  * Handles MCP tool calls, approval workflows, and renders tool call UI
  */
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneMcpSubs = new WeakMap<object, Array<() => void>>()
+
 const mcpExtension: ChatExtension = createExtension({
   name: 'mcp',
   description: 'Handles MCP tool calls and approval workflows',
   priority: 50, // Higher priority to handle events early
 
-  initialize: async () => {
-    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+  initialize: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
     const { ApiClient } = await import('@/api-client')
 
-    useChatStore.subscribe(
-      state => state.editingMessage,
-      async (editingMessage) => {
+    // Bind the editing-message restore to the OWNING pane's chat store
+    // (ctx.chatStore, ITEM-34/5) so editing in a non-focused pane restores that
+    // pane's MCP server selection. Unsub stored per-pane for cleanup.
+    const chatStore = ctx.chatStore
+    const subs: Array<() => void> = []
+    paneMcpSubs.set(chatStore, subs)
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        async (editingMessage: any) => {
         const mcpStore = Stores.McpComposer
         if (!mcpStore) return
 
@@ -445,13 +454,18 @@ const mcpExtension: ChatExtension = createExtension({
             // messages without the column populated.
           }
         } else {
-          // Edit cancelled or sent — restore from stored conversation config
-          const conversation = useChatStore.getState().conversation
-          if (conversation) {
-            mcpStore.setCurrentConversation(conversation.id)
+          // Edit cancelled or sent — restore from stored conversation config,
+          // binding the modal to THIS pane (ITEM-51).
+          const st = chatStore.getState() as {
+            conversation?: { id: string }
+            paneId?: string | null
+          }
+          if (st.conversation) {
+            mcpStore.setCurrentConversation(st.conversation.id, st.paneId ?? null)
           }
         }
-      }
+        },
+      ),
     )
   },
 
@@ -467,6 +481,15 @@ const mcpExtension: ChatExtension = createExtension({
         tool_use_id: data.tool_use_id,
         server: data.server,
         tool_name: data.tool_name,
+        // The owning streaming message id (best-effort). It may be undefined (a
+        // tool call leading the turn before any streamingMessage exists) or a
+        // synthetic `streaming-<ts>` placeholder — neither equals the real backend
+        // `message_id` a `notifications/progress` event carries, so `setToolCallProgress`
+        // treats only a REAL (non-placeholder) id as a usable discriminator and
+        // otherwise falls back to server-only matching (so the progress bar never
+        // stalls — the fix for the LEDGER round-9 single-pane regression — while
+        // still scoping per-pane when a real id IS present).
+        message_id: get().streamingMessage?.id,
         status: 'started',
         input: data.input,
       })
@@ -555,7 +578,7 @@ const mcpExtension: ChatExtension = createExtension({
       // download). Attach it to the running tool call(s) for this server so
       // the tool card can render a live progress bar.
       const mcpStore = Stores.McpComposer
-      mcpStore.setToolCallProgress(data.server, {
+      mcpStore.setToolCallProgress(data.server, data.message_id, {
         progress: data.progress,
         total: data.total ?? undefined,
         message: data.message ?? undefined,
@@ -573,6 +596,15 @@ const mcpExtension: ChatExtension = createExtension({
         server: data.server,
         server_id: data.server_id,
         tool_name: data.tool_name,
+        // The owning streaming message id (best-effort). It may be undefined (a
+        // tool call leading the turn before any streamingMessage exists) or a
+        // synthetic `streaming-<ts>` placeholder — neither equals the real backend
+        // `message_id` a `notifications/progress` event carries, so `setToolCallProgress`
+        // treats only a REAL (non-placeholder) id as a usable discriminator and
+        // otherwise falls back to server-only matching (so the progress bar never
+        // stalls — the fix for the LEDGER round-9 single-pane regression — while
+        // still scoping per-pane when a real id IS present).
+        message_id: get().streamingMessage?.id,
         status: 'pending_approval',
         input: data.input,
       })
@@ -934,10 +966,14 @@ const mcpExtension: ChatExtension = createExtension({
   // Allow empty text when there are pending tool approvals
   beforeSendMessage: async () => {
     const { Stores } = await import('@ziee/framework/stores')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
 
-    // Check if there are approval decisions queued to send
-    const approvalDecisions = mcpStore.getApprovalDecisions()
+    // Check if there are approval decisions queued to send for THIS (sending =
+    // focused) conversation (ITEM-33) — not another pane's.
+    const approvalDecisions = mcpStore.getApprovalDecisions(
+      approvalKeyOf(Stores.Chat.$.conversation?.id),
+    )
     const hasApprovalDecisions = approvalDecisions.length > 0
 
     if (hasApprovalDecisions) {
@@ -949,11 +985,21 @@ const mcpExtension: ChatExtension = createExtension({
   },
 
   // Compose request fields to include MCP config and approval decisions
-  composeRequestFields: async () => {
+  composeRequestFields: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
-    const selectedServers = mcpStore.getSelectedServersConfig()
-    const approvalDecisions = mcpStore.getApprovalDecisions()
+    // Resolve the SENDING pane's own MCP config + approvals (ITEM-33/51) — from the
+    // per-conversation/per-pane keyed state, not the single-active pointer, so two
+    // split panes send with their own selection and one pane's approval never leaks.
+    // `ctx.paneId` scopes the PENDING (new-chat) read to THIS pane's own buffer.
+    const selectedServers = mcpStore.getSelectedServersConfigFor(
+      ctx.conversationId,
+      ctx.paneId,
+    )
+    const approvalDecisions = mcpStore.getApprovalDecisions(
+      approvalKeyOf(ctx.conversationId),
+    )
 
     const fields: {
       enable_mcp?: boolean
@@ -1099,22 +1145,29 @@ const mcpExtension: ChatExtension = createExtension({
   },
 
   // Clear approval decisions after message is sent
-  onMessageSent: async () => {
+  onMessageSent: async ownerPaneId => {
     const { Stores } = await import('@ziee/framework/stores')
+    const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     // Read via `$` snapshot (state fields + actions both live on getState())
     const mcpStore = Stores.McpComposer.$
-    const chatStore = Stores.Chat.$
 
-    // Get current conversation from chat store
-    const conversation = chatStore.conversation
+    // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
+    // a `Stores.Chat.$` read (the FOCUSED pane) — in split view the sender may not
+    // be focused by the time this async hook runs, so a `.$` read would transfer the
+    // wrong pane's pending config (ITEM-51). Single-pane falls back to the bridge.
+    const paneState = ownerPaneId
+      ? (paneRegistry.get(ownerPaneId)?.api.getState() as
+          | { conversation?: { id?: string } }
+          | undefined)
+      : undefined
+    const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
 
-    // Handle new conversation creation
-    if (conversation?.id && !mcpStore.currentConversationId) {
-      // Transfer pending config to the new conversation
-      mcpStore.transferPendingConfig(conversation.id)
-
-      // Set current conversation ID
-      mcpStore.setCurrentConversation(conversation.id)
+    // Handle new conversation creation: a freshly-minted conversation has no config
+    // of its own yet → move THIS pane's own pending config (keyed by ownerPaneId)
+    // under the new id, bind the modal to it, and persist.
+    if (conversation?.id && !mcpStore.conversationConfigs.has(conversation.id)) {
+      mcpStore.transferPendingConfig(conversation.id, ownerPaneId)
+      mcpStore.setCurrentConversation(conversation.id, ownerPaneId)
 
       // Get available server IDs for proper disabled_servers computation
       const mcpServerState = Stores.McpServer.$
@@ -1130,7 +1183,9 @@ const mcpExtension: ChatExtension = createExtension({
       }
     }
 
-    mcpStore.clearApprovalDecisions()
+    // Clear only the SENDING conversation's approvals (ITEM-33).
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
+    mcpStore.clearApprovalDecisions(approvalKeyOf(conversation?.id))
 
     return {}
   },
@@ -1159,7 +1214,13 @@ const mcpExtension: ChatExtension = createExtension({
     input_area_suffix: { component: McpConfigModal, order: 20 },
   },
 
-  cleanup: async () => {},
+  cleanup: async (ctx) => {
+    const subs = paneMcpSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneMcpSubs.delete(ctx.chatStore)
+    }
+  },
 })
 
 export default mcpExtension

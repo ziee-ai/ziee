@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { Button, Card, Text } from '@ziee/kit'
 import { Clock, Check, X } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
-import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import {
+  approvalKeyOf,
+  type McpToolCall,
+} from '@/modules/mcp/stores/McpComposer.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 
 interface ToolCallPendingApprovalContentProps {
@@ -30,6 +34,10 @@ export function ToolCallPendingApprovalContent({
   toolCall,
 }: ToolCallPendingApprovalContentProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Bind to THIS pane's chat store (ITEM-33) so approving in pane B files the
+  // decision under pane B's conversation and resumes pane B — never pane A (the
+  // wrong-pane approval bug). Single-pane falls back to the primary.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
 
   // The built-in App Control server (`invoke_capability`) ALWAYS re-prompts on a
   // state-changing action — the backend deliberately ignores any persisted
@@ -51,17 +59,17 @@ export function ToolCallPendingApprovalContent({
     // remount that happens when loadMessages replaces the messages Map after streaming.
     mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'started' })
     try {
-      mcpStore.addApprovalDecision({
+      mcpStore.addApprovalDecision(approvalKeyOf(chat.$.conversation?.id), {
         tool_use_id: toolCall.tool_use_id,
         decision: 'approve',
         note: 'User approved tool execution (once)',
       })
-      await Stores.Chat.sendMessage()
+      await chat.sendMessage()
       // A failed POST sets Chat.store.error synchronously before sendMessage
       // resolves, so poll once to revert the optimistic update on that failure.
       // (A generation error after a successful POST arrives later on the chat
       // stream and surfaces in the conversation, not by reverting this panel.)
-      const chatError = Stores.Chat.$.error
+      const chatError = chat.$.error
       if (chatError) {
         throw new Error(chatError)
       }
@@ -82,7 +90,7 @@ export function ToolCallPendingApprovalContent({
     // Optimistic status update (same rationale as handleApproveOnce)
     mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'started' })
     try {
-      const chatState = Stores.Chat.$
+      const chatState = chat.$
       const conversationId = chatState.conversation?.id || null
 
       // 1. Add tool to auto_approved_tools for this conversation
@@ -109,14 +117,14 @@ export function ToolCallPendingApprovalContent({
       }
 
       // 3. Approve current tool call
-      mcpStore.addApprovalDecision({
+      mcpStore.addApprovalDecision(approvalKeyOf(chat.$.conversation?.id), {
         tool_use_id: toolCall.tool_use_id,
         decision: 'approve',
         note: 'User approved tool for this conversation',
       })
 
-      await Stores.Chat.sendMessage()
-      const chatError = Stores.Chat.$.error
+      await chat.sendMessage()
+      const chatError = chat.$.error
       if (chatError) {
         throw new Error(chatError)
       }
@@ -142,12 +150,12 @@ export function ToolCallPendingApprovalContent({
       error: 'Tool execution denied by user',
     })
     try {
-      mcpStore.addApprovalDecision({
+      mcpStore.addApprovalDecision(approvalKeyOf(chat.$.conversation?.id), {
         tool_use_id: toolCall.tool_use_id,
         decision: 'deny',
         note: 'User denied tool execution',
       })
-      await Stores.Chat.sendMessage()
+      await chat.sendMessage()
       console.log('[MCP Approval] Tool denied:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to deny tool:', error)

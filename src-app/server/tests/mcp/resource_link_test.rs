@@ -790,3 +790,245 @@ async fn refetch_reingest_yields_current_file_not_stale() {
     std::fs::remove_dir_all(&root).ok();
     std::fs::remove_dir_all(&store_dir).ok();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin-registered SYSTEM MCP server re-hosting (the fix).
+//
+// An admin-registered system server (`is_system=true, is_built_in=false`) carries a REAL external
+// `url` (e.g. `host.docker.internal:<port>`) whose host is REDACTED in the user-facing list. The
+// new `list_accessible_result_link_hosts` accessor recovers that host (server-side, hosts only) so
+// its result files get re-hosted — while a built-in (loopback) server's host stays excluded. These
+// exercise the REDACTION BYPASS the fix adds, which the direct-`trusted_hosts` unit/prior tests
+// can't reach. A loopback mock stands in for the private artifact host in the ingest test.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MCP_ADMIN_PERMS: &[&str] = &["mcp_servers_admin::create", "mcp_servers_admin::read"];
+
+/// Register a SYSTEM MCP server (`is_system=true, is_built_in=false`) at `url` via the admin API,
+/// then grant it to the default group so `admin` (a default-group member) can access it. Returns
+/// the new server id. Mirrors the create+grant pattern in `mcp_sampling_test`.
+async fn register_system_server(
+    server: &TestServer,
+    admin: &test_helpers::TestUser,
+    url: &str,
+) -> Uuid {
+    let payload = serde_json::json!({
+        "name": format!("sys_{}", &Uuid::new_v4().to_string()[..8]),
+        "display_name": "Org System Server",
+        "description": "system server for resource_link rehost test",
+        "enabled": true,
+        "transport_type": "http",
+        "url": url,
+        "usage_mode": "auto",
+        "timeout_seconds": 120
+    });
+    let resp = reqwest::Client::new()
+        .post(server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("create system server");
+    let status = resp.status();
+    let body_txt = resp.text().await.unwrap_or_default();
+    assert_eq!(status, 201, "system-server create should 201: {body_txt}");
+    let body: serde_json::Value = serde_json::from_str(&body_txt).unwrap();
+    let server_id = Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
+
+    // Grant to the default group (registered users are members) so the accessor sees it.
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let dg = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("default group exists");
+    sqlx::query!(
+        "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) VALUES ($1, $2, NOW())",
+        dg.id,
+        server_id,
+    )
+    .execute(&pool)
+    .await
+    .expect("grant system server to default group");
+    // Force enabled=true: `create_system_server` runs a health probe and auto-downgrades to
+    // enabled=false when the probe fails (our fixture host isn't a real MCP server). The trust-host
+    // derivation intentionally only trusts ENABLED servers, so re-assert enabled to model a normal
+    // operational server — the probe-downgrade is orthogonal to what these tests exercise.
+    sqlx::query!("UPDATE mcp_servers SET enabled = true WHERE id = $1", server_id)
+        .execute(&pool)
+        .await
+        .expect("re-enable system server after create-time probe downgrade");
+    pool.close().await;
+    server_id
+}
+
+/// TEST-3: a registered SYSTEM server's result file is re-hosted. The user-facing list redacts the
+/// server's url, yet the trust-host accessor recovers its host, so `persist_links` ingests an
+/// external link on that host under MCP_USER and stamps `file_id`. The negative control proves an
+/// unregistered private host stays blocked (no blanket private allow).
+#[tokio::test]
+#[serial_test::serial(repos, file_storage)]
+async fn system_server_host_is_trusted_and_result_file_ingested() {
+    let server = TestServer::start().await;
+    // Admin user creates the system server AND is a default-group member, so it can access it.
+    let admin = test_helpers::create_user_with_permissions(&server, "rladmin", MCP_ADMIN_PERMS).await;
+    let uid = Uuid::parse_str(&admin.user_id).unwrap();
+
+    // Point the in-process Repos + file store at THIS test's DB.
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    ziee::init_repositories(pool.clone());
+    let store_dir = std::env::temp_dir().join(format!("ziee_rl_sys_{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&store_dir).unwrap();
+    ziee::init_file_storage(&store_dir);
+
+    // A loopback mock stands in for the private (host.docker.internal) artifact host.
+    let (base, _mock) = start_fixed_response_mock(OK_CSV_RESPONSE).await; // http://127.0.0.1:<port>
+    let server_id = register_system_server(&server, &admin, &format!("{base}/mcp")).await;
+
+    // CONTROL: the user-facing list REDACTS the system server's url (its host would be lost there).
+    let listed = ziee::Repos
+        .mcp
+        .list_accessible(uid, 1, 100, None, None, Some(true))
+        .await
+        .expect("list_accessible");
+    let sysrow = listed
+        .servers
+        .iter()
+        .find(|s| s.id == server_id)
+        .expect("system server visible to the user");
+    assert!(sysrow.url.is_none(), "user-facing list redacts the system server url");
+
+    // ...but the trust-host accessor RECOVERS its host (the redaction bypass this fix adds).
+    let trusted = ziee::Repos
+        .mcp
+        .list_accessible_result_link_hosts(uid)
+        .await
+        .expect("list_accessible_result_link_hosts");
+    assert!(
+        trusted.iter().any(|h| h == "127.0.0.1"),
+        "system server host is in the trust set: {trusted:?}"
+    );
+
+    // End-to-end: an external result-file link on that host is now ingested under MCP_USER.
+    let mut links = vec![ziee_link(&format!("{base}/results/analysis.csv"), "analysis.csv")];
+    let outcome = ziee::persist_links(
+        &mut links,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        server_id,
+        false, // external branch (not built-in)
+        &serde_json::json!({}),
+        &trusted,
+        &[],
+        Some("test-secret"),
+        Some("ziee"),
+        Some("ziee-api"),
+    )
+    .await
+    .expect("persist_links");
+    assert_eq!(outcome.saved.len(), 1, "system-server result file ingested");
+    assert_eq!(outcome.saved[0].size, 12, "the 12-byte CSV body was fetched + saved");
+    assert!(links[0].file_id.is_some(), "file_id stamped → UI renders /api/files/{{id}}");
+
+    // NEGATIVE: the same bytes on a host NOT in the trust set stay blocked (no blanket allow).
+    let mut untrusted = vec![ziee_link(&format!("{base}/results/x.csv"), "x.csv")];
+    let out2 = ziee::persist_links(
+        &mut untrusted,
+        uid,
+        None,
+        None,
+        "mcp",
+        None,
+        Uuid::new_v4(),
+        false,
+        &serde_json::json!({}),
+        &[], // empty trust set → PUBLIC policy blocks the loopback/private host
+        &[],
+        Some("test-secret"),
+        Some("ziee"),
+        Some("ziee-api"),
+    )
+    .await
+    .expect("persist_links");
+    assert_eq!(out2.saved.len(), 0, "an unregistered private host stays blocked");
+
+    pool.close().await;
+    std::fs::remove_dir_all(&store_dir).ok();
+}
+
+/// TEST-4: the trust-host accessor returns an admin-registered non-built-in system server's host
+/// (redaction bypassed), and OMITS it once the same row is flipped to a built-in (in-process
+/// loopback) server — the loopback-SSRF exclusion holding through the accessor.
+#[tokio::test]
+#[serial_test::serial(repos, file_storage)]
+async fn accessor_returns_system_host_and_omits_builtin() {
+    let server = TestServer::start().await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "rladmin2", MCP_ADMIN_PERMS).await;
+    let uid = Uuid::parse_str(&admin.user_id).unwrap();
+    let pool = PgPoolOptions::new()
+        .max_connections(3)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    ziee::init_repositories(pool.clone());
+
+    let server_id =
+        register_system_server(&server, &admin, "http://host.docker.internal:18122/mcp").await;
+
+    // is_built_in=false (as created) → the accessor recovers the (redacted-in-list) host.
+    let hosts = ziee::Repos
+        .mcp
+        .list_accessible_result_link_hosts(uid)
+        .await
+        .expect("accessor");
+    assert!(
+        hosts.iter().any(|h| h == "host.docker.internal"),
+        "an admin-registered non-built-in system host is trusted (redaction bypassed): {hosts:?}"
+    );
+
+    // The shared derivation used by ALL 3 persist_links call sites (chat approval, chat auto-exec,
+    // workflow dispatch): an EXTERNAL emitter gets the registered system host; a BUILT-IN emitter
+    // short-circuits to an empty set (skips the DB query). This covers the call-site glue logic that
+    // the direct persist_links/accessor calls bypass.
+    let via_external = ziee::result_link_trusted_hosts(false, uid).await;
+    assert!(
+        via_external.iter().any(|h| h == "host.docker.internal"),
+        "external emitter → registered system host in the trust set: {via_external:?}"
+    );
+    let via_builtin = ziee::result_link_trusted_hosts(true, uid).await;
+    assert!(
+        via_builtin.is_empty(),
+        "built-in emitter → empty trust set (no query): {via_builtin:?}"
+    );
+
+    // Flip the row to a built-in (in-process loopback) server → the accessor must OMIT its host.
+    sqlx::query!(
+        "UPDATE mcp_servers SET is_built_in = true WHERE id = $1",
+        server_id
+    )
+    .execute(&pool)
+    .await
+    .expect("flip is_built_in");
+    let hosts2 = ziee::Repos
+        .mcp
+        .list_accessible_result_link_hosts(uid)
+        .await
+        .expect("accessor");
+    assert!(
+        !hosts2.iter().any(|h| h == "host.docker.internal"),
+        "a built-in (loopback) server's host must be excluded from the trust set: {hosts2:?}"
+    );
+
+    pool.close().await;
+}

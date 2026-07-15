@@ -5,6 +5,14 @@ import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { type ImageViewState, clampScale, zoomStep } from '../viewers/image/zoom'
 import type { TabularViewState } from '../viewers/tabular/tableView'
+import {
+  SINGLE_PANE_KEY,
+  composerPaneKey,
+  mergeOwnedInto,
+  ownedIds,
+  ownsId,
+  snapshotOwned,
+} from './composerOwnership'
 
 // Enable Map + Set support in Immer (the store uses Map/Set extensively
 // for caches and upload tracking).
@@ -29,10 +37,28 @@ export interface FileUploadProgress {
  * File Extension Store State
  * Manages file uploads and selection for message attachments
  */
+// Per-pane composer file ownership is a pure, node-testable module (ITEM-40);
+// re-export its buffer-key helpers so the existing `@/modules/file/stores/File.store`
+// import sites stay transparent.
+export { SINGLE_PANE_KEY, composerPaneKey }
+
+/** A single pane's compose-time backup (its OWN owned entries only, ITEM-32). */
+type PaneBackup = {
+  selectedFiles: Map<string, FileEntity>
+  uploadingFiles: Map<string, FileUploadProgress>
+}
+
 interface FileExtensionStore {
-  // File tracking
+  // File tracking. The buffers are shared Maps but each entry is OWNED by a pane
+  // (fileOwner / uploadOwner, keyed by composerPaneKey) so two split panes keep
+  // independent attachments (ITEM-32) — the buffer actions + display filter by
+  // the owning pane. The thumbnail/preview caches below stay GLOBAL (id-keyed).
   uploadingFiles: Map<string, FileUploadProgress>
   selectedFiles: Map<string, FileEntity>
+  /** selectedFiles fileId → owning pane key (ITEM-32). */
+  fileOwner: Map<string, string>
+  /** uploadingFiles progressId → owning pane key (ITEM-32). */
+  uploadOwner: Map<string, string>
 
   /**
    * IDs of files restored from an existing message during edit mode.
@@ -42,9 +68,12 @@ interface FileExtensionStore {
    */
   restoredFileIds: Set<string>
 
-  // Backup state (for error recovery)
-  backupSelectedFiles: Map<string, FileEntity> | null
-  backupUploadingFiles: Map<string, FileUploadProgress> | null
+  // Backup state (for error recovery), PER-PANE (ITEM-32): each sending pane
+  // backs up ONLY its own owned entries into its own slot keyed by composer pane
+  // key, so a stream-error restore for one pane never clobbers a concurrently-
+  // edited other pane's composer buffer (and two concurrent sends don't overwrite
+  // one shared backup slot).
+  backupByPane: Map<string, PaneBackup>
 
   // Cache for file entities shown in message history (fetched on demand)
   messageFilesCache: Map<string, FileEntity>
@@ -70,28 +99,27 @@ interface FileExtensionStore {
   // spinner that never resolves. `retryPreviewPage` clears the entry.
   previewPageErrors: Map<string, Set<number>>
 
-  // Actions
-  uploadFiles: (files: File[]) => Promise<void>
+  // Actions — buffer actions take the composer pane key (ITEM-32).
+  uploadFiles: (paneKey: string, files: File[]) => Promise<void>
   removeFile: (fileId: string) => void
   removeUploadingFile: (progressId: string) => void
-  retryUpload: (progressId: string) => Promise<void>
-  clearFiles: () => void
-  getFileIds: () => string[]
-  getFiles: () => FileEntity[]
-  isUploading: () => boolean
+  retryUpload: (paneKey: string, progressId: string) => Promise<void>
+  clearFiles: (paneKey: string) => void
+  getFileIds: (paneKey: string) => string[]
+  getFiles: (paneKey: string) => FileEntity[]
+  isUploading: (paneKey: string) => boolean
 
   /**
    * Restore files from an existing message into the selection.
    * Marks them as restored so they are not deleted from the server
    * if the user removes them or cancels the edit.
    */
-  restoreFilesFromEdit: (files: FileEntity[]) => void
+  restoreFilesFromEdit: (paneKey: string, files: FileEntity[]) => void
 
-  // Backup/restore methods
-  setBackupFiles: () => void
-  getBackupFiles: () => { selectedFiles: Map<string, FileEntity>; uploadingFiles: Map<string, FileUploadProgress> } | null
-  restoreFromBackup: () => void
-  clearBackup: () => void
+  // Backup/restore methods (per-pane: pass the SENDING pane's composer key)
+  setBackupFiles: (paneKey: string) => void
+  restoreFromBackup: (paneKey: string) => void
+  clearBackup: (paneKey: string) => void
 
   // Per-ID content cache for right panel tabs (supports multiple open tabs)
   fileTextContents: Map<string, string>
@@ -275,9 +303,10 @@ export const File = defineStore('File', {
     // Initial state
     uploadingFiles: new Map(),
     selectedFiles: new Map(),
+    fileOwner: new Map(),
+    uploadOwner: new Map(),
     restoredFileIds: new Set(),
-    backupSelectedFiles: null,
-    backupUploadingFiles: null,
+    backupByPane: new Map(),
     messageFilesCache: new Map(),
     messageFilesLoadingSet: new Set(),
     thumbnailUrls: new Map(),
@@ -302,9 +331,10 @@ export const File = defineStore('File', {
     FileExtensionStore,
     | 'uploadingFiles'
     | 'selectedFiles'
+    | 'fileOwner'
+    | 'uploadOwner'
     | 'restoredFileIds'
-    | 'backupSelectedFiles'
-    | 'backupUploadingFiles'
+    | 'backupByPane'
     | 'messageFilesCache'
     | 'messageFilesLoadingSet'
     | 'thumbnailUrls'
@@ -329,8 +359,8 @@ export const File = defineStore('File', {
     const get = getRaw as () => FileExtensionStore
     return {
 
-    // Upload files with progress tracking
-    uploadFiles: async (files: File[]) => {
+    // Upload files with progress tracking (into the given pane's buffer, ITEM-32)
+    uploadFiles: async (paneKey: string, files: File[]) => {
       const uploadPromises = files.map(async (file) => {
         // Generate temporary ID for progress tracking
         const progressId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -345,11 +375,14 @@ export const File = defineStore('File', {
           rawFile: file,
         }
 
-        // Add to uploading files
+        // Add to uploading files (owned by this pane)
         set((state) => {
           const newUploading = new Map(state.uploadingFiles)
           newUploading.set(progressId, progress)
           state.uploadingFiles = newUploading
+          const newOwner = new Map(state.uploadOwner)
+          newOwner.set(progressId, paneKey)
+          state.uploadOwner = newOwner
         })
 
         try {
@@ -386,7 +419,7 @@ export const File = defineStore('File', {
             },
           })
 
-          // Upload completed - move to selected files
+          // Upload completed - move to selected files (transfer pane ownership)
           set((state) => {
             const newUploading = new Map(state.uploadingFiles)
             const newSelected = new Map(state.selectedFiles)
@@ -396,6 +429,13 @@ export const File = defineStore('File', {
 
             state.uploadingFiles = newUploading
             state.selectedFiles = newSelected
+
+            const newUploadOwner = new Map(state.uploadOwner)
+            newUploadOwner.delete(progressId)
+            state.uploadOwner = newUploadOwner
+            const newFileOwner = new Map(state.fileOwner)
+            newFileOwner.set(uploadedFile.id, paneKey)
+            state.fileOwner = newFileOwner
           })
 
           // Trigger thumbnail loading if the uploaded file has a preview
@@ -442,6 +482,9 @@ export const File = defineStore('File', {
         const newSelected = new Map(state.selectedFiles)
         newSelected.delete(fileId)
         state.selectedFiles = newSelected
+        const newFileOwner = new Map(state.fileOwner)
+        newFileOwner.delete(fileId)
+        state.fileOwner = newFileOwner
         if (!isRestored) {
           const newThumbnails = new Map(state.thumbnailUrls)
           newThumbnails.delete(fileId)
@@ -473,34 +516,44 @@ export const File = defineStore('File', {
         const newUploading = new Map(state.uploadingFiles)
         newUploading.delete(progressId)
         state.uploadingFiles = newUploading
+        const newOwner = new Map(state.uploadOwner)
+        newOwner.delete(progressId)
+        state.uploadOwner = newOwner
       })
     },
 
     // Retry a failed upload: drop the errored entry and re-run the upload for
-    // its retained raw File, producing a fresh progress entry. No-op if the
-    // entry is missing or the raw File wasn't retained.
-    retryUpload: async (progressId: string) => {
+    // its retained raw File, producing a fresh progress entry (into the same
+    // pane's buffer). No-op if the entry is missing or the raw File wasn't retained.
+    retryUpload: async (paneKey: string, progressId: string) => {
       const entry = get().uploadingFiles.get(progressId)
       if (!entry?.rawFile) return
       get().removeUploadingFile(progressId)
-      await get().uploadFiles([entry.rawFile])
+      await get().uploadFiles(paneKey, [entry.rawFile])
     },
 
-    // Clear all files (called after message send or edit cancel)
-    // Only files that are NOT in restoredFileIds would be subject to server deletion
-    clearFiles: () => {
-      console.log('[FileStore] clearFiles() called')
+    // Clear ONE pane's composer buffer (ITEM-32) — called after that pane sends a
+    // message or cancels an edit. Only that pane's files are removed, so a split
+    // pane's attachments never clear the other pane's. Session (non-restored)
+    // files have their thumbnail/preview blob URLs revoked; restored files keep
+    // theirs (shared with the message-display cache).
+    clearFiles: (paneKey: string) => {
+      console.log('[FileStore] clearFiles() called for pane', paneKey)
       const restoredIds = get().restoredFileIds
-      const selectedIds = [...get().selectedFiles.keys()]
-      const sessionFileIds = selectedIds.filter(id => !restoredIds.has(id))
+      const fileOwner = get().fileOwner
+      const uploadOwner = get().uploadOwner
+      const paneFileIds = ownedIds(get().selectedFiles.keys(), fileOwner, paneKey)
+      const paneUploadIds = ownedIds(
+        get().uploadingFiles.keys(),
+        uploadOwner,
+        paneKey,
+      )
+      const sessionFileIds = paneFileIds.filter(id => !restoredIds.has(id))
       if (sessionFileIds.length > 0) {
-        // Server deletion for session-uploaded files would go here
         console.log('[FileStore] Session files cleared (server deletion if applicable):', sessionFileIds)
       }
-      // Revoke + evict thumbnail/preview blob URLs ONLY for session-uploaded
-      // files. RESTORED files' thumbnails belong to the persistent
-      // message-display cache (shared Map) — revoking/evicting them would
-      // break / force-refetch the image still shown in that message bubble.
+      // Revoke + evict thumbnail/preview blob URLs ONLY for this pane's
+      // session-uploaded files.
       const thumbnailUrls = get().thumbnailUrls
       for (const fileId of sessionFileIds) {
         const url = thumbnailUrls.get(fileId)
@@ -520,9 +573,21 @@ export const File = defineStore('File', {
         for (const fileId of sessionFileIds) newPageUrls.delete(fileId)
         const newPageLoadingSet = new Set(state.previewPageLoadingSet)
         for (const fileId of sessionFileIds) newPageLoadingSet.delete(fileId)
-        state.selectedFiles = new Map()
-        state.uploadingFiles = new Map()
-        state.restoredFileIds = new Set()
+        const newSelected = new Map(state.selectedFiles)
+        for (const id of paneFileIds) newSelected.delete(id)
+        const newUploading = new Map(state.uploadingFiles)
+        for (const id of paneUploadIds) newUploading.delete(id)
+        const newFileOwner = new Map(state.fileOwner)
+        for (const id of paneFileIds) newFileOwner.delete(id)
+        const newUploadOwner = new Map(state.uploadOwner)
+        for (const id of paneUploadIds) newUploadOwner.delete(id)
+        const newRestored = new Set(state.restoredFileIds)
+        for (const id of paneFileIds) newRestored.delete(id)
+        state.selectedFiles = newSelected
+        state.uploadingFiles = newUploading
+        state.fileOwner = newFileOwner
+        state.uploadOwner = newUploadOwner
+        state.restoredFileIds = newRestored
         state.thumbnailUrls = newThumbnails
         state.thumbnailLoadingSet = newLoadingSet
         state.previewPageUrls = newPageUrls
@@ -532,9 +597,10 @@ export const File = defineStore('File', {
 
     // Restore files from an existing message into the current selection.
     // Marks them as restored so they are exempt from server deletion.
-    restoreFilesFromEdit: (files: FileEntity[]) => {
+    restoreFilesFromEdit: (paneKey: string, files: FileEntity[]) => {
       set((state) => {
         const newSelected = new Map(state.selectedFiles)
+        const newFileOwner = new Map(state.fileOwner)
         // MERGE into the existing restored set (symmetric with `newSelected`).
         // The two-phase edit-restore flow calls this twice: Phase 1 with all
         // stubs, then Phase 2 with only the successfully-fetched `validFiles`
@@ -549,9 +615,11 @@ export const File = defineStore('File', {
           // (rendered by FileAttachmentRenderer), not the composer.
           newSelected.set(file.id, file)
           newRestoredIds.add(file.id)
+          newFileOwner.set(file.id, paneKey)
         }
         state.selectedFiles = newSelected
         state.restoredFileIds = newRestoredIds
+        state.fileOwner = newFileOwner
       })
       // Trigger thumbnail loading for restored files that have previews
       for (const file of files) {
@@ -567,21 +635,26 @@ export const File = defineStore('File', {
       console.log(`[FileStore] Restored ${files.length} file(s) from edit message`)
     },
 
-    // Get array of file IDs for request composition
-    getFileIds: () => {
-      return Array.from(get().selectedFiles.keys())
+    // Get array of file IDs for request composition (ONE pane's buffer, ITEM-32)
+    getFileIds: (paneKey: string) => {
+      return ownedIds(get().selectedFiles.keys(), get().fileOwner, paneKey)
     },
 
-    // Get array of file entities (safe to call outside React components)
-    getFiles: () => {
-      return Array.from(get().selectedFiles.values())
+    // Get array of file entities for ONE pane's buffer (safe outside React)
+    getFiles: (paneKey: string) => {
+      const owner = get().fileOwner
+      return Array.from(get().selectedFiles.entries())
+        .filter(([id]) => ownsId(owner, id, paneKey))
+        .map(([, file]) => file)
     },
 
-    // Check if any files are currently uploading
-    isUploading: () => {
-      const uploadingFiles = get().uploadingFiles
-      return Array.from(uploadingFiles.values()).some(
-        file => file.status === 'pending' || file.status === 'uploading'
+    // Check if any of ONE pane's files are currently uploading
+    isUploading: (paneKey: string) => {
+      const owner = get().uploadOwner
+      return Array.from(get().uploadingFiles.entries()).some(
+        ([id, file]) =>
+          ownsId(owner, id, paneKey) &&
+          (file.status === 'pending' || file.status === 'uploading'),
       )
     },
 
@@ -766,46 +839,61 @@ export const File = defineStore('File', {
     },
 
     // Backup current files (before clearing)
-    setBackupFiles: () => {
-      const { selectedFiles, uploadingFiles } = get()
+    // Snapshot ONLY the sending pane's owned entries into its own backup slot
+    // (ITEM-32) — never a whole-store snapshot, so a later restore touches only
+    // this pane and concurrent panes keep independent slots.
+    setBackupFiles: (paneKey: string) => {
+      const { selectedFiles, uploadingFiles, fileOwner, uploadOwner } = get()
+      // snapshotOwned uses the SAME owner→key resolution as clearFiles, so the
+      // backup captures EXACTLY the entries the paired clearFiles removes (a
+      // null/undefined owner resolves to the single-pane key, not "unowned").
+      const sel = snapshotOwned(selectedFiles, fileOwner, paneKey)
+      const upl = snapshotOwned(uploadingFiles, uploadOwner, paneKey)
       set((state) => {
-        state.backupSelectedFiles = new Map(selectedFiles)
-        state.backupUploadingFiles = new Map(uploadingFiles)
+        const next = new Map(state.backupByPane)
+        next.set(paneKey, { selectedFiles: sel, uploadingFiles: upl })
+        state.backupByPane = next
       })
-      console.log('[FileStore] Backed up files')
+      console.log(`[FileStore] Backed up files for pane ${paneKey}`)
     },
 
-    // Get backup files
-    getBackupFiles: () => {
-      const { backupSelectedFiles, backupUploadingFiles } = get()
-      if (!backupSelectedFiles || !backupUploadingFiles) {
-        return null
-      }
-      return {
-        selectedFiles: backupSelectedFiles,
-        uploadingFiles: backupUploadingFiles,
-      }
-    },
-
-    // Restore files from backup
-    restoreFromBackup: () => {
-      const backup = get().getBackupFiles()
-      if (backup) {
-        set((state) => {
-          state.selectedFiles = new Map(backup.selectedFiles)
-          state.uploadingFiles = new Map(backup.uploadingFiles)
-        })
-        console.log('[FileStore] Restored files from backup')
-      }
-    },
-
-    // Clear backup
-    clearBackup: () => {
+    // Re-insert ONLY this pane's backed-up entries (owned by this pane) — a MERGE,
+    // not a wholesale replace, so a stream-error restore in one pane leaves other
+    // panes' live composer buffers untouched (ITEM-32).
+    restoreFromBackup: (paneKey: string) => {
+      const backup = get().backupByPane.get(paneKey)
+      if (!backup) return
       set((state) => {
-        state.backupSelectedFiles = null
-        state.backupUploadingFiles = null
+        // MERGE (not replace) this pane's owned entries back in, re-stamping
+        // ownership to paneKey — other panes' live entries stay untouched.
+        const files = mergeOwnedInto(
+          state.selectedFiles,
+          state.fileOwner,
+          backup.selectedFiles,
+          paneKey,
+        )
+        state.selectedFiles = files.next
+        state.fileOwner = files.nextOwner
+        const uploads = mergeOwnedInto(
+          state.uploadingFiles,
+          state.uploadOwner,
+          backup.uploadingFiles,
+          paneKey,
+        )
+        state.uploadingFiles = uploads.next
+        state.uploadOwner = uploads.nextOwner
       })
-      console.log('[FileStore] Cleared file backup')
+      console.log(`[FileStore] Restored files from backup for pane ${paneKey}`)
+    },
+
+    // Drop this pane's backup slot.
+    clearBackup: (paneKey: string) => {
+      set((state) => {
+        const next = new Map(state.backupByPane)
+        next.delete(paneKey)
+        state.backupByPane = next
+      })
+      console.log(`[FileStore] Cleared file backup for pane ${paneKey}`)
     },
 
     getMessageFile: (fileId: string, fallback: FileEntity): FileEntity => {

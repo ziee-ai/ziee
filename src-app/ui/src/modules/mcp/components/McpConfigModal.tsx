@@ -5,7 +5,7 @@ import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMi
 import { Trash2 } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import type { Tool } from '@/api-client/types'
-import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
+import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
 
 /**
  * MCP Configuration Modal
@@ -53,6 +53,7 @@ export function McpConfigModal() {
   const {
     selectedServers,
     currentConversationId,
+    currentPaneId,
     currentProjectId,
     conversationConfigs,
     configModalVisible,
@@ -79,7 +80,7 @@ export function McpConfigModal() {
   // for new chats).
   const configKey = isProjectScope
     ? projectConfigKey(currentProjectId!)
-    : currentConversationId || PENDING_CONVERSATION_KEY
+    : currentConversationId || pendingConversationKey(currentPaneId)
   const conversationConfig = conversationConfigs.get(configKey)
   const approvalMode = conversationConfig?.approvalMode || 'manual_approve'
   const loopSettings = conversationConfig?.loopSettings || {

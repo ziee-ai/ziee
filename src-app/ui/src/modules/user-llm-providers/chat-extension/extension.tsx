@@ -19,53 +19,68 @@ import type { Conversation } from '@/api-client/types'
  * Auto-discovered by chat/extensions/index.ts via the
  * import.meta.glob over '../../STAR/chat-extension/extension.tsx'.
  */
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneModelSubs = new WeakMap<object, Array<() => void>>()
+
 const modelExtension: ChatExtension = createExtension({
   name: 'model',
   description: 'Handles model selection for chat messages',
   priority: 10, // High priority - before text (5)
 
-  initialize: async () => {
-    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+  initialize: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
-
-    // 1. Conversation-change → re-initialize the picker. Replaces
-    //    the implicit chat-extension-framework scoping the old
-    //    Stores.Chat.ModelStore used to get for free; now we wire it
-    //    explicitly because the store lives in the user-llm-providers
-    //    module's namespace.
-    useChatStore.subscribe(
-      state => state.conversation?.id,
-      () => {
-        const conversation = useChatStore.getState().conversation
-        Stores.ModelPicker.initializeFromConversation(conversation?.model_id ?? undefined)
-      },
+    const { newChatModelKey } = await import(
+      '@/modules/user-llm-providers/ModelPicker.store'
     )
 
-    // 2. Editing-message → restore the message's model id while
-    //    editing, then fall back to the conversation default when the
-    //    edit is cancelled or sent.
-    useChatStore.subscribe(
-      state => state.editingMessage,
-      (editingMessage) => {
-        const picker = Stores.ModelPicker
-        if (!picker) return
-
-        if (editingMessage?.model_id) {
-          picker.setModelId(editingMessage.model_id)
-        } else if (!editingMessage) {
-          const conversation = useChatStore.getState().conversation
-          picker.initializeFromConversation(conversation?.model_id ?? undefined)
-        }
-      },
+    // Editing-message → restore the message's model id, then fall back to the
+    // conversation default when the edit is cancelled/sent. Binds to the OWNING
+    // pane's chat store (ctx.chatStore, ITEM-34/5) + keys by THAT pane's
+    // conversation, so editing in a non-focused pane restores the right pane's
+    // selection. (Per-conversation SEEDING is `onConversationLoad`, per pane.)
+    const chatStore = ctx.chatStore
+    const subs: Array<() => void> = []
+    paneModelSubs.set(chatStore, subs)
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        (editingMessage: any) => {
+          const conversation = chatStore.getState().conversation
+          const key =
+            conversation?.id ?? newChatModelKey(chatStore.getState().paneId)
+          if (editingMessage?.model_id) {
+            Stores.ModelPicker.setModelId(key, editingMessage.model_id)
+          } else if (!editingMessage) {
+            Stores.ModelPicker.initializeFromConversation(
+              key,
+              conversation?.model_id ?? undefined,
+            )
+          }
+        },
+      ),
     )
   },
 
+  cleanup: async (ctx) => {
+    const subs = paneModelSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneModelSubs.delete(ctx.chatStore)
+    }
+  },
+
   /**
-   * Provide model_id to request.
+   * Provide model_id to the request for the SENDING pane's conversation
+   * (ctx.conversationId; null = new chat → the shared new-chat key). (ITEM-5)
    */
-  composeRequestFields: async () => {
+  composeRequestFields: async ctx => {
     const { Stores } = await import('@ziee/framework/stores')
-    const modelId = Stores.ModelPicker.getModelId()
+    const { newChatModelKey } = await import(
+      '@/modules/user-llm-providers/ModelPicker.store'
+    )
+    const key = ctx.conversationId ?? newChatModelKey(ctx.paneId)
+    const modelId =
+      Stores.ModelPicker.getModelId(key) ?? Stores.ModelPicker.defaultModelId()
     if (!modelId) {
       throw new Error('No model selected')
     }
@@ -79,15 +94,16 @@ const modelExtension: ChatExtension = createExtension({
   },
 
   /**
-   * Sync model selection when conversation loads or switches. The
-   * conversation-id subscriber above also handles this, but
-   * onConversationLoad runs synchronously in the chat extension
-   * lifecycle (the subscriber fires asynchronously after the store
-   * commits) so keep both to avoid a one-frame stale picker.
+   * Seed the picker for THIS pane's conversation on load/switch — keyed by the
+   * conversation id so each split pane keeps its own model selection (ITEM-5).
+   * Runs per pane (each pane's loadConversation invokes it).
    */
   onConversationLoad: async (conversation: Conversation) => {
     const { Stores } = await import('@ziee/framework/stores')
-    Stores.ModelPicker.initializeFromConversation(conversation.model_id ?? undefined)
+    Stores.ModelPicker.initializeFromConversation(
+      conversation.id,
+      conversation.model_id ?? undefined,
+    )
   },
 })
 

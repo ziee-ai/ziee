@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   type LiteratureRecord,
   type LiteratureScreeningData,
@@ -18,6 +19,11 @@ import { downloadText, toBibtex, toCsv, toRis } from '../utils/citationFormats'
  */
 export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   const { records, decisions, reasons, query, completeness, identified, afterDedup, degradedSources } = data
+  // Read/write THIS pane's right panel (ITEM-36) — a `.$` snapshot on the bridge
+  // resolves to the FOCUSED pane, so blurring pane B's exclusion-reason input by
+  // clicking pane A read pane A's tabs → findIndex miss → the typed reason was
+  // DROPPED. Binding to the render pane's store keeps it.
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
 
   // Transient UI-only state — never persisted to the tab snapshot.
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -32,10 +38,10 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   // stale snapshot. The updater receives the current data and returns a patch.
   const persist = (update: (cur: LiteratureScreeningData) => Partial<LiteratureScreeningData>) => {
     const current =
-      (Stores.Chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
+      (chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
         | LiteratureScreeningData
         | undefined) ?? data
-    Stores.Chat.updateRightPanelTab<'literature'>(data.sessionId, {
+    chat.updateRightPanelTab<'literature'>(data.sessionId, {
       ...current,
       ...update(current),
     })
@@ -53,7 +59,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       // Read the fresh snapshot to decide; only persist on an ACTUAL change so a
       // no-op blur doesn't rewrite the whole tab snapshot to localStorage.
       const cur =
-        (Stores.Chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
+        (chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
           | LiteratureScreeningData
           | undefined) ?? data
       if (draft !== (cur.reasons[key] ?? '')) {

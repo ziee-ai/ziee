@@ -1,13 +1,15 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, Empty, Tabs, Text } from '@ziee/kit'
 import { CircleAlert, X } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/Chat.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 function ActivePanelContent() {
-  const { tabs, activeId } = Stores.Chat.rightPanel
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { tabs, activeId } = chat.rightPanel
   const activeTab = tabs.find(t => t.id === activeId)
   // Empty body when there's literally no tab to display — this is the
   // initial state and not an error, so returning null is correct here.
@@ -45,7 +47,8 @@ function ActivePanelContent() {
 }
 
 function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; asTitle?: boolean }) {
-  const { tabs, activeId } = Stores.Chat.rightPanel
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { tabs, activeId } = chat.rightPanel
 
   if (tabs.length === 0) return null
 
@@ -83,9 +86,9 @@ function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; a
             closable: true,
           }
         })}
-        onValueChange={key => Stores.Chat.setActiveRightPanelTab(key)}
+        onValueChange={key => chat.setActiveRightPanelTab(key)}
         onEdit={(action, key) => {
-          if (action === 'remove') Stores.Chat.closeRightPanelTab(key)
+          if (action === 'remove') chat.closeRightPanelTab(key)
         }}
       />
   )
@@ -114,9 +117,16 @@ function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; a
   )
 }
 
-export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
+export function ChatRightPanel({
+  narrow = false,
+  inPane = false,
+}: {
+  narrow?: boolean
+  inPane?: boolean
+}) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const { rightPanel } = Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { rightPanel } = chat
   // `narrow` = the conversation PAGE is small (element-width, sidebar-aware),
   // not the window — so an open sidebar on a wide window still gets the drawer.
   const isMobile = narrow
@@ -128,6 +138,43 @@ export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
     rightPanel.tabs.length > 0 &&
     rightPanel.activeId !== null
 
+  // In-pane slide-over: Escape closes it (the Drawer path gets this for free;
+  // this hand-rolled overlay must wire it). Document-level so it works wherever
+  // focus is within the pane. No-op unless the in-pane slide-over is open.
+  useEffect(() => {
+    if (!inPane || !showDrawer) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') chat.closeMobileDrawer()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [inPane, showDrawer])
+
+  // Split pane (ITEM-18): an in-pane slide-over anchored to THIS pane's relative
+  // main area — NOT a body-portaled Drawer (which would cover the whole window
+  // and the sibling pane) and NOT a second inline column (which would over-cram
+  // a half-width pane). Same open/close semantics + content as the narrow Drawer.
+  if (inPane) {
+    if (!showDrawer) return null
+    return (
+      <div
+        role="region"
+        aria-label="Conversation side panel"
+        className="absolute inset-y-0 end-0 z-50 flex flex-col border-s border-border bg-background shadow-xl animate-in fade-in"
+        style={{ width: Math.min(panelWidth, 440), maxWidth: '85%' }}
+        data-testid="chat-right-panel"
+        data-panel-open="true"
+      >
+        {/* PanelTabs carries the accessible close-all (X) button; the slide-over
+            separates from the pane content via border + shadow (no backdrop). */}
+        <PanelTabs onCloseAll={chat.closeAllRightPanelTabs} />
+        <div className="flex-1 overflow-hidden min-h-0">
+          <ActivePanelContent />
+        </div>
+      </div>
+    )
+  }
+
   // Narrow page: the panel is an actual Drawer (full-width) — it handles the
   // backdrop, focus-trap, Escape, and swipe-to-close, and carries the
   // `data-slot="layout-drawer"` the sidebar-swipe guard keys on. The panel's own
@@ -136,7 +183,7 @@ export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
     return (
       <Drawer
         open={showDrawer}
-        onClose={Stores.Chat.closeMobileDrawer}
+        onClose={chat.closeMobileDrawer}
         placement="right"
         noBodyScrollWrap
         data-testid="chat-right-panel"
@@ -169,7 +216,7 @@ export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
     >
       {/* Inner div keeps fixed width so content doesn't collapse during close animation */}
       <div className="h-full flex flex-col" style={{ width: panelWidth, minWidth: panelWidth }}>
-        <PanelTabs onCloseAll={Stores.Chat.closeAllRightPanelTabs} />
+        <PanelTabs onCloseAll={chat.closeAllRightPanelTabs} />
         <div className="flex-1 overflow-hidden">
           <ActivePanelContent />
         </div>
@@ -182,7 +229,7 @@ export function ChatRightPanel({ narrow = false }: { narrow?: boolean }) {
           maxWidth={800}
           onEnd={() => {
             if (panelRef.current) {
-              Stores.Chat.setRightPanelWidth(panelRef.current.offsetWidth)
+              chat.setRightPanelWidth(panelRef.current.offsetWidth)
             }
           }}
         />

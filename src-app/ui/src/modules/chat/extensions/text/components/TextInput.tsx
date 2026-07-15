@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Textarea } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   getDraft,
   setDraft,
@@ -20,17 +21,25 @@ import {
  */
 export function TextInput() {
   const ref = useRef<HTMLTextAreaElement>(null)
-  const { sending } = Stores.Chat
-  const { setGetMessage, setSetMessage, setClearMessage } =
-    Stores.Chat.TextStore
+  // Resolve THIS pane's chat store directly (not the focused-pane bridge): the
+  // composer's TextStore is a NESTED store, and `Stores.Chat.TextStore` resolves
+  // nested stores via getState()->focusedApi() (the focused pane), NOT the
+  // subtree's PaneApiContext — so a non-focused pane's composer would register
+  // its get/set/clear on, and read from, the WRONG pane's TextStore. Binding to
+  // `pane.store` keeps each pane's composer isolated (single-pane: pane is null →
+  // Stores.Chat, unchanged).
+  const pane = useChatPaneOrNull()
+  const chatStore = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const { sending } = chatStore
+  const { setGetMessage, setSetMessage, setClearMessage } = chatStore.TextStore
 
   // The draft bucket for the composer's CURRENT conversation. `new` when there
   // is no conversation yet (new-chat page). Read reactively so it follows an
   // in-app A→B conversation switch. `editingMessage` gates persistence so an
   // edit/regenerate prefill (which calls TextStore.setText) is never captured
   // as, or clobbered by, a draft (DEC-7).
-  const conversationId = Stores.Chat.conversation?.id
-  const isEditing = Stores.Chat.editingMessage != null
+  const conversationId = chatStore.conversation?.id
+  const isEditing = chatStore.editingMessage != null
   // Namespace the draft by the current user so a shared browser never surfaces
   // another user's unsent text (esp. the fixed `new` bucket) — see makeDraftKey.
   const draftKey = makeDraftKey(Stores.Auth.user?.id, conversationId)
@@ -92,7 +101,7 @@ export function TextInput() {
       e.preventDefault()
 
       // Call sendMessage directly - model extension will provide model_id
-      await Stores.Chat.sendMessage()
+      await chatStore.sendMessage()
     }
   }
 

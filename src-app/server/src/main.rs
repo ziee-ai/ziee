@@ -186,6 +186,8 @@ async fn main() {
         core::set_app_data_dir(default_data_dir);
     }
     core::set_caches_config(config.caches.clone());
+    // Apply the deployment-config chat-token SSE connection caps (DEC-34).
+    crate::modules::chat::stream::registry::apply_config_limits(&config.chat);
     // Capture server addr so the llm_local_runtime URL injection
     // (repository read-time) can derive the live proxy base_url
     // without holding a reference to the full Config. The api_prefix

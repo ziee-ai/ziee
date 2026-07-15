@@ -128,7 +128,9 @@ drift.
 **Location:** `/home/pbya/projects/ziee/src-app/docker-compose.yaml`
 
 **IMPORTANT:** When working with database schema changes:
-1. The docker-compose file is in `src-app/` directory, NOT the project root
+1. The docker-compose file is `src-app/docker-compose.yaml`. Bring the stack up with
+   `cd src-app && docker compose up -d`; `just ensure-build-db` then verifies it's
+   reachable and provisions the hub build DB on top.
 2. To reset the database after migration changes:
    ```bash
    cd /home/pbya/projects/ziee/src-app

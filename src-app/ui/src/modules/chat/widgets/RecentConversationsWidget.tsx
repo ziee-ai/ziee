@@ -14,11 +14,14 @@ import {
   MenuRowButton,
 } from '@ziee/kit'
 import type { DropdownItem } from '@ziee/kit'
-import { MessageSquare, Trash2, MoreVertical } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { MessageSquare, Trash2, MoreVertical, Columns2 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { Stores } from '@ziee/framework/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
+import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
+import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
@@ -30,6 +33,10 @@ import {
 // zoom / a large OS font / a wrapped title grows the row correctly instead of
 // clipping against a rigid grid.
 const ROW_H = 34
+
+// Row testid prefix (split-chat): a modified-click (Cmd/Ctrl/middle) opens a
+// conversation in a NEW pane; the handler reads the clicked row's id off this.
+const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 
 /**
  * Sidebar list of the user's recent conversations, backed by
@@ -47,7 +54,12 @@ const ROW_H = 34
  */
 export function RecentConversationsWidget() {
   const location = useLocation()
-  const navigate = useNavigate()
+  // Split-chat (ITEM-28): a plain click routes through the workspace reducer
+  // (replace the focused pane while split, else single-pane navigate); the hook
+  // owns navigation. Tear-off (ITEM-58): a sidebar drag released past the window
+  // edge pops the conversation into its own desktop window (no-op on web).
+  const openConversation = useOpenConversationInWorkspace()
+  const tearOff = useConversationTearOff()
   const {
     recentConversations,
     recentInitialized,
@@ -183,6 +195,26 @@ export function RecentConversationsWidget() {
   // with where a click actually navigates.
   const hrefFor = (c: ConversationResponse) =>
     chatExtensionRegistry.conversationHref(c) ?? `/chat/${c.id}`
+
+  // Split-chat: a modified click (Cmd/Ctrl or middle-button) on a row opens the
+  // conversation in a NEW pane instead of navigating the focused one. Captured on
+  // the container so it wins before the row's plain-click navigate fires.
+  const openInNewPaneIfModified = (
+    e: React.MouseEvent<HTMLDivElement>,
+  ): void => {
+    if (!(e.metaKey || e.ctrlKey || e.button === 1)) return
+    const row = (e.target as HTMLElement).closest<HTMLElement>(
+      `[data-testid^="${RECENT_ITEM_TESTID_PREFIX}"]`,
+    )
+    const id = row
+      ?.getAttribute('data-testid')
+      ?.slice(RECENT_ITEM_TESTID_PREFIX.length)
+    const c = id && recentConversations.find(x => x.id === id)
+    if (!c) return
+    e.preventDefault()
+    e.stopPropagation()
+    openConversation(c.id, { intent: 'newPane', href: hrefFor(c) })
+  }
   // aria-setsize: once fully loaded, the exact rendered count is authoritative;
   // while more remain, recentTotal is the best (approximate) estimate. Never
   // report a set size smaller than what's rendered.
@@ -191,7 +223,11 @@ export function RecentConversationsWidget() {
     : recentConversations.length
 
   return (
-    <div className="flex flex-col h-full min-h-0 text-foreground">
+    <div
+      className="flex flex-col h-full min-h-0 text-foreground"
+      onClickCapture={openInNewPaneIfModified}
+      onAuxClickCapture={openInNewPaneIfModified}
+    >
       {headerOnly}
       <DivScrollY
         ref={osRef}
@@ -240,10 +276,23 @@ export function RecentConversationsWidget() {
                       // (body-level portal), in case event routing ever changes.
                       const active = document.activeElement as HTMLElement | null
                       if (active?.closest('[role="menu"]')) return
-                      navigate(hrefFor(c))
+                      // Split-chat (ITEM-28): route through the workspace reducer —
+                      // plain click replaces the focused pane while split, else a
+                      // single-pane navigate. (The hook owns the navigation.)
+                      openConversation(c.id, { intent: 'auto', href: hrefFor(c) })
                     }}
                   >
-                    <span className="min-w-0 flex-1 truncate text-start">
+                    {/* Drag source (ITEM-31): drag onto a pane to replace it / the
+                        inter-pane seam for a new pane; release past the window edge
+                        tears off to a desktop window (no-op on web). */}
+                    <span
+                      className="min-w-0 flex-1 truncate text-start"
+                      draggable
+                      onDragStart={e =>
+                        setConversationDragData(e.dataTransfer, c.id)
+                      }
+                      onDragEnd={e => tearOff(e, { conversationId: c.id, title })}
+                    >
                       {title}
                     </span>
                   </MenuRowButton>
@@ -315,6 +364,8 @@ function ConversationRowActions({
   // Controlled dropdown open so we can suppress closing while an
   // extension overlay (popconfirm etc.) is showing.
   const [menuOpen, setMenuOpen] = useState(false)
+  // Split-chat: the ⋯ menu offers an explicit "Open in split pane" action.
+  const openConversation = useOpenConversationInWorkspace()
 
   const { items: extensionItems, overlays, keepMenuOpen } =
     useConversationMenuContributions(conversation)
@@ -340,10 +391,20 @@ function ConversationRowActions({
   }
 
   const menuItems: DropdownItem[] = [
+    {
+      key: 'open-in-split',
+      icon: <Columns2 />,
+      label: 'Open in split pane',
+      onClick: () =>
+        openConversation(conversation.id, {
+          intent: 'newPane',
+          href:
+            chatExtensionRegistry.conversationHref(conversation) ??
+            `/chat/${conversation.id}`,
+        }),
+    },
     ...(extensionItems ?? []),
-    ...(extensionItems && extensionItems.length > 0
-      ? [{ type: 'divider' as const, key: 'div-delete' }]
-      : []),
+    { type: 'divider' as const, key: 'div-delete' },
     {
       key: 'delete',
       danger: true,

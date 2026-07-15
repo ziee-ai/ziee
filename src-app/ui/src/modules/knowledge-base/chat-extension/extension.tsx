@@ -32,6 +32,9 @@ declare module '@/modules/chat/core/stores/Chat.store' {
   }
 }
 
+// Per-pane subscription teardown (ITEM-34/5), keyed by ctx.chatStore.
+const paneKbSubs = new WeakMap<object, Array<() => void>>()
+
 const knowledgeBaseExtension: ChatExtension = createExtension({
   name: 'knowledge-base',
   description: 'Knowledge base grounding: composer attach + retrieval transparency',
@@ -39,8 +42,8 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   // static `contentMatch` already scopes it to `search_knowledge` blocks.
   priority: 70,
 
-  initialize: async () => {
-    const { registerPanelRenderer, useChatStore } = await import(
+  initialize: async (ctx) => {
+    const { registerPanelRenderer } = await import(
       '@/modules/chat/core/stores/Chat.store'
     )
     const { Stores } = await import('@ziee/framework/stores')
@@ -52,15 +55,33 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     // Reset the composer selection when the active conversation changes to a
     // NEW (unsaved) chat — onConversationLoad only fires for EXISTING
     // conversations, so without this the pending buffer from conversation A
-    // would leak into a fresh chat and get attached on first send. Mirrors the
-    // file extension's conversation-change subscription. A change to a real id
+    // would leak into a fresh chat and get attached on first send. Binds to the
+    // OWNING pane's chat store (ctx.chatStore, ITEM-34/5). A change to a real id
     // is handled by onConversationLoad (which re-hydrates from the server).
-    useChatStore.subscribe(
-      state => state.conversation?.id,
-      id => {
-        if (!id) Stores.KnowledgeBaseComposer.setCurrentConversation(null)
-      },
+    const subs: Array<() => void> = []
+    paneKbSubs.set(ctx.chatStore, subs)
+    subs.push(
+      ctx.chatStore.subscribe(
+        (state: any) => state.conversation?.id,
+        (id: string | undefined) => {
+          // Reset only THIS pane's pending buffer (ITEM-51) — keyed by the pane's
+          // own id — so one pane opening a new chat never wipes another pane's
+          // buffered new-chat KB selection.
+          if (!id) {
+            const paneId = (ctx.chatStore.getState() as { paneId?: string | null }).paneId ?? null
+            Stores.KnowledgeBaseComposer.resetPending(paneId)
+          }
+        },
+      ),
     )
+  },
+
+  cleanup: async (ctx) => {
+    const subs = paneKbSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneKbSubs.delete(ctx.chatStore)
+    }
   },
 
   slots: {
@@ -75,21 +96,44 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   onConversationLoad: async conversation => {
     const { Stores } = await import('@ziee/framework/stores')
     const store = Stores.KnowledgeBaseComposer
-    store.setCurrentConversation(conversation.id)
+    // Per-conversation (ITEM-46): hydrate THIS conversation's own slot.
     if (conversation.id) await store.loadForConversation(conversation.id)
     // Read-only KBs inherited from the conversation's project (scope legibility).
-    void store.loadInherited(
+    void store.loadInheritedFor(
+      conversation.id ?? null,
       (conversation as { project_id?: string | null }).project_id ?? null,
     )
   },
 
-  onMessageSent: async () => {
+  onMessageSent: async ownerPaneId => {
     const { Stores } = await import('@ziee/framework/stores')
-    const store = Stores.KnowledgeBaseComposer.$
-    const conversation = Stores.Chat.$.conversation
-    // New conversation just minted: persist the pending selection to it.
-    if (conversation?.id && !store.currentConversationId) {
-      await store.transferPending(conversation.id)
+    const { pendingKbKey } = await import('../stores/kbSelectionKey')
+    const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
+    const snap = Stores.KnowledgeBaseComposer.$
+    // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
+    // a `Stores.Chat.$` read (which routes to the FOCUSED pane — in split view the
+    // pane that sent may no longer be focused by the time this async hook runs, so
+    // a `.$` read would transfer the pending buffer onto the wrong conversation or
+    // short-circuit and silently drop it). Single-pane (no paneId) falls back to
+    // the bridge, which is the sole/focused pane there.
+    const paneState = ownerPaneId
+      ? (paneRegistry.get(ownerPaneId)?.api.getState() as
+          | { conversation?: { id?: string } }
+          | undefined)
+      : undefined
+    const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
+    // A brand-new conversation (just minted, not yet hydrated into its own slot)
+    // with a non-empty pending buffer → move THIS pane's pending selection under it
+    // (ITEM-51: read the SENDING pane's own pending key). An existing conversation
+    // already owns a slot (via onConversationLoad), so this no-ops for it.
+    const pendingSize =
+      snap.selectionByConversation.get(pendingKbKey(ownerPaneId))?.size ?? 0
+    if (
+      conversation?.id &&
+      !snap.selectionByConversation.has(conversation.id) &&
+      pendingSize > 0
+    ) {
+      await Stores.KnowledgeBaseComposer.transferPending(conversation.id, ownerPaneId)
     }
     return {}
   },

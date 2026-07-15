@@ -6,10 +6,16 @@
 //! injects a short-lived JWT + `x-conversation-id` for built-in servers, so the
 //! handler authenticates the user AND scopes reads to the conversation.
 //!
-//! Three read-only tools: `list_files` / `read_file` / `grep_files`, served over
-//! the shared `file::available_files` resolver (project files + conversation
-//! attachments). Mirrors `memory_mcp` for the boot/registration shape and
-//! `code_sandbox` for the conversation-ownership shape.
+//! Nine tools (see `tools.rs`): four read — `list_files` / `read_file` /
+//! `grep_files` / `semantic_search` — and five write — `create_file` /
+//! `edit_file` / `edit_file_lines` / `rewrite_file` / `convert_document`.
+//!
+//! Reads are served over the shared `file::available_files` resolver (project
+//! files + conversation attachments + files the model authored here), and are
+//! strictly conversation-scoped. Writes resolve by id against the OWNER's files
+//! instead (`resolve_write_target`), which is deliberately broader. Mirrors
+//! `memory_mcp` for the boot/registration shape and `code_sandbox` for the
+//! conversation-ownership shape.
 
 use std::error::Error;
 use std::sync::Arc;

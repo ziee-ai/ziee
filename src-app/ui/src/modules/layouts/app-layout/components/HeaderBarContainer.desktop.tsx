@@ -29,6 +29,7 @@
 import { useRef, useLayoutEffect, useCallback } from 'react'
 import { Stores } from '@ziee/framework/stores'
 import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
+import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeaderLeftInset'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 // Selector matching anything we'd consider an "interactive" descendant.
@@ -54,7 +55,7 @@ export const HeaderBarContainer = ({
   className = '',
   style = {},
 }: HeaderBarContainerProps) => {
-  const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
+  const { isFullscreen } = Stores.AppLayout
 
   // Soft-fade overlay color matched to the content surface, faded
   // through alpha so the gradient doesn't pass through a faint
@@ -67,18 +68,10 @@ export const HeaderBarContainer = ({
     undefined,
   )
 
-  // macOS Tauri: ~118px on the left when the sidebar is collapsed so
-  // the header content clears BOTH the traffic-light cluster
-  // (ends ~x=72 after the x=20 shift) AND the toggle button
-  // (marginLeft=84, width=28 → right edge ~112), with ~6px breathing
-  // room past that. Off in fullscreen (no traffic lights). Web /
-  // non-Tauri: core's 48 | 12.
-  const paddingLeft =
-    isSidebarCollapsed && isTauriView && !isFullscreen && isMacOS
-      ? 118
-      : isSidebarCollapsed
-        ? 48
-        : 12
+  // Left inset — shared with the app header + the split leftmost pane header via
+  // `useHeaderLeftInset` (the `.desktop` variant returns 118 on macOS collapsed to
+  // clear the traffic lights + toggle, else 48 | 12). Single source of truth (ITEM-71).
+  const paddingLeft = useHeaderLeftInset()
 
   // Windows Tauri: ~100px on the right to clear decorum's overlay
   // close/min/max trio (drawn INSIDE the webview at top-right).

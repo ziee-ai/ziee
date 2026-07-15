@@ -14,12 +14,15 @@ import { ImageContent } from '@/modules/file/chat-extension/components/ImageCont
 // going through Stores.File would fire the Stores-proxy's internal
 // useEffect+useStore on property access, corrupting the outer hook
 // count (see ProjectFiles.store.ts's earlier bug).
-import { useFileStore } from '@/modules/file/stores/File.store'
+import { composerPaneKey, useFileStore } from '@/modules/file/stores/File.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment, MessageContentDataImage } from '@/api-client/types'
 
-// Module-level vars so cleanup can tear down subscriptions created in initialize.
-let unsubConversation: (() => void) | null = null
-let unsubEditingMessage: (() => void) | null = null
+// Per-pane subscription teardown (ITEM-34/5): keyed by the pane's chat store api
+// (ctx.chatStore) so cleanup tears down the RIGHT pane's subscriptions — a
+// module-level var would be overwritten by the second pane's initialize and leak
+// the first. WeakMap so a destroyed pane store's entry is GC'd.
+const paneFileSubs = new WeakMap<object, Array<() => void>>()
 
 /**
  * Build a composer stub FileEntity from a message's attachment content block.
@@ -137,7 +140,7 @@ const fileExtension: ChatExtension = createExtension({
    * file selection so they appear in the input area prefix (FilePreviewList).
    * When edit ends (null): clear the file selection.
    */
-  initialize: async () => {
+  initialize: async (ctx) => {
     // Register the file panel renderer so file tabs can be rendered AND
     // restored from localStorage after reload. The renderer receives the
     // serialized `data` ({ fileId }) and looks the actual File entity up
@@ -158,8 +161,13 @@ const fileExtension: ChatExtension = createExtension({
       },
     })
 
-    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@ziee/framework/stores')
+    // Bind to the OWNING pane's chat store (ITEM-34/5) — not the global
+    // singleton — so these subscriptions watch THIS pane's conversation/edit
+    // state. Unsubs are stored per-pane (keyed by ctx.chatStore) for cleanup.
+    const chatStore = ctx.chatStore
+    const subs: Array<() => void> = []
+    paneFileSubs.set(chatStore, subs)
 
     // Conversation-change → clear the per-composer upload buffer.
     // Replaces the implicit chat-extension-framework scoping that
@@ -167,29 +175,35 @@ const fileExtension: ChatExtension = createExtension({
     // it explicitly because the store lives in the file module.
     // messageFilesCache and thumbnailUrls survive (they're keyed by
     // message/file id and used across conversations).
-    unsubConversation = useChatStore.subscribe(
-      state => state.conversation?.id,
-      () => {
-        Stores.File.clearFiles()
-      },
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.conversation?.id,
+        () => {
+          Stores.File.clearFiles(composerPaneKey(chatStore.getState().paneId))
+        },
+      ),
     )
 
-    unsubEditingMessage = useChatStore.subscribe(
-      state => state.editingMessage,
-      async (editingMessage) => {
+    subs.push(
+      chatStore.subscribe(
+        (state: any) => state.editingMessage,
+        async (editingMessage: any) => {
         const fileStore = Stores.File
         if (!fileStore) return
 
         if (editingMessage) {
           // Restore attachment content blocks (file_attachment AND user-attached
           // image blocks) from the edited message into the composer.
-          const stubs: FileEntity[] = editingMessage.contents
+          const stubs: FileEntity[] = (editingMessage.contents as MessageContent[])
             .map(attachmentStubFromBlock)
-            .filter((f): f is FileEntity => f !== null)
+            .filter((f: FileEntity | null): f is FileEntity => f !== null)
           if (stubs.length > 0) {
             // Phase 1 — Synchronous: stubs from block data, so selectedFiles is
             // populated before the user can click Send.
-            fileStore.restoreFilesFromEdit(stubs)
+            fileStore.restoreFilesFromEdit(
+              composerPaneKey(chatStore.getState().paneId),
+              stubs,
+            )
 
             // Phase 2 — Async: upgrade stubs with full server entities (enables thumbnails).
             try {
@@ -198,7 +212,7 @@ const fileExtension: ChatExtension = createExtension({
               )
               const validFiles = fullFiles.filter(Boolean) as FileEntity[]
               if (validFiles.length > 0) {
-                fileStore.restoreFilesFromEdit(validFiles)
+                fileStore.restoreFilesFromEdit(composerPaneKey(chatStore.getState().paneId), validFiles)
               }
             } catch (error) {
               console.error('[FileExtension] Failed to upgrade files from edit:', error)
@@ -207,21 +221,23 @@ const fileExtension: ChatExtension = createExtension({
           }
         } else {
           // Edit ended (cancel or send) — clear the file selection
-          fileStore.clearFiles()
+          fileStore.clearFiles(composerPaneKey(chatStore.getState().paneId))
         }
-      }
+      },
+      ),
     )
   },
 
   /**
-   * Tear down subscriptions created in initialize to avoid leaking
-   * zustand store listeners when the extension is unregistered.
+   * Tear down THIS pane's subscriptions (ITEM-34/5) so a pane unmount never
+   * leaks the pane store's listeners or tears down another pane's.
    */
-  cleanup: async () => {
-    unsubConversation?.()
-    unsubConversation = null
-    unsubEditingMessage?.()
-    unsubEditingMessage = null
+  cleanup: async (ctx) => {
+    const subs = paneFileSubs.get(ctx.chatStore)
+    if (subs) {
+      for (const unsub of subs) unsub()
+      paneFileSubs.delete(ctx.chatStore)
+    }
   },
 
   /**
@@ -229,12 +245,17 @@ const fileExtension: ChatExtension = createExtension({
    * during sendMessage(). Without this, the message bubble shows no file
    * previews until loadMessages() replaces the temp message with the real one.
    */
-  provideUserContent: async (_text: string, _composedRequest: any): Promise<MessageContent[]> => {
+  provideUserContent: async (
+    _text: string,
+    _composedRequest: any,
+    composerPaneId?: string | null,
+  ): Promise<MessageContent[]> => {
     const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
     if (!fileStore) return []
 
-    const files = fileStore.getFiles()
+    // Attach only the SENDING pane's files (ITEM-32).
+    const files = fileStore.getFiles(composerPaneKey(composerPaneId))
     if (files.length === 0) return []
 
     const now = new Date().toISOString()
@@ -282,16 +303,26 @@ const fileExtension: ChatExtension = createExtension({
     const fileStore = Stores.File
     if (!fileStore) return
 
-    fileStore.restoreFilesFromEdit(stubs)
+    fileStore.restoreFilesFromEdit(
+      composerPaneKey(Stores.SplitView.$.focusedPaneId),
+      stubs,
+    )
   },
 
   // Reactive companion to `beforeSendMessage` — drives ChatInput's
   // Send-button disable state. Subscribes to `uploadingFiles` via the
   // raw zustand hook so re-renders fire when upload status flips.
   useSendBlocker: () => {
+    // Only THIS pane's uploads block THIS pane's send (ITEM-32/34) — a file
+    // uploading in pane A must not disable pane B's Send button.
+    const pane = useChatPaneOrNull()
+    const paneKey = composerPaneKey(pane?.paneId)
     const uploadingFiles = useFileStore(s => s.uploadingFiles)
-    const inFlight = Array.from(uploadingFiles.values()).some(
-      f => f.status === 'pending' || f.status === 'uploading',
+    const uploadOwner = useFileStore(s => s.uploadOwner)
+    const inFlight = Array.from(uploadingFiles.entries()).some(
+      ([id, f]) =>
+        composerPaneKey(uploadOwner.get(id)) === paneKey &&
+        (f.status === 'pending' || f.status === 'uploading'),
     )
     return inFlight ? { reason: 'uploading' } : null
   },
@@ -304,7 +335,7 @@ const fileExtension: ChatExtension = createExtension({
     const fileStore = Stores.File
 
     // Check if there are any files still uploading (use action method to avoid React hooks)
-    if (fileStore.isUploading()) {
+    if (fileStore.isUploading(composerPaneKey(Stores.SplitView.$.focusedPaneId))) {
       console.log('[FileExtension] Blocking message send - files still uploading')
 
       return {
@@ -317,12 +348,12 @@ const fileExtension: ChatExtension = createExtension({
   },
 
   // Compose request fields to add file_ids to send message request
-  composeRequestFields: async () => {
+  composeRequestFields: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
 
-    // Call action method to get file IDs (actions don't trigger React hooks)
+    // The SENDING pane's file ids (ITEM-32).
     const fileStore = Stores.File
-    const fileIds = fileStore.getFileIds()
+    const fileIds = fileStore.getFileIds(composerPaneKey(ctx.paneId))
 
     console.log('[FileExtension] composeRequestFields - fileIds:', fileIds)
 
@@ -335,36 +366,44 @@ const fileExtension: ChatExtension = createExtension({
     return { file_ids: fileIds }
   },
 
-  // Backup files before clearing (this runs after composeRequestFields)
-  onMessageSent: async () => {
+  // Backup files before clearing (this runs after composeRequestFields). Keyed by
+  // the SENDING pane threaded from the dispatching store (`ownerPaneId`), NOT
+  // `focusedPaneId` — this hook runs after the send round-trip, during which the
+  // user may have focused another pane; the store's own paneId is stable
+  // (ITEM-32/DRIFT-2.13).
+  onMessageSent: async (ownerPaneId) => {
     const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
+    const paneKey = composerPaneKey(ownerPaneId)
 
-    // Backup files before clearing
-    fileStore.setBackupFiles()
-    fileStore.clearFiles()
+    // Backup THIS pane's files before clearing THIS pane's buffer.
+    fileStore.setBackupFiles(paneKey)
+    fileStore.clearFiles(paneKey)
     console.log('[FileExtension] Backed up and cleared files after message sent')
     return {}
   },
 
-  // Restore files on stream error
-  onStreamError: async (_error: Error) => {
+  // Restore files on stream error — keyed by the OWNING pane (whose stream
+  // errored), threaded from the pane's store. The error frame arrives async, so
+  // focus is unreliable; using it would restore into / clobber the wrong pane.
+  onStreamError: async (_error, ownerPaneId) => {
     const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
-    // Restore files from backup
-    fileStore.restoreFromBackup()
+    // Restore only THIS pane's backed-up files (leaves other panes untouched).
+    fileStore.restoreFromBackup(composerPaneKey(ownerPaneId))
     console.log('[FileExtension] Restored files from backup after stream error')
     return {}
   },
 
-  // Clear backup on successful completion
-  afterStreamComplete: async (_message) => {
+  // Clear backup on successful completion — keyed by the OWNING pane (same async-
+  // boundary reasoning as onStreamError).
+  afterStreamComplete: async (_message, ownerPaneId) => {
     const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
-    // Clear backup since message was sent successfully
-    fileStore.clearBackup()
+    // Clear THIS pane's backup since its message was sent successfully.
+    fileStore.clearBackup(composerPaneKey(ownerPaneId))
     console.log('[FileExtension] Cleared file backup after successful stream')
     return {}
   },

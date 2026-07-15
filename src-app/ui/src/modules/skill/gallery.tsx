@@ -76,7 +76,7 @@ export const gallery: ModuleGallery = {
         { conversationId: SKILLS_CONVERSATION_ID },
       ),
       open: () => {
-        Stores.SkillConversationDrawer.openDrawer()
+        Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
         void seedSkills(skillsList, skillsAvailable)
       },
       interactions: [
@@ -100,7 +100,7 @@ export const gallery: ModuleGallery = {
         { conversationId: SKILLS_CONVERSATION_ID },
       ),
       open: () => {
-        Stores.SkillConversationDrawer.openDrawer()
+        Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
         void seedSkills([], [])
       },
     },
@@ -114,7 +114,7 @@ export const gallery: ModuleGallery = {
         { conversationId: SKILLS_CONVERSATION_ID },
       ),
       open: () => {
-        Stores.SkillConversationDrawer.openDrawer()
+        Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
         void seedSkillsLoading()
       },
     },

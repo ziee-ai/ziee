@@ -6,6 +6,8 @@ import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { isRecordingSupported } from '../Voice.store'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { useRecordingOwner } from '../voiceRecordingLock'
 
 const PRIVACY_HINT_KEY = 'ziee.voice.privacyHintDismissed'
 const NOT_READY_HELP_ID = 'voice-mic-not-ready-help'
@@ -36,8 +38,18 @@ function formatElapsed(ms: number): string {
  * readers don't re-announce it every tick.
  */
 export function MicButton() {
+  // Bind to THIS pane's own VoiceStore instance (ITEM-45), not the focused-pane
+  // bridge — so each pane's mic drives + shows its OWN recording state, and
+  // unmounting a background pane cancels ITS recording, never the focused pane's.
+  const pane = useChatPaneOrNull()
+  const voice = ((pane?.store ?? Stores.Chat) as typeof Stores.Chat).VoiceStore
+  // Exclusive recording (DEC-61 A1): while another pane owns the mic, this pane's
+  // start affordance is disabled.
+  const recordingOwner = useRecordingOwner()
+  const blockedByOtherPane =
+    !!pane?.paneId && !!recordingOwner && recordingOwner !== pane.paneId
   const { status, elapsedMs, capability, capabilityLoaded, stageText, announcement, interimText, liveCaptions } =
-    Stores.Chat.VoiceStore
+    voice
   // PERMISSION gate (layer 4 — explicit, at the render site). Independent of the
   // feature/binary-availability gate below: a user whose group lacks
   // `voice::transcribe` sees NO mic affordance AT ALL — not even the muted
@@ -56,7 +68,7 @@ export function MicButton() {
   // live until max_clip auto-stop fires and transcribes into a left conversation.
   useEffect(() => {
     return () => {
-      Stores.Chat.VoiceStore.cancelRecording()
+      voice.cancelRecording()
     }
   }, [])
 
@@ -102,7 +114,7 @@ export function MicButton() {
         size="default"
         aria-label={liveCaptions ? 'Turn live captions off' : 'Turn live captions on'}
         aria-pressed={liveCaptions}
-        onClick={() => Stores.Chat.VoiceStore.setLiveCaptions(!liveCaptions)}
+        onClick={() => voice.setLiveCaptions(!liveCaptions)}
       />
     </Tooltip>
   ) : null
@@ -118,7 +130,11 @@ export function MicButton() {
         size="default"
         aria-label="Start voice dictation"
         aria-pressed={false}
-        onClick={() => Stores.Chat.VoiceStore.startRecording()}
+        disabled={blockedByOtherPane}
+        className={cn(blockedByOtherPane && 'opacity-50')}
+        onClick={() => {
+          if (!blockedByOtherPane) voice.startRecording(pane?.paneId ?? null)
+        }}
       />
     </span>
   )
@@ -202,7 +218,7 @@ export function MicButton() {
             size="default"
             aria-label="Stop recording and transcribe"
             aria-pressed={true}
-            onClick={() => Stores.Chat.VoiceStore.stopRecording()}
+            onClick={() => voice.stopRecording()}
           />
         </Tooltip>
         <Tooltip content="Cancel">
@@ -213,7 +229,7 @@ export function MicButton() {
             variant="ghost"
             size="default"
             aria-label="Cancel recording"
-            onClick={() => Stores.Chat.VoiceStore.cancelRecording()}
+            onClick={() => voice.cancelRecording()}
           />
         </Tooltip>
       </div>
@@ -235,7 +251,7 @@ export function MicButton() {
               variant="ghost"
               size="default"
               aria-label="Cancel microphone request"
-              onClick={() => Stores.Chat.VoiceStore.cancelRecording()}
+              onClick={() => voice.cancelRecording()}
             />
           </Tooltip>
         )}

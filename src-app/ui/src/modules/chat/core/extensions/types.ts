@@ -402,6 +402,58 @@ export type StreamingContentProviders = {
 }
 
 /**
+ * The pane-lifecycle subset of the extension system a chat store drives (ITEM-34).
+ * Both the global `chatExtensionRegistry` (single-pane) and a per-pane
+ * `PaneExtensionRuntime` satisfy it, so a store routes through
+ * `get().extensionRuntime ?? chatExtensionRegistry`.
+ */
+export interface ExtensionLifecycle {
+  initialize(): Promise<void>
+  cleanup(): Promise<void>
+  injectExtensionStores(chatState: Record<string, unknown>): void
+}
+
+/**
+ * The raw chat StoreApi an extension binds to — the SUBSCRIBE/GETSTATE/SETSTATE
+ * surface (with the `subscribeWithSelector` 3-arg overload) of the OWNING pane's
+ * chat store, replacing the module-global `useChatStore` singleton (ITEM-5/34,
+ * DEC-30). In single-pane it is the primary store; in a split pane it is that
+ * pane's own instance, so an extension's subscriptions/reads/writes land in the
+ * right pane.
+ */
+export type ChatExtStoreApi = import('zustand').Mutate<
+  import('zustand').StoreApi<any>,
+  [['zustand/subscribeWithSelector', never]]
+>
+
+/**
+ * Context handed to an extension's lifecycle + store-reaching hooks so it binds
+ * to a specific pane (ITEM-5/34) instead of the global singleton. `store` is this
+ * extension's OWN per-pane store instance (its `store.createStore()` result for
+ * this pane), or null for a store-less extension.
+ */
+export interface ChatExtensionContext {
+  chatStore: ChatExtStoreApi
+  store: import('@ziee/framework/stores').StoreProxy<any> | null
+}
+
+/**
+ * Context passed to the multi-extension send-path hooks
+ * (`composeRequestFields` / `beforeSendMessage`) identifying the SENDING pane's
+ * conversation (ITEM-5), so a per-conversation composer selection (model /
+ * assistant / MCP) resolves to the correct split pane. `conversationId` is null
+ * for a not-yet-created new-chat pane. (It carries no per-extension `store` —
+ * these hooks iterate ALL extensions; each reads its own pane-keyed composer
+ * store via `conversationId`.)
+ */
+export interface ChatHookCtx {
+  conversationId: string | null
+  /** The SENDING pane's stable id (ITEM-32/37), or null single-pane. Scopes the
+   *  per-pane composer buffer + the new-chat sentinel keys to the right pane. */
+  paneId: string | null
+}
+
+/**
  * Main extension interface
  * All chat extensions must implement this interface
  */
@@ -445,11 +497,13 @@ export interface ChatExtension {
   }
 
   /**
-   * Initialize extension
-   * Called once when extension is registered
-   * Extensions should access Stores.Chat for conversation data
+   * Initialize extension. Called once per PANE runtime mount (not once globally)
+   * — the `ctx` binds subscriptions/reads to THAT pane's chat store + this
+   * extension's own per-pane store instance (ITEM-5/34), replacing the global
+   * `useChatStore` singleton. A zero-arg impl (legacy) still type-checks and
+   * simply ignores the ctx during migration.
    */
-  initialize?: () => void | Promise<void>
+  initialize?: (ctx: ChatExtensionContext) => void | Promise<void>
 
   /**
    * Called when a conversation is loaded or switched
@@ -615,11 +669,15 @@ export interface ChatExtension {
   beforeSendMessage?: () => BeforeSendResult | Promise<BeforeSendResult>
 
   /**
-   * Called after message is successfully sent (before streaming starts)
-   * Useful for clearing state, logging, etc.
-   * Extensions should access Stores.Chat for conversation data
+   * Called after message is successfully sent (before streaming starts).
+   * `ownerPaneId` is the SENDING pane's id (null = single-pane), threaded from the
+   * dispatching store so per-pane hooks resolve the correct pane even if focus
+   * moved during the send round-trip — do NOT read `SplitView.focusedPaneId` here
+   * (it is racy across the async boundary; ITEM-32/DRIFT-2.13).
    */
-  onMessageSent?: () => OnMessageSentResult | Promise<OnMessageSentResult>
+  onMessageSent?: (
+    ownerPaneId?: string | null,
+  ) => OnMessageSentResult | Promise<OnMessageSentResult>
 
   /**
    * Called when streaming starts
@@ -628,18 +686,23 @@ export interface ChatExtension {
   onStreamStart?: () => OnStreamStartResult | Promise<OnStreamStartResult>
 
   /**
-   * Called when streaming encounters an error
-   * Extensions should access Stores.Chat for conversation data
+   * Called when streaming encounters an error. `ownerPaneId` is the OWNING pane's
+   * id (null = single-pane) — the pane whose stream errored; the error frame
+   * arrives async (seconds later), so focus is unreliable — key per-pane recovery
+   * off this, not `focusedPaneId` (ITEM-32/DRIFT-2.13).
    */
-  onStreamError?: (error: Error) => OnStreamErrorResult | Promise<OnStreamErrorResult>
+  onStreamError?: (
+    error: Error,
+    ownerPaneId?: string | null,
+  ) => OnStreamErrorResult | Promise<OnStreamErrorResult>
 
   /**
-   * Called after stream completes successfully
-   * Can perform cleanup, analytics, etc.
-   * Extensions should access Stores.Chat for conversation data
+   * Called after stream completes successfully. `ownerPaneId` is the OWNING pane's
+   * id (null = single-pane); same async-boundary caveat as onStreamError.
    */
   afterStreamComplete?: (
     message: MessageWithContent,
+    ownerPaneId?: string | null,
   ) => AfterStreamCompleteResult | Promise<AfterStreamCompleteResult>
 
   /**
@@ -706,10 +769,15 @@ export interface ChatExtension {
 
   /**
    * Compose request fields
-   * Add custom fields to chat requests
-   * Extensions should access Stores.Chat for conversation data
+   * Add custom fields to chat requests.
+   *
+   * Receives a `ctx` identifying the SENDING pane's conversation (ITEM-5), so a
+   * per-conversation composer selection (e.g. the model) resolves to the right
+   * pane in split view. `conversationId` is null for a not-yet-created new-chat
+   * pane (use the extension's new-chat key). Extensions that don't need it can
+   * ignore the argument.
    */
-  composeRequestFields?: () =>
+  composeRequestFields?: (ctx: ChatHookCtx) =>
     | ExtensionRequestFields
     | Promise<ExtensionRequestFields>
 
@@ -739,6 +807,8 @@ export interface ChatExtension {
   provideUserContent?: (
     text: string,
     composedRequest: any,
+    /** The SENDING pane's id (ITEM-32) — read THAT pane's composer buffer. */
+    composerPaneId?: string | null,
   ) => MessageContent[] | Promise<MessageContent[]>
 
   /**
@@ -857,7 +927,7 @@ export interface ChatExtension {
    * Called when extension is unregistered or chat is unmounted
    * Extensions should access Stores.Chat for conversation data
    */
-  cleanup?: () => void | Promise<void>
+  cleanup?: (ctx: ChatExtensionContext) => void | Promise<void>
 }
 
 /**

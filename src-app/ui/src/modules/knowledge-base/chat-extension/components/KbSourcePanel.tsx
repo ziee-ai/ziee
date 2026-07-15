@@ -3,6 +3,11 @@ import { Spinner } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@ziee/framework/stores'
 import { FilePanel } from '@/modules/file/components/FilePanel'
+import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import {
+  FileHighlightScopeContext,
+  scopedHighlightKey,
+} from '@/modules/file/viewers/highlightScope'
 
 /** Serializable payload for a `kb_source` right-panel tab. */
 export interface KbSourceData {
@@ -29,6 +34,12 @@ export interface KbSourceData {
 export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbSourceData) {
   const { messageFilesCache } = Stores.File
   const file = messageFilesCache.get(fileId) ?? null
+  // Per-pane (ITEM-49): scope the highlight/find-query keys by this pane so two
+  // panes opening the SAME document's citations don't clobber each other. null on
+  // the single-pane route → the bare fileId key (unchanged). The same scope is
+  // provided to the viewer below so its reader resolves the same key.
+  const paneScope = useChatPaneOrNull()?.paneId ?? null
+  const hlKey = scopedHighlightKey(paneScope, fileId)
 
   useEffect(() => {
     if (!file) void Stores.File.getFileEntityById(fileId)
@@ -38,8 +49,8 @@ export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbS
   // find-in-document to the passage prefix so it highlights + scrolls to it.
   useEffect(() => {
     const isPdf = file?.mime_type === 'application/pdf'
-    if (file && !isPdf && snippet) Stores.File.setFileFindQuery(fileId, snippet)
-  }, [file, fileId, snippet])
+    if (file && !isPdf && snippet) Stores.File.setFileFindQuery(hlKey, snippet)
+  }, [file, hlKey, snippet])
 
   // Fetch + publish the highlight target (page + fraction-normalized rects).
   // Cleared on unmount / re-target so a stale highlight never lingers on the doc.
@@ -54,18 +65,24 @@ export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbS
           end: charEnd,
         })
         if (cancelled) return
-        Stores.PdfHighlight.setTarget(fileId, { page, rects: res.rects })
+        Stores.PdfHighlight.setTarget(hlKey, { page, rects: res.rects })
       } catch {
         // Fall back to a plain page jump if geometry is unavailable.
-        if (!cancelled) Stores.PdfHighlight.setTarget(fileId, { page, rects: [] })
+        if (!cancelled) Stores.PdfHighlight.setTarget(hlKey, { page, rects: [] })
       }
     })()
     return () => {
       cancelled = true
-      Stores.PdfHighlight.clearTarget(fileId)
+      Stores.PdfHighlight.clearTarget(hlKey)
     }
-  }, [fileId, page, charStart, charEnd])
+  }, [hlKey, page, charStart, charEnd])
 
   if (!file) return <Spinner label="Loading document" />
-  return <FilePanel file={file} />
+  // Provide this pane's scope so the viewer's highlight/find readers resolve the
+  // same per-pane key we wrote above.
+  return (
+    <FileHighlightScopeContext.Provider value={paneScope}>
+      <FilePanel file={file} />
+    </FileHighlightScopeContext.Provider>
+  )
 }
