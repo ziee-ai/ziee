@@ -546,6 +546,18 @@ pub async fn refresh(
     // + visible, then falls into the grace path — no spurious 401. On a
     // mid-transaction DB failure nothing commits and the presented token
     // stays active, so the client's retry simply rotates again.
+    //
+    // Read the access-token revocation epoch BEFORE claiming the rotation, and
+    // never after. A logout racing this request must not be able to hand back a
+    // live session: if it commits first, the claim below finds the token
+    // revoked → 401; if it commits after, this read (READ COMMITTED) has
+    // already returned the PRE-bump value, so the token we mint carries the old
+    // `ver` and is dead on arrival. Reading after the claim would instead
+    // observe the NEW epoch and mint a token that survives the logout.
+    let token_version = refresh_tokens::current_token_version(user.id)
+        .await
+        .map_err(|e| (StatusCode::UNAUTHORIZED, e))?;
+
     let (out_pair, out_refresh_expires_at) = if let Some(jti) = presented_jti {
         let candidate = jwt_service
             .generate_tokens_with_jti_expiry(
@@ -555,6 +567,7 @@ pub async fn refresh(
                 user.is_admin,
                 access_hours,
                 refresh_days,
+                token_version,
             )
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -588,6 +601,7 @@ pub async fn refresh(
                             access_hours,
                             succ_jti,
                             succ_exp,
+                            token_version,
                         )
                         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
                     (pair, succ_exp)
@@ -649,26 +663,49 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// POST /api/auth/logout
-/// Logout current user. Revokes all of the user's active refresh tokens
-/// so subsequent calls to /auth/refresh fail with REFRESH_TOKEN_REVOKED.
-/// Closes 01-auth F-02 (logout was a no-op).
+/// Logout current user. Ends EVERY session the user holds:
+///   - bumps `users.token_version`, so every already-issued ACCESS token stops
+///     validating at once (see `jwt_extractor::verify_token_version`);
+///   - revokes all of the user's active refresh tokens, so /auth/refresh fails
+///     with REFRESH_TOKEN_REVOKED (01-auth F-02);
+///   - clears the httpOnly refresh cookie;
+///   - signals the user's OTHER devices/tabs to re-bootstrap, so they tear down
+///     immediately rather than lingering on a stale authenticated UI.
 ///
-/// The access token itself remains valid for the remainder of its TTL
-/// (typically 24h). Clients must drop it from storage on logout. Server-
-/// side access-token revocation would require either short TTLs (already
-/// the design intent) or a per-request revocation check (deferred — adds
-/// a DB hit to every authenticated request).
+/// Sign-out-everywhere is not a new behavior — `revoke_all_for_user` has always
+/// revoked every refresh token the user holds (see migration 44). The bump only
+/// removes the up-to-24h delay before that intent took effect.
+///
+/// The bump + revoke are ONE transaction, and the sync signal is published only
+/// after it commits: see `refresh_tokens::end_session_atomically` for why a
+/// partial logout would hand the session straight back.
 #[debug_handler]
-pub async fn logout(auth: JwtAuth, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn logout(
+    auth: JwtAuth,
+    origin: SyncOrigin,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             AppError::internal_with_id(format!("parse user id from token: {e}")),
         )
     })?;
-    refresh_tokens::revoke_all_for_user(Repos.pool(), user_id)
+    refresh_tokens::end_session_atomically(Repos.pool(), user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Both writes have committed — only now tell the user's other connections,
+    // so a device racing to /auth/me on this signal is guaranteed to observe
+    // the bump and get its 401. `origin.0` suppresses the echo back to the tab
+    // that logged out (it is tearing itself down already).
+    sync_publish(
+        SyncEntity::Session,
+        SyncAction::Update,
+        user_id,
+        Audience::owner(user_id),
+        origin.0,
+    );
 
     // Clear the httpOnly refresh cookie on web clients (harmless no-op
     // for body-token clients that never had one).

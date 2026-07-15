@@ -32,6 +32,74 @@ pub async fn session_expiries(jwt_service: &JwtService) -> (i64, i64) {
     }
 }
 
+/// Read the user's access-token revocation epoch (`users.token_version`) to
+/// stamp onto a freshly-minted access token.
+///
+/// Fail-CLOSED, deliberately unlike `session_expiries` above: that is a
+/// lifetime lookup where falling back to config is safe, whereas minting a
+/// token with a guessed epoch could hand out a credential that outlives a
+/// logout. A missing user row is likewise an error, not a `0` default.
+pub async fn current_token_version(user_id: Uuid) -> Result<i32, AppError> {
+    Repos
+        .user
+        .get_token_version(user_id)
+        .await?
+        .ok_or_else(|| AppError::unauthorized("USER_NOT_FOUND", "User not found"))
+}
+
+/// End every session the user holds, ATOMICALLY: bump the access-token
+/// revocation epoch AND revoke every outstanding refresh token in ONE
+/// transaction. Returns the new `token_version`.
+///
+/// Both writes must commit together or neither may. If the bump committed
+/// while the revoke failed, the user's still-live refresh token would re-mint
+/// through `mint_session_tokens` — which reads the NEW epoch — handing back a
+/// fully valid access token and defeating the very logout that was supposed to
+/// end the session. The reverse split is also wrong (old access tokens would
+/// survive). Callers MUST publish any `Session` signal only AFTER this returns,
+/// so a device racing to `/auth/me` on that signal observes the bump.
+///
+/// A refresh racing this call is serialized by Postgres, not by us: it takes a
+/// row lock on its `refresh_tokens` row, blocks until this transaction commits,
+/// then finds `revoked_at` set → 0 rows → `claim_rotation_and_register` returns
+/// `false` → 401.
+///
+/// Mirrors `claim_rotation_and_register` below (same file, same shape).
+/// NOTE: this is intentionally NOT a refactor of `revoke_all_for_user` — that
+/// function's other callers (change-password, admin reset) are out of scope and
+/// must keep their current semantics.
+pub async fn end_session_atomically(pool: &PgPool, user_id: Uuid) -> Result<i32, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    let new_version: i32 = sqlx::query_scalar!(
+        r#"
+        UPDATE users
+        SET token_version = token_version + 1
+        WHERE id = $1
+        RETURNING token_version
+        "#,
+        user_id,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    sqlx::query!(
+        r#"
+        UPDATE refresh_tokens
+        SET revoked_at = NOW()
+        WHERE user_id = $1 AND revoked_at IS NULL
+        "#,
+        user_id,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(new_version)
+}
+
 /// Mint a full session token pair for a user and whitelist the refresh
 /// token — the ONE mint path every login-shaped flow goes through
 /// (register / password / LDAP / OAuth / link-account / first-run setup /
@@ -50,6 +118,7 @@ pub async fn mint_session_tokens(
     is_admin: bool,
 ) -> Result<TokenPairWithJti, AppError> {
     let (access_hours, refresh_days) = session_expiries(jwt_service).await;
+    let token_version = current_token_version(user_id).await?;
 
     let minted = jwt_service.generate_tokens_with_jti_expiry(
         user_id,
@@ -58,6 +127,7 @@ pub async fn mint_session_tokens(
         is_admin,
         access_hours,
         refresh_days,
+        token_version,
     )?;
     register(
         Repos.pool(),

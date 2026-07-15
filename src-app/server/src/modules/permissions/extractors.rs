@@ -12,7 +12,7 @@ use crate::{
     common::AppError,
     core::Repos,
     modules::{
-        auth::jwt::JwtService,
+        auth::{jwt::JwtService, jwt_extractor::verify_token_version},
         user::models::{Group, User},
     },
 };
@@ -60,10 +60,12 @@ async fn extract_authenticated_user(
         )
     })?;
 
-    // Load user from database using global Repos
-    let user = Repos
+    // Load user from database using global Repos, together with their
+    // access-token revocation epoch. Folded into this single query rather than
+    // a second round-trip: this runs on every RequirePermissions request.
+    let (user, token_version) = Repos
         .user
-        .get_by_id(user_id)
+        .get_by_id_with_token_version(user_id)
         .await
         .map_err(|e| {
             (
@@ -77,6 +79,11 @@ async fn extract_authenticated_user(
                 AppError::unauthorized("USER_NOT_FOUND", "User not found"),
             )
         })?;
+
+    // Reject a token belonging to a session that logout already ended. This is
+    // one of the TWO mandatory epoch checks — see the INVARIANT doc on
+    // `auth::jwt_extractor::verify_token_version`.
+    verify_token_version(claims.ver, token_version)?;
 
     // Check if user is active
     if !user.is_active {

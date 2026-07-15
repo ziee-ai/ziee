@@ -235,3 +235,45 @@ async fn rapid_fire_memory_creates_deliver_all_events_in_order() {
     }
 }
 
+
+// ── Logout fans a Session signal to the user's OTHER tabs/devices ────────────
+
+/// The cross-tab half of the logout-session-invalidation fix.
+///
+/// Logging out in one tab used to tell the other tabs NOTHING: they kept
+/// rendering a fully authenticated (admin) UI indefinitely, because the SSE
+/// re-check only tests `is_active` + `profile::read` — neither of which changes
+/// on logout. Logout now publishes a `Session` signal, which drives the other
+/// tabs' `/auth/me` re-bootstrap → 401 (their access token is revoked) →
+/// teardown.
+///
+/// Mirrors `create_memory_from_one_tab_reaches_the_other_but_not_the_origin`:
+/// the tab that logged out is origin-suppressed (it is tearing itself down
+/// already), the other tab gets the frame.
+#[tokio::test]
+async fn logout_signals_the_users_other_tabs_but_not_the_origin_tab() {
+    let server = crate::common::TestServer::start().await;
+
+    let alice =
+        crate::common::test_helpers::create_user_with_permissions(&server, "logout_fanout", &[])
+            .await;
+
+    // Two tabs for the SAME user, both subscribed BEFORE the logout so the
+    // frame has somewhere to land.
+    let mut origin_tab = SyncProbe::open(&server, &alice.token).await;
+    let mut other_tab = SyncProbe::open(&server, &alice.token).await;
+
+    // Log out FROM origin_tab (echo its connection id back, as the SyncClient does).
+    let res = reqwest::Client::new()
+        .post(server.api_url("/auth/logout"))
+        .header("Authorization", format!("Bearer {}", alice.token))
+        .header("X-Sync-Connection-Id", origin_tab.connection_id().to_string())
+        .send()
+        .await
+        .expect("logout");
+    assert_eq!(res.status(), 204);
+
+    // The other tab is told to re-bootstrap; the originating tab is suppressed.
+    other_tab.expect_event("session", "update", EVENT_TIMEOUT).await;
+    origin_tab.expect_silence(SILENCE_WINDOW).await;
+}
