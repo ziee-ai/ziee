@@ -12694,6 +12694,7 @@ dependencies = [
  "ziee-notification",
  "ziee-onboarding",
  "ziee-sandbox",
+ "ziee-seed",
  "ziee-server-update",
  "ziee-test-harness",
  "zip 6.0.0",
@@ -12984,6 +12985,26 @@ dependencies = [
  "windows-service",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
+ "ziee-core",
+ "ziee-framework",
+]
+
+[[package]]
+name = "ziee-seed"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "linkme",
+ "serde",
+ "serde_json",
+ "serde_norway",
+ "sqlx 0.8.6",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
  "ziee-core",
  "ziee-framework",
 ]

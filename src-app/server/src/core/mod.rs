@@ -9,6 +9,7 @@ pub mod events;
 pub mod outbound;
 pub mod repository;
 pub mod secrets;
+pub mod seed;
 
 // Re-export commonly used functions
 // set_server_addr is used from main.rs (binary target); suppress the

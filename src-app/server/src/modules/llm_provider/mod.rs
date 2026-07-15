@@ -11,6 +11,7 @@ pub mod models;
 pub mod permissions;
 pub mod repositories;
 pub mod routes;
+pub mod seed;
 pub mod types;
 pub mod user_extension;
 pub mod utils;

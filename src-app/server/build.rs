@@ -68,11 +68,11 @@ fn redact_database_url(url: &str) -> String {
 ///
 /// Gap N-2: ziee lists its schema-bound SDK crates EXPLICITLY rather than
 /// blind-globbing `sdk/crates/*/migrations`. The SDK crates ziee actually
-/// schema-binds are `ziee-auth`, `ziee-file`, and `ziee-notification` (the only
-/// three that ship a `migrations/` dir today); naming them makes the merged set
-/// independent of which OTHER SDK crates happen to sit on disk. A fresh app
-/// lists only ITS linked schema-bound crates the same way. The resulting set is
-/// byte-identical to the old glob (same three source dirs).
+/// schema-binds are `ziee-auth`, `ziee-file`, `ziee-notification`,
+/// `ziee-onboarding`, and `ziee-seed` (the ones that ship a `migrations/` dir
+/// today); naming them makes the merged set independent of which OTHER SDK
+/// crates happen to sit on disk. A fresh app lists only ITS linked schema-bound
+/// crates the same way.
 fn compose_merged_migrations() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let merged = manifest.join("migrations-merged");
@@ -85,6 +85,10 @@ fn compose_merged_migrations() {
         sdk_crates.join("ziee-file/migrations"),
         sdk_crates.join("ziee-notification/migrations"),
         sdk_crates.join("ziee-onboarding/migrations"),
+        // ziee-seed owns the `seed_ledger` migration (the table-agnostic
+        // seed-ownership ledger). Named explicitly alongside the other
+        // SDK-crate migration dirs so it composes into the merged set.
+        sdk_crates.join("ziee-seed/migrations"),
     ];
     ziee_build_support::compose_merged_migrations_from(
         &merged,

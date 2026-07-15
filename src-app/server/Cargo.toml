@@ -34,6 +34,15 @@ ziee-identity = { path = "../../sdk/crates/ziee-identity" }
 # ServerConfig, with the full Config injected through the opaque app_config slot.
 ziee-framework = { path = "../../sdk/crates/ziee-framework" }
 
+# SDK declarative config-as-code seeding ENGINE (crate ziee-seed): the
+# SeedProvider seam + SEED_PROVIDERS distributed-slice, the layered YAML loader
+# + deep-merge, `${ENV_VAR}` secret templating, the idempotent `seed_ledger`
+# ownership ledger (+ its migration), reconcile/wipe directives, and the
+# `--dump-seed` serializer. Domain-neutral (names no app table): ziee registers
+# its OWN providers (modules/*/seed.rs + core/seed.rs) and supplies its embedded
+# default YAML (resources/seed/default.yaml). Booted from setup_server/main.
+ziee-seed = { path = "../../sdk/crates/ziee-seed" }
+
 # SDK default auth module (Chunk BA): owns the concrete User/Group/Session wire
 # types + (progressively) the auth queries/routes/migrations. Consumed here via
 # equivalence-preserving re-export shims (decision N2) — schemars keys types by

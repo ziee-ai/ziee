@@ -230,6 +230,17 @@ async fn main() {
             .and_then(|s| s.storage_key.clone()),
     );
 
+    // Run the declarative config-as-code seed (ziee-seed engine) in the
+    // post-migration window — schema + repos + storage key are ready and the
+    // server is not serving yet. Mirrors setup_server (the desktop/embedded
+    // boot path). A bad requested overlay fails boot rather than serve a
+    // misconfigured deployment.
+    if let Err(e) = core::seed::run(&pool).await {
+        tracing::error!("Declarative seed failed: {}", e);
+        std::process::exit(1);
+    }
+    tracing::info!("Declarative seed applied");
+
     // Initialize modules
     // ServerConfig into the framework context; full Config via the opaque slot.
     let module_context = ModuleContext::new(

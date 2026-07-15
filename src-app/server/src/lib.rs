@@ -44,6 +44,13 @@ pub use modules::user::UserRepository;
 // returns None. See common::secret::resolve_optional_secret.
 #[doc(hidden)]
 pub use core::secrets::{init_storage_key, storage_key};
+// Re-exported so integration tests can drive the declarative seed engine
+// directly against the spawned server's DB pool (idempotent re-run + reconcile
+// assertions in tests/seed/).
+#[doc(hidden)]
+pub use ziee_seed;
+#[doc(hidden)]
+pub use core::seed::{run as run_seed, seed_config, DEFAULT_SEED_YAML};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, hash_password};
 pub use modules::auth::jwt::JwtSettings;
@@ -456,6 +463,18 @@ async fn setup_server(
             .as_ref()
             .and_then(|s| s.storage_key.clone()),
     );
+
+    // Run the declarative config-as-code seed (ziee-seed engine). The schema
+    // exists (migrations ran in build/boot), repositories + the storage key are
+    // initialized, and the server does not serve yet — the required
+    // post-migration window. seed-if-empty adopts the migration-baked defaults
+    // into the seed_ledger and CREATEs any overlay-only rows; a bad requested
+    // overlay fails boot rather than serve a misconfigured deployment.
+    core::seed::run(&pool)
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("declarative seed failed: {e}").into()
+        })?;
 
     // Initialize modules
     // The framework `ModuleContext` carries the app-agnostic `ServerConfig`;

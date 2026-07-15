@@ -19,6 +19,7 @@ pub mod models;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
+pub mod seed;
 pub mod types;
 
 // Re-export database entities from models
