@@ -22,6 +22,7 @@ version read). Full reasoning: `/home/khoi/.claude/plans/read-the-task-file-flut
 - **ITEM-10**: `ui/src/modules/auth/Auth.store.ts` — add `tearDownSession()` (wipe incl. `permissions`, then `window.location.reload()`, so zero prior-user bytes survive by construction); call it from `doRefresh`'s terminal-401 branch (AFTER the existing `if (refreshFallback)` desktop guard — do not move it) and from `logoutUser` gated on `!refreshFallback`.
 - **ITEM-11**: `ui/src/modules/auth/Auth.store.ts` — add `permissions: []` + `hasPassword: false` to ALL FOUR session-wipe sites (`doRefresh` terminal 401, `authenticateUser` catch, `logoutUser`, `initAuth` catch), and `permissions: []` to `setAuthFromAutoLogin` (which today flips `isAuthenticated: true` while the PREVIOUS user's permissions are still in state).
 - **ITEM-12**: `tests/auth/mod.rs` — replace the comment that pins the bug as expected behavior ("JWT is stateless, so the token will still work after logout … you'd need a token blacklist or short expiry") with a real post-logout 401 assertion.
+- **ITEM-13**: *(added in DRIFT-1, impl-wins)* `mcp/client/manager.rs` — `generate_short_lived_jwt` mints the internal service-to-service access token used by EVERY built-in MCP server call (and `resource_link` loopback fetches). It is a third `Claims` construction site outside `jwt.rs` that the plan missed. Its routes are gated by `RequirePermissions`, so a defaulted `ver` would 401 every built-in tool call for any user who had ever logged out. Mint it with the user's CURRENT epoch: `generate_short_lived_jwt` gains a `token_version` param, `inject_builtin_context_headers` becomes async (2 call sites: `manager.rs`, `mcp/handlers/test_connection.rs`), and `resource_link.rs` reads the epoch before minting.
 
 ## Files to touch
 
@@ -32,6 +33,10 @@ version read). Full reasoning: `/home/khoi/.claude/plans/read-the-task-file-flut
 - `src-app/server/src/modules/auth/refresh_tokens.rs`
 - `src-app/server/src/modules/auth/handlers.rs`
 - `src-app/server/src/modules/permissions/extractors.rs`
+- `src-app/server/src/modules/mcp/client/manager.rs` *(ITEM-13)*
+- `src-app/server/src/modules/mcp/handlers/test_connection.rs` *(ITEM-13, async call site)*
+- `src-app/server/src/modules/mcp/resource_link.rs` *(ITEM-13)*
+- `src-app/server/tests/mcp/builtin_test_connection_test.rs` *(ITEM-13 regression)*
 - `src-app/ui/src/modules/auth/Auth.store.ts`
 - `src-app/ui/src/modules/auth/Auth.store.test.ts` *(new)*
 - `src-app/server/tests/auth/session_refresh_test.rs`

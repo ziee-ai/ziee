@@ -90,4 +90,6 @@ this is an authorization gate.
 - **ITEM-11** — verdict: PASS — a pure state-hygiene fix at 4+1 sites; strictly reduces retained state. `hasPassword` was found omitted alongside `permissions` (the brief named only `permissions`).
 - **ITEM-12** — verdict: PASS — the comment at `tests/auth/mod.rs:330-332` is the codebase's own acknowledgement of the bug; replacing it with a real assertion is required or the suite keeps documenting the vulnerability as intended behavior.
 
-**No BLOCKED verdicts.** One CONCERN (ITEM-10), mitigated and human-approved.
+- **ITEM-13** — verdict: CONCERN — *(added in DRIFT-1)* Fixes a regression the plan would otherwise have shipped: the built-in-MCP internal JWT is a third `Claims` site outside `jwt.rs`, and a defaulted `ver` would 401 every built-in tool call for any user who had ever logged out. The CONCERN is scope, not correctness — it makes `inject_builtin_context_headers` **async**, which is a signature change on a shared helper. Mitigated: only **2 call sites** (`manager.rs:145`, `mcp/handlers/test_connection.rs:259`), both already in async fns, so no ripple; and `generate_short_lived_jwt` stays sync (the caller passes the epoch in). Not optional — omitting it breaks memory/files/web_search/code_sandbox/citations/knowledge_base for logged-out-once users. Covered by TEST-22, which extends the existing enumerate-EVERY-built-in probe test so future built-ins inherit it.
+
+**No BLOCKED verdicts.** Two CONCERNs (ITEM-10, ITEM-13), both mitigated; ITEM-10 human-approved.
