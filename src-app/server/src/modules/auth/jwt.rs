@@ -23,6 +23,20 @@ pub struct Claims {
     /// claims without a jti continue to deserialize.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jti: Option<String>,
+    /// Access-token revocation epoch — a snapshot of `users.token_version`
+    /// taken at mint time. Populated only on ACCESS tokens; refresh tokens
+    /// are revoked via the `refresh_tokens` whitelist instead, so a second
+    /// gate there would be redundant.
+    ///
+    /// Compared for EQUALITY against the live column on every authenticated
+    /// request (see `jwt_extractor::verify_token_version`); logout bumps the
+    /// column, so every token minted before it stops validating at once.
+    /// Optional + `default` so tokens minted BEFORE this shipped keep working
+    /// for the rest of their TTL (absent => `unwrap_or(0)` => matches the
+    /// column's `DEFAULT 0`) — deploying this forces zero logouts. Same
+    /// rationale as `jti` above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ver: Option<i32>,
 }
 
 /// JWT token pair (access + refresh)
@@ -174,10 +188,11 @@ impl JwtService {
         is_admin: bool,
         access_hours: i64,
         refresh_days: i64,
+        token_version: i32,
     ) -> Result<TokenPairWithJti, AppError> {
         let (_, expires_in) = self.access_expiry(access_hours);
         let access_token =
-            self.generate_access_token(user_id, username, email, is_admin, access_hours)?;
+            self.generate_access_token(user_id, username, email, is_admin, access_hours, token_version)?;
         let (refresh_token, refresh_jti, refresh_expires_at) =
             self.generate_refresh_token_with_jti(user_id, refresh_days)?;
 
@@ -211,10 +226,11 @@ impl JwtService {
         access_hours: i64,
         refresh_jti: Uuid,
         refresh_expires_at: chrono::DateTime<Utc>,
+        token_version: i32,
     ) -> Result<TokenPair, AppError> {
         let (_, expires_in) = self.access_expiry(access_hours);
         let access_token =
-            self.generate_access_token(user_id, username, email, is_admin, access_hours)?;
+            self.generate_access_token(user_id, username, email, is_admin, access_hours, token_version)?;
 
         let now = Utc::now();
         let claims = Claims {
@@ -227,6 +243,9 @@ impl JwtService {
             email: String::new(),
             is_admin: false,
             jti: Some(refresh_jti.to_string()),
+            // Refresh tokens are revoked via the `refresh_tokens` whitelist,
+            // not the epoch — see the `ver` doc on `Claims`.
+            ver: None,
         };
         let refresh_token = encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
             AppError::internal_error(format!("Failed to re-issue refresh token: {}", e))
@@ -241,6 +260,10 @@ impl JwtService {
     }
 
     /// Generate an access token with the given TTL in hours.
+    ///
+    /// `token_version` is the caller's snapshot of `users.token_version`; it
+    /// is stamped as the `ver` claim and is what makes the token revocable by
+    /// a logout. Callers MUST read it from the DB rather than pass a constant.
     fn generate_access_token(
         &self,
         user_id: Uuid,
@@ -248,6 +271,7 @@ impl JwtService {
         email: &str,
         is_admin: bool,
         access_hours: i64,
+        token_version: i32,
     ) -> Result<String, AppError> {
         let now = Utc::now();
         let (ttl, _) = self.access_expiry(access_hours);
@@ -263,6 +287,7 @@ impl JwtService {
             email: email.to_string(),
             is_admin,
             jti: None,
+            ver: Some(token_version),
         };
 
         encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
@@ -295,6 +320,9 @@ impl JwtService {
             email: String::new(),
             is_admin: false,
             jti: Some(jti.to_string()),
+            // Refresh tokens are revoked via the `refresh_tokens` whitelist,
+            // not the epoch — see the `ver` doc on `Claims`.
+            ver: None,
         };
 
         let token = encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
@@ -377,6 +405,72 @@ mod tests {
         }
     }
 
+    /// TEST-1: the access token carries the `token_version` it was minted
+    /// with as the `ver` claim — the value the extractors compare against
+    /// `users.token_version` to reject a logged-out session. The refresh
+    /// token deliberately carries NO `ver` (the `refresh_tokens` whitelist
+    /// revokes it instead).
+    #[test]
+    fn access_token_carries_the_minted_ver_claim() {
+        let svc = JwtService::try_new(test_config(None)).unwrap();
+        let user = Uuid::new_v4();
+        let minted = svc
+            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 2, 7, 7)
+            .unwrap();
+
+        let access = svc.validate_access_token(&minted.pair.access_token).unwrap();
+        assert_eq!(
+            access.ver,
+            Some(7),
+            "access token must carry the minted token_version as `ver`"
+        );
+
+        let refresh = svc
+            .validate_refresh_token(&minted.pair.refresh_token)
+            .unwrap();
+        assert_eq!(
+            refresh.ver, None,
+            "refresh tokens are revoked via the whitelist, not the epoch"
+        );
+    }
+
+    /// TEST-2: the back-compat contract that makes deploying this a
+    /// zero-forced-logout change. A token minted BEFORE `ver` existed has no
+    /// such claim; it must still deserialize, with `ver == None` (which
+    /// `verify_token_version` maps to 0 → matches the column's DEFAULT 0).
+    /// Encoded by hand rather than via the minter, because the minter can no
+    /// longer produce a `ver`-less access token.
+    #[test]
+    fn a_ver_less_token_deserializes_as_none() {
+        let cfg = test_config(None);
+        let svc = JwtService::try_new(cfg.clone()).unwrap();
+        let now = Utc::now();
+
+        // A pre-upgrade access token: same claims, minus `ver`.
+        let legacy = serde_json::json!({
+            "sub": Uuid::new_v4().to_string(),
+            "exp": (now + Duration::hours(1)).timestamp(),
+            "iat": now.timestamp(),
+            "iss": cfg.issuer,
+            "aud": cfg.audience,
+            "username": "u",
+            "email": "u@x",
+            "is_admin": false,
+        });
+        let token = encode(
+            &Header::default(),
+            &legacy,
+            &EncodingKey::from_secret(cfg.secret.as_bytes()),
+        )
+        .unwrap();
+
+        let claims = svc
+            .validate_access_token(&token)
+            .expect("a ver-less token must still validate");
+        assert_eq!(claims.ver, None);
+        assert_eq!(claims.jti, None);
+    }
+
     /// The explicit-lifetime mint honors its `access_hours` /
     /// `refresh_days` args (the session_settings values) rather than
     /// the config defaults, including in `expires_in`.
@@ -385,7 +479,7 @@ mod tests {
         let svc = JwtService::try_new(test_config(None)).unwrap();
         let user = Uuid::new_v4();
         let minted = svc
-            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 2, 7)
+            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 2, 7, 0)
             .unwrap();
 
         assert_eq!(minted.pair.expires_in, 2 * 3600);
@@ -421,7 +515,7 @@ mod tests {
         let svc = JwtService::try_new(test_config(Some(5))).unwrap();
         let user = Uuid::new_v4();
         let minted = svc
-            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 24, 30)
+            .generate_tokens_with_jti_expiry(user, "u", "u@x", false, 24, 30, 0)
             .unwrap();
 
         assert_eq!(minted.pair.expires_in, 5);

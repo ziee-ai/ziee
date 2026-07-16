@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::common::ApiResult;
 use crate::core::Repos;
 use crate::modules::auth::jwt::JwtService;
+use crate::modules::auth::jwt_extractor::verify_token_version;
 use crate::modules::permissions::{
     checker::check_permission_union, extractors::RequirePermissions, with_permission,
 };
@@ -63,12 +64,18 @@ pub async fn subscribe_sync(
     // Bound the stream by the access token's expiry: when it lapses the
     // client reconnects with a fresh token, which re-runs the auth
     // extractor (re-checking is_active + permissions from scratch).
-    let exp_unix = headers
+    //
+    // `ver` is the token's access-token revocation epoch, kept so the periodic
+    // re-check below can end an ALREADY-OPEN stream when the user logs out —
+    // the subscribe gate only checks it once, but the stream then lives for the
+    // token's whole TTL.
+    let claims = headers
         .get(AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .and_then(|h| JwtService::extract_token_from_header(h).ok())
-        .and_then(|t| jwt.validate_access_token(t).ok())
-        .map(|c| c.exp);
+        .and_then(|t| jwt.validate_access_token(t).ok());
+    let exp_unix = claims.as_ref().map(|c| c.exp);
+    let token_ver = claims.as_ref().and_then(|c| c.ver);
 
     let conn_id = Uuid::new_v4();
     let (tx, mut rx) =
@@ -121,13 +128,23 @@ pub async fn subscribe_sync(
                     }
                 }
                 _ = recheck.tick() => {
-                    // Re-resolve is_active + permissions. Tear the stream
-                    // down if the account was deactivated/removed OR lost the
-                    // baseline subscribe permission; otherwise refresh the
-                    // snapshot used to route Permission-audience events (so a
-                    // user who loses an admin perm stops receiving its events).
-                    match Repos.user.get_by_id(user_id).await {
-                        Ok(Some(u)) if u.is_active => {
+                    // Re-resolve is_active + permissions + the revocation epoch.
+                    // Tear the stream down if the account was deactivated/removed,
+                    // LOGGED OUT, or lost the baseline subscribe permission;
+                    // otherwise refresh the snapshot used to route
+                    // Permission-audience events (so a user who loses an admin
+                    // perm stops receiving its events).
+                    match Repos.user.get_by_id_with_token_version(user_id).await {
+                        Ok(Some((u, token_version))) if u.is_active => {
+                            // A logout must also end an ALREADY-OPEN stream: the
+                            // subscribe gate checks the epoch once, but the stream
+                            // then lives until the token's exp (24h by default).
+                            // The client-side Session fan-out is not a boundary
+                            // for a holder of a stolen token — they don't run our
+                            // JS. Free: the query above already loads the row.
+                            if verify_token_version(token_ver, token_version).is_err() {
+                                break;
+                            }
                             let g = if u.is_admin {
                                 Vec::new()
                             } else {
