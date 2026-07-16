@@ -1,43 +1,19 @@
-import { Fragment } from 'react'
+import { createExtensionSlot } from '@ziee/framework/slots'
 import type { ChatSlotName } from '@/modules/chat/core/extensions/types'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions/registry'
 
 /**
- * Props for ExtensionSlot component
+ * Extension slot component.
+ *
+ * Built on the generic `@ziee/framework/slots` `createExtensionSlot` factory
+ * (gap G8), bound to the chat extension registry (which delegates `renderSlot`
+ * to the same generic slot registry). Renders all extension components
+ * registered for a slot; extensions access `Stores.Chat` directly for data.
+ *
+ * The `data-chat-extension-slot` wrapper attribute is preserved byte-for-byte
+ * so existing DOM + E2E selectors are unchanged.
  */
-interface ExtensionSlotProps {
-  /** Name of the slot to render */
-  name: ChatSlotName
-  /** Optional wrapper className */
-  className?: string
-  /** Optional fallback content if no extensions render */
-  fallback?: React.ReactNode
-  /** Optional stable test selector forwarded onto the wrapper div. */
-  'data-testid'?: string
-}
-
-/**
- * Extension slot component
- * Renders all extension components registered for this slot
- * Extensions access Stores.Chat directly for conversation data
- */
-export function ExtensionSlot({
-  name,
-  className,
-  fallback,
-  'data-testid': dataTestid,
-}: ExtensionSlotProps) {
-  const renderers = chatExtensionRegistry.renderSlot(name)
-
-  if (renderers.length === 0) {
-    return fallback ? <>{fallback}</> : null
-  }
-
-  return (
-    <div className={className} data-chat-extension-slot={name} data-testid={dataTestid}>
-      {renderers.map((renderer, index) => (
-        <Fragment key={`${name}-${index}`}>{renderer}</Fragment>
-      ))}
-    </div>
-  )
-}
+export const ExtensionSlot = createExtensionSlot<ChatSlotName>(
+  chatExtensionRegistry,
+  { slotAttr: 'data-chat-extension-slot' },
+)

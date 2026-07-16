@@ -14,6 +14,10 @@
       "@ziee/framework/*": ["../../sdk/packages/framework/src/*"],
       "@ziee/shell": ["../../sdk/packages/shell/src/index.ts"],
       "@ziee/shell/*": ["../../sdk/packages/shell/src/*"],
+      "@ziee/notification-ui": [
+        "../../sdk/packages/notification-ui/src/index.ts"
+      ],
+      "@ziee/notification-ui/*": ["../../sdk/packages/notification-ui/src/*"],
       "@ziee/gallery": ["../../sdk/packages/gallery/src/index.ts"],
       "@ziee/gallery/*": ["../../sdk/packages/gallery/src/*"]
     }

@@ -9,25 +9,17 @@ use sqlx::PgPool;
 use crate::core::config::Config;
 use crate::modules::chat::core::extension::{CHAT_EXTENSIONS, ExtensionRegistry};
 
-/// Register all discovered extensions in order
+/// Register all discovered extensions in order.
+///
+/// Delegates the sort-by-order + factory-dispatch to the generic
+/// `ziee_framework` primitive (gap G8) and wraps the result in chat's
+/// `ExtensionRegistry` newtype (which carries chat's fan-out methods).
 pub fn auto_register_extensions(pool: PgPool, config: Arc<Config>) -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
-
-    // Collect and sort extensions by order
-    let mut entries: Vec<_> = CHAT_EXTENSIONS.iter().collect();
-    entries.sort_by_key(|e| e.order);
-
-    // Register each extension in order
-    for entry in entries {
-        tracing::debug!(
-            "Registering chat extension: {} (order: {})",
-            entry.name,
-            entry.order
-        );
+    for entry in ziee_framework::entity_extension::sorted_entries(&CHAT_EXTENSIONS) {
         let extension = (entry.factory)(pool.clone(), config.clone());
         registry.register(extension);
     }
-
     registry
 }
 #[cfg(test)]

@@ -16,20 +16,24 @@ use aide::axum::ApiRouter;
 use ai_providers::ContentBlock;
 use async_trait::async_trait;
 use linkme::distributed_slice;
-use once_cell::sync::OnceCell;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::common::AppError;
+use ziee_framework::entity_extension::{
+    ExtensionRegistry as GenericExtensionRegistry, ExtensionRegistrySingleton,
+};
 
 /// Extension registration entry for distributed collection.
-#[derive(Debug, Clone, Copy)]
-pub struct ProjectExtensionEntry {
-    pub name: &'static str,
-    pub order: i32,
-    pub factory: fn(PgPool, Arc<crate::core::config::Config>) -> Arc<dyn ProjectExtension>,
-}
+///
+/// Now an alias over the generic `ziee_framework` primitive (gap G8): the
+/// `{name, order, factory}` shape + the `#[distributed_slice]` mechanics are
+/// domain-agnostic and shared with the chat registry (and CytoAnalyst's
+/// `study`). Sibling modules still construct `ProjectExtensionEntry { name,
+/// order, factory }` via this alias — unchanged.
+pub type ProjectExtensionEntry =
+    ziee_framework::ExtensionEntry<dyn ProjectExtension, Arc<crate::core::config::Config>>;
 
 /// Distributed slice for collecting all project extensions.
 ///
@@ -160,27 +164,31 @@ pub trait ProjectExtension: Send + Sync {
 }
 
 /// Registry for managing project extensions.
-pub struct ProjectExtensionRegistry {
-    extensions: Vec<Arc<dyn ProjectExtension>>,
-}
+///
+/// A thin newtype over the generic `ziee_framework` registry primitive (gap
+/// G8): the storage + `register` + `iter` + route-fold + in-tx fan-out
+/// mechanics are shared; only these domain fan-out methods (which name
+/// project-specific hooks) live here. The route fold delegates to
+/// `fold_routes`; every in-transaction hook delegates to `fire_in_tx` (the same
+/// combinator that offers the optional `on_<entity>_deleted` hook — project is
+/// cascade-only, so it never uses that one).
+pub struct ProjectExtensionRegistry(GenericExtensionRegistry<dyn ProjectExtension>);
 
 impl ProjectExtensionRegistry {
     pub fn new() -> Self {
-        Self {
-            extensions: Vec::new(),
-        }
+        Self(GenericExtensionRegistry::new())
     }
 
     /// Register an extension.
     pub fn register(&mut self, extension: Arc<dyn ProjectExtension>) {
         tracing::info!("Registering project extension: {}", extension.name());
-        self.extensions.push(extension);
+        self.0.register(extension);
     }
 
     /// Initialize all registered extensions. Run once at startup by
     /// `project/mod.rs::init`, driving each extension's `initialize` hook.
     pub async fn initialize_all(&self, pool: &PgPool) -> Result<(), AppError> {
-        for ext in &self.extensions {
+        for ext in self.0.iter() {
             ext.initialize(pool).await?;
         }
         Ok(())
@@ -188,12 +196,11 @@ impl ProjectExtensionRegistry {
 
     /// Fold every extension's routes into the given router.
     ///
-    /// Mirrors `ExtensionRegistry::register_routes` in chat. Extensions
+    /// Delegates to the generic `fold_routes` combinator. Extensions
     /// that don't register routes are no-ops (default trait impl).
     pub fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        self.extensions
-            .iter()
-            .fold(router, |router, ext| ext.register_routes(router))
+        self.0
+            .fold_routes(router, |router, ext| ext.register_routes(router))
     }
 
     /// Call `on_project_duplicated` on all extensions sequentially.
@@ -201,18 +208,19 @@ impl ProjectExtensionRegistry {
     /// Sequential rather than concurrent because each extension shares
     /// the same `&mut Transaction`. First error aborts the iteration
     /// and bubbles up — the caller's `tx.commit()` is then never
-    /// reached, so the duplicate fails atomically.
+    /// reached, so the duplicate fails atomically. Delegates to the
+    /// generic `fire_in_tx` shared-transaction combinator.
     pub async fn fire_on_project_duplicated(
         &self,
         src_project_id: Uuid,
         dst_project_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<(), AppError> {
-        for ext in &self.extensions {
-            ext.on_project_duplicated(src_project_id, dst_project_id, tx)
-                .await?;
-        }
-        Ok(())
+        self.0
+            .fire_in_tx(tx, |ext, tx| {
+                ext.on_project_duplicated(src_project_id, dst_project_id, tx)
+            })
+            .await
     }
 
     /// Call `on_conversation_attached` on all extensions sequentially.
@@ -224,11 +232,11 @@ impl ProjectExtensionRegistry {
         user_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<(), AppError> {
-        for ext in &self.extensions {
-            ext.on_conversation_attached(project_id, conversation_id, user_id, tx)
-                .await?;
-        }
-        Ok(())
+        self.0
+            .fire_in_tx(tx, |ext, tx| {
+                ext.on_conversation_attached(project_id, conversation_id, user_id, tx)
+            })
+            .await
     }
 
     /// Call `on_conversation_detached` on all extensions sequentially.
@@ -238,10 +246,9 @@ impl ProjectExtensionRegistry {
         conversation_id: Uuid,
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<(), AppError> {
-        for ext in &self.extensions {
-            ext.on_conversation_detached(conversation_id, tx).await?;
-        }
-        Ok(())
+        self.0
+            .fire_in_tx(tx, |ext, tx| ext.on_conversation_detached(conversation_id, tx))
+            .await
     }
 
     /// Collect chat-knowledge contributions from every extension.
@@ -259,7 +266,7 @@ impl ProjectExtensionRegistry {
         provider_type: &str,
     ) -> Result<Vec<ContentBlock>, AppError> {
         let mut all = Vec::new();
-        for ext in &self.extensions {
+        for ext in self.0.iter() {
             let blocks = ext
                 .collect_chat_knowledge(project_id, user_id, provider_id, provider_type)
                 .await?;
@@ -287,18 +294,18 @@ impl Default for ProjectExtensionRegistry {
 /// Mirrors the `Repos` global-singleton pattern. Returns `None` if
 /// accessed before module init (e.g. in tests that bypass the standard
 /// boot sequence) — callers should handle that gracefully.
-static PROJECT_EXTENSION_REGISTRY: OnceCell<Arc<ProjectExtensionRegistry>> = OnceCell::new();
+///
+/// Backed by the generic `ziee_framework` singleton primitive (gap G8). Chat's
+/// registry needs no singleton (it's always threaded through axum `Extension`);
+/// project's chat-extension runs from inside chat's streaming pipeline, which
+/// never sees the project router's layers, so it reads this global.
+static PROJECT_EXTENSION_REGISTRY: ExtensionRegistrySingleton<ProjectExtensionRegistry> =
+    ExtensionRegistrySingleton::new();
 
 pub fn set_global_registry(registry: Arc<ProjectExtensionRegistry>) {
-    if PROJECT_EXTENSION_REGISTRY.set(registry).is_err() {
-        tracing::warn!(
-            "set_global_registry called more than once; \
-             subsequent call ignored. In production this signals a \
-             second bootstrap path — investigate."
-        );
-    }
+    PROJECT_EXTENSION_REGISTRY.set(registry);
 }
 
 pub fn get_global_registry() -> Option<Arc<ProjectExtensionRegistry>> {
-    PROJECT_EXTENSION_REGISTRY.get().cloned()
+    PROJECT_EXTENSION_REGISTRY.get()
 }

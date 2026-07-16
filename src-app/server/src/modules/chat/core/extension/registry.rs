@@ -20,14 +20,17 @@ use super::request::SendMessageRequest;
 use crate::common::AppError;
 use crate::modules::chat::core::models::{Message, content::MessageContentData};
 use crate::modules::chat::core::types::streaming::ContentBlockDelta;
+use ziee_framework::entity_extension::ExtensionRegistry as GenericExtensionRegistry;
 
-/// Extension registration entry for distributed collection
-#[derive(Debug, Clone, Copy)]
-pub struct ExtensionEntry {
-    pub name: &'static str,
-    pub order: i32,
-    pub factory: fn(PgPool, Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension>,
-}
+/// Extension registration entry for distributed collection.
+///
+/// Now an alias over the generic `ziee_framework` primitive (gap G8): the
+/// `{name, order, factory}` shape + `#[distributed_slice]` mechanics are
+/// domain-agnostic and shared with the project registry (and CytoAnalyst's
+/// `study`). Registration sites still construct `ExtensionEntry { name, order,
+/// factory }` via this alias — unchanged.
+pub type ExtensionEntry =
+    ziee_framework::ExtensionEntry<dyn ChatExtension, Arc<crate::core::config::Config>>;
 
 /// Distributed slice for collecting all chat extensions
 #[distributed_slice]
@@ -323,29 +326,36 @@ pub trait ChatExtension: Send + Sync {
     }
 }
 
-/// Registry for managing chat extensions
+/// Registry for managing chat extensions.
+///
+/// A thin newtype over the generic `ziee_framework` registry primitive (gap
+/// G8): the storage + `register` + `iter` + route-fold mechanics are shared with
+/// the project registry; only chat's domain fan-out methods (streaming deltas,
+/// message-creation control, content conversion) live here. Chat has no
+/// in-transaction lifecycle hooks (it streams), so it uses `iter()` +
+/// `fold_routes` but not the `fire_in_tx` combinator.
 pub struct ExtensionRegistry {
-    extensions: Vec<Arc<dyn ChatExtension>>,
+    inner: GenericExtensionRegistry<dyn ChatExtension>,
 }
 
 impl ExtensionRegistry {
     /// Create new empty registry
     pub fn new() -> Self {
         Self {
-            extensions: Vec::new(),
+            inner: GenericExtensionRegistry::new(),
         }
     }
 
     /// Register an extension
     pub fn register(&mut self, extension: Arc<dyn ChatExtension>) {
         tracing::info!("Registering chat extension: {}", extension.name());
-        self.extensions.push(extension);
+        self.inner.register(extension);
     }
 
     /// Initialize all registered extensions. Run once at startup by
     /// `chat/mod.rs::init`, driving each extension's `initialize` hook.
     pub async fn initialize_all(&self, pool: &PgPool) -> Result<(), AppError> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             ext.initialize(pool).await?;
         }
         Ok(())
@@ -360,7 +370,7 @@ impl ExtensionRegistry {
         send_request: &SendMessageRequest,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             let action = ext.before_llm_call(context, request, send_request, tx).await?;
 
             // If any extension returns Complete or CompleteWithContent, stop iterating and return it
@@ -380,7 +390,7 @@ impl ExtensionRegistry {
         final_message: &Message,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             let action = ext.after_llm_call(context, final_message, tx).await?;
 
             // If any extension returns Continue or CompleteWithContent, stop iterating and return it
@@ -400,7 +410,7 @@ impl ExtensionRegistry {
         delta: &ai_providers::ContentBlockDelta,
         context: &StreamContext,
     ) -> Result<Option<ContentBlockDelta>, AppError> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             if let Some(converted) = ext.process_delta(delta, context).await? {
                 return Ok(Some(converted));
             }
@@ -414,7 +424,7 @@ impl ExtensionRegistry {
         delta: &ContentBlockDelta,
         context: &StreamContext,
     ) -> Result<(), AppError> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             ext.accumulate_delta(delta, context).await?;
         }
         Ok(())
@@ -427,7 +437,7 @@ impl ExtensionRegistry {
         context: &StreamContext,
     ) -> Result<Vec<(usize, MessageContentData)>, AppError> {
         let mut all_content = Vec::new();
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             let ext_content = ext.get_accumulated_content(context).await?;
             all_content.extend(ext_content);
         }
@@ -440,7 +450,7 @@ impl ExtensionRegistry {
     /// Returns false if ANY extension says no
     /// Example: MCP extension returns false when resuming with tool approvals
     pub fn should_create_user_message(&self, request: &SendMessageRequest) -> bool {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             if !ext.should_create_user_message(request) {
                 return false;
             }
@@ -456,7 +466,7 @@ impl ExtensionRegistry {
         request: &SendMessageRequest,
         branch_id: Uuid,
     ) -> Result<Option<Uuid>, AppError> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             if let Some(message_id) = ext.provide_assistant_message(request, branch_id).await? {
                 return Ok(Some(message_id));
             }
@@ -476,7 +486,7 @@ impl ExtensionRegistry {
     ) -> Result<Vec<MessageContentData>, AppError> {
         let mut all_content = Vec::new();
 
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             let ext_content = ext
                 .provide_user_message_content(context, send_request, text_content)
                 .await?;
@@ -491,9 +501,8 @@ impl ExtensionRegistry {
     /// Register routes from all extensions
     /// Collects routes from all extensions and merges them into the router
     pub fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        self.extensions
-            .iter()
-            .fold(router, |router, ext| ext.register_routes(router))
+        self.inner
+            .fold_routes(router, |router, ext| ext.register_routes(router))
     }
 
     // ========== CONTENT TYPE HANDLING ==========
@@ -504,7 +513,7 @@ impl ExtensionRegistry {
         &self,
         content_type: &str,
     ) -> Option<&Arc<dyn ChatExtension>> {
-        self.extensions
+        self.inner
             .iter()
             .find(|ext| ext.handled_content_types().contains(&content_type))
     }
@@ -557,7 +566,7 @@ impl ExtensionRegistry {
         user_message: &Message,
         send_request: &SendMessageRequest,
     ) -> Result<(), AppError> {
-        for handler in &self.extensions {
+        for handler in self.inner.iter() {
             handler
                 .after_user_message_created(context, user_message, send_request)
                 .await?;
@@ -589,7 +598,7 @@ impl ExtensionRegistry {
         &self,
         content: &serde_json::Value,
     ) -> Option<ContentBlock> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             if let Some(block) = ext.convert_extension_content(content) {
                 return Some(block);
             }
@@ -602,7 +611,7 @@ impl ExtensionRegistry {
     /// Called by `DeltaAccumulator::finalize` (stream persist path) to convert
     /// accumulated provider blocks back into persistable MessageContentData.
     pub fn convert_from_content_block(&self, block: &ContentBlock) -> Option<MessageContentData> {
-        for ext in &self.extensions {
+        for ext in self.inner.iter() {
             if let Some(content) = ext.convert_from_content_block(block) {
                 return Some(content);
             }
