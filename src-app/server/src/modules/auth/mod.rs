@@ -113,6 +113,19 @@ impl AppModule for AuthModule {
         // is idempotent on second-call (returns Err which we ignore —
         // module re-init isn't expected but isn't an error condition).
         ziee_auth::auth::set_trust_forwarded_headers(ctx.config.server.trust_forwarded_headers);
+        // Cache the operator-configured https public origin (if any) the same
+        // way, so the free-function OAuth-authorize handler can root
+        // redirect_uris at it without threading Arc<Config> through Axum. The
+        // `code_sandbox.public_base_url` lives on the app's full Config (recovered
+        // via the opaque app_config slot, NOT the framework's narrowed ctx.config);
+        // the crate applies the https-only gate, so an http loopback default is
+        // ignored and local dev keeps header-derivation.
+        ziee_auth::auth::set_configured_public_origin(
+            crate::module_api::app_config(ctx)
+                .code_sandbox
+                .as_ref()
+                .and_then(|cs| cs.public_base_url.as_deref()),
+        );
 
         // One-time copy of the YAML jwt lifetimes into the session_settings
         // singleton (migration 129). Writes only while seeded_from_config is
