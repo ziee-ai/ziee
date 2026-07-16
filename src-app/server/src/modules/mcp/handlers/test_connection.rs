@@ -256,7 +256,10 @@ async fn probe_builtin_server(
     user_id: Uuid,
 ) -> TestMcpConnectionResponse {
     let mut probe = existing.clone();
-    if let Err(e) = manager.inject_builtin_context_headers(&mut probe, user_id, None, None) {
+    if let Err(e) = manager
+        .inject_builtin_context_headers(&mut probe, user_id, None, None)
+        .await
+    {
         return failure(e);
     }
     run_connection_test(probe, None).await

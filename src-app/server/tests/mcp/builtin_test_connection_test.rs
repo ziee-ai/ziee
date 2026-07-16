@@ -78,3 +78,100 @@ async fn builtin_system_servers_pass_test_connection() {
         );
     }
 }
+
+/// TEST-22 — the built-in internal JWT must carry the user's CURRENT
+/// access-token revocation epoch.
+///
+/// `inject_builtin_context_headers` mints a per-user token for every built-in
+/// (loopback) server call. Those routes are gated by `RequirePermissions`,
+/// which now also verifies `users.token_version`. If the minted token carried a
+/// stale/defaulted epoch, every built-in tool call (memory, files, web_search,
+/// code_sandbox, …) would 401 for any user who had EVER logged out — their
+/// epoch is ≥ 1 while the token would claim 0.
+///
+/// So: log out (epoch 0 → 1), log back in, and assert the built-ins still probe
+/// green. This fails loudly if a future caller mints with a constant.
+#[tokio::test]
+async fn builtin_probe_still_works_after_a_logout_bumped_the_token_epoch() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "builtin_probe_after_logout", &["*"]).await;
+    let client = reqwest::Client::new();
+
+    // Bump the epoch: log out with the first session.
+    let res = client
+        .post(server.api_url("/auth/logout"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("logout");
+    assert_eq!(res.status(), 204);
+
+    // `create_user_with_permissions` uniquifies the username (`<name>_<uuid8>`)
+    // and TestUser doesn't expose it, so read it back by id. Password is the
+    // helper's fixed `password123`.
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = $1::uuid")
+        .bind(&admin.user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read back the generated username");
+
+    // Fresh session for the same user — its token carries epoch 1.
+    let res = client
+        .post(server.api_url("/auth/login"))
+        .json(&json!({
+            "username": username,
+            "password": "password123",
+        }))
+        .send()
+        .await
+        .expect("re-login");
+    assert_eq!(res.status(), 200, "re-login should succeed");
+    let body: Value = res.json().await.unwrap();
+    let token = body["access_token"].as_str().expect("access_token").to_string();
+
+    let list: Value = client
+        .get(server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("list system servers")
+        .json()
+        .await
+        .expect("parse list");
+
+    let builtins: Vec<&Value> = list["servers"]
+        .as_array()
+        .expect("servers array")
+        .iter()
+        .filter(|s| {
+            s["is_built_in"].as_bool().unwrap_or(false)
+                && s["transport_type"] == "http"
+                && s["enabled"].as_bool().unwrap_or(false)
+        })
+        .collect();
+    assert!(!builtins.is_empty(), "expected built-in servers to be registered");
+
+    for s in builtins {
+        let name = s["name"].as_str().unwrap_or("?");
+        let resp = client
+            .post(server.api_url("/mcp/system-servers/test-connection"))
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&json!({
+                "id": s["id"].as_str().expect("built-in id"),
+                "transport_type": "http",
+                "url": s["url"].as_str().expect("built-in url"),
+                "timeout_seconds": 10,
+            }))
+            .send()
+            .await
+            .expect("test-connection request");
+        assert_eq!(resp.status(), 200, "test-connection HTTP status for {name}");
+        let body: Value = resp.json().await.expect("parse test-connection");
+        assert_eq!(
+            body["success"], true,
+            "built-in '{name}' must still authenticate after a logout bumped the epoch \
+             (the internal JWT must be minted with the CURRENT token_version); body: {body}"
+        );
+    }
+}
