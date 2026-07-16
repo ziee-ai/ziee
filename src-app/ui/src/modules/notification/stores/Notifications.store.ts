@@ -18,6 +18,15 @@ export const Notifications = createNotificationsStore({
   // SDK stays free of the app's generated types.
   api: ApiClient.Notification as unknown as NotificationApiPort,
   readPermission: Permissions.NotificationsRead,
+  // Navigation seam — the SDK hardcodes zero routes; ziee supplies its own.
+  // Kind-specific ids ride the `payload` jsonb column: a conversation-linked
+  // notification opens the chat, everything else falls back to the inbox.
+  onNavigate: (n, navigate) => {
+    const conversationId = (n.payload as { conversation_id?: string } | null)
+      ?.conversation_id
+    navigate(conversationId ? `/chat/${conversationId}` : '/notifications')
+  },
+  inboxPath: '/notifications',
 })
 
 export const useNotificationsStore = Notifications.store
