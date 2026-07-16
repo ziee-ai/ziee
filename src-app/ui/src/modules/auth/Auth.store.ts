@@ -169,6 +169,54 @@ function endSession(): void {
   stopRefreshMachinery()
 }
 
+// The cleared-session slice. Derived from `defaultState` so a field added
+// there can never be silently left behind here — `permissions` and
+// `hasPassword` were both missed by the four hand-written wipes this
+// replaces, which is why a logged-out tab kept evaluating <Can> /
+// usePermission against the PREVIOUS user's grants.
+// `isInitializing` is excluded: the app has already initialized, and
+// re-raising it would blank the UI to a fullscreen spinner.
+const clearedSession = {
+  ...defaultState,
+  isInitializing: false,
+} satisfies Partial<AuthState>
+
+/**
+ * Terminal teardown: the session is over and cannot be recovered.
+ *
+ * Wipes the auth state and then RELOADS the document. The reload is the point:
+ * it discards every byte of the previous user's state by construction — all
+ * ~120 Zustand stores (a logged-out tab kept rendering the admin's
+ * conversations from ChatHistory.store), React tree state, module-scope caches
+ * like chatDrafts, and any in-flight request that would otherwise resolve after
+ * a manual reset and re-poison a just-cleared store. There is no store registry
+ * sweep to keep in sync, and no new store can silently re-open the leak.
+ *
+ * No reload loop: the wipe runs FIRST and zustand's persist writes
+ * `{token:null}` to `auth-storage` synchronously, so the reloaded tab takes
+ * initAuth's `if (!token) return` early-out — no /me, no 401, no second reload.
+ *
+ * DESKTOP: callers MUST check `refreshFallback` first. A Tauri window has no
+ * login page to land on (AuthGuard.desktop never renders one) and re-mints
+ * locally via auto_login instead, so reloading it would strand the user.
+ * The `__TAURI__` probe below is a second, independent guard: `refreshFallback`
+ * is registered asynchronously by the desktop-base module, so a terminal 401
+ * arriving during boot could otherwise slip past the caller's check and reload
+ * the webview mid-startup. State is still cleared either way — only the reload
+ * is suppressed. (The ngrok/phone surface serves this same bundle OUTSIDE
+ * Tauri, where reloading to PhoneAuthPage is correct, so probe the runtime,
+ * not the build.)
+ */
+function tearDownSession(): void {
+  endSession()
+  useAuthStore.setState(clearedSession)
+  const isDesktopShell =
+    typeof window !== 'undefined' && '__TAURI__' in window
+  if (typeof window !== 'undefined' && !isDesktopShell) {
+    window.location.reload()
+  }
+}
+
 // Refresh at 75% of the token's lifetime — early enough that a slow
 // network can't strand the session, late enough to not spam rotations.
 const REFRESH_AT_FRACTION = 0.75
@@ -294,15 +342,10 @@ async function doRefresh(): Promise<boolean> {
           return false
         }
       }
-      // Web: clear the session → AuthGuard routes to the login page.
-      endSession()
-      useAuthStore.setState({
-        user: null,
-        token: null,
-        expiresAt: null,
-        expiresIn: null,
-        isAuthenticated: false,
-      })
+      // Web: the session is genuinely over (revoked elsewhere / expired).
+      // Tear down + reload so no per-user state survives into the next
+      // session; AuthGuard then renders the login page.
+      tearDownSession()
       return false
     }
     // Network / transient server error: keep the session; the watchdog
@@ -423,14 +466,7 @@ export const Auth = defineStore('Auth', {
             }
             if (!loginSucceeded || !isAbort) {
               endSession()
-              set({
-                ...baseError,
-                isAuthenticated: false,
-                token: null,
-                expiresAt: null,
-                expiresIn: null,
-                user: null,
-              })
+              set({ ...clearedSession, ...baseError })
             } else {
               // Login OK, /me aborted — token is still valid, leave it.
               set(baseError)
@@ -475,16 +511,15 @@ export const Auth = defineStore('Auth', {
           // End the session: bump the epoch (so any in-flight refresh
           // discards its result) and kill the timers BEFORE clearing the
           // token.
-          endSession()
-          set({
-            user: null,
-            token: null,
-            expiresAt: null,
-            expiresIn: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: null,
-          })
+          if (refreshFallback) {
+            // Desktop: never reload — there is no login page to land on and
+            // auto_login would just re-mint. Preserve the existing behavior
+            // exactly; clearing state is all logout has ever done here.
+            endSession()
+            set(clearedSession)
+            return
+          }
+          tearDownSession()
         },
 
         registerNewUser: async (userData: CreateUserRequest) => {
@@ -585,6 +620,17 @@ export const Auth = defineStore('Auth', {
             response.expires_in,
             response.refresh_token,
           )
+          // Deliberately does NOT clear `permissions`/`hasPassword`.
+          //
+          // It looks like an identity change that should reset them, but no
+          // caller reaching this line changes identity: the OAuth callback (the
+          // only one that does) passes `user: null` and takes the early-return
+          // above, keeping isAuthenticated=false until its initAuth()/me lands.
+          // The callers that DO reach here — desktop `applyTokens` and the
+          // tunnel `applySession` — re-mint the SAME identity and never call
+          // initAuth() (AuthGuard.desktop skips it by design), so clearing
+          // would strand them with `permissions: []` for the whole session,
+          // masked only by the is_admin short-circuit in hasPermission.
           set({
             user: response.user,
             isAuthenticated: true,
@@ -692,14 +738,7 @@ export const Auth = defineStore('Auth', {
               return
             }
             endSession()
-            set({
-              ...baseError,
-              isAuthenticated: false,
-              token: null,
-              expiresAt: null,
-              expiresIn: null,
-              user: null,
-            })
+            set({ ...clearedSession, ...baseError })
           }
         },
 

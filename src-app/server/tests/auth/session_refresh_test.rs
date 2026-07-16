@@ -807,3 +807,523 @@ async fn test_prune_deletes_stale_rows() {
     assert_eq!(remaining.len(), 1, "the live registration token survives");
     pool.close().await;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Access-token revocation on logout (`users.token_version` + the `ver` claim).
+//
+// Before this, logout revoked only the REFRESH token: the access token stayed a
+// fully valid credential for its whole TTL (24h by default), so a held/leaked
+// token — or simply another tab — kept full API access after "logging out".
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Log in and return the access token.
+async fn login_access(client: &reqwest::Client, server: &TestServer, name: &str) -> String {
+    let res = client
+        .post(server.api_url("/auth/login"))
+        .json(&json!({ "username": name, "password": "testpass123" }))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(res.status(), 200, "login should succeed for {name}");
+    let body: Value = res.json().await.unwrap();
+    body["access_token"].as_str().unwrap().to_string()
+}
+
+async fn get_status(client: &reqwest::Client, server: &TestServer, path: &str, access: &str) -> reqwest::StatusCode {
+    client
+        .get(server.api_url(path))
+        .header("Authorization", format!("Bearer {access}"))
+        .send()
+        .await
+        .expect("request")
+        .status()
+}
+
+async fn logout(client: &reqwest::Client, server: &TestServer, access: &str) -> reqwest::StatusCode {
+    client
+        .post(server.api_url("/auth/logout"))
+        .header("Authorization", format!("Bearer {access}"))
+        .send()
+        .await
+        .expect("logout")
+        .status()
+}
+
+/// TEST-4 — THE CORE GAP. The reported bug in one assertion: after logout the
+/// SAME, still-unexpired access token must stop working.
+#[tokio::test]
+async fn test_logout_revokes_the_access_token() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "logout_revokes_access", false).await;
+    let access = body["access_token"].as_str().unwrap().to_string();
+
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &access).await,
+        200,
+        "precondition: the token works before logout"
+    );
+
+    assert_eq!(logout(&client, &server, &access).await, 204);
+
+    let res = client
+        .get(server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {access}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        401,
+        "the access token must be dead immediately after logout, not at exp"
+    );
+    let err: Value = res.json().await.unwrap();
+    assert_eq!(err["error_code"], "SESSION_REVOKED");
+}
+
+/// TEST-6 — the folded read path (`extract_authenticated_user` →
+/// `get_by_id_with_token_version`), exercised via a `RequirePermissions` route.
+/// `/conversations` is the LITERAL reported leak ("the new user can still see
+/// the admin's conversations").
+#[tokio::test]
+async fn test_logout_revokes_access_on_permission_gated_routes() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "logout_perm_routes", false).await;
+    let access = body["access_token"].as_str().unwrap().to_string();
+
+    assert_eq!(
+        get_status(&client, &server, "/conversations", &access).await,
+        200,
+        "precondition: conversations readable before logout"
+    );
+    assert_eq!(logout(&client, &server, &access).await, 204);
+    assert_eq!(
+        get_status(&client, &server, "/conversations", &access).await,
+        401,
+        "a RequirePermissions route must reject the logged-out token"
+    );
+}
+
+/// TEST-5 — the bare-`JwtAuth` routes. `/auth/me` happens to re-check the user,
+/// and every `RequirePermissions` route goes through the other read path — these
+/// two go through NEITHER, so they are the ones that prove the extractor-level
+/// coverage claim rather than a per-handler patch.
+#[tokio::test]
+async fn test_logout_revokes_access_on_bare_jwtauth_routes() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "logout_bare_jwt", false).await;
+    let access = body["access_token"].as_str().unwrap().to_string();
+
+    assert_eq!(
+        get_status(&client, &server, "/onboarding/progress", &access).await,
+        200,
+        "precondition: onboarding progress readable before logout"
+    );
+    assert_eq!(logout(&client, &server, &access).await, 204);
+
+    assert_eq!(
+        get_status(&client, &server, "/onboarding/progress", &access).await,
+        401,
+        "bare JwtAuth route must reject the logged-out token"
+    );
+    assert_eq!(
+        get_status(&client, &server, "/hub/installed", &access).await,
+        401,
+        "bare JwtAuth route must reject the logged-out token"
+    );
+}
+
+/// TEST-7 — the executable proof that the counter design is right and the
+/// rejected `sessions_revoked_at`-vs-`iat` design is not.
+///
+/// `iat` is whole seconds; NOW() has microseconds. A timestamp rule would make
+/// the pre-logout and post-relogin tokens INDISTINGUISHABLE inside one second:
+/// it would either kill both (an infinite login loop for the rest of that
+/// second) or spare both (a 1s hole). No sleep here — the point is that logout
+/// and re-login land in the same second.
+#[tokio::test]
+async fn test_logout_then_immediate_relogin_yields_a_working_token() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "relogin_same_second", false).await;
+    let old_access = body["access_token"].as_str().unwrap().to_string();
+
+    assert_eq!(logout(&client, &server, &old_access).await, 204);
+    let new_access = login_access(&client, &server, "relogin_same_second").await;
+
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &new_access).await,
+        200,
+        "a token minted AFTER the logout must work, even in the same wall-clock second"
+    );
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &old_access).await,
+        401,
+        "...while the pre-logout token from that same second stays dead"
+    );
+}
+
+/// TEST-10 — the epoch is per-user: A's logout must not touch B's session.
+#[tokio::test]
+async fn test_logout_leaves_other_users_sessions_alone() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, a) = register(&client, &server, "epoch_user_a", false).await;
+    let (_, _, b) = register(&client, &server, "epoch_user_b", false).await;
+    let a_access = a["access_token"].as_str().unwrap().to_string();
+    let b_access = b["access_token"].as_str().unwrap().to_string();
+
+    assert_eq!(logout(&client, &server, &a_access).await, 204);
+
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &a_access).await,
+        401
+    );
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &b_access).await,
+        200,
+        "user B's session must survive user A's logout"
+    );
+}
+
+/// TEST-11 — the zero-forced-logout deploy contract. A token minted before this
+/// shipped carries no `ver`; it must keep working against a user still at the
+/// column's DEFAULT 0. Hand-minted with the server's secret because the minter
+/// can no longer produce a `ver`-less token.
+#[tokio::test]
+async fn test_pre_migration_ver_less_token_still_authenticates() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "ver_less_token", false).await;
+    let user_id = body["user"]["id"].as_str().unwrap().to_string();
+
+    // Same claims a pre-upgrade access token carried — no `ver`.
+    let now = chrono::Utc::now().timestamp();
+    let claims = json!({
+        "sub": user_id,
+        "exp": now + 3600,
+        "iat": now,
+        "iss": "ziee",
+        "aud": "ziee-api",
+        "username": "ver_less_token",
+        "email": "ver_less_token@example.com",
+        "is_admin": false,
+    });
+    // The harness's fixed test secret (tests/common/harness_inner.rs:543); the
+    // same literal the sync suite hand-mints with (tests/sync/subscribe_test.rs:228).
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(b"test-secret-key-for-jwt-tokens-min-32-chars-long"),
+    )
+    .expect("hand-mint a ver-less token");
+
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &token).await,
+        200,
+        "a pre-migration token must keep working until it expires — deploying forces zero logouts"
+    );
+}
+
+/// TEST-8 — LOGOUT ATOMICITY (bump + revoke are one transaction).
+///
+/// If the bump could commit while the revoke failed, the surviving refresh
+/// token would re-mint through `mint_session_tokens` — which reads the NEW
+/// epoch — handing back a fully valid access token and defeating the logout.
+/// Forces the revoke to fail with a trigger and asserts NOTHING committed.
+///
+/// Safe to mutate the schema: every test owns a unique per-test database.
+#[tokio::test]
+async fn test_logout_is_atomic_bump_rolls_back_if_revoke_fails() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "logout_atomic", false).await;
+    let access = body["access_token"].as_str().unwrap().to_string();
+    let refresh = body["refresh_token"].as_str().unwrap().to_string();
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    sqlx::query(
+        r#"CREATE OR REPLACE FUNCTION ziee_test_fail_revoke() RETURNS trigger AS $$
+           BEGIN RAISE EXCEPTION 'forced revoke failure'; END; $$ LANGUAGE plpgsql;"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"CREATE TRIGGER ziee_test_fail_revoke_trg BEFORE UPDATE ON refresh_tokens
+           FOR EACH ROW EXECUTE FUNCTION ziee_test_fail_revoke();"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Logout must fail rather than half-apply.
+    let status = logout(&client, &server, &access).await;
+    assert!(
+        status.is_server_error(),
+        "logout should surface the DB failure, got {status}"
+    );
+
+    // NEITHER write may have landed. If the bump had committed alone, the
+    // surviving refresh token below would mint a token carrying the new epoch.
+    let version: i32 = sqlx::query_scalar("SELECT token_version FROM users WHERE username = $1")
+        .bind("logout_atomic")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        version, 0,
+        "token_version must roll back when the refresh-token revoke fails"
+    );
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &access).await,
+        200,
+        "the access token must still work — the logout did not happen"
+    );
+
+    // Drop the trigger; the refresh token must still be live (not half-revoked).
+    sqlx::query("DROP TRIGGER ziee_test_fail_revoke_trg ON refresh_tokens;")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let res = client
+        .post(server.api_url("/auth/refresh"))
+        .json(&json!({ "refresh_token": refresh }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        200,
+        "the refresh token must be untouched by the failed logout"
+    );
+
+    // And a real logout still works afterwards.
+    let access2 = login_access(&client, &server, "logout_atomic").await;
+    assert_eq!(logout(&client, &server, &access2).await, 204);
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &access2).await,
+        401
+    );
+}
+
+/// TEST-9 — a session obtained via a refresh does not outlive a LATER logout.
+///
+/// HONEST SCOPE: this is sequential (the refresh completes, then logout runs),
+/// so it does NOT exercise the read-before-claim ordering — with both operations
+/// serialized, the epoch read returns the same value before or after the claim.
+/// It pins the user-visible property (rotating your token doesn't buy you a
+/// session that survives logout). The actual interleaving is covered by
+/// TEST-23 below.
+#[tokio::test]
+async fn test_refresh_then_logout_kills_the_refreshed_session() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "refresh_race_logout", false).await;
+    let access = body["access_token"].as_str().unwrap().to_string();
+    let refresh = body["refresh_token"].as_str().unwrap().to_string();
+
+    // A refresh completes (rotation claimed + committed).
+    let res = client
+        .post(server.api_url("/auth/refresh"))
+        .json(&json!({ "refresh_token": refresh }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let refreshed: Value = res.json().await.unwrap();
+    let refreshed_access = refreshed["access_token"].as_str().unwrap().to_string();
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &refreshed_access).await,
+        200,
+        "precondition: the refreshed token works"
+    );
+
+    // Now logout. Every token the user holds — including the one just minted by
+    // the refresh — must die.
+    assert_eq!(logout(&client, &server, &access).await, 204);
+    assert_eq!(
+        get_status(&client, &server, "/auth/me", &refreshed_access).await,
+        401,
+        "a token minted by a refresh must not survive a subsequent logout"
+    );
+}
+
+/// TEST-23 — SECURITY: no refresh token may survive a logout, even when a
+/// rotation is in flight at the moment the logout lands.
+///
+/// The bug this pins (found in the blind audit): logout revokes with
+/// `UPDATE refresh_tokens ... WHERE user_id = $1 AND revoked_at IS NULL`. Under
+/// READ COMMITTED that UPDATE only scans rows committed as of the command's
+/// start, so a SUCCESSOR token that a concurrent `/auth/refresh` has INSERTed
+/// but not yet COMMITTed is invisible to it — never scanned, never revoked —
+/// while the epoch still moves to N+1. Replaying that successor then mints an
+/// access token stamped with the NEW epoch: a fully valid session, i.e. logout
+/// silently defeated. `claim_rotation_and_register` takes the `users` row lock
+/// FOR SHARE first to force a serial order with logout.
+///
+/// Drives real concurrent HTTP (refresh chain vs logout), then asserts the
+/// INVARIANT that must hold no matter who won: after logout returns 204 the
+/// user has ZERO usable refresh tokens and no working access token. Both
+/// outcomes are legal (the refresh may win and rotate, or lose and 401) — what
+/// is illegal is a live token afterwards.
+///
+/// HONEST SCOPE: this is a PROBABILISTIC guard. Logout reaches its `UPDATE
+/// users` in fewer round-trips than refresh reaches its successor INSERT, so
+/// the natural ordering usually has logout win — in which case no successor is
+/// ever written and the window isn't exercised. It is kept because it can only
+/// ever fail for a real reason, but the DETERMINISTIC proof that the claim path
+/// actually takes the `users` lock is TEST-25 below.
+#[tokio::test]
+async fn test_no_refresh_token_survives_a_concurrent_logout() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+
+    // Repeat: the window is sub-millisecond, so one attempt could miss it.
+    for round in 0..12 {
+        let name = format!("race_logout_{round}");
+        let (_, _, body) = register(&client, &server, &name, false).await;
+        let access = body["access_token"].as_str().unwrap().to_string();
+        let refresh = body["refresh_token"].as_str().unwrap().to_string();
+        let user_id: uuid::Uuid = body["user"]["id"].as_str().unwrap().parse().unwrap();
+
+        // Fire the rotation and the logout concurrently.
+        let (c1, s1) = (client.clone(), server.api_url("/auth/refresh"));
+        let refresher = tokio::spawn(async move {
+            c1.post(s1)
+                .json(&json!({ "refresh_token": refresh }))
+                .send()
+                .await
+                .ok()
+        });
+        let (c2, s2) = (client.clone(), server.api_url("/auth/logout"));
+        let acc = access.clone();
+        let logouter = tokio::spawn(async move {
+            c2.post(s2)
+                .header("Authorization", format!("Bearer {acc}"))
+                .send()
+                .await
+                .ok()
+        });
+
+        let refresh_res = refresher.await.unwrap();
+        let logout_res = logouter.await.unwrap();
+        assert_eq!(
+            logout_res.expect("logout response").status(),
+            204,
+            "round {round}: logout must succeed"
+        );
+
+        // INVARIANT 1: not one active refresh-token row remains for this user.
+        let active: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            active, 0,
+            "round {round}: a refresh token survived the logout — it can re-mint a \
+             valid access token stamped with the NEW epoch and restore the session"
+        );
+
+        // INVARIANT 2: if the refresh won the race, the session it handed back
+        // must not work either.
+        if let Some(res) = refresh_res
+            && res.status() == 200
+        {
+            let refreshed: Value = res.json().await.unwrap();
+            let new_access = refreshed["access_token"].as_str().unwrap().to_string();
+            assert_eq!(
+                get_status(&client, &server, "/auth/me", &new_access).await,
+                401,
+                "round {round}: a token minted by a refresh racing the logout must not work"
+            );
+            // ...and its refresh token must not be replayable.
+            let new_refresh = refreshed["refresh_token"].as_str().unwrap().to_string();
+            let replay = client
+                .post(server.api_url("/auth/refresh"))
+                .json(&json!({ "refresh_token": new_refresh }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                replay.status(),
+                401,
+                "round {round}: the successor refresh token must be dead after logout"
+            );
+        }
+
+        // INVARIANT 3: the original access token is dead.
+        assert_eq!(
+            get_status(&client, &server, "/auth/me", &access).await,
+            401,
+            "round {round}: the pre-logout access token must be dead"
+        );
+    }
+}
+
+/// TEST-25 — DETERMINISTIC proof that `/auth/refresh` serializes against a
+/// logout by taking the `users` row lock.
+///
+/// TEST-23 races real HTTP and can only *probabilistically* hit the window.
+/// This pins the mechanism with no timing luck: hold the exact lock a logout
+/// holds (`UPDATE users` takes FOR NO KEY UPDATE, which conflicts with the
+/// claim's FOR SHARE), then prove a real `/auth/refresh` BLOCKS on it and only
+/// completes once the lock is released.
+///
+/// Without the `SELECT … FOR SHARE` in `claim_rotation_and_register`, refresh
+/// touches `users` only via unlocked reads and would sail straight through —
+/// so this test fails loudly if that lock is ever removed, which is exactly the
+/// regression that lets a successor refresh token escape a logout.
+#[tokio::test]
+async fn test_refresh_blocks_on_a_held_users_lock() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "refresh_lock_probe", false).await;
+    let refresh = body["refresh_token"].as_str().unwrap().to_string();
+    let user_id: uuid::Uuid = body["user"]["id"].as_str().unwrap().parse().unwrap();
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    // Exactly what end_session_atomically's first statement takes.
+    sqlx::query("UPDATE users SET token_version = token_version WHERE id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    // Fire a real refresh while the lock is held.
+    let (c, url) = (client.clone(), server.api_url("/auth/refresh"));
+    let refresher = tokio::spawn(async move {
+        c.post(url)
+            .json(&json!({ "refresh_token": refresh }))
+            .send()
+            .await
+            .map(|r| r.status())
+    });
+
+    // It must NOT be able to finish: it is parked on the users row lock. 1.5s is
+    // far longer than an unblocked refresh needs (TEST-23 shows those complete
+    // in milliseconds), so a finish here means no lock was taken.
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert!(
+        !refresher.is_finished(),
+        "refresh completed while the users row lock was held — the claim path is \
+         NOT taking the lock, so a successor refresh token can be INSERTed \
+         invisibly to a concurrent logout's revoke and survive it"
+    );
+
+    // Release the lock → refresh proceeds normally.
+    tx.commit().await.unwrap();
+    let status = tokio::time::timeout(std::time::Duration::from_secs(10), refresher)
+        .await
+        .expect("refresh should complete once the lock is released")
+        .expect("join")
+        .expect("http");
+    assert_eq!(status, 200, "refresh must succeed once the lock is released");
+}

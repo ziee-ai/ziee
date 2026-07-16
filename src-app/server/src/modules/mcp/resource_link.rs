@@ -516,8 +516,26 @@ pub async fn persist_links(
         if server_is_built_in {
             let issuer = jwt_issuer.unwrap_or("ziee");
             let audience = jwt_audience.unwrap_or("ziee-api");
-            match McpSessionManager::generate_short_lived_jwt(user_id, secret, issuer, audience, 10)
+            // Current epoch, not a default — this loopback token is validated by
+            // the same RequirePermissions gate as any user token.
+            let tv = match crate::modules::auth::refresh_tokens::current_token_version(user_id).await
             {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    tracing::warn!("skipping HTTP resource_link fetch — user not found: {user_id}");
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "skipping HTTP resource_link fetch — token-version read failed: {}",
+                        e
+                    );
+                    continue;
+                }
+            };
+            match McpSessionManager::generate_short_lived_jwt(
+                user_id, secret, issuer, audience, 10, tv,
+            ) {
                 Ok(token) => {
                     if let Ok(hval) =
                         reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))

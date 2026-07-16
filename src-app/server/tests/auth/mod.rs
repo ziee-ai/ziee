@@ -327,9 +327,24 @@ async fn test_auth_logout() {
 
     assert_eq!(logout_response.status(), 204, "Expected 204 No Content");
 
-    // Note: JWT is stateless, so the token will still work after logout
-    // In a real implementation, you'd need a token blacklist or short expiry
-    // For now, we just verify the logout endpoint works
+    // Logout revokes the ACCESS token too, not just the refresh token: the
+    // access token is stateless, but every authenticated request now compares
+    // its `ver` claim against `users.token_version`, which logout bumps.
+    // (This test used to assert nothing here, with a note that "JWT is
+    // stateless, so the token will still work after logout" — that WAS the
+    // vulnerability: a held token kept full API access for its whole 24h TTL.)
+    let after_logout = client
+        .get(server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await
+        .expect("Get current user failed");
+
+    assert_eq!(
+        after_logout.status(),
+        401,
+        "the access token must stop working the moment the user logs out"
+    );
 }
 
 #[tokio::test]
