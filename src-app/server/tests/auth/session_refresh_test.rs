@@ -1164,11 +1164,18 @@ async fn test_refresh_then_logout_kills_the_refreshed_session() {
 /// silently defeated. `claim_rotation_and_register` takes the `users` row lock
 /// FOR SHARE first to force a serial order with logout.
 ///
-/// Drives real concurrent HTTP (refresh chain vs logout) rather than a
-/// contrived interleaving, then asserts the INVARIANT that must hold no matter
-/// who won: after logout returns 204, the user has ZERO usable refresh tokens
-/// and no working access token. Both outcomes are legal (the refresh may win
-/// and rotate, or lose and 401) — what is illegal is a live token afterwards.
+/// Drives real concurrent HTTP (refresh chain vs logout), then asserts the
+/// INVARIANT that must hold no matter who won: after logout returns 204 the
+/// user has ZERO usable refresh tokens and no working access token. Both
+/// outcomes are legal (the refresh may win and rotate, or lose and 401) — what
+/// is illegal is a live token afterwards.
+///
+/// HONEST SCOPE: this is a PROBABILISTIC guard. Logout reaches its `UPDATE
+/// users` in fewer round-trips than refresh reaches its successor INSERT, so
+/// the natural ordering usually has logout win — in which case no successor is
+/// ever written and the window isn't exercised. It is kept because it can only
+/// ever fail for a real reason, but the DETERMINISTIC proof that the claim path
+/// actually takes the `users` lock is TEST-25 below.
 #[tokio::test]
 async fn test_no_refresh_token_survives_a_concurrent_logout() {
     let server = TestServer::start().await;
@@ -1258,4 +1265,65 @@ async fn test_no_refresh_token_survives_a_concurrent_logout() {
             "round {round}: the pre-logout access token must be dead"
         );
     }
+}
+
+/// TEST-25 — DETERMINISTIC proof that `/auth/refresh` serializes against a
+/// logout by taking the `users` row lock.
+///
+/// TEST-23 races real HTTP and can only *probabilistically* hit the window.
+/// This pins the mechanism with no timing luck: hold the exact lock a logout
+/// holds (`UPDATE users` takes FOR NO KEY UPDATE, which conflicts with the
+/// claim's FOR SHARE), then prove a real `/auth/refresh` BLOCKS on it and only
+/// completes once the lock is released.
+///
+/// Without the `SELECT … FOR SHARE` in `claim_rotation_and_register`, refresh
+/// touches `users` only via unlocked reads and would sail straight through —
+/// so this test fails loudly if that lock is ever removed, which is exactly the
+/// regression that lets a successor refresh token escape a logout.
+#[tokio::test]
+async fn test_refresh_blocks_on_a_held_users_lock() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let (_, _, body) = register(&client, &server, "refresh_lock_probe", false).await;
+    let refresh = body["refresh_token"].as_str().unwrap().to_string();
+    let user_id: uuid::Uuid = body["user"]["id"].as_str().unwrap().parse().unwrap();
+
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    // Exactly what end_session_atomically's first statement takes.
+    sqlx::query("UPDATE users SET token_version = token_version WHERE id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    // Fire a real refresh while the lock is held.
+    let (c, url) = (client.clone(), server.api_url("/auth/refresh"));
+    let refresher = tokio::spawn(async move {
+        c.post(url)
+            .json(&json!({ "refresh_token": refresh }))
+            .send()
+            .await
+            .map(|r| r.status())
+    });
+
+    // It must NOT be able to finish: it is parked on the users row lock. 1.5s is
+    // far longer than an unblocked refresh needs (TEST-23 shows those complete
+    // in milliseconds), so a finish here means no lock was taken.
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert!(
+        !refresher.is_finished(),
+        "refresh completed while the users row lock was held — the claim path is \
+         NOT taking the lock, so a successor refresh token can be INSERTed \
+         invisibly to a concurrent logout's revoke and survive it"
+    );
+
+    // Release the lock → refresh proceeds normally.
+    tx.commit().await.unwrap();
+    let status = tokio::time::timeout(std::time::Duration::from_secs(10), refresher)
+        .await
+        .expect("refresh should complete once the lock is released")
+        .expect("join")
+        .expect("http");
+    assert_eq!(status, 200, "refresh must succeed once the lock is released");
 }

@@ -247,7 +247,7 @@ test.describe('Realtime sync — session (group-permission fan-out)', () => {
 // interceptor refreshes → that 401s too (refresh tokens revoked) → the store
 // tears the session down. No reload driven by this test.
 test.describe('Realtime sync — session (cross-tab logout)', () => {
-  test('logging out in one tab tears down the other tab without a reload', async ({
+  test('logging out in one tab tears down the other tab on its own', async ({
     page,
     testInfra,
   }) => {
@@ -274,8 +274,9 @@ test.describe('Realtime sync — session (cross-tab logout)', () => {
         timeout: 15_000,
       })
 
-      // TAB 2 — must tear itself down on its own. Before the fix it sat on the
-      // admin shell forever.
+      // TAB 2 — must tear itself down on its own, with no reload driven by the
+      // TEST (the app's own teardown does reload the document). Before the fix
+      // it sat on the admin shell indefinitely.
       await expect(byTestId(tab2, 'auth-login-username')).toBeVisible({
         timeout: 30_000,
       })

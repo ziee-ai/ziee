@@ -620,22 +620,19 @@ export const Auth = defineStore('Auth', {
             response.expires_in,
             response.refresh_token,
           )
+          // Deliberately does NOT clear `permissions`/`hasPassword`.
+          //
+          // It looks like an identity change that should reset them, but no
+          // caller reaching this line changes identity: the OAuth callback (the
+          // only one that does) passes `user: null` and takes the early-return
+          // above, keeping isAuthenticated=false until its initAuth()/me lands.
+          // The callers that DO reach here — desktop `applyTokens` and the
+          // tunnel `applySession` — re-mint the SAME identity and never call
+          // initAuth() (AuthGuard.desktop skips it by design), so clearing
+          // would strand them with `permissions: []` for the whole session,
+          // masked only by the is_admin short-circuit in hasPermission.
           set({
             user: response.user,
-            // The identity may be changing, so the grants in state belong to the
-            // PREVIOUS user. Clear them in the SAME set() that flips
-            // isAuthenticated true, or every permission gate (<Can>,
-            // usePermission, hasPermissionNow, slot `permission` fields)
-            // evaluates the old user's permissions until the later initAuth()
-            // /me lands — an authenticated render window with a foreign
-            // permission set. They are repopulated by that /me.
-            //
-            // `hasPassword` is deliberately NOT cleared: it is not a grant and
-            // not a leak vector, and desktop's mid-session auto_login re-mint
-            // reaches here for the SAME identity with no follow-up initAuth() —
-            // clearing it would flip the profile page to "set a password" until
-            // some later refetch.
-            permissions: [],
             isAuthenticated: true,
             isLoading: false,
             error: null,

@@ -39,6 +39,12 @@ test.describe('Authentication — logout', () => {
   // The stored token must be gone, not just the rendered UI: a reloaded tab
   // rehydrates `token` from this key, so a surviving value would resurrect the
   // session.
+  //
+  // HONEST SCOPE: this holds on the base branch too (the pre-existing wipe
+  // already nulled `token`). It is a guard against the teardown refactor
+  // REGRESSING that property, not evidence of the new revocation — the
+  // discriminating specs are the backstop test below and the cross-tab test in
+  // sync/session-sync.spec.ts.
   test('logout clears the persisted token', async ({ page, testInfra }) => {
     await loginAsAdmin(page, testInfra.baseURL)
 

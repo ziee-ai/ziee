@@ -60,10 +60,17 @@ pub async fn current_token_version(user_id: Uuid) -> Result<Option<i32>, AppErro
 /// survive). Callers MUST publish any `Session` signal only AFTER this returns,
 /// so a device racing to `/auth/me` on that signal observes the bump.
 ///
-/// A refresh racing this call is serialized by Postgres, not by us: it takes a
-/// row lock on its `refresh_tokens` row, blocks until this transaction commits,
-/// then finds `revoked_at` set → 0 rows → `claim_rotation_and_register` returns
-/// `false` → 401.
+/// A refresh racing this call is serialized by the `users` row lock that
+/// `claim_rotation_and_register` takes FIRST (see the long comment there) — NOT
+/// by the `refresh_tokens` row lock alone, which is insufficient: under READ
+/// COMMITTED this revoke never even scans a successor row that a concurrent
+/// claim has INSERTed but not yet COMMITTed.
+///
+/// Scope of that guarantee: it covers ROTATION (`/auth/refresh`). It does not
+/// cover `mint_session_tokens`/`register`, which take no `users` lock — so a
+/// LOGIN racing this logout may leave its fresh refresh token active. That is
+/// deliberate and benign: a login is a fresh authentication, not a session this
+/// logout was ever meant to end.
 ///
 /// Mirrors `claim_rotation_and_register` below (same file, same shape).
 /// NOTE: this is intentionally NOT a refactor of `revoke_all_for_user` — that

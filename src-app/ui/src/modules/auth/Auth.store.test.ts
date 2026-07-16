@@ -14,8 +14,10 @@
  *   - TEST-16  a terminal refresh 401 tears down + reloads
  *   - TEST-17  a terminal refresh 401 WITH a desktop fallback re-mints instead
  *              of reloading (pins the existing guard's ordering)
- *   - TEST-18  setAuthFromAutoLogin clears the prior identity's permissions in
- *              the SAME tick it flips isAuthenticated true
+ *   - TEST-18  setAuthFromAutoLogin PRESERVES permissions on a same-identity
+ *              re-mint (desktop/tunnel), and TEST-18b pins why that is safe:
+ *              the only identity-changing caller hands over user: null and
+ *              stays unauthenticated until /me resolves
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -140,19 +142,39 @@ describe('terminal refresh 401', () => {
 })
 
 describe('setAuthFromAutoLogin', () => {
-  it("TEST-18: clears the previous identity's permissions as it authenticates", () => {
-    // Previous user's grants are still in state (seeded admin).
+  it('TEST-18: preserves permissions for a same-identity re-mint (desktop/tunnel)', () => {
+    // The callers that reach this path — desktop `applyTokens` and the tunnel
+    // `applySession` — re-mint the SAME identity and never call initAuth()
+    // afterwards (AuthGuard.desktop skips it by design). Clearing permissions
+    // here would therefore strand them with `[]` for the rest of the session,
+    // silently disabling every permission-gated surface for any non-admin
+    // identity (admins only survive it via the is_admin short-circuit).
+    // The one caller that DOES change identity (the OAuth callback) passes
+    // user: null and takes the early-return above, so it never lands here.
     state().setAuthFromAutoLogin({
       access_token: 'new-token',
       refresh_token: 'new-refresh',
       expires_in: 3600,
-      user: { id: 'bob-1', username: 'bob' },
+      user: { id: 'admin-1', username: 'admin' },
     } as never)
 
     expect(state().isAuthenticated).toBe(true)
-    expect(state().user?.username).toBe('bob')
-    // Must be empty AT THE SAME TICK isAuthenticated flips true — otherwise the
-    // app renders authenticated with the admin's permissions until /me lands.
-    expect(state().permissions).toEqual([])
+    expect(state().token).toBe('new-token')
+    expect(state().permissions).toEqual(['users::read', 'users::edit', '*'])
+    expect(state().hasPassword).toBe(true)
+  })
+
+  it('TEST-18b: an identity-changing callback stays unauthenticated until /me resolves', () => {
+    // Guards the reason TEST-18 is safe: the OAuth path hands over user: null,
+    // so no authenticated render can observe the previous identity's grants.
+    state().setAuthFromAutoLogin({
+      access_token: 'oauth-token',
+      refresh_token: '',
+      expires_in: 3600,
+      user: null,
+    } as never)
+
+    expect(state().isAuthenticated).toBe(false)
+    expect(state().user).toBeNull()
   })
 })

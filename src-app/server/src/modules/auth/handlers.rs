@@ -673,8 +673,8 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// POST /api/auth/logout
-/// Logout current user. Ends every session the user holds — with one
-/// pre-existing residue noted below:
+/// Logout current user. Ends every session the user holds — with two
+/// pre-existing residues noted below:
 ///   - bumps `users.token_version`, so every already-issued ACCESS token stops
 ///     validating at once (see `jwt_extractor::verify_token_version`);
 ///   - revokes all of the user's active refresh tokens, so /auth/refresh fails
@@ -694,6 +694,11 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 /// jti-less minter is deleted and the default refresh TTL is 30d), and
 /// `revoke_all_for_user` never covered them either. Closing it needs the legacy
 /// branch retired — its own change.
+///
+/// RESIDUE 2 (pre-existing): a file DOWNLOAD token (`DownloadTokenClaims`,
+/// `aud: ziee-download`, 1h TTL) is a separate signed credential with no `ver`,
+/// so one minted before a logout keeps serving its file until it expires. Narrow
+/// — a single, already-owned file, with permissions re-checked at download.
 ///
 /// The bump + revoke are ONE transaction, and the sync signal is published only
 /// after it commits: see `refresh_tokens::end_session_atomically` for why a
