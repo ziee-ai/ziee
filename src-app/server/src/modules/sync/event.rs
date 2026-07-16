@@ -309,13 +309,27 @@ impl ziee_framework::sync::SyncSurface for SyncEntity {
         .into()
     }
 
-    async fn recheck(user_id: Uuid) -> ziee_framework::sync::RecheckOutcome<Self::Principal> {
+    async fn recheck(
+        user_id: Uuid,
+        token_ver: Option<i32>,
+    ) -> ziee_framework::sync::RecheckOutcome<Self::Principal> {
         use ziee_framework::sync::RecheckOutcome;
-        // Byte-equivalent to the former inline re-check: reload the active
-        // user + groups, re-check the baseline `profile::read`, produce a
-        // refreshed snapshot — else teardown / transient.
-        match crate::core::Repos.user.get_by_id(user_id).await {
-            Ok(Some(u)) if u.is_active => {
+        // Reload the active user + groups (WITH the revocation epoch, folded
+        // into the same query), re-check the baseline `profile::read` AND the
+        // epoch, produce a refreshed snapshot — else teardown / transient.
+        match crate::core::Repos.user.get_by_id_with_token_version(user_id).await {
+            Ok(Some((u, token_version))) if u.is_active => {
+                // A logout must also end an ALREADY-OPEN stream: the subscribe
+                // gate checks the epoch once, but the stream then lives until
+                // the token's exp (24h by default). The client-side Session
+                // fan-out is not a boundary for a holder of a stolen token —
+                // they don't run our JS. Free: the query above already loads
+                // the row.
+                if crate::modules::auth::jwt_extractor::verify_token_version(token_ver, token_version)
+                    .is_err()
+                {
+                    return RecheckOutcome::TearDown;
+                }
                 let g = if u.is_admin {
                     Vec::new()
                 } else {

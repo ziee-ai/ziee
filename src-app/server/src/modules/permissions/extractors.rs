@@ -24,7 +24,7 @@ use crate::{
     common::AppError,
     core::Repos,
     modules::{
-        auth::jwt::JwtService,
+        auth::{jwt::JwtService, jwt_extractor::verify_token_version},
         user::models::{Group, User},
     },
 };
@@ -40,8 +40,9 @@ impl IdentityResolver for ZieeIdentityResolver {
     type User = User;
     type Group = Group;
 
-    /// Validate the JWT, load the user, and check active status. Byte-identical
-    /// to the former `extract_authenticated_user`.
+    /// Validate the JWT, load the user, check the access-token revocation epoch,
+    /// and check active status. Byte-identical to the former
+    /// `extract_authenticated_user`, plus the folded epoch check.
     async fn authenticate(&self, parts: &mut Parts) -> Result<User, (StatusCode, AppError)> {
         // Get JWT service from app state
         let jwt_service = parts.extensions.get::<Arc<JwtService>>().ok_or_else(|| {
@@ -79,10 +80,13 @@ impl IdentityResolver for ZieeIdentityResolver {
             )
         })?;
 
-        // Load user from database using global Repos
-        let user = Repos
+        // Load user from database using global Repos, together with their
+        // access-token revocation epoch. Folded into this single query rather
+        // than a second round-trip: this runs on every RequirePermissions
+        // request.
+        let (user, token_version) = Repos
             .user
-            .get_by_id(user_id)
+            .get_by_id_with_token_version(user_id)
             .await
             .map_err(|e| {
                 (
@@ -96,6 +100,11 @@ impl IdentityResolver for ZieeIdentityResolver {
                     AppError::unauthorized("USER_NOT_FOUND", "User not found"),
                 )
             })?;
+
+        // Reject a token belonging to a session that logout already ended. This
+        // is one of the TWO mandatory epoch checks — see the INVARIANT doc on
+        // `auth::jwt_extractor::verify_token_version`.
+        verify_token_version(claims.ver, token_version)?;
 
         // Check if user is active
         if !user.is_active {
@@ -143,6 +152,22 @@ impl IdentityResolver for ZieeIdentityResolver {
             .and_then(|h| JwtService::extract_token_from_header(h).ok())
             .and_then(|t| jwt.validate_access_token(t).ok())
             .map(|c| c.exp)
+    }
+
+    /// The access token's revocation epoch (`ver`), read the same way as
+    /// `access_token_exp`, so the mountable `sync_routes()` periodic re-check
+    /// can end an already-open stream on logout (the epoch bump). A missing
+    /// service / header / invalid token / pre-epoch token → `None` (no epoch
+    /// gate — the prior behavior).
+    fn access_token_ver(&self, parts: &Parts) -> Option<i32> {
+        let jwt = parts.extensions.get::<Arc<JwtService>>()?;
+        parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| JwtService::extract_token_from_header(h).ok())
+            .and_then(|t| jwt.validate_access_token(t).ok())
+            .and_then(|c| c.ver)
     }
 }
 

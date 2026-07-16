@@ -30,7 +30,7 @@ pub mod handlers {
 /// Shim: the JWT request extractors live in `ziee_auth::auth::http::jwt_extractor`.
 pub mod jwt_extractor {
     #[allow(unused_imports)]
-    pub use ziee_auth::auth::http::jwt_extractor::{JwtAuth, OptionalJwtAuth};
+    pub use ziee_auth::auth::http::jwt_extractor::{JwtAuth, OptionalJwtAuth, verify_token_version};
 }
 
 /// Shim: the auth-domain permission keys live in `ziee_auth::auth::permissions`.

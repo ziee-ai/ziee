@@ -19,6 +19,7 @@ use uuid::Uuid;
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::auth::jwt::JwtService;
+use crate::modules::auth::jwt_extractor::verify_token_version;
 use crate::modules::permissions::{checker::check_permission_union, extractors::RequirePermissions, with_permission};
 use crate::modules::user::permissions::ProfileRead;
 
@@ -44,12 +45,17 @@ pub async fn subscribe_chat_stream(
 
     // Bound the stream by the access token's expiry (client reconnects with a
     // fresh token, which re-runs the auth extractor).
-    let exp_unix = headers
+    // `ver` is the token's access-token revocation epoch, kept so the periodic
+    // re-check below can end an ALREADY-OPEN stream on logout — the subscribe
+    // gate checks it once, but this stream then lives for the token's whole TTL
+    // while delivering live assistant content.
+    let claims = headers
         .get(AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .and_then(|h| JwtService::extract_token_from_header(h).ok())
-        .and_then(|t| jwt.validate_access_token(t).ok())
-        .map(|c| c.exp);
+        .and_then(|t| jwt.validate_access_token(t).ok());
+    let exp_unix = claims.as_ref().map(|c| c.exp);
+    let token_ver = claims.as_ref().and_then(|c| c.ver);
 
     let conn_id = Uuid::new_v4();
     let (tx, mut rx) =
@@ -95,10 +101,17 @@ pub async fn subscribe_chat_stream(
                     }
                 }
                 _ = recheck.tick() => {
-                    // Tear the stream down if the account was deactivated/removed
-                    // or lost the baseline subscribe permission.
-                    match Repos.user.get_by_id(user_id).await {
-                        Ok(Some(u)) if u.is_active => {
+                    // Tear the stream down if the account was deactivated/removed,
+                    // LOGGED OUT, or lost the baseline subscribe permission.
+                    match Repos.user.get_by_id_with_token_version(user_id).await {
+                        Ok(Some((u, token_version))) if u.is_active => {
+                            // A logout must end an already-open stream too: a
+                            // holder of a revoked token doesn't run our client
+                            // code, so the Session fan-out is not a boundary for
+                            // them. Free: the query above already loads the row.
+                            if verify_token_version(token_ver, token_version).is_err() {
+                                break;
+                            }
                             let g = if u.is_admin {
                                 Vec::new()
                             } else {

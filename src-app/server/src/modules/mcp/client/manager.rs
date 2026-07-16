@@ -147,7 +147,8 @@ impl McpSessionManager {
                 user_id,
                 conversation_id,
                 message_id,
-            )?;
+            )
+            .await?;
 
             // Ephemeral session — not stored in the pool
             let mut session = McpSession::new(server_with_ctx).await?;
@@ -208,7 +209,10 @@ impl McpSessionManager {
     /// loopback, forwarding this same token) and, under a slow model or loaded
     /// host, a 5s window could expire mid-chain → spurious 401s. 60s stays
     /// short-lived (loopback-only, per-user) with headroom for multi-hop.
-    pub fn inject_builtin_context_headers(
+    ///
+    /// Async because the minted token must carry the user's CURRENT
+    /// access-token revocation epoch — see `generate_short_lived_jwt`.
+    pub async fn inject_builtin_context_headers(
         &self,
         server: &mut McpServer,
         user_id: Uuid,
@@ -232,6 +236,9 @@ impl McpSessionManager {
                 &self.config.jwt.issuer,
                 &self.config.jwt.audience,
                 60,
+                crate::modules::auth::refresh_tokens::current_token_version(Repos.pool(), user_id)
+                    .await?
+                    .ok_or_else(|| AppError::unauthorized("USER_NOT_FOUND", "User not found"))?,
             )?;
             headers.insert(
                 "Authorization".to_string(),
@@ -267,12 +274,23 @@ impl McpSessionManager {
     /// `"ziee"`/`"ziee-api"` breaks token validation on any deployment (or test)
     /// whose `jwt.issuer`/`jwt.audience` differs (the validator rejects with
     /// `InvalidIssuer`), which silently 401s every built-in MCP server.
+    ///
+    /// `token_version` MUST be the user's CURRENT `users.token_version` (read it
+    /// with `auth::refresh_tokens::current_token_version`), NOT a constant. This
+    /// token is validated by the same `RequirePermissions` gate as any user
+    /// token, so a stale/defaulted epoch would 401 every built-in MCP call for
+    /// any user who has ever logged out. It is safe to stamp the CURRENT epoch:
+    /// this token is minted server-side, seconds before use, on behalf of an
+    /// already-authenticated request — it is not a credential the user holds,
+    /// and its 10-60s TTL bounds it far below the epoch's purpose (killing
+    /// long-lived tokens that outlive a logout).
     pub fn generate_short_lived_jwt(
         user_id: Uuid,
         secret: &str,
         issuer: &str,
         audience: &str,
         ttl_seconds: i64,
+        token_version: i32,
     ) -> Result<String, AppError> {
         let now = Utc::now();
         let exp = now + Duration::seconds(ttl_seconds);
@@ -286,6 +304,7 @@ impl McpSessionManager {
             email: String::new(),
             is_admin: false,
             jti: None,
+            ver: Some(token_version),
         };
         encode(
             &Header::default(),
