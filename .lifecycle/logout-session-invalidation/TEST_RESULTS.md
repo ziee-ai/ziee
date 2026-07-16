@@ -59,11 +59,15 @@ genuinely catch the admin's permissions surviving logout. Restored → 5/5 green
   lint:settings-field, check:kit-manifest, check:testid-registry, check:design-spec,
   check:gallery-coverage, check:state-matrix, check:overlay-registry, check:override-registry,
   check:gallery-seed-registry, …).
-- `gate:ui (ui): N/A — no UI surface` — the diff adds no page/component/render state (the only
-  frontend change is behavioral, inside `Auth.store.ts`), so there is no gallery surface for the
-  runtime-health/visual pass to cover. `check:state-matrix` + `check:gallery-coverage` (inside
-  `npm run check`, above) confirm no new conditional render state was introduced. Live browser
-  verification was done instead, on a real build, with screenshots (see the STATUS file).
+- `gate:ui (ui): PASS` — the boot/runtime canary against the REAL gallery build:
+  **584/584 cells driven, 181/181 surfaces runtime-clean, 0 gating HIGH findings** (no console error,
+  no uncaught exception / ErrorBoundary crash, no failed request, no AA-contrast failure). tsc + lint
+  green in the same run; `--skip-visual` (the diff adds no render state — `check:state-matrix` +
+  `check:gallery-coverage` inside `npm run check` confirm that, so there is no new baseline to bless).
+  Run with `GALLERY_PORT=1466`: the default :1420 was held by a DIFFERENT worktree on this host
+  (`file-upload-size-cap-wt`), which is the only reason the first attempt reported
+  `gallery-server did not come up` — not a defect in this branch (`gate-ui.mjs:34` reads `GALLERY_PORT`).
+  Live browser verification was ALSO done on a real build, with screenshots (see the STATUS file).
 
 ## Live verification (beyond the suites)
 
