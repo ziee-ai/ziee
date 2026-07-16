@@ -1,8 +1,8 @@
 import { test, expect } from '../../fixtures/test-context'
 import {
+  completeOnboarding,
   createTestUser,
   getAdminToken,
-  login,
   loginAsAdmin,
 } from '../../common/auth-helpers'
 import { byTestId } from '../testid'
@@ -54,11 +54,15 @@ test.describe('Authentication — logout', () => {
       timeout: 15000,
     })
 
-    const persisted = await page.evaluate(() =>
-      localStorage.getItem('auth-storage'),
-    )
-    expect(persisted, 'auth-storage should still exist').toBeTruthy()
-    expect(JSON.parse(persisted as string)?.state?.token).toBeNull()
+    // The teardown reloads the document, so a bare page.evaluate here races the
+    // navigation ("Execution context was destroyed"). Retry until it settles.
+    await expect(async () => {
+      const persisted = await page.evaluate(() =>
+        localStorage.getItem('auth-storage'),
+      )
+      expect(persisted, 'auth-storage should still exist').toBeTruthy()
+      expect(JSON.parse(persisted as string)?.state?.token).toBeNull()
+    }).toPass({ timeout: 15000 })
   })
 
   // The SERVER-SIDE backstop, isolated from the cross-tab sync signal.
@@ -86,13 +90,29 @@ test.describe('Authentication — logout', () => {
     const password = 'backstopPass123'
     await createTestUser(apiURL, adminToken, username, `${username}@example.com`, password, [])
 
+    // Device B needs onboarding done, or AuthGuard lands it on the wizard.
+    const bLogin = await fetch(`${apiURL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    await completeOnboarding(baseURL, (await bLogin.json()).access_token)
+
     // Device B: separate context ⇒ its own localStorage; its own login.
     const ctxB = await browser.newContext()
     const pageB = await ctxB.newPage()
     try {
       // Block the SSE subscribe so B never learns of the logout out-of-band.
       await pageB.route('**/api/sync/subscribe*', route => route.abort())
-      await login(pageB, baseURL, username, password, { completeOnboarding: true })
+
+      // Log in through the REAL form, NOT the `login` helper: that helper seeds
+      // the token via addInitScript, which re-runs on EVERY navigation — so the
+      // teardown's reload would re-inject the revoked token and loop forever.
+      // Here the app itself stores the token, exactly as a real browser does.
+      await pageB.goto(`${baseURL}/`)
+      await byTestId(pageB, 'auth-login-username').fill(username)
+      await byTestId(pageB, 'auth-login-password').fill(password)
+      await byTestId(pageB, 'auth-login-submit').click()
       await expect(byTestId(pageB, 'user-profile-widget')).toBeVisible({
         timeout: 30000,
       })

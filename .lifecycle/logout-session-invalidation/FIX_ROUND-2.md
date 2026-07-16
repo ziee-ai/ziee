@@ -65,4 +65,17 @@ clean.
   neither bumps the epoch. Pre-existing and explicitly descoped in DEC-8 — recorded in STATUS as its
   own ticket, with the note that a password change is arguably where it matters most.
 
+## Found by RUNNING the suites after the round-2 fixes (not by review)
+
+- **The reload interacts with the shared `login` e2e helper.** That helper seeds the token with
+  `page.addInitScript`, which re-runs on EVERY navigation — so the teardown's reload re-injected the
+  revoked token and the page looped instead of settling on the login form (the spec timed out looking
+  for `auth-login-username`). NOT a product defect: nothing in a real browser re-writes the token on
+  each load, and the auditor's reload-loop analysis (wipe → persist writes null → `initAuth`
+  early-out) still holds. Fixed in the SPEC by logging device B in through the real form, per rule
+  B3 — the shared helper is not this feature's to change.
+- **A bare `page.evaluate` right after logout races the reload** ("Execution context was destroyed").
+  Fixed with `expect(...).toPass()` so the assertion retries until the navigation settles. Worth
+  knowing for any future spec that inspects state straight after a logout.
+
 **New confirmed findings:** 0
