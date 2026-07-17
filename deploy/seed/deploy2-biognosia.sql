@@ -22,14 +22,21 @@
 
 BEGIN;
 
--- ── 1. Grant Users the read-only assistant-template permission ────────────────
--- Mirrors migration 00000000000061's idempotent array_append pattern. Runs AFTER
--- seed.sql's step-4 permission reduction, so this grant is not stripped.
+-- ── 1. Give Users the user-level read-only assistant permission ───────────────
+-- `assistants::read` gates the chat-input assistant selector (a user reading their
+-- OWN assistants). It is NOT `assistant_templates::read` — that is the admin-only
+-- system-wide-template management view and must not be granted to regular Users.
+-- Idempotent; runs AFTER seed.sql's step-4 permission reduction so it isn't stripped.
 UPDATE groups
-   SET permissions = array_append(permissions, 'assistant_templates::read'),
+   SET permissions = array_remove(permissions, 'assistant_templates::read'),
        updated_at = NOW()
  WHERE name = 'Users' AND is_system = true AND is_default = true
-   AND NOT ('assistant_templates::read' = ANY(permissions));
+   AND 'assistant_templates::read' = ANY(permissions);
+UPDATE groups
+   SET permissions = array_append(permissions, 'assistants::read'),
+       updated_at = NOW()
+ WHERE name = 'Users' AND is_system = true AND is_default = true
+   AND NOT ('assistants::read' = ANY(permissions));
 
 -- ── 2. BioGnosia default system template ──────────────────────────────────────
 -- A system template = is_template=true + created_by=NULL (CHECK
