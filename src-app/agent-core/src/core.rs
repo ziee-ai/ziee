@@ -326,45 +326,67 @@ impl AgentCore {
                 ..Default::default()
             };
 
-            // `before_model` hooks (compaction runs here at a late order). A veto
-            // stops the turn with a final answer.
+            // `before_model` hooks (compaction runs here at a late order; the chat
+            // registry bridge flips approval rows on a resume). A veto stops the turn.
             if run_before_model(&self.extensions, &mut chat_req).await? == Flow::ShortCircuit {
                 self.push_emit(&mut events, AgentEvent::Stopped(StopReason::NoToolCall))
                     .await;
                 break;
             }
 
-            // Stream tokens live to the sink as they arrive, then get the
-            // accumulated assistant message + usage (ITEM-26).
-            let delta_sink = EventDeltaSink {
-                sink: self.sink.clone(),
+            // Resume mid-tool-execution: on the FIRST iteration of a `Resume`, if the
+            // transcript already ends with an assistant message carrying unexecuted
+            // `tool_use` blocks (a turn suspended awaiting human approval), execute
+            // THOSE — do NOT call the model again. A fresh call would re-emit tool
+            // requests with new ids, losing the human's decision; the `before_model`
+            // hooks above already flipped the approval rows so the policy resolves
+            // them. (Domain-neutral: purely a transcript shape, no chat types.)
+            let is_first = iteration == req.start_iteration.max(1);
+            let resume_msg = if is_first && matches!(req.seed, TurnSeed::Resume) {
+                last_pending_assistant(&history)
+            } else {
+                None
             };
-            // Race the (streaming) model call against cancellation so a mid-stream
-            // stop aborts the turn promptly (matches chat's drop-the-stream behavior)
-            // instead of streaming the whole response before halting.
-            let (assistant_msg, usage) = tokio::select! {
-                r = self.model.call_streaming(chat_req, &delta_sink) => r?,
-                _ = cancel.cancelled() => {
-                    self.push_emit(&mut events, AgentEvent::Stopped(StopReason::Halted))
+            let from_model = resume_msg.is_none();
+
+            let assistant_msg = match resume_msg {
+                Some(msg) => msg,
+                None => {
+                    // Stream tokens live to the sink as they arrive, then get the
+                    // accumulated assistant message + usage (ITEM-26). Race against
+                    // cancellation so a mid-stream stop aborts promptly.
+                    let delta_sink = EventDeltaSink {
+                        sink: self.sink.clone(),
+                    };
+                    let (assistant_msg, usage) = tokio::select! {
+                        r = self.model.call_streaming(chat_req, &delta_sink) => r?,
+                        _ = cancel.cancelled() => {
+                            self.push_emit(&mut events, AgentEvent::Stopped(StopReason::Halted))
+                                .await;
+                            break;
+                        }
+                    };
+                    budget.add_tokens(usage.total_tokens);
+                    self.transcript
+                        .append(req.run_id, assistant_msg.clone())
+                        .await?;
+                    self.push_emit(&mut events, AgentEvent::Message(assistant_msg.clone()))
                         .await;
-                    break;
+                    self.push_emit(&mut events, AgentEvent::Usage(usage)).await;
+                    assistant_msg
                 }
             };
-            budget.add_tokens(usage.total_tokens);
-            self.transcript
-                .append(req.run_id, assistant_msg.clone())
-                .await?;
-            self.push_emit(&mut events, AgentEvent::Message(assistant_msg.clone()))
-                .await;
-            self.push_emit(&mut events, AgentEvent::Usage(usage)).await;
 
-            // Post-round extension hooks (e.g. background memory extract); a
-            // short-circuit ends the turn.
+            // Post-round extension hooks (e.g. background memory extract) run only for
+            // a fresh model message — a resume-executed message already had its
+            // after-hooks on the turn that produced it. A short-circuit ends the turn.
             let mut short_circuit = false;
-            for ext in &self.extensions {
-                if ext.after_round(&assistant_msg).await? == Flow::ShortCircuit {
-                    short_circuit = true;
-                    break;
+            if from_model {
+                for ext in &self.extensions {
+                    if ext.after_round(&assistant_msg).await? == Flow::ShortCircuit {
+                        short_circuit = true;
+                        break;
+                    }
                 }
             }
             if short_circuit {
@@ -505,6 +527,24 @@ fn assemble_messages(system: &[ContentBlock], history: &[ChatMessage]) -> Vec<Ch
 
 /// Pull the model's `ToolUse` blocks out of an assistant message (P2 — tool
 /// requests ride inside message content).
+/// If the transcript ends with an assistant message that carries `ToolUse` blocks
+/// (i.e. it is the LAST message, so no tool results follow), return it — the turn
+/// was suspended mid-tool-execution and should resume by executing those calls
+/// rather than issuing a fresh model call. Domain-neutral: pure transcript shape.
+fn last_pending_assistant(history: &[ChatMessage]) -> Option<ChatMessage> {
+    let last = history.last()?;
+    if last.role == Role::Assistant
+        && last
+            .content
+            .iter()
+            .any(|b| matches!(b, ContentBlock::ToolUse { .. }))
+    {
+        Some(last.clone())
+    } else {
+        None
+    }
+}
+
 fn extract_tool_calls(msg: &ChatMessage) -> Vec<ToolCall> {
     msg.content
         .iter()

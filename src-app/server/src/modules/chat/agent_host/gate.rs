@@ -307,7 +307,16 @@ impl ApprovalPolicy for ChatApprovalPolicy {
         if let Ok(approved) =
             approval_repo::get_approved_tools_for_branch(pool, self.branch_id).await
         {
-            if approved.iter().any(|a| a.tool_use_id == call.id) {
+            if let Some(row) = approved.iter().find(|a| a.tool_use_id == call.id) {
+                // Single-use CLAIM: delete the row before we auto-run it, so a
+                // re-emitted tool call (or a concurrent pass) can't execute it twice
+                // (mirrors the legacy `delete_tool_approval` claim).
+                let _ = approval_repo::delete_tool_approval(
+                    pool,
+                    row.tool_use_id.clone(),
+                    row.message_id,
+                )
+                .await;
                 return Decision::Auto;
             }
         }
