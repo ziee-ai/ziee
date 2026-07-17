@@ -39,6 +39,23 @@ Full map in the transcript. The decisive finding: **chat's send loop is EXTENSIO
 - **The real cost is disentangling the MCP extension**: tool-LIST-gathering stays a chat concern (feeds `ToolScope`/system prompt), while tool-EXECUTION + cross-request approval + continuation move to agent-core ports — invasive to a critical 3k-line file, guarded by the existing chat suites. This is a bounded-but-large re-home, NOT the 3-seam job the "extend crate then migrate" answer assumed. Cross-request approval (turn ends → `return Complete` at `mcp.rs:3284` → resume on new POST via `should_create_user_message`/`provide_assistant_message` + `tool_use_approvals`) maps to `HumanGate::Suspended`; block-aware transcript maps to `finalize` MAX+1 inserts + `group_assistant_blocks` (`streaming.rs:1765`); cancellation is keyed by `assistant_message_id` via `CANCELLATION_TRACKER` (`utils/cancellation.rs`).
 - **DONE + real-LLM-verified targets that do NOT depend on the chat migration:** workflow `kind:agent` host (waves 2/3), fan-out crate primitive, the crate loop + streaming seam, agent settings backend+UI. The chat migration (ITEM-24/25/26) is the one target whose true scope exceeded the plan.
 
+## Wave 5 — full extension re-home STARTED (human chose option B, 2026-07-17)
+Design spec: `RE_HOME_DESIGN.md` (18-extension map + build order). Decisions: DEC-19..22.
+**Done + verified this wave:**
+- Crate streaming seam (332 real deltas) + `call_mcp_tool` `CancelSignal` generalization + `WorkflowEventSink` ContentDelta arm + 2 base chat-history test fixes.
+- DEC-19 opaque `inputs` carrier: `AgentTurnRequest.inputs` → `TurnContext.inputs` (agent-core 36/36 + server check green).
+**Resume point — build order step 2 (ports), NOT yet started:**
+1. `ChatModelResolver` — mirror `WorkflowModelResolver` (agent_dispatch.rs:~ the `ModelResolver` impl): `create_provider_from_model_id` (`chat::core::ai_provider`) + `user_has_access_to_provider`/`validate_model_access` RBAC. Self-contained.
+2. `ChatToolProvider` — `list()` must reproduce the MCP chat-extension's tool-gathering (mcp.rs `before_llm_call` sets `request.tools`: conversation MCP servers + built-in auto-attach via `attach_*` flags + disabled filtering), NOT the workflow `scope.servers` loop. `call()` = `execute_tool`/`call_mcp_tool` (now takes `&dyn CancelSignal`). THE coupling point — read mcp.rs:2100-2200 (tool assembly) first.
+3. `ChatApprovalPolicy` — classify (mcp.rs:2508-2626) → Auto/Prompt/Deny.
+4. `ChatHumanGate` — `GateOutcome::Suspended` (turn ends → `tool_use_approvals` rows + `McpApprovalRequired` SSE → resume on new POST). Cross-request; mcp.rs:2668/3284 + resume STEP-1 mcp.rs:2269-2313.
+5. `ChatTranscriptStore` (THE crux) — `load` = `get_conversation_history` + `group_assistant_blocks` reconstruct (streaming.rs:1765); `append` = `finalize` MAX+1 block inserts (streaming.rs:1399-1570) incl. text/file/thinking block conversion.
+6. `ChatEventSink` — `ContentDelta`→`SSEChatStreamEvent::Content` frame via `publish_frame`; `Message`→terminal `Complete` frame + `sync:conversation`.
+7. Port 14 context-injectors as `AgentExtension` (before_model/contribute/after_round); summarization→`CompactionExtension`.
+8. `ChatAgentDispatcher` host in a NEW `chat/agent_host/` (mirror `workflow/agent_dispatch.rs`): keep fire-and-forget POST + per-`assistant_message_id` `CANCELLATION_TRACKER` token (as `CancelSignal`) + single-flight slot; replace `StreamingService::send_message`'s loop body with `core.run`.
+9. Cutover `send_message` handler; verify vs `tests/chat/*` + `tests/mcp/*_workflow_*` + a real bridge multi-tool+approval+resume run; fix to green.
+**Do NOT self-push. Chat stays on its current loop until step 9 cutover (zero regression risk meanwhile).**
+
 ## Open integration items (for later stages / drift)
 - **DRIFT-CANDIDATE — enum vocab mismatch.** The crate's `types::SandboxMode`/`ApprovalMode` serialize PascalCase (no `rename_all`), but `202607160100_agent_admin_settings.sql`'s CHECK constraints use kebab (`read-only`/`workspace-write`/`danger-full-access`; `untrusted`/`on-failure`/`on-request`/`never`). Not yet wired (settings store strings; the crate enums aren't read from settings until ITEM-11's settings↔core wiring). RECONCILE when wiring: add `#[serde(rename_all="kebab-case")]` (+ `#[serde(alias=...)]` for Codex's `untrusted`↔`UnlessTrusted`) to the crate enums, or align the CHECK values. Confirm the two agree with a roundtrip test.
 - **OpenAPI regen owed** — the new `/api/agent/settings` route + `AgentAdminSettings` types + the sync entity need `just openapi-regen` (BOTH `ui/`+`desktop/ui/`) — deferred to the UI stage (ITEM-30).
