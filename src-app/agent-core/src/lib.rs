@@ -31,8 +31,8 @@ mod test_fakes;
 pub use budget::Budget;
 pub use compaction::{CompactionExtension, CompactionResult, Compactor};
 pub use core::{
-    AgentCore, CancelToken, ModelClient, ModelClientFactory, ProviderModelClient,
-    ProviderModelClientFactory,
+    AgentCore, CancelToken, DeltaSink, ModelClient, ModelClientFactory, NoopDeltaSink,
+    ProviderModelClient, ProviderModelClientFactory,
 };
 pub use extension::{AgentExtension, Flow, TurnContext};
 pub use policy::TrustedAutoApprovePolicy;

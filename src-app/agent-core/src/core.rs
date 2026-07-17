@@ -58,11 +58,53 @@ impl CancelToken {
     }
 }
 
+/// A sink for live streaming deltas (ITEM-26). The chat host forwards each delta
+/// to SSE as an `SSEChatStreamEvent::Content` frame; non-streaming hosts use the
+/// [`NoopDeltaSink`].
+#[async_trait]
+pub trait DeltaSink: Send + Sync {
+    async fn on_delta(&self, delta: &ContentBlockDelta);
+}
+
+/// A no-op delta sink — for non-streaming callers and fake models.
+pub struct NoopDeltaSink;
+#[async_trait]
+impl DeltaSink for NoopDeltaSink {
+    async fn on_delta(&self, _delta: &ContentBlockDelta) {}
+}
+
+/// Adapter: forwards each streamed delta to the loop's [`EventSink`] as an
+/// [`AgentEvent::ContentDelta`], so a host (chat) can stream tokens live.
+struct EventDeltaSink {
+    sink: Arc<dyn EventSink>,
+}
+#[async_trait]
+impl DeltaSink for EventDeltaSink {
+    async fn on_delta(&self, delta: &ContentBlockDelta) {
+        self.sink
+            .emit(AgentEvent::ContentDelta(delta.clone()))
+            .await;
+    }
+}
+
 /// One model call → an assistant `ChatMessage` + `Usage`. The seam that makes
 /// the loop unit-testable without a real LLM (see the module docs).
 #[async_trait]
 pub trait ModelClient: Send + Sync {
     async fn call(&self, req: ChatRequest) -> Result<(ChatMessage, Usage), AppError>;
+
+    /// Streaming variant (ITEM-26): forwards each `ContentBlockDelta` to `sink`
+    /// as it arrives, then returns the accumulated assistant message. The DEFAULT
+    /// is non-streaming (delegates to [`ModelClient::call`], ignoring the sink) so
+    /// fake models need not implement it; the real [`ProviderModelClient`]
+    /// overrides it to stream live tokens.
+    async fn call_streaming(
+        &self,
+        req: ChatRequest,
+        _sink: &dyn DeltaSink,
+    ) -> Result<(ChatMessage, Usage), AppError> {
+        self.call(req).await
+    }
 }
 
 /// The REAL `ModelClient` — wraps a resolved `ai_providers::Provider`, draining
@@ -88,6 +130,14 @@ struct ToolAcc {
 #[async_trait]
 impl ModelClient for ProviderModelClient {
     async fn call(&self, req: ChatRequest) -> Result<(ChatMessage, Usage), AppError> {
+        self.call_streaming(req, &NoopDeltaSink).await
+    }
+
+    async fn call_streaming(
+        &self,
+        req: ChatRequest,
+        sink: &dyn DeltaSink,
+    ) -> Result<(ChatMessage, Usage), AppError> {
         let mut stream = self
             .provider
             .chat_stream(req)
@@ -102,6 +152,9 @@ impl ModelClient for ProviderModelClient {
             let chunk =
                 chunk.map_err(|e| AppError::internal_error(format!("stream error: {e}")))?;
             for delta in chunk.content {
+                // Forward EVERY delta live (text/thinking/tool) so the host can
+                // stream tokens; then accumulate for the final message.
+                sink.on_delta(&delta).await;
                 match delta {
                     ContentBlockDelta::TextDelta { delta, .. } => text.push_str(&delta),
                     ContentBlockDelta::ToolUseDelta {
@@ -267,7 +320,13 @@ impl AgentCore {
                 break;
             }
 
-            let (assistant_msg, usage) = self.model.call(chat_req).await?;
+            // Stream tokens live to the sink as they arrive, then get the
+            // accumulated assistant message + usage (ITEM-26).
+            let delta_sink = EventDeltaSink {
+                sink: self.sink.clone(),
+            };
+            let (assistant_msg, usage) =
+                self.model.call_streaming(chat_req, &delta_sink).await?;
             budget.add_tokens(usage.total_tokens);
             self.transcript
                 .append(req.run_id, assistant_msg.clone())
@@ -493,6 +552,69 @@ mod tests {
                 _ => None,
             })
             .expect("a Stopped event")
+    }
+
+    /// A model that streams two text deltas through the sink, then returns a
+    /// final message — proves the loop wires `call_streaming` → the `EventSink`.
+    struct StreamingModel;
+    #[async_trait]
+    impl ModelClient for StreamingModel {
+        async fn call(&self, _req: ChatRequest) -> Result<(ChatMessage, Usage), AppError> {
+            Ok((ChatMessage::assistant("hello world"), Usage::default()))
+        }
+        async fn call_streaming(
+            &self,
+            req: ChatRequest,
+            sink: &dyn DeltaSink,
+        ) -> Result<(ChatMessage, Usage), AppError> {
+            sink.on_delta(&ContentBlockDelta::TextDelta {
+                index: 0,
+                delta: "hello ".into(),
+            })
+            .await;
+            sink.on_delta(&ContentBlockDelta::TextDelta {
+                index: 0,
+                delta: "world".into(),
+            })
+            .await;
+            self.call(req).await
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_deltas_forwarded_to_sink() {
+        use crate::test_fakes::{FakeGate, FakeResolver, FakeSink, FakeTools, FakeTranscript};
+        let sink = Arc::new(FakeSink::default());
+        let core = AgentCore {
+            transcript: Arc::new(FakeTranscript::default()),
+            sink: sink.clone(),
+            tools: Arc::new(FakeTools::new(true)),
+            gate: Arc::new(FakeGate {
+                behavior: GateBehavior::Approve,
+            }),
+            policy: Arc::new(TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest)),
+            models: Arc::new(FakeResolver::default()),
+            model: Arc::new(StreamingModel),
+            model_factory: Arc::new(ProviderModelClientFactory),
+            extensions: vec![],
+            reviewer: None,
+            budget: Budget::new(2, 1_000_000, 1_000_000),
+            limits: Default::default(),
+            sandbox: SandboxMode::WorkspaceWrite { network: false },
+            model_name: "test".into(),
+        };
+        core.run(new_req(), CancelToken::new()).await.unwrap();
+        let deltas = sink
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, AgentEvent::ContentDelta(_)))
+            .count();
+        assert_eq!(
+            deltas, 2,
+            "the loop must forward call_streaming deltas to the EventSink as ContentDelta events"
+        );
     }
 
     #[tokio::test]

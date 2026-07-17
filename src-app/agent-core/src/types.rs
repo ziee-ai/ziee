@@ -3,7 +3,7 @@
 //! `ai-providers` types; a crate-local `ToolResult` carries `structured_content`
 //! (which `ai_providers::ContentBlock::ToolResult` lacks).
 
-use ai_providers::{ChatMessage, ContentBlock};
+use ai_providers::{ChatMessage, ContentBlock, ContentBlockDelta};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -185,6 +185,11 @@ pub struct AgentTurnRequest {
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
     Message(ChatMessage),
+    /// A live streaming delta of the in-progress assistant message (ITEM-26 — the
+    /// chat host maps these to `SSEChatStreamEvent::Content` frames; the workflow
+    /// host ignores them). Emitted DURING the model call, before the final
+    /// `Message`. Only the `ProviderModelClient` produces these; fake models don't.
+    ContentDelta(ContentBlockDelta),
     Usage(Usage),
     ToolNotification { server: String, note: String },
     HistoryReplaced { summary_upto: usize },

@@ -92,6 +92,20 @@ impl ToolProvider for WeatherTool {
     }
 }
 
+struct NoTools;
+#[async_trait]
+impl ToolProvider for NoTools {
+    async fn list(&self, _s: &ToolScope) -> Result<Vec<Tool>, AppError> {
+        Ok(vec![])
+    }
+    async fn call(&self, _r: Uuid, _c: ToolCall, _i: String) -> Result<ToolResult, AppError> {
+        Err(AppError::internal_error("no tools"))
+    }
+    fn is_trusted(&self, _s: &str) -> bool {
+        true
+    }
+}
+
 struct NoGate;
 #[async_trait]
 impl HumanGate for NoGate {
@@ -106,6 +120,76 @@ impl ModelResolver for NoResolver {
     async fn resolve(&self, _m: Uuid, _u: Uuid) -> Result<Arc<Provider>, AppError> {
         Err(AppError::internal_error("resolver not used in this test"))
     }
+}
+
+/// Proves the provider (via the bridge) streams tokens as deltas, and the loop
+/// forwards them as `ContentDelta` events — the streaming seam chat needs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn agent_streams_text_deltas_from_real_model() {
+    let base_url = match std::env::var("ZIEE_TEST_LLM_BASE_URL") {
+        Ok(v) if !v.is_empty() => v,
+        _ => {
+            eprintln!("SKIP agent_streams_text_deltas_from_real_model — ZIEE_TEST_LLM_BASE_URL unset");
+            return;
+        }
+    };
+    let key = std::env::var("ZIEE_TEST_LLM_KEY").unwrap_or_else(|_| "sk-local-audit".into());
+    let model_name =
+        std::env::var("ZIEE_TEST_LLM_MODEL").unwrap_or_else(|_| "qwen3.6-35b-a3b".into());
+
+    let provider = Arc::new(Provider::new("openai", key, base_url).expect("provider"));
+    let sink = Arc::new(MemSink::default());
+    let core = AgentCore {
+        transcript: Arc::new(MemTranscript::default()),
+        sink: sink.clone(),
+        tools: Arc::new(NoTools),
+        gate: Arc::new(NoGate),
+        policy: Arc::new(TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest))
+            as Arc<dyn ApprovalPolicy>,
+        models: Arc::new(NoResolver),
+        model: Arc::new(ProviderModelClient::new(provider)),
+        model_factory: Arc::new(ProviderModelClientFactory),
+        extensions: vec![],
+        reviewer: None,
+        budget: agent_core::Budget::new(2, 2_000_000, 2_000_000),
+        limits: Default::default(),
+        sandbox: SandboxMode::ReadOnly { network: false },
+        model_name,
+    };
+    let req = AgentTurnRequest {
+        run_id: Uuid::new_v4(),
+        user_id: Uuid::new_v4(),
+        seed: TurnSeed::NewMessage(ChatMessage::user(
+            "Write two short sentences about the city of Paris. Do not use any tools.",
+        )),
+        system: vec![ContentBlock::Text { text: "You are a helpful assistant.".into() }],
+        tool_scope: ToolScope { servers: vec![], allow_delegate: false },
+        start_iteration: 1,
+    };
+    let events = core.run(req, CancelToken::new()).await.expect("run");
+    // ContentDelta events flow to the SINK (EventDeltaSink), not the returned Vec
+    // (which stays Message/Usage/Stopped only). Count them where they land.
+    let deltas = sink
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|e| matches!(e, agent_core::AgentEvent::ContentDelta(_)))
+        .count();
+    let answered = events.iter().any(|e| matches!(e,
+        agent_core::AgentEvent::Message(m)
+            if m.content.iter().any(|b| matches!(b, ContentBlock::Text { text } if !text.trim().is_empty()))));
+    eprintln!(
+        "real text turn: {deltas} ContentDelta events, {} total events, answered={answered}",
+        events.len()
+    );
+    assert!(answered, "expected a non-empty text answer from the real model");
+    // The provider forwards ≥1 delta for a non-empty answer (one big delta if the
+    // non-streaming-to-stream workaround is active; many if truly streaming).
+    assert!(
+        deltas >= 1,
+        "expected ≥1 streamed ContentDelta for the non-empty answer; got {deltas}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -190,6 +274,10 @@ async fn agent_loop_does_real_tool_call_round_trip() {
         Some(StopReason::NoToolCall),
         "expected the loop to end with a final answer (NoToolCall) after the tool result"
     );
+
+    // (Streaming-delta forwarding is proven deterministically by the core unit
+    //  test `streaming_deltas_forwarded`; whether the bridge emits per-token
+    //  deltas for a given turn is a provider detail, not asserted here.)
 
     // 3. A final assistant message exists in the transcript.
     let msgs = transcript.msgs.lock().unwrap();
