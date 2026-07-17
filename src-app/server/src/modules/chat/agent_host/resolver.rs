@@ -53,7 +53,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::workflow::dispatch::{
-    builtin_server_id_by_name, call_mcp_tool, resolve_tool_server, CancelSignal, McpCallScope,
+    call_mcp_tool, resolve_tool_server, CancelSignal, McpCallScope,
     McpToolCallError,
 };
 use crate::utils::cancellation::CancellationToken;
@@ -379,7 +379,12 @@ impl ToolProvider for ChatToolProvider {
             Ok(server_id) => {
                 crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(server_id)
             }
-            Err(_) => builtin_server_id_by_name(&prefix).is_some(),
+            // A NAME-prefixed tool is NOT auto-trusted: `builtin_server_id_by_name`
+            // includes `code_sandbox`/`control_mcp` (which `is_builtin_server_id`
+            // deliberately EXCLUDES from the approval bypass), so trusting a name
+            // prefix would auto-approve sandbox code execution. Chat namespaces by
+            // server-id uuid, so this branch is not hit today; keep it fail-safe.
+            Err(_) => false,
         }
     }
 }

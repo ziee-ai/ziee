@@ -378,7 +378,6 @@ pub async fn start_generation_agent_core(
         })
     };
 
-    let is_resume = user_message_id.is_none();
     tokio::spawn(async move {
         // The single `RegistryBridge` runs EVERY chat extension's `before_llm_call`
         // (system prompts + memory + MCP tool gathering + approval processing) inside
@@ -505,6 +504,5 @@ pub async fn start_generation_agent_core(
         );
     });
 
-    let _ = is_resume;
     Ok((user_message_id, assistant_message_id))
 }

@@ -807,12 +807,14 @@ impl StreamingService {
         use crate::utils::cancellation::CANCELLATION_TRACKER;
         use futures_util::StreamExt as _;
 
-        // Re-home cutover (ITEM-24): the shared agent-core loop is now the DEFAULT
-        // path (behavioral parity verified against the legacy loop on the
-        // deterministic chat + agentic_chat suites + the real bridge). The legacy
-        // loop is retained behind `ZIEE_CHAT_AGENT_CORE=0` as a one-release opt-out
-        // safety valve; it is removed once the agent-core path has soaked.
-        if std::env::var("ZIEE_CHAT_AGENT_CORE").as_deref() != Ok("0") {
+        // Re-home cutover (ITEM-24): route through the shared agent-core loop when
+        // OPTED IN (`ZIEE_CHAT_AGENT_CORE=1`). The default remained legacy after the
+        // blind audit surfaced real approval-resume + tool-error control-flow bugs
+        // (the RegistryBridge-vs-ports resume-execution collision, tool-error aborts,
+        // partial-suspend orphans): the flip is HELD until those are fixed +
+        // re-verified. The happy-path streaming/persist/tool paths are verified; the
+        // opt-in lets that soak while the resume/error paths are hardened.
+        if std::env::var("ZIEE_CHAT_AGENT_CORE").as_deref() == Ok("1") {
             return crate::modules::chat::agent_host::dispatcher::start_generation_agent_core(
                 self.pool.clone(),
                 self.extension_registry.clone(),

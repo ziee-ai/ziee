@@ -527,10 +527,19 @@ impl AgentCore {
                     }
                     Act::Execute => {
                         let idem = format!("{}:{}:{}", req.run_id, iteration, ordinal);
-                        let result = self
+                        // A tool execution FAILURE must not abort the turn: that would
+                        // leave the already-persisted `tool_use` block with no matching
+                        // `tool_result`, corrupting the next turn's history (the model
+                        // rejects an orphan tool_use). Feed an `is_error` result back so
+                        // the model can react — parity with the legacy loop.
+                        let result = match self
                             .tools
                             .call(req.run_id, call.clone(), idem.clone())
-                            .await?;
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => error_tool_result(format!("tool execution failed: {e}")),
+                        };
                         executed += 1;
                         if result.terminal {
                             terminal_count += 1;

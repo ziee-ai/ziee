@@ -308,22 +308,29 @@ impl ApprovalPolicy for ChatApprovalPolicy {
             approval_repo::get_approved_tools_for_branch(pool, self.branch_id).await
         {
             if let Some(row) = approved.iter().find(|a| a.tool_use_id == call.id) {
-                // Single-use CLAIM: delete the row before we auto-run it, so a
-                // re-emitted tool call (or a concurrent pass) can't execute it twice
-                // (mirrors the legacy `delete_tool_approval` claim).
-                let _ = approval_repo::delete_tool_approval(
-                    pool,
-                    row.tool_use_id.clone(),
-                    row.message_id,
-                )
-                .await;
-                return Decision::Auto;
+                // Single-use CLAIM: delete the row and Auto-run ONLY if WE won the
+                // delete (Ok(true)). A `false`/`Err` means a concurrent pass already
+                // claimed it (or the read/delete failed) — do NOT auto-execute a
+                // possibly-double-run mutating tool; fall through to re-classify
+                // (→ Prompt for a manual tool), never a silent second execution.
+                if matches!(
+                    approval_repo::delete_tool_approval(pool, row.tool_use_id.clone(), row.message_id)
+                        .await,
+                    Ok(true)
+                ) {
+                    return Decision::Auto;
+                }
             }
         }
-        if let Ok(denied) = approval_repo::get_denied_tools_for_branch(pool, self.branch_id).await {
-            if denied.iter().any(|a| a.tool_use_id == call.id) {
+        // The denial check is a SECURITY gate: a query failure must NOT be read as
+        // "not denied" (fail-open). On a denial-read error, escalate to a human
+        // (Prompt) rather than risk auto-executing a denied tool.
+        match approval_repo::get_denied_tools_for_branch(pool, self.branch_id).await {
+            Ok(denied) if denied.iter().any(|a| a.tool_use_id == call.id) => {
                 return Decision::Deny;
             }
+            Ok(_) => {}
+            Err(_) => return Decision::Prompt,
         }
         let (server_id, server_str, tool_name) = split_server_tool(call);
         self.decide_pure(server_id, &server_str, &tool_name, &call.input, trusted)

@@ -1155,7 +1155,35 @@ pub(crate) async fn call_mcp_tool(
     // `<server_id>__<tool>`). Accept both: a parseable uuid is the id directly;
     // otherwise resolve the name.
     let server_id = match uuid::Uuid::parse_str(server_name) {
-        Ok(id) => id,
+        Ok(id) => {
+            // SECURITY: re-validate the (model-supplied) server id against the acting
+            // user's accessible set — a built-in (enabled) OR a server the user's
+            // groups are assigned to. Without this the raw-uuid path would let a
+            // prompt-injected tool name reach an arbitrary server_id the user isn't
+            // assigned to, executing with that server's admin-configured secret
+            // headers (cross-group authz bypass). Mirrors the legacy accessible-set
+            // check at `mcp.rs` (execute_approved_tools_sync).
+            let accessible = if crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(id) {
+                matches!(
+                    crate::core::Repos.mcp.get_any_server(id).await,
+                    Ok(Some(s)) if s.enabled
+                )
+            } else {
+                crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+                    crate::core::Repos.pool(),
+                    scope.user_id,
+                )
+                .await
+                .map(|servers| servers.iter().any(|s| s.id == id && s.enabled))
+                .unwrap_or(false)
+            };
+            if !accessible {
+                return Err(McpToolCallError::Failed(format!(
+                    "server '{id}' is not accessible to this user"
+                )));
+            }
+            id
+        }
         Err(_) => match resolve_tool_server(scope.user_id, server_name).await {
             Ok(id) => id,
             Err(e) => return Err(McpToolCallError::Failed(e.to_string())),
