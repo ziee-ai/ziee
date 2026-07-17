@@ -1,6 +1,7 @@
 // Integration tests for ziee backend API
 // Each module contains tests for specific functionality
 
+mod agent;
 mod agentic_chat;
 mod assistant;
 mod auth;
