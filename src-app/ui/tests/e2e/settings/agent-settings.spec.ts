@@ -22,9 +22,8 @@ test.describe('Agent settings — admin happy path', () => {
     await expect(byTestId(page, 'agent-settings-card')).toBeVisible({
       timeout: 30000,
     })
-    const field = byTestId(page, 'agent-settings-default-max-steps').locator(
-      'input',
-    )
+    // The testid is forwarded to the underlying number input.
+    const field = byTestId(page, 'agent-settings-default-max-steps')
     await expect(field).toBeVisible({ timeout: 30000 })
 
     // Edit to a fresh in-range value + save.
@@ -34,13 +33,13 @@ test.describe('Agent settings — admin happy path', () => {
     await page.getByRole('button', { name: /save/i }).first().click()
 
     // Persistence: reload and the field shows the saved value (real GET after PUT).
-    await page.waitForTimeout(1000)
+    await page.waitForTimeout(1500)
     await page.reload()
     await expect(byTestId(page, 'agent-settings-card')).toBeVisible({
       timeout: 30000,
     })
     await expect(
-      byTestId(page, 'agent-settings-default-max-steps').locator('input'),
+      byTestId(page, 'agent-settings-default-max-steps'),
     ).toHaveValue(value, { timeout: 30000 })
   })
 })
