@@ -340,8 +340,47 @@ pub async fn start_generation_agent_core(
         ),
     );
 
+    // Extension-event SSE channel (McpApprovalRequired / titleUpdated / tool events)
+    // — the chat extensions emit raw SSE `Event`s through this; a drain task
+    // forwards them to the per-user stream (mirrors the legacy consumer's tail).
+    let (ext_tx, mut ext_rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
+    {
+        let owner = owner_id;
+        let conv = conversation_id;
+        tokio::spawn(async move {
+            while let Some(Ok(raw)) = ext_rx.recv().await {
+                crate::modules::chat::stream::publish_raw_event(owner, conv, raw);
+            }
+        });
+    }
+
     let is_resume = user_message_id.is_none();
     tokio::spawn(async move {
+        // The single `RegistryBridge` runs EVERY chat extension's `before_llm_call`
+        // (system prompts + memory + MCP tool gathering + approval processing) inside
+        // the loop, reusing their tested logic. Built only when a registry is present.
+        let mut extensions: Vec<Arc<dyn agent_core::AgentExtension>> = Vec::new();
+        if let Some(reg) = &registry {
+            let bridge_ctx = StreamContext {
+                conversation_id,
+                branch_id,
+                message_id: Some(assistant_message_id),
+                user_id,
+                pool: pool.clone(),
+                metadata: std::collections::HashMap::new(),
+                iteration: 0,
+            };
+            extensions.push(Arc::new(
+                crate::modules::chat::agent_host::registry_bridge::RegistryBridge::new(
+                    reg.clone(),
+                    bridge_ctx,
+                    request,
+                    Some(ext_tx.clone()),
+                ),
+            ));
+        }
+
         let turn = ChatAgentTurn {
             pool,
             registry,
@@ -351,13 +390,18 @@ pub async fn start_generation_agent_core(
             assistant_message_id,
             provider,
             model_name,
-            // No ported context extensions yet → no attached tool servers.
+            // The MCP bridge sets request.tools directly (its gathering), so an empty
+            // ToolScope is fine — ChatToolProvider still EXECUTES the chosen tool by
+            // its namespaced name. Tool-list gathering stays with the MCP extension.
             tool_scope: ToolScope::default(),
             inputs: serde_json::Value::Null,
             cancel_token: cancel_token.clone(),
-            sse_tx: None,
-            extensions: vec![],
+            sse_tx: Some(ext_tx.clone()),
+            extensions,
         };
+        // Drop our local sender so the drain task's channel closes when the turn
+        // (holding the remaining clones) finishes.
+        drop(ext_tx);
         // The user message is already persisted, so LOAD it (Resume), don't re-append.
         let result = turn.run(TurnSeed::Resume).await;
 

@@ -41,6 +41,7 @@ use crate::types::{
 #[derive(Clone, Default)]
 pub struct CancelToken {
     flag: Arc<AtomicBool>,
+    notify: Arc<tokio::sync::Notify>,
 }
 
 impl CancelToken {
@@ -48,13 +49,25 @@ impl CancelToken {
         Self::default()
     }
 
-    /// Signal cancellation. The loop stops at its next checkpoint with `Halted`.
+    /// Signal cancellation. The loop stops at its next checkpoint with `Halted`;
+    /// an in-flight model call awaiting [`CancelToken::cancelled`] aborts promptly.
     pub fn cancel(&self) {
         self.flag.store(true, Ordering::SeqCst);
+        self.notify.notify_waiters();
     }
 
     pub fn is_cancelled(&self) -> bool {
         self.flag.load(Ordering::SeqCst)
+    }
+
+    /// Resolve when cancellation is requested (or immediately if already set) —
+    /// lets the loop race an in-flight model stream against cancel so a mid-stream
+    /// stop aborts the turn instead of waiting for the whole response.
+    pub async fn cancelled(&self) {
+        if self.is_cancelled() {
+            return;
+        }
+        self.notify.notified().await;
     }
 }
 
@@ -326,8 +339,17 @@ impl AgentCore {
             let delta_sink = EventDeltaSink {
                 sink: self.sink.clone(),
             };
-            let (assistant_msg, usage) =
-                self.model.call_streaming(chat_req, &delta_sink).await?;
+            // Race the (streaming) model call against cancellation so a mid-stream
+            // stop aborts the turn promptly (matches chat's drop-the-stream behavior)
+            // instead of streaming the whole response before halting.
+            let (assistant_msg, usage) = tokio::select! {
+                r = self.model.call_streaming(chat_req, &delta_sink) => r?,
+                _ = cancel.cancelled() => {
+                    self.push_emit(&mut events, AgentEvent::Stopped(StopReason::Halted))
+                        .await;
+                    break;
+                }
+            };
             budget.add_tokens(usage.total_tokens);
             self.transcript
                 .append(req.run_id, assistant_msg.clone())

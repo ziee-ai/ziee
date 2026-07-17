@@ -10,5 +10,6 @@
 pub mod dispatcher;
 pub mod event_sink;
 pub mod gate;
+pub mod registry_bridge;
 pub mod resolver;
 pub mod transcript;
