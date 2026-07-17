@@ -137,6 +137,8 @@ impl McpSessionManager {
             // Stamped post-creation by the workflow dispatcher (set_workflow_run);
             // every other caller leaves it None.
             workflow_run_id: None,
+            // Stamped post-creation by the agent dispatcher (set_review_classification).
+            review_classification: None,
         };
 
         // For built-in servers: create ephemeral session with dynamic headers

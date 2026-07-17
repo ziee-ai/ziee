@@ -130,6 +130,9 @@ pub struct CreateMcpToolCall {
     pub duration_ms: Option<i64>,
     /// E4: set when a workflow `tool` step made this call (else `None`).
     pub workflow_run_id: Option<Uuid>,
+    /// ITEM-12 (DEC-12): the agent reviewer's risk classification
+    /// (`low`/`high`/`critical`) for an approval-needing call; `None` otherwise.
+    pub review_classification: Option<String>,
 }
 
 /// Paginated list response (mirrors `McpServerListResponse`).
@@ -160,6 +163,9 @@ pub struct McpCallContext {
     /// `tool` step. Stamped post-creation via `McpSession::set_workflow_run`
     /// (so the ~5 other `get_or_create_with_context` call sites are untouched).
     pub workflow_run_id: Option<Uuid>,
+    /// ITEM-12 (DEC-12): the agent reviewer's risk classification for this call,
+    /// stamped post-creation via `McpSession::set_review_classification`.
+    pub review_classification: Option<String>,
 }
 
 #[cfg(test)]

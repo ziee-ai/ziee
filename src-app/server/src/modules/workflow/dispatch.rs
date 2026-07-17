@@ -1121,6 +1121,13 @@ pub(crate) async fn call_mcp_tool(
     args: Value,
     enforce_conversation_disabled: bool,
     cancel: &Arc<registry::RunHandle>,
+    // ITEM-12: reviewer risk classification (`low`/`high`/`critical`) stamped
+    // onto the recorded `mcp_tool_calls` row (`None` for the plain tool step).
+    review_classification: Option<String>,
+    // ITEM-16: stable per-call idempotency key `<run_id>:<turn>:<ordinal>` threaded
+    // into the MCP call context so an in-flight side-effecting call is identifiable
+    // on resume (`None` for the plain tool step).
+    idempotency_key: Option<String>,
 ) -> Result<(Uuid, crate::modules::mcp::client::traits::ToolResult), McpToolCallError> {
     let server_id = match resolve_tool_server(scope.user_id, server_name).await {
         Ok(id) => id,
@@ -1215,6 +1222,13 @@ pub(crate) async fn call_mcp_tool(
         let mut guard = session.write().await;
         // E4: link the recorded mcp_tool_calls row to this run.
         guard.set_workflow_run(scope.run_id);
+        // ITEM-12: carry the reviewer classification onto the journal row.
+        guard.set_review_classification(review_classification);
+        // ITEM-16: carry the idempotency key on the call context (persisted as the
+        // row's `tool_use_id`, which is otherwise unused for a workflow call).
+        if let Some(key) = idempotency_key {
+            guard.set_idempotency_key(key);
+        }
         guard.call_tool(tool_name, args, None, None, None).await
     };
     let result = tokio::select! {
@@ -1274,7 +1288,9 @@ impl StepDispatcher for ToolDispatcher {
             run_id: ctx.run_id,
         };
         let (server_id, tool_result) =
-            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, &cancel).await {
+            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, &cancel, None, None)
+                .await
+            {
                 Ok(v) => v,
                 Err(McpToolCallError::Cancelled) => return StepResult::Cancelled,
                 Err(McpToolCallError::Failed(error)) => {

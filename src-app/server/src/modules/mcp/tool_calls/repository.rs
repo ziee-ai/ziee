@@ -17,9 +17,10 @@ pub async fn insert_call(pool: &PgPool, req: CreateMcpToolCall) -> Result<McpToo
             server_id, server_name, is_built_in, user_id, conversation_id,
             branch_id, message_id, tool_use_id, tool_name, arguments_json,
             source, status, is_error, result_json, content_kinds, result_bytes,
-            error_message, started_at, finished_at, duration_ms, workflow_run_id
+            error_message, started_at, finished_at, duration_ms, workflow_run_id,
+            review_classification
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
         RETURNING
             id,
             server_id,
@@ -66,6 +67,7 @@ pub async fn insert_call(pool: &PgPool, req: CreateMcpToolCall) -> Result<McpToo
         req.finished_at,
         req.duration_ms,
         req.workflow_run_id,
+        req.review_classification,
     )
     .fetch_one(pool)
     .await

@@ -22,15 +22,17 @@
 //! the per-step token cap, writes the final answer via `file_io::write_step_output`,
 //! and maps the loop's stop reason to a [`StepResult`].
 
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use agent_core::{
-    AgentCore, AgentEvent, AgentTurnRequest, ApprovalMode, Budget, CancelToken,
-    CompactionExtension, Compactor, EventSink, GateAsk, GateOutcome, GateTicket, HumanGate,
-    IdempotencyKey, ModelClient, ModelResolver, ProviderModelClient, ProviderModelClientFactory,
-    SandboxMode, StopReason, SubagentLimits, ToolCall, ToolProvider, ToolResult, ToolScope,
-    TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
+    AgentCore, AgentEvent, AgentTurnRequest, ApprovalMode, ApprovalPolicy, Budget, CancelToken,
+    CompactionExtension, Compactor, Decision, EventSink, GateAsk, GateOutcome, GateTicket,
+    HumanGate, IdempotencyKey, ModelClient, ModelClientFactory, ModelResolver,
+    ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk,
+    RiskClassifier, SandboxMode, StopReason, SubagentLimits, ToolCall, ToolProvider, ToolResult,
+    ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
 };
 use ai_providers::{ChatMessage, ContentBlock, Provider, Role, Tool};
 use async_trait::async_trait;
@@ -61,6 +63,90 @@ use crate::modules::workflow::validate::{OutputFormat, StepConfig, StepDef};
 const AGENT_COMPACTION_SOFT_LIMIT_TOKENS: usize = 100_000;
 
 // ============================================================
+// Approved-for-session allow-rules (ITEM-13 / DEC-2)
+// ============================================================
+
+/// Process-global `ApprovedForSession` allow-rules, scoped by conversation (or
+/// run, when standalone). A rule is the namespaced tool name `"<server>__<tool>"`.
+/// When a human approves a mutating/external call "for the session" via the
+/// durable review gate, the rule is recorded here; [`ConversationApprovalPolicy`]
+/// consults it so the NEXT matching call auto-approves without re-prompting (no
+/// silent escalation — the first call still went through the gate).
+static APPROVED_FOR_SESSION: OnceLock<Mutex<HashMap<Uuid, HashSet<String>>>> = OnceLock::new();
+
+fn approvals() -> &'static Mutex<HashMap<Uuid, HashSet<String>>> {
+    APPROVED_FOR_SESSION.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The allow-rule key for a call — the crate emits `call.name` already namespaced
+/// (`"<server>__<tool>"`), so it is the rule verbatim.
+fn approval_rule(call: &ToolCall) -> String {
+    call.name.clone()
+}
+
+fn mark_approved_for_session(scope: Uuid, rule: &str) {
+    if let Ok(mut g) = approvals().lock() {
+        g.entry(scope).or_default().insert(rule.to_string());
+    }
+}
+
+fn is_approved_for_session(scope: Uuid, rule: &str) -> bool {
+    approvals()
+        .lock()
+        .map(|g| g.get(&scope).map(|s| s.contains(rule)).unwrap_or(false))
+        .unwrap_or(false)
+}
+
+/// Wraps the crate's `TrustedAutoApprovePolicy` and short-circuits to `Auto` for
+/// any call whose rule the human already approved-for-session in this scope.
+struct ConversationApprovalPolicy {
+    inner: TrustedAutoApprovePolicy,
+    /// Conversation id (or run id, standalone) — the allow-rule scope key.
+    scope: Uuid,
+}
+
+#[async_trait]
+impl ApprovalPolicy for ConversationApprovalPolicy {
+    async fn decide(&self, call: &ToolCall, trusted: bool, sandbox: &SandboxMode) -> Decision {
+        if is_approved_for_session(self.scope, &approval_rule(call)) {
+            return Decision::Auto;
+        }
+        self.inner.decide(call, trusted, sandbox).await
+    }
+}
+
+// ============================================================
+// Recording reviewer classifier (ITEM-12 / DEC-12)
+// ============================================================
+
+/// Delegates to the crate's `ModelRiskClassifier` and, on success, records the
+/// resulting class (`low`/`high`/`critical`) keyed by the call's id so the
+/// `McpToolProvider` can stamp it onto the `mcp_tool_calls` journal row when the
+/// call executes. Fail-closed is preserved — an inner error propagates unchanged
+/// (the crate's `Reviewer` maps it to `Deny`) and nothing is recorded.
+struct RecordingRiskClassifier {
+    inner: ModelRiskClassifier,
+    /// call.id → classification label; shared with the `McpToolProvider`.
+    map: Arc<Mutex<HashMap<String, String>>>,
+}
+
+#[async_trait]
+impl RiskClassifier for RecordingRiskClassifier {
+    async fn classify(&self, call: &ToolCall, policy: &str) -> Result<Risk, AppError> {
+        let risk = self.inner.classify(call, policy).await?;
+        let label = match risk {
+            Risk::Low => "low",
+            Risk::High => "high",
+            Risk::Critical => "critical",
+        };
+        if let Ok(mut g) = self.map.lock() {
+            g.insert(call.id.clone(), label.to_string());
+        }
+        Ok(risk)
+    }
+}
+
+// ============================================================
 // Tool provider (ITEM-20)
 // ============================================================
 
@@ -71,6 +157,9 @@ struct McpToolProvider {
     conversation_id: Option<Uuid>,
     /// The run's cancel handle (threaded into each MCP call's `tokio::select`).
     cancel: Arc<registry::RunHandle>,
+    /// ITEM-12: call.id → reviewer classification, populated by the
+    /// [`RecordingRiskClassifier`]; stamped onto the journal row on execution.
+    classifications: Arc<Mutex<HashMap<String, String>>>,
 }
 
 /// Split a namespaced tool name `"<server>__<tool>"` (as emitted by
@@ -175,7 +264,7 @@ impl ToolProvider for McpToolProvider {
         &self,
         run_id: Uuid,
         call: ToolCall,
-        _idem: IdempotencyKey,
+        idem: IdempotencyKey,
     ) -> Result<ToolResult, AppError> {
         let (server_name, tool_name) = split_tool_name(&call.name);
         let scope = McpCallScope {
@@ -183,7 +272,28 @@ impl ToolProvider for McpToolProvider {
             conversation_id: self.conversation_id,
             run_id,
         };
-        match call_mcp_tool(&scope, &server_name, &tool_name, call.input, true, &self.cancel).await {
+        // ITEM-12: if the reviewer classified this call, stamp the class onto the
+        // `mcp_tool_calls` journal row (DEC-12).
+        let classification = self
+            .classifications
+            .lock()
+            .ok()
+            .and_then(|g| g.get(&call.id).cloned());
+        // ITEM-16: the stable `<run_id>:<turn>:<ordinal>` idempotency key rides
+        // with the call so an in-flight side-effecting call is identifiable on
+        // resume (best-effort — carried through the session context).
+        match call_mcp_tool(
+            &scope,
+            &server_name,
+            &tool_name,
+            call.input,
+            true,
+            &self.cancel,
+            classification,
+            Some(idem),
+        )
+        .await
+        {
             Ok((_server_id, result)) => Ok(mcp_to_agent_result(result)),
             Err(McpToolCallError::Cancelled) => {
                 Err(AppError::internal_error("agent: tool call cancelled"))
@@ -363,7 +473,12 @@ impl HumanGate for WorkflowHumanGate {
         let schema = serde_json::json!({
             "type": "object",
             "properties": {
-                "approve": { "type": "boolean", "title": "Approve this tool call" }
+                "approve": { "type": "boolean", "title": "Approve this tool call" },
+                "approve_for_session": {
+                    "type": "boolean",
+                    "title": "Approve this tool for the rest of the session",
+                    "default": false
+                }
             },
             "required": ["approve"]
         });
@@ -582,6 +697,56 @@ impl StepDispatcher for AgentDispatcher {
         let model_client: Arc<dyn ModelClient> =
             Arc::new(ProviderModelClient::new(self.provider.clone()));
 
+        // ITEM-13: allow-rule scope key — the conversation (or run, standalone).
+        let approval_scope = ctx.conversation_id.unwrap_or(ctx.run_id);
+        // ITEM-12: shared call.id → classification map (reviewer → journal row).
+        let classifications: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        // ITEM-12 (DEC-3): build the reviewer when the admin enabled it. Its
+        // classifier runs on `reviewer_model_id` (nullable → the run's model,
+        // resolved under the user's RBAC via `WorkflowModelResolver`), seeded with
+        // the admin `reviewer_policy`. Fail-closed is the crate's default.
+        let reviewer: Option<Reviewer> = match settings.as_ref() {
+            Some(s) if s.reviewer_enabled => {
+                let policy = s.reviewer_policy.clone().unwrap_or_default();
+                let (rev_client, rev_model_name): (Arc<dyn ModelClient>, String) =
+                    match s.reviewer_model_id {
+                        Some(mid) => match WorkflowModelResolver.resolve(mid, ctx.user_id).await {
+                            Ok(provider) => {
+                                let name = crate::core::Repos
+                                    .llm_model
+                                    .get_by_id(mid)
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .map(|m| m.name)
+                                    .unwrap_or_else(|| ctx.model_name.clone());
+                                (
+                                    ProviderModelClientFactory.for_provider(provider),
+                                    name,
+                                )
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "agent reviewer: model {mid} resolve failed ({e}); \
+                                     using the run's model"
+                                );
+                                (model_client.clone(), ctx.model_name.clone())
+                            }
+                        },
+                        None => (model_client.clone(), ctx.model_name.clone()),
+                    };
+                let inner = ModelRiskClassifier::new(rev_client, rev_model_name);
+                let recording = RecordingRiskClassifier {
+                    inner,
+                    map: classifications.clone(),
+                };
+                Some(Reviewer::new(Arc::new(recording), policy))
+            }
+            _ => None,
+        };
+
         let core = AgentCore {
             transcript: transcript.clone(),
             sink: sink.clone(),
@@ -589,13 +754,19 @@ impl StepDispatcher for AgentDispatcher {
                 user_id: ctx.user_id,
                 conversation_id: ctx.conversation_id,
                 cancel: cancel.clone(),
+                classifications: classifications.clone(),
             }),
             gate: Arc::new(WorkflowHumanGate {
                 pool: pool.clone(),
                 emit: emit.clone(),
                 step_id: step.id.clone(),
             }),
-            policy: Arc::new(TrustedAutoApprovePolicy::new(approval_mode)),
+            // ITEM-13: consult per-conversation `ApprovedForSession` rules first,
+            // else fall back to the admin approval matrix.
+            policy: Arc::new(ConversationApprovalPolicy {
+                inner: TrustedAutoApprovePolicy::new(approval_mode),
+                scope: approval_scope,
+            }),
             models: Arc::new(WorkflowModelResolver),
             model: model_client.clone(),
             model_factory: Arc::new(ProviderModelClientFactory),
@@ -609,19 +780,67 @@ impl StepDispatcher for AgentDispatcher {
                 sink.clone(),
                 ctx.run_id,
             ))],
-            // The reviewer (ITEM-12) is a later safety stage; with `None` the loop
-            // escalates a `Review` outcome straight to the human gate (safe default).
-            reviewer: None,
+            // ITEM-12: the reviewer resolves a `Review` outcome; with `None` a
+            // `Review` escalates straight to the human gate (safe default).
+            reviewer,
             budget,
             limits,
             sandbox,
             model_name: ctx.model_name.clone(),
         };
 
+        // ITEM-16: resume-replay. A non-empty persisted transcript means this is a
+        // crash / gate resume — seed `Resume` (do NOT re-append the user prompt),
+        // so the loop continues from the durable transcript without re-calling the
+        // tool_results already in it.
+        let existing_transcript = repository::get_agent_transcript(&pool, ctx.run_id)
+            .await
+            .ok()
+            .flatten();
+        let is_resume = existing_transcript
+            .as_ref()
+            .and_then(|v| v.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false);
+
+        // ITEM-13: on a durable review-gate resume, if the human approved the
+        // pending call "for the session", record the allow-rule so the resumed
+        // loop auto-approves it (consulted by `ConversationApprovalPolicy`).
+        if is_resume {
+            if let Ok(Some(resp)) = repository::get_elicit_response(&pool, ctx.run_id).await {
+                let inner = resp.get("response");
+                let approved = inner
+                    .and_then(|r| r.get("approve"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let for_session = inner
+                    .and_then(|r| r.get("approve_for_session"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if approved && for_session {
+                    if let Ok(Some(run_row)) = repository::find_run(&pool, ctx.run_id).await {
+                        if let Some(tool) = run_row
+                            .pending_elicitation_json
+                            .as_ref()
+                            .and_then(|p| p.get("data"))
+                            .and_then(|d| d.get("tool"))
+                            .and_then(|v| v.as_str())
+                        {
+                            mark_approved_for_session(approval_scope, tool);
+                        }
+                    }
+                }
+            }
+        }
+
         let req = AgentTurnRequest {
             run_id: ctx.run_id,
             user_id: ctx.user_id,
-            seed: TurnSeed::NewMessage(ChatMessage::user(user_prompt)),
+            seed: if is_resume {
+                TurnSeed::Resume
+            } else {
+                TurnSeed::NewMessage(ChatMessage::user(user_prompt))
+            },
             system: system_blocks,
             tool_scope: ToolScope {
                 servers,

@@ -125,6 +125,24 @@ impl McpSession {
         self.call_ctx.workflow_run_id = Some(run_id);
     }
 
+    /// Stamp the agent reviewer's risk classification (`low`/`high`/`critical`)
+    /// onto this session so the recorded `mcp_tool_calls` row carries it (ITEM-12
+    /// / DEC-12). Called by the workflow agent host's `McpToolProvider` before an
+    /// approval-needing call; `None` for every other path.
+    pub fn set_review_classification(&mut self, classification: Option<String>) {
+        self.call_ctx.review_classification = classification;
+    }
+
+    /// Stamp a stable idempotency key onto the session's call context (ITEM-16).
+    /// Recorded as the `mcp_tool_calls` row's `tool_use_id`, which is otherwise
+    /// unused for a workflow agent call — a queryable handle for resume dedup.
+    /// Only fills an empty slot, so a genuine chat `tool_use_id` is never clobbered.
+    pub fn set_idempotency_key(&mut self, key: String) {
+        if self.call_ctx.tool_use_id.is_none() {
+            self.call_ctx.tool_use_id = Some(key);
+        }
+    }
+
     /// Record a finished tool call to the `mcp_tool_calls` history, then emit
     /// an owner-scoped sync event. Fire-and-forget: a DB hiccup must NEVER
     /// fail the tool call, so we `tokio::spawn` and only log on error. Skips

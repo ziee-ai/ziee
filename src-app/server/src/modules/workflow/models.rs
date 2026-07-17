@@ -100,6 +100,11 @@ pub enum WorkflowRunStatus {
     /// Spared by the boot sweep and resumed lazily when the human submits
     /// (durable resume).
     Waiting,
+    /// Non-terminal (ITEM-17): a `kind: agent` run that crashed mid-loop while
+    /// `resumable_agent = true`. The boot sweep marks it `resumable` (NOT
+    /// `failed`) and re-drives it via `resume_run`, which replays the persisted
+    /// `agent_transcript_json` so completed tool calls are not re-run.
+    Resumable,
     Completed,
     Failed,
     Cancelled,
@@ -111,6 +116,7 @@ impl WorkflowRunStatus {
             WorkflowRunStatus::Pending => "pending",
             WorkflowRunStatus::Running => "running",
             WorkflowRunStatus::Waiting => "waiting",
+            WorkflowRunStatus::Resumable => "resumable",
             WorkflowRunStatus::Completed => "completed",
             WorkflowRunStatus::Failed => "failed",
             WorkflowRunStatus::Cancelled => "cancelled",
@@ -124,6 +130,7 @@ impl WorkflowRunStatus {
             "pending" => WorkflowRunStatus::Pending,
             "running" => WorkflowRunStatus::Running,
             "waiting" => WorkflowRunStatus::Waiting,
+            "resumable" => WorkflowRunStatus::Resumable,
             "completed" => WorkflowRunStatus::Completed,
             "failed" => WorkflowRunStatus::Failed,
             "cancelled" => WorkflowRunStatus::Cancelled,
@@ -200,6 +207,13 @@ mod tests {
         // resumable, not done.
         assert_eq!(WorkflowRunStatus::Waiting.as_str(), "waiting");
         assert!(!WorkflowRunStatus::Waiting.is_terminal());
+        // ITEM-17: `resumable` roundtrips + is non-terminal (crash-resume state).
+        assert_eq!(WorkflowRunStatus::Resumable.as_str(), "resumable");
+        assert_eq!(
+            WorkflowRunStatus::from_db_str("resumable"),
+            Some(WorkflowRunStatus::Resumable)
+        );
+        assert!(!WorkflowRunStatus::Resumable.is_terminal());
         // Sanity: the terminal trio is terminal; the in-flight trio is not.
         assert!(WorkflowRunStatus::Completed.is_terminal());
         assert!(WorkflowRunStatus::Failed.is_terminal());

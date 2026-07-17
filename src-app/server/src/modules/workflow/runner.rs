@@ -1319,10 +1319,17 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     let run = repository::find_run(pool, run_id)
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
-    // Only a parked durable gate resumes. Anything else (already running /
+    // A parked durable gate (`waiting`) OR a crashed agent run the boot sweep
+    // spared (`resumable`, ITEM-17) resumes. Anything else (already running /
     // terminal) is nothing to do.
-    if run.status != "waiting" {
+    if run.status != "waiting" && run.status != "resumable" {
         return Ok(());
+    }
+    // ITEM-17: a crash-resumed run has no gate to consume — promote it back to
+    // `running` so the liveness heartbeat + no-progress guard cover it (the
+    // `waiting` path keeps its status until the gate is consumed downstream).
+    if run.status == "resumable" {
+        repository::mark_status(pool, run_id, WorkflowRunStatus::Running, None).await?;
     }
 
     let workflow = repository::find_by_id(pool, run.workflow_id)

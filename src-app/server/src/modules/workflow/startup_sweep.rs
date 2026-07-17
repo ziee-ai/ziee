@@ -57,7 +57,12 @@ pub async fn sweep_at_boot(
             // spared it, and its `outputs/` is the resume checkpoint — KEEP it
             // so `resume_run` can rehydrate after the user submits.
             let keep_dir = match repository::find_run(pool, run_id).await {
-                Ok(Some(r)) => matches!(r.status.as_str(), "pending" | "running" | "waiting"),
+                // ITEM-17: `resumable` is a non-terminal crash-resume state — keep
+                // its staged dir (its workspace + transcript are the resume source).
+                Ok(Some(r)) => matches!(
+                    r.status.as_str(),
+                    "pending" | "running" | "waiting" | "resumable"
+                ),
                 Ok(None) => false,
                 Err(_) => false,
             };
@@ -73,5 +78,37 @@ pub async fn sweep_at_boot(
             "workflow: startup sweep removed {removed} stale staged dir(s)"
         );
     }
+
+    // ITEM-17: re-drive every `resumable` crash-resume run. `fail_orphaned_runs`
+    // marked crashed `kind: agent` runs `resumable` (spared, dir kept); each is
+    // re-entered via `resume_run`, whose AgentDispatcher replays the persisted
+    // transcript so completed tool calls are not re-executed. Best-effort — a
+    // resume that can't currently resolve its model just logs and stays parked.
+    match repository::list_resumable_run_ids(pool).await {
+        Ok(ids) if !ids.is_empty() => {
+            tracing::info!(
+                count = ids.len(),
+                "workflow: startup sweep re-driving {} resumable agent run(s)",
+                ids.len()
+            );
+            for run_id in ids {
+                let pool = pool.clone();
+                tokio::spawn(async move {
+                    if let Err(e) =
+                        crate::modules::workflow::runner::resume_run(&pool, run_id).await
+                    {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            error = %e,
+                            "workflow: resume of crashed agent run failed"
+                        );
+                    }
+                });
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "workflow: list resumable runs failed"),
+    }
+
     Ok(())
 }

@@ -853,7 +853,7 @@ pub async fn cancel_cas(
         SET status = 'cancelled',
             error_message = 'cancelled by user',
             updated_at = NOW()
-        WHERE id = $1 AND status IN ('pending', 'running', 'waiting')
+        WHERE id = $1 AND status IN ('pending', 'running', 'waiting', 'resumable')
         RETURNING status
         "#,
         run_id,
@@ -872,6 +872,26 @@ pub async fn fail_orphaned_runs(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
 ) -> Result<u64, AppError> {
+    // ITEM-17: FIRST spare crashed `running` agent runs — a run that crashed
+    // while inside an agent step (`resumable_agent = true`) becomes `resumable`
+    // (NOT `failed`) so the boot path re-drives it from its persisted
+    // `agent_transcript_json`. This runs before the fail-sweep below, so those
+    // rows are no longer `running` and the fail-sweep skips them.
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'resumable',
+            updated_at = NOW()
+        WHERE status = 'running'
+          AND resumable_agent = TRUE
+          AND created_at < $1
+        "#,
+        cutoff,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
     // Sweep in bounded batches rather than one mass UPDATE: a single
     // statement would take row locks on every matching orphan at once,
     // which on a large backlog holds a long write-lock span and bloats the
@@ -911,6 +931,18 @@ pub async fn fail_orphaned_runs(
         }
     }
     Ok(total)
+}
+
+/// ITEM-17: every run parked in the `resumable` crash-resume state, oldest
+/// first. The boot path re-drives each via `resume_run` after the startup sweep.
+pub async fn list_resumable_run_ids(pool: &PgPool) -> Result<Vec<Uuid>, AppError> {
+    let ids = sqlx::query_scalar!(
+        r#"SELECT id FROM workflow_runs WHERE status = 'resumable' ORDER BY created_at ASC"#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(ids)
 }
 
 pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>, AppError> {

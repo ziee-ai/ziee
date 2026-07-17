@@ -240,6 +240,7 @@ pub fn build_record(
         finished_at: Some(started_at + time::Duration::milliseconds(elapsed_ms)),
         duration_ms: Some(elapsed_ms),
         workflow_run_id: ctx.workflow_run_id,
+        review_classification: ctx.review_classification.clone(),
     })
 }
 
