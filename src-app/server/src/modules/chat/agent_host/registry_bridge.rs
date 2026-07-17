@@ -78,28 +78,47 @@ impl RegistryBridge {
         }
     }
 
-    /// Seed the per-iteration context metadata exactly as the legacy loop does
-    /// (`streaming.rs`): provider/model identity + memoized tool-capability +
-    /// resolved available files — so title/file/other hooks behave identically.
     async fn seed_metadata(&self, ctx: &mut StreamContext) {
-        let m = &mut ctx.metadata;
-        m.insert("provider_type".into(), serde_json::json!(self.provider_type));
-        m.insert("model_name".into(), serde_json::json!(self.model_name));
-        m.insert("model_id".into(), serde_json::json!(self.model_id.to_string()));
-        m.insert(
-            "provider_id".into(),
-            serde_json::json!(self.provider_id.to_string()),
-        );
-        let tool_capable =
-            crate::modules::file::available_files::ensure_model_tools_capable(m).await;
-        if tool_capable {
-            crate::modules::file::available_files::seed_available_files(
-                m,
-                ctx.conversation_id,
-                ctx.user_id,
-            )
-            .await;
-        }
+        seed_context_metadata(
+            ctx,
+            &self.provider_type,
+            &self.model_name,
+            self.model_id,
+            self.provider_id,
+        )
+        .await;
+    }
+}
+
+/// Seed a `StreamContext`'s metadata exactly as the legacy loop does
+/// (`streaming.rs`): provider/model identity + memoized tool-capability + resolved
+/// available files — so the file/title/etc. content hooks (run both in
+/// `before_llm_call` AND in the transcript's `process_content_for_llm` replay path)
+/// behave identically. Both the `RegistryBridge` (per iteration) and the
+/// `ChatTranscriptStore`'s context (once per turn) use this.
+pub async fn seed_context_metadata(
+    ctx: &mut StreamContext,
+    provider_type: &str,
+    model_name: &str,
+    model_id: uuid::Uuid,
+    provider_id: uuid::Uuid,
+) {
+    let m = &mut ctx.metadata;
+    m.insert("provider_type".into(), serde_json::json!(provider_type));
+    m.insert("model_name".into(), serde_json::json!(model_name));
+    m.insert("model_id".into(), serde_json::json!(model_id.to_string()));
+    m.insert(
+        "provider_id".into(),
+        serde_json::json!(provider_id.to_string()),
+    );
+    let tool_capable = crate::modules::file::available_files::ensure_model_tools_capable(m).await;
+    if tool_capable {
+        crate::modules::file::available_files::seed_available_files(
+            m,
+            ctx.conversation_id,
+            ctx.user_id,
+        )
+        .await;
     }
 }
 

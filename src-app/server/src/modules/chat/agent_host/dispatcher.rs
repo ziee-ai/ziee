@@ -69,6 +69,8 @@ pub struct ChatAgentTurn {
     /// `create_provider_from_model_id`, exactly as today).
     pub provider: Arc<Provider>,
     pub model_name: String,
+    pub model_id: Uuid,
+    pub provider_id: Uuid,
     /// The tool servers this turn may call (built-in NAMES pushed by context
     /// extensions + the conversation's own MCP servers). Empty = no tools.
     pub tool_scope: ToolScope,
@@ -87,7 +89,7 @@ impl ChatAgentTurn {
     /// Run the turn. `seed` = the new user message (fresh turn) or `Resume`
     /// (cross-request approval resume — do not re-append the user message).
     pub async fn run(self, seed: TurnSeed) -> Result<Vec<AgentEvent>, AppError> {
-        let transform_context = StreamContext {
+        let mut transform_context = StreamContext {
             conversation_id: self.conversation_id,
             branch_id: self.branch_id,
             message_id: Some(self.assistant_message_id),
@@ -96,6 +98,18 @@ impl ChatAgentTurn {
             metadata: std::collections::HashMap::new(),
             iteration: 0,
         };
+        // Seed provider/model/tool-capability/available-files metadata so the
+        // transcript's `process_content_for_llm` replay path (file re-inline / drop,
+        // etc.) has the same context the legacy loop gives it — otherwise the file
+        // extension errors with "Provider ID not in context".
+        crate::modules::chat::agent_host::registry_bridge::seed_context_metadata(
+            &mut transform_context,
+            self.provider.provider_type(),
+            &self.model_name,
+            self.model_id,
+            self.provider_id,
+        )
+        .await;
 
         let transcript = Arc::new(ChatTranscriptStore {
             pool: self.pool.clone(),
@@ -403,6 +417,8 @@ pub async fn start_generation_agent_core(
             assistant_message_id,
             provider,
             model_name,
+            model_id,
+            provider_id,
             // The MCP bridge sets request.tools directly (its gathering), so an empty
             // ToolScope is fine — ChatToolProvider still EXECUTES the chosen tool by
             // its namespaced name. Tool-list gathering stays with the MCP extension.
