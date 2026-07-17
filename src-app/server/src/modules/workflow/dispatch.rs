@@ -1248,15 +1248,25 @@ pub(crate) async fn call_mcp_tool(
 
     let call = async {
         let mut guard = session.write().await;
-        // E4: link the recorded mcp_tool_calls row to this run.
-        guard.set_workflow_run(scope.run_id);
+        // E4: link the recorded `mcp_tool_calls` row to this run — WORKFLOW only.
+        // `mcp_tool_calls.workflow_run_id` FKs `workflow_runs`; a CHAT `run_id` is
+        // the assistant message id, not a workflow run, so setting it would
+        // FK-violate the insert (and silently drop the recording). The chat row is
+        // instead owner/conversation-scoped via the session context.
+        if matches!(
+            source,
+            crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow
+        ) {
+            guard.set_workflow_run(scope.run_id);
+            // ITEM-16: the idempotency key is persisted as the row's `tool_use_id`
+            // (unused for a workflow call). A chat call's real tool_use_id comes
+            // from the LLM ContentBlock, so don't overwrite it with the key here.
+            if let Some(key) = idempotency_key {
+                guard.set_idempotency_key(key);
+            }
+        }
         // ITEM-12: carry the reviewer classification onto the journal row.
         guard.set_review_classification(review_classification);
-        // ITEM-16: carry the idempotency key on the call context (persisted as the
-        // row's `tool_use_id`, which is otherwise unused for a workflow call).
-        if let Some(key) = idempotency_key {
-            guard.set_idempotency_key(key);
-        }
         guard.call_tool(tool_name, args, None, None, None).await
     };
     let result = tokio::select! {
