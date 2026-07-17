@@ -291,6 +291,7 @@ impl ToolProvider for McpToolProvider {
             self.cancel.as_ref(),
             classification,
             Some(idem),
+            crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
         )
         .await
         {

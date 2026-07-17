@@ -1145,6 +1145,10 @@ pub(crate) async fn call_mcp_tool(
     // into the MCP call context so an in-flight side-effecting call is identifiable
     // on resume (`None` for the plain tool step).
     idempotency_key: Option<String>,
+    // Which surface the recorded `mcp_tool_calls` row attributes this call to
+    // (`Workflow` for the workflow tool step + agent host; `Chat` for the chat
+    // agent host, so its rows read `chat` like today's chat tool calls).
+    source: crate::modules::mcp::tool_calls::models::McpToolCallSource,
 ) -> Result<(Uuid, crate::modules::mcp::client::traits::ToolResult), McpToolCallError> {
     let server_id = match resolve_tool_server(scope.user_id, server_name).await {
         Ok(id) => id,
@@ -1227,7 +1231,7 @@ pub(crate) async fn call_mcp_tool(
             None, // branch_id
             None, // message_id — a workflow run has no chat message
             None, // tool_use_id — not an LLM ContentBlock::ToolUse
-            crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
+            source,
         )
         .await
     {
@@ -1305,7 +1309,8 @@ impl StepDispatcher for ToolDispatcher {
             run_id: ctx.run_id,
         };
         let (server_id, tool_result) =
-            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, cancel.as_ref(), None, None)
+            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, cancel.as_ref(), None, None,
+                crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow)
                 .await
             {
                 Ok(v) => v,

@@ -140,6 +140,33 @@ pub struct ChatApprovalPolicy {
     pub unattended_allowed: serde_json::Value,
 }
 
+/// Resolve the conversation's effective approval policy for a turn.
+///
+/// WAVE-5 STATUS: seeds a SAFE DEFAULT — `ManualApprove`, no auto-approve, no
+/// disabled set, attended. Result: any non-built-in tool PROMPTS (built-ins still
+/// auto via `trusted`); a built-in read-only turn is unaffected. This is safe and
+/// correct for the no-tool + manual-approval paths. FULL parity with `mcp.rs`'s
+/// per-conversation `get_approval_mode`/`get_auto_approved_tools`/
+/// `get_disabled_servers` + user-defaults + unattended resolution is completed
+/// during the tool-path verification (see IMPL_NOTES wave-5 fan-in TODO).
+pub async fn resolve_chat_approval_policy(
+    user_id: Uuid,
+    conversation_id: Uuid,
+    branch_id: Uuid,
+) -> Result<ChatApprovalPolicy, AppError> {
+    Ok(ChatApprovalPolicy {
+        user_id,
+        conversation_id,
+        branch_id,
+        approval_mode: ApprovalMode::default(), // ManualApprove
+        conv_auto_approved: Vec::new(),
+        user_auto_approved: Vec::new(),
+        disabled_servers: Vec::new(),
+        unattended: false,
+        unattended_allowed: serde_json::Value::Null,
+    })
+}
+
 impl ChatApprovalPolicy {
     /// Is this specific (server, tool) auto-approved by the conversation or the
     /// user defaults? (Mirrors `mcp.rs`'s `is_auto_approved` check.)

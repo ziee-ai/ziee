@@ -276,6 +276,7 @@ impl ToolProvider for ChatToolProvider {
             &self.cancel,
             None,
             Some(idem),
+            crate::modules::mcp::tool_calls::models::McpToolCallSource::Chat,
         )
         .await
         {

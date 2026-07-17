@@ -7,6 +7,7 @@
 //! pushes its built-in server NAME there in `contribute`; `ChatToolProvider::list`
 //! gathers tools from `tool_scope.servers` (mirrors the workflow McpToolProvider).
 
+pub mod dispatcher;
 pub mod event_sink;
 pub mod gate;
 pub mod resolver;
