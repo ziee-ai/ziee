@@ -44,34 +44,77 @@ tool). Incl. **TEST-36** `tests/deps_boundary.rs` — port-boundary dep set asse
 `check:testid-registry` fails on **pre-existing base debt** (reproduces on clean HEAD,
 repo-wide regen out of scope).
 
-## Remaining enumerated tests — disposition needed (Phase-8 gap)
+### Newly authored + run this session (the rigorous-path deliverables)
 
-Six integration + five e2e enumerated FILES are unauthored. Split by *why*:
+- **TEST-23** `agent/verification_test.rs` — fabricated DOI → `not_found` (never
+  invented) through the agent-core loop (bridge; deterministic resolver-404
+  anchor). **PASS** (`logs/test23_verification.log`).
+- **TEST-17/18/37** `workflow/agent_step_resume_test.rs` — the `kind:agent`
+  durable review gate: forced-High reviewer parks `waiting`; snapshot written at
+  the gate boundary; the tool is blocked pre-approval; the boot sweep SPARES the
+  run; approve → cold resume → completes; the approved tool executes on resume.
+  **PASS** (`logs/test17_resume.log`).
+- **TEST-22** `agent/reviewer_test.rs` — a mutating call under `OnRequest`
+  escalates via the reviewer to the durable gate, and the classification PERSISTS
+  to `mcp_tool_calls.review_classification` after resume. **PASS**
+  (`logs/test22_reviewer.log`). *This test caught + drove a real bug fix:* the
+  classification was being discarded across the durable-gate boundary (never
+  populated in production) — now carried through the gate record + re-seeded on
+  resume.
 
-**(A) Test a UI surface that does NOT exist in this migration** (grep for
-agent-chat / plan-todo / parallel-search / workflow-run UI returns empty — the chat
-cutover deliberately REUSED the existing chat UI; no new agent front-end was built):
-- **TEST-28** agent-chat.spec, **TEST-29** agent-parallel-search.spec,
-  **TEST-30** agent-step-run.spec, **TEST-33** agent-progress.spec.
-  → **No surface to test.** Descope candidates (no-surface).
+These were made deterministic by a **debug-only** `ZIEE_AGENT_FORCE_RISK` seam
+(`cfg!(debug_assertions)`, physically absent in release) that fixes the reviewer's
+classification without depending on a small model classifying `High`.
 
-**(B) Existing chat e2e on the flag** — **TEST-39**. Flag is opt-in (default legacy);
-backend parity proven by TEST-38 (162/9 ON==OFF). Descope candidate (UI unchanged
-when flag off; backend regression already the gate).
+### Descoped (human-approved DECISIONS DEC-23; PLAN ITEM-7/10/27/29/31 `[DESCOPED]`)
 
-**(C) Feature not implemented in this migration** — **TEST-26** tool verbosity
-(`concise|detailed`): no `verbosity` symbol exists in `agent-core/src` (ITEM-10 not
-built this pass). Descope candidate (feature-not-built) — or implement.
+- **TEST-19** (fan-out) — `Fanout::fan_out` has NO production caller and
+  `allow_delegate` is never `true`: fan-out/`delegate` is unit-tested crate code,
+  not wired into the loop this pass (ITEM-7/27). Cannot be authored against a
+  production path that doesn't exist.
+- **TEST-26** (tool verbosity) — no `verbosity` symbol exists; ITEM-10 unbuilt.
+- **TEST-28/29/30/33** (agent-chat / parallel-search / workflow-run / progress
+  e2e) — grep finds NO such UI; the cutover reused the existing chat UI + run
+  view (ITEM-29/31 unbuilt). No surface to test.
+- **TEST-39** (existing chat e2e on the flag) — the flag is opt-in (default
+  legacy) so the shipped UX is byte-identical; backend parity is already the gate
+  (TEST-38, 162/9 ON==OFF).
 
-**(D) Implemented + crate-unit-covered + workflow-wired; end-to-end real-LLM
-integration file unauthored** — **TEST-17/18/37** (agent-step durable resume),
-**TEST-19** (fanout/delegate), **TEST-22** (reviewer escalation), **TEST-23**
-(citation not-found). Crate logic is unit-tested (`reviewer.rs`/`fanout.rs`/
-`policy.rs`/`core.rs` resume `#[cfg(test)]`); workflow wiring exercised by
-`agent_step_test` + `journal_test`; the resume *mechanism* fully covered by the
-existing `workflow/resume.rs` (3 tests). Unauthored files are the real-LLM
-end-to-end versions (each needs the bridge to reliably drive model-dependent
-behavior: reviewer-High classification, fanout spawning, fabricated-DOI handling).
+## Machine-parseable results (Phase-8)
 
-**(D) items are RUNNABLE** (author + bridge). **(A)/(B)/(C)** are genuine blockers
-(no surface / redundant / not-built) that need a human-approved DECISION per FB-7.
+- **TEST-1**: PASS
+- **TEST-2**: PASS
+- **TEST-3**: PASS
+- **TEST-4**: PASS
+- **TEST-5**: PASS
+- **TEST-6**: PASS
+- **TEST-7**: PASS
+- **TEST-8**: PASS
+- **TEST-9**: PASS
+- **TEST-10**: PASS
+- **TEST-11**: PASS
+- **TEST-12**: PASS
+- **TEST-13**: PASS
+- **TEST-14**: PASS
+- **TEST-15**: PASS
+- **TEST-16**: PASS
+- **TEST-17**: PASS
+- **TEST-18**: PASS
+- **TEST-20**: PASS
+- **TEST-21**: PASS
+- **TEST-22**: PASS
+- **TEST-23**: PASS
+- **TEST-24**: PASS
+- **TEST-25**: PASS
+- **TEST-27**: PASS
+- **TEST-31**: PASS
+- **TEST-32**: PASS
+- **TEST-34**: PASS
+- **TEST-36**: PASS
+- **TEST-37**: PASS
+- **TEST-38**: PASS
+- **TEST-40**: PASS
+- **TEST-41**: PASS
+
+npm run check (ui): PASS
+gate:ui (ui): PASS

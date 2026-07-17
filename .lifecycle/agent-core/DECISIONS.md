@@ -99,3 +99,13 @@ resolve by codebase convention. Nothing remains open.
 ### DEC-22: Who owns the chat message lifecycle (user-message create / assistant-message reuse / resume) after the re-home?
 **Resolution:** The **chat host** (the `send_message` handler + `ChatAgentDispatcher`), NOT the crate. `should_create_user_message` / `provide_assistant_message` / `after_user_message_created` are message-lifecycle decisions the host makes BEFORE calling `core.run` (they drive cross-request approval resume). The crate loop only sees an already-seeded transcript (`TurnSeed::NewMessage` for a fresh turn, `TurnSeed::Resume` for an approval resume). This keeps the fire-and-forget POST contract + the per-`assistant_message_id` cancel token host-side.
 **Basis:** design — these hooks name chat-only types (`SendMessageRequest`, `Message`); they cannot be domain-neutral, so they stay in the host (matches the map's resume semantics).
+
+### DEC-23: Disposition of the un-built / un-wired agent sub-features (Phase-8 descope)
+**Resolution:** ITEM-7, ITEM-10, ITEM-27, ITEM-29, ITEM-31 are DESCOPED from this pass — the migration delivered the chat send-loop cutover onto agent-core + the workflow `kind:agent` host + the reviewer/durable-resume path + the admin settings surface, but NOT the fan-out wiring, the tool-verbosity convention, the `delegate` tool, or a new agent authoring/run/plan-checklist UI. Their enumerated tests (TEST-19/26/28/29/30/33/39) are removed; the ITEMs they solely covered are the descoped ones (ITEM-24/ITEM-15 remain covered by TEST-38/24/25 and TEST-17 respectively).
+**Basis:** codebase evidence — `Fanout::fan_out` has no production caller and `allow_delegate` is never set true (fanout/delegate unwired); no `verbosity` symbol exists (ITEM-10 unbuilt); grep finds no agent-chat/plan-checklist/parallel-search/workflow-agent-run UI (ITEM-29/31 unbuilt). Crate logic for fan-out/reviewer/policy is unit-covered (36/36).
+
+- DESCOPED: ITEM-7 — subagent fan-out crate module is unit-tested but not wired into the loop (no `fan_out` caller; `allow_delegate` never true) [approved: user 2026-07-17]
+- DESCOPED: ITEM-10 — tool `concise|detailed` verbosity convention not implemented this pass [approved: user 2026-07-17]
+- DESCOPED: ITEM-27 — `delegate` core-injected tool not wired (depends on descoped ITEM-7) [approved: user 2026-07-17]
+- DESCOPED: ITEM-29 — no new agent authoring/run-view UI (chat cutover reused existing chat UI; workflow agent step runs headless) [approved: user 2026-07-17]
+- DESCOPED: ITEM-31 — no plan+checklist + progress renderer (no agent chat/run UI surface) [approved: user 2026-07-17]
