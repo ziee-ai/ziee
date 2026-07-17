@@ -1,0 +1,37 @@
+# deploy2 "BioGnosia" LOCAL runtime overlay.
+#
+# Apply ON TOP of the base local stack (bundled pgvector postgres + the
+# self-contained docker/web/Dockerfile image):
+#
+#   ZIEE_WEB_PORT=9082 ZIEE_STORAGE_KEY=<32+ chars> \
+#     docker compose -p ziee-deploy2 \
+#       -f docker-compose.yml -f docker-compose.deploy2.yml up -d --build
+#
+# It enables the code sandbox with the empirically-minimal isolation relaxation
+# (NOT --privileged) and maps the host gateway so ziee can reach the biognosia
+# MCP server published on the host at :8081.
+name: ziee-deploy2
+
+services:
+  ziee-web:
+    environment:
+      # Code sandbox ON (image ships bwrap/squashfuse/fuse3).
+      ZIEE_CODE_SANDBOX_ENABLED: "true"
+      # Stable at-rest key; align to the source instance when copying encrypted
+      # LLM credentials. Falls back to the base change-me key if unset.
+      ZIEE_STORAGE_KEY: "${ZIEE_STORAGE_KEY:-ziee-local-compose-storage-key-change-me-32chars}"
+      # Origin other MCP containers (biognosia) use to fetch ziee-hosted files,
+      # and the code-sandbox resource-link origin — reach deploy2 via the host
+      # gateway + its published web port.
+      ZIEE_PUBLIC_FILE_ORIGIN: "http://host.docker.internal:${ZIEE_WEB_PORT:-9082}"
+    # Reach the host-published biognosia MCP at host.docker.internal:8081.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Minimal code-sandbox isolation (bwrap user namespaces + squashfuse /dev/fuse).
+    devices:
+      - "/dev/fuse:/dev/fuse"
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - systempaths=unconfined

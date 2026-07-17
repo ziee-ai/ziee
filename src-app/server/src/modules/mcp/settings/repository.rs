@@ -18,7 +18,7 @@ pub struct McpSettingsRepository {
 
 /// Default approval mode applied when a scope has no row. Matches the
 /// table's column default.
-const DEFAULT_APPROVAL_MODE: &str = "manual_approve";
+const DEFAULT_APPROVAL_MODE: &str = "auto_approve";
 
 impl McpSettingsRepository {
     pub fn new(pool: PgPool) -> Self {

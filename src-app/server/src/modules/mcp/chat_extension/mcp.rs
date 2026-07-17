@@ -2450,8 +2450,9 @@ impl ChatExtension for McpChatExtension {
             // takes effect for fresh conversations.
             (defaults.get_approval_mode(), defaults.get_auto_approved_tools())
         } else {
-            // No conversation override AND no user defaults: be conservative.
-            (crate::modules::mcp::chat_extension::ApprovalMode::ManualApprove, Vec::new())
+            // No conversation override AND no user defaults: deploy2 default is
+            // auto-approve (BioGnosia deploy runs all tool calls auto-approved).
+            (crate::modules::mcp::chat_extension::ApprovalMode::AutoApprove, Vec::new())
         };
 
         tracing::info!(

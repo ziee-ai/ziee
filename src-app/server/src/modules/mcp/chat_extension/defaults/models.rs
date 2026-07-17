@@ -102,7 +102,7 @@ impl UserMcpDefaults {
     pub fn get_approval_mode(&self) -> ApprovalMode {
         self.approval_mode
             .parse()
-            .unwrap_or(ApprovalMode::ManualApprove)
+            .unwrap_or(ApprovalMode::AutoApprove)
     }
 
     /// Get auto-approved tools as typed Vec
