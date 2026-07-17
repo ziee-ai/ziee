@@ -6,8 +6,10 @@ Base: `origin/main @ 46f605dc5` (post-SDK-extraction). Branch: `feat/agent-core`
 ## Migrations — MODULE-OWNED (SDK N7), not a flat dir
 - There is **no `src-app/server/migrations/` flat dir**. Each module owns
   `src/modules/<m>/migrations/<YYYYMMDDNNNN>_<m>_<desc>.sql`; `build.rs` globs `modules/*/migrations/ ∪
-  sdk/crates/*/migrations/`, timestamp-sorted. Highest existing counter observed:
-  **`202607146095_workflow_grant_permissions.sql`**.
+  sdk/crates/*/migrations/`, timestamp-sorted. Highest existing counter: the SDK crate `ziee-seed`
+  owns **`202607150000_seed_ledger.sql`** (higher than the app modules' `202607146095`). `NNNN` is a
+  monotonic FK-topological counter (bands: 0100 schema / 4000 fkeys / 5000 seed / 6000 grants — see
+  `modules/MIGRATIONS.md`). The merge-gate C2 checks the **union** of module ∪ SDK-crate migrations.
 - This branch adds (using the next monotonic `20260716NNNN` counters — H5):
   - `modules/agent/migrations/<ts>_agent_admin_settings.sql` (new `agent` module — greenfield; the
     singleton settings table; NO permission-grant migration — `agent::settings::*` is admin-only via the
