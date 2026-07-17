@@ -201,3 +201,36 @@ Add to the Log Index: `sandbox_real_llm_ON.log` (Tier-5 flag ON),
 `sandbox_llm_drives_OFF.log` (flag-OFF classification), `chat_realllm_ON.log`
 (the 8 `agentic_chat` StubChat tests run against the proxy — pre-existing failures,
 see the regression note), `main_baseline.log` (origin/main baseline proof).
+
+## Workflow-LLM + Scheduler suites vs the proxy, flag ON (regression surface: agent-core drives the workflow kind:agent host; scheduled tasks fire those runs)
+
+Env: `ZIEE_CHAT_AGENT_CORE=1`, Anthropic provider → proxy (`ANTHROPIC_API_KEY=sk-local-audit`,
+`ANTHROPIC_BASE_URL=http://127.0.0.1:4000/v1`; Groq-first helper falls through to
+Anthropic, `claude-opus-4-1` wildcard-mapped to Qwen by the proxy). NO soft-skip.
+
+**Workflow LLM** (`tests/workflow/{real_llm,sr_real_llm,agent_step_test,agent_step_resume_test}`)
+→ **7 passed / 1 failed** in 65.34s — log `logs/workflow_realllm_ON.log`.
+- The 1 fail — `sr_real_llm::real_llm_sr_review_end_to_end_completes` — is a **model-speed
+  timeout** (the run was still `running`, progressing correctly through the multi-step
+  systematic-review DAG — screen/dedup/select_included all produced valid output — but
+  didn't finish within the poll window at ~1–22 s/LLM step on the local Qwen). **0
+  flag-delta: it fails identically flag-OFF** (`logs/workflow_sr_OFF.log`, still `running`
+  at `extract`) → NOT a regression. (agent_step_test/agent_step_resume_test also re-ran
+  green here on the flag.)
+
+**Scheduler** (whole `tests/scheduler/` — crud, dispatch_behavior, tick, test_fire,
+continue_in_chat, runs_timeline, sync_emit, validation) → **25 passed / 1 failed** in
+32.79s — log `logs/scheduler_ON.log`.
+- The 1 fail — `dispatch_behavior_test::recurring_prompt_task_reuses_one_bound_conversation`
+  — asserts 2 recurring real-LLM prompt-task firings both notify with a bound conversation;
+  fewer than 2 completed+notified within the wait window (slow local model). **0 flag-delta:
+  it fails identically flag-OFF** (`logs/scheduler_dispatch_OFF.log`, same
+  `convs.len()==2` assertion) → NOT a regression. dispatch_behavior/test_fire/
+  continue_in_chat (the agent/LLM-firing ones) otherwise pass on the flag.
+
+**Both suites' single failures are 0 flag-delta (fail identically OFF) — model-speed/timing
+on the local Qwen, not code introduced by this migration.** The migration remains
+blast-radius-clean across chat, mcp, workflow-LLM, and scheduler.
+
+Add to Log Index: `workflow_realllm_ON.log`, `workflow_sr_OFF.log`, `scheduler_ON.log`,
+`scheduler_dispatch_OFF.log`.
