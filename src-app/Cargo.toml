@@ -18,6 +18,7 @@ resolver = "3"
 members = [
     "server",
     "server/ai-providers",
+    "agent-core",
     "server/macros",
     "desktop/tauri",
     "stub-engine",
