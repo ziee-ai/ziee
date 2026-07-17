@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
-use crate::chat::helpers::{create_conversation, parse_uuid, send_and_collect};
+use crate::chat::helpers::{create_conversation, parse_uuid};
 use crate::common::test_helpers::create_user_with_permissions;
 use crate::common::TestServer;
 
