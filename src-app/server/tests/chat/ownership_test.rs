@@ -133,7 +133,8 @@ async fn test_user_cannot_see_other_users_conversation_in_list() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
 
     assert_eq!(conversations.len(), 0, "User2 should not see User1's conversation");
 }
