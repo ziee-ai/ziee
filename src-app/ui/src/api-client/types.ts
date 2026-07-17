@@ -11,6 +11,29 @@
 // =============================================================================
 
 /**
+ * Deployment-wide agent policy (singleton row, `id = true`).
+ *
+ *  `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL
+ *  means "fall back to the run's own model / the compiled-in reviewer
+ *  prompt" (zero-config). The token caps + step/fan-out limits are the
+ *  runtime-tunable knobs an operator adjusts per workload (DEC-6).
+ */
+export interface AgentAdminSettings {
+  default_max_steps: number
+  default_sandbox_mode: string
+  fan_out_max_depth: number
+  fan_out_max_threads: number
+  per_run_token_cap: number
+  per_step_token_cap: number
+  reviewer_enabled: boolean
+  reviewer_model_id?: string
+  reviewer_policy?: string
+  reviewer_risk_thresholds: unknown
+  unattended_approval_policy: string
+  updated_at: string
+}
+
+/**
  * One entry in a task's `allowed_unattended_tools` allow-list (DEC-17.4): an MCP
  *  server the creator pre-authorizes to run unattended, optionally narrowed to a
  *  single tool. `tool_name = None` allow-lists the whole server.
@@ -5772,7 +5795,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'voice_model' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'agent_admin_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'voice_model' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -6022,6 +6045,27 @@ export interface UnattendedToolGrant {
 /** Unread-count response. */
 export interface UnreadCount {
   unread: number
+}
+
+/**
+ * Partial-update request for the singleton. Every field optional (COALESCE
+ *  PATCH); the two nullable columns use the `Option<Option<T>>` tri-state:
+ *    missing  → `None`         → leave the column alone
+ *    `null`   → `Some(None)`   → clear the column back to its default
+ *    value    → `Some(Some(v))`→ set the column
+ */
+export interface UpdateAgentAdminSettingsRequest {
+  default_max_steps?: number
+  default_sandbox_mode?: string
+  fan_out_max_depth?: number
+  fan_out_max_threads?: number
+  per_run_token_cap?: number
+  per_step_token_cap?: number
+  reviewer_enabled?: boolean
+  reviewer_model_id?: string
+  reviewer_policy?: string
+  reviewer_risk_thresholds?: unknown
+  unattended_approval_policy?: string
 }
 
 /** Request structure for updating an existing assistant */
@@ -7175,6 +7219,8 @@ export interface WorkspaceSaveRequest {
 // =============================================================================
 
 export enum Permissions {
+  AgentSettingsManage = 'agent::settings::manage',
+  AgentSettingsRead = 'agent::settings::read',
   AssistantsCreate = 'assistants::create',
   AssistantsDelete = 'assistants::delete',
   AssistantsEdit = 'assistants::edit',
@@ -7317,6 +7363,8 @@ export enum Permissions {
 }
 
 export const PermissionDescriptions: Record<string, string> = {
+  AgentSettingsManage: 'Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).',
+  AgentSettingsRead: 'Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).',
   AssistantsCreate: 'Create user assistants',
   AssistantsDelete: 'Delete user assistants',
   AssistantsEdit: 'Edit user assistants',
@@ -7464,6 +7512,8 @@ export const PermissionDescriptions: Record<string, string> = {
 
 // API endpoint definitions
 export const ApiEndpoints = {
+  'AgentAdmin.get': 'GET /api/agent/settings',
+  'AgentAdmin.update': 'PUT /api/agent/settings',
   'App.getSetupStatus': 'GET /api/app/setup/status',
   'App.setupAdmin': 'POST /api/app/setup/admin',
   'Assistant.create': 'POST /api/assistants',
@@ -7895,6 +7945,8 @@ export const ApiEndpoints = {
 
 // API endpoint parameters
 export type ApiEndpointParameters = {
+  'AgentAdmin.get': void
+  'AgentAdmin.update': UpdateAgentAdminSettingsRequest
   'App.getSetupStatus': void
   'App.setupAdmin': SetupAdminRequest
   'Assistant.create': CreateAssistantRequest
@@ -8326,6 +8378,8 @@ export type ApiEndpointParameters = {
 
 // API endpoint responses
 export type ApiEndpointResponses = {
+  'AgentAdmin.get': AgentAdminSettings
+  'AgentAdmin.update': AgentAdminSettings
   'App.getSetupStatus': SetupStatusResponse
   'App.setupAdmin': AuthResponse
   'Assistant.create': Assistant

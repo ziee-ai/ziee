@@ -17657,6 +17657,118 @@
         ]
       }
     },
+    "/api/agent/settings": {
+      "get": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Read the deployment-wide agent policy",
+        "description": "Returns the singleton deployment-wide agent policy (sandbox/approval mode, reviewer config, token caps, max steps, fan-out guardrails).",
+        "operationId": "AgentAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).",
+                        "name": "AgentSettingsRead",
+                        "value": "agent::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: agent::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Update the deployment-wide agent policy",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null clears `reviewer_model_id` / `reviewer_policy` back to their defaults. Returns 400 on out-of-range or unknown-enum violations before any DB write.",
+        "operationId": "AgentAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton. Every field optional (COALESCE\n PATCH); the two nullable columns use the `Option<Option<T>>` tri-state:\n   missing  → `None`         → leave the column alone\n   `null`   → `Some(None)`   → clear the column back to its default\n   value    → `Some(Some(v))`→ set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).",
+                        "name": "AgentSettingsManage",
+                        "value": "agent::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: agent::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token cap / max-steps / fan-out, unknown sandbox/approval mode, or oversized reviewer_policy)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/skills": {
       "get": {
         "tags": [
@@ -18893,162 +19005,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
           }
         },
         "security": [
@@ -20783,6 +20739,162 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
           }
         },
         "security": [
@@ -24491,6 +24603,71 @@
       }
     },
     "schemas": {
+      "AgentAdminSettings": {
+        "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
+        "type": "object",
+        "properties": {
+          "default_max_steps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "default_sandbox_mode": {
+            "type": "string"
+          },
+          "fan_out_max_depth": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fan_out_max_threads": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_run_token_cap": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_step_token_cap": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reviewer_enabled": {
+            "type": "boolean"
+          },
+          "reviewer_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reviewer_policy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewer_risk_thresholds": true,
+          "unattended_approval_policy": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "default_sandbox_mode",
+          "unattended_approval_policy",
+          "reviewer_enabled",
+          "reviewer_risk_thresholds",
+          "per_run_token_cap",
+          "per_step_token_cap",
+          "default_max_steps",
+          "fan_out_max_threads",
+          "fan_out_max_depth",
+          "updated_at"
+        ]
+      },
       "AllowedTool": {
         "description": "One entry in a task's `allowed_unattended_tools` allow-list (DEC-17.4): an MCP\n server the creator pre-authorizes to run unattended, optionally narrowed to a\n single tool. `tool_name = None` allow-lists the whole server.",
         "type": "object",
@@ -40017,6 +40194,11 @@
             "const": "code_sandbox_settings"
           },
           {
+            "description": "Deployment-wide agent policy settings (singleton): sandbox/approval\n mode, reviewer config, token caps, max steps, fan-out guardrails.\n Notify-only; delivered to holders of `agent::settings::read` — the\n admin UI refetches `GET /api/agent/settings`. `id` is `Uuid::nil()`.",
+            "type": "string",
+            "const": "agent_admin_settings"
+          },
+          {
             "description": "run_js (js_tool) resource-limit settings (singleton, admin-scoped).",
             "type": "string",
             "const": "js_tool_settings"
@@ -40866,6 +41048,81 @@
         "required": [
           "unread"
         ]
+      },
+      "UpdateAgentAdminSettingsRequest": {
+        "description": "Partial-update request for the singleton. Every field optional (COALESCE\n PATCH); the two nullable columns use the `Option<Option<T>>` tri-state:\n   missing  → `None`         → leave the column alone\n   `null`   → `Some(None)`   → clear the column back to its default\n   value    → `Some(Some(v))`→ set the column",
+        "type": "object",
+        "properties": {
+          "default_max_steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "default_sandbox_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fan_out_max_depth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "fan_out_max_threads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "per_run_token_cap": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "per_step_token_cap": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reviewer_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reviewer_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "reviewer_policy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "reviewer_risk_thresholds": true,
+          "unattended_approval_policy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "UpdateAssistantRequest": {
         "description": "Request structure for updating an existing assistant",
