@@ -1114,13 +1114,30 @@ pub(crate) enum McpToolCallError {
 /// (behaviour-preserving — same gate it applied inline before the extraction).
 /// The workflow agent host's `McpToolProvider` also passes `true`; the chat host
 /// (a later stage) passes `false` to preserve its current non-enforcement.
+/// A cancellation signal `call_mcp_tool` can await, decoupled from the workflow
+/// `RunHandle` so a non-workflow host (chat's stop-generation) can supply its own
+/// token without owning a `RunHandle`. `RunHandle` implements it directly, so the
+/// workflow call sites are unchanged in behavior.
+#[async_trait]
+pub(crate) trait CancelSignal: Send + Sync {
+    /// Resolves when cancellation is requested (or immediately if already cancelled).
+    async fn cancelled(&self);
+}
+
+#[async_trait]
+impl CancelSignal for registry::RunHandle {
+    async fn cancelled(&self) {
+        self.await_cancel().await;
+    }
+}
+
 pub(crate) async fn call_mcp_tool(
     scope: &McpCallScope,
     server_name: &str,
     tool_name: &str,
     args: Value,
     enforce_conversation_disabled: bool,
-    cancel: &Arc<registry::RunHandle>,
+    cancel: &dyn CancelSignal,
     // ITEM-12: reviewer risk classification (`low`/`high`/`critical`) stamped
     // onto the recorded `mcp_tool_calls` row (`None` for the plain tool step).
     review_classification: Option<String>,
@@ -1233,7 +1250,7 @@ pub(crate) async fn call_mcp_tool(
     };
     let result = tokio::select! {
         r = call => r,
-        _ = cancel.await_cancel() => return Err(McpToolCallError::Cancelled),
+        _ = cancel.cancelled() => return Err(McpToolCallError::Cancelled),
     };
     match result {
         Ok(r) => Ok((server_id, r)),
@@ -1288,7 +1305,7 @@ impl StepDispatcher for ToolDispatcher {
             run_id: ctx.run_id,
         };
         let (server_id, tool_result) =
-            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, &cancel, None, None)
+            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, cancel.as_ref(), None, None)
                 .await
             {
                 Ok(v) => v,

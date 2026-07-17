@@ -288,7 +288,7 @@ impl ToolProvider for McpToolProvider {
             &tool_name,
             call.input,
             true,
-            &self.cancel,
+            self.cancel.as_ref(),
             classification,
             Some(idem),
         )
@@ -368,6 +368,9 @@ impl EventSink for WorkflowEventSink {
             AgentEvent::HistoryReplaced { summary_upto } => {
                 self.push_line(format!("context compacted ({summary_upto} messages summarized)"));
             }
+            // ContentDelta is the chat host's live token stream; the workflow
+            // host surfaces only the finalized `Message`, so it's ignored here.
+            AgentEvent::ContentDelta(_) => {}
             // Usage / GateOpened / Stopped are handled by the dispatcher's
             // result-folding + the gate's own ElicitationRequired emit.
             AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) => {}
