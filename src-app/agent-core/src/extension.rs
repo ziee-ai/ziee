@@ -27,6 +27,11 @@ pub enum Flow {
 pub struct TurnContext {
     pub system: Vec<ContentBlock>,
     pub tool_scope: ToolScope,
+    /// Opaque per-turn input bag (DEC-19) — carries the host's request-scoped
+    /// extension payload (chat's `SendMessageRequest.extensions`: attach flags,
+    /// `file_ids`, `tool_approvals`). The crate never names a field inside it;
+    /// a ported extension reads its own key. The workflow host passes `Null`.
+    pub inputs: serde_json::Value,
     pub metadata: HashMap<String, serde_json::Value>,
 }
 

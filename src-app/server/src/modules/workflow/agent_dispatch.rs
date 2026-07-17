@@ -850,6 +850,7 @@ impl StepDispatcher for AgentDispatcher {
                 allow_delegate: false,
             },
             start_iteration: 1,
+            inputs: serde_json::Value::Null,
         };
 
         // ITEM-17: flag the run as inside an agent step so the boot sweep spares +

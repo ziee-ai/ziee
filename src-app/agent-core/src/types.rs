@@ -178,6 +178,9 @@ pub struct AgentTurnRequest {
     pub system: Vec<ContentBlock>,
     pub tool_scope: ToolScope,
     pub start_iteration: u32,
+    /// Opaque per-turn input bag (DEC-19) surfaced to extensions via
+    /// `TurnContext.inputs`. `Null` for hosts (workflow) that don't use it.
+    pub inputs: serde_json::Value,
 }
 
 /// The coarse event stream the loop yields (Goose `AgentEvent`; tool requests

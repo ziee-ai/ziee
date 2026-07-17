@@ -299,6 +299,7 @@ impl AgentCore {
             let mut tctx = TurnContext {
                 system: req.system.clone(),
                 tool_scope: req.tool_scope.clone(),
+                inputs: req.inputs.clone(),
                 ..Default::default()
             };
             run_contribute(&self.extensions, &mut tctx).await?;
@@ -540,6 +541,7 @@ mod tests {
             }],
             tool_scope: ToolScope::default(),
             start_iteration: 1,
+            inputs: serde_json::Value::Null,
         }
     }
 

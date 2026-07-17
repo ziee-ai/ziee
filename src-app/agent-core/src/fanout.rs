@@ -59,6 +59,7 @@ impl AgentCore {
                     allow_delegate: false,
                 },
                 start_iteration: 1,
+                inputs: serde_json::Value::Null,
             };
 
             let sem = sem.clone();

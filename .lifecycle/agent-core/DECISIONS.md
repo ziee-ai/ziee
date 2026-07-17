@@ -83,3 +83,19 @@ resolve by codebase convention. Nothing remains open.
 ### DEC-B: Where does `ModelResolver` source its two halves?
 **Resolution:** The server impl imports `create_provider_from_model_id` (`chat::core::ai_provider`, global-`Repos`-coupled) + `user_has_access_to_provider`/`validate_model_access` for RBAC. The workflow→chat import is **accepted** (precedented — `workflow/runner.rs` already calls `create_provider_from_model_id`), NOT relocated in this feature. A TEST (TEST-41) asserts `resolve` DENIES an inaccessible model.
 **Basis:** codebase (SDK-base audit F6) — precedent + minimal-change.
+
+### DEC-19: How is the per-request extension payload (`SendMessageRequest.extensions`) surfaced to ported extensions?
+**Resolution:** `AgentTurnRequest` gains an opaque `inputs: serde_json::Value` (default `Null`), surfaced on `TurnContext.inputs`. Ported context-injectors read their own key out of it (attach flags, `file_ids`, `tool_approvals`) exactly as they read `SendMessageRequest.extensions` today. The crate never names a chat field — it carries an opaque bag, keeping the loop domain-neutral (the workflow host passes `Null`).
+**Basis:** design — mirrors chat's existing `SendMessageRequest.extensions: serde_json::Value` bag; keeps N-neutrality of the crate.
+
+### DEC-20: How do ported extensions emit SSE (chat's `tx`)?
+**Resolution:** The trait stays sink-free. A concrete server-side ported extension that must emit (title updates, approval-required) captures the `EventSink` (or the raw SSE `ext_tx`) in its OWN struct field at construction, and emits through it — identical to how the workflow port impls capture `Repos`. No `AgentExtension` signature change.
+**Basis:** codebase — same pattern as the workflow `WorkflowEventSink`/port structs capturing state; DEC-15 (concrete impls may capture server state).
+
+### DEC-21: Extension ordering under the re-home?
+**Resolution:** `AgentExtension::order()` is the sole sort key (ascending), seeded from each ported extension's existing chat `METADATA.order` so the relative order is byte-identical (assistant before project before mcp, etc.). The server builds the ordered `Vec<Arc<dyn AgentExtension>>` once; the crate does not sort.
+**Basis:** codebase — preserves the current `auto_register_extensions` order (chat/mod.rs) exactly.
+
+### DEC-22: Who owns the chat message lifecycle (user-message create / assistant-message reuse / resume) after the re-home?
+**Resolution:** The **chat host** (the `send_message` handler + `ChatAgentDispatcher`), NOT the crate. `should_create_user_message` / `provide_assistant_message` / `after_user_message_created` are message-lifecycle decisions the host makes BEFORE calling `core.run` (they drive cross-request approval resume). The crate loop only sees an already-seeded transcript (`TurnSeed::NewMessage` for a fresh turn, `TurnSeed::Resume` for an approval resume). This keeps the fire-and-forget POST contract + the per-`assistant_message_id` cancel token host-side.
+**Basis:** design — these hooks name chat-only types (`SendMessageRequest`, `Message`); they cannot be domain-neutral, so they stay in the host (matches the map's resume semantics).

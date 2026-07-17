@@ -165,6 +165,7 @@ async fn agent_streams_text_deltas_from_real_model() {
         system: vec![ContentBlock::Text { text: "You are a helpful assistant.".into() }],
         tool_scope: ToolScope { servers: vec![], allow_delegate: false },
         start_iteration: 1,
+        inputs: serde_json::Value::Null,
     };
     let events = core.run(req, CancelToken::new()).await.expect("run");
     // ContentDelta events flow to the SINK (EventDeltaSink), not the returned Vec
@@ -247,6 +248,7 @@ async fn agent_loop_does_real_tool_call_round_trip() {
             allow_delegate: false,
         },
         start_iteration: 1,
+        inputs: serde_json::Value::Null,
     };
 
     let events = core
