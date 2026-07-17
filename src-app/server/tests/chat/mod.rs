@@ -41,6 +41,7 @@ mod assistant_injection_test;
 mod chat_stream_test;
 mod agent_core_migration_test;
 mod agent_core_parity_test;
+mod extension_split_test;
 mod sync_emit_test;
 mod ownership_test;
 mod sandbox_real_llm_test;
