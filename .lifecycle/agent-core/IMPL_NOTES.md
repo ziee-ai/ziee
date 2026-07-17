@@ -78,6 +78,23 @@ Studied `streaming.rs::start_generation` (792-985) + the send loop. The re-home 
   3. Gate cross-request approval RESUME wiring (host reads approved rows, single-use claim via `delete_tool_approval`, executes — DEC-22 recipe in gate.rs HANDOFF).
   4. Run the full chat + mcp-workflow suites on the agent-core path; a real bridge multi-tool+approval turn; fix to green; then flip the flag default + delete the legacy loop.
 
+## Wave 5 — chat-on-agent-core: VERIFIED CORE PATH + tool/approval status (2026-07-17)
+The full re-home is wired end-to-end behind `ZIEE_CHAT_AGENT_CORE=1` (legacy default → zero regression). Coupling seam = `RegistryBridge` (one AgentExtension running the whole `ExtensionRegistry` before_llm_call each iteration + final-round after_llm_call side-effects). Host = `start_generation_agent_core` (fire-and-forget, host-owned terminal frame after ext-drain, cancel bridge).
+
+**GREEN on the agent-core path (deterministic, real HTTP+SSE):**
+- `chat::chat_stream_test` 6/6 (stream, mid-stream cancel, attribution, persist, scope).
+- `chat::streaming_test` 10/10 (stream, title gen + titleUpdated event, persist, model-gating).
+- `chat::agent_core_migration_test` 1/1 (smoke).
+- Crate: `agent-core` 36/36 incl. mid-stream-cancel; `real_llm_loop` (bridge) tool round-trip + 332 streamed deltas.
+
+**Fixes landed for parity:** mid-stream cancel (CancelToken.cancelled + select), ctx.metadata seeding (provider/model/tool-capability/files), host-owned terminal (ordering vs ext events), tool-lifecycle SSE (mcpToolStart/Complete in ChatToolProvider), server-id-uuid namespacing in call_mcp_tool + is_trusted, real resolve_chat_approval_policy, ChatApprovalPolicy honors approved/denied rows on resume.
+
+**Tool + approval — VERIFIED PARTIAL, remaining work is precise:**
+- Tool EXECUTION path compiles + the loop's tool round-trip is bridge-verified; approval REQUEST flow works (mcpApprovalRequired fires, gate Suspends) — `mcp_approval_loop` reaches its post-approval assertions.
+- The `mcp_streaming_workflow` + `mcp_approval` suites need a REAL tool-calling provider; in this env `get_or_create_test_model` hardcodes `gpt-4o` while the bridge serves `qwen3.6-35b-a3b` (+ OPENAI_API_KEY may be placeholder) → those tests FAIL ON LEGACY TOO here (not a regression). A bridge-backed chat tool test needs a manual provider(base_url=bridge,key=ZIEE_TEST_LLM_KEY,model=ZIEE_TEST_LLM_MODEL) + MockMcpServer + StubChat(tool_calls).
+- REMAINING for full approval parity (task 3): (a) bare-tool-name→advertising-server recovery in ChatHumanGate (legacy "Fix A"); (b) single-use CLAIM (delete_tool_approval) on execute so an approved row can't re-execute; (c) the resume EXECUTION ordering — on resume the approved tools must run before/without a fresh model call (real models re-emit tool calls with NEW ids, so the row-id match only covers the stub); the clean design is host-side pre-run execution of approved rows on `is_resume`, appending results, then `core.run(Resume)`.
+- REMAINING to flip the default + delete legacy: full chat + mcp suites green on the flag (needs the above + a bridge tool test), then phases 6-8 (blind audit w/ modularity/maintainability/api angles) + HUMAN_FEEDBACK (phase 9).
+
 ## Open integration items (for later stages / drift)
 - **DRIFT-CANDIDATE — enum vocab mismatch.** The crate's `types::SandboxMode`/`ApprovalMode` serialize PascalCase (no `rename_all`), but `202607160100_agent_admin_settings.sql`'s CHECK constraints use kebab (`read-only`/`workspace-write`/`danger-full-access`; `untrusted`/`on-failure`/`on-request`/`never`). Not yet wired (settings store strings; the crate enums aren't read from settings until ITEM-11's settings↔core wiring). RECONCILE when wiring: add `#[serde(rename_all="kebab-case")]` (+ `#[serde(alias=...)]` for Codex's `untrusted`↔`UnlessTrusted`) to the crate enums, or align the CHECK values. Confirm the two agree with a roundtrip test.
 - **OpenAPI regen owed** — the new `/api/agent/settings` route + `AgentAdminSettings` types + the sync entity need `just openapi-regen` (BOTH `ui/`+`desktop/ui/`) — deferred to the UI stage (ITEM-30).
