@@ -14,6 +14,9 @@ name: ziee-deploy2
 
 services:
   ziee-web:
+    # Prebuilt with a raised nofile ulimit (see docker/web/Dockerfile); the fat
+    # cargo build exhausts the default file-descriptor limit otherwise.
+    image: ziee-web:deploy2
     environment:
       # Code sandbox ON (image ships bwrap/squashfuse/fuse3).
       ZIEE_CODE_SANDBOX_ENABLED: "true"
