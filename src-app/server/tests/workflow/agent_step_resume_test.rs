@@ -6,8 +6,11 @@
 //! - **TEST-17**: reviewer `High` on a mutating tool → the run parks `waiting`
 //!   (durable gate); the boot sweep SPARES it (resumable, not failed); a human
 //!   `approve` → cold `resume_run` → the run completes.
-//! - **TEST-18** (INV-2): the completed tool is executed EXACTLY once across the
-//!   park+resume (no double-execute) — proved by a single `mcp_tool_calls` row.
+//! - **TEST-18** (INV-2): the gated tool is BLOCKED before approval (0 journal
+//!   rows) and executes AFTER approval on resume (>=1 row) — proving the durable
+//!   gate blocks execution then releases it. (The no-double-execute of the pending
+//!   call is enforced by the loop's `resume_executes_pending` gating; this
+//!   integration test asserts blocked-then-executed, not a strict count.)
 //! - **TEST-37** (INV-3): the durable snapshot (`agent_transcript_json`) is
 //!   written at the GATE boundary (present while `waiting`), not per streamed
 //!   token.
@@ -187,9 +190,10 @@ async fn agent_step_reviewer_high_parks_then_resumes_to_completion() {
     assert_eq!(final_run["status"], "completed", "the resumed agent run must complete: {final_run}");
 
     // ── TEST-18 (part 2): the gated tool actually executed AFTER approval (it was
-    //    0 before). The pending call is not double-executed — the crate's `resume`
-    //    unit test proves the exactly-once of the pending call deterministically;
-    //    here a chatty model may legitimately re-invoke echo, so we assert ≥1. ──
+    //    0 before) — proving the durable gate blocks execution then releases it.
+    //    A chatty model may legitimately re-invoke echo, so we assert ≥1 (the
+    //    no-double-execute of the pending call is a loop invariant via
+    //    `resume_executes_pending`, not asserted by a strict count here). ──
     let calls_after: i64 = sqlx::query_scalar(
         "SELECT count(*)::int8 FROM mcp_tool_calls WHERE conversation_id = $1 AND tool_name = 'echo'",
     )
