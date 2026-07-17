@@ -334,6 +334,48 @@ impl AgentCore {
                 break;
             }
 
+            // Normalize: MERGE every System message into a single system message at
+            // the front. The re-homed context extensions each insert their own system
+            // prompt (assistant / project / memory / MCP tool guidance), so a turn can
+            // carry several; strict providers (vllm/qwen) accept only ONE system
+            // message, and it must be first. Concatenating the text is semantically
+            // identical (all are turn-level instructions) and valid for every provider.
+            if chat_req.messages.iter().filter(|m| m.role == Role::System).count() > 1
+                || chat_req
+                    .messages
+                    .first()
+                    .map(|m| m.role != Role::System)
+                    .unwrap_or(false)
+                    && chat_req.messages.iter().any(|m| m.role == Role::System)
+            {
+                let mut sys_text: Vec<String> = Vec::new();
+                let mut rest: Vec<ChatMessage> = Vec::new();
+                for m in std::mem::take(&mut chat_req.messages) {
+                    if m.role == Role::System {
+                        for b in &m.content {
+                            if let ContentBlock::Text { text } = b {
+                                if !text.trim().is_empty() {
+                                    sys_text.push(text.clone());
+                                }
+                            }
+                        }
+                    } else {
+                        rest.push(m);
+                    }
+                }
+                let mut merged = Vec::with_capacity(rest.len() + 1);
+                if !sys_text.is_empty() {
+                    merged.push(ChatMessage::with_blocks(
+                        Role::System,
+                        vec![ContentBlock::Text {
+                            text: sys_text.join("\n\n"),
+                        }],
+                    ));
+                }
+                merged.extend(rest);
+                chat_req.messages = merged;
+            }
+
             // Resume mid-tool-execution: on the FIRST iteration of a `Resume`, if the
             // transcript already ends with an assistant message carrying unexecuted
             // `tool_use` blocks (a turn suspended awaiting human approval), execute

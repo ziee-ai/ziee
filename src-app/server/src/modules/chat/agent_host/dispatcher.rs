@@ -460,6 +460,7 @@ pub async fn start_generation_agent_core(
                 );
             }
             Err(e) => {
+                tracing::error!("chat agent-core loop error: {e}");
                 // The loop errored before any terminal — surface it so the client's
                 // stream ends instead of hanging.
                 publish_frame(
