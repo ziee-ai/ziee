@@ -807,6 +807,21 @@ impl StreamingService {
         use crate::utils::cancellation::CANCELLATION_TRACKER;
         use futures_util::StreamExt as _;
 
+        // Re-home cutover (ITEM-24): route the turn through the shared agent-core
+        // loop when opted in. Legacy path stays the default (zero regression risk)
+        // until behavioral parity is verified, then this becomes unconditional.
+        if std::env::var("ZIEE_CHAT_AGENT_CORE").as_deref() == Ok("1") {
+            return crate::modules::chat::agent_host::dispatcher::start_generation_agent_core(
+                self.pool.clone(),
+                self.extension_registry.clone(),
+                branch_id,
+                conversation_id,
+                user_id,
+                request,
+            )
+            .await;
+        }
+
         // Serialize: at most ONE in-flight generation per conversation. The
         // replay buffer is keyed by conversation and carries no message id to
         // demux two concurrent turns, so a second send (rapid double-send /
@@ -996,7 +1011,7 @@ impl StreamingService {
     /// Each provider handles Role::Tool correctly:
     /// - Anthropic: converts to "user" with tool_result content
     /// - OpenAI: converts to "tool" role
-    async fn convert_history_to_messages_with_extensions(
+    pub(crate) async fn convert_history_to_messages_with_extensions(
         history: &[crate::modules::chat::core::types::MessageWithContent],
         extension_registry: Option<&Arc<ExtensionRegistry>>,
         context: &StreamContext,

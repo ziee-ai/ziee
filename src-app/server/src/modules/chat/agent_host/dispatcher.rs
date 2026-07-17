@@ -200,3 +200,195 @@ impl ChatAgentTurn {
             .await
     }
 }
+
+/// The agent-core-driven analog of `StreamingService::start_generation` (ITEM-24).
+/// Does the fire-and-forget pre-loop MESSAGE-LIFECYCLE (provider + user/assistant
+/// rows via the existing registry — DEC-22), then spawns `ChatAgentTurn` (which
+/// streams tokens + persists blocks through the ports) seeded with `Resume` (the
+/// user message is already persisted, so the loop LOADS it rather than re-appending).
+/// Returns the persisted ids synchronously, exactly like the legacy path.
+///
+/// Wave-5 scope: no ported context-injector extensions yet, so `system` is empty
+/// and `tool_scope` has no attached servers (a basic text turn). This is the path
+/// the `ZIEE_CHAT_AGENT_CORE=1` flag routes to for behavioral verification.
+pub async fn start_generation_agent_core(
+    pool: sqlx::PgPool,
+    registry: Option<Arc<ExtensionRegistry>>,
+    branch_id: Uuid,
+    conversation_id: Uuid,
+    user_id: Uuid,
+    request: crate::modules::chat::core::extension::SendMessageRequest,
+) -> Result<(Option<Uuid>, Uuid), AppError> {
+    use crate::core::Repos;
+    use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
+    use crate::modules::chat::core::models::MessageRole;
+    use crate::modules::chat::core::types::streaming::{
+        SSEChatStreamErrorData, SSEChatStreamEvent, SSEChatStreamStartedData,
+    };
+    use crate::modules::chat::stream::{publish_frame, ChatStreamFrame};
+    use crate::utils::cancellation::CANCELLATION_TRACKER;
+
+    // Single-flight per conversation (same guard as the legacy path).
+    if !crate::modules::chat::stream::begin_generation(conversation_id) {
+        return Err(AppError::new(
+            axum::http::StatusCode::CONFLICT,
+            "GENERATION_IN_PROGRESS",
+            "A reply is already being generated for this conversation",
+        ));
+    }
+
+    // Everything from here to the spawn must release the slot on error.
+    let setup = async {
+        let (provider, model_name, ..) =
+            create_provider_from_model_id(request.model_id, user_id).await?;
+
+        // Conditionally create the user message (extensions may suppress it, e.g.
+        // MCP tool-approval resumption).
+        let preliminary_context = StreamContext {
+            conversation_id,
+            branch_id,
+            message_id: None,
+            user_id,
+            pool: pool.clone(),
+            metadata: std::collections::HashMap::new(),
+            iteration: 0,
+        };
+        let should_create = registry
+            .as_ref()
+            .map(|r| r.should_create_user_message(&request))
+            .unwrap_or(true);
+        let user_message_id = if should_create {
+            let extension_content = if let Some(r) = &registry {
+                r.collect_user_message_content(&preliminary_context, &request, &request.content)
+                    .await?
+            } else {
+                Vec::new()
+            };
+            let user_message = Repos
+                .chat
+                .core
+                .create_message(branch_id, MessageRole::User.as_str(), Some(request.model_id))
+                .await?;
+            if let Some(r) = &registry {
+                r.after_user_message_created(&preliminary_context, &user_message, &request)
+                    .await?;
+            }
+            for (index, content_data) in extension_content.into_iter().enumerate() {
+                Repos
+                    .chat
+                    .core
+                    .create_content(
+                        user_message.id,
+                        &content_data.content_type(),
+                        content_data,
+                        index as i32,
+                    )
+                    .await?;
+            }
+            Some(user_message.id)
+        } else {
+            None
+        };
+
+        // Get or create the assistant message (resume reuses the existing one).
+        let assistant_message_id = if let Some(r) = &registry {
+            if let Some(id) = r.provide_assistant_message(&request, branch_id).await? {
+                id
+            } else {
+                Repos
+                    .chat
+                    .core
+                    .create_message(branch_id, MessageRole::Assistant.as_str(), None)
+                    .await?
+                    .id
+            }
+        } else {
+            Repos
+                .chat
+                .core
+                .create_message(branch_id, MessageRole::Assistant.as_str(), None)
+                .await?
+                .id
+        };
+        Ok::<_, AppError>((provider, model_name, user_message_id, assistant_message_id))
+    }
+    .await;
+
+    let (provider, model_name, user_message_id, assistant_message_id) = match setup {
+        Ok(v) => v,
+        Err(e) => {
+            crate::modules::chat::stream::end_generation(conversation_id);
+            return Err(e);
+        }
+    };
+
+    // Per-`assistant_message_id` stop-generation token (bridged into the crate loop).
+    let cancel_token = CANCELLATION_TRACKER.create_token(assistant_message_id).await;
+    let owner_id = user_id;
+
+    // Opening `started` frame — seeds the message on receiving devices + opens the
+    // replay buffer for mid-stream join (the sink emits Content/Complete after).
+    publish_frame(
+        owner_id,
+        ChatStreamFrame::new(
+            conversation_id,
+            SSEChatStreamEvent::Started(SSEChatStreamStartedData {
+                user_message_id,
+                conversation_id,
+                branch_id,
+            }),
+        ),
+    );
+
+    let is_resume = user_message_id.is_none();
+    tokio::spawn(async move {
+        let turn = ChatAgentTurn {
+            pool,
+            registry,
+            user_id,
+            conversation_id,
+            branch_id,
+            assistant_message_id,
+            provider,
+            model_name,
+            // No ported context extensions yet → no attached tool servers.
+            tool_scope: ToolScope::default(),
+            inputs: serde_json::Value::Null,
+            cancel_token: cancel_token.clone(),
+            sse_tx: None,
+            extensions: vec![],
+        };
+        // The user message is already persisted, so LOAD it (Resume), don't re-append.
+        let result = turn.run(TurnSeed::Resume).await;
+
+        if let Err(e) = result {
+            // The loop errored before emitting a terminal Complete frame — surface it
+            // so the client's stream ends instead of hanging.
+            publish_frame(
+                owner_id,
+                ChatStreamFrame::new(
+                    conversation_id,
+                    SSEChatStreamEvent::Error(SSEChatStreamErrorData {
+                        message: e.to_string(),
+                        code: Some("AGENT_LOOP_ERROR".into()),
+                    }),
+                ),
+            );
+        }
+
+        CANCELLATION_TRACKER.remove_download(assistant_message_id).await;
+        crate::modules::chat::stream::end_generation(conversation_id);
+
+        // Notify the user's other surfaces to refetch the committed turn.
+        crate::modules::sync::publish(
+            crate::modules::sync::SyncEntity::Conversation,
+            crate::modules::sync::SyncAction::Update,
+            conversation_id,
+            crate::modules::sync::Audience::owner(owner_id),
+            None,
+        );
+    });
+
+    let _ = is_resume;
+    Ok((user_message_id, assistant_message_id))
+}

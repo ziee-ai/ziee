@@ -77,8 +77,7 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::core::Repos;
 use crate::modules::chat::core::extension::{ExtensionRegistry, StreamContext};
-use crate::modules::chat::core::models::{MessageContentData, MessageRole};
-use crate::modules::chat::core::services::streaming::group_assistant_blocks;
+use crate::modules::chat::core::models::MessageContentData;
 use crate::modules::chat::extensions::text::types::ThinkingMetadata;
 use crate::modules::mcp::chat_extension::content::McpContentData;
 
@@ -237,126 +236,20 @@ impl TranscriptStore for ChatTranscriptStore {
         );
         let _ = run_id;
 
+        // Delegate to the SINGLE source of truth for history reconstruction
+        // (`streaming.rs`), so the wire format is byte-identical to the legacy loop
+        // (extension content hooks + `group_assistant_blocks` pairing + the
+        // registry-less default block conversion). An empty assistant row (the one
+        // being generated into) reduces to `group_assistant_blocks([]) == []`, so it
+        // contributes nothing — the same effect as the legacy loop's empty-assistant
+        // filter.
         let history = Repos.chat.core.get_conversation_history(self.branch_id).await?;
-
-        let mut messages: Vec<ChatMessage> = Vec::new();
-
-        for msg_with_content in &history {
-            let role = msg_with_content
-                .message
-                .role_enum()
-                .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
-
-            if role == MessageRole::System {
-                continue;
-            }
-
-            if role == MessageRole::Assistant {
-                // Invariant (mirrors streaming.rs): blocks arrive in strictly
-                // increasing sequence_order (repository MAX+1). The pairing walk in
-                // group_assistant_blocks relies on it — surface a regression loudly.
-                let monotonic = msg_with_content
-                    .contents
-                    .windows(2)
-                    .all(|w| w[0].sequence_order < w[1].sequence_order);
-                if !monotonic {
-                    tracing::warn!(
-                        "non-monotonic sequence_order in assistant message {}; tool_use/tool_result pairing may be unreliable",
-                        msg_with_content.message.id
-                    );
-                }
-
-                let mut blocks: Vec<ContentBlock> = Vec::new();
-                for content in &msg_with_content.contents {
-                    let content_data = content.parse_content()?;
-
-                    // Let an extension claim this block as skip-from-forwarding
-                    // (the file extension drops UI-only FileAttachment artifacts).
-                    if let Some(registry) = &self.registry
-                        && registry
-                            .should_skip_in_assistant_forwarding(
-                                &content_data,
-                                &self.transform_context,
-                            )
-                            .await?
-                    {
-                        continue;
-                    }
-
-                    let block = if let Some(registry) = &self.registry {
-                        match registry
-                            .process_content_for_llm(&content_data, &self.transform_context)
-                            .await?
-                        {
-                            Some(transformed_block) => Some(transformed_block),
-                            None => {
-                                let ext_content =
-                                    serde_json::to_value(&content_data).map_err(|e| {
-                                        AppError::internal_error(format!(
-                                            "Failed to serialize content: {}",
-                                            e
-                                        ))
-                                    })?;
-                                registry.convert_extension_to_content_block(&ext_content)
-                            }
-                        }
-                    } else {
-                        None
-                    };
-
-                    if let Some(b) = block {
-                        blocks.push(b);
-                    }
-                }
-
-                messages.extend(group_assistant_blocks(blocks));
-                continue;
-            }
-
-            // Non-assistant (user) messages: convert all blocks normally.
-            let mut all_blocks = Vec::new();
-            for content in &msg_with_content.contents {
-                let content_data = content.parse_content()?;
-
-                let block = if let Some(registry) = &self.registry {
-                    match registry
-                        .process_content_for_llm(&content_data, &self.transform_context)
-                        .await?
-                    {
-                        Some(transformed_block) => Some(transformed_block),
-                        None => {
-                            let ext_content = serde_json::to_value(&content_data).map_err(|e| {
-                                AppError::internal_error(format!(
-                                    "Failed to serialize content: {}",
-                                    e
-                                ))
-                            })?;
-                            registry.convert_extension_to_content_block(&ext_content)
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                if let Some(b) = block {
-                    all_blocks.push(b);
-                }
-            }
-
-            if !all_blocks.is_empty() {
-                let ai_role = match role {
-                    MessageRole::User => Role::User,
-                    MessageRole::Assistant => Role::Assistant,
-                    MessageRole::System => continue,
-                };
-                messages.push(ChatMessage {
-                    role: ai_role,
-                    content: all_blocks,
-                });
-            }
-        }
-
-        Ok(messages)
+        crate::modules::chat::core::services::streaming::StreamingService::convert_history_to_messages_with_extensions(
+            &history,
+            self.registry.as_ref(),
+            &self.transform_context,
+        )
+        .await
     }
 
     /// Persist ONE assistant/tool turn as per-block `message_contents` rows on
