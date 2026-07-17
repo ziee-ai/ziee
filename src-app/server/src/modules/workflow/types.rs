@@ -154,6 +154,7 @@ pub enum StepKindTag {
     Sandbox,
     Elicit,
     Tool,
+    Agent,
 }
 
 impl StepKindTag {
@@ -167,6 +168,7 @@ impl StepKindTag {
             StepKindTag::Sandbox => "sandbox",
             StepKindTag::Elicit => "elicit",
             StepKindTag::Tool => "tool",
+            StepKindTag::Agent => "agent",
         }
     }
 }

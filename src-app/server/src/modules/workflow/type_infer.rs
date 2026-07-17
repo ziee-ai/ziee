@@ -109,6 +109,12 @@ pub fn infer_step_output_type(step: &StepDef) -> InferredType {
         // Tool output is the MCP result (structuredContent or text) — no
         // static shape guarantee.
         StepConfig::Tool { .. } => InferredType::Unknown,
+        // Agent output is the model's final answer (text, or json when
+        // `output_format: json`) — no static shape guarantee for json.
+        StepConfig::Agent { output_format, .. } => match output_format {
+            OutputFormat::Text => InferredType::String,
+            OutputFormat::Json => InferredType::Unknown,
+        },
     }
 }
 

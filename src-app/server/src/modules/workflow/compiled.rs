@@ -151,6 +151,7 @@ pub fn compile(workflow: &WorkflowDef) -> WorkflowIr {
             let est_calls = match &s.config {
                 StepConfig::Llm { .. } => 1u64,
                 StepConfig::LlmMap { max_parallel, .. } => *max_parallel as u64,
+                StepConfig::Agent { max_steps, .. } => *max_steps as u64,
                 StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => {
                     0u64
                 }

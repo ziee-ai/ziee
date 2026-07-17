@@ -723,6 +723,70 @@ pub async fn get_elicit_response(
     Ok(row.and_then(|r| r.elicit_response_json))
 }
 
+/// Read the durable agent transcript (a JSON array of `ai_providers::ChatMessage`)
+/// for a run — the resume source for the `kind: agent` step (DEC-8). NULL ⇒ the
+/// agent has not started (an empty transcript).
+pub async fn get_agent_transcript(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Option<serde_json::Value>, AppError> {
+    let row = sqlx::query!(
+        r#"SELECT agent_transcript_json as "agent_transcript_json: serde_json::Value" FROM workflow_runs WHERE id = $1"#,
+        run_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row.and_then(|r| r.agent_transcript_json))
+}
+
+/// Replace the durable agent transcript for a run (whole-array write — the agent
+/// host's `TranscriptStore` load/append/replace_head all round-trip through this).
+pub async fn set_agent_transcript(
+    pool: &PgPool,
+    run_id: Uuid,
+    value: serde_json::Value,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET agent_transcript_json = $2,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        value,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Flag whether the runner is currently inside an agent step (ITEM-17). Set TRUE
+/// on agent-step entry so the boot sweep SPARES a crashed `running` agent run
+/// (marks it `resumable`) instead of failing it; cleared on step exit.
+pub async fn set_resumable_agent(
+    pool: &PgPool,
+    run_id: Uuid,
+    resumable: bool,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET resumable_agent = $2,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        resumable,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
 pub async fn set_final_output(
     pool: &PgPool,
     run_id: Uuid,

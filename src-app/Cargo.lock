@@ -12609,6 +12609,7 @@ name = "ziee"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "agent-core",
  "ai-providers",
  "aide",
  "async-stream",

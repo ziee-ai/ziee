@@ -218,6 +218,37 @@ pub enum StepConfig {
         #[serde(default)]
         arguments: serde_json::Value,
     },
+    /// Run the shared `agent-core` loop as a workflow step (ITEM-18). The model
+    /// drives an autonomous tool-use loop against the `servers` allow-list until
+    /// it produces a final answer, hits `max_steps`, or a token cap. `prompt`
+    /// (inline) / `prompt_file` (bundle-relative) is the initial user task;
+    /// `system` is the optional system directive. Both `prompt`/`system` are
+    /// template-rendered against the run context.
+    Agent {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt_file: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        system: Option<String>,
+        /// Allow-list of MCP server NAMES the agent may call (resolved at run
+        /// time against the user's accessible servers, exactly like a `tool`
+        /// step's `server`). Empty ⇒ the agent runs with no tools.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        servers: Vec<String>,
+        /// Iteration ceiling for the loop. Defaults to the `agent_admin_settings`
+        /// `default_max_steps` (DEC-7 = 30) at authoring time; the dispatcher
+        /// clamps it to the admin cap at run time.
+        #[serde(default = "default_agent_max_steps")]
+        max_steps: u32,
+        #[serde(default)]
+        output_format: OutputFormat,
+    },
+}
+
+/// DEC-7: the agent-step iteration default (mirrors `agent_admin_settings`).
+fn default_agent_max_steps() -> u32 {
+    30
 }
 
 impl StepConfig {
@@ -228,6 +259,7 @@ impl StepConfig {
             StepConfig::Sandbox { .. } => "sandbox",
             StepConfig::Elicit { .. } => "elicit",
             StepConfig::Tool { .. } => "tool",
+            StepConfig::Agent { .. } => "agent",
         }
     }
 }
@@ -565,6 +597,9 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
         }
         | StepConfig::LlmMap {
             prompt, prompt_file, ..
+        }
+        | StepConfig::Agent {
+            prompt, prompt_file, ..
         } = &s.config
         {
             let has_prompt = prompt.as_ref().filter(|s| !s.is_empty()).is_some();
@@ -882,6 +917,17 @@ fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
                 .into_iter()
                 .map(|s_ref| (format!("{}.arguments", s.id), s_ref, None))
                 .collect(),
+            // Agent's `prompt` + `system` are template-rendered (no item_var).
+            StepConfig::Agent { prompt, system, .. } => {
+                let mut v: Vec<(String, &str, Option<&str>)> = Vec::new();
+                if let Some(p) = prompt.as_deref() {
+                    v.push((format!("{}.prompt", s.id), p, None));
+                }
+                if let Some(sys) = system.as_deref() {
+                    v.push((format!("{}.system", s.id), sys, None));
+                }
+                v
+            }
         };
         for (loc, body, item_var) in bodies {
             check(&loc, body, item_var);
@@ -925,6 +971,7 @@ fn check_prompt_files(workflow: &WorkflowDef, bundle_root: &Path) -> Vec<Validat
         let pf = match &s.config {
             StepConfig::Llm { prompt_file, .. } => prompt_file.as_deref(),
             StepConfig::LlmMap { prompt_file, .. } => prompt_file.as_deref(),
+            StepConfig::Agent { prompt_file, .. } => prompt_file.as_deref(),
             _ => None,
         };
         if let Some(p) = pf {

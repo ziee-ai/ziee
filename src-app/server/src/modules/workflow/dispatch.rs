@@ -82,7 +82,7 @@ impl LlmDispatcher {
 
 /// Resolve prompt from inline `prompt:` or `prompt_file:`. Templates
 /// are rendered against `ctx`.
-async fn resolve_prompt(
+pub(crate) async fn resolve_prompt(
     step: &StepDef,
     ctx: &RunContext,
     prompt: &Option<String>,
@@ -609,7 +609,7 @@ fn classify_item_error(on_error: OnError) -> (bool, Option<Value>) {
 /// format (E6). `OutputFormat::Json` with unparseable text is a step failure;
 /// `Text` always succeeds. Factored from the inline `match` so the parse-fail
 /// branch is unit-testable without a real LLM call.
-fn parse_llm_output(text: &str, output_format: OutputFormat) -> Result<(Value, ParsedAs), String> {
+pub(crate) fn parse_llm_output(text: &str, output_format: OutputFormat) -> Result<(Value, ParsedAs), String> {
     match output_format {
         OutputFormat::Text => Ok((Value::String(text.to_string()), ParsedAs::Text)),
         OutputFormat::Json => serde_json::from_str::<Value>(text)
@@ -1084,6 +1084,149 @@ pub(crate) async fn resolve_tool_server(
     ))
 }
 
+/// The minimal run identity `call_mcp_tool` needs — extracted from `RunContext`
+/// so the shared MCP call path is reachable from BOTH the `ToolDispatcher` (which
+/// has a full `RunContext`) and the agent host's `McpToolProvider` (which holds
+/// only these three fields).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct McpCallScope {
+    pub user_id: Uuid,
+    pub conversation_id: Option<Uuid>,
+    pub run_id: Uuid,
+}
+
+/// Outcome of the shared MCP call path (DEC-17).
+pub(crate) enum McpToolCallError {
+    /// The run's cancel handle fired mid-call.
+    Cancelled,
+    /// Any other failure (server inaccessible, disabled, session/RPC error).
+    Failed(String),
+}
+
+/// The shared MCP tool-call path (ITEM-21 / DEC-17) — resolve the server NAME,
+/// apply the conversation/default disabled-server gate (only when
+/// `enforce_conversation_disabled`), open a recording session linked to the run,
+/// and invoke the tool with the given (already-rendered) `args`. Returns the
+/// resolved `server_id` (the caller needs it for `resource_link` persistence) +
+/// the raw MCP `ToolResult`.
+///
+/// `ToolDispatcher` calls this with `enforce_conversation_disabled = true`
+/// (behaviour-preserving — same gate it applied inline before the extraction).
+/// The workflow agent host's `McpToolProvider` also passes `true`; the chat host
+/// (a later stage) passes `false` to preserve its current non-enforcement.
+pub(crate) async fn call_mcp_tool(
+    scope: &McpCallScope,
+    server_name: &str,
+    tool_name: &str,
+    args: Value,
+    enforce_conversation_disabled: bool,
+    cancel: &Arc<registry::RunHandle>,
+) -> Result<(Uuid, crate::modules::mcp::client::traits::ToolResult), McpToolCallError> {
+    let server_id = match resolve_tool_server(scope.user_id, server_name).await {
+        Ok(id) => id,
+        Err(e) => return Err(McpToolCallError::Failed(e.to_string())),
+    };
+
+    // E8: reject a server OR a specific tool the user disabled. Conversation-
+    // scoped when a conversation is present; otherwise the user's DEFAULT MCP
+    // disabled set (the scheduled/standalone case). Fail CLOSED on any DB error
+    // (security gate). Skipped entirely when `enforce_conversation_disabled` is
+    // false (the chat host's current behavior — DEC-17).
+    if enforce_conversation_disabled {
+        if let Some(conv_id) = scope.conversation_id {
+            let settings = match crate::core::repository::Repos
+                .mcp_settings
+                .get(crate::modules::mcp::settings::models::McpScope::Conversation(conv_id))
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(McpToolCallError::Failed(format!(
+                        "tool: could not resolve server policy: {e}"
+                    )));
+                }
+            };
+            if let Some(settings) = settings {
+                let disabled: Vec<
+                    crate::modules::mcp::chat_extension::approval::models::DisabledServer,
+                > = serde_json::from_value(settings.disabled_servers).unwrap_or_default();
+                if disabled.iter().any(|d| {
+                    d.server_id == server_id
+                        && (d.is_server_disabled() || d.is_tool_disabled(tool_name))
+                }) {
+                    return Err(McpToolCallError::Failed(format!(
+                        "tool '{tool_name}' on server '{server_name}' is disabled in this conversation"
+                    )));
+                }
+            }
+        } else {
+            let defaults = match crate::modules::mcp::chat_extension::defaults::repository::get_user_defaults(
+                crate::core::Repos.pool(),
+                scope.user_id,
+            )
+            .await
+            {
+                Ok(d) => d,
+                Err(e) => {
+                    return Err(McpToolCallError::Failed(format!(
+                        "tool: could not resolve user MCP defaults: {e}"
+                    )));
+                }
+            };
+            if let Some(defaults) = defaults {
+                let disabled = defaults.get_disabled_servers();
+                if disabled.iter().any(|d| {
+                    d.server_id == server_id
+                        && (d.is_server_disabled() || d.is_tool_disabled(tool_name))
+                }) {
+                    return Err(McpToolCallError::Failed(format!(
+                        "tool '{tool_name}' on server '{server_name}' is disabled in your default MCP settings"
+                    )));
+                }
+            }
+        }
+    }
+
+    let manager = match crate::modules::mcp::client::manager::global() {
+        Some(m) => m,
+        None => {
+            return Err(McpToolCallError::Failed(
+                "MCP session manager not initialized".into(),
+            ));
+        }
+    };
+    let session = match manager
+        .get_or_create_with_context(
+            server_id,
+            scope.user_id,
+            scope.conversation_id,
+            None, // branch_id
+            None, // message_id — a workflow run has no chat message
+            None, // tool_use_id — not an LLM ContentBlock::ToolUse
+            crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
+        )
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
+    };
+
+    let call = async {
+        let mut guard = session.write().await;
+        // E4: link the recorded mcp_tool_calls row to this run.
+        guard.set_workflow_run(scope.run_id);
+        guard.call_tool(tool_name, args, None, None, None).await
+    };
+    let result = tokio::select! {
+        r = call => r,
+        _ = cancel.await_cancel() => return Err(McpToolCallError::Cancelled),
+    };
+    match result {
+        Ok(r) => Ok((server_id, r)),
+        Err(e) => Err(McpToolCallError::Failed(format!("tool '{tool_name}': {e}"))),
+    }
+}
+
 #[async_trait]
 impl StepDispatcher for ToolDispatcher {
     async fn dispatch(
@@ -1110,85 +1253,6 @@ impl StepDispatcher for ToolDispatcher {
             }
         };
 
-        let server_id = match resolve_tool_server(ctx.user_id, &server_name).await {
-            Ok(id) => id,
-            Err(e) => return StepResult::Failed { error: e.to_string(), tokens_used: 0 },
-        };
-
-        // E8: reject a server OR a specific tool the user disabled in THIS
-        // conversation's mcp_settings (conversation-invoked runs only — a
-        // standalone run has no conversation, so the toggle doesn't apply).
-        // Matches the set the chat LLM would be allowed to call. NB: the chat
-        // path's own non-enforcement of disabled_servers is a separate latent
-        // bug, out of scope here.
-        if let Some(conv_id) = ctx.conversation_id {
-            // Fail CLOSED: a DB error resolving the toggle must NOT let a
-            // possibly-disabled tool through — this is a security gate.
-            let settings = match crate::core::repository::Repos
-                .mcp_settings
-                .get(crate::modules::mcp::settings::models::McpScope::Conversation(conv_id))
-                .await
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    return StepResult::Failed {
-                        error: format!("tool: could not resolve server policy: {e}"),
-                        tokens_used: 0,
-                    };
-                }
-            };
-            if let Some(settings) = settings {
-                let disabled: Vec<
-                    crate::modules::mcp::chat_extension::approval::models::DisabledServer,
-                > = serde_json::from_value(settings.disabled_servers).unwrap_or_default();
-                if disabled.iter().any(|d| {
-                    d.server_id == server_id
-                        && (d.is_server_disabled() || d.is_tool_disabled(&tool_name))
-                }) {
-                    return StepResult::Failed {
-                        error: format!(
-                            "tool '{tool_name}' on server '{server_name}' is disabled in this conversation"
-                        ),
-                        tokens_used: 0,
-                    };
-                }
-            }
-        } else {
-            // ITEM-18b/DEC-18: a standalone run (no conversation — the SCHEDULED
-            // case, plus workflow-tool standalone) has no conversation-scoped
-            // toggle to apply, so honor the user's DEFAULT MCP disabled-servers
-            // instead. This closes the gap where a scheduled workflow run ignored
-            // the user's disabled set. Fail CLOSED on any DB error (security gate).
-            let defaults = match crate::modules::mcp::chat_extension::defaults::repository::get_user_defaults(
-                crate::core::Repos.pool(),
-                ctx.user_id,
-            )
-            .await
-            {
-                Ok(d) => d,
-                Err(e) => {
-                    return StepResult::Failed {
-                        error: format!("tool: could not resolve user MCP defaults: {e}"),
-                        tokens_used: 0,
-                    };
-                }
-            };
-            if let Some(defaults) = defaults {
-                let disabled = defaults.get_disabled_servers();
-                if disabled.iter().any(|d| {
-                    d.server_id == server_id
-                        && (d.is_server_disabled() || d.is_tool_disabled(&tool_name))
-                }) {
-                    return StepResult::Failed {
-                        error: format!(
-                            "tool '{tool_name}' on server '{server_name}' is disabled in your default MCP settings"
-                        ),
-                        tokens_used: 0,
-                    };
-                }
-            }
-        }
-
         let args = match render_tool_arguments(&arguments, ctx) {
             Ok(v) => v,
             Err(e) => {
@@ -1199,55 +1263,24 @@ impl StepDispatcher for ToolDispatcher {
             }
         };
 
-        let manager = match crate::modules::mcp::client::manager::global() {
-            Some(m) => m,
-            None => {
-                return StepResult::Failed {
-                    error: "MCP session manager not initialized".into(),
-                    tokens_used: 0,
-                };
-            }
+        // ITEM-21 / DEC-17: the resolve → disabled-gate → session → call path is
+        // the shared `call_mcp_tool` impl. The tool step passes
+        // `enforce_conversation_disabled = true` — same gate it applied inline
+        // before the extraction (behaviour-preserving; the E8 conversation +
+        // scheduled/default disabled-server checks live inside the helper now).
+        let scope = McpCallScope {
+            user_id: ctx.user_id,
+            conversation_id: ctx.conversation_id,
+            run_id: ctx.run_id,
         };
-        let session = match manager
-            .get_or_create_with_context(
-                server_id,
-                ctx.user_id,
-                ctx.conversation_id,
-                None, // branch_id
-                None, // message_id — a workflow run has no chat message
-                None, // tool_use_id — not an LLM ContentBlock::ToolUse
-                crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
-            )
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                return StepResult::Failed {
-                    error: format!("tool: open session: {e}"),
-                    tokens_used: 0,
-                };
-            }
-        };
-
-        let call = async {
-            let mut guard = session.write().await;
-            // E4: link the recorded mcp_tool_calls row to this run.
-            guard.set_workflow_run(ctx.run_id);
-            guard.call_tool(&tool_name, args, None, None, None).await
-        };
-        let result = tokio::select! {
-            r = call => r,
-            _ = cancel.await_cancel() => return StepResult::Cancelled,
-        };
-        let tool_result = match result {
-            Ok(r) => r,
-            Err(e) => {
-                return StepResult::Failed {
-                    error: format!("tool '{tool_name}': {e}"),
-                    tokens_used: 0,
-                };
-            }
-        };
+        let (server_id, tool_result) =
+            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, &cancel).await {
+                Ok(v) => v,
+                Err(McpToolCallError::Cancelled) => return StepResult::Cancelled,
+                Err(McpToolCallError::Failed(error)) => {
+                    return StepResult::Failed { error, tokens_used: 0 };
+                }
+            };
 
         // Log the raw result (gated). On a serialize failure, record the
         // error context rather than a silent empty string.
@@ -1287,6 +1320,15 @@ impl StepDispatcher for ToolDispatcher {
                     })
                     .collect();
             if !links.is_empty() {
+                // The session manager is re-fetched here (the call path itself
+                // now lives in `call_mcp_tool`); it supplies the E9 JWT for
+                // loopback resource-link fetches. Absent ⇒ skip persistence.
+                let Some(manager) = crate::modules::mcp::client::manager::global() else {
+                    return StepResult::Failed {
+                        error: "MCP session manager not initialized".into(),
+                        tokens_used: 0,
+                    };
+                };
                 // `ziee://` reads are confined to (a) this run's OWN workflow
                 // staging dir, and (b) the code_sandbox workspace for this run's
                 // key (the common producer, get_resource_link). Including (a)

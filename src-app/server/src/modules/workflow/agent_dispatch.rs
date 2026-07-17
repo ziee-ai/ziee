@@ -1,0 +1,755 @@
+//! The workflow `kind: agent` step host (ITEM-18..23).
+//!
+//! Wires the shared [`agent_core::AgentCore`] loop into the workflow runner as a
+//! new [`StepDispatcher`]. The crate stays domain-free behind its six ports; this
+//! module supplies the concrete WORKFLOW-flavored port impls:
+//!
+//! - [`McpToolProvider`] — enumerate + call MCP tools via the shared
+//!   `dispatch::call_mcp_tool` path (`enforce_conversation_disabled = true`);
+//!   `is_trusted` = built-in server.
+//! - [`WorkflowEventSink`] — map each [`agent_core::AgentEvent`] to a live
+//!   `SSEWorkflowRunEvent::StepProgress` track via the `ProgressEmitter`.
+//! - [`WorkflowTranscriptStore`] — durable transcript on
+//!   `workflow_runs.agent_transcript_json` (DEC-8); tool-call journaling reuses
+//!   the `mcp_tool_calls` chokepoint inside `McpSession::call_tool`.
+//! - [`WorkflowHumanGate`] — the durable `elicit` `waiting` gate (DEC-9/13/15),
+//!   mirroring `ElicitDispatcher`.
+//! - [`WorkflowModelResolver`] — `create_provider_from_model_id` + the model-
+//!   access RBAC (DEC-16/B); DENIES an inaccessible model.
+//!
+//! [`AgentDispatcher`] assembles an `AgentCore` from these ports (+ the core
+//! `CompactionExtension`), runs it, folds tokens into `ctx.total_tokens`, honors
+//! the per-step token cap, writes the final answer via `file_io::write_step_output`,
+//! and maps the loop's stop reason to a [`StepResult`].
+
+use std::sync::Arc;
+use std::time::Instant;
+
+use agent_core::{
+    AgentCore, AgentEvent, AgentTurnRequest, ApprovalMode, Budget, CancelToken,
+    CompactionExtension, Compactor, EventSink, GateAsk, GateOutcome, GateTicket, HumanGate,
+    IdempotencyKey, ModelClient, ModelResolver, ProviderModelClient, ProviderModelClientFactory,
+    SandboxMode, StopReason, SubagentLimits, ToolCall, ToolProvider, ToolResult, ToolScope,
+    TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
+};
+use ai_providers::{ChatMessage, ContentBlock, Provider, Role, Tool};
+use async_trait::async_trait;
+use chrono::Utc;
+use serde_json::Value;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::common::AppError;
+use crate::modules::workflow::dispatch::{
+    builtin_server_id_by_name, call_mcp_tool, resolve_prompt, McpCallScope, McpToolCallError,
+    StepDispatcher,
+};
+use crate::modules::workflow::events::{
+    ProgressEmitter, ProgressKind, ProgressTrack, SSEElicitationRequiredData, SSEStepProgressData,
+    SSEWorkflowRunEvent,
+};
+use crate::modules::workflow::file_io;
+use crate::modules::workflow::models::WorkflowRunStatus;
+use crate::modules::workflow::registry;
+use crate::modules::workflow::repository;
+use crate::modules::workflow::types::{ParsedAs, RunContext, StepKindTag, StepResult};
+use crate::modules::workflow::validate::{OutputFormat, StepConfig, StepDef};
+
+/// Window-relative soft limit (tokens) above which the core compaction extension
+/// fires. Deliberately high so v1 agent steps rarely summarize (the per-step
+/// token cap is the real ceiling); the machinery is wired regardless (ITEM-6).
+const AGENT_COMPACTION_SOFT_LIMIT_TOKENS: usize = 100_000;
+
+// ============================================================
+// Tool provider (ITEM-20)
+// ============================================================
+
+/// The agent's tool surface — the step's `servers` allow-list, resolved to MCP
+/// tools and routed through the shared `call_mcp_tool` path.
+struct McpToolProvider {
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    /// The run's cancel handle (threaded into each MCP call's `tokio::select`).
+    cancel: Arc<registry::RunHandle>,
+}
+
+/// Split a namespaced tool name `"<server>__<tool>"` (as emitted by
+/// [`McpToolProvider::list`]) back into `(server_name, tool_name)`. Splits on the
+/// FIRST `__` (mirrors the chat path's `server_id__name` scheme).
+fn split_tool_name(name: &str) -> (String, String) {
+    match name.find("__") {
+        Some(idx) => (name[..idx].to_string(), name[idx + 2..].to_string()),
+        None => (String::new(), name.to_string()),
+    }
+}
+
+/// Flatten an MCP `ToolResult` into an `agent_core::ToolResult`: concatenate its
+/// text blocks into one `Text` block (mirrors the workflow tool-step's
+/// `tool_result_text`), preserving `is_error` + `structured_content`.
+fn mcp_to_agent_result(r: crate::modules::mcp::client::traits::ToolResult) -> ToolResult {
+    let mut text = String::new();
+    for c in &r.content {
+        if c.content.get("type").and_then(|v| v.as_str()) == Some("text") {
+            if let Some(t) = c.content.get("text").and_then(|v| v.as_str()) {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(t);
+            }
+        }
+    }
+    // No text blocks (e.g. an image-only or structured-only result) → stringify
+    // the raw content so the model still sees something actionable.
+    if text.is_empty() && !r.content.is_empty() {
+        text = serde_json::to_string(&r.content).unwrap_or_default();
+    }
+    ToolResult {
+        content: vec![ContentBlock::Text { text }],
+        is_error: r.is_error,
+        structured_content: r.structured_content,
+    }
+}
+
+#[async_trait]
+impl ToolProvider for McpToolProvider {
+    async fn list(&self, scope: &ToolScope) -> Result<Vec<Tool>, AppError> {
+        let manager = crate::modules::mcp::client::manager::global()
+            .ok_or_else(|| AppError::internal_error("MCP session manager not initialized"))?;
+        let mut tools = Vec::new();
+        for server_name in &scope.servers {
+            // A server the user can't reach (or that fails to list) contributes
+            // no tools rather than failing the whole turn.
+            let server_id =
+                match crate::modules::workflow::dispatch::resolve_tool_server(self.user_id, server_name)
+                    .await
+                {
+                    Ok(id) => id,
+                    Err(e) => {
+                        tracing::warn!("agent: server '{server_name}' not accessible: {e}");
+                        continue;
+                    }
+                };
+            let session = match manager
+                .get_or_create_with_context(
+                    server_id,
+                    self.user_id,
+                    self.conversation_id,
+                    None,
+                    None,
+                    None,
+                    crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
+                )
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("agent: open session for '{server_name}': {e}");
+                    continue;
+                }
+            };
+            let listed = {
+                let mut guard = session.write().await;
+                guard.list_tools().await
+            };
+            match listed {
+                Ok(list) => {
+                    for t in list {
+                        // Convert the MCP tool descriptor → `ai_providers::Tool`,
+                        // namespacing the name by server NAME so `call`/`is_trusted`
+                        // can route back (the crate sets `ToolCall.server = None`).
+                        let name = format!("{server_name}__{}", t.name);
+                        tools.push(Tool::function(
+                            name,
+                            t.description.unwrap_or_default(),
+                            t.input_schema,
+                        ));
+                    }
+                }
+                Err(e) => tracing::warn!("agent: list tools for '{server_name}': {e}"),
+            }
+        }
+        Ok(tools)
+    }
+
+    async fn call(
+        &self,
+        run_id: Uuid,
+        call: ToolCall,
+        _idem: IdempotencyKey,
+    ) -> Result<ToolResult, AppError> {
+        let (server_name, tool_name) = split_tool_name(&call.name);
+        let scope = McpCallScope {
+            user_id: self.user_id,
+            conversation_id: self.conversation_id,
+            run_id,
+        };
+        match call_mcp_tool(&scope, &server_name, &tool_name, call.input, true, &self.cancel).await {
+            Ok((_server_id, result)) => Ok(mcp_to_agent_result(result)),
+            Err(McpToolCallError::Cancelled) => {
+                Err(AppError::internal_error("agent: tool call cancelled"))
+            }
+            Err(McpToolCallError::Failed(m)) => Err(AppError::internal_error(m)),
+        }
+    }
+
+    fn is_trusted(&self, server: &str) -> bool {
+        // The loop passes `call.server.unwrap_or(call.name)`; since the crate sets
+        // `server = None`, `server` is the namespaced tool name — parse its prefix.
+        let (server_name, _) = split_tool_name(server);
+        builtin_server_id_by_name(&server_name).is_some()
+    }
+}
+
+// ============================================================
+// Event sink (ITEM-20)
+// ============================================================
+
+/// Maps the loop's coarse `AgentEvent` stream to live `StepProgress` log tracks.
+struct WorkflowEventSink {
+    emit: Arc<dyn ProgressEmitter>,
+    run_id: Uuid,
+    step_id: String,
+}
+
+impl WorkflowEventSink {
+    fn push_line(&self, line: String) {
+        self.emit.emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
+            run_id: self.run_id,
+            step_id: self.step_id.clone(),
+            tracks: vec![ProgressTrack {
+                id: "agent".to_string(),
+                label: Some("Agent".to_string()),
+                done: false,
+                kind: ProgressKind::Log { line },
+            }],
+        }));
+    }
+}
+
+#[async_trait]
+impl EventSink for WorkflowEventSink {
+    async fn emit(&self, ev: AgentEvent) {
+        match ev {
+            AgentEvent::Message(msg) => {
+                // Surface tool requests + a short assistant-text preview.
+                for b in &msg.content {
+                    if let ContentBlock::ToolUse { name, .. } = b {
+                        self.push_line(format!("→ tool: {name}"));
+                    }
+                }
+                if msg.role == Role::Assistant {
+                    let text: String = msg
+                        .content
+                        .iter()
+                        .filter_map(|b| match b {
+                            ContentBlock::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
+                    if !text.is_empty() {
+                        self.push_line(text.chars().take(200).collect::<String>());
+                    }
+                }
+            }
+            AgentEvent::ToolNotification { server, note } => {
+                self.push_line(format!("{server}: {note}"));
+            }
+            AgentEvent::HistoryReplaced { summary_upto } => {
+                self.push_line(format!("context compacted ({summary_upto} messages summarized)"));
+            }
+            // Usage / GateOpened / Stopped are handled by the dispatcher's
+            // result-folding + the gate's own ElicitationRequired emit.
+            AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) => {}
+        }
+    }
+}
+
+// ============================================================
+// Transcript store (ITEM-20, DEC-8)
+// ============================================================
+
+/// Durable transcript on `workflow_runs.agent_transcript_json` (whole-array
+/// read-modify-write; a single run's steps are sequential so no concurrency).
+struct WorkflowTranscriptStore {
+    pool: PgPool,
+}
+
+impl WorkflowTranscriptStore {
+    async fn read(&self, run_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
+        match repository::get_agent_transcript(&self.pool, run_id).await? {
+            Some(v) => serde_json::from_value(v)
+                .map_err(|e| AppError::internal_error(format!("agent transcript decode: {e}"))),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    async fn write(&self, run_id: Uuid, msgs: &[ChatMessage]) -> Result<(), AppError> {
+        let v = serde_json::to_value(msgs)
+            .map_err(|e| AppError::internal_error(format!("agent transcript encode: {e}")))?;
+        repository::set_agent_transcript(&self.pool, run_id, v).await
+    }
+}
+
+#[async_trait]
+impl TranscriptStore for WorkflowTranscriptStore {
+    async fn load(&self, run_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
+        self.read(run_id).await
+    }
+
+    async fn append(&self, run_id: Uuid, msg: ChatMessage) -> Result<(), AppError> {
+        let mut msgs = self.read(run_id).await?;
+        msgs.push(msg);
+        self.write(run_id, &msgs).await
+    }
+
+    async fn replace_head(
+        &self,
+        run_id: Uuid,
+        summary: ChatMessage,
+        upto: usize,
+    ) -> Result<(), AppError> {
+        let msgs = self.read(run_id).await?;
+        let upto = upto.min(msgs.len());
+        let mut new_msgs = Vec::with_capacity(msgs.len() - upto + 1);
+        new_msgs.push(summary);
+        new_msgs.extend_from_slice(&msgs[upto..]);
+        self.write(run_id, &new_msgs).await
+    }
+
+    async fn journal_tool_call(
+        &self,
+        _run_id: Uuid,
+        _rec: agent_core::ToolCallRecord,
+    ) -> Result<(), AppError> {
+        // The `mcp_tool_calls` journal row is already written by the recording
+        // chokepoint inside `McpSession::call_tool` (one row per invocation), so
+        // an extra insert here would double-record. The transcript itself (which
+        // carries the tool_result message via `append`) is the resume source.
+        Ok(())
+    }
+
+    async fn completed_tool_calls(
+        &self,
+        _run_id: Uuid,
+    ) -> Result<Vec<agent_core::ToolCallRecord>, AppError> {
+        // Idempotent resume-replay by key (ITEM-16) is a later durability stage;
+        // the base loop never consults this (it replays via the transcript).
+        Ok(Vec::new())
+    }
+}
+
+// ============================================================
+// Human gate (ITEM-20, DEC-9/13/15)
+// ============================================================
+
+/// The durable review gate — persists a pending `elicit` record, parks the run
+/// as `waiting`, and returns `Suspended` (mirrors `ElicitDispatcher`'s durable
+/// path). Resumes when the human submits (`submit_elicit` → `resume_run`).
+struct WorkflowHumanGate {
+    pool: PgPool,
+    emit: Arc<dyn ProgressEmitter>,
+    step_id: String,
+}
+
+#[async_trait]
+impl HumanGate for WorkflowHumanGate {
+    async fn request(&self, run_id: Uuid, ask: GateAsk) -> Result<GateOutcome, AppError> {
+        let elicitation_id = Uuid::new_v4();
+        let message = format!(
+            "The agent wants to run tool `{}`. {} Approve?",
+            ask.call.name, ask.reason
+        );
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "approve": { "type": "boolean", "title": "Approve this tool call" }
+            },
+            "required": ["approve"]
+        });
+        let data = serde_json::json!({
+            "tool": ask.call.name,
+            "arguments": ask.call.input,
+        });
+        // Far-future deadline: a durable, human-paced review (matches the
+        // `timeout_ms: 0` elicit gate).
+        let deadline = Utc::now() + chrono::Duration::days(365 * 100);
+
+        let record = crate::modules::workflow::types::PendingElicitationRecord {
+            run_id,
+            elicitation_id,
+            step_id: self.step_id.clone(),
+            message: message.clone(),
+            schema: schema.clone(),
+            data: Some(data.clone()),
+            deadline_at: deadline,
+        };
+        let json = serde_json::to_value(&record)
+            .map_err(|e| AppError::internal_error(format!("serialize agent gate: {e}")))?;
+        repository::set_pending_elicitation(&self.pool, run_id, Some(json)).await?;
+        repository::mark_status(&self.pool, run_id, WorkflowRunStatus::Waiting, None).await?;
+
+        self.emit.emit(SSEWorkflowRunEvent::ElicitationRequired(
+            SSEElicitationRequiredData {
+                run_id,
+                step_id: self.step_id.clone(),
+                elicitation_id,
+                message,
+                schema,
+                data: Some(data),
+                deadline_at: deadline,
+            },
+        ));
+
+        Ok(GateOutcome::Suspended(GateTicket { id: elicitation_id }))
+    }
+}
+
+// ============================================================
+// Model resolver (ITEM-20, DEC-16/B)
+// ============================================================
+
+/// Resolves a per-child / reviewer `model_id` to a `Provider` under the user's
+/// RBAC — `create_provider_from_model_id` + the model-access check. DENIES an
+/// inaccessible model (the boundary the crate never crosses on its own).
+struct WorkflowModelResolver;
+
+#[async_trait]
+impl ModelResolver for WorkflowModelResolver {
+    async fn resolve(&self, model_id: Uuid, user_id: Uuid) -> Result<Arc<Provider>, AppError> {
+        use crate::core::Repos;
+        let model = Repos
+            .llm_model
+            .get_by_id(model_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Model"))?;
+        if !model.enabled {
+            return Err(AppError::bad_request(
+                "MODEL_DISABLED",
+                "this model is currently disabled and cannot be used",
+            ));
+        }
+        let has_access = Repos
+            .user_group_llm_provider
+            .user_has_access_to_provider(user_id, model.provider_id)
+            .await
+            .map_err(AppError::from)?;
+        if !has_access {
+            return Err(AppError::forbidden(
+                "ACCESS_DENIED",
+                "you do not have access to this model",
+            ));
+        }
+        let (provider, ..) =
+            crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
+                .await?;
+        Ok(provider)
+    }
+}
+
+// ============================================================
+// The dispatcher (ITEM-19/23)
+// ============================================================
+
+pub struct AgentDispatcher {
+    provider: Arc<Provider>,
+}
+
+impl AgentDispatcher {
+    pub fn new(provider: Arc<Provider>) -> Self {
+        Self { provider }
+    }
+}
+
+/// Map an admin `default_sandbox_mode` string to the crate enum (DEC-2 metadata).
+fn sandbox_mode_from_str(s: &str) -> SandboxMode {
+    match s {
+        "read-only" => SandboxMode::ReadOnly { network: false },
+        "danger-full-access" => SandboxMode::DangerFullAccess,
+        // "workspace-write" + any unknown → the sensible default.
+        _ => SandboxMode::WorkspaceWrite { network: true },
+    }
+}
+
+/// Map an admin `unattended_approval_policy` string to the crate `ApprovalMode`.
+fn approval_mode_from_str(s: &str) -> ApprovalMode {
+    match s {
+        "untrusted" => ApprovalMode::UnlessTrusted,
+        "never" => ApprovalMode::Never,
+        // "on-request" / "on-failure" → route mutating calls through the gate.
+        _ => ApprovalMode::OnRequest,
+    }
+}
+
+#[async_trait]
+impl StepDispatcher for AgentDispatcher {
+    async fn dispatch(
+        &self,
+        step: &StepDef,
+        ctx: &mut RunContext,
+        cancel: Arc<registry::RunHandle>,
+        emit: Arc<dyn ProgressEmitter>,
+    ) -> StepResult {
+        let started = Instant::now();
+
+        let (prompt, prompt_file, system, servers, max_steps, output_format) = match &step.config {
+            StepConfig::Agent {
+                prompt,
+                prompt_file,
+                system,
+                servers,
+                max_steps,
+                output_format,
+            } => (
+                prompt.clone(),
+                prompt_file.clone(),
+                system.clone(),
+                servers.clone(),
+                *max_steps,
+                *output_format,
+            ),
+            _ => {
+                return StepResult::Failed {
+                    error: "AgentDispatcher called on non-agent step".into(),
+                    tokens_used: 0,
+                };
+            }
+        };
+
+        // Resolve the initial user task (inline `prompt:` or bundle `prompt_file:`)
+        // + the optional system directive, both template-rendered against `ctx`.
+        let user_prompt = match resolve_prompt(step, ctx, &prompt, &prompt_file).await {
+            Ok(p) => p,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("agent prompt render: {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
+        let system_blocks: Vec<ContentBlock> = match system.as_deref() {
+            Some(raw) => match crate::modules::workflow::template::render(raw, ctx) {
+                Ok(s) => vec![ContentBlock::Text { text: s }],
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("agent system render: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            },
+            None => Vec::new(),
+        };
+
+        // Admin policy (DEC-6) — approval mode, token caps, sandbox, fan-out
+        // limits. Fall back to sane defaults if the row can't be read.
+        let settings = crate::core::Repos.agent.get_admin_settings().await.ok();
+        let approval_mode = settings
+            .as_ref()
+            .map(|s| approval_mode_from_str(&s.unattended_approval_policy))
+            .unwrap_or(ApprovalMode::OnRequest);
+        let sandbox = settings
+            .as_ref()
+            .map(|s| sandbox_mode_from_str(&s.default_sandbox_mode))
+            .unwrap_or(SandboxMode::WorkspaceWrite { network: true });
+        let limits = settings
+            .as_ref()
+            .map(|s| SubagentLimits {
+                max_depth: s.fan_out_max_depth.clamp(1, 255) as u8,
+                max_threads: s.fan_out_max_threads.clamp(1, 255) as u8,
+            })
+            .unwrap_or_default();
+
+        // The agent is ONE workflow step, so its whole-run token budget is bounded
+        // by the per-STEP cap: it self-stops with `TokenCap` before it can breach
+        // the runner's post-step `check_step_caps` (which would fail the run).
+        let per_step_cap = crate::modules::workflow::runner::PER_STEP_TOKEN_CAP.min(
+            settings
+                .as_ref()
+                .map(|s| s.per_step_token_cap.max(0) as u64)
+                .unwrap_or(crate::modules::workflow::runner::PER_STEP_TOKEN_CAP),
+        );
+        let budget = Budget::new(max_steps, per_step_cap, per_step_cap);
+
+        // Shared ports.
+        let pool = crate::core::Repos.pool().clone();
+        let transcript: Arc<dyn TranscriptStore> =
+            Arc::new(WorkflowTranscriptStore { pool: pool.clone() });
+        let sink: Arc<dyn EventSink> = Arc::new(WorkflowEventSink {
+            emit: emit.clone(),
+            run_id: ctx.run_id,
+            step_id: step.id.clone(),
+        });
+        let model_client: Arc<dyn ModelClient> =
+            Arc::new(ProviderModelClient::new(self.provider.clone()));
+
+        let core = AgentCore {
+            transcript: transcript.clone(),
+            sink: sink.clone(),
+            tools: Arc::new(McpToolProvider {
+                user_id: ctx.user_id,
+                conversation_id: ctx.conversation_id,
+                cancel: cancel.clone(),
+            }),
+            gate: Arc::new(WorkflowHumanGate {
+                pool: pool.clone(),
+                emit: emit.clone(),
+                step_id: step.id.clone(),
+            }),
+            policy: Arc::new(TrustedAutoApprovePolicy::new(approval_mode)),
+            models: Arc::new(WorkflowModelResolver),
+            model: model_client.clone(),
+            model_factory: Arc::new(ProviderModelClientFactory),
+            extensions: vec![Arc::new(CompactionExtension::new(
+                Compactor::new(
+                    model_client.clone(),
+                    ctx.model_name.clone(),
+                    AGENT_COMPACTION_SOFT_LIMIT_TOKENS,
+                ),
+                transcript.clone(),
+                sink.clone(),
+                ctx.run_id,
+            ))],
+            // The reviewer (ITEM-12) is a later safety stage; with `None` the loop
+            // escalates a `Review` outcome straight to the human gate (safe default).
+            reviewer: None,
+            budget,
+            limits,
+            sandbox,
+            model_name: ctx.model_name.clone(),
+        };
+
+        let req = AgentTurnRequest {
+            run_id: ctx.run_id,
+            user_id: ctx.user_id,
+            seed: TurnSeed::NewMessage(ChatMessage::user(user_prompt)),
+            system: system_blocks,
+            tool_scope: ToolScope {
+                servers,
+                allow_delegate: false,
+            },
+            start_iteration: 1,
+        };
+
+        // ITEM-17: flag the run as inside an agent step so the boot sweep spares +
+        // resumes (rather than fails) a crash here. Best-effort.
+        let _ = repository::set_resumable_agent(&pool, ctx.run_id, true).await;
+
+        // Bridge the workflow cancel handle into the crate's cooperative token.
+        let cancel_token = CancelToken::new();
+        let bridge = {
+            let ct = cancel_token.clone();
+            let h = cancel.clone();
+            tokio::spawn(async move {
+                h.await_cancel().await;
+                ct.cancel();
+            })
+        };
+        let run_result = core.run(req, cancel_token).await;
+        bridge.abort();
+
+        let _ = repository::set_resumable_agent(&pool, ctx.run_id, false).await;
+
+        let events = match run_result {
+            Ok(ev) => ev,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("agent loop: {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
+
+        // Fold token usage across every model call the loop made.
+        let tokens: u64 = events
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::Usage(u) => Some(u.total_tokens),
+                _ => None,
+            })
+            .sum();
+
+        // A durable gate opened → the run is parked `waiting`; suspend the step.
+        if events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::GateOpened(_)))
+        {
+            ctx.total_tokens += tokens;
+            return StepResult::Suspended;
+        }
+
+        // A `Halted` stop with no gate means the run was cancelled.
+        let last_stop = events.iter().rev().find_map(|e| match e {
+            AgentEvent::Stopped(r) => Some(*r),
+            _ => None,
+        });
+        if last_stop == Some(StopReason::Halted) {
+            ctx.total_tokens += tokens;
+            return StepResult::Cancelled;
+        }
+
+        // The final answer is the loop's last assistant text.
+        let final_text = events
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                AgentEvent::Message(msg) if msg.role == Role::Assistant => {
+                    let text: String = msg
+                        .content
+                        .iter()
+                        .filter_map(|b| match b {
+                            ContentBlock::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
+                    if text.is_empty() {
+                        None
+                    } else {
+                        Some(text)
+                    }
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let (value, parsed_as) = match output_format {
+            OutputFormat::Json => {
+                match crate::modules::workflow::dispatch::parse_llm_output(
+                    &final_text,
+                    OutputFormat::Json,
+                ) {
+                    Ok(vp) => vp,
+                    Err(error) => {
+                        return StepResult::Failed {
+                            error,
+                            tokens_used: tokens,
+                        };
+                    }
+                }
+            }
+            OutputFormat::Text => (Value::String(final_text), ParsedAs::Text),
+        };
+
+        let meta =
+            match file_io::write_step_output(ctx, &step.id, &value, parsed_as, StepKindTag::Agent)
+                .await
+            {
+                Ok(m) => m,
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("persist step output: {e}"),
+                        tokens_used: tokens,
+                    };
+                }
+            };
+        ctx.step_outputs.insert(step.id.clone(), meta);
+        ctx.total_tokens += tokens;
+
+        StepResult::Completed {
+            output: value,
+            parsed_as,
+            tokens_used: tokens,
+            ms_elapsed: started.elapsed().as_millis() as u64,
+        }
+    }
+}

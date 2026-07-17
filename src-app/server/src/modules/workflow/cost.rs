@@ -78,6 +78,9 @@ pub fn estimate_static(workflow: &WorkflowDef) -> (u64, u64, u64) {
         max_calls += match &step.config {
             StepConfig::Llm { .. } => 1,
             StepConfig::LlmMap { max_parallel, .. } => *max_parallel as u64,
+            // The agent loop issues up to `max_steps` model calls (runtime-
+            // dependent — it stops early on a final answer); report the ceiling.
+            StepConfig::Agent { max_steps, .. } => *max_steps as u64,
             StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => 0,
         };
     }
@@ -109,6 +112,9 @@ pub fn dry_run(workflow: &WorkflowDef, inputs: &serde_json::Map<String, Value>) 
                     None => (*max_parallel as u64, true),
                 }
             }
+            // The agent loop's true call count is runtime-dependent (it stops
+            // early on a final answer); `max_steps` is the static ceiling.
+            StepConfig::Agent { max_steps, .. } => (*max_steps as u64, true),
             StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => {
                 (0u64, false)
             }

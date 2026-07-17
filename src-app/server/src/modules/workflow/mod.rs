@@ -13,6 +13,7 @@
 //! B6 ships the REST surface (user + admin + workflow-runs handlers)
 //! per plan §3.
 
+pub mod agent_dispatch;
 pub mod artifact_io;
 pub mod artifact_stream;
 pub mod compiled;

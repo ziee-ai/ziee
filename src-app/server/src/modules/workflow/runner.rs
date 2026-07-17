@@ -747,6 +747,13 @@ async fn run_inner(
                 StepConfig::Sandbox { .. } => Box::new(SandboxDispatcher::new()),
                 StepConfig::Elicit { .. } => Box::new(ElicitDispatcher::new()),
                 StepConfig::Tool { .. } => Box::new(ToolDispatcher::new()),
+                StepConfig::Agent { .. } => Box::new(
+                    crate::modules::workflow::agent_dispatch::AgentDispatcher::new(
+                        provider
+                            .clone()
+                            .expect("agent step requires a resolved model + provider"),
+                    ),
+                ),
             };
             tokio::select! {
                 r = dispatcher.dispatch(step, ctx, handle.clone(), emit.clone()) => r,
@@ -1218,7 +1225,7 @@ pub async fn spawn_run(
     let require_model = workflow_def
         .steps
         .iter()
-        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. }));
+        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. } | StepConfig::Agent { .. }));
     let (model_id, model_name, model_max_tokens) =
         resolve_run_model(user_id, opts.model_id, conversation_id, require_model).await?;
 
@@ -1342,7 +1349,7 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     let require_model = workflow_def
         .steps
         .iter()
-        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. }));
+        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. } | StepConfig::Agent { .. }));
     let (model_id, model_name, model_max_tokens) =
         resolve_run_model(run.user_id, run.model_id, run.conversation_id, require_model).await?;
 
