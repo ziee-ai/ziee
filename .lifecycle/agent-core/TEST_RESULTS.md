@@ -234,3 +234,36 @@ blast-radius-clean across chat, mcp, workflow-LLM, and scheduler.
 
 Add to Log Index: `workflow_realllm_ON.log`, `workflow_sr_OFF.log`, `scheduler_ON.log`,
 `scheduler_dispatch_OFF.log`.
+
+## ⛔ CONFIRMED flag-ON regressions (Tier-A approval/sampling) — STOP, do NOT push / do NOT flip the default
+
+Two agent-core-path defects, each **PASS on flag OFF (legacy), FAIL on flag ON (agent-core)**,
+deterministic + isolated (`--test-threads=1`) — genuine flag-delta REGRESSIONS, not model
+flakiness. These are the exact class the blind audit flagged ("RegistryBridge-vs-ports
+resume-execution collision" / approval-resume + control-flow), and they are WHY the default
+was held at opt-in. They must be FIXED before any default flip.
+
+1. **`mcp::approval_claim_test::approved_tool_is_claimed_and_executes_exactly_once`**
+   - OFF: **1 passed** (3.05s) — `logs/approval_claim_OFF.log`.
+   - ON (isolated): **FAILED** (3.05s) — `logs/approval_claim_ON_isolated.log`. Assertion
+     (`approval_claim_test.rs:202`): `tool_use_approvals` still has the row after approval —
+     "the approval row must be claimed (deleted) — a surviving row is what let the tool be
+     re-executed and a second tool_result row appended". On the agent-core path the approved
+     tool's approval row is NOT claimed/deleted → **tool re-execution / duplicate tool_result**.
+     (The `agent_host/gate.rs` claim-then-`delete_tool_approval` recipe is not consuming the
+     row in the RegistryBridge-driven resume path.)
+
+2. **`mcp::mcp_sampling_test::*` (6 of the module's tests)**
+   - OFF: `test_sampling_exactly_two_llm_calls` **1 passed** (7.57s) — `logs/sampling_two_calls_OFF.log`.
+   - ON: **FAILED** — `logs/tierA_approval_sampling_ON.log` (e.g. "Expected exactly 2 LLM
+     sampling calls, got 0"; "sampling timeout"; is_system round-trip "got 0"). On the
+     agent-core path **MCP server→host LLM sampling round-trips do not fire** (0 vs 2 expected).
+
+**Trio total (flag ON):** `mcp::{mcp_approval_workflow_test,approval_claim_test,mcp_sampling_test}`
+→ **36 passed / 7 failed** — `logs/tierA_approval_sampling_ON.log`. The 7 fails = approval-claim (1)
++ mcp_sampling (6). Both classes are flag-delta (pass OFF).
+
+**Sweep STOPPED here per instruction** (Tier-A approval/sampling revealed real flag-delta
+regressions). Remaining Tier-A (memory/summarization/agentic_chat) + all of Tier-B NOT yet run.
+The opt-in flag + held default remain correct; these two bugs are the concrete blockers to
+flipping it.
