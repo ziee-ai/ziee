@@ -1,4 +1,5 @@
 // All feature modules
+pub mod agent;
 pub mod app;
 pub mod assistant;
 pub mod assistant_core_memory;

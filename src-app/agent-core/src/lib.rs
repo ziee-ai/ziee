@@ -9,24 +9,37 @@
 //! `ziee-framework`'s `RequirePermissions<R: IdentityResolver>` uses. Design:
 //! `.lifecycle/agent-core/DESIGN_REFERENCE.md`.
 //!
-//! Stage 1 (this module set): the pure foundation — types, ports, budget,
-//! token estimation, the approval matrix, and the extension pipeline, all
-//! unit-tested against in-memory fakes. The loop driver, compaction, fan-out,
-//! and reviewer land in stage 2.
+//! Stage 1: the pure foundation — types, ports, budget, token estimation, the
+//! approval matrix, and the extension pipeline. Stage 2 (this module set): the
+//! loop driver ([`AgentCore`]), the `ModelClient` seam, compaction, fan-out,
+//! and the reviewer — all unit-tested against in-memory fakes.
 
 pub mod budget;
+pub mod compaction;
+pub mod core;
 pub mod extension;
+pub mod fanout;
 pub mod policy;
 pub mod ports;
+pub mod reviewer;
 pub mod tokens;
 pub mod types;
 
+#[cfg(test)]
+mod test_fakes;
+
 pub use budget::Budget;
+pub use compaction::{CompactionExtension, CompactionResult, Compactor};
+pub use core::{
+    AgentCore, CancelToken, ModelClient, ModelClientFactory, ProviderModelClient,
+    ProviderModelClientFactory,
+};
 pub use extension::{AgentExtension, Flow, TurnContext};
 pub use policy::TrustedAutoApprovePolicy;
 pub use ports::{
     ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
 };
+pub use reviewer::{map_risk, ModelRiskClassifier, Reviewer, Risk, RiskClassifier};
 pub use types::{
     AgentEvent, AgentTurnRequest, ApprovalMode, Decision, GateAsk, GateOutcome, GateTicket,
     IdempotencyKey, ReviewDecision, SandboxMode, StopReason, SubagentLimits, SubagentSpec,
