@@ -185,6 +185,8 @@ export const GALLERY_COVERAGE = {
   "components/ui/shadcn/toggle": { kind: 'via', reason: 'kit-stories' },
   "components/ui/shadcn/toggle-group": { kind: 'via', reason: 'kit-stories' },
   "components/ui/shadcn/tooltip": { kind: 'via', reason: 'kit-stories' },
+  "modules/agent/AgentSettingsPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
+  "modules/agent/components/AgentSettingsSection": { kind: 'via', reason: 'rendered within the agent settings page' },
   "modules/app/SetupPage": { kind: 'flow', reason: 'auth/setup flow (no data grid)' },
   "modules/assistant/chat-extension/components/AssistantMenuItem": { kind: 'via', reason: 'rendered within the assistant module page' },
   "modules/assistant/chat-extension/components/AssistantSelector": { kind: 'via', reason: 'rendered within the assistant module page' },
