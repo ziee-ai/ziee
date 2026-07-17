@@ -167,10 +167,22 @@ fn mcp_to_agent_result(r: crate::modules::mcp::client::traits::ToolResult) -> To
     if text.is_empty() && !r.content.is_empty() {
         text = serde_json::to_string(&r.content).unwrap_or_default();
     }
+    // Audience-only bypass (parity with the MCP extension's `execute_tool`): if any
+    // content block is annotated `audience: ["user"]` EXACTLY, the tool's output is
+    // meant for the user, not the model — the turn ends with it (no continuation).
+    let terminal = r.content.iter().any(|c| {
+        c.content
+            .get("annotations")
+            .and_then(|a| a.get("audience"))
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.len() == 1 && arr[0].as_str() == Some("user"))
+            .unwrap_or(false)
+    });
     ToolResult {
         content: vec![ContentBlock::Text { text }],
         is_error: r.is_error,
         structured_content: r.structured_content,
+        terminal,
     }
 }
 
@@ -301,7 +313,18 @@ impl ToolProvider for ChatToolProvider {
         .await;
         match outcome {
             Ok((_server_id, result)) => {
-                let agent = mcp_to_agent_result(result);
+                let mut agent = mcp_to_agent_result(result);
+                // Memory `remember`/`forget` are built-in side-effect self-saves —
+                // their result isn't something the model must reason about, so when
+                // only these ran the turn finalizes without a no-op continuation
+                // (parity with mcp.rs `is_side_effect_tool` / Track B).
+                if let Ok(sid) = Uuid::parse_str(&server_name) {
+                    if sid == crate::modules::memory_mcp::memory_mcp_server_id()
+                        && matches!(tool_name.as_str(), "remember" | "forget")
+                    {
+                        agent.terminal = true;
+                    }
+                }
                 let text = agent.content.iter().find_map(|b| match b {
                     ContentBlock::Text { text } => Some(text.as_str()),
                     _ => None,

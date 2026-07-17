@@ -471,6 +471,8 @@ impl AgentCore {
 
             // Execute each requested tool through the approval gate.
             let mut suspended = false;
+            let mut executed = 0usize;
+            let mut terminal_count = 0usize;
             for (ordinal, call) in tool_calls.iter().enumerate() {
                 let server_key = call
                     .server
@@ -529,6 +531,10 @@ impl AgentCore {
                             .tools
                             .call(req.run_id, call.clone(), idem.clone())
                             .await?;
+                        executed += 1;
+                        if result.terminal {
+                            terminal_count += 1;
+                        }
                         self.transcript
                             .journal_tool_call(
                                 req.run_id,
@@ -546,6 +552,16 @@ impl AgentCore {
                 }
             }
             if suspended {
+                break;
+            }
+            // When EVERY executed tool was terminal (user-audience output / built-in
+            // side-effect self-save), the turn's answer is already produced — finalize
+            // without a no-op continuation model call (parity with the MCP extension's
+            // `CompleteWithContent` / Track-B inline self-save). A mix still continues
+            // so the model can reason about the non-terminal results.
+            if executed > 0 && terminal_count == executed {
+                self.push_emit(&mut events, AgentEvent::Stopped(StopReason::NoToolCall))
+                    .await;
                 break;
             }
 
@@ -609,6 +625,7 @@ fn error_tool_result(message: impl Into<String>) -> ToolResult {
         }],
         is_error: true,
         structured_content: None,
+        terminal: false,
     }
 }
 

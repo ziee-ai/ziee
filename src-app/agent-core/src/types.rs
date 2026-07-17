@@ -27,6 +27,10 @@ pub struct ToolResult {
     pub content: Vec<ContentBlock>,
     pub is_error: bool,
     pub structured_content: Option<serde_json::Value>,
+    /// The tool's output is the FINAL turn answer — do not re-call the model after
+    /// it (e.g. an MCP result annotated `audience: ["user"]` only). Default false.
+    #[serde(default)]
+    pub terminal: bool,
 }
 
 /// One journaled tool call (P5) — the durable record for resume replay.
@@ -241,6 +245,7 @@ mod tests {
             content: vec![],
             is_error: false,
             structured_content: Some(serde_json::json!({"k": 1})),
+            terminal: false,
         };
         let s = serde_json::to_string(&tr).unwrap();
         assert!(s.contains("structured_content"));

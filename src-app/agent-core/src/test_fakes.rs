@@ -223,6 +223,7 @@ impl FakeTools {
                 }],
                 is_error: false,
                 structured_content: None,
+                terminal: false,
             },
         }
     }
