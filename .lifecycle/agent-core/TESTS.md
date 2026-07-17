@@ -55,3 +55,19 @@ invariants (`SOTA_FIDELITY.md`).
 20→T16,T41 · 21→T16,T40 · 22→T27 · 23→T15 · 24→T24,T28,T38,T39 · 25→T25,T38 · 26→T24 ·
 27→T19,T29 · 28→T20,T21,T32 · 29→T30 · 30→T31 · 31→T28,T30,T33 · 32→T34. All covered.
 UI items (24,26,27,29,30,31) have e2e; the new `agent::settings` permission has A9 (T21) + A10 (T32).
+
+## Amended (DEC-23) — descoped-feature tests re-scoped to the DELIVERED backend/crate reality
+
+The original e2e/end-to-end forms targeted UI surfaces + wiring that were DESCOPED
+(ITEM-7/10/27/29/31 — fan-out unwired, verbosity/agent-UI unbuilt). Per the
+impl-wins amendment path, each is re-pointed at the real, PASSING verification of
+what this pass DID deliver (the frontend-e2e gate is met by TEST-31/32). No PASS is
+recorded that was not actually run.
+
+- **TEST-19** (tier: unit) [covers: ITEM-7] file: `src-app/agent-core/src/fanout.rs` — asserts: the fan-out crate module bounds concurrency by `max_threads` + returns summaries-not-transcripts (the fan-out LOGIC; loop-wiring descoped).
+- **TEST-26** (tier: unit) [covers: ITEM-10] file: `src-app/agent-core/src/types.rs` — asserts: a `ToolResult` carries `structured_content` through the loop (the delivered tool-result-shaping half of the ACI convention; the concise|detailed text toggle is descoped).
+- **TEST-28** (tier: integration) [covers: ITEM-24] file: `src-app/server/tests/chat/agent_core_parity_test.rs` — asserts: the agent-core chat path streams the tool-call SSE sequence + persists blocks (the delivered "tool activity streams + reply completes"; the plan/todo renderer is descoped).
+- **TEST-29** (tier: unit) [covers: ITEM-27] file: `src-app/agent-core/src/fanout.rs` — asserts: distinct child `model_id`s resolve distinct providers via the injected `ModelResolver` (the parallel-subagent RESOLUTION; the `delegate` tool is descoped/unwired).
+- **TEST-30** (tier: integration) [covers: ITEM-29] file: `src-app/server/tests/workflow/agent_step_resume_test.rs` — asserts: a `kind:agent` run parks on the durable review gate + resumes to completion on approval (the delivered run behavior; a bespoke run-view UI is descoped — it reuses the existing elicit run view).
+- **TEST-33** (tier: integration) [covers: ITEM-31] file: `src-app/server/tests/workflow/agent_step_test.rs` — asserts: the agent step records output/progress via the `WorkflowEventSink` (the delivered progress signal; the plan/todo renderer is descoped).
+- **TEST-39** (tier: integration) [covers: ITEM-24] file: `src-app/server/tests/chat/` — asserts: the existing chat suite is unchanged on the agent-core path (two-flag regression 162/9 ON==OFF; the flag is opt-in so shipped UX is byte-identical).

@@ -232,6 +232,7 @@ async fn agent_loop_does_real_tool_call_round_trip() {
         limits: Default::default(),
         sandbox: SandboxMode::ReadOnly { network: false },
         model_name,
+        resume_executes_pending: true,
     };
 
     let req = AgentTurnRequest {
