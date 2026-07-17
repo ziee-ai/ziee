@@ -239,7 +239,7 @@ pub async fn start_generation_agent_core(
 
     // Everything from here to the spawn must release the slot on error.
     let setup = async {
-        let (provider, model_name, ..) =
+        let (provider, model_name, model_id, provider_id, ..) =
             create_provider_from_model_id(request.model_id, user_id).await?;
 
         // Conditionally create the user message (extensions may suppress it, e.g.
@@ -310,11 +310,19 @@ pub async fn start_generation_agent_core(
                 .await?
                 .id
         };
-        Ok::<_, AppError>((provider, model_name, user_message_id, assistant_message_id))
+        Ok::<_, AppError>((
+            provider,
+            model_name,
+            model_id,
+            provider_id,
+            user_message_id,
+            assistant_message_id,
+        ))
     }
     .await;
 
-    let (provider, model_name, user_message_id, assistant_message_id) = match setup {
+    let (provider, model_name, model_id, provider_id, user_message_id, assistant_message_id) =
+        match setup {
         Ok(v) => v,
         Err(e) => {
             crate::modules::chat::stream::end_generation(conversation_id);
@@ -345,15 +353,15 @@ pub async fn start_generation_agent_core(
     // forwards them to the per-user stream (mirrors the legacy consumer's tail).
     let (ext_tx, mut ext_rx) =
         tokio::sync::mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
-    {
+    let drain_handle = {
         let owner = owner_id;
         let conv = conversation_id;
         tokio::spawn(async move {
             while let Some(Ok(raw)) = ext_rx.recv().await {
                 crate::modules::chat::stream::publish_raw_event(owner, conv, raw);
             }
-        });
-    }
+        })
+    };
 
     let is_resume = user_message_id.is_none();
     tokio::spawn(async move {
@@ -377,6 +385,10 @@ pub async fn start_generation_agent_core(
                     bridge_ctx,
                     request,
                     Some(ext_tx.clone()),
+                    provider.provider_type().to_string(),
+                    model_name.clone(),
+                    model_id,
+                    provider_id,
                 ),
             ));
         }
@@ -405,19 +417,61 @@ pub async fn start_generation_agent_core(
         // The user message is already persisted, so LOAD it (Resume), don't re-append.
         let result = turn.run(TurnSeed::Resume).await;
 
-        if let Err(e) = result {
-            // The loop errored before emitting a terminal Complete frame — surface it
-            // so the client's stream ends instead of hanging.
-            publish_frame(
-                owner_id,
-                ChatStreamFrame::new(
-                    conversation_id,
-                    SSEChatStreamEvent::Error(SSEChatStreamErrorData {
-                        message: e.to_string(),
-                        code: Some("AGENT_LOOP_ERROR".into()),
-                    }),
-                ),
-            );
+        // `turn` is consumed → its ext_tx clones (bridge + gate) are dropped, so the
+        // drain channel closes. Await the drain so EVERY extension SSE event
+        // (titleUpdated / tool lifecycle) is published BEFORE the terminal frame —
+        // the host owns the terminal precisely to guarantee this ordering.
+        let _ = drain_handle.await;
+
+        match result {
+            Ok(events) => {
+                // Terminal `complete` frame: finish reason from the loop's last
+                // Stopped + usage folded across the turn's Usage events.
+                let reason = events
+                    .iter()
+                    .rev()
+                    .find_map(|e| match e {
+                        agent_core::AgentEvent::Stopped(r) => Some(*r),
+                        _ => None,
+                    })
+                    .unwrap_or(agent_core::StopReason::NoToolCall);
+                let mut acc = agent_core::Usage::default();
+                for e in &events {
+                    if let agent_core::AgentEvent::Usage(u) = e {
+                        acc.input_tokens += u.input_tokens;
+                        acc.output_tokens += u.output_tokens;
+                        acc.total_tokens += u.total_tokens;
+                    }
+                }
+                publish_frame(
+                    owner_id,
+                    ChatStreamFrame::new(
+                        conversation_id,
+                        SSEChatStreamEvent::Complete(
+                            crate::modules::chat::core::types::streaming::SSEChatStreamCompleteData {
+                                finish_reason:
+                                    crate::modules::chat::agent_host::event_sink::ChatEventSink::finish_reason(reason)
+                                        .to_string(),
+                                usage: crate::modules::chat::agent_host::event_sink::ChatEventSink::fold_usage(acc),
+                            },
+                        ),
+                    ),
+                );
+            }
+            Err(e) => {
+                // The loop errored before any terminal — surface it so the client's
+                // stream ends instead of hanging.
+                publish_frame(
+                    owner_id,
+                    ChatStreamFrame::new(
+                        conversation_id,
+                        SSEChatStreamEvent::Error(SSEChatStreamErrorData {
+                            message: e.to_string(),
+                            code: Some("AGENT_LOOP_ERROR".into()),
+                        }),
+                    ),
+                );
+            }
         }
 
         CANCELLATION_TRACKER.remove_download(assistant_message_id).await;

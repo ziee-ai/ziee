@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use agent_core::{AgentExtension, Flow};
-use ai_providers::ChatRequest;
+use ai_providers::{ChatMessage, ChatRequest, ContentBlock};
 use async_trait::async_trait;
 use axum::response::sse::Event;
 use std::convert::Infallible;
@@ -46,20 +46,59 @@ pub struct RegistryBridge {
     send_request: SendMessageRequest,
     /// SSE sink for extension-emitted frames (McpApprovalRequired / titleUpdated).
     tx: Option<UnboundedSender<Result<Event, Infallible>>>,
+    /// Provider/model identity seeded into `ctx.metadata` each iteration (title,
+    /// file, and other hooks read these — the legacy loop seeds the same keys).
+    provider_type: String,
+    model_name: String,
+    model_id: uuid::Uuid,
+    provider_id: uuid::Uuid,
 }
 
 impl RegistryBridge {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         registry: Arc<ExtensionRegistry>,
         ctx: StreamContext,
         send_request: SendMessageRequest,
         tx: Option<UnboundedSender<Result<Event, Infallible>>>,
+        provider_type: String,
+        model_name: String,
+        model_id: uuid::Uuid,
+        provider_id: uuid::Uuid,
     ) -> Self {
         Self {
             registry,
             ctx: Mutex::new(ctx),
             send_request,
             tx,
+            provider_type,
+            model_name,
+            model_id,
+            provider_id,
+        }
+    }
+
+    /// Seed the per-iteration context metadata exactly as the legacy loop does
+    /// (`streaming.rs`): provider/model identity + memoized tool-capability +
+    /// resolved available files — so title/file/other hooks behave identically.
+    async fn seed_metadata(&self, ctx: &mut StreamContext) {
+        let m = &mut ctx.metadata;
+        m.insert("provider_type".into(), serde_json::json!(self.provider_type));
+        m.insert("model_name".into(), serde_json::json!(self.model_name));
+        m.insert("model_id".into(), serde_json::json!(self.model_id.to_string()));
+        m.insert(
+            "provider_id".into(),
+            serde_json::json!(self.provider_id.to_string()),
+        );
+        let tool_capable =
+            crate::modules::file::available_files::ensure_model_tools_capable(m).await;
+        if tool_capable {
+            crate::modules::file::available_files::seed_available_files(
+                m,
+                ctx.conversation_id,
+                ctx.user_id,
+            )
+            .await;
         }
     }
 }
@@ -80,6 +119,9 @@ impl AgentExtension for RegistryBridge {
         let mut ctx = self.ctx.lock().await;
         // Match the legacy loop's 1-indexed iteration bump before each LLM call.
         ctx.iteration += 1;
+        // Seed provider/model/tool-capability/files metadata (legacy parity) so the
+        // extensions' before_llm_call + the later after_llm_call read the same ctx.
+        self.seed_metadata(&mut ctx).await;
         let action = self
             .registry
             .call_before_llm_call(&mut ctx, req, &self.send_request, self.tx.as_ref())
@@ -92,5 +134,40 @@ impl AgentExtension for RegistryBridge {
             // dispatcher's short-circuit fallback (persist + emit) when needed.
             _ => Flow::ShortCircuit,
         })
+    }
+
+    /// Run the registry's `after_llm_call` SIDE-EFFECTS (title generation, memory
+    /// extraction) — but ONLY on the FINAL round (the assistant message requested
+    /// no tools). On a tool round the ports own execution+continuation, and the MCP
+    /// extension's `after_llm_call` must NOT run (it would re-execute tools); on a
+    /// no-tool message it early-returns `Complete`, so only the pure side-effect
+    /// extensions do work. The returned `ExtensionAction` is ignored — continuation
+    /// is the crate loop's native decision.
+    async fn after_round(&self, msg: &ChatMessage) -> Result<Flow, AppError> {
+        let has_tool_use = msg
+            .content
+            .iter()
+            .any(|b| matches!(b, ContentBlock::ToolUse { .. }));
+        if has_tool_use {
+            return Ok(Flow::Continue);
+        }
+        let ctx = self.ctx.lock().await;
+        let assistant_message_id = match ctx.message_id {
+            Some(id) => id,
+            None => return Ok(Flow::Continue),
+        };
+        // Fetch the just-persisted assistant message (the `after_llm_call` contract).
+        if let Some(final_message) = crate::core::Repos
+            .chat
+            .core
+            .get_message(assistant_message_id)
+            .await?
+        {
+            let _ = self
+                .registry
+                .call_after_llm_call(&ctx, &final_message, self.tx.as_ref())
+                .await?;
+        }
+        Ok(Flow::Continue)
     }
 }

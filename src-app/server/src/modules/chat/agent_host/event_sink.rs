@@ -54,14 +54,13 @@
 //!   sender is dropped and the client reconnects + resyncs). A frame that can't
 //!   be delivered is never surfaced back into the loop.
 
-use std::sync::Mutex;
 
 use agent_core::{AgentEvent, EventSink, StopReason, Usage as AgentUsage};
 use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::modules::chat::core::types::streaming::{
-    ChatStreamChunk, ContentBlockDelta, SSEChatStreamCompleteData, SSEChatStreamEvent, Usage,
+    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, Usage,
 };
 use crate::modules::chat::stream::{publish_frame, publish_raw_event, ChatStreamFrame};
 
@@ -79,9 +78,6 @@ pub struct ChatEventSink {
     /// `ChatStreamChunk.message_id` so receivers attribute the tokens (the
     /// client learns `assistant_message_id` from the first `content` chunk).
     assistant_message_id: Uuid,
-    /// Token usage folded across [`AgentEvent::Usage`] events, drained onto the
-    /// terminal `complete` frame. Interior-mutable because `emit` takes `&self`.
-    usage: Mutex<AgentUsage>,
 }
 
 impl ChatEventSink {
@@ -97,7 +93,6 @@ impl ChatEventSink {
             conversation_id,
             branch_id,
             assistant_message_id,
-            usage: Mutex::new(AgentUsage::default()),
         }
     }
 
@@ -115,7 +110,7 @@ impl ChatEventSink {
     /// cap stops carry descriptive-but-non-error reasons — the turn still
     /// completed cleanly with output; only `"cancelled"` has special client
     /// meaning, everything else renders as a normal completion.
-    fn finish_reason(reason: StopReason) -> &'static str {
+    pub fn finish_reason(reason: StopReason) -> &'static str {
         match reason {
             StopReason::NoToolCall => "stop",
             StopReason::Halted => "cancelled",
@@ -125,13 +120,13 @@ impl ChatEventSink {
         }
     }
 
-    /// Fold the accumulated agent usage into the chat `Usage` wire type, or
-    /// `None` when the loop reported no usage (parity with the legacy terminal
-    /// chunk, which omits `usage` when the provider sent none). `agent_core::
-    /// Usage` carries only input/output/total totals, so reasoning/cache fields
-    /// stay `None`.
-    fn drain_usage(&self) -> Option<Usage> {
-        let acc = self.usage.lock().map(|g| *g).unwrap_or_default();
+    /// Fold an accumulated agent usage into the chat `Usage` wire type, or `None`
+    /// when the loop reported no usage (parity with the legacy terminal chunk,
+    /// which omits `usage` when the provider sent none). `agent_core::Usage`
+    /// carries only input/output/total totals, so reasoning/cache fields stay
+    /// `None`. The dispatcher folds the turn's `AgentEvent::Usage` events and calls
+    /// this to build the terminal `complete` frame.
+    pub fn fold_usage(acc: AgentUsage) -> Option<Usage> {
         if acc.input_tokens == 0 && acc.output_tokens == 0 && acc.total_tokens == 0 {
             return None;
         }
@@ -168,27 +163,18 @@ impl EventSink for ChatEventSink {
                 }
             }
 
-            // Fold usage; it rides the terminal `complete` frame (the legacy
-            // consumer likewise surfaced usage only on the terminal chunk),
-            // never its own frame.
-            AgentEvent::Usage(u) => {
-                if let Ok(mut acc) = self.usage.lock() {
-                    acc.input_tokens += u.input_tokens;
-                    acc.output_tokens += u.output_tokens;
-                    acc.total_tokens += u.total_tokens;
-                }
-            }
+            // No-op: usage rides the terminal `complete` frame, which the host
+            // (dispatcher) now emits — it folds the turn's `Usage` events itself
+            // (via `Self::fold_usage`), so the sink doesn't accumulate here.
+            AgentEvent::Usage(_u) => {}
 
-            // Terminal frame: one `complete` closing the turn with the mapped
-            // finish reason + folded usage. Mirrors the legacy Complete-frame
-            // construction. (An `error` terminal is owned by the host's
-            // TerminalGuard, not the happy-path sink.)
-            AgentEvent::Stopped(reason) => {
-                self.publish(SSEChatStreamEvent::Complete(SSEChatStreamCompleteData {
-                    finish_reason: Self::finish_reason(reason).to_string(),
-                    usage: self.drain_usage(),
-                }));
-            }
+            // No-op: the terminal `complete` frame is emitted by the HOST
+            // (dispatcher) AFTER the extension-event channel is drained, so a
+            // late `titleUpdated` / tool event can't land after the terminal (the
+            // sink's out-of-band drain would otherwise race the Complete). The
+            // dispatcher computes the finish reason + usage from the returned event
+            // stream via `Self::finish_reason` / `Self::fold_usage`.
+            AgentEvent::Stopped(_reason) => {}
 
             // Coarse tool progress note → a raw `mcpToolProgress` event on the
             // per-conversation stream (routed to whichever conversation the
