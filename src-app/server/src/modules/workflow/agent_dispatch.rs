@@ -125,9 +125,44 @@ impl ApprovalPolicy for ConversationApprovalPolicy {
 /// call executes. Fail-closed is preserved — an inner error propagates unchanged
 /// (the crate's `Reviewer` maps it to `Deny`) and nothing is recorded.
 struct RecordingRiskClassifier {
-    inner: ModelRiskClassifier,
+    /// The wrapped classifier — normally the crate's `ModelRiskClassifier`, or a
+    /// deterministic `ForcedRiskClassifier` under the debug-only test seam below.
+    inner: Arc<dyn RiskClassifier>,
     /// call.id → classification label; shared with the `McpToolProvider`.
     map: Arc<Mutex<HashMap<String, String>>>,
+}
+
+/// **Debug-only test seam.** A deterministic `RiskClassifier` that returns a
+/// fixed `Risk` without a model call, so the reviewer-escalation + durable-gate
+/// resume paths can be tested without depending on a model actually classifying a
+/// call `High`. Constructed ONLY under `cfg!(debug_assertions)` when
+/// `ZIEE_AGENT_FORCE_RISK` is set (see the reviewer build site); it is physically
+/// unreachable in a release build. Mirrors the `CODE_SANDBOX_ROOTFS_MIRROR` /
+/// `LLM_RUNTIME_*_MIRROR` debug-seam pattern.
+struct ForcedRiskClassifier {
+    risk: Risk,
+}
+
+#[async_trait]
+impl RiskClassifier for ForcedRiskClassifier {
+    async fn classify(&self, _call: &ToolCall, _policy: &str) -> Result<Risk, AppError> {
+        Ok(self.risk)
+    }
+}
+
+/// Parse `ZIEE_AGENT_FORCE_RISK` → a forced classifier, ONLY in a debug build.
+/// Returns `None` in release (the env var is ignored) or when unset/unrecognized.
+fn forced_risk_classifier() -> Option<Arc<dyn RiskClassifier>> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    let risk = match std::env::var("ZIEE_AGENT_FORCE_RISK").ok()?.as_str() {
+        "low" => Risk::Low,
+        "high" => Risk::High,
+        "critical" => Risk::Critical,
+        _ => return None,
+    };
+    Some(Arc::new(ForcedRiskClassifier { risk }))
 }
 
 #[async_trait]
@@ -465,6 +500,13 @@ struct WorkflowHumanGate {
     pool: PgPool,
     emit: Arc<dyn ProgressEmitter>,
     step_id: String,
+    /// ITEM-12: call.id → classification, shared with the tool provider. The
+    /// reviewer classifies during the pre-park turn, but the tool only EXECUTES on
+    /// resume (a fresh invocation with an empty map where the reviewer is skipped
+    /// via the session allow-rule) — so the class must be persisted into the
+    /// durable gate record here and re-seeded on resume, or it never reaches the
+    /// `mcp_tool_calls` journal row.
+    classifications: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[async_trait]
@@ -487,9 +529,19 @@ impl HumanGate for WorkflowHumanGate {
             },
             "required": ["approve"]
         });
+        // ITEM-12: carry the reviewer's classification + the call id through the
+        // durable gate so the resumed loop can stamp it onto the journal row (the
+        // reviewer is not re-consulted on resume). `null` when the reviewer is off.
+        let classification = self
+            .classifications
+            .lock()
+            .ok()
+            .and_then(|g| g.get(&ask.call.id).cloned());
         let data = serde_json::json!({
             "tool": ask.call.name,
             "arguments": ask.call.input,
+            "call_id": ask.call.id,
+            "classification": classification,
         });
         // Far-future deadline: a durable, human-paced review (matches the
         // `timeout_ms: 0` elicit gate).
@@ -742,7 +794,10 @@ impl StepDispatcher for AgentDispatcher {
                         },
                         None => (model_client.clone(), ctx.model_name.clone()),
                     };
-                let inner = ModelRiskClassifier::new(rev_client, rev_model_name);
+                // Debug-only seam: a forced classifier makes reviewer escalation
+                // deterministic in tests; otherwise the real model classifier.
+                let inner: Arc<dyn RiskClassifier> = forced_risk_classifier()
+                    .unwrap_or_else(|| Arc::new(ModelRiskClassifier::new(rev_client, rev_model_name)));
                 let recording = RecordingRiskClassifier {
                     inner,
                     map: classifications.clone(),
@@ -765,6 +820,7 @@ impl StepDispatcher for AgentDispatcher {
                 pool: pool.clone(),
                 emit: emit.clone(),
                 step_id: step.id.clone(),
+                classifications: classifications.clone(),
             }),
             // ITEM-13: consult per-conversation `ApprovedForSession` rules first,
             // else fall back to the admin approval matrix.
@@ -833,6 +889,28 @@ impl StepDispatcher for AgentDispatcher {
                             .and_then(|v| v.as_str())
                         {
                             mark_approved_for_session(approval_scope, tool);
+                        }
+                    }
+                }
+            }
+
+            // ITEM-12: re-seed the reviewer classification persisted into the gate
+            // record so the tool, when it executes on resume, still stamps its
+            // class onto the `mcp_tool_calls` journal row (the reviewer is not
+            // re-run on resume). Keyed by the SAME call.id the pending tool_use
+            // carries in the reloaded transcript.
+            if let Ok(Some(run_row)) = repository::find_run(&pool, ctx.run_id).await {
+                if let Some(data) = run_row
+                    .pending_elicitation_json
+                    .as_ref()
+                    .and_then(|p| p.get("data"))
+                {
+                    if let (Some(call_id), Some(class)) = (
+                        data.get("call_id").and_then(|v| v.as_str()),
+                        data.get("classification").and_then(|v| v.as_str()),
+                    ) {
+                        if let Ok(mut g) = classifications.lock() {
+                            g.insert(call_id.to_string(), class.to_string());
                         }
                     }
                 }
