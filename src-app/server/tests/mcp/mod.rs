@@ -17,6 +17,7 @@ mod approval_claim_test;
 mod elicitation_mcp_test;
 mod mcp_approval_loop_test;
 mod agent_core_tool_bridge_test;
+mod agent_core_multiturn_bridge_test;
 mod mcp_approval_workflow_test;
 mod mcp_content_test;
 mod mcp_defaults_test;

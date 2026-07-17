@@ -52,6 +52,7 @@ mod validate_and_dry_run;
 mod conversation_elicit;
 mod test_endpoint;
 mod diamond_dag;
+mod agent_step_test;
 mod group_widget_endpoints;
 
 /// Reverse-DNS name of the fixture workflow the mock catalog serves.
