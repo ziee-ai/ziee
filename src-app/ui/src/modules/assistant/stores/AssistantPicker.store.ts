@@ -20,6 +20,24 @@ export const newChatAssistantKey = (
   paneId ? `${NEW_CHAT_ASSISTANT_KEY}:${paneId}` : NEW_CHAT_ASSISTANT_KEY
 
 /**
+ * The EFFECTIVE assistant id for a conversation key, applying the "absent →
+ * default, else raw" rule (ITEM: auto-select default assistant for new chats):
+ *   - key ABSENT from `sel` (never set) → fall back to the user's default
+ *     (`is_default && enabled`) assistant, if any.
+ *   - value `null` (user explicitly cleared) → stays `null` ("no assistant").
+ *   - value a string (explicit selection) → returned as-is.
+ * Pure so display consumers can call it reactively off the store's raw state.
+ */
+export const effectiveAssistantId = (
+  sel: Record<string, string | null>,
+  assistants: Assistant[],
+  key: string,
+): string | null =>
+  key in sel
+    ? sel[key]
+    : (assistants.find(a => a.is_default && a.enabled)?.id ?? null)
+
+/**
  * Assistant picker store — the user's per-chat-composer assistant selection plus
  * the cached list of available assistants. Lives at `Stores.AssistantPicker`.
  * `availableAssistants` is a GLOBAL catalog (lazy-loads once on first access).
@@ -79,6 +97,19 @@ export const AssistantPicker = defineStore('AssistantPicker', {
       /** The selected assistant id for a conversation key (null = none / unset). */
       getAssistantId: (key: string): string | null =>
         get().selectedByConversation[key] ?? null,
+      /**
+       * The EFFECTIVE assistant id for a conversation key — same as
+       * `getAssistantId` except an ABSENT key falls back to the user's default
+       * (`is_default && enabled`) assistant. Use this on the NEW-message send
+       * path so the auto-selected default is actually attached; explicit `null`
+       * (user cleared) is still respected. See `effectiveAssistantId`.
+       */
+      getEffectiveAssistantId: (key: string): string | null =>
+        effectiveAssistantId(
+          get().selectedByConversation,
+          get().availableAssistants,
+          key,
+        ),
     }
   },
   init: ({ on, set, actions }) => {

@@ -2,7 +2,10 @@ import { Combobox, Tooltip } from '@/components/ui'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import {
+  effectiveAssistantId,
+  newChatAssistantKey,
+} from '@/modules/assistant/stores/AssistantPicker.store'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 interface AssistantSelectorProps {
@@ -21,7 +24,12 @@ export function AssistantSelector({
   const pane = useChatPaneOrNull()
   const key =
     Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
-  const selectedAssistantId = selectedByConversation[key]
+  // Effective id: an untouched new chat shows the user's default assistant.
+  const selectedAssistantId = effectiveAssistantId(
+    selectedByConversation,
+    availableAssistants,
+    key,
+  )
 
   if (!canRead) return null
 

@@ -3,7 +3,10 @@ import { Bot, ChevronRight } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@/core/stores'
-import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import {
+  effectiveAssistantId,
+  newChatAssistantKey,
+} from '@/modules/assistant/stores/AssistantPicker.store'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 
@@ -28,7 +31,12 @@ export function AssistantMenuItem() {
   const pane = useChatPaneOrNull()
   const key =
     Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
-  const selectedAssistantId = selectedByConversation[key]
+  // Effective id: an untouched new chat highlights the user's default assistant.
+  const selectedAssistantId = effectiveAssistantId(
+    selectedByConversation,
+    availableAssistants,
+    key,
+  )
 
   const selectedAssistant = availableAssistants.find(
     (a: any) => a.id === selectedAssistantId,
