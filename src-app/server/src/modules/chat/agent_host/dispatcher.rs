@@ -114,6 +114,7 @@ impl ChatAgentTurn {
             self.user_id,
             Some(self.conversation_id),
             self.cancel_token.clone(),
+            self.sse_tx.clone(),
         ));
         let gate = Arc::new(ChatHumanGate {
             user_id: self.user_id,

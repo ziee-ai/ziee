@@ -1150,9 +1150,16 @@ pub(crate) async fn call_mcp_tool(
     // agent host, so its rows read `chat` like today's chat tool calls).
     source: crate::modules::mcp::tool_calls::models::McpToolCallSource,
 ) -> Result<(Uuid, crate::modules::mcp::client::traits::ToolResult), McpToolCallError> {
-    let server_id = match resolve_tool_server(scope.user_id, server_name).await {
+    // The namespaced prefix is either a server NAME (workflow's `McpToolProvider`
+    // list) or a server ID uuid (chat's MCP extension namespaces tools as
+    // `<server_id>__<tool>`). Accept both: a parseable uuid is the id directly;
+    // otherwise resolve the name.
+    let server_id = match uuid::Uuid::parse_str(server_name) {
         Ok(id) => id,
-        Err(e) => return Err(McpToolCallError::Failed(e.to_string())),
+        Err(_) => match resolve_tool_server(scope.user_id, server_name).await {
+            Ok(id) => id,
+            Err(e) => return Err(McpToolCallError::Failed(e.to_string())),
+        },
     };
 
     // E8: reject a server OR a specific tool the user disabled. Conversation-

@@ -40,12 +40,15 @@
 //!   disabled model (not-found / forbidden / bad-request), the boundary the crate
 //!   never crosses on its own. This mirrors `WorkflowModelResolver` exactly.
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
 use agent_core::{IdempotencyKey, ModelResolver, ToolCall, ToolProvider, ToolResult, ToolScope};
 use ai_providers::{ContentBlock, Provider, Tool};
 use async_trait::async_trait;
+use axum::response::sse::Event;
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -180,17 +183,27 @@ pub struct ChatToolProvider {
     conversation_id: Option<Uuid>,
     /// The chat stop-generation token, wrapped so `call_mcp_tool` can await it.
     cancel: ChatCancel,
+    /// SSE sink for the `mcpToolStart` / `mcpToolComplete` lifecycle frames the
+    /// legacy `execute_tool` emitted — the chat UI renders tool activity from these.
+    tx: Option<UnboundedSender<Result<Event, Infallible>>>,
 }
 
 impl ChatToolProvider {
     /// `token` is a clone of the per-`assistant_message_id` stop-generation token
     /// (`CANCELLATION_TRACKER.create_token(...)`), so a stop request aborts an
-    /// in-flight tool call for this turn.
-    pub fn new(user_id: Uuid, conversation_id: Option<Uuid>, token: CancellationToken) -> Self {
+    /// in-flight tool call for this turn. `tx` is the extension-event SSE sender
+    /// (for tool-lifecycle frames).
+    pub fn new(
+        user_id: Uuid,
+        conversation_id: Option<Uuid>,
+        token: CancellationToken,
+        tx: Option<UnboundedSender<Result<Event, Infallible>>>,
+    ) -> Self {
         Self {
             user_id,
             conversation_id,
             cancel: ChatCancel::new(token),
+            tx,
         }
     }
 }
@@ -265,34 +278,85 @@ impl ToolProvider for ChatToolProvider {
             conversation_id: self.conversation_id,
             run_id,
         };
+        // Tool-lifecycle SSE (parity with the legacy `execute_tool`): start before,
+        // complete after — so the chat UI shows the tool running + its result.
+        use crate::modules::mcp::chat_extension::helpers::{
+            send_tool_complete_event, send_tool_start_event,
+        };
+        send_tool_start_event(self.tx.as_ref(), &call.id, &tool_name, &server_name, &call.input)
+            .await;
         // DEC-17: the chat host passes `enforce_conversation_disabled = false` —
         // chat applies disabled-server filtering at attach time, not call time.
-        match call_mcp_tool(
+        let outcome = call_mcp_tool(
             &scope,
             &server_name,
             &tool_name,
-            call.input,
+            call.input.clone(),
             false,
             &self.cancel,
             None,
             Some(idem),
             crate::modules::mcp::tool_calls::models::McpToolCallSource::Chat,
         )
-        .await
-        {
-            Ok((_server_id, result)) => Ok(mcp_to_agent_result(result)),
+        .await;
+        match outcome {
+            Ok((_server_id, result)) => {
+                let agent = mcp_to_agent_result(result);
+                let text = agent.content.iter().find_map(|b| match b {
+                    ContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                });
+                send_tool_complete_event(
+                    self.tx.as_ref(),
+                    &call.id,
+                    &tool_name,
+                    &server_name,
+                    agent.is_error,
+                    text,
+                )
+                .await;
+                Ok(agent)
+            }
             Err(McpToolCallError::Cancelled) => {
+                send_tool_complete_event(
+                    self.tx.as_ref(),
+                    &call.id,
+                    &tool_name,
+                    &server_name,
+                    true,
+                    Some("cancelled"),
+                )
+                .await;
                 Err(AppError::internal_error("chat: tool call cancelled"))
             }
-            Err(McpToolCallError::Failed(m)) => Err(AppError::internal_error(m)),
+            Err(McpToolCallError::Failed(m)) => {
+                send_tool_complete_event(
+                    self.tx.as_ref(),
+                    &call.id,
+                    &tool_name,
+                    &server_name,
+                    true,
+                    Some(&m),
+                )
+                .await;
+                Err(AppError::internal_error(m))
+            }
         }
     }
 
     fn is_trusted(&self, server: &str) -> bool {
-        // The loop passes `call.server.unwrap_or(call.name)`; since the crate sets
-        // `server = None`, `server` is the namespaced tool name — parse its prefix
-        // and treat any built-in server as trusted (mirrors the workflow twin).
-        let (server_name, _) = split_tool_name(server);
-        builtin_server_id_by_name(&server_name).is_some()
+        // The loop passes `call.server.unwrap_or(call.name)`; the crate sets
+        // `server = None`, so `server` is the namespaced tool name. Chat's MCP
+        // extension namespaces as `<server_id>__<tool>` — parse the prefix as the
+        // server-id uuid and trust built-in servers (parity with mcp.rs's
+        // `is_builtin_server_id`, which drives the approval bypass). Fall back to a
+        // NAME lookup for the workflow-style `<server_name>__<tool>` scheme.
+        let (prefix, _) = split_tool_name(server);
+        match uuid::Uuid::parse_str(&prefix) {
+            Ok(server_id) => {
+                crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(server_id)
+            }
+            Err(_) => builtin_server_id_by_name(&prefix).is_some(),
+        }
     }
 }
