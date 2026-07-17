@@ -298,6 +298,24 @@ impl ChatApprovalPolicy {
 #[async_trait]
 impl ApprovalPolicy for ChatApprovalPolicy {
     async fn decide(&self, call: &ToolCall, trusted: bool, _sandbox: &SandboxMode) -> Decision {
+        // Cross-request resume: if a prior turn already recorded a human decision
+        // for THIS tool_use_id (the row was flipped by the MCP extension's
+        // before_llm_call on the resuming request), honor it directly instead of
+        // re-classifying — else a manual-approve tool would re-prompt forever.
+        use crate::modules::mcp::chat_extension::approval::repository as approval_repo;
+        let pool = crate::core::Repos.pool();
+        if let Ok(approved) =
+            approval_repo::get_approved_tools_for_branch(pool, self.branch_id).await
+        {
+            if approved.iter().any(|a| a.tool_use_id == call.id) {
+                return Decision::Auto;
+            }
+        }
+        if let Ok(denied) = approval_repo::get_denied_tools_for_branch(pool, self.branch_id).await {
+            if denied.iter().any(|a| a.tool_use_id == call.id) {
+                return Decision::Deny;
+            }
+        }
         let (server_id, server_str, tool_name) = split_server_tool(call);
         self.decide_pure(server_id, &server_str, &tool_name, &call.input, trusted)
     }
