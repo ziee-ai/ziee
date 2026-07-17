@@ -263,6 +263,14 @@ pub struct AgentCore {
     pub sandbox: SandboxMode,
     /// Model name written into each `ChatRequest.model`.
     pub model_name: String,
+    /// On a `Resume` whose transcript ends with unexecuted `tool_use`, should the
+    /// LOOP execute those pending tools itself (`true`), or does a `before_model`
+    /// extension already handle the resume (`false`)? The workflow host uses the
+    /// loop's native resume (`true`, the default via [`AgentCore::default`]-style
+    /// construction); the CHAT host sets `false` because its `RegistryBridge`
+    /// runs the MCP extension's `before_llm_call`, which itself executes the
+    /// approved tools on resume — running both double-executes the tool.
+    pub resume_executes_pending: bool,
 }
 
 /// What to do with one tool call after the approval gate has decided.
@@ -384,7 +392,10 @@ impl AgentCore {
             // hooks above already flipped the approval rows so the policy resolves
             // them. (Domain-neutral: purely a transcript shape, no chat types.)
             let is_first = iteration == req.start_iteration.max(1);
-            let resume_msg = if is_first && matches!(req.seed, TurnSeed::Resume) {
+            let resume_msg = if self.resume_executes_pending
+                && is_first
+                && matches!(req.seed, TurnSeed::Resume)
+            {
                 last_pending_assistant(&history)
             } else {
                 None
@@ -512,12 +523,15 @@ impl AgentCore {
 
                 match act {
                     Act::Suspend(ticket) => {
+                        // Do NOT break on the first suspend: keep processing the rest
+                        // of the round so every approval-needing tool gets its pending
+                        // row (via its own gate call) and no `tool_use` is left
+                        // orphaned (a partial suspend that broke here would strand the
+                        // un-processed tools with neither a result nor a pending row,
+                        // corrupting the resume). The turn is finalized after the loop.
                         self.push_emit(&mut events, AgentEvent::GateOpened(ticket))
                             .await;
-                        self.push_emit(&mut events, AgentEvent::Stopped(StopReason::Halted))
-                            .await;
                         suspended = true;
-                        break;
                     }
                     Act::Deny(reason) => {
                         let result = error_tool_result(reason);
@@ -561,6 +575,10 @@ impl AgentCore {
                 }
             }
             if suspended {
+                // Every round tool has now been processed (auto ones executed, the
+                // approval-needing ones parked with a pending row). Finalize the turn.
+                self.push_emit(&mut events, AgentEvent::Stopped(StopReason::Halted))
+                    .await;
                 break;
             }
             // When EVERY executed tool was terminal (user-audience output / built-in
@@ -734,6 +752,7 @@ mod tests {
             limits: Default::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
+            resume_executes_pending: true,
         };
         core.run(new_req(), CancelToken::new()).await.unwrap();
         let deltas = sink

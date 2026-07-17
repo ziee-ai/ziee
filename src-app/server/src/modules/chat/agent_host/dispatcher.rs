@@ -180,6 +180,7 @@ impl ChatAgentTurn {
             // this is not enforcement here. Read-only w/ network is the safe carrier.
             sandbox: SandboxMode::ReadOnly { network: true },
             model_name: self.model_name.clone(),
+            resume_executes_pending: false,
         };
 
         let req = AgentTurnRequest {

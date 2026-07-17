@@ -196,6 +196,7 @@ fn mcp_to_agent_result(r: crate::modules::mcp::client::traits::ToolResult) -> To
         content: vec![ContentBlock::Text { text }],
         is_error: r.is_error,
         structured_content: r.structured_content,
+        terminal: false,
     }
 }
 
@@ -791,6 +792,7 @@ impl StepDispatcher for AgentDispatcher {
             limits,
             sandbox,
             model_name: ctx.model_name.clone(),
+            resume_executes_pending: true,
         };
 
         // ITEM-16: resume-replay. A non-empty persisted transcript means this is a

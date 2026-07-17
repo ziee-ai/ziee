@@ -352,6 +352,7 @@ pub fn core_with(
         limits: SubagentLimits::default(),
         sandbox: SandboxMode::WorkspaceWrite { network: false },
         model_name: "test-model".into(),
+        resume_executes_pending: true,
     };
     Harness {
         core,

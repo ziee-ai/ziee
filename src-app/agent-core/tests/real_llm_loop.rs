@@ -85,6 +85,7 @@ impl ToolProvider for WeatherTool {
             }],
             is_error: false,
             structured_content: Some(serde_json::json!({"tempC": 20, "sky": "sunny"})),
+            terminal: false,
         })
     }
     fn is_trusted(&self, _server: &str) -> bool {
@@ -155,6 +156,7 @@ async fn agent_streams_text_deltas_from_real_model() {
         limits: Default::default(),
         sandbox: SandboxMode::ReadOnly { network: false },
         model_name,
+        resume_executes_pending: true,
     };
     let req = AgentTurnRequest {
         run_id: Uuid::new_v4(),

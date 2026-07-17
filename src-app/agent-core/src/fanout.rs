@@ -154,6 +154,7 @@ mod tests {
             },
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
+            resume_executes_pending: true,
         }
     }
 
