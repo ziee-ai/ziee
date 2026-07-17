@@ -140,28 +140,60 @@ pub struct ChatApprovalPolicy {
     pub unattended_allowed: serde_json::Value,
 }
 
-/// Resolve the conversation's effective approval policy for a turn.
-///
-/// WAVE-5 STATUS: seeds a SAFE DEFAULT — `ManualApprove`, no auto-approve, no
-/// disabled set, attended. Result: any non-built-in tool PROMPTS (built-ins still
-/// auto via `trusted`); a built-in read-only turn is unaffected. This is safe and
-/// correct for the no-tool + manual-approval paths. FULL parity with `mcp.rs`'s
-/// per-conversation `get_approval_mode`/`get_auto_approved_tools`/
-/// `get_disabled_servers` + user-defaults + unattended resolution is completed
-/// during the tool-path verification (see IMPL_NOTES wave-5 fan-in TODO).
+/// Resolve the conversation's effective approval policy for a turn — the SAME
+/// resolution `mcp.rs::after_llm_call` performs: conversation MCP settings take
+/// precedence, else the user's `/api/mcp/defaults`, else conservative
+/// `ManualApprove`. Auto-approved sets are the UNION of the conversation's and the
+/// user's. Interactive chat sends are attended (`unattended = false`; the scheduled
+/// path is a separate host).
 pub async fn resolve_chat_approval_policy(
     user_id: Uuid,
     conversation_id: Uuid,
     branch_id: Uuid,
 ) -> Result<ChatApprovalPolicy, AppError> {
+    use crate::core::Repos;
+
+    let settings = Repos
+        .chat
+        .mcp
+        .get_conversation_settings(conversation_id)
+        .await?;
+    let user_defaults = {
+        use crate::modules::mcp::chat_extension::defaults::repository as defaults_repo;
+        defaults_repo::get_user_defaults(Repos.pool(), user_id)
+            .await
+            .ok()
+            .flatten()
+    };
+    let user_auto_approved = user_defaults
+        .as_ref()
+        .map(|d| d.get_auto_approved_tools())
+        .unwrap_or_default();
+
+    let (approval_mode, conv_auto_approved, disabled_servers) = if let Some(ref s) = settings {
+        (
+            s.get_approval_mode(),
+            s.get_auto_approved_tools(),
+            s.get_disabled_servers(),
+        )
+    } else if let Some(ref d) = user_defaults {
+        (
+            d.get_approval_mode(),
+            d.get_auto_approved_tools(),
+            d.get_disabled_servers(),
+        )
+    } else {
+        (ApprovalMode::ManualApprove, Vec::new(), Vec::new())
+    };
+
     Ok(ChatApprovalPolicy {
         user_id,
         conversation_id,
         branch_id,
-        approval_mode: ApprovalMode::default(), // ManualApprove
-        conv_auto_approved: Vec::new(),
-        user_auto_approved: Vec::new(),
-        disabled_servers: Vec::new(),
+        approval_mode,
+        conv_auto_approved,
+        user_auto_approved,
+        disabled_servers,
         unattended: false,
         unattended_allowed: serde_json::Value::Null,
     })
