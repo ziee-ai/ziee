@@ -35,17 +35,24 @@ no new permission (reuses `workflows::manage` / `workflows::install` / `workflow
   because the builder needs a non-tarball source of truth. Gated `WorkflowsInstall`.
 - **ITEM-3**: `PUT /api/workflows/{id}/definition` — replace an existing user-scope workflow's
   steps/inputs from a posted `WorkflowDef`: re-materialize the bundle at `extracted_path`, re-validate,
-  recompile IR, `repository::update`-equivalent for def+ir+sha, `sync_publish`. Owner-scoped 404/403.
-  Distinct from the metadata-only `PUT /api/workflows/{id}` (`UpdateWorkflow`).
+  recompile IR, then persist via a **NEW `repository::update_definition(id, extracted_path,
+  bundle_sha256, bundle_size_bytes, file_count, compiled_ir_json)`** fn (in-place, PRESERVING the
+  workflow id + its run history — the existing `repository::update` is metadata-only and the
+  import path's delete+insert would mint a new id, which a re-save must NOT do). Owner-scoped 404/403,
+  `sync_publish`. Distinct from the metadata-only `PUT /api/workflows/{id}` (`UpdateWorkflow`).
 - **ITEM-4**: `POST /api/workflows/validate-def` — validate a posted `WorkflowDef` JSON (not a
   tarball) → structured `{errors[], warnings[], cost_estimate}` for live inline validation in the
   builder before save. Thin wrapper over the existing `validate_workflow` + `cost` dry-run.
 - **ITEM-5**: Friendly agent-activity stream — replace the single-track `"agent"` `ProgressKind::Log`
   collapse in `WorkflowEventSink` (`agent_dispatch.rs:343-398`) with **typed, append-style**
   `AgentActivity { seq, kind, tool?, title, detail?, status }` entries (kind ∈
-  `thinking|tool_call|tool_result|message|gate|compaction`), appended to the run's existing
-  `step_logs_json` channel (structured entries — NO new column/migration) so a reopened/resumed run
-  replays full history instead of the last line only. Emitted through the existing progress SSE.
+  `thinking|tool_call|tool_result|message|gate|compaction`). Three concrete pieces (audit-corrected —
+  no existing append channel or frame fits): (a) a **new `ProgressKind::AgentActivity{…}` variant** in
+  `events.rs` (the current `ProgressKind` is Log/Bar/Counter/Status/Phase only) carried on the existing
+  `SSEStepProgress` frame — live SSE; (b) a **new durable append writer** on the un-cleared,
+  default-`{}` `workflow_runs.step_logs_json` jsonb column (seq-keyed `jsonb_set`/`||` — the column
+  already holds structured objects, so **NO new column/migration**) so a reopened/resumed run replays
+  full history, not the last line; (c) FE parsing of the new variant (ITEM-13).
 
 ### Frontend — the builder
 - **ITEM-6**: FE `WorkflowDef`/`StepDef`/`StepConfig` types (from OpenAPI regen) + a per-instance
@@ -58,10 +65,13 @@ no new permission (reuses `workflows::manage` / `workflows::install` / `workflow
 - **ITEM-8**: Per-kind step-config forms (functional, schema-driven, kit `Field`) for
   Llm / LlmMap / Sandbox / Elicit / Tool.
 - **ITEM-9**: Agent-step **friendly** config form — domain language: "What should the assistant do?"
-  (→ `prompt`), a capability/tool picker (multi-select over the user's accessible MCP servers, shown
-  as capabilities not server ids → `servers`), an effort dial (`max_steps`, Quick↔Thorough), output
-  (Text↔Structured → `output_format`), advanced disclosure (system directive → `system`; exact
-  `max_steps`). Plus a plain-English "what this task will do" read-back (show-then-act).
+  (→ `prompt`), a capability/tool picker (kit `MultiSelect` over `Stores.McpServer.servers` — the
+  sanctioned cross-module accessor — shown as capabilities/`display_name` not server ids → `servers`),
+  an **effort control** as a kit `Segmented` with discrete Quick/Balanced/Thorough stops mapping to
+  `max_steps` values (NO kit `Slider` exists — audit Q4; discrete named levels are friendlier anyway),
+  output (Text↔Structured → `output_format`, `Segmented`), advanced disclosure (`Accordion`: system
+  directive → `system`; exact `max_steps` via `InputNumber`). Plus a plain-English "what this task will
+  do" read-back (show-then-act).
 - **ITEM-10**: Step input/output wiring helper — a ref-insert menu that inserts references to
   workflow inputs + prior step outputs into a step's template fields, with type hints from the
   compiled IR's `InferredType`. (Not a graph editor — a linear ref picker.)
@@ -75,16 +85,21 @@ no new permission (reuses `workflows::manage` / `workflows::install` / `workflow
   right-aligned status pill, "Show details"/tool-args/output progressive disclosure); gate/approval/
   reviewer events surface inline (reuse `WorkflowElicitForm`). Kit: Card/Badge/Accordion/Button/
   ToolStatusIcon/Separator.
-- **ITEM-13**: Run-store handling — `WorkflowRun.store.ts` + `sse/runProgressClient.ts` consume the
-  new agent-activity entries **append-style (keyed by `seq`)**, not the current overwrite
-  (`s.tracks[id] = t`), so the timeline accretes.
+- **ITEM-13**: Run-store handling — the `tracks` path is overwrite-by-id (`s.tracks[id]=t`) and
+  cannot carry history (audit Q1), so add a **new per-step `agentActivity: AgentActivityEntry[]`**
+  store field on `WorkflowRun.store.ts` (push/dedupe by `seq`, NOT overwrite), a **new SSE handler**
+  in `sse/runProgressClient.ts` for the `ProgressKind::AgentActivity` frame, and a parallel
+  array-merge on snapshot rehydrate (from persisted `step_logs_json`). ITEM-12 renders this field.
 
 ### Cross-cutting
 - **ITEM-14**: `just openapi-regen` — regenerate BOTH `ui/` and `desktop/ui/` (new endpoints +
   `WorkflowDef`/`StepConfig`/`AgentActivity` types); golden `types.ts` parity test stays green.
-- **ITEM-15**: Desktop parity — builder surface + timeline mirrored/registered in
-  `src-app/desktop/ui`; verify the desktop-embedded server still builds (`CORE_MODULE_BLOCKLIST`
-  unaffected — workflows already ship on desktop).
+- **ITEM-15**: Desktop parity — **audit-corrected: there is NO `desktop/ui` workflow-module mirror**;
+  desktop reuses the shared `ui/` modules (`desktop-loader.ts` globs only desktop-specific modules and
+  registers them on top). New workflow FE files are authored ONCE in `ui/` and shared → **zero per-file
+  duplication**. This item = (a) verify the desktop-embedded build still compiles, (b) regen the
+  desktop `api-client` too (ITEM-14 runs both), (c) add the new top-level surfaces to
+  `desktop/ui/scripts/classify-gallery-coverage.mjs` allowlist if needed.
 - **ITEM-16**: Gallery coverage + state matrix — add builder (empty / populated / **390px mobile** /
   validation-error), the agent friendly form, and the run timeline (running / gate-open / completed)
   as gallery surfaces so `gate:ui` (runtime-health + Layer A/axe + narrow-viewport) covers them.
@@ -102,7 +117,9 @@ no new permission (reuses `workflows::manage` / `workflows::install` / `workflow
 - `models.rs` — request/response types (`CreateWorkflowDefRequest`, `ValidateDefResponse`, etc.);
   re-export `WorkflowDef` for OpenAPI.
 - `agent_dispatch.rs` — ITEM-5 `WorkflowEventSink` rewrite (`:343-398`) + the `AgentActivity` type.
-- `repository.rs` — a `update_definition` fn (bundle path + ir + sha) alongside the metadata `update`.
+- `events.rs` — ITEM-5 new `ProgressKind::AgentActivity{…}` variant (OpenAPI-exposed → FE type).
+- `repository.rs` — NEW `update_definition` fn (id-preserving: bundle path + ir + sha) alongside the
+  metadata `update`; NEW seq-keyed append writer on `step_logs_json` for durable agent activity.
 - `validate.rs` / `cost.rs` — a `validate_def(&WorkflowDef)` + `estimate(def)` entry that skips YAML parse
   (ITEM-4) — reuse the existing pass, don't fork it.
 
@@ -114,7 +131,10 @@ no new permission (reuses `workflows::manage` / `workflows::install` / `workflow
   `WorkflowInputsEditor.tsx`, `RefInsertMenu.tsx` (ITEM-10), `BuilderValidationPanel.tsx`.
 - `components/run/AgentActivityTimeline.tsx` (new, ITEM-12), `activityDescriptors.ts` (ITEM-11),
   `WorkflowRunProgressView.tsx` (edit to mount the timeline for agent steps).
-- `module.tsx` — register the builder route + `WorkflowsList`/`WorkflowDetailDrawer` "New/Edit" affordances.
+- `module.tsx` — register the builder route **under Settings** (`/settings/workflows/builder` +
+  `/settings/workflows/{id}/edit`, `SettingsLayoutDef` — workflows are Settings-scoped, NOT top-level
+  sidebar) + the "New workflow" button on `WorkflowsList` (beside Import) + "Edit" in the
+  `WorkflowDetailDrawer` action cluster.
 - `sse/runProgressClient.ts` — parse the new agent-activity frames.
 - `src/dev/gallery/` (+ desktop mirror) — ITEM-16 gallery surfaces.
 
@@ -132,10 +152,15 @@ no new permission (reuses `workflows::manage` / `workflows::install` / `workflow
   `log_io.rs`. Emit through `progress_sse.rs` like every other track.
 - **Builder store (ITEM-6):** `defineLocalStore` per the store-kit model (per-instance, like the
   split-chat pane store) — NOT a global singleton (a builder is an editing session).
-- **Builder forms (ITEM-7/8/9):** mirror the settings-form idiom — `Field`/`FieldGroup`/`FieldSet`
-  (kit), `SettingsPageContainer`/`Card` layout; the closest rich-form precedent is the
-  `llm-provider` model-settings form (typed fields off a schema) and `WorkflowRunDialog`'s IR-driven
-  inputs form. The friendly agent form draws its progressive-disclosure + domain-language pattern from
+- **Builder forms (ITEM-7/8/9):** the design system is **`@ziee/kit`** (there is NO
+  `src-app/ui/src/components/ui/`). Use `Form`/`FormField` (RHF+zod wrapper — the kit has NO
+  shadcn `Field*` family; `FormField` renders the label/description/required chrome) inside
+  `SettingsPageContainer`/`Card`. The two closest rich-form precedents BOTH live in the workflow
+  module: `WorkflowRunDialog.tsx` (static typed fields: `useForm`+`zodResolver`, one `FormField`
+  per input, a cross-module store for option lists) and `WorkflowElicitForm.tsx` (the schema-driven
+  dynamic-form builder: `buildElicitZodSchema` + a `renderField` per-field-kind dispatcher over a
+  `FieldSchema` map — the exact pattern for per-kind step forms). The friendly agent form draws its
+  progressive-disclosure + domain-language pattern from
   the handoff's design-tournament winners (editorial rows / numbered checklist) and
   `literature/LiteratureToolResultCard.tsx` (claim-or-delegate friendly card).
 - **Run timeline (ITEM-11/12/13):** mirror `WorkflowRunProgressView.tsx`'s existing per-step row +
