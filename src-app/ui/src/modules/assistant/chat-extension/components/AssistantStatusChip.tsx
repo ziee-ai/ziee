@@ -3,7 +3,10 @@ import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { Bot } from 'lucide-react'
 import { Stores } from '@/core/stores'
-import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import {
+  effectiveAssistantId,
+  newChatAssistantKey,
+} from '@/modules/assistant/stores/AssistantPicker.store'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**
@@ -21,7 +24,12 @@ export function AssistantStatusChip() {
   const pane = useChatPaneOrNull()
   const key =
     Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
-  const selectedAssistantId = selectedByConversation[key]
+  // Effective id: an untouched new chat shows the user's default assistant chip.
+  const selectedAssistantId = effectiveAssistantId(
+    selectedByConversation,
+    availableAssistants,
+    key,
+  )
 
   if (!canRead) return null
   if (!selectedAssistantId) return null

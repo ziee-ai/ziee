@@ -62,15 +62,14 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                             instructions: template.instructions.clone(),
                             parameters,
                             is_template: Some(false),
-                            // Closes 10-assistant F-04 (Medium): the
-                            // original cloned the template's
-                            // is_default=true verbatim, so every new
-                            // user signup minted a forced-default
-                            // assistant the user couldn't opt out of
-                            // at signup time. Default to false; the
-                            // user explicitly picks their default
-                            // post-signup via the UI.
-                            is_default: Some(false),
+                            // deploy2 override (BioGnosia single-purpose deploy):
+                            // upstream 10-assistant F-04 makes clones non-default so
+                            // general-purpose users pick their own default. Here we
+                            // WANT every new user forced onto the default template, so
+                            // preserve the template's is_default — a cloned default
+                            // template becomes the user's default assistant (which the
+                            // chat composer then auto-selects).
+                            is_default: Some(template.is_default),
                             enabled: Some(template.enabled),
                         };
 

@@ -84,7 +84,7 @@ services:
           -v dscc_url="$$DSCC_MCP_URL" \
           -v biognosia_url="$$BIOGNOSIA_MCP_URL" \
           -f /seed/seed.sql \
-          -f /seed/local-provider.sql
+          -f /seed/deploy2-biognosia.sql
     environment:
       # psql connection to the bundled postgres.
       PGHOST: postgres

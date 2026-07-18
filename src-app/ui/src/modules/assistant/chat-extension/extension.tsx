@@ -108,7 +108,10 @@ const assistantExtension: ChatExtension = createExtension({
       '@/modules/assistant/stores/AssistantPicker.store'
     )
     const key = ctx.conversationId ?? newChatAssistantKey(ctx.paneId)
-    const selectedAssistantId = Stores.AssistantPicker.getAssistantId(key)
+    // Effective (not raw) so an untouched new chat auto-sends the user's default
+    // (`is_default`) assistant; an explicit clear (null) still sends nothing.
+    const selectedAssistantId =
+      Stores.AssistantPicker.getEffectiveAssistantId(key)
 
     if (selectedAssistantId) {
       return {
