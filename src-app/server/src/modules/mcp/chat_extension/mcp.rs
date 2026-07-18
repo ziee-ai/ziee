@@ -2034,12 +2034,12 @@ impl ChatExtension for McpChatExtension {
                             description: t["description"].as_str().map(|s| s.to_string()),
                             input_schema: t["inputSchema"].clone(),
                         };
-                        // `ask_user` is a built-in (`is_built_in = true`) → no label.
-                        if let Some(ai_tool) = helpers::convert_mcp_tool_to_ai_tool(
-                            server.id,
-                            &mcp_tool,
-                            (!server.is_built_in).then(|| server.name.as_str()),
-                        ) {
+                        // This branch is the built-in elicitation server (guarded by
+                        // the id check above), so its tools are never labeled — pass
+                        // `None` directly rather than a raw, unsanitized `server.name`.
+                        if let Some(ai_tool) =
+                            helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool, None)
+                        {
                             all_tools.push(ai_tool);
                         }
                     }
