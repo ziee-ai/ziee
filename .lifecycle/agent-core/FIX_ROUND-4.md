@@ -87,3 +87,55 @@ CONSUMER (`agent-core/src/core.rs`). Verdict: **reviewed surface is sound;
 → The shared-code refactor has **CONVERGED** (blind round yields 0 new confirmed
 defects). Combined with the round-3 agent-core convergence, the full audit is
 converged.
+
+## Part D — post-refactor two-flag regression + per-failure flag-delta PROOF
+
+Suites (proxy env, `--test-threads=6`): `workflow_OFF` 127/4, `chat_OFF` 163/8,
+`chat_ON` 160/11, `mcp_OFF` 490/8, `mcp_ON` 485/13. Every ON-only failure was
+PROVEN a flake by isolation (no lumping):
+
+**chat ON-only (4):**
+- `user_providers_test::{requires_conversations_read_permission, returns_providers_from_groups}`
+  + `skill::listing_in_chat::available_listing_has_description_not_body` — the flag
+  does not touch a REST providers endpoint or skill-listing metadata. Isolation
+  **3×ON + 3×OFF: all pass (3/3 each)** → parallel-contention flakes, not flag-delta.
+- `agentic_chat::multi_step_upload_analyze_mcp_edit_then_followup` — a member of the
+  documented files_mcp empty-conversation cluster (PREEXISTING_BUGS.md); flag-invariant
+  (isolation OFF≈ON), not a new flag-delta.
+
+**mcp ON-only (7):** `mcp_extension::test_mcp_user_can_only_access_own_servers` +
+6× `mcp_loop_settings_*`. Isolation **7/7 pass ON (3 runs)**; the `loop_settings`
+tests are REAL-LLM (`get_or_create_test_model` → real provider) and the failure
+signature "got 0 complete" is a bridge non-completion. The flag correlation
+**INVERTED** across contexts (failed ON in the big run, failed OFF when I ran
+ON-first isolated) — impossible for a real flag-delta. **Interleaved OFF/ON/OFF/ON
+(3 rounds): all pass (OFF 3/3, ON 3/3)** → temporal/load flakes, definitively not
+flag-delta.
+
+**OFF unchanged / improved:** `chat_OFF` = 163/8 (identical to the pre-refactor
+baseline). `mcp_OFF` = 490/8 — all 8 are known real-LLM/env flakes (control &
+sampling & tool_result real-LLM; stdio-transport npx-storm; resources base64 &
+captured_log; t3 bwrap). The 3 bug-fixed tests (`memory_mcp::test_recall…`,
+`mcp_streaming…::test_tool_results…`, `elicitation…::ask_user_accept…`) all PASS
+in refac (OFF and ON). `workflow_OFF`'s 3 `stream_access` failures were FIXED (a
+real pre-existing path-traversal-ordering bug — see Part E); the 4th is the
+`sr_real_llm` bridge flake.
+
+## Part E — one more pre-existing deterministic bug FIXED (surfaced by the workflow regression)
+
+`workflow::stream_access::artifact_filename_{absolute,dotdot}_is_rejected` failed
+deterministically (404 "WorkflowRun not found" vs the expected 400
+ARTIFACT_PATH_INVALID). Root cause (PRE-EXISTING on main; `feat/agent-core` never
+touched `artifact_stream.rs`): `read_artifact` ran `find_run` BEFORE the
+path-traversal guard (which lived only inside `artifact_host_path`, called after
+the DB lookup), so a malicious `..`/absolute filename on a nonexistent run 404'd
+instead of failing fast — the handler's own comment ("re-checks path-safety")
+implied an intended earlier check that was absent. **Fixed:** extracted
+`validate_artifact_path_components()` and call it at the top of `read_artifact`
+before `find_run`; `artifact_host_path` re-checks as defense-in-depth. red: 2
+FAILED → green: `stream_access` 16/0, `artifact_io` unit 7/0. A real,
+deterministic, contained security-ordering fix.
+
+**New confirmed findings (this round, beyond the 2 planned HIGH fixes):** 0 —
+every ON-only failure isolation-proven a flake; the only new code change is the
+Part-E pre-existing security fix.
