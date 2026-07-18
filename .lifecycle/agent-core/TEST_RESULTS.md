@@ -394,3 +394,9 @@ Remaining: the FULL two-flag regression (chat 162/9 + mcp 457/40) to confirm the
 ### mcp:: OFF (proxy env) — `logs/regress2_mcp_OFF.log` — 490 passed / 8 failed
 IMPORTANT: the baseline `regress_mcp_OFF.log` (457/40) was run WITHOUT the ANTHROPIC/OpenAI proxy env, so ~35 real-LLM tests were env-gated failures. THIS run has the proxy env → those tests run against the proxy + pass, hence 490/8 (OFF *improved*, apples-to-oranges on raw count).
 **HARD-GATE check (the deterministic OFF failure SET):** the 2 non-real-LLM failures in this run — `mcp_streaming_workflow_test::test_tool_results_in_api_history` + `tool_call_history_test::chat_path_tool_call_records_source_chat` — **BOTH already failed in the baseline OFF** (verified: baseline=FAILED, new=FAILED) → pre-existing, NOT introduced by the SHARED `call_mcp_tool` changes. The other 6 failures are real-LLM/model-flaky (ask_user_real_llm_round_trip, write_requires_approval, sampling_llm_response_content, ask_user_accept, …). **No NEW deterministic OFF failure ⇒ SHARED changes kept the OFF deterministic set byte-identical.**
+
+### mcp:: ON (proxy env) — `logs/regress2_mcp_ON.log` — 490 passed / 8 failed == OFF 490/8
+**mcp:: is flag-delta-CLEAN.** ON-vs-OFF failure-set diff = 1 each way, both flakes:
+- fail-ON/pass-OFF: `resources_test::resources_read_returns_binary_output_as_base64_blob` — **passes in isolation ON** (`--test-threads=1` → 1 passed) → a parallelism flake, NOT a flag-delta regression (the flag can't touch a resources test).
+- fail-OFF/pass-ON: `real_llm_test::real_llm_write_requires_approval` — model-flaky (flips both ways).
+**All fixed clusters PASS ON** (verified: none of approval_claim / the 5 sampling round-trip tests / control appear in the mcp:: ON failures). So sampling+journaling+approval fixes hold under the full parallel suite, and OFF's deterministic set is unchanged.
