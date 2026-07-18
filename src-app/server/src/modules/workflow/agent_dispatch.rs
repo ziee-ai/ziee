@@ -346,11 +346,13 @@ impl ToolProvider for McpToolProvider {
         //
         // SECURITY: resolve the NAME to a server_id and gate on the READ-ONLY
         // approval-bypass set (`is_builtin_server_id`), which deliberately EXCLUDES
-        // the mutating built-ins `code_sandbox` + `control` — they MUST go through
-        // the reviewer/human gate. `builtin_server_id_by_name` alone INCLUDES
-        // code_sandbox/control, so trusting it here would auto-approve sandbox code
-        // execution in a `kind: agent` step (parity with the chat twin's guard in
-        // `resolver.rs::is_trusted`).
+        // the mutating built-in `code_sandbox` — it MUST go through the reviewer/
+        // human gate. `builtin_server_id_by_name` MAPS `code_sandbox` (to its id),
+        // so a bare name-match would auto-approve sandbox code execution in a
+        // `kind: agent` step; round-tripping name→id→`is_builtin_server_id` gates it
+        // (parity with the chat twin's guard in `resolver.rs::is_trusted`).
+        // Conservative-by-omission: a read-only built-in NOT in `builtin_server_id_by_name`
+        // resolves to None → untrusted → routed through review (safe; pre-existing).
         let (server_name, _) = split_tool_name(server);
         match builtin_server_id_by_name(&server_name) {
             Some(id) => crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(id),

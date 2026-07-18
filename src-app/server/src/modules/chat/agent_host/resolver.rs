@@ -291,17 +291,17 @@ impl ToolProvider for ChatToolProvider {
         Ok(tools)
     }
 
-    // NOTE: `idem` (the crate's per-call idempotency key) is intentionally NOT
+    // NOTE: `_idem` (the crate's per-call idempotency key) is intentionally NOT
     // forwarded — `call_mcp_tool` only persists an idempotency key for `Workflow`
     // source (chat rows key their journal by the real LLM `tool_use_id`, and chat
     // has no durable workflow-run resume). Passing `Some(idem)` here was a silent
-    // no-op; we pass `None` to make that explicit rather than misleading.
-    #[allow(unused_variables)]
+    // no-op; we pass `None` below to make that explicit. Named `_idem` (not a
+    // blanket `#[allow(unused_variables)]`) so a genuinely-dead local still warns.
     async fn call(
         &self,
         run_id: Uuid,
         call: ToolCall,
-        idem: IdempotencyKey,
+        _idem: IdempotencyKey,
     ) -> Result<ToolResult, AppError> {
         let (server_name, tool_name) = split_tool_name(&call.name);
         let scope = McpCallScope {
