@@ -325,6 +325,7 @@ impl ToolProvider for McpToolProvider {
             call.input,
             true,
             self.cancel.as_ref(),
+            None, // chat_ctx — workflow agent host has no chat sampling/journal context
             classification,
             Some(idem),
             crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,

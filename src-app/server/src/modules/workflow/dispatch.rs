@@ -1131,6 +1131,20 @@ impl CancelSignal for registry::RunHandle {
     }
 }
 
+/// Chat-turn context threaded into the shared MCP call chokepoint by the
+/// agent-core CHAT host so it routes through the SAME machinery the legacy path
+/// uses: (a) a sampling server gets an ephemeral `new_with_sampling` session (so
+/// server→host sampling round-trips fire), and (b) the recorded `mcp_tool_calls`
+/// row carries the real `branch_id`/`message_id`/`tool_use_id` context (journaling
+/// parity). Workflow callers pass `None` → the pooled, chat-context-free path is
+/// byte-identical to before.
+pub(crate) struct ChatCallCtx {
+    pub branch_id: Uuid,
+    pub message_id: Uuid,
+    pub tool_use_id: String,
+    pub model_id: Uuid,
+}
+
 pub(crate) async fn call_mcp_tool(
     scope: &McpCallScope,
     server_name: &str,
@@ -1138,6 +1152,8 @@ pub(crate) async fn call_mcp_tool(
     args: Value,
     enforce_conversation_disabled: bool,
     cancel: &dyn CancelSignal,
+    // Chat-only context (sampling session + journal linkage); `None` for workflow.
+    chat_ctx: Option<ChatCallCtx>,
     // ITEM-12: reviewer risk classification (`low`/`high`/`critical`) stamped
     // onto the recorded `mcp_tool_calls` row (`None` for the plain tool step).
     review_classification: Option<String>,
@@ -1258,21 +1274,76 @@ pub(crate) async fn call_mcp_tool(
             ));
         }
     };
-    let session = match manager
-        .get_or_create_with_context(
-            server_id,
-            scope.user_id,
-            scope.conversation_id,
-            None, // branch_id
-            None, // message_id — a workflow run has no chat message
-            None, // tool_use_id — not an LLM ContentBlock::ToolUse
-            source,
-        )
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
-    };
+    // Session selection. The CHAT host (chat_ctx = Some) routes through the SAME
+    // shared machinery the legacy path uses: a `supports_sampling` server gets an
+    // ephemeral `new_with_sampling` session (server→host sampling round-trips), and
+    // the pooled path carries the real branch/message/tool_use context (journaling
+    // parity). Workflow (chat_ctx = None) is unchanged — pooled, no chat context.
+    let session: std::sync::Arc<tokio::sync::RwLock<crate::modules::mcp::client::session::McpSession>> =
+        if let Some(cc) = &chat_ctx {
+            let server_row = match manager.resolve_server_for_session(server_id).await {
+                Ok(s) => s,
+                Err(e) => return Err(McpToolCallError::Failed(format!("tool: resolve server: {e}"))),
+            };
+            if server_row.supports_sampling {
+                // Sampling server → fresh ephemeral session WITH the host-LLM
+                // handler (parity with legacy `execute_tool`). No pooled fallback:
+                // a pooled sampling session deadlocks the SSE round-trip.
+                let handler: std::sync::Arc<dyn crate::modules::mcp::sampling::handler::SamplingHandler> =
+                    match crate::modules::mcp::sampling::handler::ChatSamplingHandler::new(cc.model_id, scope.user_id).await {
+                        Ok(h) => std::sync::Arc::new(h),
+                        Err(e) => return Err(McpToolCallError::Failed(format!("tool: sampling handler init: {e}"))),
+                    };
+                let mut s = match crate::modules::mcp::client::session::McpSession::new_with_sampling(server_row.clone(), handler).await {
+                    Ok(s) => s,
+                    Err(e) => return Err(McpToolCallError::Failed(format!("tool: sampling session: {e}"))),
+                };
+                s.set_call_context(crate::modules::mcp::tool_calls::models::McpCallContext {
+                    user_id: Some(scope.user_id),
+                    conversation_id: scope.conversation_id,
+                    branch_id: Some(cc.branch_id),
+                    message_id: Some(cc.message_id),
+                    tool_use_id: Some(cc.tool_use_id.clone()),
+                    source,
+                    server_name: server_row.name.clone(),
+                    is_built_in: server_row.is_built_in,
+                    ..Default::default()
+                });
+                std::sync::Arc::new(tokio::sync::RwLock::new(s))
+            } else {
+                match manager
+                    .get_or_create_with_context(
+                        server_id,
+                        scope.user_id,
+                        scope.conversation_id,
+                        Some(cc.branch_id),
+                        Some(cc.message_id),
+                        Some(cc.tool_use_id.clone()),
+                        source,
+                    )
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
+                }
+            }
+        } else {
+            match manager
+                .get_or_create_with_context(
+                    server_id,
+                    scope.user_id,
+                    scope.conversation_id,
+                    None, // branch_id
+                    None, // message_id — a workflow run has no chat message
+                    None, // tool_use_id — not an LLM ContentBlock::ToolUse
+                    source,
+                )
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
+            }
+        };
 
     let call = async {
         let mut guard = session.write().await;
@@ -1354,7 +1425,7 @@ impl StepDispatcher for ToolDispatcher {
             run_id: ctx.run_id,
         };
         let (server_id, tool_result) =
-            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, cancel.as_ref(), None, None,
+            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, cancel.as_ref(), None /*chat_ctx*/, None, None,
                 crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow)
                 .await
             {

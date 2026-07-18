@@ -198,6 +198,13 @@ pub struct ChatToolProvider {
     /// SSE sink for the `mcpToolStart` / `mcpToolComplete` lifecycle frames the
     /// legacy `execute_tool` emitted — the chat UI renders tool activity from these.
     tx: Option<UnboundedSender<Result<Event, Infallible>>>,
+    /// Chat-turn identity threaded into the shared `call_mcp_tool` chokepoint so it
+    /// routes through the SAME sampling/journaling machinery the legacy path uses
+    /// (a sampling server gets a `new_with_sampling` session; the journal row gets
+    /// the real branch/message/tool_use context).
+    branch_id: Uuid,
+    message_id: Uuid,
+    model_id: Uuid,
 }
 
 impl ChatToolProvider {
@@ -210,12 +217,18 @@ impl ChatToolProvider {
         conversation_id: Option<Uuid>,
         token: CancellationToken,
         tx: Option<UnboundedSender<Result<Event, Infallible>>>,
+        branch_id: Uuid,
+        message_id: Uuid,
+        model_id: Uuid,
     ) -> Self {
         Self {
             user_id,
             conversation_id,
             cancel: ChatCancel::new(token),
             tx,
+            branch_id,
+            message_id,
+            model_id,
         }
     }
 }
@@ -306,6 +319,15 @@ impl ToolProvider for ChatToolProvider {
             call.input.clone(),
             false,
             &self.cancel,
+            // Route through the shared chokepoint WITH the chat context so a
+            // sampling server gets a `new_with_sampling` session + the journal row
+            // carries branch/message/tool_use (parity with the legacy path).
+            Some(crate::modules::workflow::dispatch::ChatCallCtx {
+                branch_id: self.branch_id,
+                message_id: self.message_id,
+                tool_use_id: call.id.clone(),
+                model_id: self.model_id,
+            }),
             None,
             Some(idem),
             crate::modules::mcp::tool_calls::models::McpToolCallSource::Chat,
