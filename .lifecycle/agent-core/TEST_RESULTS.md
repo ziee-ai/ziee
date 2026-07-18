@@ -286,8 +286,10 @@ every real-LLM candidate re-run isolated (2–3×) to separate stable regression
 **TOOL-CALL JOURNALING (1)**:
 - `control_mcp::real_llm_test::real_llm_discovers_capabilities` — a `list_capabilities` control call is NOT recorded in `mcp_tool_calls` on the agent-core path. 3/3 ON-fail, 2/2 OFF-pass. Same logs as the control approval one.
 
-### SUSPECTED (flaky — NOT counted as confirmed)
-- `project::injection_test::project_instructions_persist_across_multiple_turns` — 2/3 ON-fail (passed the 3rd ON run), 2/2 OFF-pass. Possible multi-turn project-context re-injection gap but model-flaky; needs more runs to confirm. NOT in the confirmed count.
+### PROJECT RE-INJECTION (1) — 4th cluster, CONFIRMED (was flaky-suspect; resolved by a 5×ON/2×OFF run)
+- `project::injection_test::project_instructions_persist_across_multiple_turns` — **ON: 3 failed / 2 passed out of 5** (`logs/project_reinject_ON_{1..5}.log`), **OFF: 2/2 passed** (`logs/project_reinject_OFF_{1,2}.log`). Fails ≥2/5 ON while passing OFF every time → per the agreed criterion this is a **REAL flag-delta regression**: on the agent-core path the project system-context is not reliably RE-INJECTED on turn 2 of a multi-turn conversation (the assertion: "Turn 2 must STILL contain the beacon — project context must re-inject on every turn"). Root cause to fix: the RegistryBridge `call_before_llm_call` must re-run the project extension's injection on every turn/request, not just the first.
+
+**Revised confirmed total = 9 regressions in 4 clusters: Approval (2), Sampling (5), Journaling (1), Project re-injection (1).**
 
 ### 0 flag-delta (fail identically ON+OFF, or pass both) — NOT regressions
 - **Tier A remaining**: `memory::{combined_real_llm,extraction,core_memory}` + `summarization::{after_llm_call,real_llm}` + `agentic_chat::` → ON 47/11 == OFF 47/11, **flag-delta 0** (`logs/tierA_rest_{ON,OFF}.log`). The 11 = 8 pre-existing `agentic_chat` StubChat (fail on main) + 2 `memory::core_memory` + 1 `summarization::real_llm`, all fail both.
