@@ -162,6 +162,18 @@ impl ChatAgentTurn {
             self.assistant_message_id,
         )));
 
+        // Uniquify reused tool_use ids on the model reply (parity with the legacy
+        // `resolve_unique_tool_use_id`) so a provider that repeats an id across turns
+        // can't collide with an already-persisted/just-claimed approval row. Wraps
+        // ONLY the loop's `model` (compaction keeps the raw client — its summaries
+        // carry no tool_use blocks).
+        let model: Arc<dyn agent_core::ModelClient> =
+            Arc::new(crate::modules::chat::agent_host::uniquify::UniquifyingModelClient::new(
+                model_client.clone(),
+                self.pool.clone(),
+                self.assistant_message_id,
+            ));
+
         let core = AgentCore {
             transcript: transcript.clone(),
             sink: sink.clone(),
@@ -169,7 +181,7 @@ impl ChatAgentTurn {
             gate,
             policy,
             models: Arc::new(ChatModelResolver),
-            model: model_client,
+            model,
             model_factory: Arc::new(ProviderModelClientFactory),
             extensions,
             // Chat drives approvals through the human gate, not the reviewer.

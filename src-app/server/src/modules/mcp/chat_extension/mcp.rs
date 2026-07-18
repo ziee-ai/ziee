@@ -323,7 +323,7 @@ fn resolve_server_and_tool(
 /// real OpenAI `call_…`) round-trip unchanged. ziee owns both sides of the
 /// round-trip (the id it sends back as `tool_call_id` and the tool_result that
 /// references it), so replacing a bad id is safe.
-fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSet<String>) -> String {
+pub(crate) fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSet<String>) -> String {
     if provider_id.is_empty() || used.contains(provider_id) {
         format!("call_{}", Uuid::new_v4())
     } else {
