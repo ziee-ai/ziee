@@ -235,6 +235,14 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         // js_tool (run_js auto-attaches for tool-capable chats; the START is
         // approval-bypassed, gated sub-tools inside the script are approved).
         "__run_js",
+        // files_mcp WRITE tools auto-attach for tool-capable chats even in an
+        // EMPTY conversation (B1 — so the model can author the first file); the
+        // READ tools stay gated on file-presence, so they do NOT attach here.
+        "__create_file",
+        "__edit_file",
+        "__edit_file_lines",
+        "__rewrite_file",
+        "__convert_document",
     ];
     assert!(
         tools
